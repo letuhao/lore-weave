@@ -1413,7 +1413,7 @@ async def kg_propose_edge(
         synonyms=[
             "add to the graph",
             "add a node",
-            "to the knowledge graph",
+            "add nodes to the knowledge graph",
             "as a character",
             "put this entity in the graph",
             "add characters to the knowledge graph",
@@ -1983,7 +1983,7 @@ async def kg_triage_place_edge(
             "add to the vocabulary",
             "add this value to the schema",
             "resolve triage by changing the schema",
-            "add the edge type",
+            "add an edge type in triage",
             "add an edge type to the schema",
             "so that proposal fits",
             "widen the schema",

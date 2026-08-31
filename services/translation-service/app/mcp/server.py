@@ -1038,9 +1038,25 @@ _JOB_CONTROL_TIER = {"cancel": "A", "pause": "A", "resume": "W", "retry": "W"}
         "W", "book",  # declared W (the strictest path); cancel/pause execute as A inline.
         # "cancel job"/"pause job"/"resume job"/"retry job" all belonged to the generic
         # jobs_* tools too. Qualified here: this one controls a TRANSLATION job.
-        synonyms=["cancel the translation", "pause the translation",
+        # 🔴 THE TWO COLLIDING PHRASES CAME OFF THIS SIDE, AND THE MEASUREMENT DECIDED
+        # WHICH SIDE. DQ-T41 (owner 2026-08-27) rules a synonym collision a CATALOGUE defect, and
+        # "pause the translation"/"stop translation" collided with jobs_pause/jobs_cancel. The
+        # obvious fix — take the domain phrase off the GENERIC tool — was tried on 2026-08-25 and
+        # measured a regression, and jobs-service records the A/B beside its own declaration:
+        #
+        #     original wording          surfaced 5/5   jobs_pause called 5/5
+        #     after the de-dup          surfaced 2/5   jobs_pause called 0/5
+        #
+        # with translation_job_control taking 0/5 in BOTH arms. Removing the phrase from the tool
+        # that was answering left nobody holding the request. A measured tie is broken by taking
+        # the phrase off the LOSER.
+        #
+        # So this tool keeps every way of asking that names the JOB it controls, and gives up the
+        # two bare phrasings the generic tools demonstrably win. It loses no reachability it was
+        # exercising: it was never called on either arm.
+        synonyms=["cancel this translation job", "pause this translation job",
                   "resume the translation", "retry the translation",
-                  "stop translation", "restart translation"],
+                  "stop this translation job", "restart translation"],
         tool_name="translation_job_control",
     ),
 )

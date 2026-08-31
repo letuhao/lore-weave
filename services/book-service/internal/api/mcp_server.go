@@ -194,7 +194,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"chapter), limit/offset. Returns matching chapters/blocks with highlighted "+
 			"snippets + has_more. For meaning-alike / semantic passages use story_search "+
 			"instead — this one only finds the exact characters you pass.",
-		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"grep", "find text", "exact phrase", "literal search", "where in the book does it say"}),
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"grep", "find exact text", "exact phrase", "literal search", "where in the book does it say"}),
 		s.toolBookSearch)
 
 	// book_read — the unified "cat": read the full content of ONE addressed item
@@ -244,7 +244,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"(or empty). Returns the new chapter_id. For the book's own description / summary / blurb "+
 			"(the book's own details, not chapter prose), use book_update_details instead — do NOT create a chapter for it. "+
 			"Reverse: trashing a chapter is a manual UI action — tell the user, do not look for a tool.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new chapter", "add chapter", "write a chapter"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new chapter", "add chapter"}),
 		s.toolChapterCreate)
 
 	addTool(srv, "book_chapter_bulk_create",
@@ -276,7 +276,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"part_id=<id> (or part_id=\"unassigned\"): that group's chapters, paged — every result carries "+
 			"page.is_complete + a `guidance` line telling you when to STOP. Use this to see where chapters "+
 			"live before reorganizing with book_structure_edit.",
-		lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"manuscript structure", "parts overview", "table of contents", "where do chapters live", "book outline"})),
+		lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"manuscript structure", "parts overview", "where do chapters live", "book outline"})),
 		s.toolBookStructureRead)
 
 	addToolClosedSet(srv, "book_structure_edit",
@@ -342,7 +342,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"new version, word_count) so you know exactly what landed. This is NOT for the book's own "+
 			"description / summary / blurb (those are the book's DETAILS — use book_update_details; never write "+
 			"prose there). Reverse: book_chapter_restore_revision.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter prose", "write the chapter", "draft the scene"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter prose", "save the chapter draft", "save the scene draft"}),
 		map[string][]any{"body_format": {"plain", "markdown", "json"}},
 		s.toolChapterSaveDraft)
 

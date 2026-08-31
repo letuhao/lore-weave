@@ -46,7 +46,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_update_skill",
 		Description: "PROPOSE an update to one of the user's OWN skills (by slug). Does NOT apply immediately — the user approves the diff in the UI. Provide the slug and the new description and/or body.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update skill", "edit skill", "change skill", "change the description of the", "rename skill", "change the skill", "edit the skill"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update skill", "edit skill", "change skill", "change the skill description", "rename skill", "change the skill", "edit the skill"}),
 		InputSchema: closedSetSchemaFor[updateSkillIn](map[string][]any{
 			"surfaces[]": enumSurfaces,
 		}),

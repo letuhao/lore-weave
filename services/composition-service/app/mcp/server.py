@@ -833,7 +833,11 @@ async def composition_list_outline(
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["get node", "node version", "read scene", "read chapter node",
+        # DQ-T41: "read scene" collided with book_read, which reads the PROSE of a scene. This
+        # tool reads ONE OUTLINE NODE and its concurrency `version`. The bare phrase belongs to
+        # the tool that returns what an author means by a scene; this one keeps every phrasing
+        # that names the NODE.
+        synonyms=["get node", "node version", "read the outline node", "read chapter node",
                   "outline node", "get scene", "node status"],
         tool_name="composition_get_outline_node",
     ),
@@ -5974,7 +5978,7 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
     meta=require_meta(
         "R", "user",
         synonyms=["mining job", "import job", "conformance job", "translate job",
-                  "poll mining", "is mining done", "is the translation done",
+                  "poll mining", "is mining done", "is the motif job done",
                   "motif job status"],
         tool_name="composition_get_mine_job",
     ),

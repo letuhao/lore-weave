@@ -105,7 +105,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_update_profile",
 		Description: "Update the user's profile fields (display_name, locale, avatar_url, bio, languages). Only the provided fields change. Free and reversible.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update profile", "change name", "set bio", "edit profile", "set languages"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update profile", "change my display name", "set bio", "edit profile", "set languages"}),
 	}, s.toolUpdateProfile)
 
 	// model_register — wire name carries the mandatory settings_ prefix (C-GW).

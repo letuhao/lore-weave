@@ -122,8 +122,7 @@
       "scope": "book",
       "synonyms": [
         "new chapter",
-        "add chapter",
-        "write a chapter"
+        "add chapter"
       ],
       "tier": "A"
     }
@@ -344,8 +343,8 @@
         "save draft",
         "edit chapter text",
         "write chapter prose",
-        "write the chapter",
-        "draft the scene"
+        "save the chapter draft",
+        "save the scene draft"
       ],
       "tier": "A"
     }
@@ -1004,7 +1003,7 @@
       "scope": "book",
       "synonyms": [
         "grep",
-        "find text",
+        "find exact text",
         "exact phrase",
         "literal search",
         "where in the book does it say"
@@ -1298,7 +1297,6 @@
       "synonyms": [
         "manuscript structure",
         "parts overview",
-        "table of contents",
         "where do chapters live",
         "book outline"
       ],
@@ -8892,7 +8890,7 @@
         "translate job",
         "poll mining",
         "is mining done",
-        "is the translation done",
+        "is the motif job done",
         "motif job status"
       ],
       "tier": "R"
@@ -8925,7 +8923,7 @@
       "synonyms": [
         "get node",
         "node version",
-        "read scene",
+        "read the outline node",
         "read chapter node",
         "outline node",
         "get scene",
@@ -16621,7 +16619,7 @@
       "scope": "book",
       "synonyms": [
         "research this on the web",
-        "look this up online",
+        "research this entity online",
         "on the web",
         "find sources for",
         "find sources for this character",
@@ -19094,7 +19092,7 @@
       "synonyms": [
         "add to the graph",
         "add a node",
-        "to the knowledge graph",
+        "add nodes to the knowledge graph",
         "as a character",
         "put this entity in the graph",
         "add characters to the knowledge graph"
@@ -20854,7 +20852,7 @@
         "add to the vocabulary",
         "add this value to the schema",
         "resolve triage by changing the schema",
-        "add the edge type",
+        "add an edge type in triage",
         "add an edge type to the schema",
         "so that proposal fits",
         "widen the schema"
@@ -23016,7 +23014,7 @@
         "update skill",
         "edit skill",
         "change skill",
-        "change the description of the",
+        "change the skill description",
         "rename skill",
         "change the skill",
         "edit the skill"
@@ -23561,7 +23559,7 @@
       "scope": "user",
       "synonyms": [
         "update profile",
-        "change name",
+        "change my display name",
         "set bio",
         "edit profile",
         "set languages"
@@ -23812,11 +23810,11 @@
     "meta": {
       "scope": "book",
       "synonyms": [
-        "cancel the translation",
-        "pause the translation",
+        "cancel this translation job",
+        "pause this translation job",
         "resume the translation",
         "retry the translation",
-        "stop translation",
+        "stop this translation job",
         "restart translation"
       ],
       "tier": "W"
