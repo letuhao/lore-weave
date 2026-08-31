@@ -1729,6 +1729,81 @@ def _agentruntime_wire_surface(*, pass_number: int) -> list[dict]:
 _R1_FORCED: "ContextVar[frozenset[str]]" = ContextVar("_r1_forced", default=frozenset())
 
 
+def prior_request_for_lookback(
+    messages: list[dict] | None,
+    prior_assistant_tool_calls: list | None,
+    prior_assistant_advertised: list | None,
+) -> str:
+    """The earlier USER request a bare confirmation is still about — or "" to stay inert.
+
+    DQ-T68 (a), owner ruling 2026-08-31: "R1 reconsiders the prior USER turn only when the
+    current turn's answerable set is EMPTY and the previous assistant turn left a CONCRETE
+    pending action — a minted card, or a surfaced-but-not-called tool. That is a structural
+    signal, not a guess about conversational topic drift."
+
+    🔴 WHY IT IS NEEDED AT ALL. R1 keys on the CURRENT turn's text, so a two-turn journey loses
+    the tool on the turn where the action is due. Measured against the shipped matcher: "Yes, go
+    ahead and do it.", "Yes, please create them.", "ok", "Yes", "Go ahead", "Do it" and "Confirm"
+    each return ZERO answerable tools. There is no phrasing of a bare affirmative that reaches a
+    tool, so this is not an optimisation — without it the confirmation turn is empty-handed by
+    construction.
+
+    🔴 WHAT THE MEASUREMENT SAYS, INCLUDING THE PART THAT DOES NOT FLATTER IT. Over 232
+    bare-affirmative turns in the live store, 192 of them empty-handed, with the shipped matcher
+    against the live 316-tool catalogue:
+
+        variant                                 fires   precision      recall
+        ungated (any empty-handed turn)           157   16/120 = 13%   157/192 = 82%
+        card pending only                          10    0/10  =  0%    10/192 =  5%
+        card OR surfaced-but-not-called  <- SHIPS 113   13/91  = 14%   113/192 = 59%
+
+    QUOTE THE GATED ROW, because it is the one that ships: 59% recall at 14% precision. An
+    earlier version of this docstring quoted the ungated 82% beside the gated mechanism, which
+    flattered a trade-off whose strict side had already been chosen.
+
+    THE GATE IS NARROWING, NOT PRECISION. It trades 23 points of recall for one point of
+    precision: firing 113 times instead of 157 at the same 14%, while the card-only form fires
+    ten times and hits none. It is kept because the owner ruled it and because firing less often
+    at equal precision spends less context — not because it makes the recovery more accurate.
+
+    THE ORACLE IS WEAK IN A KNOWN DIRECTION, so 14% is a floor: 85% of the "needed" tools in the
+    misses do declare synonyms, and they are dominated by `jobs_get` (a status poll, 28% of the
+    miss mass), ontology reads and standards lists — how the model DOES the work, not the tool
+    that IS the work. On the three instances this defect actually names it is 3 of 3.
+
+    R1 IS ADDITIVE, which is why 14% is not a veto: the recovered tools go ON the wire beside the
+    hot set. Nothing is removed, no call is forced, and a miss costs context, not correctness.
+    """
+    if not messages:
+        return ""
+    # A CONCRETE pending action: a call left awaiting a human, or a tool put on the wire and not
+    # used. Either means the turn stopped mid-journey with something still to do.
+    carded = any(isinstance(c, dict) and c.get("call_outcome") == "deferred"
+                 for c in (prior_assistant_tool_calls or []))
+    called = {c.get("tool") for c in (prior_assistant_tool_calls or [])
+              if isinstance(c, dict)}
+    # 🔴 `advertised_tools` IS A LIST OF PER-PASS OBJECTS, NOT A LIST OF NAMES:
+    # [{"pass": 1, "count": 58, "names": [...]}, ...]. Assuming names cost a broken platform —
+    # `set()` over a list of dicts raised `TypeError: unhashable type: 'dict'` on EVERY turn, and
+    # the batch that was meant to prove this fix came back 5 of 5 no_output_timeout. The same
+    # wrong assumption was in the SQL that measured the gate, where `jsonb_array_elements_text`
+    # yielded whole objects as text and so never matched a tool name — which is why the "gated"
+    # precision equalled the ungated one: the gate was firing on everything.
+    surfaced: set = set()
+    for _p in (prior_assistant_advertised or []):
+        if isinstance(_p, dict):
+            surfaced.update(n for n in (_p.get("names") or []) if isinstance(n, str))
+        elif isinstance(_p, str):
+            surfaced.add(_p)  # tolerate a flat list, should the shape ever simplify
+    surfaced_unused = bool(surfaced - called)
+    if not (carded or surfaced_unused):
+        return ""
+    # The PREVIOUS user message — the request under discussion. `messages` ends with the current
+    # turn's own user row, so the one before it is the earlier request.
+    users = [m for m in messages if isinstance(m, dict) and m.get("role") == "user"]
+    return str(users[-2].get("content") or "") if len(users) >= 2 else ""
+
+
 def _advertise_discovery_tools(
     catalog_index: dict[str, dict],
     active_tool_names: set[str],
@@ -1741,6 +1816,10 @@ def _advertise_discovery_tools(
     # R1 (surface answerability) — THIS turn's request, so the chokepoint can guarantee that a
     # tool whose own declared vocabulary answers it is on the wire. Empty ⇒ inert.
     request_text: str = "",
+    # DQ-T68 (a) — the EARLIER request a bare confirmation is still about, supplied only
+    # when the previous assistant turn left something pending. Consulted ONLY if this
+    # turn's own text answers nothing; empty ⇒ inert. See `prior_request_for_lookback`.
+    prior_request_text: str = "",
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -1856,6 +1935,23 @@ def _advertise_discovery_tools(
     # domain selection or the rail decided. Bounded by what was actually said (1-3 tools on
     # real prompts, 0 on chitchat) rather than by an allowlist that spends the prefix forever.
     _answerable = answerable_tools(request_text, list(catalog_index.values()))
+    # DQ-T68 (a) — A CONFIRMATION TURN IS EMPTY-HANDED BY CONSTRUCTION. "Yes, please
+    # create them." matches no tool's declared vocabulary, so the guarantee above has
+    # nothing to guarantee and the tool the user is confirming falls off the wire on the
+    # very turn the action is due. Measured: surfaced 0/5, called 0/5 on plan_bootstrap_apply
+    # with its supplier and precondition both already fixed, so nothing else was in the way.
+    #
+    # ONLY when this turn answers NOTHING, and only when the caller judged a concrete
+    # action pending. Additive: whatever the earlier request answers joins the wire beside
+    # the hot set — nothing is removed and no call is forced.
+    _from_lookback: set[str] = set()
+    if not _answerable and prior_request_text:
+        _from_lookback = answerable_tools(prior_request_text, list(catalog_index.values()))
+        _answerable = _from_lookback
+        if _from_lookback:
+            logger.info(
+                "R1 look-back: this turn answers nothing; the earlier request matches %s",
+                sorted(_from_lookback))
     # Distinct local names on purpose: `test_cp0_instrument` anchors its catalog-miss guard on
     # the FIRST `td = catalog_index.get(name)` and windows the source after it. Reusing those
     # names here moved that anchor and made an established narrowing-instrumentation test read
@@ -9417,6 +9513,39 @@ async def stream_response(
             session_id, history_limit,
         )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+    # DQ-T68 (a) — the PREVIOUS assistant turn's tool state, for the confirmation-turn
+    # look-back. One row, only what the gate reads: whether a call was left awaiting a human
+    # and which tools were put on the wire. Kept out of `messages` on purpose — that list is
+    # the model's context and must not grow for a surfacing decision.
+    _prev_tool_calls: list = []
+    _prev_advertised: list = []
+    try:
+        _prev = await pool.fetchrow(
+            """
+            SELECT tool_calls, advertised_tools FROM chat_messages
+            WHERE session_id = $1 AND role = 'assistant' AND is_error = false AND branch_id = 0
+            ORDER BY sequence_num DESC LIMIT 1
+            """,
+            session_id,
+        )
+        if _prev is not None:
+            # asyncpg hands a jsonb column back as a str unless a codec is registered, so
+            # both shapes are accepted; anything else degrades to empty and the gate stays shut.
+            for _col, _dest in (("tool_calls", "calls"), ("advertised_tools", "adv")):
+                _v = _prev[_col]
+                if isinstance(_v, str):
+                    try:
+                        _v = json.loads(_v)
+                    except (TypeError, ValueError):
+                        _v = []
+                if not isinstance(_v, list):
+                    _v = []
+                if _dest == "calls":
+                    _prev_tool_calls = _v
+                else:
+                    _prev_advertised = _v
+    except Exception:  # noqa: BLE001 — a surfacing hint must never break a turn
+        logger.debug("R1 look-back: prior-turn state unavailable", exc_info=True)
     if _compacted_before_seq is not None and _compact_summary:
         # Pinned (role=system) → the auto-compaction tiers can never drop it.
         messages.insert(0, summary_message(_compact_summary))
@@ -10309,6 +10438,10 @@ async def stream_response(
                     _catalog_index(catalog), discovery_seed_names, discovery_extra_frontend,
                     book_bound=bool(_ctx_book_id),
                     request_text=user_message_content,
+                    # DQ-T68 (a) — "" unless the previous assistant turn left something
+                    # pending, in which case R1 may fall back to the earlier request.
+                    prior_request_text=prior_request_for_lookback(
+                        messages, _prev_tool_calls, _prev_advertised),
                 )
             else:
                 # No discovery: a legacy non-agui tool-calling client (full catalog —
