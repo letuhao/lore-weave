@@ -99,7 +99,7 @@ def is_gate_backed(tool: str, row: dict) -> bool:
 #: A defect row's `state`, CLOSED. The prose stays in `status`; only this is ever counted.
 #: `withdrawn` is a defect that turned out not to be one; `superseded` folded into another row
 #: and must name it. See the comment in `recompute_progress` for what the open set cost.
-DEFECT_STATES = ("open", "fixed", "proven", "withdrawn", "superseded")
+DEFECT_STATES = ("open", "fixed", "proven", "withdrawn", "superseded", "cannot_reproduce")
 
 #: WHICH OF THOSE STATES IS STILL WORK. The closed set above says what a row MAY say; it never
 #: said which of them means finished, so every consumer decided for itself — and one of them
@@ -114,7 +114,32 @@ DEFECT_STATES = ("open", "fixed", "proven", "withdrawn", "superseded")
 #: TERMINAL IS THE LIST THAT IS WRITTEN DOWN, AND OPEN IS THE REMAINDER, deliberately in that
 #: direction: a state token added later falls into OPEN and becomes visible, rather than
 #: vanishing from the queue the way `proven` did. Fail loud, not quiet.
-DEFECT_TERMINAL_STATES = ("fixed", "withdrawn", "superseded")
+DEFECT_TERMINAL_STATES = ("fixed", "withdrawn", "superseded", "cannot_reproduce")
+
+#: WHAT `cannot_reproduce` IS FOR — owner ruling, 2026-08-31, in their own words:
+#:
+#:      "mark as cannot produce or something, it gone dont mean it fix but dont mean it open,
+#:       an open one must be reproduce"
+#:
+#: THE RULE IT ESTABLISHES: a row may sit in the OPEN set only while its defect can be made to
+#: happen again. A defect that no longer reproduces has stopped being work — but it has NOT been
+#: fixed, and this loop's own standing rule is that a row which stopped reproducing gets no
+#: credit. Before today those two facts had no state between them, so three rows idled in `open`
+#: reporting work that nobody could do:
+#:
+#:      T1-D2                                   its trigger is a MODEL ERROR, not commandable
+#:      D-TURN-STALLS-AFTER-THE-SURFACE-IS-BUILT the fix elsewhere destroyed the trigger
+#:      D-THE-MOTIF-LINK-SCENARIO-TIMES-OUT-6-OF-10  an instrument row, cause never bought
+#:
+#: 🔴 IT IS TERMINAL, AND THAT IS EXACTLY WHY IT NEEDS A BAR. A state that removes a row from the
+#: queue on the row's own say-so is a state every hard row would migrate into, and "it does not
+#: reproduce" is the cheapest sentence in this ledger to write and the most expensive to check.
+#: `unevidenced_cannot_reproduce` below is the bar, enforced by `audit`: name the ORIGINAL
+#: instance, name the re-run that failed to show it WITH ITS COUNT, and write down what was never
+#: demonstrated. Without all three the row is refused and stays where it was.
+#:
+#: NOT a synonym for `withdrawn`: withdrawn means it was never a defect. This means it was one,
+#: and the evidence that it still is has expired.
 DEFECT_OPEN_STATES = tuple(s for s in DEFECT_STATES if s not in DEFECT_TERMINAL_STATES)
 assert set(DEFECT_TERMINAL_STATES) <= set(DEFECT_STATES), "a terminal state left the closed set"
 
@@ -866,6 +891,52 @@ def missing_evidence_paths(ledger: dict) -> dict:
     return out
 
 
+#: The three things a `cannot_reproduce` row must say, and why each one is not optional.
+#: Keys are the field names; values are what the field has to establish.
+CANNOT_REPRODUCE_FIELDS = {
+    "original_instance": "WHERE IT WAS SEEN. Without this the state means 'never observed', "
+                         "which is `withdrawn`, not this.",
+    "not_reproduced": "THE RE-RUN THAT NO LONGER SHOWS IT, WITH ITS COUNT. A bare 'it does not "
+                      "reproduce' is an absence of looking; 0-of-N is a measurement.",
+    "never_demonstrated": "WHAT THE ROW DOES NOT CLAIM. The half that was never shown is the "
+                          "whole reason this is not `fixed`, so it is written down or lost.",
+}
+
+#: `not_reproduced` must carry a NUMBER. A count is the difference between "we re-ran it K times
+#: and it did not happen" and "nobody has seen it lately" — and this ledger has already recorded
+#: mistaking the second for the first (absence of recent traffic read as evidence of removal).
+_HAS_A_COUNT = re.compile(r"\d")
+
+
+def unevidenced_cannot_reproduce(ledger: dict) -> dict:
+    """{defect: [what is missing]} for every `cannot_reproduce` row that has not paid the bar.
+
+    🔴 THIS IS THE GUARD ON A TERMINAL STATE, so it is the one check here whose absence would be
+    worth something to a future writer: `cannot_reproduce` takes a row out of the queue and out
+    of `--check`, exactly like `fixed`, but asks for no fix. Unguarded it is a drain that any
+    difficult row can be pushed down with one sentence.
+
+    IT DOES NOT AND CANNOT VERIFY THE CLAIM — no check here can re-run a scenario. It verifies
+    that the claim was MADE IN A CHECKABLE FORM: an instance to go back to, a re-run with a count,
+    and an explicit statement of the part that was never demonstrated. `missing_evidence_paths`
+    then holds the cited files to the same standard as every other row's.
+    """
+    out: dict[str, list[str]] = {}
+    for name, row in (ledger.get("defects") or {}).items():
+        if not isinstance(row, dict) or row.get("state") != "cannot_reproduce":
+            continue
+        missing = []
+        for field, why in CANNOT_REPRODUCE_FIELDS.items():
+            val = str(row.get(field) or "").strip()
+            if not val:
+                missing.append(f"{field} — {why}")
+            elif field == "not_reproduced" and not _HAS_A_COUNT.search(val):
+                missing.append(f"{field} names no count — {why}")
+        if missing:
+            out[name] = missing
+    return out
+
+
 def status_state_drift(ledger: dict) -> dict:
     """{defect: what_is_wrong} for every row whose `status` prose contradicts its `state`.
 
@@ -984,8 +1055,10 @@ def cmd_audit(a) -> int:
     status_drift = status_state_drift(ledger)
     stale_blocks = stale_dq_blocks(ledger)
     missing_ev = missing_evidence_paths(ledger)
+    unevidenced = unevidenced_cannot_reproduce(ledger)
     if (not orphans and not drift and not aliases and not dq_states and not dangling
-            and not status_drift and not stale_blocks and not missing_ev):
+            and not status_drift and not stale_blocks and not missing_ev
+            and not unevidenced):
         print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows), "
               "`progress` agrees with them, and every DQ block is readable by the generator")
         return 0
@@ -1018,6 +1091,15 @@ def cmd_audit(a) -> int:
         for n, paths in sorted(missing_ev.items()):
             for path in paths:
                 print(f"  {n:52} {path}")
+    if unevidenced:
+        print(f"REFUSED — {len(unevidenced)} row(s) claim `cannot_reproduce` without paying for "
+              "it. That state removes a row from the queue and from `--check` while asking for "
+              "no fix, so it is the one disposition a row must not be able to assert about "
+              "itself:")
+        for name, gaps in sorted(unevidenced.items()):
+            print(f"  {name}")
+            for g in gaps:
+                print(f"      missing {g}")
     if aliases:
         print(f"REFUSED — {len(aliases)} defect row(s) mark a DQ block under a name the "
               f"generator cannot read. It reads `{DQ_FIELD}` and nothing else, so these rows are "

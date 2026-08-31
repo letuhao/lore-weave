@@ -90,16 +90,30 @@ class TestTheVocabularyHasExactlyOneHome:
 
 
 class TestEveryUnfinishedRowIsQUEUED:
-    def test_the_proven_rows_are_in_the_queue(self, pinned):
+    def test_every_populated_non_terminal_state_is_in_the_queue(self, pinned):
+        """Named for `proven` until 2026-08-31, and the rename is the finding.
+
+        🔴 THE GUARD WENT VACUOUS BY SUCCEEDING. It asserted `proven` was non-empty — its own
+        anti-vacuity floor — and the backlog it was written for drained to zero, so it went red
+        for the best possible reason. Re-pointing it at whichever state happens to be populated
+        today would just move the same trap; it now asks the general question instead: EVERY
+        non-terminal state that any row actually holds must appear in the queue.
+
+        That cannot go vacuous while any work exists, and it covers a state token added later —
+        which is the direction `DEFECT_OPEN_STATES` was built to fail in.
+        """
         rows, _ = g.rows()
         queued = {r[4] for r in rows}
-        proven = {k for k, v in (pinned["defects"] or {}).items()
-                  if isinstance(v, dict) and v.get("state") == "proven"}
-        assert proven, "no row is at `proven` any more — re-derive whether this guard still bites"
-        missing = sorted(proven - queued)
-        assert not missing, (
-            f"{len(missing)} rows at `proven` are absent from the queue that ends the run: "
-            f"{missing[:5]}")
+        by_state: dict[str, set] = {}
+        for k, v in (pinned["defects"] or {}).items():
+            if isinstance(v, dict) and v.get("state") in gate.DEFECT_OPEN_STATES:
+                by_state.setdefault(v["state"], set()).add(k)
+        assert by_state, "no row is in ANY non-terminal state — is the ledger really finished?"
+        for state, names in sorted(by_state.items()):
+            missing = sorted(names - queued)
+            assert not missing, (
+                f"{len(missing)} rows at `{state}` are absent from the queue that ends the run: "
+                f"{missing[:5]}")
 
     def test_the_queue_total_equals_every_non_terminal_row(self, pinned):
         """ANTI-VACUITY AND ANTI-DRIFT IN ONE: the count is re-derived from the ledger rather than
@@ -114,7 +128,11 @@ class TestEveryUnfinishedRowIsQUEUED:
         # independently of this queue: if the two ever disagree, one of them is wrong, and that is
         # a real finding rather than a stale constant.
         prog = pinned.get("progress") or {}
-        want = int(prog.get("defects_open", 0)) + int(prog.get("defects_proven", 0))
+        # 🔴 SUMMED OVER THE VOCABULARY, NOT OVER TWO NAMES I TYPED. This read
+        # `defects_open + defects_proven`, which is the same hard-coding the file exists to
+        # prevent, one level up: a non-terminal state added later would be counted by the queue
+        # and not by this expectation, and the guard would fail with the queue in the right.
+        want = sum(int(prog.get(f"defects_{s}", 0)) for s in gate.DEFECT_OPEN_STATES)
         assert want > 0, "progress reports no non-terminal defects at all — is that true?"
         assert len(expected) == want, (
             f"the queue's non-terminal set is {len(expected)} but `progress` says {want} "
