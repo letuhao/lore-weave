@@ -10884,6 +10884,80 @@ def _last_tool_error_for_author(tool_calls_history: list[dict]) -> str | None:
     return None
 
 
+#: How many calls a brief will name before it summarises the rest. A brief that lists twelve
+#: tool names is not a brief, and the author's decision does not improve past the first few.
+_BRIEF_MAX_NAMED = 3
+
+#: The call outcomes that mean THE THING DID NOT HAPPEN. Read from the record rather than
+#: re-derived: `instrument` already classifies every call into done/failed/refused/deferred, and
+#: a second implementation of that rule would be a second rule. Measured over 10 days of the live
+#: store: done 6,074 · failed 2,753 · deferred 1,117 · refused 203.
+_BRIEF_NOT_DONE = ("failed", "refused")
+
+
+def _turn_brief(tool_calls_history: list[dict]) -> str:
+    """DQ-T71, owner 2026-08-31 — ONE FACTUAL ACCOUNT OF THE TURN, composed by the server.
+
+    Owner's words: "is it a defect and we need to fix by return brief or something?" It is a
+    defect, and this is the brief. The model writes its reply from what it REMEMBERS of the turn;
+    nothing has ever put what actually happened in front of the author. So it claims work that
+    was refused, and denies work that landed:
+
+        the call REFUSED and the reply says it succeeded   26 of 307 turns that hit a refusal  8.5%
+        the call LANDED  and the reply says it failed      28 of 581 carded writes             4.8%
+
+    (Both trigger-scoped. The 1.3-1.7% this was filed with pooled them over runs that could not
+    trigger either direction.)
+
+    🔴 REPORTING, NOT INVENTING — the same rule that made DQ-T33 answerable. Every word here
+    comes from the turn's own record: the tool's name as it was called, and the tool's own error
+    text through the same `_client_safe_error` sanitiser the silent-turn fallback uses. The
+    server states no outcome it did not observe.
+
+    IT IS DELIBERATELY SILENT WHEN IT HAS NOTHING TO CORRECT. A turn where every call is `done`
+    gets no brief: there is no refusal to overstate, and a line appended to every reply in the
+    product is a voice change nobody asked for. The condition is a non-`done` call, which is
+    exactly the trigger population the 8.5% is measured over.
+    """
+    if not tool_calls_history:
+        return ""
+    not_done: list[str] = []
+    for tc in tool_calls_history:
+        if not isinstance(tc, dict) or tc.get("call_outcome") not in _BRIEF_NOT_DONE:
+            continue
+        name = str(tc.get("tool") or "").strip() or "a tool"
+        err = tc.get("error")
+        reason = _client_safe_error(err.strip()) if isinstance(err, str) and err.strip() else ""
+        not_done.append(f"{name} — {reason}" if reason else name)
+    if not not_done:
+        return ""
+    shown = not_done[:_BRIEF_MAX_NAMED]
+    tail = len(not_done) - len(shown)
+    body = "; ".join(shown) + (f"; and {tail} more" if tail > 0 else "")
+    lead = ("One action in this turn did not run" if len(not_done) == 1
+            else f"{len(not_done)} actions in this turn did not run")
+    return f"\n\n{lead}: {body}"
+
+
+def _completed_in_this_turn(tool_calls_history: list[dict]) -> str:
+    """DQ-T73's cheap half, on the path that needs it: a turn that WROTE and then asked approval
+    for something else says "Nothing has been saved yet", which is true of the CARD and false of
+    the write that already landed. Names what did land, beside that line.
+
+    Kept separate from `_turn_brief` because the two fire on opposite conditions — this one on
+    success, that one on refusal — and folding them into one function would mean a turn with
+    neither shape still paying for both tests.
+    """
+    done = [str(tc.get("tool") or "").strip() for tc in (tool_calls_history or [])
+            if isinstance(tc, dict) and tc.get("call_outcome") == "done" and tc.get("tool")]
+    if not done:
+        return ""
+    shown = done[:_BRIEF_MAX_NAMED]
+    tail = len(done) - len(shown)
+    return (" Already completed in this turn: " + ", ".join(shown)
+            + (f", and {tail} more" if tail > 0 else "") + ".")
+
+
 async def _bounded_turn_stream(stream, *, started_at: float, ceiling_s: float):
     """DQ-T56(1) — **THE ONE CHOKEPOINT.** Yield a turn's chunks, and raise
     `TurnCeilingExceeded` once the turn as a whole has run past `ceiling_s`.
@@ -11714,8 +11788,19 @@ async def _emit_chat_turn(
             # Appended BEFORE the persist so a reload shows the same text the live stream did —
             # the two must not disagree — and emitted below before `close_message()` so it lands
             # inside the assistant message the author is reading rather than after its END frame.
-            full_content.append(_NOTHING_SAVED_YET_LINE)
-            for _line in emitter.text_delta(_NOTHING_SAVED_YET_LINE):
+            # DQ-T71 (owner, 2026-08-31) — THE BRIEF RIDES THE LINE THAT IS ALREADY HERE.
+            # "Nothing has been saved yet" is true of the CARD and false of any write this turn
+            # already landed, which is the 4.8%-of-carded-writes direction: the reply denies a
+            # write its own tool result confirms. Naming what completed, beside the line about
+            # what has not, makes the sentence the author reads a complete account instead of
+            # half of one. The refusal half rides the same append for the same reason.
+            _suspend_text = (
+                _NOTHING_SAVED_YET_LINE
+                + _completed_in_this_turn(tool_calls_history)
+                + _turn_brief(tool_calls_history)
+            )
+            full_content.append(_suspend_text)
+            for _line in emitter.text_delta(_suspend_text):
                 yield _line
             await _persist_terminal_assistant(
                 pool,
@@ -11788,6 +11873,26 @@ async def _emit_chat_turn(
                     "silent turn: surfacing the last tool error to the author (session=%s): %r",
                     session_id, _tool_last_word[:120],
                 )
+
+        # ── DQ-T71 (owner, 2026-08-31) · THE TURN BRIEF ────────────────────────────────────
+        # The non-carded finish. This is where the LARGER direction lives — the call refused and
+        # the reply says it succeeded, 8.5% of the turns that hit a refusal, against 4.8% for the
+        # inverse on the carded path. No card is involved, so neither the suspend line nor the
+        # Tier-W/S steer reaches it; the model has simply written a reply that its own tool
+        # results contradict, and the only remaining lever is what the author reads.
+        #
+        # Placed beside the DQ-T33 fallback and for the same reason — above `close_message()`, so
+        # it lands INSIDE the assistant message rather than after its END frame. The two do not
+        # collide: that one fires on a turn with no text at all and returns the tool's error as
+        # the whole reply; this one fires on a turn that DID speak and whose record disagrees
+        # with it. A silent turn carrying one failed call gets the fallback and then a brief
+        # naming the same call, which is repetitive but never wrong, and the silent population is
+        # the one already known to be the worst-informed.
+        _brief = _turn_brief(tool_calls_history)
+        if _brief:
+            full_content.append(_brief)
+            for _line in emitter.text_delta(_brief):
+                yield _line
 
         # ARCH-1 C3: token stream is done — close the open assistant/reasoning
         # message so its END frames the content, before the run-level

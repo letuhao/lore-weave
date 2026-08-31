@@ -73,23 +73,35 @@ class TestTheLineItself:
 class TestItFiresOnSUSPENSION:
     """The owner's build note, and the reason the trigger is not 'a card exists'."""
 
+    # 🔴 THE ANCHOR MOVED ON 2026-08-31 AND THE PROPERTY DID NOT. DQ-T71's turn brief rides this
+    # same append — "Nothing has been saved yet" is true of the CARD and false of a write the
+    # turn already landed, so the sentence the author reads now also names what completed and
+    # what refused. The line is therefore appended as part of `_suspend_text` rather than on its
+    # own. These guards check what they always checked: that the text CONTAINING the line is
+    # appended inside the suspend branch, before the persist, and before the message is closed.
+    # Weakening them to "the constant appears somewhere" would have been the easy repair and
+    # would have retired the guard.
     def test_the_append_is_inside_the_suspend_branch(self):
-        assert "full_content.append(_NOTHING_SAVED_YET_LINE)" in _suspend_branch(), (
+        b = _suspend_branch()
+        assert "full_content.append(_suspend_text)" in b, (
             "the line is appended outside the suspend branch — it can now fire on a turn whose "
             "card was approved in-flight, telling the author nothing was saved when it was"
+        )
+        assert "_NOTHING_SAVED_YET_LINE" in b[:b.index("full_content.append(_suspend_text)")], (
+            "`_suspend_text` no longer carries the line it exists to deliver"
         )
 
     def test_it_is_appended_BEFORE_the_awaiting_input_persist(self):
         """A reload must show the same text the live stream did; if the persist runs first the
         stored message and the streamed one disagree."""
         b = _suspend_branch()
-        assert b.index("full_content.append(_NOTHING_SAVED_YET_LINE)") < b.index(
+        assert b.index("full_content.append(_suspend_text)") < b.index(
             'finish_reason="awaiting_input"')
 
     def test_it_is_emitted_BEFORE_the_message_is_closed(self):
         """Emitted after close_message() it would land outside the frame the FE renders."""
         b = _suspend_branch()
-        assert b.index("emitter.text_delta(_NOTHING_SAVED_YET_LINE)") < b.index(
+        assert b.index("emitter.text_delta(_suspend_text)") < b.index(
             "emitter.close_message()")
 
     def test_the_clean_finish_path_does_NOT_get_it(self):

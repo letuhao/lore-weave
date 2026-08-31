@@ -1565,6 +1565,15 @@ _QUALIFIES_AS_STAGED = re.compile(
 _SERVER_APPENDED_LINES = (
     "their effects stand",                                    # the turn-ceiling close (DQ-T56)
     "Nothing has been saved yet; confirm the card above",     # the suspend line (DQ-T54)
+    # 🔴 THE TURN BRIEF (DQ-T71, shipped 2026-08-31) — REGISTERED IN THE SAME COMMIT THAT SHIPS
+    # IT, because the alternative is the defect this constant exists for. `_CLAIMED_DONE` once
+    # matched "has been saved" inside the server's own "NOTHING has been saved yet", and 13 runs
+    # across two batches read as a decisive regression at p = 0.0000 until the replies were
+    # actually read. Neither phrase below matches today's patterns — checked, not assumed — so
+    # these entries buy nothing THIS minute; they buy that a later widening of either pattern
+    # cannot quietly start counting the platform's own sentences as the model's claims.
+    "Already completed in this turn:",                        # the brief's success half
+    "in this turn did not run:",                              # the brief's refusal half
 )
 
 #: Phrases in which a turn tells the author the work did NOT happen. Anchored on the negation,
