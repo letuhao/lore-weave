@@ -136,7 +136,7 @@ func TestLivenessWarningsWarnOnlyOnUncheckedTools(t *testing.T) {
 func TestValidateWorkflowRejectsAProvenBrokenTool(t *testing.T) {
 	withLiveness(t, _fixture, func() {
 		in := &workflowInput{
-			Slug: "wf-broken", Description: "d", Surfaces: []string{"chat"},
+			Slug: "wf-broken", Description: "d", Surfaces: []string{"book"},
 			Steps: []workflowStepIn{{ID: "step-one", Tool: "broken_tool"}},
 		}
 		msg, ok := validateWorkflow(in)
@@ -158,7 +158,7 @@ func TestValidateWorkflowAdmitsUncheckedAndSelectFailingTools(t *testing.T) {
 		// workflow step naming a non-existent tool is rejected before liveness is consulted.
 		for _, tool := range []string{"unchecked", "works_but_unpicked", "book_list"} {
 			in := &workflowInput{
-				Slug: "wf-ok", Description: "d", Surfaces: []string{"chat"},
+				Slug: "wf-ok", Description: "d", Surfaces: []string{"book"},
 				Steps: []workflowStepIn{{ID: "step-one", Tool: tool}},
 			}
 			if _, ok := validateWorkflow(in); !ok {

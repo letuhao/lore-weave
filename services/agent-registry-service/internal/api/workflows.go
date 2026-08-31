@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -143,8 +144,21 @@ func validateWorkflow(in *workflowInput) (string, bool) {
 	if strings.TrimSpace(in.Description) == "" {
 		return "description is required", false
 	}
-	if bad := invalidSurface(in.Surfaces); bad != "" {
-		return "invalid surface '" + bad + "' — must be one of: chat, compose, translate, admin", false
+	// 🔴 THIS CALLED THE *SKILL* SURFACE CHECKER, AND THE TOOL WAS UNCALLABLE BECAUSE OF IT.
+	// `invalidSurface` tests against validSurfaces — {chat, compose, translate, admin}, the
+	// SKILL vocabulary — while this tool PUBLISHES enumWorkflowSurfaces, which is derived from
+	// validWorkflowSurfaces = {book, editor, studio} and is what the migrations seed. The two
+	// share no members, so registry_propose_workflow could not be called with ANY surfaces
+	// value: a caller obeying the published schema was refused by the validator, and a caller
+	// obeying the validator was refused by the schema. Measured live 2026-09-01 by direct probe.
+	//
+	// The vocabulary was never in doubt — migrate.go seeds '{book,editor,studio}',
+	// TestWorkflowSurfaceVocabularyIsTheSeededOne pins it, and another test already guards
+	// against a skill surface LEAKING INTO the list. What nothing guarded was this call site
+	// using the wrong list entirely.
+	if bad := invalidWorkflowSurface(in.Surfaces); bad != "" {
+		return "invalid surface '" + bad + "' — must be one of: " +
+			strings.Join(validWorkflowSurfaces, ", "), false
 	}
 	for name, req := range in.Inputs {
 		if strings.TrimSpace(name) == "" {
@@ -264,6 +278,18 @@ func inputsToJSON(m map[string]string) []byte {
 // workflow advertises — every filter value matched only the two workflows with an empty
 // (unrestricted) surface list, and the ten that declare one were unreachable.
 var validWorkflowSurfaces = []string{"book", "editor", "studio"}
+
+// invalidWorkflowSurface returns the first surface that is not a WORKFLOW surface, or "".
+// Deliberately separate from `invalidSurface`: the two vocabularies share no members, and the
+// one-word difference between the function names is the whole defect this pair records.
+func invalidWorkflowSurface(surfaces []string) string {
+	for _, s := range surfaces {
+		if !slices.Contains(validWorkflowSurfaces, s) {
+			return s
+		}
+	}
+	return ""
+}
 
 type listWorkflowsIn struct {
 	Surface string `json:"surface,omitempty" jsonschema:"filter to workflows advertised on this surface: book | editor | studio — omit to see all; do not send an empty string"`

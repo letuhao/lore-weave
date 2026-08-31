@@ -6248,16 +6248,17 @@
    "why_it_is_its_own_row": "Not a split: it is a shared helper with other callers, and the fix is either to make it check or to rename it. Folding it into the entity-override row would hide a trap that is set for everyone who calls it next."
   },
   "D-THE-WORKFLOW-SURFACE-ENUM-DISAGREES-WITH-ITS-OWN-VALIDATOR": {
-   "state": "open",
+   "state": "fixed",
    "found": "2026-09-01, by direct probe while building DQ-T37",
    "defect_class": "contract",
    "queue_group": 4,
    "service": "agent-registry-service",
    "invariant": "A published schema and the validator behind it must accept the same values.",
-   "status": "OPEN. Filed on the evidence, not fixed.",
+   "status": "FIXED 2026-09-01, hours after being filed. It needed no ruling: the vocabulary was never in doubt and one call site used the wrong list.",
    "what": "`registry_propose_workflow` cannot be called with ANY `surfaces` value.\n\n    the PUBLISHED schema   enum: [book, editor, studio]\n    the RUNTIME validator  \"invalid surface 'book' — must be one of: chat, compose, translate, admin\"\n\nA caller obeying the schema is refused by the validator; a caller obeying the validator is refused by the schema. Measured live 2026-09-01 against the deployed service: surfaces=['book'] (schema-valid) refused on all four probe cases. The field is optional, so OMITTING it is the only way to call the tool at all.\n\nTHE PLATFORM HAS SEEN THIS EXACT SHAPE BEFORE and believes it fixed: TestEveryWorkflowToolUsesTheWorkflowSurfaceEnum documents that after #287 'the three workflow tools disagreed on the wire' and pins all three to `enumWorkflowSurfaces`. That test PASSES, because it asserts over the SCHEMA side only — it reads mcp_server.go and never exercises `validWorkflowSurfaces`, which is the list the validator uses. So the guard written for this defect cannot see the half that is still wrong.",
    "why_it_is_its_own_row": "Found while building DQ-T37 and unrelated to it: one is step tools, this is the workflow's own surfaces. Folding it in would bury a tool-level contract break inside a row about tool names.",
-   "what_is_NOT_established": "WHICH list is correct. {book, editor, studio} matches the filter side the #287 note describes; {chat, compose, translate, admin} is what the writer validates. Choosing means deciding where workflows are advertised, so the remedy is a ruling, not a guess. No recommendation is offered yet because the two lists are not obviously a superset and a subset — they share no members at all."
+   "FIXED_2026_09_01__and_my_own_framing_was_wrong": "🔴 I FILED THIS AS 'THE SCHEMA DISAGREES WITH ITS VALIDATOR, AND WHICH LIST IS CORRECT IS A RULING'. Both halves were wrong, and reading the source rather than the symptom settled it in minutes.\n\nTHE VOCABULARY WAS NEVER IN DOUBT. `enumWorkflowSurfaces` is DERIVED from `validWorkflowSurfaces = {book, editor, studio}`; migrate.go seeds '{book,editor,studio}'; TestWorkflowSurfaceVocabularyIsTheSeededOne pins it to the seeded set; and another test already guards against a skill surface LEAKING INTO the list. Every authority agrees.\n\nTHE DEFECT WAS ONE WRONG FUNCTION AT ONE CALL SITE: workflows.go:146 called `invalidSurface` — the SKILL checker, which tests against {chat, compose, translate, admin}. So the tool published one vocabulary and enforced another, and because the two sets share NO members, registry_propose_workflow could not be called with ANY surfaces value at all.\n\nWHAT THE EXISTING GUARDS COULD NOT SEE, which is the transferable part: they assert the LIST is right, and it was. Nothing asserted that the VALIDATOR USES IT. The same call-site gap this loop has now recorded four times in two days.\n\nPROVEN LIVE by the same direct probe that found it. Before: surfaces=['book'] — a value the published schema offers — refused on all four probe cases with 'invalid surface: must be one of: chat, compose, translate, admin'. After: accepted, with the all-real control proposing successfully and the three fabricated-tool cases still refused for their own reason.\n\nTHE REFUSAL NOW NAMES THE VOCABULARY IT ENFORCES, built from validWorkflowSurfaces rather than a hard-coded list, so the two cannot drift apart again in text.\n\nTHREE TESTS ENCODED THE DEFECT and were corrected, not weakened: workflow fixtures declaring Surfaces:['chat'] passed only because the skill checker accepted it. Their assertions are untouched; the incidental surface is now a workflow surface. The case that asserts 'invalid surface' for a nonsense value still passes.\n\nFALSIFIER: three guards in workflow_surfaces_test.go — every PUBLISHED surface is accepted, every SKILL surface is refused, and the refusal names the workflow vocabulary and not the skill one. Proven red by restoring the one-word call (`invalidSurface`), compiling, files restored byte-identical. Whole agent-registry-service module green.",
+   "what_it_does_NOT_cover": "The SKILL surface path is untouched and still validates against {chat, compose, translate, admin}, which is correct for skills — `invalidSurface` keeps its callers in skills.go and skills_crud.go. This row was only ever about the workflow path borrowing it.\n\nNOT PROVEN THROUGH A CHAT TURN: the evidence is a direct MCP probe against the deployed service, which is how the defect was found and is the same instrument on both sides. No recorded chat turn passes `surfaces` to this tool — unsurprising, since until today any value was refused."
   }
  },
  "deferred_questions": {
@@ -7549,7 +7550,7 @@
   "tools_proven": 199,
   "tools_blocked": 0,
   "defects_proven": 0,
-  "defects_open": 16,
+  "defects_open": 15,
   "deferred_questions": 66,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -7565,7 +7566,7 @@
   "tools_concluded_including_deprecated": 204,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 218,
-  "defects_fixed": 175,
+  "defects_fixed": 176,
   "defects_withdrawn": 23,
   "defects_superseded": 1,
   "defects_cannot_reproduce": 3

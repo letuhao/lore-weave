@@ -19,7 +19,7 @@ func baseWorkflow() *workflowInput {
 		Slug:        "seed-lore",
 		Title:       "Seed lore",
 		Description: "Extract entities from a doc and propose them.",
-		Surfaces:    []string{"chat"},
+		Surfaces:    []string{"book"},
 		Inputs:      map[string]string{"book_id": "required", "doc": "optional"},
 		Steps:       []workflowStepIn{okStep()},
 		Tier:        "user",

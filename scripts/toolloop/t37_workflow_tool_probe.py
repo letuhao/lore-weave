@@ -25,14 +25,10 @@ def propose(m, slug, tools):
         "slug": slug,
         "title": "T37 probe",
         "description": "probe: does a step naming a non-existent tool get through?",
-        # 🔴 `surfaces` IS OMITTED BECAUSE NO VALUE SATISFIES BOTH SIDES. The published
-        # schema declares enum {book, editor, studio}; the runtime validator answers "invalid
-        # surface 'book' — must be one of: chat, compose, translate, admin". A caller obeying
-        # the schema is always refused, and a caller obeying the runtime is refused by the
-        # schema. It is optional, so omitting it is the only way through. Filed separately —
-        # this probe is about step tools, and measuring the wrong refusal would prove nothing.
-        # `gate` is REQUIRED on a step alongside id and tool — omitting it refused all four
-        # cases identically, the second probe defect the all-real control exposed.
+        # `surfaces` is passed again now that the validator uses the WORKFLOW vocabulary.
+        # It was omitted while D-THE-WORKFLOW-SURFACE-ENUM-DISAGREES-WITH-ITS-OWN-VALIDATOR was
+        # open, because no value satisfied both the published schema and the validator.
+        "surfaces": ["book"],
         "steps": [{"id": f"s{i + 1}", "tool": t, "gate": "none"}
                   for i, t in enumerate(tools)],
     })

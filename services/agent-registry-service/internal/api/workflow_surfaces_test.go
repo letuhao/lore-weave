@@ -117,3 +117,74 @@ func TestSkillSurfaceEnumStillDerivedFromSkillVocabulary(t *testing.T) {
 		}
 	}
 }
+
+// A workflow's surfaces must be validated against the WORKFLOW vocabulary.
+//
+// 🔴 WHAT THE EXISTING GUARDS IN THIS FILE COULD NOT SEE. They assert the LIST is right — that
+// validWorkflowSurfaces equals the set migrate.go seeds, and that no skill surface leaked into
+// it. Both passed while `validateWorkflow` called `invalidSurface`, the SKILL checker, which
+// tests against {chat, compose, translate, admin}. The list was correct and the CALL SITE used
+// a different one.
+//
+// The consequence was total: the published schema offers {book, editor, studio} and the
+// validator demanded {chat, compose, translate, admin}, and the two share no members — so
+// registry_propose_workflow could not be called with ANY surfaces value. A caller obeying the
+// schema was refused by the validator; a caller obeying the validator was refused by the schema.
+// Measured live 2026-09-01 by direct probe against the deployed service.
+func TestValidateWorkflowUsesTheWORKFLOWSurfaceVocabulary(t *testing.T) {
+	for _, s := range validWorkflowSurfaces {
+		in := &workflowInput{
+			Slug: "wf-surface", Title: "T", Description: "d",
+			Surfaces: []string{s},
+			Steps:    []workflowStepIn{{ID: "s1", Tool: "book_list", Gate: "none"}},
+		}
+		if msg, ok := validateWorkflow(in); !ok {
+			t.Fatalf("the PUBLISHED surface %q was refused by the validator: %q — the schema and "+
+				"the validator disagree, so the tool cannot be called at all", s, msg)
+		}
+	}
+}
+
+func TestAWorkflowMayNotDeclareASKILLSurface(t *testing.T) {
+	for _, s := range validSurfaces {
+		if slices.Contains(validWorkflowSurfaces, s) {
+			continue // a shared member would make this case meaningless
+		}
+		in := &workflowInput{
+			Slug: "wf-surface", Title: "T", Description: "d",
+			Surfaces: []string{s},
+			Steps:    []workflowStepIn{{ID: "s1", Tool: "book_list", Gate: "none"}},
+		}
+		if _, ok := validateWorkflow(in); ok {
+			t.Errorf("the SKILL surface %q was accepted on a workflow — the filter that reads "+
+				"these will never find it", s)
+		}
+	}
+}
+
+// The refusal must name the vocabulary it is actually enforcing, or the caller is sent to a set
+// the schema does not offer. The original message hard-coded the SKILL list.
+func TestTheSurfaceRefusalNamesTheWorkflowVocabulary(t *testing.T) {
+	in := &workflowInput{
+		Slug: "wf-surface", Title: "T", Description: "d",
+		Surfaces: []string{"definitely-not-a-surface"},
+		Steps:    []workflowStepIn{{ID: "s1", Tool: "book_list", Gate: "none"}},
+	}
+	msg, ok := validateWorkflow(in)
+	if ok {
+		t.Fatal("a nonsense surface was accepted")
+	}
+	for _, s := range validWorkflowSurfaces {
+		if !strings.Contains(msg, s) {
+			t.Errorf("the refusal does not offer %q: %q", s, msg)
+		}
+	}
+	for _, s := range validSurfaces {
+		if slices.Contains(validWorkflowSurfaces, s) {
+			continue
+		}
+		if strings.Contains(msg, s) {
+			t.Errorf("the refusal still offers the SKILL surface %q: %q", s, msg)
+		}
+	}
+}
