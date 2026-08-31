@@ -73,8 +73,8 @@
       "number": "ตัวเลข",
       "date": "วันที่",
       "tags": "แท็ก",
-      "url": "URL",
-      "boolean": "ใช่ / ไม่ใช่"
+      "boolean": "ใช่ / ไม่ใช่",
+      "url": "URL"
     }
   },
   "stdform": {

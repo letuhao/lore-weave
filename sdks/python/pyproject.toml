@@ -37,12 +37,19 @@ dependencies = [
   # (stateless FastMCP wiring, identity envelope, scope guards, confirm-token spine,
   # _meta validator). It needs the MCP SDK; every Python MCP provider service that
   # `pip install /sdk`s gets the kit + its transport.
-  # Upper bound added 2026-08-01 after a routine rebuild of translation-service took the
-  # service DOWN at import: `mcp` 2.0.0 removed `mcp.server.fastmcp`, which `context.py`
-  # imports at module scope, so every Python MCP provider service failed to boot. The pin
-  # was `>=1.27` with no ceiling, so the break was latent in EVERY image and would have
-  # surfaced on whichever service happened to be rebuilt next — with nothing in the diff
-  # to explain it. Raise the ceiling deliberately, after porting to the 2.x import path.
+  #
+  # UPPER BOUND IS LOAD-BEARING: mcp 2.0.0 REMOVED `mcp.server.fastmcp`, which
+  # `loreweave_mcp` and every provider service's `app/mcp/server.py` import. With the
+  # bound open, a rebuild silently resolved 2.0.0 and composition-service crash-looped on
+  # `ModuleNotFoundError: No module named 'mcp.server.fastmcp'` — nothing in the repo had
+  # changed but the day. translation-service went down the same way on a routine rebuild
+  # (`context.py` imports fastmcp at module scope), which is the shape of the failure: it
+  # was latent in EVERY image and surfaced on whichever service happened to be rebuilt
+  # next, with nothing in the diff to explain it. chat-service and knowledge-service
+  # survived only because they happen to re-pin `mcp==1.28.1` in their own
+  # requirements.txt; a service that trusts the SDK's declaration (composition) got no
+  # such protection. Raise this deliberately, with the fastmcp import path migrated,
+  # never as a drive-by.
   "mcp>=1.29,<2",
   # SDK-2 / SEC-2 (2026-07-04) — loreweave_authn is the shared platform-user JWT
   # verifier (replaces the ~6 copy-pasted jwt.decode blocks). It needs PyJWT; every
@@ -170,7 +177,11 @@ include = [
   # A1 /review-impl caught exactly this (tests use PYTHONPATH=sdks/python, which hides it).
   # Pure-stdlib (no deps); consumers: chat-service, knowledge-service (roleplay/game later).
   "loreweave_agent_control*",
-  # S1 guard verdict/report types consumed by composition canon checks.
+  # S1 GENERATION-SSOT (2026-08-01) — `loreweave_guard` added (CheckStatus + GuardReport:
+  # one honest verdict shape). Pure-stdlib, no deps. It MUST be listed here: a package left
+  # out of this include list is SILENTLY absent from `pip install /sdk` (the loreweave_crypto
+  # trap above), and a guard-honesty primitive that imports as ModuleNotFoundError in prod
+  # would make every adopter fall back to the scalar status it exists to replace.
   "loreweave_guard*",
 ]
 exclude = ["tests*"]

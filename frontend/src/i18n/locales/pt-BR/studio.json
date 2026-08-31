@@ -684,6 +684,11 @@
       "title": "Propostas de Fluxo de Trabalho",
       "desc": "Revise os fluxos de trabalho propostos pelo agente",
       "guideBody": "Lista as receitas de fluxo de trabalho que o agente sugeriu criar, com base em sequências de várias etapas que ele notou que você repete. Abra para aprovar uma proposta — o que gera o fluxo de trabalho para que ele se torne executável — ou para rejeitá-la. É aqui que um fluxo de trabalho proposto pelo agente se torna real."
+    },
+    "world-setup": {
+      "title": "Configuração do Mundo",
+      "desc": "Crie seu elenco, mundo e seus relacionamentos a partir de uma descrição",
+      "guideBody": "Transforme uma descrição da sua história em um lore real e rastreável: o sistema planeja o que deve ser construído, você aprova ou ajusta a lista, e então cada personagem, facção e termo é detalhado um por um (os principais recebem um perfil completo e profundo) e arquivado para sua revisão. Por fim, ele determina como todos se conectam e solicita sua aprovação para esses relacionamentos antes de salvá-los."
     }
   },
   "sceneRail": {

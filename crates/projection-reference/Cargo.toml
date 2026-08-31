@@ -20,10 +20,5 @@ uuid = { workspace = true }
 # Tests run the production projections + the golden fixtures through BOTH the
 # conformance oracle and the reproduction reference (the differential harness).
 projection-golden = { path = "../projection-golden" }
-projections-pc = { path = "../projections/pc" }
-projections-npc = { path = "../projections/npc" }
-projections-region = { path = "../projections/region" }
-projections-world-kv = { path = "../projections/world_kv" }
-projections-session = { path = "../projections/session" }
 projections-canon = { path = "../projections/canon" }
 serde_json = { workspace = true }

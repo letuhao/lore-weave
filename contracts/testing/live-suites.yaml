@@ -1,0 +1,400 @@
+# Live Rust test suites and the databases they need — the registry.
+#
+# ## Why this file exists
+#
+# `cargo test --workspace` against ONE database is a trap. `rebuilder_live`
+# applies `0002`, which DROPs `events` — wiping `content_sha256`, the channel
+# columns, `ruleset_digest` and the turn counters out from under every other
+# suite. The result reads as six code failures in a schema someone else
+# dropped. That is `DFO-6`.
+#
+# ## Why it is AUTHORED and not derived
+#
+# A live suite cannot be discovered from source. A grep for `env::var("…")`
+# finds 17 of the 21 below and is wrong in two distinct ways:
+# `epoch_activation_live` reads its DSNs through `epoch_live_common::dsns()`,
+# and `spine_drain_once_live` reaches `env::var` with the NAME AS A PARAMETER
+# (`guarded(var)`). Resolving consts fixes one and not the other.
+#
+# A discovery pass that silently misses a suite is worse than no discovery: it
+# reports complete coverage of an incomplete list. So this file is authored, and
+# `scripts/live-suite-registry-gate.py` keeps it honest by two routes that do
+# NOT involve grepping Rust — agreement with `foundation-ci.yml`'s legs, which
+# are structured YAML, and a ratchet on the uncovered count that may only shrink.
+#
+# ## Fields
+#
+#   id       kebab-case, unique; names the dev database (`ls_<id>_smoke`)
+#   package  cargo -p
+#   target   cargo --test  (must be <package-dir>/tests/<target>.rs on disk)
+#   features cargo --features, if the target needs any
+#   dedicated_ci_leg
+#            true ⇒ foundation-ci.yml has a `cargo test -p X --test Y` step of
+#            its own for this suite. Checked BOTH WAYS against the workflow, so
+#            neither a dropped leg nor an aspirational row survives.
+#
+#            **It is NOT the coverage question.** Coverage comes from the single
+#            registry-driven leg — `python scripts/live-suites.py` — which runs
+#            EVERY row here. The field was called `ci` for one commit and that
+#            name was a lie the moment that leg landed: it read as "CI runs
+#            this" when it meant "this one has a leg of its own".
+#   no_leg_reason  required when dedicated_ci_leg is false. Records why this
+#            suite has no step of its own; it is no longer a coverage gap.
+#   needs    one entry per backing store.
+#     env     the variable the suite reads
+#     kind    postgres | postgres-admin | redis
+#     schema  self         — the suite applies its own migrations
+#             per_reality  — runner applies contracts/migrations/per_reality
+#             meta         — runner applies migrations/meta
+#             none         — no schema needed (redis, or an admin connection)
+#     ci_db   the database CI uses, when CI runs this suite. Cross-checked.
+#
+# Every dev database name carries a throwaway marker; the runner REFUSES one
+# that does not, because these fixtures seed and truncate.
+
+version: 1
+
+suites:
+  # ── dp-kernel ───────────────────────────────────────────────────────────
+  - id: dp-kernel-event-store
+    package: dp-kernel
+    target: integration_event_store
+    dedicated_ci_leg: true
+    needs:
+      # `per_reality`, NOT `self` — this row said `self` on the first draft,
+      # from a bad heuristic (counting the word "migration" in the file). The
+      # suite does not migrate: it REFUSES, in as many words —
+      # "test DB missing events / aggregate_snapshots tables — run per-reality
+      # migrations 0002 + 0004 before this test". The run is what corrected it.
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+        ci_db: dp_kernel_test
+
+  - id: dp-kernel-channel-writer
+    package: dp-kernel
+    target: integration_channel_writer
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      No CI leg was ever added. It is the writer-lease fencing path, which is
+      load-bearing for every channel write, so this is a gap and not a choice.
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: dp-kernel-writer-lease
+    package: dp-kernel
+    target: integration_writer_lease
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: dp-kernel-dp-channel
+    package: dp-kernel
+    target: integration_dp_channel
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Shipped in the data-foundation run (DF1) after the CI file was last
+      touched; the leg was never added.
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: dp-kernel-dp-cache
+    package: dp-kernel
+    target: integration_dp_cache
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Shipped in the data-foundation run (DF3). Needs Redis, which the
+      foundation-ci postgres service job does not start.
+    needs:
+      - env: LOREWEAVE_TEST_REDIS_URL
+        kind: redis
+        schema: none
+
+  # ── meta-rs ─────────────────────────────────────────────────────────────
+  - id: meta-rs-control-plane
+    package: meta-rs
+    target: control_plane_live
+    features: [sqlx-pg]
+    dedicated_ci_leg: true
+    needs:
+      - env: LOREWEAVE_TEST_META_URL
+        kind: postgres
+        schema: meta
+        ci_db: meta_cp_smoke
+
+  - id: meta-rs-pg
+    package: meta-rs
+    target: pg_live
+    features: [sqlx-pg]
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
+    needs:
+      - env: META_RS_TEST_DATABASE_URL
+        kind: postgres
+        schema: meta
+
+  # ── commit-service ──────────────────────────────────────────────────────
+  - id: commit-dataflow
+    package: commit-service
+    target: dataflow_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Shipped in the data-foundation run (DF5) after the CI file was last
+      touched. It is the end-to-end hub -> SDK -> row hop.
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: commit-reject-commit
+    package: commit-service
+    target: reject_commit_live
+    dedicated_ci_leg: false
+    no_leg_reason: Shipped in the data-foundation run (DF1b-ii); leg never added.
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: commit-recovery
+    package: commit-service
+    target: recovery
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: commit-failover
+    package: commit-service
+    target: failover
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: commit-pg-binding
+    package: commit-service
+    target: pg_binding_live
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
+    needs:
+      - env: META_RS_TEST_DATABASE_URL
+        kind: postgres
+        schema: meta
+
+  - id: commit-declared-verb
+    package: commit-service
+    target: declared_verb_live
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
+    needs:
+      # `per_reality`, NOT `meta`. The variable's name reads meta-ish and the
+      # first draft followed the name; the suite takes a writer lease, so it
+      # wants `channel_writer_state`, which is a per-reality table. It said so:
+      # `Error: db: relation "channel_writer_state" does not exist`.
+      - env: DECLARED_VERB_TEST_DATABASE_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: commit-epoch-activation
+    package: commit-service
+    target: epoch_activation_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Needs TWO databases (meta + channel) and no leg was written for it. This
+      is the suite whose DSNs a source grep cannot see.
+    needs:
+      - env: EPOCH_META_TEST_DATABASE_URL
+        kind: postgres
+        schema: meta
+      - env: EPOCH_CHANNEL_TEST_DATABASE_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: commit-subject
+    package: commit-service
+    target: subject_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Shipped 2026-08-14 with SEALED-SUBJECT. It runs under the registry-driven
+      leg like every other suite; a step of its own would add nothing.
+    needs:
+      - env: SUBJECT_META_TEST_DATABASE_URL
+        kind: postgres
+        schema: meta
+      - env: SUBJECT_CHANNEL_TEST_DATABASE_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: world-actor-subject
+    package: world-service
+    target: actor_subject_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Shipped 2026-08-21 with E5. Two databases and no binary, so the
+      registry-driven leg runs it exactly like commit-subject; a step of its own
+      would add nothing. It exists because E1's only live evidence was a
+      scratchpad script against data an earlier slice happened to leave in the
+      dev stack — unrepeatable, which is EO-2.
+    needs:
+      - env: SUBJECT_ROUTE_META_TEST_DATABASE_URL
+        kind: postgres
+        schema: meta
+      - env: SUBJECT_ROUTE_CHANNEL_TEST_DATABASE_URL
+        kind: postgres
+        schema: per_reality
+
+  - id: commit-spine-drain-once
+    package: commit-service
+    target: spine_drain_once_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Shipped 2026-08-14 closing DFO-7. Needs two databases AND Redis AND the
+      built binary; it has its own runner, scripts/smoke/spine-drain-once.sh.
+    needs:
+      - env: SPINE_SMOKE_META_TEST_DATABASE_URL
+        kind: postgres
+        schema: meta
+      - env: SPINE_SMOKE_CHANNEL_TEST_DATABASE_URL
+        kind: postgres
+        schema: per_reality
+      - env: SPINE_SMOKE_REDIS_URL
+        kind: redis
+        schema: none
+
+  # ── world-service ───────────────────────────────────────────────────────
+  - id: world-embedding
+    package: world-service
+    target: embedding_live
+    dedicated_ci_leg: true
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+        ci_db: worldservice_smoke
+      - env: LOREWEAVE_TEST_META_URL
+        kind: postgres
+        schema: meta
+        # `_smoke`, not a bare `worldservice_meta`: renamed on `main` so the name
+        # carries a throwaway marker, which is what `db-safety-gate`'s CI-DSN rule
+        # requires of any Postgres DSN in `.github/workflows/`. Registry follows CI.
+        ci_db: worldservice_meta_smoke
+
+  - id: world-replay-aggregate
+    package: world-service
+    target: replay_aggregate_live
+    dedicated_ci_leg: true
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: self
+        ci_db: replay_smoke
+
+  - id: world-rebuilder
+    package: world-service
+    target: rebuilder_live
+    dedicated_ci_leg: true
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: self
+        ci_db: rebuild_smoke
+
+  - id: world-provisioner-reentry
+    package: world-service
+    target: provisioner_reentry_live
+    dedicated_ci_leg: true
+    needs:
+      - env: LOREWEAVE_TEST_PG_ADMIN_URL
+        kind: postgres-admin
+        schema: none
+        ci_db: postgres
+
+  - id: world-pool-lock-release
+    package: world-service
+    target: pool_lock_release
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality
+
+  # ── the space spine ─────────────────────────────────────────────────────
+  # These four were on disk and in NO row. The gate walks registry -> disk, so it
+  # reported "23 suites, ALL run" and was telling the truth about the 23 it could
+  # see; nothing walks disk -> registry. Found by `A3` while registering its own
+  # suite. The missing direction is board row `C4`.
+  - id: world-world-seed
+    package: world-service
+    target: world_seed_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Runs under the registry leg. It creates and drops its own throwaway
+      database, so it needs an admin DSN and no CI-provisioned schema.
+    needs:
+      - env: LOREWEAVE_TEST_PG_ADMIN_URL
+        kind: postgres-admin
+        schema: none
+        ci_db: postgres
+
+  - id: world-writer-state-validate
+    package: world-service
+    target: writer_state_validate_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Runs under the registry leg. Proves `FLOW-19`'s owed `VALIDATE CONSTRAINT`
+      discharge against its own throwaway database.
+    needs:
+      - env: LOREWEAVE_TEST_PG_ADMIN_URL
+        kind: postgres-admin
+        schema: none
+        ci_db: postgres
+
+  - id: world-space-view-measure
+    package: world-service
+    target: space_view_measure_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Runs under the registry leg. `SDF-Q15`'s measurement; its wall-clock number
+      is reported, never asserted, so a slow runner cannot red it.
+    needs:
+      - env: LOREWEAVE_TEST_PG_ADMIN_URL
+        kind: postgres-admin
+        schema: none
+        ci_db: postgres
+
+  - id: world-spawn-atomic
+    package: world-service
+    target: spawn_atomic_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Runs under the registry leg. `A3`'s atomicity proof: an actor row and its
+      `entity_binding` land together or neither does.
+    needs:
+      - env: LOREWEAVE_TEST_PG_ADMIN_URL
+        kind: postgres-admin
+        schema: none
+        ci_db: postgres
+
+  # ── roleplay-service ────────────────────────────────────────────────────
+  - id: roleplay-integration
+    package: roleplay-service
+    target: integration
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
+    needs:
+      - env: LOREWEAVE_TEST_PG_URL
+        kind: postgres
+        schema: per_reality

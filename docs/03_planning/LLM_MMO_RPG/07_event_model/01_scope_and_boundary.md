@@ -1,5 +1,7 @@
 # 01 — Scope and Boundary
 
+<!-- design-lint: ok prefix EV — `EV-*` are the event-causality round's ids, owned by docs/specs/2026-08-02-event-causality.md (79 occurrences there). They are CITED here, not declared. Registering EV in this track's id catalog would claim ownership of another document's namespace, which is the opposite of what the catalog is for — same reasoning as the ML allowlist in SESSION_HANDOFF.md. -->
+
 > **Status:** LOCKED. Purpose: prevent scope creep into adjacent locked folders + prevent gaps between Event Model and adjacent folders. Every IN/OUT line is enforceable: drift triggers a [`99_open_questions.md`](99_open_questions.md) escalation, never a silent workaround.
 > **Reference:** Brief [`00_AGENT_BRIEF.md`](00_AGENT_BRIEF.md) §2 (IN scope) + §3 (OUT of scope). This file mirrors and refines.
 
@@ -80,11 +82,26 @@ After Phase 1 locks, the following queries MUST return cleanly:
 
 | Query | Expected answer | Where to look |
 |---|---|---|
-| "Where is the closed set of event categories?" | EVT-T1..T11 in [`03_event_taxonomy.md`](03_event_taxonomy.md) | This folder |
+| "Where is the closed set of event categories?" | **six ACTIVE categories — T1 / T3 / T4 / T5 / T6 / T8** in [`03_event_taxonomy.md`](03_event_taxonomy.md); T2 / T7 / T9 / T10 / T11 are `_withdrawn` | This folder |
 | "Where is the rule that PCs cannot emit WorldTick?" | EVT-P* (Phase 2) — forbidden-producer list per category | This folder |
 | "Where is the validator order for an LLMProposal?" | EVT-V* (Phase 3) | This folder |
 | "How does roleplay-service publish a proposal?" | `07_llm_proposal_bus.md` (Phase 3) | This folder |
 | "When does the siege event fire?" | `08_scheduled_events.md` (Phase 4) | This folder |
+| ⚠️ **"What IS the siege?"** — added 2026-08-02 | **NOWHERE. This folder cannot answer it** (rot `E-31` / `EV-2`) | — |
+
+> ⚠️ **2026-08-02 — the boundary test above is itself the evidence.** The sanity check asks *"when does
+> the siege **event** fire?"* and answers with a **scheduler**. That is the conflation, written into the
+> folder's own acceptance criteria: it treats the siege as **the message that starts it**. Trace a siege
+> through `EVT-T*` and it scatters — the scheduler fires `EVT-T5 Generated`, a wall falls as `EVT-T3
+> Derived` on `place`, an NPC dies as `EVT-T3` on `actor_status`, a PC acts as `EVT-T1 Submitted` — and
+> **the siege itself is not a category, not a sub-type, not an aggregate.** It is a word for a set of
+> causally related events across four categories, and this folder has no noun for that set. Nor any
+> notion of **duration**: a three-day siege is not expressible as one thing.
+>
+> The cause is structural, not an oversight: **`EVT-T*` discriminates on ORIGINATION — a producer-side
+> property — while an occurrence is SUBJECT-side.** See
+> [`docs/specs/2026-08-02-event-causality.md`](../../../specs/2026-08-02-event-causality.md) `EV-2` for
+> the diagnosis and `EV-17` for the proposed second reference axis.
 | "How does my feature's event reference its parent?" | EVT-L* causal-ref schema (Phase 4) | This folder |
 | "Why does my replay miss this event?" | `10_replay_semantics.md` (Phase 4) | This folder |
 | "How do I version a schema bump?" | EVT-S* (Phase 4) | This folder |

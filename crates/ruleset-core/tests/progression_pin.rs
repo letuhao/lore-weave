@@ -17,7 +17,16 @@ use ruleset_core::{
 #[test]
 fn the_engine_default_declares_no_progression_as_none() {
     assert_eq!(Ruleset::engine_default().progression, None);
-    assert_eq!(RULESET_SCHEMA_VERSION, 5);
+    // The pin progression entered the stream at, as a FLOOR rather than an
+    // equality. `M1` moved the constant to 6 and this line reddened while
+    // having nothing to say about progression — a check that must be
+    // hand-bumped by every unrelated schema change is a chore, and a chore gets
+    // bumped without being read. The floor still fails on the thing it is
+    // actually about: a version below 5 cannot carry the field at all.
+    assert!(
+        RULESET_SCHEMA_VERSION >= 5,
+        "progression entered the canonical stream at v5; a lower version cannot carry it"
+    );
 }
 
 /// **The property the whole placement rests on.** Editing a tier ladder moves
@@ -49,7 +58,10 @@ fn a_pinned_ruleset_survives_encode_decode() {
     let mut r = Ruleset::engine_default();
     r.progression = Some(fixture_table().digest());
     let (back, v) = Ruleset::from_canon_bytes_versioned(&r.canon_bytes()).unwrap();
-    assert_eq!(v, 5);
+    // The PROPERTY, not the number: bytes written by `canon_bytes` report the
+    // current version back. A literal here pinned v5 and said nothing when the
+    // encoder and decoder might have disagreed at any other version.
+    assert_eq!(v, RULESET_SCHEMA_VERSION);
     assert_eq!(back.progression, r.progression);
     assert_eq!(back.digest(), r.digest());
 }

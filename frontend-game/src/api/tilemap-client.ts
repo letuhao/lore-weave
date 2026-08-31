@@ -13,7 +13,7 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { queryKeys } from './query-keys';
 import { SERVICES } from '@/config/services';
-import type { ChannelTier, RenderRequest, TileMask, TilemapView } from '@/types/tilemap';
+import type { MapKind, RenderRequest, TileMask, TilemapView } from '@/types/tilemap';
 
 const TILEMAP_SERVICE_BASE = SERVICES.tilemap;
 
@@ -84,7 +84,7 @@ export interface UseZoneTilemapParams {
   seed: number;
   gridWidth: number;
   gridHeight: number;
-  tier: ChannelTier;
+  tier: MapKind;
   /** Static fixture path under /public — default minimal 5-zone fixture. */
   templateUrl?: string;
   /** Channel id for the render call. Default `ch_v1_viewer`. */

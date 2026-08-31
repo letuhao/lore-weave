@@ -221,7 +221,7 @@ test*, and a law with no falsifier is decoration.
 > (TDIL dilation) but never transferred and never reversed.
 > **Bite test:** no action's earn may include a negative time cost.
 
-**EXC-L1 has a deadline of the same kind as [XST-R6](27_extensibility_stress_test.md)'s.** Conservation
+**EXC-L1 has a deadline of the same kind as [XST-R6](27_extensibility_stress_test.md) (retired 2026-07-28 -> [`QTY-D4`](35_quantity_architecture.md))'s.** Conservation
 is cheap to assert while there are few resource flows and effectively impossible to retrofit once
 content has been balanced against a leaky economy — because by then the leaks *are* the balance.
 

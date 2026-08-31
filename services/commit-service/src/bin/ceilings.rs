@@ -339,7 +339,7 @@ async fn c1(n: usize, sync_off: bool) {
     print_env(&env, 2);
 
     let reality = Uuid::new_v4();
-    let ch = ChannelId(1);
+    let ch = ChannelId::unverified(1);
     let ts = db_now(&pool).await;
     let lease = acquire_writer_lease(&pool, reality, ch).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
@@ -401,7 +401,7 @@ async fn c2(k: usize, per_channel: usize, pool1: bool) {
     // Leases first, serially — acquisition is not part of the steady state.
     let mut writers = Vec::with_capacity(k);
     for c in 0..k {
-        let ch = ChannelId(c as i64 + 1);
+        let ch = ChannelId::unverified(c as i64 + 1);
         let lease = acquire_writer_lease(&pool, reality, ch).await.expect("lease");
         writers.push(ChannelWriter::new(pool.clone(), reality, lease));
     }

@@ -8,6 +8,21 @@ license.workspace = true
 publish.workspace = true
 description = "Rust hot-path port of contracts/meta (Q-L1B-4) — full MetaWrite + AttemptStateTransition + caching + audit surface."
 
+# OUT OF `DP-R3`'s SCOPE — this crate IS the meta plane.
+#
+# `01_scope_and_boundary.md` §4 (LOCKED) scopes the rule to crates that read or
+# write an aggregate in a PER-REALITY database. `meta-rs` is the Meta Access
+# Library: it reads and writes the META database (`reality_registry`,
+# routing, audit). It is the crate that TELLS other crates where a reality
+# lives — it does not open one.
+#
+# Its own discipline is I8/MetaWrite (every meta write same-TX with an audit
+# row, enforced by `meta-write-discipline-lint.sh`), which is a stricter rule
+# than DP-R3, not a weaker one.
+[package.metadata.dp]
+plane = "platform"
+reason = "the Meta Access Library — reads/writes the META database (reality_registry, routing, audit), never a per-reality DB; it RESOLVES routing for others rather than consuming it, and is separately governed by I8/MetaWrite"
+
 [lib]
 path = "src/lib.rs"
 
@@ -15,8 +30,21 @@ path = "src/lib.rs"
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
+
+# 5A — the data-plane CONTRACT crate, so this crate can implement
+# `dp::ControlPlane`. `dp` declares no I/O and holds only types and traits, so
+# taking it does not move `meta-rs` off the platform plane (see the
+# `[package.metadata.dp]` block above): the dependency arrow points from the
+# I/O-bearing crate to the contract, which is the direction that keeps the
+# contract clean.
+dp = { path = "../dp" }
 thiserror = { workspace = true }
 serde_yaml = "0.9"
+
+# 5B — SHA-256 over the bearer secret. The capability store keeps only the
+# digest, so a dump of `session_registry` yields no usable capability. RustCrypto
+# rather than an openssl binding, which is the same reason `dp-kernel` picked it.
+sha2 = { workspace = true }
 
 # ── the `sqlx-pg` adapter (Q1 B2b) ──────────────────────────────────────────
 # Optional: the crate stays driver-agnostic by default, and a caller that wants
@@ -24,10 +52,19 @@ serde_yaml = "0.9"
 # the sync MetaWrite traits over async sqlx.
 sqlx = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
+# 5B — `session_registry` holds TIMESTAMPTZ like every other meta table, and the
+# store's API is Unix millis. The conversion lives only in the adapter, so the
+# dependency does too.
+chrono = { workspace = true, optional = true }
 
 [features]
 default = []
-sqlx-pg = ["dep:sqlx", "dep:tokio"]
+sqlx-pg = ["dep:sqlx", "dep:tokio", "dep:chrono"]
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# 5A's LIVE test drives PgConnectionReader against a real meta database. The
+# adapter itself is behind `sqlx-pg`; the test needs sqlx to build the pool and
+# to pick a bindable reality out of live data rather than seeding one.
+sqlx = { workspace = true }
+uuid = { workspace = true }

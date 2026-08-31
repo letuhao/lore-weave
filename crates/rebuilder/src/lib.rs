@@ -115,7 +115,7 @@ pub struct AggregateRef {
 pub struct RebuildPlan {
     pub reality_id: Uuid,
     pub aggregates: Vec<AggregateRef>,
-    /// Name of the projection being rebuilt (e.g. `pc_projection`). Used in
+    /// Name of the projection being rebuilt (e.g. `region_projection`). Used in
     /// logs + checkpoint keying.
     pub projection_name: String,
 }

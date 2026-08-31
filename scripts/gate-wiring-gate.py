@@ -104,7 +104,19 @@ WORKFLOWS = REPO / ".github" / "workflows"
 
 
 def is_gate(name: str) -> bool:
-    """Filename shape, so tomorrow's gate is in scope the day it is written."""
+    """Filename shape, so tomorrow's gate is in scope the day it is written.
+
+    KNOWN HOLE: `-harness` is not matched. `gate-bite-harness.py` and
+    `reality-layer-bite-harness.py` are both real, both wired (each has its own
+    job in `gates.yml`), and both invisible to this predicate — so a harness
+    written tomorrow and wired NOWHERE would not be reported. Found while
+    fixing the mutating-gate race, by noticing this runner said "1
+    tree-mutating gate" where the fix assumed three.
+
+    Not widened in the same change that found it: pulling them in means they
+    join `--run-all`, and they are the slowest things in the repo (one is
+    ~120s). That is a scheduling decision, not a rename.
+    """
     if not name.endswith((".py", ".sh")):
         return False
     stem = name.rsplit(".", 1)[0]
@@ -176,6 +188,17 @@ NEEDS_STACK: dict[str, str] = {
     # rather than KNOWN_RED because KNOWN_RED means "a real finding is waiting";
     # these are harnesses that never started. Making them runnable in CI with an
     # injected dummy secret is tracked as D-GATE-ROT-ENV-AT-IMPORT.
+    # Needs a TOOLCHAIN, not a stack, but the category is the same shape: more
+    # than a checkout. It wants nightly-2025-09-12 + rustc-dev + a matching
+    # `cargo-dylint`, and a built cdylib on DYLINT_LIBRARY_PATH. It has its own
+    # CI job (`dp-clippy` in gates.yml) because that install does not belong in
+    # every other leg — the workspace pins 1.89.0 stable on purpose.
+    # NOT a licence to skip it: `--self-test` runs in the shared sweep, and the
+    # gate refuses to report a verdict when the lint library is absent rather
+    # than exiting 0 the way `cargo dylint` does.
+    "scripts/dp-clippy-gate.py": "needs the nightly + rustc-dev toolchain and a built "
+        "dp-clippy cdylib; runs in its own gates.yml job (2F)",
+
     "scripts/context-inspector-trace-gate.py": "imports service code reading JWT_SECRET at "
         "import time — needs env, not just a checkout (D-GATE-ROT-ENV-AT-IMPORT)",
     "scripts/eval/run_quality_gate.py": "an EVAL harness against a live service; same "
@@ -228,6 +251,17 @@ NEEDS_STACK: dict[str, str] = {
     "scripts/event-order-collision-gate.py": "counts colliding (project_id, event_order) "
         "pairs in g_shared against a frozen ceiling; needs the AGE store, not a tree scan",
 
+    # From feat/game-logic, registered at the merge. Both are live smokes and L4's widened
+    # predicate now discovers them; `dp-channels-live-smoke.py`'s own docstring says it is
+    # "deliberately not named like [a gate]" so the predicate "must not demand that CI run"
+    # it. That intent is intact — NEEDS_STACK means VISIBLE AND SKIPPED WITH A REASON, not
+    # "CI must run it". What changed is that its absence is no longer indistinguishable
+    # from a pass.
+    "scripts/declared-verb-live-smoke.sh": "drives the DECLARED VERB path end to end "
+        "against a real Postgres (M2 Axis 2)",
+    "scripts/dp-channels-live-smoke.py": "the RUN axis for the channels migration (1b.2); "
+        "needs a live Postgres, and says so in its own docstring",
+
     # L1 — reports the causal pass's reach/yield/consistency over live data.
     "scripts/causal-coverage-gate.py": "measures the causal pass over g_shared and asserts "
         "every ordered edge is explained by its own window algorithm; needs the AGE store",
@@ -238,10 +272,20 @@ NEEDS_STACK: dict[str, str] = {
 # "expensive" is not "failing" and calling it red would put a non-finding on the
 # board next to two security ones.
 TOO_SLOW: dict[str, str] = {
-    "scripts/meta-write-discipline-lint.sh": "74s standalone on a warm cache and >900s under "
-        "the shared runner — it greps every Go/Rust/SQL/TS file once PER META TABLE (33 of "
-        "them), so it is quadratic in a repo this size. Wants its own CI leg, or a rewrite "
-        "that walks the tree once. Tracked: D-GATE-SLOW-META-WRITE-DISCIPLINE",
+    # EMPTY, and it stays empty until something earns a row.
+    #
+    # Its only occupant was `meta-write-discipline-lint.sh` — 74s standalone,
+    # >900s shared, because it grepped the whole tree once PER META TABLE (33 of
+    # them). Rewritten 2026-08-06 to ONE walk with the table list as a single
+    # alternation: **74s -> 9.2s measured**, so it is now named in the hook like
+    # any other fast gate. `D-GATE-SLOW-META-WRITE-DISCIPLINE` is CLEARED.
+    #
+    # The category survives rather than being deleted, and the reason is the
+    # incident that emptied it: "expensive" was an HONEST classification, it was
+    # printed on every run, and it still meant the invariant went unguarded for
+    # weeks while reading as handled. A future row here is a debt with a clock
+    # on it, not a resting place — the fix is a cheaper walk or its own CI leg,
+    # never a longer explanation.
 }
 
 # name -> (deferral id, why it is red). `--run-all` expects these to FAIL, and
@@ -255,27 +299,26 @@ TOO_SLOW: dict[str, str] = {
 #                         names and span excerpts reached an LLM judge prompt
 #                         unsanitized. Fixed, and the lint tightened from
 #                         "mentions the sanitizer" to "calls it".
-#: Gates that WRITE to the working tree while they run. They must not share the tree with a
-#: concurrent reader, so the runner executes them serially, after everything else.
-#: `guard-redability-gate` injects a real violation into real source and restores it from saved
-#: bytes; that is its mechanism, not a bug, and the isolation belongs to the RUNNER.
-MUTATES_TREE: frozenset[str] = frozenset({
-    "scripts/guard-redability-gate.py",
-})
-
+#   language-bias         D-GATE-ROT-LANGUAGE-BIAS — CLEARED 2026-08-10, and the way it
+#                         cleared is the lesson. The row said the gate was red because of
+#                         TEN classified offenders. Measured on the day it was deleted:
+#                         all ten were already in `language-bias-gate`'s BASELINE, and the
+#                         gate was red because of TWO UNRELATED lines added 2026-08-01
+#                         (`name_grounding.py`, fixed at the source). So the register was
+#                         satisfied by the wrong offenders — red for a reason other than
+#                         the one it recorded, which reads exactly like the debt still
+#                         being tracked. `BDR-56` at the register level.
+#
+#                         The sealed choice this reverses is `multilingual.md`'s
+#                         "deliberately RED, because baselining them would hide the debt".
+#                         That was true of a baseline nothing audited. It is not true of
+#                         this one: 37 named lines, failing on growth AND — as of the same
+#                         day — on a row whose code no longer exists. REVERSAL TRIGGER: if
+#                         the staleness or growth arm is ever removed, the objection is
+#                         valid again and this shape should come back.
 KNOWN_RED: dict[str, tuple[str, str]] = {
-    # EMPTY, and that is the point: this list SHRINKS. `--run-all` fails when a row's gate
-    # turns green, which is what forces the deletion instead of letting an acknowledgement
-    # quietly become a permanent exemption.
-    #
-    # Last row removed 2026-08-03: `scripts/language-bias-gate.py` / D-GATE-ROT-LANGUAGE-BIAS.
-    # It went green legitimately at e84214cc5 (16 offenders FIXED, 3 baselined with a stated
-    # reason, 0 new) — the gate had been failing on 19 NEW offenders stacked on its 41-row
-    # baseline, so a fresh violation was indistinguishable from the backlog. The remaining
-    # analysis it carried (4 classes, two of which change bytes already persisted — a digest
-    # input and casefold() as an identity key, so both are migrations rather than edits) lives
-    # in the game-tier SESSION_HANDOFF's deferral table, which is its home. Nothing was lost
-    # by deleting the row; leaving it would have failed this gate forever.
+    # EMPTY. A row here is a gate whose redness is ACKNOWLEDGED, and `--run-all`
+    # deletes it for you by failing the moment the gate turns green.
 }
 
 
@@ -427,7 +470,7 @@ def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float,
     cmd = ([sys.executable, rel] if rel.endswith(".py") else ["bash", rel]) + extra
     t0 = time.time()
     try:
-        # stdin=DEVNULL is load-bearing. `amaw-guardrail-gate.py` is a Claude
+        # stdin=DEVNULL is load-bearing. The exempt-hook case that taught this was a Claude
         # Code PreToolUse HOOK that does `json.loads(sys.stdin.read())`, so
         # running it as a tree scan blocks forever — and because children share
         # the parent's stdin, ONE such gate hung a second unrelated one with it
@@ -446,8 +489,18 @@ def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float,
 def run_all() -> int:
     """Executed in PARALLEL, and that is not an optimisation.
 
-    Serially this takes >20 minutes on Windows. Every gate here is an independent
-    read-only scan of the working tree, so there is nothing to serialise for, and
+    Serially this takes >20 minutes on Windows. MOST gates here are independent
+    read-only scans of the working tree, so there is nothing to serialise for, and
+
+    **THREE ARE NOT, and that sentence used to say "every".** The bite harnesses
+    EDIT the tree — break a guard, assert RED, restore — and one of them also
+    runs `cargo` repeatedly over a crate it is mutating. Running those beside a
+    gate that reads or builds the same tree makes a verdict depend on
+    scheduling; measured, `dp-slice1-bite-gate` reported 32/32 and 28/32 from
+    the identical invocation minutes apart. They are dispatched serially after
+    the pool (see MUTATING below). The claim above was false the day the first
+    bite harness was wired, and nothing noticed because the race biases toward
+    false RED, which reads as an ordinary failure rather than as a harness bug.
     a gate suite people cancel is back to being decorative.
 
     **A measurement trap, recorded so the next person does not re-derive it.**
@@ -475,29 +528,90 @@ def run_all() -> int:
 
     runnable = [n for n in names if n not in NEEDS_STACK and n not in TOO_SLOW]
 
-    # MUTATORS RUN ALONE, AND LAST. `guard-redability-gate` proves a guard can fail by writing a
-    # real violation into real source, running the guard, and restoring the bytes. That is the
-    # whole point of it — and it means that for a few milliseconds per case the working tree is
-    # WRONG ON PURPOSE. Running it inside the thread pool let every other gate read those bytes.
+    # MUTATING gates run SERIALLY, and after everything else.
     #
-    # It produced exactly the failure you would predict and it was misread for weeks: CI
-    # reported `llm-budget-ssot-gate: a row claims signal_inert on a kind that DOES respond to
-    # signal` — which is, verbatim, the violation guard-redability injects into `llm_budget.py`
-    # in its "S7 gate" case. Three gates flapped this way (`llm-budget-ssot-gate`, `design-lint`,
-    # and guard-redability accusing ITSELF of BASELINE-RED when its baseline probe read a tree
-    # another case had mid-mutation). All three pass standalone, which is why it read as a
-    # local/CI divergence rather than a race.
+    # These edit the working tree — break a guard, assert RED, restore. That is
+    # the only evidence a guard is load-bearing, and it is only valid if nothing
+    # else is building the tree at the same time.
     #
-    # Keyed on a declared SET, not a name guess: a second mutating gate added tomorrow joins it
-    # here, and `--self-test` asserts every name in it is a real gate.
-    mutators = [n for n in runnable if n in MUTATES_TREE]
-    parallel = [n for n in runnable if n not in MUTATES_TREE]
+    # CORRECTION, measured after the first version of this comment: only
+    # `dp-slice1-bite-gate` is actually DISCOVERED here. The other two end in
+    # `-harness`, which `is_gate()` does not match, so they never entered the
+    # pool and could not have collided with anything. They are listed anyway
+    # because they are the same hazard the day `is_gate()` learns that suffix —
+    # see the note there. The real collision was with the pool's other
+    # CARGO-RUNNING gates: `dp-aggregate-gate` builds `crates/dp`, which is
+    # precisely the crate `dp-slice1-bite-gate` mutates.
+    #
+    # They were in the pool with everyone else, and the result was a gate whose
+    # verdict depended on SCHEDULING. Measured: `dp-slice1-bite-gate` passes
+    # standalone in ~126s with "32 bite(s) bit", and inside the sweep aborted in
+    # 9s — its first act is to measure a clean baseline, and another harness had
+    # the tree mutated at that moment. `reality-layer-bite-harness` refuses
+    # outright on a dirty tree, so it loses the same race from the other side.
+    #
+    # The race biases toward FALSE RED (a raced harness reports "did not bite"),
+    # which is the safe direction and exactly why it survived: it produced noise
+    # rather than false assurance, and noise is how a suite gets ignored.
+    #
+    # Serial-after-pool rather than a lock: a lock would make one of them SKIP,
+    # and a skipped bite harness proves nothing while still printing a line.
+    MUTATING = (
+        "scripts/dp-slice1-bite-gate.py",
+        # `5B`. Discovered by `is_gate()` (it ends in `-gate`), mutates
+        # `crates/dp` AND `crates/meta-rs`, and runs `cargo test` on both — so it
+        # collides with the pool's cargo-running gates in BOTH directions. Listed
+        # here on the day it was written rather than after a flaky sweep, which
+        # is the only cheap moment to do it.
+        "scripts/dp-slice5b-bite-gate.py",
+        # `5C`. Mutates crates/dp-control-plane and runs cargo on it; it also
+        # IMPORTS the 5b harness for its read/restore machinery, so the two
+        # must never run concurrently against the same tree.
+        "scripts/dp-slice5c-bite-gate.py",
+        # `5D`. Mutates crates/dp and runs cargo on it, and also imports the
+        # 5b harness — same reason as 5c.
+        "scripts/dp-slice5d-bite-gate.py",
+        # `G3`. Mutates a LOCKED document (`05_control_plane_spec.md`), two
+        # crates and `crates/dp/tests/spec_oracle.rs`, and runs cargo on
+        # `dp-control-plane`. It also imports the 5b harness for its
+        # read/restore/lock machinery — same reason as 5c and 5d. Listed on the
+        # day it was written rather than after a flaky sweep, which is the only
+        # cheap moment to do it.
+        "scripts/dp-oracle-bite-gate.py",
+        # `DF1a`. Mutates `crates/dp` AND `crates/dp-kernel` and runs cargo on
+        # dp-kernel, and imports the 5b harness for its read/restore/lock
+        # machinery — every reason 5c, 5d and G3 are here. Listed on the day it
+        # was written; the lock already refused it once during DF1a, against a
+        # STALE lock left by a killed dp-oracle-bite-gate, which is the failure
+        # mode arriving before the flaky sweep rather than after.
+        "scripts/dp-df1a-bite-gate.py",
+        # `W7-SHELL-UNCOVERED`. Mutates `infra/db-ensure.sh` and, on a box with
+        # the compose Postgres up, CREATEs and DROPs a throwaway role while
+        # doing it. Both halves are reasons it must not run beside anything
+        # else. Its live leg reports SKIP (not pass) without a cluster, so it is
+        # runnable in the shared sweep rather than NEEDS_STACK.
+        "scripts/db-ensure-bite-gate.py",
+        "scripts/gate-bite-harness.py",
+        "scripts/reality-layer-bite-harness.py",
+        # Arrives with the merge of `main` (2026-08-21) and it MUTATES: like every
+        # bite harness it writes a modified copy beside the gate it is proving.
+        # Left out of this tuple it would run inside the pool alongside the others,
+        # and two harnesses in one tree do not merely race — the second one's restore
+        # writes back the first one's mutation permanently. Measured earlier the same
+        # day: a killed sweep left `target/.bite-harness.lock` behind and six gates
+        # then refused to start in 0.1s each, which reads as six RED gates.
+        "scripts/guard-redability-gate.py",
+    )
+    concurrent = [n for n in runnable if n not in MUTATING]
+    serial = [n for n in runnable if n in MUTATING]
+
     workers = min(8, (os.cpu_count() or 4))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        parallel_results = list(pool.map(_run, parallel))
-    mutator_results = [_run(n) for n in mutators]        # serial, after the pool has drained
-    runnable = parallel + mutators
-    results = parallel_results + mutator_results
+        results = list(pool.map(_run, concurrent))
+    if serial:
+        print(f"  ({len(serial)} tree-mutating gate(s) run serially — see MUTATING)")
+        results += [_run(n) for n in serial]
+    runnable = concurrent + serial
 
     for n, (ok, secs, out) in zip(runnable, results):
         expected_red = n in KNOWN_RED
@@ -536,21 +650,8 @@ def run_all() -> int:
     if failures:
         print(f"\ngate-wiring-gate: {len(failures)} gate(s) FAILED and are not tracked:\n")
         for n, out in failures:
-            # The FIRST non-empty line is usually the gate's BANNER, not its finding — every
-            # gate here opens by saying what it scanned. Printing only that told CI readers
-            # "design-lint: scanned 385 .md files under …" and nothing about WHY it was red,
-            # which cost a full CI round-trip per diagnosis (the real answer was one broken
-            # link, on line 5475 of a file the banner never mentions). Print a bounded TAIL as
-            # well: a gate's verdict is at the end, and lines that mention a path or a finding
-            # keyword are the ones a reader can act on.
-            lines = [l.rstrip() for l in out.splitlines() if l.strip()]
-            head = lines[0] if lines else ""
+            head = next((l for l in out.splitlines() if l.strip()), "")
             print(f"  {n}: {head[:110]}")
-            keyed = [l for l in lines[1:] if any(
-                k in l.lower() for k in ("finding", "error", "fail", "missing", "does not exist",
-                                         "broken", "unregistered", "drift", ".md:", ".py:", ".go:"))]
-            for l in (keyed or lines[1:])[-6:]:
-                print(f"      {l.strip()[:160]}")
         print("\nFix it, or add a KNOWN_RED row naming a tracked deferral. A gate that "
               "is red and unacknowledged is how a whole suite becomes background noise.")
         rc = 1
@@ -612,14 +713,6 @@ def self_test() -> int:
     _, stale = wiring_report()
     if stale:
         fails.append(f"rows for files that no longer exist: {', '.join(stale)}")
-
-    # A MUTATES_TREE name that is not a real gate is a silent LOSS of isolation: the runner
-    # would find nothing to serialise, put every gate back in the pool, and the race this set
-    # exists to prevent returns with no message anywhere. Same shape as the REQUIRES_ENV orphan
-    # check in guard-redability-gate, and for the same reason.
-    for n in sorted(MUTATES_TREE):
-        if not (REPO / n).exists():
-            fails.append(f"MUTATES_TREE names {n}, which does not exist — isolation lost silently")
 
     # Every KNOWN_RED row must name a deferral id, or "tracked" means nothing.
     for n, (did, why) in KNOWN_RED.items():

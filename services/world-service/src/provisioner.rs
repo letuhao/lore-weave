@@ -10,7 +10,7 @@
 //!     `reality_registry` with `status=provisioning`
 //!  4. `create_database(db_host, db_name)` — `CREATE DATABASE <name>` on
 //!     the picked shard
-//!  5. `apply_initial_migration(db_name)` — apply
+//!  5. `apply_migrations(db_name)` — apply
 //!     `contracts/migrations/per_reality/0001_initial.sql` skeleton
 //!  6. `register_with_pgbouncer(db_host, db_name)` — append entry to
 //!     pgbouncer's `databases.ini` and SIGHUP (L1.G dependency)
@@ -49,7 +49,14 @@ use crate::capacity_planner::{CapacityPlanner, CapacityThresholds, ShardCapacity
 use crate::errors::ProvisionerError;
 
 /// Input to `Provisioner::provision_reality()`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Eq` is gone as of `A2`: `world` reaches `PlaceDecl.canon_ref`, which is a
+/// `serde_json::Value` (`PF-D12` defers that schema's ownership), and
+/// `serde_json::Value` is `PartialEq` but not `Eq` — floats. Dropping the
+/// derive is correct rather than convenient: two requests carrying `1.0` and
+/// `1.0` are equal, and `Eq`'s reflexivity promise is one this type can no
+/// longer make.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProvisionRequest {
     /// The reality UUID (caller-generated to keep the audit chain coherent).
     pub reality_id: Uuid,
@@ -59,10 +66,40 @@ pub struct ProvisionRequest {
     pub deploy_cohort: u8,
     /// Reason string written into the MetaWrite audit trail.
     pub reason: String,
+    /// W6 — the user who owns this reality, or `None` for a platform-owned one.
+    ///
+    /// The bridge derives `owner_kind` from this, so the registry's
+    /// (kind, owner) pair is consistent by construction. `None` is a real
+    /// category, not "unknown": an admin provisioning for the platform genuinely
+    /// has no user owner.
+    pub owner_user_id: Option<Uuid>,
+
+    /// `A2` — the authored world structure, seeded in the `seeding` stage.
+    ///
+    /// **Empty is the honest default and means SKIPPED, not "use a default
+    /// world".** A hardcoded starter map here would be the rot this repo already
+    /// names: a structure nobody declared, that every reality inherits, and that
+    /// no author can change without a code change. The declaration is ingested
+    /// data or it is nothing.
+    ///
+    /// `#[serde(default)]` so the wire stays backward-compatible: a caller that
+    /// has never heard of this field provisions exactly as it did before, and
+    /// gets `Skipped` on the step rather than a rejection.
+    #[serde(default)]
+    pub world: Vec<crate::world_seed::NodeDecl>,
 }
 
 impl ProvisionRequest {
-    fn validate(&self) -> Result<(), ProvisionerError> {
+    /// Reject a request the flow cannot act on.
+    ///
+    /// **Public because the HTTP boundary must run it BEFORE the flow.**
+    /// `ProvisionerError` cannot distinguish "your input is bad" from "our
+    /// machinery failed" — `InvalidState` carries both — so a handler that only
+    /// mapped the error would answer 500 for a caller's typo. Running it up
+    /// front lets the boundary that owns the status code make the distinction.
+    /// `provision_reality` still calls it, so this is a second check and not a
+    /// relocated one.
+    pub fn validate(&self) -> Result<(), ProvisionerError> {
         if self.reality_id.is_nil() {
             return Err(ProvisionerError::InvalidState(
                 "reality_id must not be nil".into(),
@@ -134,16 +171,22 @@ impl StepOutcome {
 
 /// The canonical 11 step labels — frozen so external observers (Prometheus,
 /// audit) can pin metric labels against them.
-pub const PROVISION_STEPS: [&str; 11] = [
+///
+/// **12 as of `A2`, and the count is a CONTRACT.**
+/// `contracts/observability/inventory.yaml` pins it by name, and that file moves
+/// in the same commit as this array — a metric whose label set silently grew is
+/// a dashboard that silently lies.
+pub const PROVISION_STEPS: [&str; 12] = [
     "validate",
     "pick_shard",
     "register_pending",
     "create_database",
-    "apply_initial_migration",
+    "apply_migrations",
     "register_with_pgbouncer",
     "register_prometheus_scrape",
     "register_backup_policy",
     "transition_to_seeding",
+    "seed_world_structure",
     "transition_to_active",
     "emit_reality_created",
 ];
@@ -153,7 +196,7 @@ pub const PROVISION_STEPS: [&str; 11] = [
 ///
 /// - `register_pending` → MetaWriter RPC → Go MetaWrite()
 /// - `create_database` → libpq `CREATE DATABASE`
-/// - `apply_initial_migration` → migrate cli
+/// - `apply_migrations` → migrate cli
 /// - `register_with_pgbouncer` → append + SIGHUP
 /// - `register_prometheus_scrape` → file-write + Prom config reload
 /// - `register_backup_policy` → backup-scheduler API
@@ -177,10 +220,14 @@ pub trait Effects {
     fn create_database(&mut self, shard: &ShardId, db_name: &str)
         -> Result<bool, ProvisionerError>;
 
-    /// Step 5 — apply contracts/migrations/per_reality/0001_initial.sql
-    /// (the SKELETON; per-reality tables land in L2 cycles 8-11).
-    /// Idempotent: returns `false` if it was already applied.
-    fn apply_initial_migration(
+    /// Step 5 — apply **every migration the manifest registers**, in order,
+    /// skipping those already in the reality's `schema_migrations` ledger.
+    ///
+    /// ⚠ This doc said *"apply `0001_initial.sql` (the SKELETON)"* until `A2`.
+    /// The IMPLEMENTATION was rewritten on 2026-08-08 (`1b12-05`) and this
+    /// sentence was not, so the trait promised a skeleton while the impl applied
+    /// 67 migrations. Idempotent: returns `false` if nothing was pending.
+    fn apply_migrations(
         &mut self,
         shard: &ShardId,
         db_name: &str,
@@ -206,7 +253,25 @@ pub trait Effects {
     /// `false` if already registered.
     fn register_backup_policy(&mut self, reality_id: Uuid) -> Result<bool, ProvisionerError>;
 
-    /// Steps 9 + 10 — AttemptStateTransition: provisioning → seeding → active.
+    /// Step 10 — write the authored world into the reality's own database.
+    ///
+    /// **This is the work the `seeding` stage was always supposed to do.** Step
+    /// 9 transitioned into `seeding` and step 11 transitioned straight out of
+    /// it, so the stage existed and was empty; `A1` measured that
+    /// `reality_seeder` — the orchestrator `lib.rs` names as its occupant — has
+    /// zero production constructors and never ran.
+    ///
+    /// Returns `false` when there was nothing to do (an empty declaration, or a
+    /// re-entry finding the world already written), which is the same
+    /// idempotence contract every other step carries.
+    fn seed_world_structure(
+        &mut self,
+        db_name: &str,
+        reality_id: Uuid,
+        world: &[crate::world_seed::NodeDecl],
+    ) -> Result<bool, ProvisionerError>;
+
+    /// Steps 9 + 11 — AttemptStateTransition: provisioning → seeding → active.
     /// Returns `false` if reality was already past `to`.
     fn transition_to(
         &mut self,
@@ -257,8 +322,8 @@ impl Provisioner {
         steps.push(io(created, "create_database"));
 
         // Step 5 — apply initial migration
-        let migrated = effects.apply_initial_migration(&picked.shard_id, &db_name)?;
-        steps.push(io(migrated, "apply_initial_migration"));
+        let migrated = effects.apply_migrations(&picked.shard_id, &db_name)?;
+        steps.push(io(migrated, "apply_migrations"));
 
         // Step 6 — register with pgbouncer
         let pgb = effects.register_with_pgbouncer(&picked.shard_id, &db_name)?;
@@ -277,13 +342,20 @@ impl Provisioner {
             effects.transition_to(req.reality_id, "provisioning", "seeding", &req.reason)?;
         steps.push(io(seeding, "transition_to_seeding"));
 
-        // Step 10 — seeding → active
+        // Step 10 — the world, written while the reality is IN `seeding`.
+        // Ordering is the whole point: after the transition in, before the
+        // transition out. A reality that fails here stays in `seeding`, which is
+        // the state `orphan_scan` already understands.
+        let seeded = effects.seed_world_structure(&db_name, req.reality_id, &req.world)?;
+        steps.push(io(seeded, "seed_world_structure"));
+
+        // Step 11 — seeding → active
         let active = effects.transition_to(req.reality_id, "seeding", "active", &req.reason)?;
         steps.push(io(active, "transition_to_active"));
 
-        // Step 11 — emit. Automatic via the events_allowlist entry on
+        // Step 12 — emit. Automatic via the events_allowlist entry on
         // reality_registry INSERT — caller doesn't need to explicitly
-        // emit here. Track it so the report stays at 11 steps.
+        // emit here. Track it so the report stays at PROVISION_STEPS.len().
         steps.push(StepOutcome::done("emit_reality_created"));
 
         Ok(ProvisionReport {
@@ -308,7 +380,14 @@ fn io(executed: bool, label: &'static str) -> StepOutcome {
 /// Convention: `lw_reality_<first-12-hex>`. The trailing 12 hex chars give
 /// 2^48 collision resistance — more than enough for the V1+30d 10K reality
 /// budget. Keeping the full UUID would push some Postgres identifier limits.
-fn db_name_for(reality_id: Uuid) -> String {
+///
+/// **Public because the `provision` worker's dry run must preview the SAME
+/// name the real run will create.** It previously hand-copied this function and
+/// pointed at a test asserting the two agreed — a test that did not exist. Two
+/// implementations of one naming rule can drift, and drift here means the
+/// operator's preview names a database the real run will not create, which is
+/// exactly what a preview exists to prevent. One function, no drift.
+pub fn db_name_for(reality_id: Uuid) -> String {
     let s = reality_id.simple().to_string();
     let prefix = &s[..s.len().min(12)];
     format!("lw_reality_{prefix}")
@@ -329,11 +408,32 @@ mod tests {
         prometheus_entries: HashSet<String>,
         backup_realities: HashSet<Uuid>,
         transitions: Vec<(Uuid, String, String)>,
+        /// `(db_name, node_count)` per `seed_world_structure` call. A Vec and not
+        /// a Set: the ORDER relative to the transitions is what the stage
+        /// ordering test reads, and a Set would throw it away.
+        seeded: Vec<(String, usize)>,
+        /// ONE ordered log across the effects whose ORDER is load-bearing.
+        /// Two separate Vecs cannot answer "did the seed happen BETWEEN the two
+        /// transitions", and that question is the entire point of `A2`.
+        order: Vec<String>,
         /// When set, register_pending returns this error.
         fail_register_pending: Option<ProvisionerError>,
     }
 
     impl Effects for FakeEffects {
+        fn seed_world_structure(
+            &mut self,
+            db_name: &str,
+            _reality_id: Uuid,
+            world: &[crate::world_seed::NodeDecl],
+        ) -> Result<bool, ProvisionerError> {
+            self.seeded.push((db_name.to_string(), world.len()));
+            self.order.push("seed_world_structure".into());
+            // Mirrors the live contract: an empty declaration is a no-op, and a
+            // no-op reports `false` so the step reads `Skipped`.
+            Ok(!world.is_empty())
+        }
+
         fn register_pending(
             &mut self,
             reality_id: Uuid,
@@ -355,7 +455,7 @@ mod tests {
             Ok(self.created_dbs.insert(db_name.to_string()))
         }
 
-        fn apply_initial_migration(
+        fn apply_migrations(
             &mut self,
             _shard: &ShardId,
             db_name: &str,
@@ -395,6 +495,7 @@ mod tests {
         ) -> Result<bool, ProvisionerError> {
             self.transitions
                 .push((reality_id, from.into(), to.into()));
+            self.order.push(format!("transition:{from}->{to}"));
             Ok(true)
         }
     }
@@ -420,11 +521,27 @@ mod tests {
             locale: "en-US".into(),
             deploy_cohort: 0,
             reason: "integration_test".into(),
+            owner_user_id: None,
+            world: Vec::new(),
         }
     }
 
+    /// A one-node world: the smallest declaration that is not empty.
+    fn one_node_world() -> Vec<crate::world_seed::NodeDecl> {
+        vec![crate::world_seed::NodeDecl {
+            id: 1,
+            parent: None,
+            level_name: "thien-gioi".into(),
+            kind: crate::world_seed::MapKind::World,
+            pos_x: 500,
+            pos_y: 500,
+            place: None,
+            scale: None,
+        }]
+    }
+
     #[test]
-    fn happy_path_runs_all_11_steps() {
+    fn happy_path_runs_all_12_steps() {
         let provisioner = Provisioner::new(CapacityThresholds::default());
         let mut effects = FakeEffects::default();
         let report = provisioner
@@ -442,6 +559,53 @@ mod tests {
         assert_eq!(effects.transitions[0].2, "seeding");
         assert_eq!(effects.transitions[1].1, "seeding");
         assert_eq!(effects.transitions[1].2, "active");
+    }
+
+    #[test]
+    fn the_world_is_written_inside_the_seeding_stage() {
+        // `A1` measured that `seeding` was entered and left in two consecutive
+        // statements with nothing between them. This asserts the stage now has a
+        // body, and asserts it BY ORDER rather than by presence -- a seed that
+        // ran after `active` would still "have run", while writing into a
+        // reality the platform had already published as ready.
+        let provisioner = Provisioner::new(CapacityThresholds::default());
+        let mut effects = FakeEffects::default();
+        let r = ProvisionRequest { world: one_node_world(), ..req() };
+        provisioner.provision_reality(r, &snapshot(), &mut effects).expect("provision ok");
+
+        assert_eq!(
+            effects.order,
+            vec![
+                "transition:provisioning->seeding".to_string(),
+                "seed_world_structure".to_string(),
+                "transition:seeding->active".to_string(),
+            ],
+            "the world must be written while the reality IS in `seeding` -- before that the stage has not opened, and after it the reality is already active"
+        );
+        assert_eq!(effects.seeded.len(), 1);
+        assert_eq!(effects.seeded[0].1, 1);
+    }
+
+    #[test]
+    fn an_empty_declaration_skips_rather_than_inventing_a_world() {
+        // The alternative -- a hardcoded starter map -- is the rot the field's
+        // own doc refuses. A caller that declares nothing gets nothing, and the
+        // step must SAY it did nothing rather than reporting Done.
+        let provisioner = Provisioner::new(CapacityThresholds::default());
+        let mut effects = FakeEffects::default();
+        let report = provisioner
+            .provision_reality(req(), &snapshot(), &mut effects)
+            .expect("provision ok");
+        let seed_step = report
+            .steps
+            .iter()
+            .find(|s| s.label() == "seed_world_structure")
+            .expect("the step is on the board");
+        assert!(
+            matches!(seed_step, StepOutcome::Skipped(_)),
+            "an empty declaration must report Skipped, got {seed_step:?}"
+        );
+        assert_eq!(effects.seeded, vec![("lw_reality_000000000000".to_string(), 0)]);
     }
 
     #[test]
@@ -530,11 +694,12 @@ mod tests {
                 "pick_shard",
                 "register_pending",
                 "create_database",
-                "apply_initial_migration",
+                "apply_migrations",
                 "register_with_pgbouncer",
                 "register_prometheus_scrape",
                 "register_backup_policy",
                 "transition_to_seeding",
+                "seed_world_structure",
                 "transition_to_active",
                 "emit_reality_created",
             ]

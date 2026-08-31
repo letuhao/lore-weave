@@ -227,10 +227,10 @@
       "endpoint_hint": "留空以使用預設端點（OpenAI、Anthropic）。",
       "api_key": "API 金鑰",
       "api_key_ph_local": "本機可選填",
-      "api_key_ph": "sk-...",
       "cancel": "取消",
       "adding": "新增中...",
-      "submit": "新增供應商"
+      "submit": "新增供應商",
+      "api_key_ph": "sk-..."
     },
     "edit_dialog": {
       "aria": "編輯供應商",
@@ -241,14 +241,14 @@
       "endpoint_ph_default": "留空以使用預設",
       "api_key": "API 金鑰",
       "api_key_ph_keep": "••••••••  （留空以保留目前金鑰）",
-      "api_key_ph": "sk-...",
       "api_key_keep_hint": "留空以保留現有金鑰。",
       "max_concurrency": "最大並行請求數",
       "max_concurrency_ph": "無限制",
       "max_concurrency_hint": "此供應商同時執行的請求數。留空表示無限制（由基礎設施決定）。僅在您的後端有已知上限時（例如本機 GPU）才設定數字。",
       "cancel": "取消",
       "saving": "儲存中...",
-      "submit": "儲存變更"
+      "submit": "儲存變更",
+      "api_key_ph": "sk-..."
     },
     "delete": {
       "title": "移除 {{name}}？",
@@ -371,13 +371,13 @@
       "extended_thinking": "延伸思考",
       "json_mode": "JSON 模式",
       "reasoning": "推理",
-      "tts": "TTS",
-      "stt": "語音轉文字",
       "image_gen": "圖像生成",
       "video_gen": "影片生成",
       "embedding": "嵌入",
       "rerank": "重新排序",
-      "moderation": "內容審核"
+      "moderation": "內容審核",
+      "tts": "TTS",
+      "stt": "語音轉文字"
     }
   },
   "services": {
@@ -406,7 +406,6 @@
       "endpoint": "端點 URL",
       "endpoint_hint": "服務的基底 URL — provider-registry 會在伺服器端呼叫。若服務在主機上執行，請用 host.docker.internal，不要用 localhost（容器內的 localhost 指容器自己）。",
       "key": "API 金鑰",
-      "key_ph": "Bearer 權杖",
       "key_ph_keyless": "免金鑰的本地服務請留空",
       "key_hint": "服務的 Bearer 密鑰。",
       "key_hint_keyless": "選填 — 免金鑰的本地後端（例如 SearXNG）請留空。",
@@ -416,7 +415,8 @@
       "alias_ph": "顯示名稱（選填）",
       "cancel": "取消",
       "submit": "新增服務",
-      "adding": "新增中…"
+      "adding": "新增中…",
+      "key_ph": "Bearer 權杖"
     },
     "edit_dialog": {
       "aria": "編輯外部服務",
@@ -471,7 +471,6 @@
       "model": "模型",
       "search_ph": "搜尋模型...",
       "top": "推薦",
-      "ctx": "ctx",
       "model_hint": "輸入以搜尋。或輸入清單中沒有的自訂模型名稱。",
       "alias": "別名（顯示名稱）",
       "alias_ph": "例如：我的快速模型",
@@ -481,6 +480,7 @@
       "cancel": "取消",
       "adding": "新增中...",
       "submit": "新增模型",
+      "ctx": "ctx",
       "pricing_summary": "成本：輸入 ${{input}}/1M · 輸出 ${{output}}/1M",
       "pricing_missing": "該供應商未公布價格 — 請在模型註冊後手動新增。"
     },
@@ -498,7 +498,6 @@
       "remove_default_aria": "取消設為預設",
       "set_default_aria": "設為預設",
       "verify_hint": "測試連線以驗證此模型是否可用",
-      "verify_ok": "確定 — {{ms}}ms",
       "testing": "測試中...",
       "reverify": "重新驗證",
       "verify": "驗證",
@@ -521,6 +520,7 @@
       "cancel": "取消",
       "saving": "儲存中...",
       "submit": "儲存變更",
+      "verify_ok": "確定 — {{ms}}ms",
       "capabilities_refreshed": "模型功能已更新",
       "capabilities_refresh_failed": "無法更新模型功能",
       "delete_blocked_active": "此模型無法刪除：請先停止其執行中的工作。",

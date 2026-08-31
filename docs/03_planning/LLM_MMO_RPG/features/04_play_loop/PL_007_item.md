@@ -1,5 +1,28 @@
 # PL_007 — Item Foundation
 
+> **⚠ ROT SWEEP APPLIED 2026-08-02 — this file predates the actor round and the item round, and parts of it
+> are now wrong rather than merely dated.** Authority moves to
+> [`docs/specs/2026-08-02-item-data-structure.md`](../../../../specs/2026-08-02-item-data-structure.md)
+> (decisions `ITD-1..ITD-11`, rot ledger `IR-1..IR-30`) and
+> [`docs/specs/2026-08-02-item-dataflow.md`](../../../../specs/2026-08-02-item-dataflow.md) (Part II is the
+> specification: declaration surface, runtime shapes, the closed 12-operation set, the validator ladder).
+> **Where this file and those disagree, they win.**
+>
+> **What changed, in one line each — each is marked in place below:**
+> - **`ITM-A2` is replaced** (`IR-1`): stackability is **earned by the data**, not declared by the author.
+> - **`ITM-A3` names a condemned type** (`IR-2`): `StatSlot` is being dismantled (`D-10`/`D-100`/`D-105`).
+> - **§6.3's `EquipmentStats` impl is deleted** (`IR-9`): a contribution is **DATA, never CODE** (`D-27`).
+> - **`ITM-C4` is deleted** (`IR-6`): the contradiction it resolves does not exist once residency leaves
+>   the existence axis.
+> - **A second axis arrives**: ownership is separate from location (`ITD-1`), so `HeldBy` stops meaning
+>   *"owns"*.
+>
+> **What SURVIVES, and is now cited as a model rather than merely kept:** `ITM-A5` (equipment is a slot
+> assignment, not a location) · §8.6 (no weapon swap in combat) · §6.4's finding that two features declared
+> an operand neither could evaluate · §8.5's loot **seam** · the review discipline of §12 (`PL_007c`:556
+> called out its own two latent defects, which is why they cost a paragraph rather than a debugging
+> session).
+
 > **Conversational name:** "Item Foundation" (ITM). The **body** behind `EntityId::Item` — the
 > definition/instance split, the equipment slot model, the use-effect vocabulary, and the four
 > item-management actions. [`EF_001`](../00_entity/EF_001_entity_foundation.md) owns the *contract*
@@ -25,9 +48,10 @@
 > COMB_001 §3/§4 + COMB_002 §5 (`UseItem` action, damage law-chain, Chebyshev range) ·
 > AGT-A2 (bounded tool vocabulary) · DP-A6/A12/A14 · EVT Option C taxonomy ·
 > **[`DF07_001 Actor Stat Block`](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md)** (landed
-> 2026-07-26, same day, in parallel) — DF7 owns the closed `StatSlot` set, the `StatModifier`
-> contract, and the resolution law; **PL_007 ships the `EquipmentStats` body DF7-D1 deferred to it**
-> (§6.3).
+> 2026-07-26, same day, in parallel) — ⚠ **this dependency is WITHDRAWN 2026-08-02** (`IR-2`, `IR-9`):
+> DF07's closed `StatSlot` set is being dismantled (`D-100`/`D-105`/`C-2a`), and the `EquipmentStats` body
+> §6.3 shipped is deleted in favour of modifier **rows** (`D-27`). What remains of the relationship is the
+> **fold**, which the engine owns and neither feature implements.
 > **Defers to:** a future Loot module (AUD-F9) for the corpse/reward *interaction* (§8.5 gives it the
 > substrate) · a future EnvObject feature for real `Unlock` state (§7.3 / ITM-D4) ·
 > `14_crafting` V2 for item creation from recipes.
@@ -67,7 +91,7 @@ their target phase. §3 ITM-A6 resolves EF-D3 with a decision; EF-D4 stays with 
 
 | Concept | Maps to | Notes |
 |---|---|---|
-| **ItemDef** | Author-declared template in `RealityManifest.item_defs` | System-tier, read-only at runtime, admin-editable via Forge. The blueprint: class, affordances, equip decl, use effect, price, lex tags. |
+| **ItemDef** | Author-declared template in `RealityManifest.item_defs` — **a `D-74` kind ① ROSTER** (`IR-12`) | System-tier, read-only at runtime, admin-editable via Forge. The blueprint: class, affordances, equip decl, use effect, price, lex tags. **The structure is ours, the members are the author's** (`D-75`): a new feature declares a *member*, never adds a *field*. Addressed by **opaque id, never an ordinal** (`D-76`) — which is why item creates **zero** new ordinal spaces. |
 | **ItemDefId** | `pub struct ItemDefId(pub String)` | English `snake_case` stable ID per RES_001 §2 i18n contract (e.g. `iron_sword`, `minor_heal_elixir`). |
 | **item_instance** | T2/Reality aggregate (§4.1) | The runtime thing: which def, how many charges left, where it came from. **Location is NOT here** — it lives in `entity_binding` (EF_001 owns). |
 | **ItemInstanceId** | `pub type ItemInstanceId = ItemId;` | **Alias, not a new type.** Resolves the EF_001/RES_001 spelling drift — see ITM-C1 (§9.4). `EntityId::Item(ItemId)` stays the canonical spelling. |
@@ -91,18 +115,49 @@ their target phase. §3 ITM-A6 resolves EF-D3 with a decision; EF-D4 stays with 
 > are admin-write, user-clone-not-edit) applied to items, and it is what stops "one player renames a
 > sword for everyone."
 
-> **ITM-A2 — An instanced item is an Entity, not a resource row. (THE REPRESENTATION RULE.)** An
-> item that has identity gets an `entity_binding` row (EF_001 §3.1) and gets location, lifecycle,
-> affordances, and the holder-cascade for free. Fungible value stays in RES_001 `resource_inventory`
-> as a `ResourceBalance`. **Exactly one representation per thing, chosen by the author at declaration
-> time; never both.** Enforced, not asserted: an `ItemDefId` colliding with any `resource_kinds`
-> `kind_id` is rejected at canonical seed (ITM-V10 / ITM-C2).
+> **ITM-A2 — ⚠ REPLACED 2026-08-02 by `ITD-2` (`IR-1`). Stackability is EARNED, not declared.**
+>
+> **The rule now:** a thing with **no per-instance state** is a **QUANTUM** — one row
+> `(owner, location, def_id, count)`, **no row per unit**. A thing that **acquires** per-instance state
+> becomes an **INSTANCE** with an id. **The transition is an operation** (`assemble` / `repackage`),
+> **not a declaration.** One store, two shapes.
+>
+> **Why the original was wrong, recorded rather than overwritten.** It read: *"exactly one representation
+> per thing, chosen by the author at declaration time; never both"*, with fungible value staying in RES_001
+> `resource_inventory`. That asks an author to predict which of their items will ever need identity — and
+> **this feature already recorded the resulting hole itself**, calling a merchant's 50 identical daggers
+> *"the awkward middle"* (PL_007b §2) and deferring it to ITM-Q3 / ITM-D1. It is not awkward; it is the
+> wrong question. EVE Online has run the correct answer for two decades: a **packaged** item has *"only 3
+> attributes: location, item type and quantity"*, while an assembled one *"can no longer be stacked,
+> because it is no longer identical to every other."*
+>
+> **The tell was in this feature's own enforcement.** ITM-V10 / ITM-C2 exist **only** to police the
+> `item_defs` ∩ `resource_kinds` boundary that ITM-A2 invented. **A validator whose entire job is to police
+> a boundary you created is evidence the boundary should not exist** — the same argument `D-27` used to
+> delete the plugin registry and `D-29` used to delete the predicate grammar. Both checks are withdrawn
+> (`IR-18`).
+>
+> **The static half is a load-time check, and Minecraft ships it:** `max_stack_size > 1` may not combine
+> with `max_damage`. Ours: `instance_state` non-empty ⇒ `max_stack == 1`. See item-dataflow §14.4.
 
-> **ITM-A3 — Items carry modifiers, never stats.** An `ItemDef` never stores a stat value. It declares
-> `Vec<StatModifier>` against the **closed DF07-owned `StatSlot` enum** (10 V1 slots). **PL_007 owns
-> which items produce which modifiers and when they apply; DF07 owns the slot vocabulary, the layer
-> order, and the resolution law.** Neither side may inline the other's half. Concretely: PL_007
-> implements DF07's `EquipmentStats` trait and nothing more (§6.3).
+> **ITM-A3 — Items carry modifiers, never stats.** ⚠ **AMENDED 2026-08-02 (`IR-2`, `IR-8`) — the
+> principle survives; both of its nouns are condemned.**
+>
+> **Surviving:** an `ItemDef` never stores a stat value; it declares what it **contributes**, and the
+> engine owns the fold. That half was right and is now `D-27`'s general law.
+>
+> **Withdrawn — the closed `StatSlot` target.** The original read *"`Vec<StatModifier>` against the closed
+> DF07-owned `StatSlot` enum (10 V1 slots)"*. `D-10` opened the slot set; `D-100` measured it to be
+> **combat's** vocabulary living in the engine core; `D-105` found it is **two concepts sharing one array**
+> (slots 0-1 are pool ceilings, 2-7 are combat law inputs) and `C-2a`/`C-2b`/`C-2c` are dismantling it.
+> **An item design that names `StatSlot` is building on a condemned structure.**
+>
+> **Withdrawn — the trait.** *"PL_007 implements DF07's `EquipmentStats` trait and nothing more"* is
+> deleted by `IR-9`; see §6.3.
+>
+> **Replacement:** an item declares `Vec<ModifierTemplate>` whose `target` is a **`QuantityOrdinal` the
+> reality declared**, and equipping writes `ModifierRow`s through `commit_with_modifiers` (`D-50`). Shape
+> in item-dataflow §14.5.
 
 > **ITM-A4 — LLM-zero-item-math** (extends COMB-A1 LLM-zero-math and TG-A1 LLM-zero-space). The LLM
 > selects *which* item from the bounded held set (AGT-A2) and *what* to point it at. It never emits a
@@ -110,17 +165,37 @@ their target phase. §3 ITM-A6 resolves EF-D3 with a decision; EF-D4 stays with 
 > `UseItem` payloads carry an `ItemInstanceId` + an optional target and nothing numeric. A payload
 > carrying an out-of-set instance or an engine-owned number is rejected, not clamped.
 
-> **ITM-A5 — Equipment is a slot assignment, not a location.** An equipped item's
-> `entity_binding.location` stays `HeldBy(actor)`; "equipped" is a row in `actor_equipment`. This
-> preserves EF_001 §3.1's "an entity is in EXACTLY one place at a time" and adds **no fifth
-> `LocationKind`** — the enum stays closed (EF_001 §5 "closed V1"). Consequence: unequipping is a
-> pure `actor_equipment` write with no binding delta, and a dropped item must be unequipped first
-> (ITM-V12).
+> **ITM-A5 — Equipment is a slot assignment, not a location.** ✅ **SURVIVES INTACT 2026-08-02 (`IR-3`),
+> and is now cited as the model.** An equipped item's `entity_binding.location` stays `HeldBy(actor)`;
+> "equipped" is a row in `actor_equipment`. This preserves EF_001 §3.1's "an entity is in EXACTLY one
+> place at a time" and adds **no fifth `LocationKind`** — the enum stays closed (EF_001 §5 "closed V1").
+> Consequence: unequipping is a pure `actor_equipment` write with no binding delta, and a dropped item must
+> be unequipped first (ITM-V12).
+>
+> **Why it is a model:** it makes a second location **unrepresentable** rather than merely invalid. That is
+> the identical discipline `ITD-5` now applies to duplication — *"an entity is in EXACTLY one place at a
+> time"* is not housekeeping, **it is the anti-duplication mechanism** (EF_001 §3.1 is relabelled
+> accordingly, `IR-25`), and it converges exactly with OpenMU's post-mortem fix after MU Online's economy
+> was destroyed by duping: *"there can only be one item with the same Id and only assigned to one
+> account."*
 
-> **ITM-A6 — V1 inventory is flat (resolves EF-D3).** `EntityLocation::InContainer` stays
-> **schema-reserved, enforcement V1+30d** (ITM-D3). V1 holder graphs are therefore depth ≤ 1
-> (Item `HeldBy` Actor, or Item `InCell`), which is *why* EF_001's `entity.cyclic_holder_graph` is
-> structurally unreachable in V1 rather than merely untested.
+> **ITM-A6 — ⚠ AMENDED 2026-08-02 (`IR-5`) — the posture survives as a NUMBER, not as a restriction.**
+>
+> The original made V1 holder graphs depth ≤ 1, *"which is why EF_001's `entity.cyclic_holder_graph` is
+> **structurally unreachable** in V1 rather than merely untested."* **That sentence is the `NV-2` shape —
+> *the scope never reaches it*.** A guard that cannot fire because nothing in scope can reach it is not a
+> guard; it is coverage reported by a check that cannot fail.
+>
+> **Replacement:** a container is an item carrying an `Interior` slot (`SPG-A1` — *"a chest, a house, a
+> ship, a planet and a cultivator at 神境 are then one construct, not five special cases"*), and depth is
+> `ContainerDecl.max_depth`, an **authored number**. Setting it to 1 reproduces V1's posture exactly, and
+> the guard becomes reachable the moment an author sets 2. Containment acyclicity is already guaranteed by
+> `SPG-A4` via `DP-Ch1`'s parent-relation guard.
+>
+> ⚠ **This does NOT cover ownership.** `ITD-1` adds an owner edge, which is a **reference** edge, and
+> `SPG-A5b` already records that *"a reference edge is not a parent edge and escapes that guard entirely."*
+> **A owns B owns A is representable today with nothing to detect it** — tracked as `IO-2`, and its check
+> is `V2-4`, which exists nowhere.
 
 > **ITM-A7 — Item-management is engine-authoritative and narration-optional.** Pick up / drop /
 > equip / unequip are **not** new `InteractionKind`s — PL_005's five-kind set is closed and its
@@ -193,22 +268,37 @@ pub struct SlotAssignment {
 **Rules:**
 - `UNIQUE(actor_ref, slot)` — one item per slot; and `UNIQUE(actor_ref, instance)` — an instance
   cannot fill two independent slots (multi-slot items use `blocked_by_primary`).
-- **ITM-C4 (lifecycle lockstep, corrected at review 2026-07-26):** every equipped `instance` MUST
-  satisfy `entity_binding.location == HeldBy(actor_ref)` **and**
-  `instance.lifecycle_state == holder.lifecycle_state`. The rule is **lockstep with the holder, not
-  "always `Existing`"** — the first draft said `== Existing` and that directly contradicted
-  [EF_001 §6.1](../00_entity/EF_001_entity_foundation.md#61-cascade-rules), whose
-  `Existing → Suspended` cascade transitions *all* held entities to `Suspended` when their holder
-  cold-decays (NPC_001 `NpcCold`). Under the wrong rule, every cold-decayed NPC would have violated
-  ITM-C4 — and the "fix" an implementer would reach for (clearing the slots) is worse: the NPC would
-  wake up disarmed. Correct behaviour: **the slot survives suspension untouched**; `Suspended →
-  Existing` restores holder and gear together, in EF_001's one atomic batch.
+- **ITM-C4 — ⚠ DELETED 2026-08-02 (`IR-6`). The contradiction it resolves does not exist.**
+
+  The rule said an equipped instance must satisfy `location == HeldBy(actor_ref)` **and**
+  `instance.lifecycle_state == holder.lifecycle_state` — *"lockstep with the holder, not always
+  `Existing`"* — and it was written carefully, at a review, to reconcile two halves of
+  [EF_001 §6.1](../00_entity/EF_001_entity_foundation.md#61-cascade-rules) that appeared to disagree about
+  whether items suspend.
+
+  **Both halves were about `Suspended`, and `Suspended` is RESIDENCY, not existence** (`D-12`, actor
+  dataflow §5.3 axis 3). Residency is engine-owned and governed by one law: **a movement on that axis must
+  be INVISIBLE IN THE FICTION.** So *of course* a passivated actor's gear passivates with it, and *of
+  course* the slot survives untouched — that is the residency cascade doing its job, and it must change no
+  fiction-visible byte. There is nothing left to reconcile.
+
+  **The location half survives** and moves into the equip validator (`V2-9`): an equip requires the item to
+  be `HeldBy` the actor.
+
+  > **This is the third time this project has hit the same shape**, and it is worth naming here because
+  > this paragraph is a good example of it: a document spends its most careful reasoning reconciling two
+  > rules that contradict each other, and the contradiction is **one field answering two questions**.
+  > `LifecycleState` did it for actors (`Suspended` beside `Destroyed`); `HeldBy` does it for ownership
+  > (`ITD-1`); `StatSlot` does it for stats (`D-105`). **The tell is identical every time — a correction
+  > that is right, careful, and load-bearing for a distinction that should not have existed.**
 - The slot is cleared only on the transitions that actually sever holding: holder `→ Destroyed` or
   `→ Removed` (§8.4), the item itself `→ Destroyed`/`Removed` (§8.4), and any location change away
   from `HeldBy(actor_ref)`.
 - Sparse: an actor with nothing equipped has **no row** (mirrors ACT_001 `actor_chorus_metadata`).
-  `equipment_version` for an absent row is **0**, so DF07's `StatEpoch` has a defined input for an
-  unequipped actor rather than a lookup failure.
+  ⚠ The original second half — *"`equipment_version` for an absent row is 0, so DF07's `StatEpoch` has a
+  defined input"* — is **withdrawn** (`IR-9`). There is no version and no cache to feed: an actor with no
+  equipment simply has **no modifier rows**, and **absence is free** (`D-27`) — no null row, no sentinel,
+  no registration. That is the same property that lets a feature contributing nothing need no opt-out.
 - **Untracked actors never have a row (ITM-C10).** See §9.4 — this is a scaling invariant, not an
   optimisation.
 
@@ -237,6 +327,25 @@ pub enum ItemOrigin {
 "provenance complexity" that RES-D1 used to justify deferring items entirely: three fields, no
 transfer ledger. Full chain-of-custody is ITM-D7.
 
+> **⚠ AMENDED 2026-08-02 (`IR-7`) — these three fields are a DERIVED COPY, and one of them may be a
+> deliberately lossy one.**
+>
+> Under `D-23` **canon is what is written to the ledger**, and the ledger already holds an item's entire
+> history — `ItemBorn` carries the origin, `ItemOwnerChanged` carries every hand it passed through. So this
+> struct is not a source; it is a **cache of the first ledger entry**, and `D-39`/`D-53` bind every derived
+> copy to one rule: **rebuildable · carries the `(reality_id, seq)` it was taken at · discarded on
+> divergence, never reconciled.** Add the `seq` or delete the fields. ITM-D7's own wording already had this
+> right — *"a transfer ledger is an event-log query, not a field"* (`IR-21`) — so it is **promoted from a
+> deferral to a decision.**
+>
+> **The one thing the row genuinely owes that the ledger does not.** Wurm Online burns the maker's name
+> into an item as a **signature**, and the signature is **lossy in proportion to the item's own quality**:
+> *"higher QL has a tendency toward giving a clearer signature, while unclear signatures have some letters
+> of the name replaced by a dot."* That is not a cache — it is a **fiction-visible, deliberately degraded
+> view** whose fidelity is itself a mechanic: good enough to recognise a master's work, not good enough to
+> be proof. **A derived view may be intentionally lossy, and the lossiness may be content.** It becomes the
+> `Signature` per-instance state slot (item-dataflow §14.4).
+
 ---
 
 ## §5 `ItemDef` — the author-declared template
@@ -263,7 +372,33 @@ pub struct ItemDefDecl {
 }
 ```
 
-### 5.2 `ItemClass` — closed enum, 8 V1
+### 5.2 `ItemClass` — ⚠ NO LONGER A CLOSED ENGINE ENUM (`IR-4`, 2026-08-02)
+
+> **The eight variants below become a declared ROSTER (`item_classes`), not an engine type.**
+>
+> `D-98` supplies the discriminator that decides this, and it is measurable rather than stylistic: **a
+> closed set is MECHANISM if the engine's arithmetic DIFFERS PER MEMBER; it is A FEATURE'S VOCABULARY IN
+> COSTUME if the engine treats members uniformly and only one feature knows their names.** The engine's
+> arithmetic does not differ per `ItemClass` — **the engine never reads the class at all.** Only this
+> feature does, for affordance defaults and digest grouping.
+>
+> **The cost of leaving it closed is the wall all four author agents hit one tier up** (`D-82`): a reality
+> whose things are `talisman`, `pill`, `spirit-stone` and `manual` must spell them `Trinket`, `Consumable`,
+> `Valuable`, `Document`. And `06_item_contract.md`:64 states the closure as a rule to the generator —
+> *"engine-fixed, 8 variants. A reality cannot add a 9th"* — which is where an author would actually hit
+> it (`IR-28`).
+>
+> **The table below survives as the ENGINE-DEFAULT roster** — the same shape RES_001 §3.5 uses for default
+> kinds, and PL_007 §6.1 for the 6-slot equip profile: shipped members an author may extend or replace,
+> not a type they cannot move.
+>
+> ⚠ **Counter-evidence, kept in view so this is not read as *"open is better"*:** `D-109` measured chaos's
+> `dimensions.yaml` — one flat global list of ~60 stat names, feature-grouped **in comments only**, with
+> **zero readers**. *"Opening a god-list does not decouple it — it removes the compiler's ability to notice."*
+> **The coupling is fixed by OWNERSHIP (whose part declares the row), not by openness.** `item_classes`
+> belongs to the item feature's part; it is not a free-for-all global.
+
+#### The 8 V1 default members
 
 | Variant | Typical | Default affordances (§5.3) | Equip? |
 |---|---|---|---|
@@ -375,12 +510,24 @@ it adds a reference, not a schema change.
 
 ### 6.2 `EquipDecl`
 
+> **⚠ `modifiers` RETYPED 2026-08-02 (`IR-8`).** `Vec<StatModifier>` becomes `Vec<ModifierTemplate>` —
+> `{ target: QuantityOrdinal, op, magnitude (fixed-point 1e-4, `D-52`), layer, condition:
+> Option<ThresholdOrdinal> }`. The `actor` and `source` fields are **not authored**; the commit supplies
+> them (`D-50`), which is what makes removal mechanical (`DELETE WHERE source = …`) and *"why is my attack
+> 47"* answerable. Full shape: item-dataflow §14.5.
+>
+> **`requirements` survives unchanged, and the distinction is worth stating because the two look alike:**
+> an **equip requirement** is checked **once, at the commit**, and refuses the equip. A modifier's
+> **`condition`** is a **declared threshold ordinal** evaluated **every tick** — one bit test in
+> `threshold_active` (`D-29`). Collapsing them would either make requirements a per-tick cost or make
+> conditions a scripting language, and `D-29` refused the second explicitly.
+
 ```rust
 pub struct EquipDecl {
     pub slot: EquipSlotId,                      // primary slot
     pub also_blocks: Vec<EquipSlotId>,          // two-handed sword: [off_hand]
-    pub modifiers: Vec<StatModifier>,           // DF07-owned type; applies WHILE EQUIPPED only (§6.5)
-    pub requirements: Vec<EquipRequirement>,    // V1: progression-gated only
+    pub modifiers: Vec<ModifierTemplate>,       // IR-8 — NOT StatModifier. Applies WHILE EQUIPPED (§6.5)
+    pub requirements: Vec<EquipRequirement>,    // V1: progression-gated only. Checked ONCE, at commit
     pub combat: Option<CombatItemProfile>,      // Some for Weapon/Armor/Shield-like
 }
 
@@ -412,73 +559,62 @@ club cannot slash. Now `Strike { tool: Item(club), strike_kind: Slash }` rejects
 > progression substrate was designed to avoid, and ITM-V5 would have read a field that does not exist.
 > Hence the two variants above, both named in PROG_001's own vocabulary.
 
-### 6.3 The DF07 seam (ITM-A3) — PL_007 is the body DF7-D1 deferred
+### 6.3 The DF07 seam — ⚠ **DELETED 2026-08-02 (`IR-9`, `IR-10`). Equipment is ROWS, not a trait.**
 
-[`DF07_001`](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md) landed the same day as this doc and
-defined the contract precisely, ending with: *"the equipment layer contributes ∅ until **PL_007 Item**
-ships an `EquipmentStats` impl — no DF7 change needed then."* This section is that impl. **Nothing in
-DF07 changes.**
+> **What was here.** ~65 lines implementing `EquipmentStats for World` — `equipped_modifiers(actor) ->
+> Vec<StatModifier>` and `equipment_version(actor) -> u64` — presented as *"the one thing PL_007
+> implements"*, discharging DF7-D1 with zero DF07 change.
 
-`StatModifier`, `StatSlot`, `ModifierOp`, and `ModifierSource` are **DF07-owned types** (DF07 §3, §5.3)
-and are reproduced here read-only:
+**Why it is deleted rather than retyped.** Read that impl as an implementation and it means: **during the
+tick, feature code runs.** Which requires the engine to call into features, which requires the engine to
+hold a list of features — `D-2` violated at the worst possible layer, because *the engine is an
+environment; it fixes the operations, never the nouns.* `D-27` generalises `CPL-A17` to close it:
 
-```rust
-// DF07 §5.3 — owned there, produced here.
-pub struct StatModifier {
-    pub slot: StatSlot,                 // closed engine enum, 10 V1 (DF07 §3) — NOT a free-form string
-    pub op: ModifierOp,                 // Flat | Percent (percent in milli: whole % × 10)
-    pub value: i32,
-    pub source: ModifierSource,          // PL_007 always emits Equipment(EntityId)
-}
+> **A contribution is DATA, never CODE. A feature does not run during the tick; it leaves ROWS, and the
+> engine folds rows.**
+
+**The replacement, end to end:**
+
+```
+EQUIP jian_001 into main_hand -- ONE commit, via commit_with_modifiers (D-50):
+  actor_equipment[LM01].main_hand = jian_001         <- this feature's own table
+  actor_equipment[LM01].off_hand  = jian_001 (blocked_by_primary)
+  modifier_rows += { LM01, ord(attack), Flat,   +10, layer=Equipment,
+                     condition=None, source=(ITM, equip#4471), expiry=None }
+  modifier_rows += { LM01, ord(speed),  Percent, +5, layer=Equipment,
+                     condition=None, source=(ITM, equip#4471), expiry=None }
+
+NEXT TICK, phase 0: the engine folds LM01's rows into values[].
+                    It has not learned that swords exist.
+
+UNEQUIP / DESTROY / HOLDER DIES -- ONE commit:
+  <the feature-table change>
+  DELETE modifier_rows WHERE source = (ITM, equip#4471)
 ```
 
-**The one thing PL_007 implements** (DF07 §6.2 declares this trait and calls it):
+**Three defects this section documented DISSOLVE rather than get fixed** — and that is the test showing the
+change is structural, not stylistic:
 
-```rust
-impl EquipmentStats for World {
-    /// Every modifier from every EQUIPPED item, with source = Equipment(item entity id).
-    /// Held-but-unequipped items contribute nothing (§6.5).
-    fn equipped_modifiers(&self, actor: ActorId) -> Vec<StatModifier> {
-        actor_equipment(actor).slots.iter()
-            .filter(|a| !a.blocked_by_primary)          // multi-slot items counted ONCE — see below
-            .flat_map(|a| item_def(a.instance).equip.modifiers.iter()
-                .map(|m| StatModifier { source: ModifierSource::Equipment(
-                        EntityId::Item(a.instance)), ..*m }))
-            .collect()                                   // DF7-A3 sorts; PL_007 need not
-    }
+| the defect, as this file recorded it | what happens to it |
+|---|---|
+| **the `blocked_by_primary` double-count** — a two-handed weapon occupies two slots with the *same* instance, so naive iteration applies its modifiers **twice**; *"this is why `blocked_by_primary` exists as a field rather than being inferred"* | **gone.** The rows are written **once**, at commit. There is no iteration to double-count. The field survives for its honest job: making unequip a single-key operation |
+| **`equipment_version` monotonicity (ITM-Q1)** — *"a same-turn equip→unequip→equip sequence would not bump `last_modified_at_turn`… V1 is safe because one action per turn"* | **gone.** A correctness argument resting on a turn-economy accident. Nothing is derived at read time, so nothing needs invalidating — and the question stops existing rather than being answered |
+| **the item-side destroy cascade** (§8.4, review finding 3) — *"`actor_equipment` would reference a destroyed entity and DF07 would keep applying its modifiers"* | **gone.** Destroying the item removes its rows in the same commit, **by signature** (`D-50`), not by a rule an implementer must remember |
 
-    /// Feeds DF07's StatEpoch (§8.2) so a cached block invalidates on any equipment change.
-    fn equipment_version(&self, actor: ActorId) -> u64 {
-        actor_equipment(actor).last_modified_at_turn
-    }
-}
-```
+**Staleness becomes impossible, not detectable** (`D-28`): the modifier row is written and removed in the
+**same commit** as the feature row that justifies it. There is no sync step to forget because there is no
+second step. **This feature had already found the shape by hand once** — `PL_007c` §8.4's equipment
+clearing runs *"**inside** the `EF_001` HolderCascade atomic batch, **not after it**"* — and
+`commit_with_modifiers` makes it the only expressible form.
 
-Two correctness notes that only appear at the seam, both of which would be silent bugs:
+**What this does to the ownership split table that was here:** it collapses. DF07 no longer owns a slot
+vocabulary this feature references (`D-100`/`D-105`), and this feature no longer implements anything DF07
+calls. The engine validates a row's **shape** — target is granted, op is in the closed set, layer is
+declared, condition names a declared threshold — **and never asks what the source means.**
 
-- **`blocked_by_primary` slots must be filtered.** A two-handed weapon occupies `main_hand` +
-  `off_hand` with the *same* `instance` (§4.2). Iterating slots naively would apply its modifiers
-  **twice**. This is why `blocked_by_primary` exists as a field rather than being inferred.
-- **`equipment_version` must change on every equip/unequip, including implicit unequips** (§8.3 step
-  4). `last_modified_at_turn` satisfies this because the whole equip is one transaction — but a
-  same-turn equip→unequip→equip sequence would not bump it. V1 is safe (one action per turn,
-  COMB_001 §3 / TG-A3); if that ever changes, this needs a monotonic counter instead. Recorded as
-  ITM-Q1.
-
-**The ownership split, for the record:**
-
-| | PL_007 | DF07 |
-|---|---|---|
-| `StatSlot` vocabulary | references | ✓ **defines** (closed, 10 V1) |
-| `StatModifier` / `ModifierOp` / `ModifierSource` types | produces values | ✓ **defines** |
-| Which item yields which modifiers | ✓ `EquipDecl.modifiers` | ✗ |
-| *When* a contribution applies | ✓ **equipped only** (§6.5) | ✗ |
-| Layer order, percent summing, clamping | ✗ | ✓ DF7-A3 / A5 / `resolve_stat_block` |
-| Cache invalidation input | ✓ `equipment_version` | ✓ `StatEpoch` consumes it |
-
-Because DF07 defines `StatSlot::StrikePower` and `StatSlot::Armor` explicitly as COMB_001 §4's two
-law-chain inputs, the "which spelling?" question this doc originally reserved is **closed on arrival**
-— there is no bridge to maintain.
+**Acceptance test, and it passes:** adding this feature touches **zero files** in actor core (`D-30`) — no
+struct field, no reserved ordinal, no registry entry, no projector edit, and `size_of::<ActorQuantities>()`
+does not move.
 
 ### 6.4 `InstrumentTag` — the operand `instrument_match` never had (resolves PROG-D15)
 
@@ -521,6 +657,15 @@ The authoritative per-consumer table now lives in **[PROG_001 §training's closu
 (where a future PROG editor will see it) and in [DF07_001 §6.1](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md),
 which reached the same conclusion independently with a stronger reason: it keeps the instrument inside
 `StatEpoch.equipment_version` rather than being a hidden per-action input the snapshot cannot see.
+
+> ⚠ **2026-08-02: the conclusion survives, its reason does not** (`IR-9`). `StatEpoch.equipment_version`
+> is gone with the cache it invalidated. The **finding** this section makes is the durable part and is
+> independent of it: two features declared an operand — PROG_001's `InstrumentMatch::Specific(ResourceKind)`
+> and DF07's `Some(Blade)` — that **neither could evaluate**, and it was invisible from either document
+> alone. That kind of finding is one only a third document can make. The mechanism must be respelled (it
+> may not name `ResourceKind`, withdrawn by `PL_007c` §12.2, nor a closed `StatSlot`); `instrument_tags`
+> survives as a field on the def (item-dataflow §14.3), and the per-consumer resolution table stays where
+> it is.
 
 Tags are author-declared rather than a closed enum, for the same reason RES_001's kinds are: a wuxia
 reality's weapon taxonomy is not a sci-fi reality's. ITM-C7 warns at bootstrap on an unreferenced tag.
@@ -636,10 +781,33 @@ PL_007 introduces **no new lifecycle states**. It writes EF_001 §6 transitions 
 | `Existing` → `Suspended` | **holder** suspends (NPC cold-decay) — cascade only, never independent | `HolderCascade` |
 | `Suspended` → `Existing` | **holder** restores on cell-load — cascade only | `AutoRestoreOnCellLoad` |
 
-**Suspension: cascade-only, never independent (corrected at cold-start review 2026-07-26).** The
-earlier flat claim *"items never go `Suspended` in V1"* was **wrong**, and it contradicted this doc's
-own ITM-C4 (§4.2), which requires an equipped item's lifecycle to move in **lockstep with its holder**.
-Both statements cannot hold. EF_001 is the arbiter and says both halves precisely:
+> **⚠ THE TABLE ABOVE IS ONE AXIS DOING THREE JOBS — corrected 2026-08-02 (`IR-11`).**
+>
+> `D-12` and actor dataflow §5.3 split lifecycle into **four orthogonal axes**, and an item uses three:
+>
+> | axis | closed by | for an item |
+> |---|---|---|
+> | **1 · Tier** | engine | `Untracked · Declared · Stateful · Irreversible` — a generic coin in a crowd's pocket is `Untracked` until someone looks (`ONT-D1`'s attention-promotes) |
+> | **2 · Existence** | **the author** | the declared vocabulary — `intact`, `broken`, `consumed`, `destroyed`, `lost`. `Existing`/`Destroyed`/`Removed` below are **one reality's members**, not the engine's type |
+> | **3 · Residency** | engine, **fiction-INVISIBLE** | `Active · Passivated · Evicted`. **`Suspended` belongs HERE**, and that is what deletes `ITM-C4` (§4.2) |
+> | **4 · Control** | — | **EMPTY. Nothing drives an item.** Recorded as evidence the axes are orthogonal rather than a bundle: four were derived from the actor, and the second subject needs three |
+>
+> **So the two `HolderCascade` rows below — `Existing → Suspended` and `Suspended → Existing` — are not
+> transitions at all.** They are the **residency cascade**, engine-owned, and by the invisibility law they
+> must change **no fiction-visible byte**. The rest of the table survives as this reality's axis-2
+> vocabulary and its transition triggers.
+>
+> **The control axis is safe to leave empty rather than reserved** because control is a **relation**
+> (`D-77` — `control_binding`, a pair table, not a field), so an item that later gains a controller — a
+> cursed blade, a bound spirit, `TVL_003`'s mounts — adds **rows**, not a schema change.
+
+**Suspension: cascade-only, never independent (corrected at cold-start review 2026-07-26).** ⚠ **The
+correction below is right and its subject moved** (`IR-11`): both halves are about `Suspended`, which is
+**residency**, so there was never a contradiction to resolve — see the axis table above. Kept because the
+reasoning is a clean worked example of the failure mode, and because EF_001's two halves still say what
+they say. The earlier flat claim *"items never go `Suspended` in V1"* was **wrong**, and it contradicted
+this doc's own ITM-C4 (§4.2), which requires an equipped item's lifecycle to move in **lockstep with its
+holder**. Both statements cannot hold. EF_001 is the arbiter and says both halves precisely:
 
 - **EF_001 §6 transitions table** — "V1 only NPCs go Suspended; Items + EnvObjects stay `Existing`
   even at distant cells V1" ⇒ an item has **no independent cold-decay path**. Nothing suspends an item
@@ -679,8 +847,10 @@ degenerate 4-role payloads. See ITM-Q2 for the alternative that was rejected.
 4. **Implicit unequip:** any item currently in the occupied set is unequipped first, in the same
    atomic write. Unequipped items stay `HeldBy` — they are not dropped.
 5. Write the primary `SlotAssignment` + one `blocked_by_primary: true` assignment per blocked slot.
-6. Emit `EVT-T3 Derived { aggregate_type: "actor_equipment" }` — this bumps `equipment_version`, which
-   is what invalidates DF07's cached stat block (§6.3).
+6. ⚠ **REWRITTEN 2026-08-02 (`IR-9`).** Write the `ModifierRow`s for every modifier the equipped def
+   declares — **in the same commit as steps 4-5**, via `commit_with_modifiers(feature_row, modifiers)`
+   (`D-50`). There is no version to bump and no cache to invalidate. Emit `EVT-T3 Derived
+   { aggregate_type: "actor_equipment" }` as before, for subscribers.
 
 Steps 3–5 are one transaction. A two-handed equip that would block a slot it cannot free (V1: cannot
 happen, since step 4 frees unconditionally) is reserved as `item.slot_occupied` for the V1+ cursed/
@@ -718,11 +888,19 @@ charge, a `Forge:DestroyItem` on worn armour, a V1+ Strike-on-Item shattering a 
 case the item's slot(s) MUST be cleared in the **same transaction** as the lifecycle write, for exactly
 the ITM-C4 reason: otherwise `actor_equipment` references a destroyed entity, and DF07's
 `equipped_modifiers` would keep applying a destroyed item's bonuses until something else happened to
-bump `equipment_version`. Stated as a rule so it is not left to the implementer:
+bump `equipment_version`.
 
-> **Any transition of an item to `Destroyed` or `Removed` clears every `actor_equipment` slot holding
-> it, in the same transaction, and bumps `equipment_version`.** Symmetric with the holder-side cascade
-> above. Multi-slot items clear their primary *and* `blocked_by_primary` rows together (AC-ITM-14).
+> ⚠ **2026-08-02 (`IR-9`): this defect DISSOLVES, and the rule that fixed it is no longer needed as a
+> rule.** It was: *"any transition of an item to `Destroyed` or `Removed` clears every `actor_equipment`
+> slot holding it, in the same transaction, and bumps `equipment_version`"* — correct, and it had to be
+> **stated so an implementer would not forget it.** Under `D-50` the destroy passes its modifier deletions
+> through the same `commit_with_modifiers` call, so **there is no second step to forget because the API
+> offers none**: atomicity becomes a *signature* rather than a rule.
+>
+> **This finding is why the deletion is cheap.** It was caught at a 2026-07-26 review (`PL_007c` finding 3)
+> rather than in production, which is the whole argument for the review discipline this feature ran. What
+> survives is the **shape** — multi-slot items clear their primary *and* `blocked_by_primary` rows together
+> (AC-ITM-14) — restated as a precondition of the commit rather than as an obligation on a human.
 
 ### 8.5 The loot seam (NOT the loot module)
 

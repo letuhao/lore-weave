@@ -2,13 +2,17 @@
 //!
 //! The per-aggregate [`rebuilder::ParallelRebuilder`] replays each aggregate
 //! independently, which is correct + fast for tables a single aggregate owns.
-//! But a table like `npc_session_memory_projection` is written from TWO
-//! aggregates — the *session* aggregate's `session.started` creates the row, and
-//! the *npc* aggregate's `npc.said` increments it — so per-aggregate replay
-//! races (the increment can run before the row exists). This path replays ALL
-//! the reality's events in GLOBAL `(recorded_at, event_id)` order in a single
-//! sequential pass, so `session.started` always precedes the `npc.said` that
-//! depends on it.
+//! But a MULTI-AGGREGATE table is written from two aggregates — one creates
+//! the row, another updates it — so per-aggregate replay races (the update can
+//! run before the row exists). This path replays ALL the reality's events in
+//! GLOBAL `(recorded_at, event_id)` order in a single sequential pass, so the
+//! creating event always precedes the one that depends on it.
+//!
+//! **No shipped table has that shape today.** The seven `pc.*` / `npc.*`
+//! projections that did were removed 2026-08-04 — vocabulary with no producer.
+//! This path is kept because the SHAPE recurs the moment two aggregates share a
+//! table, and its tests drive it through a neutral fixture pair rather than a
+//! game noun.
 //!
 //! The caller TRUNCATEs the target table first (same contract as the
 //! per-aggregate path). Sequential by design — global order is the whole point;
@@ -19,8 +23,8 @@
 //! This path deliberately drops two features the parallel path has:
 //!   - **No per-aggregate checkpoint/resume** — a killed global rebuild restarts
 //!     from scratch (re-TRUNCATE + replay). Acceptable because the one
-//!     multi-aggregate table (`npc_session_memory_projection`) is small; revisit
-//!     if a large multi-aggregate table ever appears.
+//!     multi-aggregate table this served was small; revisit if a large one
+//!     ever appears.
 //!   - **No dead-lettering** — any error aborts the whole table (the bin returns
 //!     non-zero, the reality stays frozen), rather than dead-lettering one
 //!     aggregate and continuing. Correct fail-loud posture for a single
@@ -81,7 +85,7 @@ pub fn rebuild_global_order(
         }
         // Updates stay in event order within the batch; the writer applies them
         // sequentially in ONE tx, so an Insert (session.started) is visible to a
-        // later increment (npc.said) in the same pass.
+        // later update from a second aggregate in the same pass.
         let updates: Vec<ProjectionUpdate> =
             batch.iter().flat_map(|env| runner.apply_one(env)).collect();
         writer.apply_batch(&updates)?;
@@ -136,36 +140,85 @@ mod tests {
         }
     }
 
-    fn session_started(sid: &str, npc: &str, secs: u32) -> EventEnvelope {
+    /// **A test-only projector pair, deliberately carrying no game noun.**
+    ///
+    /// The property these tests exist for is one table written by TWO
+    /// aggregate types, so the Insert from one must precede the Update from
+    /// the other in global order. That shape used to be supplied by the
+    /// `npc` projections; they were removed 2026-08-04 as vocabulary with no
+    /// producer. **The property is foundation and the vocabulary was
+    /// incidental**, so the fixture is replaced rather than the test deleted.
+    struct ProbeAlpha;
+    impl Projection for ProbeAlpha {
+        fn name(&self) -> &str {
+            "probe_alpha"
+        }
+        fn handles(&self, env: &EventEnvelope) -> bool {
+            env.aggregate_type == "alpha"
+        }
+        fn apply_event(&self, env: &EventEnvelope) -> Vec<ProjectionUpdate> {
+            match env.event_type.as_str() {
+                "alpha.opened" => vec![ProjectionUpdate::Insert {
+                    table: "probe_projection".into(),
+                    row: serde_json::json!({ "id": env.aggregate_id }),
+                    meta: dp_kernel::VerificationMeta::from_envelope(env),
+                }],
+                _ => vec![],
+            }
+        }
+    }
+
+    struct ProbeBeta;
+    impl Projection for ProbeBeta {
+        fn name(&self) -> &str {
+            "probe_beta"
+        }
+        fn handles(&self, env: &EventEnvelope) -> bool {
+            env.aggregate_type == "beta"
+        }
+        fn apply_event(&self, env: &EventEnvelope) -> Vec<ProjectionUpdate> {
+            match env.event_type.as_str() {
+                "beta.touched" => vec![ProjectionUpdate::Update {
+                    table: "probe_projection".into(),
+                    pk: serde_json::json!({ "id": env.aggregate_id }),
+                    fields: serde_json::json!({ "touched": true }),
+                    meta: dp_kernel::VerificationMeta::from_envelope(env),
+                }],
+                _ => vec![],
+            }
+        }
+    }
+
+    fn alpha_opened(row: &str, other: &str, secs: u32) -> EventEnvelope {
         EventEnvelope {
             event_id: Uuid::from_u128(secs as u128),
-            event_type: "session.started".into(),
+            event_type: "alpha.opened".into(),
             event_version: 1,
-            aggregate_id: sid.into(),
-            aggregate_type: "session".into(),
+            aggregate_id: row.into(),
+            aggregate_type: "alpha".into(),
             aggregate_version: 1,
             reality_id: Uuid::from_u128(0xBEEF),
             occurred_at: format!("2026-01-01T00:00:{secs:02}.000000Z"),
             recorded_at: format!("2026-01-01T00:00:{secs:02}.000000Z"),
-            payload: serde_json::json!({ "npc_id": npc, "session_id": sid, "aggregate_id": sid }),
+            payload: serde_json::json!({ "other_id": other, "aggregate_id": row }),
             metadata: None,
             ruleset_digest: None,
         }
     }
 
-    fn npc_said(npc: &str, sid: &str, version: u64, secs: u32) -> EventEnvelope {
+    fn beta_touched(actor: &str, row: &str, version: u64, secs: u32) -> EventEnvelope {
         EventEnvelope {
             event_id: Uuid::from_u128(100 + secs as u128),
-            event_type: "npc.said".into(),
+            event_type: "beta.touched".into(),
             event_version: 1,
-            aggregate_id: npc.into(),
-            aggregate_type: "npc".into(),
+            aggregate_id: actor.into(),
+            aggregate_type: "beta".into(),
             aggregate_version: version,
             reality_id: Uuid::from_u128(0xBEEF),
             occurred_at: format!("2026-01-01T00:00:{secs:02}.000000Z"),
             recorded_at: format!("2026-01-01T00:00:{secs:02}.000000Z"),
             payload: serde_json::json!({ "text": "hi" }),
-            metadata: Some(serde_json::json!({ "session_id": sid })),
+            metadata: Some(serde_json::json!({ "row_id": row })),
             ruleset_digest: None,
         }
     }
@@ -204,19 +257,19 @@ mod tests {
     #[test]
     fn global_order_pages_across_batches_no_dup_no_miss() {
         // batch_size = 1 forces one event per page, so the Insert
-        // (session.started) and the increment (npc.said) land in SEPARATE
+        // (alpha.opened) and the update (beta.touched) land in SEPARATE
         // batches/transactions — the cross-batch case the single-page test can't
         // reach. The earlier batch commits the row before the increment runs.
         let source = PagingSource {
             all: vec![
-                session_started("sess-1", "npc-1", 1),
-                npc_said("npc-1", "sess-1", 2, 2),
-                npc_said("npc-1", "sess-1", 3, 3),
+                alpha_opened("row-1", "agg-2", 1),
+                beta_touched("agg-2", "row-1", 2, 2),
+                beta_touched("agg-2", "row-1", 3, 3),
             ],
         };
-        let proj_mem = projections_npc::NpcSessionMemoryProjection;
-        let proj_npc = projections_npc::NpcProjection;
-        let projections: Vec<&dyn Projection> = vec![&proj_mem, &proj_npc];
+        let proj_a = ProbeAlpha;
+        let proj_b = ProbeBeta;
+        let projections: Vec<&dyn Projection> = vec![&proj_a, &proj_b];
         let writer = RecordingWriter {
             applied: Mutex::new(vec![]),
         };
@@ -228,33 +281,33 @@ mod tests {
         let applied = writer.applied.lock().unwrap();
         let mem: Vec<&ProjectionUpdate> = applied
             .iter()
-            .filter(|u| u.table() == "npc_session_memory_projection")
+            .filter(|u| u.table() == "probe_projection")
             .collect();
-        // Insert (session.started) then two increment Updates (the two npc.said).
+        // Insert (alpha.opened) then two Updates (the two beta.touched).
         assert!(matches!(mem[0], ProjectionUpdate::Insert { .. }), "{:?}", mem[0]);
         assert_eq!(
             mem.iter()
                 .filter(|u| matches!(u, ProjectionUpdate::Update { .. }))
                 .count(),
             2,
-            "two npc.said increments must be replayed"
+            "two beta.touched updates must be replayed"
         );
     }
 
     #[test]
-    fn global_order_feeds_session_started_before_npc_said_increment() {
-        // The cross-aggregate case: a session row created by the session
-        // aggregate, then an increment from the npc aggregate. In global order
+    fn global_order_feeds_one_aggregates_insert_before_anothers_update() {
+        // The cross-aggregate case: a row created by one aggregate,
+        // aggregate, then an update from a SECOND aggregate. In global order
         // the Insert must reach the writer BEFORE the increment Update.
         let source = OnePageSource {
             events: vec![
-                session_started("sess-1", "npc-1", 1),
-                npc_said("npc-1", "sess-1", 2, 2),
+                alpha_opened("row-1", "agg-2", 1),
+                beta_touched("agg-2", "row-1", 2, 2),
             ],
         };
-        let proj_mem = projections_npc::NpcSessionMemoryProjection;
-        let proj_npc = projections_npc::NpcProjection;
-        let projections: Vec<&dyn Projection> = vec![&proj_mem, &proj_npc];
+        let proj_a = ProbeAlpha;
+        let proj_b = ProbeBeta;
+        let projections: Vec<&dyn Projection> = vec![&proj_a, &proj_b];
         let writer = RecordingWriter {
             applied: Mutex::new(vec![]),
         };
@@ -267,17 +320,17 @@ mod tests {
         let applied = writer.applied.lock().unwrap();
         let mem: Vec<&ProjectionUpdate> = applied
             .iter()
-            .filter(|u| u.table() == "npc_session_memory_projection")
+            .filter(|u| u.table() == "probe_projection")
             .collect();
         assert!(mem.len() >= 2, "expected an insert + an increment, got {mem:?}");
         assert!(
             matches!(mem[0], ProjectionUpdate::Insert { .. }),
-            "session.started Insert must come first, got {:?}",
+            "the alpha Insert must come first, got {:?}",
             mem[0]
         );
         assert!(
             matches!(mem[1], ProjectionUpdate::Update { .. }),
-            "npc.said increment Update must follow, got {:?}",
+            "the beta Update must follow, got {:?}",
             mem[1]
         );
     }

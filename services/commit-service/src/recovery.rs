@@ -37,7 +37,6 @@
 
 use sqlx::postgres::PgPool;
 use sqlx::Row;
-use uuid::Uuid;
 
 use sim_core::{InputId, Tick};
 
@@ -74,7 +73,10 @@ pub struct WriterRecovery {
 /// across nodes.
 pub async fn recover_writer_state(
     pool: &PgPool,
-    reality_id: Uuid,
+    // `3E` — VERIFIED. Recovery reads the channel's committed tail to rebuild
+    // what a writer lost, so an unverified reality here reconstructs state from
+    // whichever world the caller happened to name.
+    reality_id: dp::RealityId,
     channel_id: i64,
     tail: i64,
 ) -> Result<WriterRecovery, sqlx::Error> {
@@ -89,7 +91,7 @@ pub async fn recover_writer_state(
          LIMIT $3
         "#,
     )
-    .bind(reality_id)
+    .bind(reality_id.as_uuid())
     .bind(channel_id)
     .bind(tail)
     .fetch_all(pool)

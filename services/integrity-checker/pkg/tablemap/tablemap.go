@@ -5,15 +5,22 @@
 //
 // Two resolution modes (see docs/plans/2026-06-03-l3ef-integrity-checker.md):
 //
-//   - SINGLE-aggregate tables (8 of 10, + the embedding table): the owning
-//     aggregate is resolved generically at runtime from the row's `event_id`
-//     (`SELECT aggregate_type, aggregate_id FROM events WHERE event_id=$1`), so
-//     no static aggregate derivation is needed here — only the PK columns.
-//   - CROSS-aggregate tables (npc_session_memory_projection): the row is built
-//     from BOTH a `session` aggregate AND an `npc` aggregate, so a single
-//     event_id (the last writer) is insufficient — the owning SET is derived
-//     from the PK columns via DeriveOwning, and the replay-aggregate bin replays
-//     both in global order.
+//   - SINGLE-aggregate tables: the owning aggregate is resolved generically at
+//     runtime from the row's `event_id` (`SELECT aggregate_type, aggregate_id
+//     FROM events WHERE event_id=$1`), so no static aggregate derivation is
+//     needed here — only the PK columns.
+//   - CROSS-aggregate tables: the row is built from more than one aggregate, so
+//     a single event_id (the last writer) is insufficient — the owning SET is
+//     derived from the PK columns via DeriveOwning, and the replay-aggregate bin
+//     replays both in global order.
+//
+// **No table is cross-aggregate today.** The only one ever was
+// `npc_session_memory_projection` (`session.started` created the row,
+// `npc.said` incremented it), dropped by 0017 with the rest of the pc/npc
+// projections. The MODE is kept because it is a property of the checker, not of
+// npc vocabulary — but its vacuity is asserted rather than assumed:
+// `TestNoProductionSpecIsCrossAggregateYet` fails the moment a spec sets
+// CrossAggregate, and tells that author to restore the derivation coverage.
 //
 // The PK columns MUST match contracts/migrations/per_reality/0006_projections
 // exactly; a drift test asserts the table set matches types.L3ATables.
@@ -47,39 +54,16 @@ type TableSpec struct {
 }
 
 // specs is the canonical per-table map. Keys MUST equal types.L3ATables.
+//
+// Ten -> three (`0017`) -> ONE (`0018`). Every removed key was a table no
+// production code could fill.
+//
+// NOTE the consequence for the COMPOSITE-PK path: `session_participants` was the
+// last multi-column PK here, so `PKColumns` now has only single-column data. The
+// machinery is unchanged and the DDL contract still governs it; there is simply
+// nothing left to exercise it with, which is recorded rather than papered over.
 var specs = map[string]TableSpec{
-	"pc_projection":                  {PKColumns: []string{"pc_id"}},
-	"pc_inventory_projection":        {PKColumns: []string{"pc_id", "item_code"}},
-	"pc_relationship_projection":     {PKColumns: []string{"pc_id", "other_entity_type", "other_entity_id"}},
-	"npc_projection":                 {PKColumns: []string{"npc_id"}},
-	"npc_pc_relationship_projection": {PKColumns: []string{"npc_id", "other_entity_id"}},
-	"npc_session_memory_embedding":   {PKColumns: []string{"npc_id", "session_id"}},
-	"region_projection":              {PKColumns: []string{"region_id"}},
-	"world_kv_projection":            {PKColumns: []string{"key"}},
-	"session_participants":           {PKColumns: []string{"session_id", "participant_type", "participant_id"}},
-	// CROSS-aggregate: npc_session_memory_projection is built from BOTH
-	// session.* (INSERT/archive — aggregate `session`/session_id) AND
-	// npc.memory_updated (facts/summary UPDATE — aggregate `npc`/npc_id). Both
-	// must be replayed in global order. The bin orders by (recorded_at,
-	// event_id) — an approximation tracked as DEFERRED 146.
-	"npc_session_memory_projection": {
-		PKColumns:      []string{"npc_id", "session_id"},
-		CrossAggregate: true,
-		DeriveOwning: func(pk map[string]string) ([]OwningAggregate, error) {
-			sid, ok := pk["session_id"]
-			if !ok || sid == "" {
-				return nil, fmt.Errorf("tablemap: npc_session_memory_projection pk missing session_id: %v", pk)
-			}
-			nid, ok := pk["npc_id"]
-			if !ok || nid == "" {
-				return nil, fmt.Errorf("tablemap: npc_session_memory_projection pk missing npc_id: %v", pk)
-			}
-			return []OwningAggregate{
-				{Type: "session", ID: sid},
-				{Type: "npc", ID: nid},
-			}, nil
-		},
-	},
+	"canon_projection": {PKColumns: []string{"canon_entry_id"}},
 }
 
 // Lookup returns the TableSpec for an L3.A projection table.
@@ -88,7 +72,7 @@ func Lookup(table string) (TableSpec, bool) {
 	return s, ok
 }
 
-// Tables returns the table names covered by the map (the 10 L3.A tables).
+// Tables returns the table names covered by the map (the L3.A tables).
 func Tables() []string {
 	out := make([]string, 0, len(specs))
 	for t := range specs {

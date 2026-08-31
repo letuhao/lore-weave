@@ -1,5 +1,29 @@
 # 00_actor — Index
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 > **Category:** ACT — Actor Foundation (foundation tier; unified substrate underlying NPC_001 + future PCS_001)
 > **Catalog reference:** [`catalog/cat_00_ACT_actor_foundation.md`](../../catalog/cat_00_ACT_actor_foundation.md) (will be added with ACT_001 DRAFT 2/4)
 > **Purpose:** UNIFIED actor identity + AI-drive metadata + bilateral opinion + session memory substrate. Eliminates the `npc` aggregate anomaly (only Tier 5 feature NOT per-actor unified pre-ACT_001) by lifting per-NPC aggregates to per-actor symmetric pattern. Future-proofs **AI-controls-PC-offline V1+** + **multi-PC realities** + **NPC↔NPC drama V1+** simultaneously.

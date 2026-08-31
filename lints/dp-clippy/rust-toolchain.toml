@@ -1,0 +1,16 @@
+# dp-clippy's OWN toolchain pin, deliberately separate from the workspace's.
+#
+# The workspace root pins 1.89.0 STABLE, and that pin is load-bearing: five
+# `.stderr` files in crates/dp/tests/ui/ record rustc's diagnostic prose, and
+# that output IS slice 1's Axis-2 evidence. A nightly at the root would rewrite
+# those diagnostics and turn the one leg that executes the property red for a
+# reason unrelated to it.
+#
+# A dylint lint cannot be built on stable: it links rustc's own internals
+# (`rustc_private`), which only nightly exposes and only with the `rustc-dev`
+# component. So this crate lives OUTSIDE the workspace with its own pin, is
+# built separately, and is loaded by `cargo dylint` as a dynamic library. The
+# workspace never compiles it and never sees this toolchain.
+[toolchain]
+channel = "nightly-2025-09-12"
+components = ["rustc-dev", "llvm-tools", "rust-src"]

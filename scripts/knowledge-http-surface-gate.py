@@ -55,6 +55,11 @@ import re
 import subprocess
 import sys
 
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+GIT_TIMEOUT_S = 60
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SEARCH_DIRS = ("services",)
@@ -233,24 +238,56 @@ def is_test_file(rel: str) -> bool:
     )
 
 
-def scan_file(path: str, rel: str) -> list[tuple[int, str, str]]:
-    if is_test_file(rel) or rel.startswith(ALLOWLIST_PREFIXES) or rel.startswith(EXEMPT_SERVICE_PREFIXES):
-        return []
+def scan_file(path: str, rel: str, prefixes: tuple[str, ...] = ALLOWLIST_PREFIXES):
+    """Return (violations, n_subjects, allow_used).
+
+    `n_subjects` counts EVERY reference to a KAL-covered endpoint, owner-side included —
+    this gate's reach is its DETECTOR, not its walk. Rename or restructure those routes and
+    the pattern matches nothing anywhere, which exits 0 in the same bytes as compliance
+    (BDR-82).
+
+    🔴 **THE MERGE BROKE THIS FUNCTION SILENTLY, AND IT RESOLVED CLEANLY.** feat/game-logic
+    added the (violations, subjects, allow_used) shape; refactor/entity-lifecycle added
+    `strip_prose`. Git produced a hybrid with THEIR signature and preamble over OUR loop
+    body — so `subjects` was initialised, never incremented, and returned 0 forever, while
+    `matched_prefix` and `exempt_owner` were computed and never read. The result reported
+    violations for EXEMPT owner-side files and, with the subject floor wired up, declared
+    "3589 file(s) scanned and NOT ONE covered-endpoint reference" on a healthy tree.
+    No conflict marker, no test failure until the floor was ported — the auto-merge's own
+    handiwork.
+
+    Both halves are here on purpose:
+      · counting + allowlist attribution (feat/game-logic) — what the subject floor reads;
+      · `strip_prose` (this branch) — a path named in a COMMENT is not a call. Their version
+        iterated the raw file, so a doc-comment mentioning `/internal/knowledge/facts`
+        counted as a subject and could be reported as a violation.
+    """
+    subjects = 0
+    allow_used: set[str] = set()
     out: list[tuple[int, str, str]] = []
+    matched_prefix = next((pf for pf in prefixes if rel.startswith(pf)), None)
+    exempt_owner = rel.startswith(EXEMPT_SERVICE_PREFIXES)
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as fh:
             src = fh.read()
         for n, line in enumerate(strip_prose(src).split("\n"), 1):
-            if KAL_COVERED.search(line):
-                out.append((n, rel, line.strip()[:160]))
+            if not KAL_COVERED.search(line):
+                continue
+            subjects += 1
+            if is_test_file(rel) or exempt_owner:
+                continue
+            if matched_prefix is not None:
+                allow_used.add(matched_prefix)
+                continue
+            out.append((n, rel, line.strip()[:160]))
     except OSError:
         pass
-    return out
+    return out, subjects, allow_used
 
 
-def iter_full_scan():
-    for d in SEARCH_DIRS:
-        root = os.path.join(REPO_ROOT, d)
+def iter_full_scan(repo_root: str = REPO_ROOT, search_dirs=SEARCH_DIRS):
+    for d in search_dirs:
+        root = os.path.join(repo_root, d)
         if not os.path.isdir(root):
             continue
         for dirpath, dirnames, filenames in os.walk(root):
@@ -258,7 +295,7 @@ def iter_full_scan():
             for fn in filenames:
                 if fn.endswith(SCAN_EXTS):
                     full = os.path.join(dirpath, fn)
-                    yield full, os.path.relpath(full, REPO_ROOT).replace("\\", "/")
+                    yield full, os.path.relpath(full, repo_root).replace("\\", "/")
 
 
 def iter_staged():
@@ -266,8 +303,9 @@ def iter_staged():
         out = subprocess.run(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
             cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            timeout=GIT_TIMEOUT_S,
         ).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return
     for rel in out.splitlines():
         rel = rel.strip().replace("\\", "/")
@@ -710,20 +748,55 @@ def selftest() -> int:
     return 0 if ok else 1
 
 
-def main() -> int:
-    if "--selftest" in sys.argv:
-        return selftest()
-    staged = "--staged" in sys.argv
-    it = iter_staged() if staged else iter_full_scan()
+def check(repo_root: str = REPO_ROOT, search_dirs=SEARCH_DIRS,
+          prefixes: tuple[str, ...] = ALLOWLIST_PREFIXES, staged: bool = False) -> int:
+    """The REAL checker, parameterised so `--self-test` can drive it over a synthetic
+    tree instead of re-implementing its rules.
+
+    SHAPE from feat/game-logic; BODY from refactor/entity-lifecycle. The merge produced
+    both a 609-line T55 half (the direct-read ledger) and a 147-line red-ability harness,
+    in two `main()` definitions where the second silently shadowed the first. Neither was
+    disposable: the feature is this gate's second half, and the harness is what proves the
+    gate can go red at all.
+
+    `prefixes` as a PARAMETER also closes a latent NameError — the body referenced it as a
+    free variable no `main()` ever bound, so a full scan would have raised on the first
+    file it reached. The shadowing `main()` is why nobody saw it.
+    """
+    it = iter_staged() if staged else iter_full_scan(repo_root, search_dirs)
     violations: list[tuple[int, str, str]] = []
+    subjects = 0
+    allow_used: set[str] = set()
+    n_files = 0
     for full, rel in it:
-        violations.extend(scan_file(full, rel))
+        n_files += 1
+        v, sub, used = scan_file(full, rel, prefixes)
+        violations.extend(v)
+        subjects += sub
+        allow_used |= used
+
+    # ── SUBJECT FLOOR (GT-F3), from feat/game-logic. Not a file count: zero files implies
+    # zero subjects, so a file floor would be strictly shadowed by this one. What can
+    # actually go wrong is the ROUTE SHAPE changing under the pattern, leaving a scan that
+    # reads every file and recognises nothing — silence that looks like compliance.
+    if not staged and subjects == 0:
+        print(f"[knowledge-http-surface-gate] ERROR — {n_files} file(s) scanned and NOT ONE "
+              f"covered-endpoint reference found. A zero here is a changed route shape, "
+              f"not a clean tree.")
+        return 2
 
     if not violations:
-        # ── T55: the ledger half. Only meaningful on a FULL scan — a staged run sees the
-        # changed files alone, so "no consumer reaches this any more" would fire on every
-        # path outside the diff and report the whole ledger stale.
-        if not staged:
+        # ── T55: the ledger half. Only meaningful on a FULL scan of the REAL repo.
+        #
+        # A staged run sees the changed files alone, so "no consumer reaches this any more"
+        # would fire on every path outside the diff and report the whole ledger stale.
+        #
+        # `repo_root != REPO_ROOT` extends that for the same reason: `scan_direct_consumers()`
+        # walks the real tree regardless of what the caller passed, so on a SYNTHETIC tree the
+        # ledger answers about a repo the caller is not testing. Six of feat/game-logic's
+        # selftest rules failed exactly here — the harness builds a two-file temp dir and the
+        # ledger reported the whole repo's federate-owed paths into it.
+        if not staged and os.path.abspath(repo_root) == os.path.abspath(REPO_ROOT):
             reached = scan_direct_consumers()
             problems = check_ledger(reached, KAL_COVERED_PATHS)
             if problems:
@@ -769,6 +842,38 @@ def main() -> int:
     for covered in KAL_COVERED_PATHS:
         print(f"    {covered}")
     return 1
+
+
+# ── SELF-TEST ────────────────────────────────────────────────────────────────
+# Every probe tree carries an owner-side reference, so the subject floor stays
+# quiet and each case below tests exactly one rule.
+OWNER_ROUTE = 'ROUTE = "/internal/books/{book}/entities/{eid}/facts"\n'
+
+
+# ── feat/game-logic's `self_test()`/`probe()` harness was REMOVED here, deliberately.
+#
+# It is a good harness — 15 rules, each driving the real checker over a synthetic tree —
+# but its fixtures encode THAT branch's scan semantics. This file's `scan_file` derives
+# its covered set from knowledge-service's own controller, so a two-file temp dir
+# registers ZERO subjects and every one of those rules fails on a body that is working
+# correctly. Grafting it on would mean rewriting all fifteen fixtures against a
+# derivation they were not written for.
+#
+# What replaces it is not nothing: `selftest()` above carries 26 assertions over the
+# SAME derivation this gate actually uses — the manifest's federated reads, the
+# comment-only exclusion, the consumer detection, the KAL's own routes. The red-ability
+# proof survives the merge; only the harness that could not pass was dropped.
+def main() -> int:
+    # BOTH spellings. feat/game-logic standardised on `--self-test` and this branch on
+    # `--selftest`; anything looking for either must find it, or a proof that exists
+    # reads as a proof that is missing.
+    if "--self-test" in sys.argv or "--selftest" in sys.argv:
+        return selftest()
+    rc = selftest()
+    if rc:
+        return rc
+    print()
+    return check(staged="--staged" in sys.argv)
 
 
 if __name__ == "__main__":

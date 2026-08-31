@@ -3,7 +3,6 @@
 // A glossary entity was soft-deleted (moved to trash). Reversible via glossary.entity_restored; downstream stores should hide the entity, not erase it.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlossaryEntityDeletedV1 {

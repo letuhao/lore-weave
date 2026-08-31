@@ -6,8 +6,10 @@ use crate::stats::{resolve_block, StatBlock, StatSlot};
 
 /// The combat-relevant view of a DF07 stat block.
 ///
-/// Slice 1 held these as `f64`, which **DF7-A4 forbids** ("no float anywhere
-/// in the stat path"). They are now the DF07 slots: integers, with
+/// Slice 1 held these as `f64`. **DF7-A4** (revised 2026-08-02) does not ban
+/// float outright — it requires one byte representation per value, and these
+/// numbers are integers on a fixed scale, so fixed-point is the fit that makes
+/// `NaN`/`-0.0`/rounding order not arise. They are now the DF07 slots: integers, with
 /// accuracy / dodge / crit as **per-mille** (0..1000). Every law below reads
 /// through this view, so swapping the SOURCE of the numbers — archetype today,
 /// a resolved snapshot with equipment and progression tomorrow — touches no
@@ -64,6 +66,23 @@ impl CombatStats {
     /// (IMP-A4 files `stat_archetypes` on the loaded side), and an archetype
     /// that can change without moving the digest changes every NPC in the
     /// reality silently.
+    /// One resolved slot of the reality's melee archetype.
+    ///
+    /// **`M1` — how a `CeilingBinding::Slot` becomes a number.** A declared pool
+    /// binds its ceiling to a slot precisely so a realm can RAISE it
+    /// (`QTY-A8`); resolving that binding means resolving the block and reading
+    /// the slot, which is what this does in one place instead of at every
+    /// caller.
+    ///
+    /// It does NOT go through [`Self::from_block`]: the projection is only eight
+    /// of the ten slots, so `MoveRange` and `MaxStamina` — both legal ceiling
+    /// bindings — have no field to be read from and would resolve to whatever
+    /// the eight-field view happened to hold.
+    pub fn archetype_slot(rules: &StatRules, slot: StatSlot) -> i32 {
+        let arch = StatBlock::from_slots(&rules.melee_archetype);
+        resolve_block(&arch, &[], &[], &[], rules).get(slot)
+    }
+
     pub fn archetype_melee(rules: &StatRules, max_hp: i64) -> Self {
         let mut arch = StatBlock::from_slots(&rules.melee_archetype);
         arch.set(StatSlot::MaxHp, max_hp as i32);

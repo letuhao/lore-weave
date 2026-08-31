@@ -227,10 +227,10 @@
       "endpoint_hint": "डिफ़ॉल्ट एंडपॉइंट (OpenAI, Anthropic) के लिए खाली छोड़ें।",
       "api_key": "API कुंजी",
       "api_key_ph_local": "स्थानीय के लिए वैकल्पिक",
-      "api_key_ph": "sk-...",
       "cancel": "रद्द करें",
       "adding": "जोड़ रहा है...",
-      "submit": "प्रदाता जोड़ें"
+      "submit": "प्रदाता जोड़ें",
+      "api_key_ph": "sk-..."
     },
     "edit_dialog": {
       "aria": "प्रदाता संपादित करें",
@@ -241,14 +241,14 @@
       "endpoint_ph_default": "डिफ़ॉल्ट के लिए खाली छोड़ें",
       "api_key": "API कुंजी",
       "api_key_ph_keep": "•••••••• (वर्तमान रखने के लिए खाली छोड़ें)",
-      "api_key_ph": "sk-...",
       "api_key_keep_hint": "मौजूदा कुंजी रखने के लिए खाली छोड़ें।",
       "max_concurrency": "अधिकतम समवर्ती अनुरोध (Max concurrent requests)",
       "max_concurrency_ph": "असीमित",
       "max_concurrency_hint": "यह प्रदाता एक साथ कितने अनुरोध चला सकता है। असीमित के लिए खाली छोड़ें (बैकएंड तय करेगा)। केवल तभी संख्या सेट करें जब आपके बैकएंड की कोई ज्ञात सीमा हो (जैसे स्थानीय GPU)।",
       "cancel": "रद्द करें",
       "saving": "सहेज रहा है...",
-      "submit": "परिवर्तन सहेजें"
+      "submit": "परिवर्तन सहेजें",
+      "api_key_ph": "sk-..."
     },
     "delete": {
       "title": "{{name}} हटाएं?",
@@ -265,12 +265,12 @@
       "removed": "प्रदाता हटा दिया गया",
       "remove_failed": "प्रदाता हटाने में विफल",
       "toggle_failed": "मॉडल टॉगल करने में विफल",
-      "verify_ok": "{{name}} — OK ({{ms}}ms)",
       "verify_failed": "सत्यापन विफल: {{error}}",
       "verify_request_failed": "सत्यापन अनुरोध विफल रहा",
       "unknown_error": "अज्ञात त्रुटि",
       "model_removed": "{{name}} हटा दिया गया",
-      "model_delete_failed": "मॉडल हटाने में विफल"
+      "model_delete_failed": "मॉडल हटाने में विफल",
+      "verify_ok": "{{name}} — OK ({{ms}}ms)"
     },
     "delete_blocked": "इस मॉडल को हटाया नहीं जा सकता: {{count}} सक्रिय जॉब(्स) चल रहे हैं। पहले उन्हें रोकें।",
     "delete_refs_none": "कोई संदर्भ नहीं",
@@ -371,13 +371,13 @@
       "extended_thinking": "विस्तृत सोच",
       "json_mode": "JSON मोड",
       "reasoning": "तर्क (Reasoning)",
-      "tts": "TTS",
-      "stt": "STT",
       "image_gen": "इमेज जनरेशन",
       "video_gen": "वीडियो जनरेशन",
       "embedding": "एम्बेडिंग",
       "rerank": "रीरैंक",
-      "moderation": "मॉडरेशन"
+      "moderation": "मॉडरेशन",
+      "tts": "TTS",
+      "stt": "STT"
     }
   },
   "services": {
@@ -412,17 +412,15 @@
       "key_hint_keyless": "वैकल्पिक — की-लेस लोकल बैकएंड (जैसे SearXNG) के लिए खाली छोड़ें।",
       "label": "लेबल",
       "label_ph": "जैसे searxng-default",
-      "alias": "उपनाम",
       "alias_ph": "वैकल्पिक प्रदर्शन नाम",
       "cancel": "रद्द करें",
       "submit": "सर्विस जोड़ें",
-      "adding": "जोड़ा जा रहा है..."
+      "adding": "जोड़ा जा रहा है...",
+      "alias": "उपनाम"
     },
     "edit_dialog": {
       "aria": "बाहरी सर्विस संपादित करें",
       "title": "{{name}} संपादित करें",
-      "endpoint": "एंडपॉइंट URL",
-      "key": "API कुंजी",
       "key_ph_keep": "वर्तमान की (key) बनाए रखने के लिए खाली छोड़ें",
       "key_keep_hint": "मौजूदा की (key) बनाए रखने के लिए खाली छोड़ें।",
       "max_concurrency": "अधिकतम समवर्ती अनुरोध (concurrent requests)",
@@ -430,7 +428,9 @@
       "max_concurrency_hint": "यह सर्विस एक साथ कितने अनुरोध चलाती है। असीमित के लिए खाली छोड़ें (बैकएंड तय करेगा)। केवल तभी संख्या सेट करें जब आपके बैकएंड की कोई ज्ञात सीमा हो।",
       "cancel": "रद्द करें",
       "submit": "सहेजें",
-      "saving": "सहेजा जा रहा है..."
+      "saving": "सहेजा जा रहा है...",
+      "endpoint": "एंडपॉइंट URL",
+      "key": "API कुंजी"
     },
     "toast": {
       "added": "{{name}} जोड़ा गया",
@@ -454,10 +454,10 @@
   },
   "model_modal": {
     "cap": {
-      "chat": "चैट / LLM",
-      "embedding": "एम्बेडिंग",
       "tts": "टेक्स्ट-टू-स्पीच",
       "stt": "स्पीच-टू-टेक्स्ट",
+      "chat": "चैट / LLM",
+      "embedding": "एम्बेडिंग",
       "image_gen": "इमेज जनरेशन",
       "moderation": "मॉडरेशन",
       "reranker": "रीरैंकर"
@@ -470,17 +470,17 @@
       "refresh": "रिफ्रेश",
       "model": "मॉडल",
       "search_ph": "मॉडल खोजें...",
-      "top": "टॉप",
-      "ctx": "ctx",
       "model_hint": "खोजने के लिए टाइप करें। या सूची में न होने वाले किसी कस्टम मॉडल का नाम दर्ज करें।",
       "alias": "Alias (प्रदर्शन नाम)",
       "alias_ph": "जैसे My Fast Model",
-      "context_length": "संदर्भ लंबाई",
       "notes": "नोट्स",
       "notes_ph": "इस मॉडल कॉन्फ़िगरेशन के बारे में वैकल्पिक नोट्स...",
       "cancel": "रद्द करें",
       "adding": "जोड़ा जा रहा है...",
       "submit": "मॉडल जोड़ें",
+      "top": "टॉप",
+      "ctx": "ctx",
+      "context_length": "संदर्भ लंबाई",
       "pricing_summary": "लागत: इनपुट ${{input}}/1M · आउटपुट ${{output}}/1M",
       "pricing_missing": "प्रदाता ने मूल्य निर्धारण प्रकाशित नहीं किया है — मॉडल पंजीकृत होने के बाद इसे मैन्युअल रूप से जोड़ें।"
     },

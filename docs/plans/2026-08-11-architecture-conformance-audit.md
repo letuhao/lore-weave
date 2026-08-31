@@ -1,5 +1,7 @@
 # Architecture conformance — audit, implement, run, measure
 
+**Reconciles:** **Module/service boundaries** · **Data & Logic Scope Separation** · **A gate, lint, test, `const` assertion, validator** · **Non-Vacuity** — this plan AUDITS conformance to those rows rather than adding a rule of its own; every finding it records is a drift away from one of them, and its remedies are gates, not new law.
+
 *Opened 2026-08-11. Branch `refactor/entity-lifecycle`.*
 
 ## The PO's ruling, and the order of work

@@ -479,7 +479,10 @@ pub struct RulesetEpoch(pub u32);         // per-reality monotonic; ordering, no
 - Resolved rulesets are stored immutably and are **never** GC'd while any event references them.
 
 > **RLS-D5 — Canonical encoding is part of the contract, not an implementation detail.** Deterministic
-> field order, no floats (RLS-A8), no maps with nondeterministic iteration order. A digest that varies
+> field order, **one byte representation per value** (RLS-A8 — reworded 2026-08-02 from *"no floats"*;
+> the requirement was never the type but the uniqueness of the encoding, and an unnormalised `NaN` or
+> `-0.0` is what actually breaks it, so a canonicalised float satisfies RLS-A8 while a raw one does
+> not), no maps with nondeterministic iteration order. A digest that varies
 > by serializer version is worse than no digest, because it fails *loudly and wrongly* — every replay
 > reports a mismatch that isn't one.
 

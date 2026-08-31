@@ -11,6 +11,23 @@ description = "Data-platform kernel — L2/L3/L4 event sourcing primitives (Even
 [lib]
 path = "src/lib.rs"
 
+# THIS CRATE IS THE DATA PLANE — the `DP-R3` exemption (`DP-K11`'s marker).
+#
+# `dp::forbid_raw_kernel_client` forbids a raw storage client in any crate whose
+# manifest does not carry this key. `event_store_pg.rs`, `outbox.rs`,
+# `load_aggregate.rs` and `channel.rs` hold `sqlx` handles because holding them
+# is this crate's JOB: it is the thing feature code is required to go through.
+# DP-R3's prose exempts "any crate other than `dp` itself", which taken
+# literally reds the component the rule exists to protect (run-state `2F-2`);
+# the marker is the exemption instead, and it is here rather than in a list
+# inside the lint so that it appears in the diff of whoever claims it.
+#
+# NOT a licence for convenience. A feature crate that finds the lint
+# inconvenient adds a `dp` dependency, not this key.
+[package.metadata.dp]
+dp-crate = true
+reason = "this crate IS the data plane — event_store_pg.rs, outbox.rs, load_aggregate.rs and channel.rs hold the sqlx handles that every game-layer crate is required to reach the kernel THROUGH"
+
 [features]
 # Cycle 32 (L7.E) — compile-time prod-build flag. With `prod` enabled:
 #   - `logging::Level::Debug` is dropped at the Logger boundary
@@ -44,7 +61,27 @@ tracing = { workspace = true }
 
 # Cycle 17 (L4.A) — Postgres backend. WRAPPED behind `PgEventStore` (Q-L4A-1)
 # so the `sqlx::PgPool` is never exposed in our public API.
+# `DF3` — DP-A4 role 1: Redis as the CACHE. This crate carries
+# `[package.metadata.dp] dp-crate = true`, which is DP-R3's exemption for
+# holding a raw storage client — and the reason the client belongs HERE rather
+# than in `dp`, which declares no I/O.
+#
+# Measured before adding it: `redis` was in exactly ONE Cargo.toml in the whole
+# Rust tree (commit-service, for its proposal bus) and in zero DP crates, so
+# every tier collapsed to the durable path.
+redis = { workspace = true }
 sqlx = { workspace = true }
+
+# 5-WIRE — the data-plane CONTRACT crate, so this crate can implement
+# dp::WriteBackend and dp::ReadBackend. The arrow runs from the I/O-bearing
+# crate to the contract, which is the direction that keeps the contract clean.
+dp = { path = "../dp" }
+
+# 5-WIRE — `EventEnvelope::occurred_at` is an RFC 3339 STRING, and this crate
+# had no way to produce one: every existing value is a test literal
+# ("2026-05-29T00:00:00Z"). Hand-rolling civil-date arithmetic from SystemTime
+# to avoid one workspace dependency is how a leap-year bug gets written.
+chrono = { workspace = true }
 
 # Cycle 21 (L4.D) — SHA-256 of the rendered prompt for `prompt::PromptBundle::context_hash`.
 # The rendered body itself never leaves the Composer call stack (S09 §12Y
@@ -56,6 +93,11 @@ sha2 = "0.11"
 # crate (so loom can build it). resilience.rs re-exports CircuitBreaker etc.
 # from here; the async with_timeout/retry/Bulkhead primitives stay local.
 breaker-core = { path = "../breaker-core" }
+
+# 2026-08-02 — `GoneState` moved DOWN into this leaf crate so the actor hub (a
+# PURE crate) can hold the platform existence lattice without taking tokio and
+# sqlx with it. `entity_status` re-exports it; the public path is unchanged.
+entity-existence = { path = "../entity-existence" }
 
 # W2.5 / D-S6-BULKHEAD-SHUTTLE — `shuttle` is a custom cfg (RUSTFLAGS="--cfg
 # shuttle"), not a Cargo feature — declare it so the unexpected_cfgs lint stays

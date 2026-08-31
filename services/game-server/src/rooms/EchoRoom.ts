@@ -69,7 +69,18 @@ export function __setEchoEdgeForTest(
 
 export interface JoinOptions {
   jwt?: string;
-  userId?: string;
+  // `FO-1` — `userId` USED TO BE HERE, and its absence is the fix.
+  //
+  // `authenticate` returned `options.userId ?? 'guest'`: an identity the CLIENT
+  // chose. That id keys the per-user connection cap
+  // (`edge.connectionCap.atCap(authed.userId)`), so a client could evade the cap
+  // entirely by sending a new id on every connection — the limit counted
+  // whatever the caller said it was.
+  //
+  // Removed from the TYPE rather than ignored in the body, which is the same
+  // move `SEALED-SUBJECT` made on the proposal's `actor` field: a field that is
+  // not on the wire cannot be forged, and a field the interface does not declare
+  // cannot be quietly re-read by the next edit.
 }
 
 export interface AuthedUser {
@@ -100,7 +111,26 @@ export function authenticate(options: JoinOptions | undefined, expected: string)
   if (options.jwt !== expected) {
     throw new ServerError(403, 'invalid jwt');
   }
-  return { userId: options.userId ?? 'guest' };
+  return { userId: echoIdentity() };
+}
+
+/**
+ * WHO the echo demo's connections are, decided by the SERVER.
+ *
+ * One identity for every echo connection, deliberately. There is no real user
+ * here — this room's own header says V1+ replaces the body with JWT
+ * verification against auth-service — so the honest answer to "who is this" is
+ * "the dev identity this deployment configured", not a value the caller
+ * supplied.
+ *
+ * The consequence is worth stating: the per-user connection cap now applies to
+ * all echo connections TOGETHER rather than per claimed id. That is more
+ * restrictive than before, which is the safe direction — the previous behaviour
+ * was not a looser cap, it was no cap at all, because the caller chose the key
+ * it was counted under.
+ */
+export function echoIdentity(): string {
+  return process.env.LW_ECHO_DEV_USER_ID?.trim() || 'echo-dev';
 }
 
 export function expectedToken(): string {

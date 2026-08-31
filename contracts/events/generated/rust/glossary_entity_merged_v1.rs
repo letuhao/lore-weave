@@ -3,7 +3,6 @@
 // Two glossary entities were merged, or a merge was undone; payload `op` ("merged"/"unmerged") distinguishes them. Empty actor_id means a system/auto merge, not a user one.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlossaryEntityMergedV1 {

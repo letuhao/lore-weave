@@ -101,5 +101,56 @@ if [ -n "$not_committed" ]; then
   exit 1
 fi
 
+# --- (5) the generated PYTHON actually imports -------------------------------
+#
+# WHY THIS IS NOT REDUNDANT WITH (1).
+#
+# Check (1) diffs the committed tree against a freshly generated one. That is a
+# DRIFT check, and it is structurally incapable of noticing that BOTH trees are
+# wrong — two identically-broken outputs agree perfectly. Measured 2026-08-11:
+# the first event with a field typed `Any` produced
+#
+#     from typing import TypedDict      # ...and then used `Any`
+#
+# i.e. every module of that shape raised `NameError: name 'Any' is not defined`
+# on import, the package barrel re-exports every module, and check (1) passed.
+# The Rust side had the mirror bug (an unconditional `use uuid::Uuid;`, unused
+# on NINE events) and it was invisible for a different reason: nothing compiles
+# contracts/events/generated/rust — no Cargo.toml, not a workspace member, no
+# referrer. So the only generated language with a cheap correctness check is
+# Python, and this is it.
+#
+# Deliberately import-only: it proves the module PARSES and its names RESOLVE,
+# which is exactly the class of bug the emitters can introduce. It is not a
+# schema check.
+if command -v python >/dev/null 2>&1; then
+  py_dir="$out_dir/python"
+  n_py=0
+  for f in "$py_dir"/*.py; do
+    [ -e "$f" ] || continue
+    case "$(basename "$f")" in __init__.py) continue ;; esac
+    n_py=$((n_py + 1))
+    if ! (cd "$py_dir" && python -B -c "import $(basename "$f" .py)") >/dev/null 2>&1; then
+      echo "[eventgen-validate] FAIL — generated Python does not import: $(basename "$f")"
+      (cd "$py_dir" && python -B -c "import $(basename "$f" .py)") 2>&1 | tail -3
+      echo
+      echo "    The drift check above cannot see this: it compares the committed tree"
+      echo "    to a freshly generated one, and two identically-broken trees agree."
+      echo "    Fix the EMITTER (tools/eventgen/emit_python.go), not the output."
+      exit 1
+    fi
+  done
+  # Reach floor. An empty glob and a clean tree are the same silence, and this
+  # check's whole value is that it actually ran on something.
+  if [ "$n_py" -lt 10 ]; then
+    echo "[eventgen-validate] FAIL — import-checked only $n_py generated Python module(s)"
+    echo "    (floor 10, measured 17). The glob is pointed at nothing."
+    exit 1
+  fi
+  echo "[eventgen-validate] $n_py generated Python module(s) import cleanly"
+else
+  echo "[eventgen-validate] WARN — python not on PATH; skipped the import check"
+fi
+
 echo "[eventgen-validate] PASS — $out_dir matches _registry.yaml and is fully committed"
 exit 0

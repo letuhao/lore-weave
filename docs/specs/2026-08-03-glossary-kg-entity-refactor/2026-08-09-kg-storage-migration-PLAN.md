@@ -1,5 +1,7 @@
 # KG storage migration — port first, then engine
 
+**Reconciles:** **Reading/writing entity or KG knowledge** · **Data Persistence Rules** · **Per-service DB ownership / no cross-DB FK** · **Destructive DB ops in tests** — a migration plan for the KG store. The last row governs its fixtures specifically: the plan moves graph data, so every step that DROPs runs against a throwaway.
+
 **Status:** 🔒 **SEALED 2026-08-09** — the *reasoning* is closed and must not be re-litigated from memory; re-read it. **All 30 opened questions are closed.** No code has changed. Decision register: [ARCHITECTURE-OVERVIEW §9](2026-08-09-ARCHITECTURE-OVERVIEW.md#9--sealed--decision-register). **Opened:** 2026-08-09 · **Branch:** `refactor/entity-lifecycle`
 **Verified against:** `df18e9049`
 **Decision this serves (PO):** migrate off Neo4j **before** the lifecycle/versioning refactor.

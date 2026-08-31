@@ -192,7 +192,7 @@ fn build_stmt(target_table: &str, update: &ProjectionUpdate) -> Result<Stmt, Str
             // Create-or-update by pk: INSERT the full column set, and on a pk
             // conflict UPDATE the non-pk columns to the incoming values. Fixes
             // the latent defect where a projection whose FIRST event is a change
-            // (no preceding Insert — npc_pc_relationship / pc_relationship) never
+            // (no preceding Insert — a relationship-style table) never
             // materialized a row because a plain UPDATE hit 0 rows.
             let pk_map = as_object(pk, "Upsert.pk")?;
             let field_map = as_object(fields, "Upsert.fields")?;
@@ -411,21 +411,21 @@ mod tests {
     #[test]
     fn insert_sql_lists_columns_so_omitted_ones_take_their_default() {
         let u = ProjectionUpdate::Insert {
-            table: "pc_projection".into(),
+            table: "region_projection".into(),
             row: json!({"pc_id": Uuid::from_u128(2).to_string(), "name": "Aria"}),
             meta: meta(),
         };
-        let stmt = build_stmt("pc_projection", &u).unwrap();
+        let stmt = build_stmt("region_projection", &u).unwrap();
         let (sql, payload) = (&stmt.sql, &stmt.payload);
         // Column-list INSERT (NOT `SELECT *`): unlisted columns fall to their
         // schema DEFAULT instead of an explicit NULL. The (…) target list and
         // the SELECT source list are the identical column string.
-        let prefix = "INSERT INTO pc_projection (";
+        let prefix = "INSERT INTO region_projection (";
         assert!(sql.starts_with(prefix), "{sql}");
         let cols = &sql[prefix.len()..sql.find(')').unwrap()];
         assert!(
             sql.contains(&format!(
-                ") SELECT {cols} FROM jsonb_populate_record(NULL::pc_projection, $1::jsonb)"
+                ") SELECT {cols} FROM jsonb_populate_record(NULL::region_projection, $1::jsonb)"
             )),
             "target + source column lists must match: {sql}"
         );
@@ -454,24 +454,24 @@ mod tests {
         // unsafe key must be rejected (defense in depth — keys come from
         // trusted projection code, but the writer validates regardless).
         let u = ProjectionUpdate::Insert {
-            table: "pc_projection".into(),
+            table: "region_projection".into(),
             row: json!({"pc_id; DROP TABLE x": "1"}),
             meta: meta(),
         };
-        assert!(build_stmt("pc_projection", &u).is_err());
+        assert!(build_stmt("region_projection", &u).is_err());
     }
 
     #[test]
     fn update_sql_sets_fields_plus_meta_and_pk_where() {
         let u = ProjectionUpdate::Update {
-            table: "pc_projection".into(),
+            table: "region_projection".into(),
             pk: json!({"pc_id": Uuid::from_u128(2).to_string()}),
             fields: json!({"last_event_version": 9}),
             meta: meta(),
         };
-        let stmt = build_stmt("pc_projection", &u).unwrap();
+        let stmt = build_stmt("region_projection", &u).unwrap();
         let (sql, payload) = (&stmt.sql, &stmt.payload);
-        assert!(sql.contains("UPDATE pc_projection AS t SET"), "{sql}");
+        assert!(sql.contains("UPDATE region_projection AS t SET"), "{sql}");
         assert!(
             sql.contains("last_event_version = r.last_event_version"),
             "{sql}"
@@ -632,12 +632,12 @@ mod tests {
     #[test]
     fn tombstone_is_unsupported() {
         let u = ProjectionUpdate::Tombstone {
-            table: "pc_projection".into(),
+            table: "region_projection".into(),
             pk: json!({"pc_id": "x"}),
             meta: meta(),
         };
         assert!(
-            build_stmt("pc_projection", &u)
+            build_stmt("region_projection", &u)
                 .unwrap_err()
                 .contains("Tombstone")
         );
@@ -646,12 +646,12 @@ mod tests {
     #[test]
     fn rejects_non_object_row() {
         let u = ProjectionUpdate::Insert {
-            table: "pc_projection".into(),
+            table: "region_projection".into(),
             row: json!([1, 2, 3]),
             meta: meta(),
         };
         assert!(
-            build_stmt("pc_projection", &u)
+            build_stmt("region_projection", &u)
                 .unwrap_err()
                 .contains("must be a JSON object")
         );

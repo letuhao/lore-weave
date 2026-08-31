@@ -22,8 +22,12 @@
 //! minutes of confusion into one line of diagnostic. Same reasoning as RLS-A5's
 //! rule that a tombstone against a missing ID is a load error and not a no-op.
 
-use ruleset_core::{CombatRules, QuantityError, ResourceError, Ruleset, SLOT_COUNT, StatRules};
+use ruleset_core::{
+    CombatRules, LimitError, Limits, OrdinalSpace, QuantityError, ResourceError, Ruleset,
+    SLOT_COUNT, StatRules,
+};
 
+use crate::patch_limits::LimitsPatch;
 use crate::patch_resource::ResourcePatch;
 use serde::Deserialize;
 
@@ -232,14 +236,47 @@ pub struct RulesetPatch {
     /// layer that declares them rather than dropping them.
     #[serde(default)]
     pub progression_kinds: Vec<crate::patch_progression::ProgressionKindPatch>,
+
+    /// `M2` — the verbs this layer declares (`CMD-1`).
+    ///
+    /// A table of tables like `resources`, and for the same reason: the shape is
+    /// irreducibly a record, so a flat list would have nowhere to put the
+    /// effect. **Ordinals are assigned in declaration order across the merged
+    /// stack and never reused** — see `VerbTable`.
+    #[serde(default)]
+    pub verbs: Vec<crate::patch_verb::VerbPatch>,
+
+    /// `LIM-1` — **how big this world declares itself to be.**
+    ///
+    /// The one block here that constrains the OTHER blocks rather than
+    /// contributing to them, which is why it is applied first (see
+    /// [`RulesetPatch::apply`]).
+    #[serde(default)]
+    pub limits: LimitsPatch,
 }
 
-/// Why a patch could not be folded. Two sources, kept apart so the loader can
-/// name the right one in its error rather than flattening both into "invalid".
+/// Why a patch could not be folded. Four sources, kept apart so the loader can
+/// name the right one rather than flattening them into "invalid".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PatchError {
     Quantity(QuantityError),
     Resource(ResourceError),
+    /// `M2` — a verb row this layer could not declare.
+    Verb(crate::patch_verb::VerbPatchError),
+    /// `LIM-1` — the reality's own declared size refused this, or the build
+    /// cannot hold the size the reality asked for.
+    ///
+    /// **Kept apart from the three above rather than folded into them**, for the
+    /// reason the type-level comment on `PatchError` already gives: these have a
+    /// different AUDIENCE. `Quantity`/`Resource`/`Verb` say a row is malformed;
+    /// this one says the row is fine and the world is full.
+    Limit(LimitError),
+}
+
+impl From<LimitError> for PatchError {
+    fn from(e: LimitError) -> Self {
+        Self::Limit(e)
+    }
 }
 
 impl From<QuantityError> for PatchError {
@@ -260,9 +297,21 @@ impl RulesetPatch {
     /// Fallible only because of `quantities`: a scalar override cannot fail, but
     /// an identity can be malformed, duplicated within one layer, or push the
     /// set past the engine's ordinal capacity.
-    pub fn apply(&self, base: &mut Ruleset) -> Result<(), PatchError> {
+    pub fn apply(&self, base: &mut Ruleset, limits: &mut Limits) -> Result<(), PatchError> {
         self.combat.apply(&mut base.combat);
         self.stats.apply(&mut base.stats);
+
+        // `LIM-1` — the declared size, BEFORE any row of this layer.
+        //
+        // That order is load-bearing and is the whole reason a limit is usable
+        // at all: an author writes the block and the rows it governs in ONE
+        // file, so a layer that raises `verbs` to 24 and then declares its 20th
+        // verb has to see its own raise. Applying limits after the rows would
+        // refuse the most natural thing anyone writes.
+        //
+        // `declared` is passed so a layer cannot narrow the world out from under
+        // rows a LOWER layer already put in it.
+        self.limits.fold_into(limits, base)?;
 
         // UNION, in layer-priority order. A quantity's ordinal is fixed by where
         // it FIRST appears across the merged stack, so a later layer restating
@@ -278,6 +327,13 @@ impl RulesetPatch {
                 return Err(PatchError::Quantity(QuantityError::Duplicate { name: name.clone() }));
             }
             seen_here.push(name);
+            // `LIM-1` — the reality's ceiling, checked before the engine's.
+            //
+            // Order matters for the DIAGNOSTIC, not the outcome: both refuse,
+            // but only one of them is the author's to act on. Asking the
+            // reality first means an author who set `quantities = 8` is told
+            // that, instead of being told about a capacity they never chose.
+            limits.room_for(OrdinalSpace::Quantities, base.quantities.len(), name)?;
             base.quantities.push(name).map_err(PatchError::Quantity)?;
         }
 
@@ -296,7 +352,25 @@ impl RulesetPatch {
                 })
             })?;
             let decl = r.to_decl(ordinal).map_err(PatchError::Resource)?;
+            limits.room_for(OrdinalSpace::Resources, base.resources.len(), &r.quantity)?;
             base.resources.declare(decl, base.quantities.len()).map_err(PatchError::Resource)?;
+        }
+
+        // `M2` — verbs, AFTER the pools, for the reason pools come after the
+        // quantities: a layer may declare a quantity, its pool and a verb that
+        // spends it in one file, and resolving a name before it exists would
+        // refuse the most natural thing an author writes.
+        //
+        // `offer_registry: false` — CMD-11/CMD-12 are PARKED, so a verb
+        // targeting another actor is refused rather than shipped unauthorised.
+        // It is a parameter and not a constant inside the table so the refusal
+        // disappears by itself the day the registry lands.
+        for v in &self.verbs {
+            let decl = v.to_decl(&base.quantities).map_err(PatchError::Verb)?;
+            limits.room_for(OrdinalSpace::Verbs, base.verbs.len(), &v.name)?;
+            base.verbs
+                .declare(decl, base.quantities.len(), false)
+                .map_err(|e| PatchError::Verb(crate::patch_verb::VerbPatchError::Table(e)))?;
         }
         Ok(())
     }

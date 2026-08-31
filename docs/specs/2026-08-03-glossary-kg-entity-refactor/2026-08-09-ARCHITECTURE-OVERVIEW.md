@@ -1,5 +1,7 @@
 # Knowledge architecture — overview
 
+**Reconciles:** **Reading/writing entity or KG knowledge** · **Two-layer glossary↔knowledge** · **Module/service boundaries** · **Per-service DB ownership / no cross-DB FK** — this document is the knowledge tier's overview and states how those four rows compose there; it does not introduce a fifth.
+
 **Status:** 🔒 **SEALED 2026-08-09** — the *reasoning* is closed and must not be re-litigated from memory; re-read it. **All 30 opened questions are closed.** No code has changed. Decision register: **§9 below**. **Opened:** 2026-08-09 · **Branch:** `refactor/entity-lifecycle`
 **Verified against:** `df18e9049`
 **This is the entry point.** Detail lives in

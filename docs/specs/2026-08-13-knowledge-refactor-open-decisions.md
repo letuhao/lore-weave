@@ -1,5 +1,7 @@
 # Knowledge-refactor open decisions — the spec that replaces the deferral register
 
+**Reconciles:** **Reading/writing entity or KG knowledge** · **No-Defer-Drift** · **A gate, lint, test, `const` assertion, validator** — this spec RETIRES `D-*` deferrals of the knowledge refactor, which is exactly what No-Defer-Drift requires a spec to do, and each decision it records names the gate that keeps it.
+
 **Status: DECIDED.** Every row below was a `D-*` deferral in
 [`docs/plans/2026-08-09-knowledge-architecture-refactor.md`](../plans/2026-08-09-knowledge-architecture-refactor.md).
 They are decisions now.

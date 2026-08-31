@@ -1,0 +1,1012 @@
+openapi: 3.1.0
+info:
+  title: world-service — reality provisioning (internal)
+  version: "1.0.0"
+  description: |
+    The internal HTTP surface of `services/world-service`. Frozen before the routes
+    were written (contract-first, CLAUDE.md), and machine-checked against the real
+    router by `route_conformance` in `services/world-service/tests/` — an
+    undocumented versioned route and a documented-but-unrouted path both fail the
+    build. That test exists because `contracts/.spectral.yaml` is NOT WIRED
+    (DEFERRED 078), so a frozen YAML on its own buys no enforcement.
+
+    **This surface is INTERNAL.** Invariant I1 puts all external traffic through
+    `api-gateway-bff`; every versioned route here is gated on the `X-Internal-Token`
+    header (`service_http::require_internal`) and is not reachable by an end user.
+    The probes are deliberately ungated — a docker healthcheck and a load balancer
+    hit them without credentials.
+
+    Provisioning is not a new capability. `admin-cli`'s `reality provision` command
+    already reaches the same library path by exec'ing the `provision` worker binary;
+    this route is a second invoker shape over `Provisioner::provision_reality`, not
+    a reimplementation of it.
+
+servers:
+  - url: http://world-service:7120
+    description: in-cluster, service-to-service only
+
+tags:
+  - name: probes
+    description: Liveness / readiness / metrics. Unauthenticated by design.
+  - name: actor-control
+    description: |
+      Who drives which actor, in which reality (`SEALED-BINDING`, migration 034).
+      A player is not a KIND of actor — it is a CONTROL INTERFACE — so these
+      operations are about the BINDING, never about a character's lifecycle.
+  - name: realities
+    description: Per-reality database provisioning.
+
+paths:
+  /livez:
+    get:
+      tags: [probes]
+      summary: Process liveness
+      description: 200 for as long as the binary runs. Does not touch the database.
+      responses:
+        "200": { $ref: "#/components/responses/Health" }
+
+  /readyz:
+    get:
+      tags: [probes]
+      summary: Readiness
+      description: Pings the meta Postgres pool. 503 when the database is unreachable.
+      responses:
+        "200": { $ref: "#/components/responses/Health" }
+        "503": { $ref: "#/components/responses/Health" }
+
+  /metrics:
+    get:
+      tags: [probes]
+      summary: Prometheus text exposition
+      responses:
+        "200":
+          description: metrics
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /internal/v1/realities:
+    post:
+      tags: [realities]
+      summary: Provision a reality
+      description: |
+        Runs the 11-step provisioning flow: validate → pick a shard under a
+        per-shard advisory lock → register pending → CREATE DATABASE → apply every
+        migration in `contracts/migrations/manifest.yaml` → pgbouncer → Prometheus →
+        backup policy → provisioning→seeding→active.
+
+        **Idempotent.** Re-posting the same `reality_id` re-enters the flow and
+        reports each already-complete step as `skipped` rather than failing. This is
+        the property `1b14-01` was filed against, so it is asserted against the live
+        path rather than a fake.
+
+        Capacity is read live from `shard_utilization` + `reality_registry`; the
+        pick→register critical section holds an advisory lock, which is what closes
+        the TOCTOU that the `provision-drill` binary never exercised because it
+        fabricated its snapshot.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProvisionRequest" }
+      responses:
+        "201":
+          description: |
+            `outcome: provisioned` — no registry row existed, so the reality was
+            placed under the advisory lock and all 11 steps ran.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionResponse" }
+        "200":
+          description: |
+            Nothing was created. Either `outcome: resumed` — a row existed in a
+            live state (`provisioning`/`seeding`) and the flow re-entered pinned
+            to the shard the registry names, reporting each already-complete step
+            as `skipped` — or `outcome: already_provisioned`, where the reality
+            has moved past provisioning and no steps ran at all.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionResponse" }
+        "400":
+          description: The request failed validation (nil `reality_id`, empty `locale` or `reason`, `deploy_cohort` > 99), or the body was not readable JSON.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "401":
+          description: Missing or mismatched `X-Internal-Token`.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "409":
+          description: No shard has capacity, or a concurrent transition means the caller must reload and decide rather than blind-retry.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "422":
+          description: The body was valid JSON but not a `ProvisionRequest` (a missing or mistyped field).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "500":
+          description: A provisioning effect failed (bridge, shard, or migration). The detail is logged, not returned.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "504":
+          description: The request exceeded the 300s ceiling.
+
+  /internal/v1/actors:
+    post:
+      tags: [actor-control]
+      summary: Create (or adopt) an actor in a reality
+      description: |
+        The per-reality actor registry — `S-9`'s missing conversion site, and
+        the precondition `actor_control_binding` has assumed since migration
+        `034` without it existing.
+
+        The registry ALLOCATES `entity_id` (the island's `sim-core::EntityId`)
+        so that it is the source of truth for that number rather than a second
+        copy of one the island also assigns. Supply `entity_id` explicitly only
+        to ADOPT an entity that already exists in a running island.
+
+        This mints no new vocabulary and is not a fifth spelling of
+        who-is-acting under `SF-6`: it writes down the mapping between two
+        spellings that already exist, which is the conversion site `S-9`
+        measured as having zero instances.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateActorRequest" }
+      responses:
+        "201":
+          description: The actor exists and carries both identities.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateActorResponse" }
+        "400":
+          description: The reality is not registered, or the entity id is taken.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /internal/v1/actor-control/grant:
+    post:
+      tags: [actor-control]
+      summary: Grant a user control of an actor
+      description: |
+        Creates the live binding `(user_ref_id, reality_id, actor_id)`. The write
+        goes through the Go meta-write bridge so the `meta_write_audit` row and
+        the `actor.control.granted` outbox event land in the SAME transaction as
+        the binding (`I8`).
+
+        **One live driver per actor.** Enforced by a partial unique index over
+        the non-revoked rows (migration `041`). A grant for an actor somebody
+        else drives is a `409` and never an idempotent `200`: a second principal
+        claiming a subject is not a retry, and reporting it as success would
+        hide the confused-deputy refusal from the caller.
+
+        A handoff is therefore **revoke, then grant** — which is also what keeps
+        the event names honest, because a grant is an INSERT and a revoke is an
+        UPDATE.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GrantControlRequest" }
+      responses:
+        "201":
+          description: "`outcome: granted` — a new live binding was created."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlResponse" }
+        "200":
+          description: |
+            `outcome: already_granted` — this same user already holds the live
+            binding. Idempotent: a retried grant carries the identical intent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlResponse" }
+        "400":
+          description: |
+            The actor does not exist in this reality. A binding to an actor with
+            no durable identity is the dangling pointer `S-9` describes, so the
+            grant refuses at the write edge rather than leaving a resolver to
+            discover it at turn time.
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: |
+            A DIFFERENT user holds the live binding. Revoke first; do not
+            blind-retry.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /internal/v1/actor-control/revoke:
+    post:
+      tags: [actor-control]
+      summary: End the live binding for an actor
+      description: |
+        Sets `revoked_at` on the live row. The actor lives on — only the binding
+        ends, which is why this is a timestamp and not a status enum
+        (migration `034` dropped its predecessor's enum after finding five of
+        its six members belonged to the transport, to `GoneState`, or to user
+        preferences).
+
+        Keyed by the ACTOR, not by the user: the invariant is one live driver
+        per actor, so the actor is what names the row. `expected_user_ref_id` is
+        an optional compare-and-set — send it when acting on a character list
+        that may be stale, or the revoke will remove whoever took over instead.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevokeControlRequest" }
+      responses:
+        "200":
+          description: |
+            `outcome: revoked` — a live binding was ended. Or
+            `outcome: already_revoked` — there was none, which is the end state
+            the caller asked for. Idempotent by END STATE; the body says which.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlResponse" }
+        "409":
+          description: |
+            `expected_user_ref_id` no longer holds the binding. Reload and
+            decide — a stale caller must surface, never blind-retry.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /internal/v1/actor-control/subject:
+    post:
+      tags: [actor-control]
+      summary: Which actor does this user drive in this reality?
+      description: |
+        The OWNER-SCOPED read — the answer to "which actor do I drive", never
+        "who drives this actor". Those are different tiers:
+        `contracts/meta/meta-sensitive-read-paths.yml` registers the cross-user
+        direction as `actor_binding_cross_user` and describes it, verbatim, as
+        `WHERE user_ref_id != $caller_user`. This route is the `=` side, so it
+        writes no `meta_read_audit` row.
+
+        Its caller is `game-server`, which has no Postgres client and must not
+        grow one (`I3`: TypeScript is gateway/realtime). Before this existed the
+        transport mapped users to entities from `LW_CHANNEL_ACTOR_MAP`, an env
+        var — so a human could only drive an actor if an operator edited the
+        environment and restarted the process.
+
+        Internal-gated like the writers, and for a sharper reason: the request
+        NAMES the user it asks about, so on a public edge `user_ref_id` would be
+        an oracle. The client never names its own subject (`SEALED-SUBJECT`);
+        the transport takes it from the redeemed WS ticket.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubjectRequest" }
+      responses:
+        "200":
+          description: |
+            The question has an answer — INCLUDING "nobody". `self: null` is the
+            ordinary state for a spectator and for the instant after a revoke,
+            so it is a 200 with a null rather than a 404: the resource being
+            described is the binding relation, and "there is no live binding"
+            is a fact about it, not its absence.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubjectResponse" }
+        "400":
+          description: |
+            Reserved for the three cases where `self: null` would be a LIE:
+            the reality is not registered (a typo — answering "you drive
+            nobody" about a world that does not exist is the bug the revoke
+            path shipped once); the reality does not accept commands (frozen,
+            archived, provisioning — hop 2 needs a `dp::RealityId`, which only
+            a passing control-plane bind produces); or the live binding names
+            an actor this reality's registry has no row for, which is the
+            dangling pointer `S-9` describes and must not read as spectating.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /internal/v1/space/view:
+    post:
+      operationId: spaceView
+      summary: What is here — the assembled space view for one node
+      description: |
+        `A4`. Answers *"what is here"* for one node: the node itself, its
+        ancestors nearest-first, its portal ring, and its occupants.
+
+        **A POST for a READ**, for the same reason `/actor-control/subject` is
+        one: the request names the node it asks about, so on a public edge it
+        would be an oracle over the shape of a world. Internal-gated.
+
+        **The reader chooses a BUDGET, never a set (`SDF-A26`).** The body
+        carries caps; which layers render is the layer owner's declaration, so
+        there is deliberately no way to ask for "just the occupants".
+
+        Every section is ordered explicitly on an integer key and every cap is
+        applied AFTER that ordering (`SDF-A4`), so a truncated section is a
+        PREFIX of a total order rather than a sample — two callers with the same
+        budget get the same view, and a replay gets the view the original run
+        got.
+
+        Ancestors are bounded by `DP-Ch1`'s depth `CHECK` and not by a cap of
+        this API's. `SDF-Q15` measured the default budget at 511 B over 41 nodes
+        in 14.10 ms.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SpaceViewRequest" }
+      responses:
+        "200":
+          description: |
+            The view. `truncated` is `true` when any cap elided something — a
+            truncated view must SAY it is truncated, or a reader cannot tell an
+            empty room from a crowded one.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceViewResponse" }
+        "400":
+          description: |
+            A budget above the per-section ceiling (200). **Refused, not
+            clamped**: answering a smaller question and labelling it as the
+            answer to the one asked is the same defect `truncated` exists to
+            prevent one layer down. Also the ordinary bad-body and
+            reality-not-bindable cases.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: |
+            The node does not exist in this reality. A statement about the
+            WORLD that the caller can act on, so it is a 404 and not a 500.
+          $ref: "#/components/responses/Problem"
+
+  /internal/v1/space/where-is:
+    post:
+      operationId: spaceWhereIs
+      summary: Where is this entity
+      description: |
+        `A4`. Answers *"where is entity N"*. `/space/view` answers the other
+        half — *"what is at node X"* — and a caller that wants to render an
+        actor's surroundings needs both.
+
+        Internal-gated for the same reason as `/space/view` and
+        `/actor-control/subject`: the request names the thing it asks about.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WhereIsRequest" }
+      responses:
+        "200":
+          description: |
+            The answer, as one of THREE distinct facts — `unbound`, `in_cell`,
+            or `not_in_a_cell`. **`unbound` is a 200, not a 404**: the resource
+            being described is the binding relation, and "this entity is
+            nowhere" is a fact about it rather than its absence. It is also the
+            ordinary state — until a world exists to be sited in, every actor is
+            unbound.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WhereIsResponse" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500":
+          description: |
+            Includes `node-not-on-the-map`: the entity is bound to a channel
+            that has no `map_layout` row. `0025`'s foreign key guarantees the
+            CHANNEL exists, not that it is on the map, so this is reachable and
+            is a fault rather than a shrug.
+          $ref: "#/components/responses/Problem"
+
+  /internal/v1/world/seed:
+    post:
+      operationId: seedWorld
+      summary: Give an existing reality its world structure
+      description: |
+        `A4`. Seeds the `channels` / `map_layout` / `place` rows for a reality
+        that **already exists**.
+
+        `seed_world`'s only production caller was the provisioner's
+        `seed_world_structure` step, which runs at provision time and only then.
+        Every reality provisioned before that step existed therefore had no way
+        to reach the producer at all — leaving hand-written `INSERT`s as the only
+        route, which is what `I-3` refuses for migrations and for the same reason.
+
+        It is the **same function** the provisioner calls, so `PF_001` §5,
+        `SPG-A3`'s containment matrix and `DP-Ch1`'s depth are enforced once.
+
+        **Idempotent.** A re-seed answers `200` with three zeroes — the honest
+        "nothing to do", and distinguishable by the caller from a first seed.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SeedWorldRequest" }
+      responses:
+        "200":
+          description: |
+            What was written. Zeroes are the idempotent case, not a failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeedWorldResponse" }
+        "400":
+          description: |
+            Includes `world-rejected`, carrying the `rule_id` of the clause that
+            refused — a refusal is the operator's to fix and retrying without
+            changing the declaration will refuse again, which is why it is
+            separated from the `500` rather than collapsed into it.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Problem" }
+
+components:
+  securitySchemes:
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: Shared service-to-service token. Byte-exact match; see `service_http::require_internal`.
+
+  responses:
+    Health:
+      description: probe result
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [status, endpoint]
+            properties:
+              status: { type: string, enum: [ok, degraded] }
+              endpoint: { type: string, enum: [livez, readyz] }
+
+  schemas:
+    CreateActorRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id]
+      properties:
+        reality_id: { type: string, format: uuid }
+        entity_id:
+          type: integer
+          format: int64
+          description: |
+            Omit to let the registry allocate. Supply only to adopt an entity
+            the island already has.
+        siting:
+          type: [object, "null"]
+          description: |
+            `A3` — WHERE the actor arrives, and as what.
+
+            Optional, and its absence is a real answer rather than a default: an
+            actor with no siting exists and is nowhere, which is what every actor in
+            this repo was until `A3`. When present, the `actors` row and the
+            `entity_binding` row land in ONE transaction — a bad `node` refuses the
+            whole call, so an actor cannot exist with nowhere to be.
+
+            Siting an entity that is already sited is refused. Arriving is not
+            moving; letting the same write do both would make them
+            indistinguishable in the log.
+          $ref: "#/components/schemas/Siting"
+
+    Siting:
+      type: object
+      additionalProperties: false
+      required: [node, entity_type, lifecycle_state]
+      description: |
+        Mirrors `world_service::spawn::Siting`. Only the `in_cell` variant of
+        `EntityLocation` is expressible: `held_by`, `in_container` and `embedded`
+        are real and belong to an inventory owner that does not exist yet, and
+        adding their fields here would decide that owner by accident.
+      properties:
+        node:
+          type: integer
+          format: int64
+          description: |
+            The `channels.id` to site the entity in. `0025`'s foreign key is
+            `ON DELETE RESTRICT`, so a node that does not exist refuses the call
+            rather than being silently nulled.
+        entity_type:
+          type: string
+          enum: [pc, npc, item, env_object]
+          description: |
+            The discriminator `EF_001` §3.1 stores denormalised. Closed in SQL by
+            `entity_binding_type_closed` and closed again in Rust, because an
+            enumerated set of call sites is default-uncovered (`NV-3`).
+        lifecycle_state:
+          type: integer
+          description: |
+            The reality's DECLARED lifecycle ordinal, and there is deliberately no
+            default. `0025`'s `D-12`: *"Existing / Suspended / Destroyed / Removed
+            is ONE REALITY'S VOCABULARY, not the engine's."* No reality has declared
+            one yet — `contracts/meta/transitions.yaml` carries the `reality`
+            resource and nothing for entities — so the caller supplies it. A
+            hardcoded default here would be the engine choosing a reality's words.
+
+    CreateActorResponse:
+      type: object
+      required: [reality_id, actor_id, entity_id]
+      properties:
+        reality_id: { type: string, format: uuid }
+        actor_id:
+          type: string
+          format: uuid
+          description: The PLATFORM identity — what a binding points at.
+        entity_id:
+          type: integer
+          format: int64
+          description: The ISLAND identity — what the simulation acts on.
+    GrantControlRequest:
+      type: object
+      additionalProperties: false
+      required: [user_ref_id, reality_id, actor_id]
+      properties:
+        user_ref_id:
+          type: string
+          format: uuid
+          description: WHO drives. Opaque; carries no PII on its own.
+        reality_id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+          description: |
+            The per-reality actor identity. Its FK lives in the per-reality
+            database, so it is deliberately unconstrained in the meta table.
+        reason:
+          type: string
+          description: Recorded on the `meta_write_audit` row.
+    RevokeControlRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, actor_id]
+      properties:
+        reality_id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+        expected_user_ref_id:
+          type: string
+          format: uuid
+          description: |
+            Optional CAS. When present the revoke applies only while this user
+            still holds the binding; otherwise 409.
+        reason:
+          type: string
+    SubjectRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, user_ref_id]
+      properties:
+        reality_id:
+          type: string
+          format: uuid
+        user_ref_id:
+          type: string
+          format: uuid
+          description: |
+            WHOSE binding to resolve. The transport takes this from the redeemed
+            WS ticket, never from anything the client sent.
+    SubjectResponse:
+      type: object
+      required: [reality_id, user_ref_id, self]
+      properties:
+        reality_id: { type: string, format: uuid }
+        user_ref_id: { type: string, format: uuid }
+        self:
+          type: [object, "null"]
+          required: [actor_id, entity_id]
+          description: |
+            `null` when this user drives nobody here. Present and non-null is
+            the only shape that authorises acting.
+          properties:
+            actor_id:
+              type: string
+              format: uuid
+              description: |
+                The PLATFORM identity. Returned because this is the caller's own
+                binding — no cross-user disclosure — and it is the durable id an
+                operator greps when someone reports the wrong character.
+            entity_id:
+              type: integer
+              format: int64
+              minimum: 0
+              description: |
+                The ISLAND identity — what the simulation acts on, and what the
+                transport needs. Non-negative: `sim_core::EntityId` is a `u64`,
+                and a negative BIGINT cast into one names an entity that does
+                not exist. Refused at both edges rather than cast.
+    ControlResponse:
+      type: object
+      required: [outcome, reality_id, actor_id]
+      properties:
+        outcome:
+          type: string
+          enum: [granted, already_granted, revoked, already_revoked]
+        reality_id: { type: string, format: uuid }
+        actor_id: { type: string, format: uuid }
+    ProvisionRequest:
+      type: object
+      required: [reality_id, locale, deploy_cohort, reason]
+      description: Mirrors `world_service::provisioner::ProvisionRequest` field-for-field.
+      properties:
+        reality_id:
+          type: string
+          format: uuid
+          description: |
+            Caller-generated, so the audit chain stays coherent across the retry of a
+            request whose response was lost. The nil UUID is refused.
+        locale:
+          type: string
+          description: BCP-47 (`en`, `en-US`, `ja-JP`). Must be non-empty.
+          example: en-US
+        deploy_cohort:
+          type: integer
+          minimum: 0
+          maximum: 99
+          description: Deploy canary cohort (SR05 §12AH.4).
+        reason:
+          type: string
+          description: Written into the MetaWrite audit trail. Must be non-empty.
+          example: operator provisioned via world-service HTTP
+        owner_user_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            The user who owns this reality, or `null` for a platform-owned one. `null`
+            is a real category, not "unknown" — the bridge derives `owner_kind` from
+            it, so the registry's (kind, owner) pair is consistent by construction.
+            The nil UUID is refused; use `null`.
+        world:
+          type: array
+          default: []
+          description: |
+            The authored world structure, written into the reality's own database
+            during the `seeding` stage (step 10, `seed_world_structure`).
+
+            **Absent or empty means the step is SKIPPED — it does NOT mean "use a
+            default world".** A starter map every reality inherits, that no author
+            declared and no author can change without a code change, is the rot this
+            field exists to avoid. Backward compatible: a caller that has never heard
+            of this field provisions exactly as before.
+
+            A declaration that violates `PF_001` §5 (a `Domain` with no place, a
+            containment violation, a cycle, more than one root) is refused with 400
+            carrying the `place.*` / `map.*` rule id that refused it — the reality
+            stays in `seeding` and nothing is written.
+          items:
+            $ref: "#/components/schemas/NodeDecl"
+
+    NodeDecl:
+      type: object
+      additionalProperties: false
+      required: [id, level_name, kind, pos_x, pos_y]
+      description: Mirrors `world_service::world_seed::NodeDecl` field-for-field.
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The `channels.id` this node occupies, and therefore its `PlaceId`.
+        parent:
+          type: [integer, "null"]
+          format: int64
+          description: '`null` for the single root; `0019` permits exactly one per reality.'
+        level_name:
+          type: string
+          description: |
+            The reality's own word for this level. Free text: `DP-A13` keeps the data
+            plane agnostic to it, which is why `kind` is a closed set and this is not.
+        kind:
+          type: string
+          enum: [universe, world, region, locale, domain, passage, arena]
+          description: |
+            The structural kind, authoritative on the row and never derived (`SPG-Q1`).
+            `vessel` is reserved and not accepted.
+        pos_x:
+          type: integer
+          description: Parent-relative X in `MAP_001`'s 0..1000 frame (`SPG-A5`).
+        pos_y:
+          type: integer
+          description: Parent-relative Y in the same frame.
+        place:
+          type: [object, "null"]
+          description: |
+            Required when `kind` is `domain`, forbidden otherwise. Both directions are
+            rejections rather than warnings.
+          $ref: "#/components/schemas/PlaceDecl"
+        scale:
+          type: [string, "null"]
+          enum: [pocket, region, continent, super_continent, megaplanet, gigaplanet, null]
+          description: |
+            Required when this node is a `world` under a `domain` (`SDF-A19`), optional
+            otherwise. `null` on any other edge means the generator's default, which
+            this tier does not choose.
+
+    PlaceDecl:
+      type: object
+      additionalProperties: false
+      required: [place_type, canon_ref, name_vi]
+      description: '`PF_001` §3.1s scalar core — the declaration an author writes.'
+      properties:
+        place_type:
+          type: string
+          description: One of `PF_001` §4s ten, lowercased.
+        canon_ref:
+          description: |
+            `BookCanonRef`. Travels as free-form JSON because ownership of that schema
+            is deferred (`PF-D12`) — giving it a shape here would decide by accident.
+        name_vi:
+          type: string
+          description: Required at V1 — the project's primary locale.
+        name_en:
+          type: [string, "null"]
+          description: Optional at V1.
+
+    SpaceViewRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, node]
+      description: Mirrors `world_service::server::handlers::space::SpaceViewRequest`.
+      properties:
+        reality_id: { type: string, format: uuid }
+        node:
+          type: integer
+          format: int64
+          description: The `channels.id` to look at.
+        portal_ring:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 200
+          description: |
+            How many portals out of this node to include. Omit for the measured
+            default (12). Above 200 the request is refused, never clamped.
+        occupants:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 200
+          description: |
+            How many occupants to include. Omit for the measured default (24).
+            Above 200 the request is refused, never clamped.
+
+    SpaceViewResponse:
+      type: object
+      additionalProperties: false
+      required: [reality_id, here, ancestors, portal_ring, occupants, truncated]
+      description: |
+        Mirrors `world_service::space_view::SpaceView`, flattened under
+        `reality_id`.
+      properties:
+        reality_id: { type: string, format: uuid }
+        here: { $ref: "#/components/schemas/ViewNode" }
+        ancestors:
+          type: array
+          description: |
+            Nearest first. Bounded by `DP-Ch1`'s depth `CHECK` — an EXISTING
+            invariant — and not by a cap of this API's.
+          items: { $ref: "#/components/schemas/ViewNode" }
+        portal_ring:
+          type: array
+          description: |
+            CONNECTIVE adjacency (`SDF-A25`) — the portal graph, not the mesh. A
+            caller wanting geometric neighbours is asking a different question.
+            Ascending node ids.
+          items: { type: integer, format: int64 }
+        occupants:
+          type: array
+          description: Entity ids, ascending.
+          items: { type: integer, format: int64 }
+        truncated:
+          type: boolean
+          description: |
+            True when a cap elided something. A truncated view must SAY it is
+            truncated, or a reader cannot tell "nothing here" from "too much
+            here" — the difference between an empty room and a crowded one.
+
+    ViewNode:
+      type: object
+      additionalProperties: false
+      required: [node_id, kind, level_name]
+      properties:
+        node_id: { type: integer, format: int64 }
+        kind:
+          type: string
+          enum: [universe, world, region, locale, domain, passage, arena]
+        level_name:
+          type: string
+          description: The reality's own word for this level (`DP-A13`).
+        place_name:
+          type: [string, "null"]
+          description: '`null` unless the node is a `Domain` carrying a `place` row.'
+
+    SeedWorldRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, world]
+      properties:
+        reality_id:
+          type: string
+          format: uuid
+          description: The reality to seed. It must already exist and be bindable.
+        world:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items: { $ref: "#/components/schemas/NodeDecl" }
+          description: |
+            The authored declaration, as `contracts/world/*.json` spells it.
+
+            **Required, with no default.** `ProvisionRequest.world` defaults to
+            empty because there empty means "this provision does not seed"; here
+            an empty body would mean "seed nothing" and would answer `200` with
+            three zeroes — indistinguishable from a successful re-seed.
+
+            `maxItems` is BINARY CAPACITY, not a world limit: it bounds what one
+            request may cost the process, and a larger world is not wrong, only
+            not something to push through a single HTTP call.
+
+    SeedWorldResponse:
+      type: object
+      additionalProperties: false
+      required: [reality_id, channels_written, layouts_written, places_written]
+      properties:
+        reality_id: { type: string, format: uuid }
+        channels_written:
+          type: integer
+          format: int64
+          description: New `channels` rows. Zero on a re-seed.
+        layouts_written:
+          type: integer
+          format: int64
+          description: New `map_layout` rows. Zero on a re-seed.
+        places_written:
+          type: integer
+          format: int64
+          description: New `place` rows. Zero on a re-seed.
+
+    WhereIsRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, entity_id]
+      properties:
+        reality_id: { type: string, format: uuid }
+        entity_id:
+          type: integer
+          format: int64
+          description: The island entity id, as `actors.entity_id` allocates it.
+
+    WhereIsResponse:
+      type: object
+      additionalProperties: false
+      required: [reality_id, whereabouts]
+      properties:
+        reality_id: { type: string, format: uuid }
+        whereabouts: { $ref: "#/components/schemas/Whereabouts" }
+
+    Whereabouts:
+      type: object
+      required: [kind]
+      description: |
+        Three DISTINCT facts, discriminated by `kind`, and deliberately not an
+        optional location. Collapsing them would merge two different truths into
+        one silence: an entity with no binding at all and an entity held in
+        someone's hand would both read as null. `0025` models location as a sum
+        type with a `CHECK` enforcing exactly one arm, and flattening it here
+        would undo that at the edge.
+      properties:
+        kind:
+          type: string
+          enum: [unbound, in_cell, not_in_a_cell]
+        entity_id:
+          type: integer
+          format: int64
+          description: '`in_cell` only.'
+        node:
+          type: integer
+          format: int64
+          description: '`in_cell` only — the `channels.id` the entity occupies.'
+        node_kind:
+          type: string
+          description: 'The node''s `MapKind`. Named `node_kind` and not `kind` because the discriminant already owns `kind` -- a field of that name would emit a DUPLICATE JSON key and destroy the tag. The rename reached the description here before it reached this KEY, which read `kind_of_node` and matched nothing on the wire.'
+        level_name:
+          type: string
+          description: '`in_cell` only — the reality''s own word for the level (`DP-A13`).'
+        place_name:
+          type: [string, "null"]
+          description: '`in_cell` only — present when the node is a `Domain` carrying a `place`.'
+        location_kind:
+          type: string
+          enum: [held_by, in_container, embedded]
+          description: |
+            `not_in_a_cell` only. WHERE it is is then its holder, which is a
+            different question this endpoint deliberately does not answer: an
+            inventory owner does not exist yet, and traversing to one here would
+            decide that owner by accident.
+    ProvisionResponse:
+      type: object
+      required: [outcome, reality_id, shard_id, db_name]
+      description: |
+        Mirrors `world_service::server::handlers::ProvisionResponse`, which wraps
+        `provisioner::ProvisionReport` with the outcome discriminant. The three
+        outcomes are the three states a caller can be in and **none of them is an
+        error** — re-posting the same `reality_id` is safe.
+      properties:
+        outcome:
+          type: string
+          enum: [provisioned, resumed, already_provisioned]
+        reality_id: { type: string, format: uuid }
+        shard_id:
+          type: string
+          description: The shard the reality lives on.
+          example: pg-shard-0.internal
+        db_name:
+          type: string
+          description: "Convention: `lw_reality_<first-12-hex>`."
+          example: lw_reality_cd0747d24b94
+        status:
+          type: string
+          description: |
+            Present **only** for `already_provisioned` — the lifecycle status that
+            is the reason nothing was done.
+          example: active
+        steps:
+          type: array
+          description: |
+            All 11 steps in order. **Absent** for `already_provisioned`, because no
+            steps ran; an empty array would claim a run that did not happen.
+          items: { $ref: "#/components/schemas/StepOutcome" }
+
+    StepOutcome:
+      type: object
+      required: [outcome, step]
+      description: |
+        Serde-tagged enum (`tag = "outcome"`, `content = "step"`). `skipped` means an
+        idempotent re-entry found the step already complete; `done` means it executed
+        on this call.
+      properties:
+        outcome: { type: string, enum: [done, skipped] }
+        step:
+          type: string
+          enum:
+            - validate
+            - pick_shard
+            - register_pending
+            - create_database
+            - apply_migrations
+            - register_with_pgbouncer
+            - register_prometheus_scrape
+            - register_backup_policy
+            - transition_to_seeding
+            - transition_to_active
+            - emit_reality_created
+
+    ProblemDetails:
+      type: object
+      description: RFC 7807, as rendered by `service_http::ProblemDetails`.
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        message:
+          type: string
+          description: Frontend-readable message; the repo's RFC 7807 extension.

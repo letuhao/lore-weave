@@ -1,0 +1,111 @@
+{
+  "_comment": [
+    "THE admin-cli <-> actor-control WORKER SEAM. Machine-checked from BOTH sides.",
+    "",
+    "D-PC-SEAM-NO-CONTRACT. This seam spans two services and two languages joined by",
+    "nothing but a process boundary: Go renders argv in `workerArgs`, Rust parses it in",
+    "`Args::parse`; Rust emits one JSON object in `emit`, Go unmarshals it into",
+    "`ActorControlOutcome`. Two lists in two languages with no compiler between them —",
+    "a rename on either side keeps BOTH unit suites green and breaks the live loop.",
+    "That is the shape the Frontend-Tool Contract standard exists for, and this file is",
+    "that standard's own pattern applied one seam over.",
+    "",
+    "It was NOT unguarded before this file: `RunActorControl` refuses an outcome the",
+    "worker did not name and a created actor with no id, and the invoker cross-checks",
+    "the echoed ids. Those are runtime guards on the load-bearing fields, discovered by",
+    "an operator at the moment of failure. This is a test.",
+    "",
+    "AUTHORED FROM MEASUREMENT, 2026-08-20 — every entry below was read out of the two",
+    "sources, not recalled. Both sides agreed at the time of writing (18 JSON keys, 8",
+    "flags, 3 ops), so this file freezes an agreement rather than declaring one.",
+    "",
+    "TO CHANGE THE SEAM: edit this file in the SAME COMMIT as both sides. The two tests",
+    "read it at runtime, so a contract-only edit reds them without recompiling either.",
+    "",
+    "  Rust: services/world-service/tests/worker_seam_contract.rs",
+    "  Go:   services/admin-cli/internal/commands/actor_control_seam_test.go"
+  ],
+
+  "version": 1,
+
+  "ops": ["grant", "revoke", "create-actor"],
+
+  "flags": {
+    "_comment": [
+      "Every flag Go may render and Rust must accept. `--dry-run` is value-less; the",
+      "rest take one argument. A flag Go renders that Rust does not parse is an",
+      "`unknown flag` exit 2 two processes from where it was typed — which is exactly",
+      "how far apart the two lists are without this file."
+    ],
+    "valued": [
+      "--actor-id",
+      "--entity-id",
+      "--expected-user-ref-id",
+      "--op",
+      "--reality-id",
+      "--reason",
+      "--user-ref-id"
+    ],
+    "valueless": ["--dry-run"]
+  },
+
+  "outcome_keys": {
+    "_comment": [
+      "Every key that may appear on the worker's stdout, and which Go reads. Asserted as",
+      "a SET in both directions: a key Rust emits that Go does not read is silently",
+      "dropped, and a key Go reads that Rust never emits is a field that is always the",
+      "zero value — the write-only-behaviour bug, one process over."
+    ],
+    "always": ["op", "status", "reality_id", "dry_run"],
+    "conditional": [
+      "actor_id",
+      "mode",
+      "outcome",
+      "changed",
+      "created_actor_id",
+      "entity_id",
+      "reality_accepts_commands",
+      "actor_exists",
+      "actor_is_driven",
+      "would_grant",
+      "would_revoke",
+      "would_create_actor",
+      "entity_id_source",
+      "note",
+      "conflict",
+      "error"
+    ]
+  },
+
+  "outcome_values": {
+    "_comment": [
+      "Closed sets. `status` and `outcome` are what an operator's script matches on, so",
+      "a rename is a breaking change to something nobody compiles.",
+      "",
+      "`actor_created` appears here and NOT in `actor_control_flow::Outcome`: the flow",
+      "enum covers the four grant/revoke results, and create-actor's outcome word is",
+      "written by the worker directly. Recorded because the asymmetry is real and a",
+      "reader looking for a fifth enum variant will not find one."
+    ],
+    "status": ["ok", "refused", "failed"],
+    "outcome": [
+      "granted",
+      "already_granted",
+      "revoked",
+      "already_revoked",
+      "actor_created"
+    ],
+    "entity_id_source": ["allocated", "adopted"]
+  },
+
+  "exit_codes": {
+    "_comment": [
+      "The verdict. Parsed by `SubprocessActorControlInvoker.Run`, which treats 2 as",
+      "'nothing was attempted' and reads `conflict` out of the JSON on 1 to decide",
+      "whether the operator should reload and decide or go look at the bridge."
+    ],
+    "0": "the operation succeeded, or the dry run completed",
+    "1": "refused or failed; stdout carries `error`, and `conflict` says which",
+    "2": "setup/config error; nothing was attempted"
+  }
+}

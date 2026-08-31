@@ -1,5 +1,7 @@
 # Red team — the 2026-08-09 knowledge architecture
 
+**Reconciles:** **Reading/writing entity or KG knowledge** · **Module/service boundaries** · **Non-Vacuity** — a red-team OF the overview above. It asserts nothing new: every attack it records is aimed at one of those rows holding or not holding.
+
 **Status:** 🔴 **ADVERSARIAL REVIEW** · ✅ **DISCHARGED 2026-08-09** — all 7 required changes applied; the design is now [SEALED](2026-08-09-ARCHITECTURE-OVERVIEW.md#9--sealed--decision-register) · **Opened:** 2026-08-09 · **Verified against:** `df18e9049`
 **Target:** [ARCHITECTURE-OVERVIEW](2026-08-09-ARCHITECTURE-OVERVIEW.md) +
 [DIAGRAM](2026-08-09-knowledge-architecture-DIAGRAM.md) +

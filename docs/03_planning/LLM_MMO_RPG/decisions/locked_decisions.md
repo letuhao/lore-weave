@@ -8,6 +8,30 @@ generated_by: scripts/chunk_doc.py
 
 ## Locked decisions (history)
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 As user confirms items, they move here with the answer and any rationale.
 
 | # | Decision | Answered on | Answer | Rationale / Notes |
@@ -33,8 +57,8 @@ As user confirms items, they move here with the answer and any rationale.
 | MV10 | Auto-freeze inactive reality | 2026-04-23 | **30 days no activity** (configurable) | Stored in config. |
 | MV11 | Auto-archive frozen reality | 2026-04-23 | **90 days frozen** (configurable) | Stored in config. |
 | MV5 | Cross-reality travel | 2026-04-23 | **Deferred to world-travel feature** | Full feature spec is a separate doc. V1–V2 assume no travel. BUT: some primitives cannot be deferred — see §"MV5 primitives" below. |
-| PC-A1 | PC creation mode | 2026-04-23 | Full custom + templates | [04 §3.1](../04_player_character/03_creation.md) |
-| PC-A2 | Play as existing glossary character | 2026-04-23 | Supported | [04 §3.2](../04_player_character/03_creation.md) |
+| PC-A1 | PC creation mode | 2026-04-23 | Full custom + templates | [04 §3.1](../_superseded/04_player_character/03_creation.md) |
+| PC-A2 | Play as existing glossary character | 2026-04-23 | Supported | [04 §3.2](../_superseded/04_player_character/03_creation.md) |
 | PC-A3 | Canon validation at PC creation | 2026-04-23 | None — paradox allowed | Runtime enforcement via World Rule feature (DF4) |
 | PC-B1 | PC death behavior | 2026-04-23 | Per-reality rule; death is just an event | V1 default: permadeath; configurable by World Rules (DF4) |
 | PC-B2 | Offline PC in world | 2026-04-23 | Visible, vulnerable; user should `/hide`; LLM does not act | Details in Daily Life feature (DF1) |

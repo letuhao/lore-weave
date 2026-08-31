@@ -162,16 +162,87 @@ export function projectTurnOutcome(ev: CommittedEvent): TurnOutcome | null {
 
 // ── D1/D2: structured domain facts ──────────────────────────────────────────
 
-/** A committed combat fact. Mirrors `commit-service::domain::CombatEvent`; the
- *  two are joined only by this shape, so the closed `type` set is asserted in
- *  the tests rather than trusted. */
+/** A committed combat fact. Mirrors `commit-service::domain::CombatEvent`.
+ *
+ *  The closed `type` set is asserted against
+ *  `turn.schema.json#/$defs/DomainEvent` — **the contract, never the other
+ *  language.** That sentence used to read *"asserted in the tests rather than
+ *  trusted"* and it was FALSE: the tests asserted `OutcomeKind` and
+ *  `DiscardReason`, and nothing anywhere touched this set. Under that comment
+ *  the two sides drifted to **8 variants against 6** — `status_expired` and
+ *  `encounter_ended` are emitted by the server and had no arm here, so
+ *  `renderEvent` returned `undefined` for a fact the log really contains.
+ *  A comment claiming coverage is worse than no comment: it stops the reader
+ *  looking. */
 export type DomainEvent =
   | { type: 'struck'; attacker: string; target: string; damage: number; hp_left: number }
   | { type: 'missed'; attacker: string; target: string }
   | { type: 'defended'; actor: string }
   | { type: 'moved'; actor: string; stance: string }
   | { type: 'fled'; actor: string }
-  | { type: 'downed'; target: string };
+  | { type: 'downed'; target: string }
+  | { type: 'status_expired'; actor: string }
+  /** `M2` — a DECLARED verb resolved. Carries ordinals and no names: the verb's
+   *  ordinal, its declared CUE ordinal (`CMD-4` — that something must be SHOWN,
+   *  on a channel of its own), and the quantity it moved. A client that wants a
+   *  name resolves it against the reality's tables, which is the only place an
+   *  ordinal means anything (`QTY-A14`). */
+  | {
+      type: 'acted';
+      actor: string;
+      verb: number;
+      cue: number;
+      quantity: number;
+      delta: number;
+      left: number;
+    }
+  /** `M2` / `CMD-5` — the refusal, as a committed fact. A substrate that only
+   *  commits its happy path has proved half of it, and a client that cannot see
+   *  a refusal cannot tell one from an action that never arrived. */
+  | { type: 'refused'; actor: string; verb: number; reason: RefusalReason }
+  | { type: 'encounter_ended'; outcome: EncounterOutcome };
+
+/** Why a declared verb was refused. Mirrors `commit_service::RefusalReason`
+ *  **against `contracts/game-wire/turn.schema.json`**, never against the Rust
+ *  enum directly — joining the two languages to each other with no contract
+ *  between them is exactly what produced the 8-against-6 drift above. */
+export type RefusalReason =
+  | 'unknown_verb'
+  | 'requirement_unmet'
+  | 'cannot_afford'
+  | 'actor_absent'
+  | 'not_acting'
+  | 'encounter_resolved';
+
+/** Every `RefusalReason`, for the same reason `DOMAIN_EVENT_TYPES` exists: a
+ *  union's members are not enumerable at runtime. */
+export const REFUSAL_REASONS = [
+  'unknown_verb',
+  'requirement_unmet',
+  'cannot_afford',
+  'actor_absent',
+  'not_acting',
+  'encounter_resolved',
+] as const satisfies readonly RefusalReason[];
+
+/** Terminal result of an encounter. Mirrors `game_rules::combat::EncounterOutcome`. */
+export type EncounterOutcome = 'victory' | 'defeat' | 'disengaged';
+
+/** Every `DomainEvent` discriminant, in one place a test can read.
+ *  Kept beside the union because a union's members are not enumerable at
+ *  runtime — the reason the drift above could not be caught by types alone. */
+export const DOMAIN_EVENT_TYPES = [
+  'struck',
+  'missed',
+  'defended',
+  'moved',
+  'fled',
+  'downed',
+  'status_expired',
+  'acted',
+  'refused',
+  'encounter_ended',
+] as const satisfies readonly DomainEvent['type'][];
 
 export function asDomainEvents(raw: unknown): DomainEvent[] {
   return Array.isArray(raw) ? (raw as DomainEvent[]) : [];
@@ -193,6 +264,24 @@ export function renderEvent(e: DomainEvent): string {
       return `${e.actor} flees`;
     case 'downed':
       return `${e.target} goes down`;
+    case 'status_expired':
+      // The server emits this rather than lapsing silently, precisely so the
+      // client can render it. Dropping it here re-silenced the fact the Rust
+      // variant's own doc comment exists to make audible.
+      return `${e.actor} recovers`;
+    case 'acted':
+      // The CUE is what presentation keys on (`CMD-4`); this fallback line is
+      // deliberately not a translation of it. Rendering a verb by NAME here
+      // would put the engine's ordinal space and the player's language in one
+      // place, which is the boundary the cue channel exists to keep apart.
+      return `${e.actor} acts (cue ${e.cue}): ${e.delta >= 0 ? '+' : ''}${e.delta} -> ${e.left}`;
+    case 'refused':
+      // Rendered rather than dropped, for the reason `status_expired` is: a fact
+      // the client never hears is indistinguishable from one that never
+      // happened, and a refusal is the half of `CMD-5` most easily lost.
+      return `${e.actor} cannot (${e.reason})`;
+    case 'encounter_ended':
+      return `the encounter ends (${e.outcome})`;
   }
 }
 

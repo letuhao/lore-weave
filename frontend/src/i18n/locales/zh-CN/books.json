@@ -2,39 +2,6 @@
   "translateIntent": {
     "hint": "选择一本需要翻译的书籍 —— 打开它，然后使用“翻译”选项卡开始翻译。"
   },
-  "help": {
-    "open": "打开帮助",
-    "tour": "新手引导",
-    "title": "书籍管理",
-    "description": "书籍工作区快速指南。",
-    "intro": "在此管理您的书籍，然后打开其中一本进行研究、编辑和构建世界观。",
-    "items": [
-      "创建一本新书或导入手稿以开始创作。",
-      "打开书籍以编辑章节、术语表和本体论。",
-      "使用搜索和筛选功能快速查找书籍。"
-    ],
-    "startTour": "开始引导",
-    "back": "返回",
-    "next": "下一步",
-    "done": "完成",
-    "steps": [
-      {
-        "title": "查找书籍",
-        "description": "搜索和筛选功能可帮助您快速打开目标书籍。",
-        "body": "使用搜索框和语言筛选器来缩小列表范围。"
-      },
-      {
-        "title": "创建或导入",
-        "description": "从一本新书或现有的手稿开始。",
-        "body": "选择“新建书籍”并输入详细信息，或者选择一个文件进行导入。"
-      },
-      {
-        "title": "打开工作区",
-        "description": "所有书籍工具都集中在工作区中。",
-        "body": "在书籍内部，您可以处理章节、术语表、本体论、翻译等内容。"
-      }
-    ]
-  },
   "workspace": "我的书籍",
   "new_book": "新建书籍",
   "search_placeholder": "搜索书籍...",
@@ -54,10 +21,10 @@
     "book_description_placeholder": "这本书讲的是什么？",
     "cover": "封面图片",
     "cover_hint": "PNG, JPG，最大 5MB",
+    "submit": "创建书籍",
     "import_file": "导入书籍文件",
     "import_file_hint": "选择一个 FB2 或 EPUB 文件。系统将打开相应的导入流程。",
-    "import_metadata_hint": "源元数据将用于设置书名和详细信息。",
-    "submit": "创建书籍"
+    "import_metadata_hint": "源元数据将用于设置书名和详细信息。"
   },
   "empty": {
     "title": "暂无书籍",
@@ -155,7 +122,6 @@
     "count_other": "{{count}} 个章节",
     "import": "导入",
     "importPdf": "导入 PDF",
-    "importEpub": "Import EPUB",
     "new": "新章节",
     "col": {
       "title": "标题",
@@ -188,76 +154,8 @@
       "title": "将章节移至回收站？",
       "description": "“{{title}}”将被移至回收站。",
       "confirm": "移至回收站"
-    }
-  },
-  "epubImport": {
-    "title": "Import EPUB",
-    "description": "Inspect the book, choose chapters, then import asynchronously.",
-    "close": "Close",
-    "chooseFile": "Choose EPUB file",
-    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
-    "inspecting": "Inspecting {{percent}}%",
-    "unknownAuthor": "Unknown author",
-    "duplicateSource": "This source was imported previously. Merge by source key is available.",
-    "target": "Target",
-    "existingBook": "Add to this book",
-    "newBook": "Create a new book from EPUB metadata",
-    "metadataPolicy": "Metadata conflict policy",
-    "metadata": {
-      "title": "Title",
-      "description": "Description",
-      "language": "Language",
-      "subjects": "Subjects"
     },
-    "keepExisting": "Keep existing",
-    "useSource": "Use EPUB source",
-    "mergeSource": "Merge with EPUB source",
-    "applyCover": "Apply source cover when policy allows",
-    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
-    "noCover": "No usable source cover was found.",
-    "selectedChapters": "{{count}} chapters selected",
-    "selectAll": "Select all",
-    "selectChapter": "Select {{title}}",
-    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
-    "strategyLabel": "Existing-book strategy",
-    "importOptions": "Import options",
-    "options": {
-      "preserve_hierarchy": "Preserve EPUB hierarchy",
-      "import_images": "Import supported images",
-      "import_footnotes": "Import footnotes",
-      "retain_source": "Retain the source file for recovery"
-    },
-    "strategy": {
-      "append": "Append",
-      "merge_by_source_key": "Merge by source key",
-      "replace_all": "Replace all"
-    },
-    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
-    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
-    "queued": "queued",
-    "waiting": "Waiting for worker capacity",
-    "backgroundProgress": "You can close this dialog; the import continues on the server.",
-    "cancel": "Cancel import",
-    "resume": "Resume",
-    "rollback": "Rollback import",
-    "openBook": "Open imported book",
-    "back": "Back",
-    "continue": "Continue",
-    "start": "Start import",
-    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
-    "warningDetails": "Warnings",
-    "progress": "{{done}}/{{total}} chapters",
-    "errors": {
-      "extension": "Choose an .epub file."
-    },
-    "steps": {
-      "upload": "upload",
-      "metadata": "metadata",
-      "chapters": "chapters",
-      "confirm": "confirm",
-      "progress": "progress",
-      "report": "report"
-    }
+    "importEpub": "Import EPUB"
   },
   "glossary": {
     "header": "术语表与设定",
@@ -545,7 +443,6 @@
   },
   "kind_editor": {
     "modified": "已修改",
-    "ai": "AI",
     "required": "必填",
     "optional": "选填",
     "activate": "激活",
@@ -611,7 +508,8 @@
       "title": "还原为默认设置？",
       "desc": "“{{name}}”将重置为原始名称、图标、颜色和属性名称。流派标签和自定义属性不受影响。",
       "confirm": "还原"
-    }
+    },
+    "ai": "AI"
   },
   "attr_editor": {
     "field_type": {
@@ -621,15 +519,14 @@
       "number": "数字",
       "date": "日期",
       "tags": "标签",
-      "url": "URL",
-      "boolean": "布尔值"
+      "boolean": "布尔值",
+      "url": "URL"
     },
     "new_attr": "新建属性",
     "edit_attr": "编辑属性",
     "system": "系统",
     "custom": "自定义",
     "modified": "已修改",
-    "ai": "AI",
     "core": "核心",
     "display_name": "显示名称",
     "field_type_label": "字段类型",
@@ -669,6 +566,109 @@
       "title": "还原属性名称？",
       "desc": "将名称从“{{from}}”重置回“{{to}}”。其他字段不受影响。",
       "confirm": "还原"
+    },
+    "ai": "AI"
+  },
+  "help": {
+    "open": "打开帮助",
+    "tour": "新手引导",
+    "title": "书籍管理",
+    "description": "书籍工作区快速指南。",
+    "intro": "在此管理您的书籍，然后打开其中一本进行研究、编辑和构建世界观。",
+    "items": [
+      "创建一本新书或导入手稿以开始创作。",
+      "打开书籍以编辑章节、术语表和本体论。",
+      "使用搜索和筛选功能快速查找书籍。"
+    ],
+    "startTour": "开始引导",
+    "back": "返回",
+    "next": "下一步",
+    "done": "完成",
+    "steps": [
+      {
+        "title": "查找书籍",
+        "description": "搜索和筛选功能可帮助您快速打开目标书籍。",
+        "body": "使用搜索框和语言筛选器来缩小列表范围。"
+      },
+      {
+        "title": "创建或导入",
+        "description": "从一本新书或现有的手稿开始。",
+        "body": "选择“新建书籍”并输入详细信息，或者选择一个文件进行导入。"
+      },
+      {
+        "title": "打开工作区",
+        "description": "所有书籍工具都集中在工作区中。",
+        "body": "在书籍内部，您可以处理章节、术语表、本体论、翻译等内容。"
+      }
+    ]
+  },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
     }
   },
   "lore": {

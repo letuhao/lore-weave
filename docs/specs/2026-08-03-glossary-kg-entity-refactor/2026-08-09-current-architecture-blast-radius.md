@@ -1,5 +1,7 @@
 # Current architecture and blast radius — glossary · KG · wiki
 
+**Reconciles:** **Module/service boundaries** · **Per-service DB ownership / no cross-DB FK** — the blast radius is measured ALONG those two boundaries; the document is a measurement of the existing rows, not a proposal.
+
 **Status:** SURVEY · not a design, not an investigation. **Opened:** 2026-08-09
 **Verified at:** `df18e9049` (branch `refactor/entity-lifecycle`)
 **Purpose:** the three inputs to this refactor each followed one bug. None of them draws the map.

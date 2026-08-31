@@ -3,7 +3,6 @@
 // A human confirmed the target-language rendering of an entity name. Always actor_type "user" — these are JWT endpoints, so it is a human action by construction.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlossaryNameConfirmedV1 {

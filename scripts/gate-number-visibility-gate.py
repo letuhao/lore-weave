@@ -66,7 +66,25 @@ GATE_ARGS: dict[str, list[str]] = {
 #: `adapter-selectability-gate`: "deliberately silent" and "nobody noticed" must not look
 #: alike. Empty at the time of writing, and that is the point — every threshold in the repo
 #: is currently visible on a green run.
-SILENT_BY_DESIGN: dict[str, str] = {}
+SILENT_BY_DESIGN: dict[str, str] = {
+    # Two entries at the feat/game-logic merge, and the reasons are NOT the same shape —
+    # which is what this list exists to keep apart.
+    #
+    # One guards a MODE this probe does not invoke. `VERIFY_PROOF_FLOOR` bounds
+    # `--verify-proofs`, a separate run; the default run prints `CI_GATE_FLOOR` and is
+    # measured here as usual. Adding `--verify-proofs` to GATE_ARGS would trade one
+    # invisible number for the other.
+    "gate-teeth-gate.py:VERIFY_PROOF_FLOOR":
+        "bounds the --verify-proofs mode, which this probe does not invoke; the default "
+        "run's own floor (CI_GATE_FLOOR) IS printed and measured",
+    # The other is a MEASUREMENT LIMIT, not a design choice, and saying so keeps it
+    # retirable. `gate-self-tests` runs every gate's self-test and takes longer than
+    # `_TIMEOUT_S` (measured >190s on 2026-08-31), so `run_gate` returns "" and no number
+    # of any kind can appear. It DOES print MIN_EXPECTED on its green line for a human.
+    "gate-self-tests.py:MIN_EXPECTED":
+        "printed on its green line, but the default run exceeds this probe's timeout so the "
+        "output is empty — a measurement limit here, not silence there",
+}
 
 _TIMEOUT_S = 180
 

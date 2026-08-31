@@ -2,39 +2,6 @@
   "translateIntent": {
     "hint": "অনুবাদ করার জন্য একটি বই নির্বাচন করুন — এটি ওপেন করুন, তারপর অনুবাদ শুরু করতে Translation ট্যাব ব্যবহার করুন।"
   },
-  "help": {
-    "open": "সাহায্য খুলুন",
-    "tour": "নির্দেশনা সফর",
-    "title": "বই নিয়ে কাজ করা",
-    "description": "বইয়ের ওয়ার্কস্পেস সম্পর্কে একটি সংক্ষিপ্ত নির্দেশিকা।",
-    "intro": "এখানে আপনার বইগুলো পরিচালনা করুন, তারপর গবেষণা, সম্পাদনা এবং এর জগত তৈরি করতে একটি বই খুলুন।",
-    "items": [
-      "শুরু করতে একটি বই তৈরি করুন বা একটি পাণ্ডুলিপি ইমপোর্ট করুন।",
-      "অধ্যায়, শব্দকোষ এবং অনটোলজি সম্পাদনা করতে একটি বই খুলুন।",
-      "দ্রুত কোনো বই খুঁজে পেতে অনুসন্ধান এবং ফিল্টার ব্যবহার করুন।"
-    ],
-    "startTour": "সফর শুরু করুন",
-    "back": "পেছনে",
-    "next": "পরবর্তী",
-    "done": "সম্পন্ন",
-    "steps": [
-      {
-        "title": "একটি বই খুঁজুন",
-        "description": "সঠিক বইটি দ্রুত খুঁজে পেতে সার্চ এবং ফিল্টার ব্যবহার করুন।",
-        "body": "তালিকাটি ছোট করতে সার্চ ফিল্ড এবং ভাষা ফিল্টার ব্যবহার করুন।"
-      },
-      {
-        "title": "তৈরি করুন বা ইমপোর্ট করুন",
-        "description": "একটি নতুন বই বা বিদ্যমান পাণ্ডুলিপি দিয়ে শুরু করুন।",
-        "body": "New Book নির্বাচন করুন, এর বিবরণ লিখুন, অথবা ইমপোর্ট করার জন্য একটি ফাইল বেছে নিন।"
-      },
-      {
-        "title": "ওয়ার্কস্পেস খুলুন",
-        "description": "বইয়ের সমস্ত টুল ওয়ার্কস্পেসের মধ্যে সাজানো থাকে।",
-        "body": "একটি বইয়ের ভেতরে আপনি অধ্যায়, শব্দকোষ, অনটোলজি, অনুবাদ এবং আরও অনেক কিছু নিয়ে কাজ করতে পারেন।"
-      }
-    ]
-  },
   "workspace": "আমার বই",
   "new_book": "নতুন বই",
   "search_placeholder": "বই খুঁজুন...",
@@ -54,10 +21,10 @@
     "book_description_placeholder": "এই বইটি কী সম্পর্কে?",
     "cover": "কভার ইমেজ",
     "cover_hint": "PNG, JPG সর্বোচ্চ 5MB",
+    "submit": "বই তৈরি করুন",
     "import_file": "একটি বই ফাইল ইমপোর্ট করুন",
     "import_file_hint": "একটি FB2 বা EPUB ফাইল বেছে নিন। সঠিক ইমপোর্ট প্রক্রিয়াটি স্বয়ংক্রিয়ভাবে খুলে যাবে।",
-    "import_metadata_hint": "উত্স থেকে প্রাপ্ত মেটাডেটা বইয়ের শিরোনাম এবং বিবরণ নির্ধারণ করবে।",
-    "submit": "বই তৈরি করুন"
+    "import_metadata_hint": "উত্স থেকে প্রাপ্ত মেটাডেটা বইয়ের শিরোনাম এবং বিবরণ নির্ধারণ করবে।"
   },
   "empty": {
     "title": "এখনো কোনো বই নেই",
@@ -155,7 +122,6 @@
     "count_other": "{{count}}টি অধ্যায়",
     "import": "ইমপোর্ট",
     "importPdf": "PDF ইমপোর্ট করুন",
-    "importEpub": "Import EPUB",
     "new": "নতুন অধ্যায়",
     "col": {
       "title": "শিরোনাম",
@@ -188,76 +154,8 @@
       "title": "অধ্যায়টি ট্র্যাশে মুভ করবেন?",
       "description": "\"{{title}}\" ট্র্যাশে চলে যাবে।",
       "confirm": "ট্র্যাশে মুভ করুন"
-    }
-  },
-  "epubImport": {
-    "title": "Import EPUB",
-    "description": "Inspect the book, choose chapters, then import asynchronously.",
-    "close": "Close",
-    "chooseFile": "Choose EPUB file",
-    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
-    "inspecting": "Inspecting {{percent}}%",
-    "unknownAuthor": "Unknown author",
-    "duplicateSource": "This source was imported previously. Merge by source key is available.",
-    "target": "Target",
-    "existingBook": "Add to this book",
-    "newBook": "Create a new book from EPUB metadata",
-    "metadataPolicy": "Metadata conflict policy",
-    "metadata": {
-      "title": "Title",
-      "description": "Description",
-      "language": "Language",
-      "subjects": "Subjects"
     },
-    "keepExisting": "Keep existing",
-    "useSource": "Use EPUB source",
-    "mergeSource": "Merge with EPUB source",
-    "applyCover": "Apply source cover when policy allows",
-    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
-    "noCover": "No usable source cover was found.",
-    "selectedChapters": "{{count}} chapters selected",
-    "selectAll": "Select all",
-    "selectChapter": "Select {{title}}",
-    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
-    "strategyLabel": "Existing-book strategy",
-    "importOptions": "Import options",
-    "options": {
-      "preserve_hierarchy": "Preserve EPUB hierarchy",
-      "import_images": "Import supported images",
-      "import_footnotes": "Import footnotes",
-      "retain_source": "Retain the source file for recovery"
-    },
-    "strategy": {
-      "append": "Append",
-      "merge_by_source_key": "Merge by source key",
-      "replace_all": "Replace all"
-    },
-    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
-    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
-    "queued": "queued",
-    "waiting": "Waiting for worker capacity",
-    "backgroundProgress": "You can close this dialog; the import continues on the server.",
-    "cancel": "Cancel import",
-    "resume": "Resume",
-    "rollback": "Rollback import",
-    "openBook": "Open imported book",
-    "back": "Back",
-    "continue": "Continue",
-    "start": "Start import",
-    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
-    "warningDetails": "Warnings",
-    "progress": "{{done}}/{{total}} chapters",
-    "errors": {
-      "extension": "Choose an .epub file."
-    },
-    "steps": {
-      "upload": "upload",
-      "metadata": "metadata",
-      "chapters": "chapters",
-      "confirm": "confirm",
-      "progress": "progress",
-      "report": "report"
-    }
+    "importEpub": "Import EPUB"
   },
   "glossary": {
     "header": "গ্লসারি এবং লোর",
@@ -478,9 +376,9 @@
     "discard": "পরিবর্তন বাতিল করুন",
     "save": "সেটিংস সেভ করুন",
     "world": {
-      "title": "বিশ্ব",
       "hint": "বইটিকে একটি 'world'-এ গ্রুপ করুন যাতে এটি ওয়ার্ল্ডের গ্রাফ এবং টাইমলাইনে অন্তর্ভুক্ত করা যায়।",
-      "open": "World-এ ওপেন করুন"
+      "open": "World-এ ওপেন করুন",
+      "title": "বিশ্ব"
     }
   },
   "translate": {
@@ -513,8 +411,6 @@
     "verifier_default": "ট্রান্সলেটর মডেল ব্যবহার করুন (ডিফল্ট)",
     "qa_depth": "QA গভীরতা",
     "qa_depth_rule_only": "শুধুমাত্র নিয়ম (দ্রুত)",
-    "qa_depth_standard": "মানক",
-    "qa_depth_thorough": "বিস্তারিত",
     "qa_rounds": "সর্বোচ্চ QA রাউন্ড",
     "force_retranslate": "পুনরায় অনুবাদ করতে বাধ্য করুন",
     "force_retranslate_hint": "যে অধ্যায়গুলোর ইতিমধ্যে অনুবাদ আছে সেগুলো পুনরায় অনুবাদ করুন (অন্যথায় সেগুলো স্কিপ করা হবে)।",
@@ -539,33 +435,28 @@
     "prev": "আগের",
     "next": "পরের",
     "page": "পৃষ্ঠা",
+    "qa_depth_standard": "মানক",
+    "qa_depth_thorough": "বিস্তারিত",
     "reasoning_enable": "মডেলের রিজনিং (চিন্তন) সক্ষম করুন",
     "reasoning_hint": "ডিফল্টভাবে এটি বন্ধ থাকে — লোকাল মডেলে লুকানো চিন্তন প্রক্রিয়ার ফলে আউটপুট বাজেট শেষ হয়ে যেতে পারে। কঠিন অনুচ্ছেদের ক্ষেত্রে রিজনিং মডেলের জন্য এটি সক্ষম করুন।",
     "retranslate_selected": "নির্বাচিত অংশ পুনরায় অনুবাদ করুন ({{count}})"
   },
   "kind_editor": {
     "modified": "পরিবর্তিত",
-    "ai": "AI",
     "required": "প্রয়োজনীয়",
     "optional": "ঐচ্ছিক",
     "activate": "সক্রিয় করুন",
     "deactivate": "নিষ্ক্রিয় করুন",
     "edit_attr": "অ্যাট্রিবিউট এডিট করুন",
     "delete_attr": "অ্যাট্রিবিউট ডিলিট করুন",
-    "title": "সত্তার ধরন",
     "kind_count": "{{count}}টি kind",
     "kind_count_other": "{{count}}টি kind",
     "new_kind": "নতুন Kind",
     "back": "Glossary-এ ফিরে যান",
-    "system_kinds": "সিস্টেমের ধরন",
-    "user_kinds": "ব্যবহারকারীর ধরন",
-    "system_badge": "সিস্টেম",
-    "custom_badge": "কাস্টম",
     "attr_count": "{{count}}টি অ্যাট্রিবিউট",
     "attr_count_other": "{{count}}টি অ্যাট্রিবিউট",
     "entity_count": "{{count}}টি এনটিটি",
     "entity_count_other": "{{count}}টি এনটিটি",
-    "system_tag": "সিস্টেম",
     "revert_to_default": "ডিফল্ট অবস্থায় ফিরিয়ে নিন",
     "revert_title_attr": "সব পরিবর্তন সিস্টেম ডিফল্টে ফিরিয়ে নিন",
     "delete_kind_tooltip": "Kind ডিলিট করুন",
@@ -581,8 +472,6 @@
     "attributes": "অ্যাট্রিবিউটস ({{count}})",
     "add_attribute": "অ্যাট্রিবিউট যোগ করুন",
     "no_attributes": "কোনো অ্যাট্রিবিউট সংজ্ঞায়িত করা নেই। একটি তৈরি করতে \"Add Attribute\"-এ ক্লিক করুন।",
-    "system_attributes": "সিস্টেম অ্যাট্রিবিউটস",
-    "user_attributes": "ব্যবহারকারীর অ্যাট্রিবিউটস",
     "select_kind": "দেখার এবং এডিট করার জন্য একটি Kind নির্বাচন করুন",
     "new_kind_title": "নতুন Entity Kind",
     "code": "কোড",
@@ -611,7 +500,16 @@
       "title": "ডিফল্ট অবস্থায় ফিরিয়ে আনবেন?",
       "desc": "\"{{name}}\" এর নাম, আইকন, রঙ এবং অ্যাট্রিবিউট নামগুলো তার মূল অবস্থায় ফিরিয়ে আনা হবে। জেনর ট্যাগ এবং কাস্টম অ্যাট্রিবিউটের ওপর এর কোনো প্রভাব পড়বে না।",
       "confirm": "ফিরিয়ে আনুন"
-    }
+    },
+    "ai": "AI",
+    "title": "সত্তার ধরন",
+    "system_kinds": "সিস্টেমের ধরন",
+    "user_kinds": "ব্যবহারকারীর ধরন",
+    "system_badge": "সিস্টেম",
+    "custom_badge": "কাস্টম",
+    "system_tag": "সিস্টেম",
+    "system_attributes": "সিস্টেম অ্যাট্রিবিউটস",
+    "user_attributes": "ব্যবহারকারীর অ্যাট্রিবিউটস"
   },
   "attr_editor": {
     "field_type": {
@@ -621,15 +519,14 @@
       "number": "সংখ্যা",
       "date": "তারিখ",
       "tags": "ট্যাগ",
-      "url": "URL",
-      "boolean": "বুলিয়ান"
+      "boolean": "বুলিয়ান",
+      "url": "URL"
     },
     "new_attr": "নতুন অ্যাট্রিবিউট",
     "edit_attr": "অ্যাট্রিবিউট এডিট করুন",
     "system": "সিস্টেম",
     "custom": "কাস্টম",
     "modified": "পরিবর্তিত",
-    "ai": "AI",
     "core": "কোর",
     "display_name": "ডিসপ্লে নাম",
     "field_type_label": "ফিল্ড টাইপ",
@@ -669,6 +566,109 @@
       "title": "অ্যাট্রিবিউট নাম কি ফিরিয়ে আনবেন?",
       "desc": "নাম \"{{from}}\" থেকে পুনরায় \"{{to}}\"-এ সেট করুন। অন্যান্য ফিল্ডের ওপর এর কোনো প্রভাব পড়বে না।",
       "confirm": "ফিরিয়ে আনুন"
+    },
+    "ai": "AI"
+  },
+  "help": {
+    "open": "সাহায্য খুলুন",
+    "tour": "নির্দেশনা সফর",
+    "title": "বই নিয়ে কাজ করা",
+    "description": "বইয়ের ওয়ার্কস্পেস সম্পর্কে একটি সংক্ষিপ্ত নির্দেশিকা।",
+    "intro": "এখানে আপনার বইগুলো পরিচালনা করুন, তারপর গবেষণা, সম্পাদনা এবং এর জগত তৈরি করতে একটি বই খুলুন।",
+    "items": [
+      "শুরু করতে একটি বই তৈরি করুন বা একটি পাণ্ডুলিপি ইমপোর্ট করুন।",
+      "অধ্যায়, শব্দকোষ এবং অনটোলজি সম্পাদনা করতে একটি বই খুলুন।",
+      "দ্রুত কোনো বই খুঁজে পেতে অনুসন্ধান এবং ফিল্টার ব্যবহার করুন।"
+    ],
+    "startTour": "সফর শুরু করুন",
+    "back": "পেছনে",
+    "next": "পরবর্তী",
+    "done": "সম্পন্ন",
+    "steps": [
+      {
+        "title": "একটি বই খুঁজুন",
+        "description": "সঠিক বইটি দ্রুত খুঁজে পেতে সার্চ এবং ফিল্টার ব্যবহার করুন।",
+        "body": "তালিকাটি ছোট করতে সার্চ ফিল্ড এবং ভাষা ফিল্টার ব্যবহার করুন।"
+      },
+      {
+        "title": "তৈরি করুন বা ইমপোর্ট করুন",
+        "description": "একটি নতুন বই বা বিদ্যমান পাণ্ডুলিপি দিয়ে শুরু করুন।",
+        "body": "New Book নির্বাচন করুন, এর বিবরণ লিখুন, অথবা ইমপোর্ট করার জন্য একটি ফাইল বেছে নিন।"
+      },
+      {
+        "title": "ওয়ার্কস্পেস খুলুন",
+        "description": "বইয়ের সমস্ত টুল ওয়ার্কস্পেসের মধ্যে সাজানো থাকে।",
+        "body": "একটি বইয়ের ভেতরে আপনি অধ্যায়, শব্দকোষ, অনটোলজি, অনুবাদ এবং আরও অনেক কিছু নিয়ে কাজ করতে পারেন।"
+      }
+    ]
+  },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
     }
   },
   "lore": {

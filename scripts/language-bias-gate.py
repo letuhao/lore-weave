@@ -105,6 +105,14 @@ RULE_LABELS = {
 
 PY_ONLY = {"ml5-ensure-ascii", "ml2-naive-normalize"}
 
+#: The deferral this gate's BASELINE *is* the mechanism for, named in code rather
+#: than in a comment — `deferral-gate.py` counts a comment as prose, correctly, and
+#: refused this the moment the old `KNOWN_RED` row was deleted. It is printed by
+#: both arms that can wake the debt: a NEW offender (growth) and a STALE row (a
+#: fingerprint outliving its code). So the id appears exactly when someone has to
+#: act on it, which is the difference between a mechanism and a mention.
+DEFERRAL = "D-GATE-ROT-LANGUAGE-BIAS"
+
 
 def is_test_file(rel: str) -> bool:
     base = os.path.basename(rel)
@@ -227,12 +235,113 @@ Usage:
 Exit 0 = clean (or baseline-only). Exit 1 = a new violation."""
 
 
+def self_test() -> int:
+    """Prove the detectors red, the twins stay clean, and the BASELINE shrinks.
+
+    Three families, and the third is the one that had actually decayed.
+
+    * **detectors** — every rule fires on its shape.
+    * **twins** — and does not fire on the near-miss. This gate's own docstring
+      says the ML-2 lookbehind is "what keeps the false-positive rate low", so
+      `self.name.lower()` and `lvl.name.lower()` staying clean is a claim the
+      gate makes about itself, checked here rather than trusted.
+    * **baseline liveness** — a fingerprint whose code no longer exists is a
+      standing exemption for a line nobody has written yet: reintroduce that
+      statement at that path and it is waved through. A baseline's whole value
+      is that it shrinks, and until this arm existed nothing watched whether it
+      did. It found **seven** stale rows on its first run.
+    """
+    fails: list[str] = []
+    arms = {"red": 0, "clean": 0}
+
+    def want(label: str, rel: str, line: str, expect: list[str]) -> None:
+        arms["red" if expect else "clean"] += 1
+        got = scan_line(rel, line)
+        if sorted(got) != sorted(expect):
+            fails.append(f"scan_line({label}): got {got}, want {expect}")
+
+    PY, TS = "services/x/app/a.py", "frontend/src/a.ts"
+
+    # ── ML-5 ──────────────────────────────────────────────────────────────────
+    want("dumps on a prose body", PY, "    s = json.dumps(body)", ["ml5-ensure-ascii"])
+    want("the same with ensure_ascii=False", PY,
+         "    s = json.dumps(body, ensure_ascii=False)", [])
+    want("dumps encoded for the wire", PY,
+         "    b = json.dumps(x).encode('utf-8')", ["ml5-ensure-ascii"])
+    want("dumps of a non-body local", PY, "    s = json.dumps(counts)", [])
+    # Language scoping: ML-5/ML-2 are Python-only rules, and a TS file must not
+    # inherit them just because the text matches.
+    want("the ML-5 shape in a .ts file", TS, "    s = json.dumps(body)", [])
+
+    # ── ML-3 ──────────────────────────────────────────────────────────────────
+    want("proper-noun regex", PY, '    RE = re.compile(r"[A-Z][a-z]+")', ["ml3-ascii-regex"])
+    want("word-token regex", PY, '    RE = re.compile(r"\\b\\w+\\b")', ["ml3-word-token"])
+    want("whitespace split", PY, "    parts = text.split(' ')", ["ml3-word-token"])
+    want("ML-3 applies to TS too", TS, "    const p = text.split(' ')", ["ml3-word-token"])
+    want("a script-aware regex", PY, '    RE = re.compile(r"\\p{L}+")', [])
+
+    # ── ML-2, and the lookbehind that keeps it quiet ──────────────────────────
+    want("bare name.lower()", PY, "    key = name.lower()", ["ml2-naive-normalize"])
+    want("name.strip().lower()", PY, "    key = name.strip().lower()", ["ml2-naive-normalize"])
+    want("an ATTRIBUTE access", PY, "    key = self.name.lower()", [])
+    want("an ENUM access", PY, "    key = lvl.name.lower()", [])
+    want("a bare .strip() with no fold", PY, "    key = name.strip()", [])
+
+    # ── scope ─────────────────────────────────────────────────────────────────
+    for rel, expect in (
+        ("services/x/tests/test_a.py", True), ("services/x/app/fixtures/a.py", True),
+        ("frontend/src/a.stories.tsx", True), ("frontend/src/a.spec.ts", True),
+        ("services/x/app/a.py", False), ("frontend/src/pages/A.tsx", False),
+    ):
+        if is_test_file(rel) is not expect:
+            fails.append(f"is_test_file({rel!r}) is not {expect}")
+
+    # ── reach ─────────────────────────────────────────────────────────────────
+    for d in SEARCH_DIRS:
+        if not os.path.isdir(os.path.join(REPO_ROOT, *d.split("/"))):
+            fails.append(
+                f"PHANTOM SEARCH DIR: `{d}` is in SEARCH_DIRS and does not exist. The walk "
+                f"skips a missing directory silently, so a rename retires this gate over "
+                f"that tree with no change to its output.")
+    found = collect(iter_full_scan())
+    scanned = sum(1 for _ in iter_full_scan())
+    if scanned < 500:
+        fails.append(
+            f"the walk reached only {scanned} scannable file(s) (floor 500). This gate is "
+            f"not pointed at the runtime tree it claims to guard.")
+
+    # ── baseline liveness: the arm that found seven ───────────────────────────
+    live = {fingerprint(r, rel, ln) for r, _, rel, ln in found}
+    stale = sorted(set(BASELINE) - live)
+    if stale:
+        fails.append(
+            f"{len(stale)} BASELINE row(s) match nothing in the tree. A fingerprint whose "
+            f"code is gone is a standing exemption for a line nobody has written yet — "
+            f"rewrite that exact statement at that exact path and this gate waves it "
+            f"through, and {DEFERRAL}'s baseline has stopped shrinking. Delete the row(s):"
+            f"\n      " + "\n      ".join(s[:150] for s in stale))
+    if not BASELINE:
+        fails.append("BASELINE is empty; the staleness arm above would agree with anything")
+
+    for f in fails:
+        print(f"FAIL: {f}", file=sys.stderr)
+    if fails:
+        return 1
+    print(f"language-bias-gate: self-test OK — {arms['red']} arm(s) go RED, {arms['clean']} "
+          f"stay clean on the near-miss twin; walk reaches {scanned} file(s); all "
+          f"{len(BASELINE)} baseline row(s) still name live code.")
+    return 0
+
+
 def main() -> int:
     args = sys.argv[1:]
 
     if "--help" in args or "-h" in args:
         print(USAGE)
         return 0
+
+    if "--self-test" in args:
+        return self_test()
 
     if "--update-baseline" in args:
         found = collect(iter_full_scan())
@@ -272,6 +381,8 @@ def main() -> int:
     print("  ML-2 → normalize via loreweave_extraction.name_normalize (NFKC+casefold+CJK), not bare .lower().")
     print("\nIf this is intentional/legacy, add a row to docs/deferred/DEFERRED.md and")
     print("re-seed the baseline (python scripts/language-bias-gate.py --update-baseline).")
+    print(f"Growth here is what wakes {DEFERRAL}: the baseline is that deferral's mechanism,")
+    print("and it is only a mechanism while it can only shrink.")
     return 1
 
 
@@ -301,14 +412,7 @@ BASELINE = {
     # pointless here.
     'ml2-naive-normalize|services/chat-service/app/services/tool_surface.py|n = name.lower()',
     'ml2-naive-normalize|services/chat-service/app/client/known_entities_client.py|toks.add(name.strip().lower())',
-    # compaction.py `term.lower()` is a SYMMETRIC dedup key (used only as a `seen`-set
-    # membership key; the unchanged `term` is what's stored) — low-risk (CJK is a lower()
-    # no-op; Latin folds symmetrically), not name-normalization that corrupts output. Owned
-    # by the context-budget track. Baselined so language-bias-gate can enforce as BLOCKING;
-    # tracked in SESSION_HANDOFF for a casefold/name_normalize cleanup. See D-LANGBIAS-COMPACTION-LOWER.
-    'ml2-naive-normalize|services/chat-service/app/services/compaction.py|k = term.lower()',
     'ml2-naive-normalize|services/chat-service/app/services/steering.py|if name.casefold() in mentioned:',
-    'ml2-naive-normalize|services/composition-service/app/engine/canon_check.py|idx = low.find(name.lower())',
     'ml2-naive-normalize|services/composition-service/app/engine/cast_plan.py|key = name.strip().casefold()',
     'ml2-naive-normalize|services/composition-service/app/engine/character_plan.py|canon = folded.get(name.strip().casefold())',
     'ml2-naive-normalize|services/composition-service/app/engine/plan_forge/eval_fidelity.py|bad = any(b in name.lower() for b in blocked) if name else True',
@@ -321,7 +425,6 @@ BASELINE = {
     'ml2-naive-normalize|services/knowledge-service/app/extraction/pattern_writer.py|return name.strip().casefold()',
     'ml2-naive-normalize|services/knowledge-service/app/routers/public/graph_views.py|for ch in name.strip().lower():',
     'ml2-naive-normalize|services/translation-service/app/workers/extraction_worker.py|key = (str(ent.get("kind_code", "")), name.lower())',
-    'ml2-naive-normalize|services/worker-ai/app/runner.py|n = name.lower()',
     # entity_detector's ENGLISH capitalized-phrase pass — intentionally kept and
     # now PAIRED with a Vietnamese-aware Latin regex + a CJK-family run pass
     # (Pass A4, app/extraction/scripts.py). It is not English-ONLY bias, so it is
@@ -334,18 +437,11 @@ BASELINE = {
     # D-ML-TRIPLE-SVO-SCRIPT DONE). English keeps this regex; non-English routes to
     # the marker path — so it's not English-ONLY bias, baselined not "fixed".
     'ml3-ascii-regex|services/knowledge-service/app/extraction/triple_extractor.py|_SUBJ = r"(?P<subj>[A-Z][\\w\'-]*(?:\\s+[A-Z][\\w\'-]*)*)"',
-    # canon_check.py (D-KG-EXTRACTION-CANON-GATE POC track) — SYMMETRIC search-key
-    # lower() (both haystack + needle lowered for a substring find; the unchanged
-    # text is what's used), the same low-risk shape as the compaction.py entry
-    # below. Owned by that track for a name_normalize cleanup. See D-LANGBIAS-CANONCHECK-LOWER.
-    'ml2-naive-normalize|services/knowledge-service/app/extraction/canon_check.py|idx = text.lower().find(name.lower())',
     "ml3-word-token|frontend/src/pages/book-tabs/TranslateModal.tsx|<span className={cn('h-1.5 w-1.5 rounded-full', STATUS_BADGE[s.status].split(' ')[0])} />",
     'ml5-ensure-ascii|services/chat-service/app/events/voice_events.py|"payload": json.dumps(payload),',
     'ml5-ensure-ascii|services/chat-service/app/routers/feedback.py|message_id, json.dumps(payload),',
     'ml5-ensure-ascii|services/chat-service/app/routers/internal.py|json.dumps(body.working_memory_seed) if body.working_memory_seed is not None else None,',
-    'ml5-ensure-ascii|services/chat-service/app/routers/sessions.py|gp = json.dumps(body.generation_params.model_dump(exclude_unset=True)) if body.generation_params else "{}"',
     'ml5-ensure-ascii|services/chat-service/app/routers/sessions.py|gp_patch = json.dumps(body.generation_params.model_dump(exclude_unset=True))',
-    'ml5-ensure-ascii|services/composition-service/app/db/repositories/outbox.py|aggregate_id, event_type, json.dumps(payload or {}, default=str),',
     'ml5-ensure-ascii|services/jobs-service/app/projection/consumer.py|stream, msg_id, json.dumps(payload) if payload is not None else None, str(exc),',
     'ml5-ensure-ascii|services/knowledge-service/app/context/cache_invalidation.py|json.dumps(payload),',
     'ml5-ensure-ascii|services/knowledge-service/app/db/repositories/extraction_jobs.py|json.dumps(payload, separators=(",", ":")).encode("utf-8"),',
@@ -357,9 +453,60 @@ BASELINE = {
     'ml5-ensure-ascii|services/learning-service/app/judges/decoupled_judge.py|aggregate_id, json.dumps(body),',
     'ml5-ensure-ascii|services/translation-service/app/routers/versions.py|hv_id, str(body.block_index), json.dumps(body.block),',
     'ml5-ensure-ascii|services/translation-service/app/routers/versions.py|json.dumps(body.translated_body_json) if body.translated_body_json is not None else None,',
-    'ml5-ensure-ascii|services/translation-service/app/workers/chapter_worker.py|event_type, aggregate_type, aggregate_id, json.dumps(payload),',
     'ml5-ensure-ascii|services/worker-ai/app/outbox_emit.py|json.dumps(payload, default=str),',
 }
+# PRUNED 2026-08-10 — seven rows whose subject no longer exists. Four ML-2 offenders
+# were genuinely fixed (`worker-ai/runner.py` now imports the shared
+# `normalize_entity_name` spine; the two `canon_check.py` folds and compaction's
+# `term.lower()` are gone) and two ML-5 rows gained `ensure_ascii=False`;
+# `sessions.py`'s `gp = ...` line was removed, its `gp_patch` sibling remains.
+#
+# They were found by the staleness arm of `--self-test`, added in the same change,
+# and NOT by anything that existed before — which is the point. A baseline row whose
+# code is gone is a **standing exemption for a line nobody wrote yet**: reintroduce
+# that exact statement at that exact path and the gate waves it through, silently,
+# because the fingerprint still matches. The whole value of a baseline is that it
+# shrinks, and nothing was watching whether this one did.
+#
+# `D-LANGBIAS-COMPACTION-LOWER` and `D-LANGBIAS-CANONCHECK-LOWER` are discharged by
+# the same finding; their explanatory comments went with their rows.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# WHAT THE REMAINING ROWS ARE — `D-GATE-ROT-LANGUAGE-BIAS`, moved here 2026-08-10
+# from a `KNOWN_RED` row in `gate-wiring-gate.py`, because THIS is where its
+# subject lives. It is a CLASSIFICATION, not a list, so the next pass starts from
+# analysis; two of the four classes change bytes that are already persisted, which
+# is why none of them is a one-line edit.
+#
+#   (1) `json.dumps` -> a DB column  ·  DONE 2026-07-30, and it was not cosmetic.
+#       `internal.py:76` was a SECURITY fix: that dump feeds `screen()` from
+#       loreweave_safety, which NFKC-folds its input specifically so "unicode
+#       look-alikes and width variants don't slip" (floor.py:120). With
+#       `ensure_ascii=True` those characters became backslash-u escapes BEFORE the
+#       fold ran, so a full-width payload in `working_memory_seed` walked past the
+#       safety floor. **The serializer was defeating the screener** — found by
+#       /review-impl asking whether an upstream step defeats a downstream defence.
+#   (2) `json.dumps(...).encode()` -> a DIGEST  ·  x2 (`stream_service.py`,
+#       `arc_conformance_orchestrate.py`). Flipping it changes EVERY hash, so it is
+#       a cache/dedup invalidation decision, not an edit.
+#   (3) `casefold()` as a PERSISTED IDENTITY KEY  ·  x5 (plan_forge x3, world_plan,
+#       operations). Wants NFC/NFKC first — and normalising changes lookups against
+#       rows ALREADY keyed the old way, so it needs a backfill plan or it orphans
+#       them.
+#   (4) `re.findall(r"\w{4,}")`  ·  x2 (`propose.py`). Space-delimited tokenizing,
+#       which cannot work for CJK at all — a design choice, not a fix.
+#   Plus ONE FALSE POSITIVE: `tool_surface.py` lowercases an MCP tool NAME, ASCII by
+#   contract (closed-set snake_case), where `casefold()` is identical.
+#
+# WHY THE DEBT NO LONGER NEEDS THE GATE TO BE RED. `multilingual.md` sealed
+# "deliberately RED, because baselining them would hide the debt". That was true of
+# a baseline nothing audited. Measured the day the row was deleted: **all ten were
+# already baselined anyway**, and the gate was red because of two UNRELATED lines
+# added 2026-08-01 — so the register was being satisfied by the wrong offenders,
+# which reads exactly like the debt still being tracked. This baseline now fails on
+# growth AND on a row whose code no longer exists, which is strictly more mechanism
+# than one row asserting redness. **Reversal trigger:** remove either arm and the
+# original objection is valid again.
 
 
 if __name__ == "__main__":

@@ -35,6 +35,9 @@ var EventDispatch = map[string]map[uint32]string{
 	"canon.entry.updated": {
 		1: "CanonEntryUpdatedV1",
 	},
+	"channel.turn_boundary": {
+		1: "TurnBoundaryV1",
+	},
 	"glossary.entity_deleted": {
 		1: "GlossaryEntityDeletedV1",
 	},
@@ -60,11 +63,23 @@ var EventDispatch = map[string]map[uint32]string{
 		1: "NpcSaidV1",
 		2: "NpcSaidV2",
 	},
+	"proposal.rejected": {
+		1: "ProposalRejectedV1",
+	},
 	"reality.created": {
 		1: "RealityCreatedV1",
 	},
 	"ruleset.epoch_activated": {
 		1: "RulesetEpochActivatedV1",
+	},
+	"turn.buffered": {
+		1: "TurnResolvedV1",
+	},
+	"turn.discarded": {
+		1: "TurnResolvedV1",
+	},
+	"turn.resolved": {
+		1: "TurnResolvedV1",
 	},
 	"world.tick": {
 		1: "WorldTickV1",
@@ -89,6 +104,7 @@ var EventTypesGenerated = []string{
 	"canon.entry.decanonized",
 	"canon.entry.promoted",
 	"canon.entry.updated",
+	"channel.turn_boundary",
 	"glossary.entity_deleted",
 	"glossary.entity_merged",
 	"glossary.entity_purged",
@@ -97,8 +113,12 @@ var EventTypesGenerated = []string{
 	"glossary.entity_updated",
 	"glossary.name_confirmed",
 	"npc.said",
+	"proposal.rejected",
 	"reality.created",
 	"ruleset.epoch_activated",
+	"turn.buffered",
+	"turn.discarded",
+	"turn.resolved",
 	"world.tick",
 	"xreality.canon.promoted",
 	"xreality.user.erased",
@@ -120,6 +140,7 @@ const (
 	EventCanonEntryDecanonized = "canon.entry.decanonized"
 	EventCanonEntryPromoted = "canon.entry.promoted"
 	EventCanonEntryUpdated = "canon.entry.updated"
+	EventChannelTurnBoundary = "channel.turn_boundary"
 	EventGlossaryEntityDeleted = "glossary.entity_deleted"
 	EventGlossaryEntityMerged = "glossary.entity_merged"
 	EventGlossaryEntityPurged = "glossary.entity_purged"
@@ -128,8 +149,12 @@ const (
 	EventGlossaryEntityUpdated = "glossary.entity_updated"
 	EventGlossaryNameConfirmed = "glossary.name_confirmed"
 	EventNpcSaid = "npc.said"
+	EventProposalRejected = "proposal.rejected"
 	EventRealityCreated = "reality.created"
 	EventRulesetEpochActivated = "ruleset.epoch_activated"
+	EventTurnBuffered = "turn.buffered"
+	EventTurnDiscarded = "turn.discarded"
+	EventTurnResolved = "turn.resolved"
 	EventWorldTick = "world.tick"
 	EventXrealityCanonPromoted = "xreality.canon.promoted"
 	EventXrealityUserErased = "xreality.user.erased"

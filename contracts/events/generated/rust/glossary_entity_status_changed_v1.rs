@@ -3,7 +3,6 @@
 // A glossary entity's curation status moved. Carries both the new and the prior status so a consumer can act on the transition rather than re-deriving it.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlossaryEntityStatusChangedV1 {

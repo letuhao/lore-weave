@@ -1,5 +1,7 @@
 # Book-layer architecture — reliable lifecycle, story-time versioning, and a read/write pipeline
 
+**Reconciles:** **Reading/writing entity or KG knowledge** · **Two-layer glossary↔knowledge** · **Module/service boundaries** — the pipeline proposal sits INSIDE those rows: it routes lore through the two-layer split rather than proposing a third layer.
+
 **Status:** 🔒 **SEALED 2026-08-09** — the *reasoning* is closed and must not be re-litigated from memory; re-read it. **All 30 opened questions are closed.** No code has changed. Decision register: [ARCHITECTURE-OVERVIEW §9](2026-08-09-ARCHITECTURE-OVERVIEW.md#9--sealed--decision-register). **Opened:** 2026-08-09
 **Branch:** `refactor/entity-lifecycle` · **Verified against:** `df18e9049`
 **Scope:** the **book layer only** (book + lore bible). Manifest / reality / engine are out of scope by

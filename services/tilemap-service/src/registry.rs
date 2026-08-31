@@ -1889,7 +1889,7 @@ walkability_pattern = { mask = [true, false, false, false] }
         // `resolve_object_v2`).
         use crate::engine::place_tilemap_with_registry;
         use crate::seed::TilemapSeed;
-        use crate::types::channel::{ChannelId, ChannelTier};
+        use crate::types::channel::{ChannelId, MapKind};
         use crate::types::template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
         use crate::types::tilemap::GridSize;
         use crate::types::zone::{PassageKind, ZoneId, ZoneRole};
@@ -1939,7 +1939,7 @@ walkability_pattern = { mask = [true, false, false, false] }
         let view = place_tilemap_with_registry(
             &template,
             ChannelId("ch_xianxia".to_string()),
-            ChannelTier::Town,
+            MapKind::Locale,
             GridSize { width: 32, height: 32 },
             TilemapSeed(0xCAFE_F00D),
             &xianxia,

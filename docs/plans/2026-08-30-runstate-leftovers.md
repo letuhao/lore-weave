@@ -1,5 +1,7 @@
 # Run-state leftovers — 2026-08-30
 
+**Reconciles:** **A gate, lint, test, `const` assertion, validator** · **Non-Vacuity** · **No-Defer-Drift** — the plan adds no standard. Each row discharges a leftover of the knowledge-architecture run state by building a gate with a bite, which is the gate row's requirement, and closes a deferral rather than carrying it, which is No-Defer-Drift's.
+
 **GOAL: every leftover the knowledge-architecture run state left behind is either FIXED or
 DECIDED IN WRITING, and a command proves which.**
 

@@ -108,14 +108,11 @@
       "urlPlaceholder": "https://mcp.example.com/mcp",
       "authentication": "การยืนยันตัวตน",
       "authNone": "ไม่มี",
-      "authBearer": "Bearer token",
-      "authOauth": "OAuth 2.1",
       "noAuthHint": "ไม่มีการยืนยันตัวตน — เซิร์ฟเวอร์นี้เป็นแบบสาธารณะ ดำเนินการต่อเพื่อลงทะเบียนและสแกน",
       "bearerLabel": "Bearer token (ถูกเก็บรักษาไว้ใน vault และจะไม่แสดงให้เห็นอีก)",
       "bearerPlaceholder": "วางโทเคน",
       "authzEndpoint": "Endpoint สำหรับการอนุญาตสิทธิ์",
       "tokenEndpoint": "Endpoint สำหรับโทเคน",
-      "clientId": "Client ID",
       "scopes": "Scopes (คั่นด้วยช่องว่าง)",
       "registering": "กำลังลงทะเบียน…",
       "registerScan": "ลงทะเบียนและสแกน",
@@ -124,9 +121,12 @@
       "runScan": "ตรวจสอบความสมบูรณ์และสแกน",
       "refresh": "รีเฟรช",
       "continue": "ดำเนินการต่อ",
-      "authKind": "การยืนยันตัวตน: {{kind}}",
       "enable": "เปิดใช้งานสำหรับเซสชันของฉัน",
-      "done": "เสร็จสิ้น"
+      "done": "เสร็จสิ้น",
+      "authBearer": "Bearer token",
+      "authOauth": "OAuth 2.1",
+      "clientId": "Client ID",
+      "authKind": "การยืนยันตัวตน: {{kind}}"
     }
   },
   "commands": {
@@ -137,14 +137,13 @@
     "empty": "ยังไม่มีคำสั่ง"
   },
   "hooks": {
-    "title": "จุดดึงดูด",
     "description": "กฎแบบ Declarative ที่จะทำงานเมื่อเกิดเหตุการณ์ใน Agent-loop ไม่ต้องเขียนโค้ด — เพียงแค่ระบุเหตุการณ์, การจับคู่เครื่องมือ (ถ้ามี), และการดำเนินการ",
     "matchPlaceholder": "การจับคู่เครื่องมือ (เช่น glossary_delete_*)",
     "textPlaceholder": "ข้อความที่จะแทรก / ใส่คำอธิบาย",
-    "empty": "ยังไม่มี Hooks"
+    "empty": "ยังไม่มี Hooks",
+    "title": "จุดดึงดูด"
   },
   "subagents": {
-    "title": "ผู้ช่วยย่อย",
     "description": "Persona ที่กำหนดชื่อขึ้นมาเพื่อให้ Agent สามารถมอบหมายงานย่อยที่มีขอบเขตจำกัดผ่าน <code>run_subagent</code> โดยจะทำงานในเทิร์นที่แยกส่วนกันพร้อมกับเครื่องมือที่มีขอบเขตเฉพาะเท่านั้น หากต้องการ Persona สำหรับการใช้เหตุผลหรือสรุปความเพียงอย่างเดียว ให้เว้นขอบเขตว่างไว้",
     "namePlaceholder": "ชื่อ (เช่น lore-scout)",
     "scopePlaceholder": "ขอบเขตเครื่องมือ: glossary_*, kg_*",
@@ -153,7 +152,8 @@
     "create": "สร้าง Subagent",
     "empty": "ยังไม่มี Subagent",
     "reasoningOnly": "ใช้สำหรับการใช้เหตุผลเท่านั้น (ไม่มีเครื่องมือ)",
-    "modelPinned": "ตรึงโมเดลไว้"
+    "modelPinned": "ตรึงโมเดลไว้",
+    "title": "ผู้ช่วยย่อย"
   },
   "plugins": {
     "description": "Plugin คือการรวมชุดทักษะ คำสั่ง และ Hook เข้าด้วยกัน — ส่งออกเพื่อแชร์ หรือนำเข้าเพื่อติดตั้ง",

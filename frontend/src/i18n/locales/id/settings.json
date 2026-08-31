@@ -456,11 +456,11 @@
     "cap": {
       "chat": "Chat / LLM",
       "embedding": "Embedding",
-      "tts": "Teks-ke-Suara",
-      "stt": "Suara-ke-Teks",
       "image_gen": "Gen Gambar",
       "moderation": "Moderasi",
-      "reranker": "Reranker"
+      "reranker": "Reranker",
+      "tts": "Teks-ke-Suara",
+      "stt": "Suara-ke-Teks"
     },
     "add": {
       "aria": "Tambah model",

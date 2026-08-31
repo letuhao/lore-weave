@@ -42,7 +42,81 @@ prove this shared helper did not change their behaviour when they adopted it.
 
 from __future__ import annotations
 
+import re
 import sys
+
+CFG_TEST_RE = re.compile(r"#\[cfg\(test\)\]")
+
+
+def blank_rust_test_items(text: str) -> str:
+    """Blank every `#[cfg(test)]` item in a Rust source, IN PLACE.
+
+    THE HOLE THIS CLOSES — and it has now been found in TWO gates.
+    --------------------------------------------------------------
+    Test code is excluded BY PATH (`/tests/`, `/benches/`, `/fixtures/`). **Rust
+    does not put its unit tests there.** It puts them in a `#[cfg(test)] mod
+    tests` at the bottom of the very `src/` file the gate reads as production.
+
+    1. `orphan-model-gate`, 2026-08-05: `crates/rebuilder/src/lib.rs:542` held
+       `event_type: "world.kv_set".into()` inside a test fixture, and it was the
+       only occurrence outside an excluded path — so the gate reported the
+       projector PRODUCED and stayed green. **A test vouching for a projector is
+       the exact circularity that gate exists to break** (`D-446`'s shape: a
+       witness table counting as its own witness).
+    2. `hot-path-gate`, 2026-08-06: a `#[cfg(test)]` mirror test indexing
+       `schema["$defs"]["DomainEvent"]` produced **nine** `string-keyed-lookup`
+       findings *on the island step path* — for code that never runs in a step.
+       A gate that cries wolf on correct test code gets pragma'd around, and a
+       pragma is an exemption that keeps silencing after the reason is gone.
+
+    Twice is a class, so it lives here rather than in either gate.
+
+    **BLANKS rather than deletes**, unlike the first implementation: line numbers
+    must survive (`strip_comments`'s contract, and `hot-path-gate` reports lines),
+    and deleting also JOINS the text either side of the gap, which can
+    manufacture a match that was never in the source.
+
+    Brace-matched rather than regex-matched, because a `mod tests` body contains
+    braces and a lazy pattern stops at the first `}` it meets — which would strip
+    one function and leave the rest of the module readable as production.
+    """
+    def blanked(s: str) -> str:
+        return "".join(c if c == "\n" else " " for c in s)
+
+    out, i = [], 0
+    for m in CFG_TEST_RE.finditer(text):
+        if m.start() < i:
+            continue  # already inside a blanked item
+        out.append(text[i:m.start()])
+        j = text.find("{", m.end())
+        semi = text.find(";", m.end())
+        # **A `;` BEFORE the next `{` means this is a statement item**
+        # (`#[cfg(test)] use fake::thing;`) and the brace belongs to whatever
+        # comes AFTER it. The first implementation only handled `j == -1` — no
+        # brace anywhere in the rest of the file — which is nearly never true,
+        # so `#[cfg(test)] use foo;` silently brace-matched through the NEXT
+        # production item and blanked it. Caught by this file's own new case,
+        # which is the reason the case was worth writing: the bug was inherited
+        # verbatim from the gate this helper was lifted out of.
+        if j == -1 or (semi != -1 and semi < j):
+            k = len(text) if semi == -1 else semi + 1
+            out.append(blanked(text[m.start():k]))
+            i = k
+            continue
+        depth, k = 0, j
+        while k < len(text):
+            if text[k] == "{":
+                depth += 1
+            elif text[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    k += 1
+                    break
+            k += 1
+        out.append(blanked(text[m.start():k]))
+        i = k
+    out.append(text[i:])
+    return "".join(out)
 
 
 def strip_comments(src: str, keep_strings: bool) -> str:
@@ -176,6 +250,38 @@ def self_test() -> int:
          "/* never call std::fs::read */", False, must_drop=("std::fs",))
     case("string naming a banned path is not a use of it",
          'let s = "std::fs::read is banned";', False, must_drop=("std::fs",))
+
+    # ── blank_rust_test_items: the hole found in TWO gates ──
+    def tcase(name, src, must_keep=(), must_drop=()):
+        got = blank_rust_test_items(src)
+        if len(got) != len(src):
+            fails.append(f"{name}: LENGTH CHANGED ({len(src)} -> {len(got)}) — offsets destroyed")
+        if got.count("\n") != src.count("\n"):
+            fails.append(f"{name}: newline count changed — line numbers destroyed")
+        for t in must_keep:
+            if t not in got:
+                fails.append(f"{name}: lost {t!r} (production code must survive)")
+        for t in must_drop:
+            if t in got:
+                fails.append(f"{name}: kept {t!r} (test code must be blanked)")
+
+    tcase("a #[cfg(test)] mod at the bottom of a src file is blanked",
+          'fn prod() { real(); }\n#[cfg(test)]\nmod tests {\n  fn t() { fake(); }\n}\n',
+          must_keep=("real();",), must_drop=("fake();",))
+    # The reason it is brace-MATCHED: a lazy `.*?}` stops at the inner function's
+    # closing brace and leaves the rest of the module readable as production.
+    tcase("nested braces do not end the item early",
+          '#[cfg(test)]\nmod t {\n  fn a() { if x { y(); } }\n  fn b() { leaked(); }\n}\nfn prod() { real(); }\n',
+          must_keep=("real();",), must_drop=("leaked();", "y();"))
+    tcase("a #[cfg(test)] use statement has no brace and stops at the line",
+          '#[cfg(test)]\nuse fake::thing;\nfn prod() { real(); }\n',
+          must_keep=("real();",), must_drop=("fake::thing",))
+    tcase("production code with no test module is untouched",
+          'fn prod() { real(); }\n', must_keep=("real();", "fn prod()"))
+    # Deleting rather than blanking would JOIN these and manufacture `ab`.
+    tcase("blanking does not join the text either side of the gap",
+          'let a\n#[cfg(test)]\nmod t { }\nb = 1;\n', must_keep=("let a", "b = 1;"),
+          must_drop=("mod t",))
 
     # ── the case the OLD copies got right and the new one got wrong ──
     case("lifetime is not a char literal",

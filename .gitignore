@@ -369,6 +369,13 @@ frontend/dist-s01/
 
 frontend/dist-jamie/
 services/publisher/pub.exe~
+NEW_SESSION_PROMPT.md
+
+# `gate-bite-harness` writes a mutated COPY of a gate beside the original while
+# it measures whether that gate's self-test bites, and removes it in a `finally`.
+# A killed run leaves one behind -- which has happened -- so it must be
+# impossible to commit rather than merely unlikely.
+scripts/.bite-*.py
 
 
 # ── Agent workflow: what is SHARED vs what is YOURS ─────────────────────────

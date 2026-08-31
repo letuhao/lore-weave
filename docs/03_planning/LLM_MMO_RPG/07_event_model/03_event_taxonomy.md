@@ -1,5 +1,7 @@
 # 03 — Event Taxonomy (EVT-T*)
 
+<!-- design-lint: ok prefix EV — `EV-*` are the event-causality round's ids, owned by docs/specs/2026-08-02-event-causality.md (79 occurrences there). They are CITED here, not declared. Registering EV in this track's id catalog would claim ownership of another document's namespace, which is the opposite of what the catalog is for — same reasoning as the ML allowlist in SESSION_HANDOFF.md. -->
+
 > **Status:** LOCKED Phase 1 + Option C redesign 2026-04-25. The closed set of event categories every event in LoreWeave's per-reality stream belongs to. Per [EVT-A1](02_invariants.md#evt-a1--closed-set-event-taxonomy), every event maps to exactly one EVT-T*; no "Other" / "Misc". Adding a category requires a superseding decision.
 > **Stable IDs:** EVT-T1..EVT-T11 reserved; **6 active** (T1, T3, T4, T5, T6, T8) + **5 retired** (T2, T7, T9, T10, T11 — `_withdrawn` per foundation I15). Never renumber.
 > **Redesign note (Option C, 2026-04-25):** original Phase 1 taxonomy (`ce6ea97`) had 6 mechanism-level + 5 feature-specific categories. Option C redesign collapsed feature-specific categories into mechanism categories via sub-types per [EVT-A11](02_invariants.md#evt-a11--sub-type-ownership-discipline). T2 NPCTurn, T7 CalibrationEvent, T9 QuestBeat, T10 NPCRoutine, T11 WorldTick withdrawn — their concerns absorbed by T1 Submitted / T3 Derived / T5 Generated as feature-defined sub-types.
@@ -31,6 +33,45 @@ Producer rules + per-category contracts (envelope shape, idempotency, payload li
 | **EVT-T8** | **Administrative** | Operator-emitted via S5 dispatch | operator-trusted | dedicated admin primitive (e.g., `dp::channel_pause`); often emits T4 System as side-effect |
 
 **Withdrawn IDs (5):** T2 / T7 / T9 / T10 / T11 — see retirement section below.
+
+> ## ⚠️ 2026-08-02 — two corrections to the table above, one mechanical and one structural
+>
+> **`E-4` — NONE OF THE FOUR COMMIT PRIMITIVES IN THE LAST COLUMN EXISTS.** Measured across `crates/` +
+> `contracts/` + `services/`: `advance_turn` **0** · `t3_write` **0** · `t2_write` **1**, and that one is
+> a comment (`services/commit-service/src/bin/spine.rs:276`). What ships is
+> `crates/dp-kernel/src/channel.rs` (`ChannelWriter::append`, `channel_event_id` allocation) plus
+> `event_store.rs` / `event_store_pg.rs`. The column is **aspirational and reads as inventory**; re-map
+> it onto the primitives that exist, or say plainly that it is a design.
+>
+> **`E-31` / `EV-2` — the third column is the finding.** It is headed *"Origination dimension"*, and that
+> is exactly right: **this taxonomy discriminates on WHERE A MESSAGE CAME FROM, which is a producer-side
+> property.** A game-world occurrence — a siege, a festival, a tribulation — is a **subject-side**
+> concept, and therefore has no home here at all. Trace a siege and it scatters across four categories
+> while the siege itself is nowhere: not a category, not a sub-type, not an aggregate.
+> `EVT-T11_withdrawn` retired "WorldTick" **for being the same mechanism as NPCRoutine** — correct on
+> this axis, and precisely the move that erased the occurrence.
+>
+> Apply `D-98`'s discriminator (*a closed set is mechanism if the engine's arithmetic differs per member;
+> it is a feature's vocabulary in costume if the engine treats members uniformly*). **The arithmetic DOES
+> differ per member, and it ships**: `services/commit-service/src/admission.rs:139-186`
+> `Category::stage_verdicts()` gives T6 ten stages all applicable, and T1 eleven with `a5-intent` /
+> `a6-sanitize` / `a6-output` / `canon-drift` inapplicable plus `free-text-sanitisation`. ⇒ **`EVT-T*` is
+> genuine, load-bearing MECHANISM** — and what its arithmetic differs *about* is **which validator subset
+> a message must pass**, i.e. **trust**. That is why it can be a real mechanism and still supply no
+> ontology: **it is a producer-TRUST taxonomy, correctly built, wearing an event ontology's name.**
+>
+> ⚠️ **CORRECTED 2026-08-02.** An earlier version of this note said the per-category validator subset
+> *"was removed as a security defect"*. **It was not.** What `PID-D5` removed is the **wire field** — the
+> message's ability to *declare* its own category and thereby elect its own trust tier. The **selection**
+> ships and is driven by the category **derived** from a verified producer. The conclusion above survives
+> on the opposite evidence, and stating it the wrong way is dangerous in a specific way: **a reader who
+> believes the mistaken version and "simplifies" by merging the categories re-opens `PID-D5`.**
+>
+> There is also **no duration concept** — `fiction_ts_start` + `fiction_duration` is a field on an
+> instantaneous message, not a span, so a three-day siege is not expressible as one thing.
+>
+> See [`docs/specs/2026-08-02-event-causality.md`](../../../specs/2026-08-02-event-causality.md)
+> `EV-2`/`EV-3`/`EV-17`.
 
 ---
 
@@ -106,6 +147,21 @@ V1 aggregate types currently registered (see boundary matrix for full list): `fi
 | `TurnSlotReleased` | DP-Ch51 | `release_turn_slot` or auto-timeout |
 | `TurnSlotTimedOut` | DP-Ch52 | CP scheduler 30-s auto-timeout |
 | `TurnBoundary` | DP-A17 | every `advance_turn` call (carries the EVT-T1 Submitted payload as `turn_data`) |
+
+> ⚠️ **ROT `E-10` — 2026-08-02: NOT ONE of the eight sub-types above is registered.**
+> [`contracts/events/_registry.yaml`](../../../../contracts/events/_registry.yaml) registers **15 event
+> types total** — `reality.created` · `ruleset.epoch_activated` · `npc.said` · `world.tick` · two
+> `xreality.*` · four `canon.entry.*` · four `admin.canon.override.*` · `canon.change.recorded` — and
+> none of these eight appears among them. `D-63` verified the identical gap from the actor side: *"not
+> one of the 31 actor-keyed aggregates appears."* The registry is what gates writes; this table is a
+> design register. **Reconcile against the registry, or state that these are unbuilt.**
+>
+> ⚠️ **ROT `E-11` — `world.tick` is SHIPPED under a name this folder permanently retired.**
+> `_registry.yaml:82-89` registers it (`go_struct: WorldTickV1`, owner world-service, shipped_cycle 8):
+> *"Periodic in-world heartbeat. Drives scheduled NPC behaviors, weather, faction simulation."* Meanwhile
+> `EVT-T11_withdrawn` below declares *"WorldTick … Stable ID EVT-T11 permanently retired"*. These may be
+> two different things sharing one name — **which is itself the defect**, and under I15 stable-ID
+> discipline it must be resolved deliberately rather than silently re-retired.
 
 **Causal-ref policy:** N/A — DP-internal. SystemEvents don't carry feature-level causal_refs (DP may carry its own internal references; out of EVT scope).
 

@@ -1,449 +1,819 @@
 #!/usr/bin/env python3
-"""Generate the `/goal` prompt for the knowledge-architecture refactor.
+"""Generate a `/goal` condition from a plan or RUN-STATE. Any plan, any agent.
 
 WHY THIS EXISTS
 ---------------
-`/goal` takes a **4000-character** condition and it is retyped every session. Retyping is
-where two failures live, and both have already happened here:
+`/goal` takes a **4000-character** condition and it gets retyped every session.
+Retyping is where two failures live, and both have happened:
 
-- **It goes stale.** The 08-14 audit found the run-state crediting T39 with 16/24 blocks it
-  did not own, and a hand-written `T17 (13/20)` sitting six lines above a generated `12/20`.
-  A goal prompt naming a finished row, or a count nobody recomputed, sends a session at the
-  wrong task — which is exactly how T17 held the pointer for ten batches.
-- **It overflows silently.** The first hand-written version was 4819 characters. `/goal`
-  refused it, which was lucky: the natural repair under time pressure is to delete whatever
-  is at the bottom, and the bottom is the STOP list.
+- **It goes stale.** A goal prompt naming a finished row sends a session at the
+  wrong task. In the repo this tool came from, one row held the RESUME pointer
+  for ten consecutive batches after it had shipped.
+- **It overflows silently.** The first hand-written version was 4819 characters.
+  `/goal` refused it, which was luck: the natural repair under time pressure is
+  to cut from the bottom, and the bottom is the STOP list — the half that makes
+  a long autonomous run safe.
 
-So the invariant half (rules, cycle contract, stop shape) is a CONSTANT in this file — one
-home, edited once — and the variable half (which rows are still open, what RESUME says) is
-read off the plan every time. A row that gets ticked drops out of the queue by itself.
+So the invariant half (the cycle contract, the stop shape, the budget) is a
+constant here — one home, edited once — and the variable half (which rows are
+open, what comes next) is read off the plan every time. **A row that gets ticked
+leaves the queue by itself.**
 
-    python scripts/goal-prompt.py              # print `/goal <condition>`, ready to paste
-    python scripts/goal-prompt.py --check      # budget, hand-backs, queue coverage
-    python scripts/goal-prompt.py --selftest   # prove each of those can go red
+    python scripts/goal-prompt.py --plan docs/plans/X.md            # print it
+    python scripts/goal-prompt.py --plan docs/plans/X.md --check    # audit it
+    python scripts/goal-prompt.py --selftest                        # prove it bites
 
-WHAT `--check` ACTUALLY CHECKS, and why each one exists
--------------------------------------------------------
-Audited 2026-08-14 against the hand-written original, which was green-looking and had two
-defects that only measurement found:
+WHAT WAS DE-BIASED, AND WHY IT MATTERS
+--------------------------------------
+This started as a tool for ONE plan in ONE repo, and nine things were welded to
+it: the plan path, a literal lane→row QUEUE, a literal excluded row, thirteen
+rules naming specific ports and services, a discipline block naming specific
+gates, a STOP list naming specific decision ids, a hardcoded goal sentence, an
+import of a helper script that does not exist everywhere, and a row syntax
+(`- [~] **T35**`) that only one family of plans uses.
 
-- **Hand-backs are DERIVED.** The literal list was missing **T35** — and T35 was the RESUME.
-  The prompt would have started a long autonomous run on a row carrying a ⏸ POST-REVIEW
-  checkpoint while naming four *other* rows as the only reasons to stop. A stop list is the
-  one part of this prompt whose incompleteness is dangerous rather than untidy.
-- **Every open row is in a lane, or excused in writing.** `QC-5` was open, listed as a
-  checkpoint, and named by no run — a long run would have worked A→B→C→D and never heard of
-  it. Unreachable is invisible in exactly the way finished is.
-- **Derived is asserted against the EMITTED TEXT.** Biting the derivation back to a literal
-  left `--check` reporting "5 hand-back rows" while the output had lost T35, because it was
-  asking the deriver instead of reading the result.
-- **Headroom is reported.** At 96 % of budget the number that predicts the next outage is how
-  much room the RESUME line has left, so it is printed rather than discovered.
+Every one of those is now either **derived from the plan** or **declared by the
+plan**, and the tool runs with **zero configuration** against a plan it has
+never seen. That is the point: a tool that only works on the plan it was written
+for is a tool that gets rewritten, and the rewrite is where the staleness this
+file exists to prevent comes back.
 
-⚠️ **It never truncates.** Over budget is an ERROR naming the section sizes, because a prompt
-silently cut to fit is a prompt whose last section is missing — and the last section is STOP.
+THE TWO HOMES, and why there is no config file
+----------------------------------------------
+1. **Here** — what is true of every long run: never truncate, stop only for the
+   listed reasons, a finished row leaves the queue.
+2. **The plan** — what is true of THIS run: the goal sentence, the lanes, the
+   repo's own rules. Declared in an optional ```goal-prompt fenced block.
+
+A third home — a `goal-prompt.yaml` somewhere — was considered and rejected. The
+rules for a run belong beside the run, or they drift from it; and a file an
+agent has to FIND is a file an agent will not find.
+
+⚠️ **It never truncates.** Over budget is an ERROR naming the section sizes,
+because a prompt silently cut to fit is a prompt whose last section is missing.
 """
 
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PLAN = REPO / "docs" / "plans" / "2026-08-09-knowledge-architecture-refactor.md"
 
 #: `/goal` refuses anything longer. Not a style guide — a hard interface limit.
 #:
-#: ⚠️ Measured on the CONDITION only. The `/goal ` prefix below is the command, not part of
-#: what gets counted — charging the condition for it would silently cost six characters of a
-#: budget that is already 94 % spent.
+#: ⚠️ Measured on the CONDITION only. The `/goal ` prefix is the command, not
+#: part of what gets counted — charging the condition for it would silently cost
+#: six characters of a budget that is usually nearly spent.
 BUDGET = 4000
 
-#: Headroom below this and the next RESUME edit breaks the command. Reported by `--check` as a
-#: WARNING rather than a failure: a prompt at 98 % is still correct today, and failing on it
-#: would block a session for a problem that has not happened yet. But it is the number that
-#: predicts the next outage, so it is printed rather than left to be discovered.
+#: Headroom below this and the next edit breaks the command. A WARNING, not a
+#: failure: a prompt at 98% is still correct today, and failing on it would block
+#: a session for a problem that has not happened. But it is the number that
+#: predicts the next outage, so it is printed rather than discovered.
 MIN_HEADROOM = 150
 
-#: Emitted ahead of the condition so the output is ONE paste rather than a paste plus a typed
-#: command. Retyping the command is the same failure as retyping the condition, one token
-#: smaller.
+#: Emitted ahead of the condition so the output is ONE paste rather than a paste
+#: plus a typed command. Retyping the command is the same failure as retyping the
+#: condition, one token smaller.
 PREFIX = "/goal "
 
-#: The QUEUE, as sequenced by the spec sections named beside it. Rows are filtered against the
-#: plan's checkboxes on every run, so a finished row leaves the queue without anyone editing
-#: this list — the staleness the 08-14 audit was about.
-QUEUE: list[tuple[str, str, list[str]]] = [
-    ("A identity", "§6.1", ["T35", "T32", "T33", "QC-6"]),
-    ("B caches", "§6.6/6.5", ["T39", "T40", "T51"]),
-    ("C vector", "§3.1", ["QC-3", "T25"]),
-    # 🔴 F is the lane the plan never had. The 2026-08-22 audit measured the run against its
-    # ORIGINAL goal and found nothing owned the graph cutover: the port, two adapters, the
-    # conformance suite, the shadow harness and QC-7's `cutover_permitted: True` all landed,
-    # and `KNOWLEDGE_GRAPH_BACKEND=age` still raises. A plan can close green having built
-    # every precondition for a change it never made — which is why this lane sits ahead of
-    # "D close", whose T48 refuses to certify while anything is open.
-    # T17 left QUEUE_EXCLUDED 2026-08-22. Its excuse — "§1.3 says its ceiling should not reach
-    # zero" — is still true and was never the whole picture: §1.3's class (d) is 28 binders that
-    # BLOCK the AGE default (T54b measured the split). Excusing the row excused the critical
-    # path with it, which is the thing QUEUE_EXCLUDED exists to prevent.
-    ("F goal", "§8", ["T17", "T54", "T55", "T56"]),
-    ("D close", "§6.3/6.4", ["T44", "T45", "T46", "T47", "T48", "T49"]),
-    # 🔴 QC-5 had NO LANE. It was open, listed as a ⏸ checkpoint, and named by no run — so a
-    # long run following this queue would never have reached it. Found by the coverage check
-    # below, which is why that check exists rather than a promise to remember.
-    ("E critic", "§2.1", ["QC-5"]),
+# ─── the invariant half ──────────────────────────────────────────────────────
+#
+# Nothing below names a service, a port, a row id or a repo. If you find
+# yourself wanting to add one, it belongs in the plan's ```goal-prompt block.
+
+CYCLE = (
+    "CYCLE: READ the row + what it cites -> BUILD -> BITE -> VERIFY -> EVIDENCE -> ADVANCE. "
+    "No step skipped. No bite output or no pasted evidence => FAILS CLOSED: the row stays open "
+    "with a written reason, never ticked.\n"
+    "BITE = break the guarded thing, watch it go RED for the RIGHT reason, restore it "
+    "byte-exact, paste both outputs. A test you added is not evidence; a test you watched fail "
+    "is."
+)
+
+RULES = (
+    "1 A number that reads as success is guilty until checked. RUN it, do not read it.\n"
+    "2 A check that cannot fail is not a check. Prove it can go red before trusting it green.\n"
+    "3 Measure the row BEFORE building it. The measurement often kills the row, and that is "
+    "the result.\n"
+    "4 A claim without a command behind it is a memory. Re-measure; do not recall.\n"
+    "5 Anything that WRITES goes to a throwaway database. A count is a read; an INSERT is not.\n"
+    "6 A gate's baseline moves in the SAME COMMIT as the code that moved it.\n"
+    "7 Tick the box in the commit that does the work.\n"
+    "8 Do NOT fan out subagents per list element. Group by file or domain, or stay solo.\n"
+    "9 Record the near-misses as they happen. A run that ends with an empty drift log is "
+    "dishonest, not clean."
+)
+
+DISCIPLINE = (
+    'NO "BLOCKED" that means "I would have to build it". A row may be unfinished; it may not '
+    "be undecided. Decide it, write down the decision, keep going.\n"
+    "No prose-only cycles. Editing the plan is a STEP of a cycle, never a cycle of its own.\n"
+    "Commit every cycle. Keep the repo's gates green; a gate you disabled is a gate that "
+    "failed."
+)
+
+STOP_HEAD = "STOP — these, and nothing else:"
+STOP_TAIL = (
+    "NOT reasons to stop: a row finishing, a green suite, a commit landing, a bug you did not "
+    "write, context filling, or wanting to check in."
+)
+
+#: The two universal stops. A plan adds its own via `po_decisions:`.
+STOP_ALWAYS = [
+    "a sealed decision turns out to be wrong",
+    "an action is destructive or irreversible and was not authorised",
 ]
 
-#: Rows that END a run — DERIVED from the plan, never hand-listed.
+# ─── reading a plan ──────────────────────────────────────────────────────────
+
+#: Format A — the checkbox list: `- [~] **T35** — …`
+ROW_CHECKBOX = re.compile(r"^\s*[-*]\s*\[([ x~])\]\s*\*\*([A-Za-z0-9.\-]+)\*\*", re.MULTILINE)
+
+#: Format B — the board table: `| \`P7\` the caller … | \`[x]\` | evidence |`
 #:
-#: 🔴 The hand-written version was missing **T35**, and T35 was the RESUME. The prompt would
-#: have sent a long autonomous run at a row carrying a ⏸ POST-REVIEW checkpoint while telling
-#: it to stop only for four other rows — straight through a hand-back the plan requires. A
-#: stop list is the one part of this prompt whose incompleteness is dangerous rather than
-#: merely untidy, so it is the last thing that should have been a literal.
+#: Two formats rather than one because plans in the wild use both, and a tool
+#: that reads only the author's own dialect is the bias this file exists to
+#: remove. Detection is by COUNT, not by guessing: whichever yields more rows
+#: wins, and a tie goes to the checkbox form because it is unambiguous.
+#: ⚠ WIDENED by `C1` (2026-08-22). It required a BACKTICKED id, and 30 of 51
+#: boards in this repo write a BOLDED one — `| **1** | … | **DONE** |`. Those
+#: boards parsed as EMPTY, and a board whose rows are invisible is
+#: indistinguishable from a board with none open. `2026-08-02-actor-substrate`
+#: — the sibling whose METHOD a whole run copied — carries 218 bolded pipe-rows
+#: and read as zero.
+ROW_TABLE = re.compile(r"^\|\s*(~~)?\s*(?:`([A-Za-z0-9.\-/]+)`|\*\*([A-Za-z0-9.\-/]+)\*\*)", re.MULTILINE)
+
+#: Format C -- the MARKER FIRST board: `| `[x]` **S0** | what | evidence |`.
 #:
-#: `⛔` = the row's own text declares a stop condition. `⏸` = a POST-REVIEW checkpoint.
-#: Attribution reuses `plan-progress-block.owner_of`, so a marker written inside another row's
-#: evidence block does not leak — the same defect that credited T39 with 16/24 blocks.
-STOP_KINDS = {"⏸": "a ⏸ POST-REVIEW checkpoint", "⛔": "a stop condition fires"}
+#: `C1` of the world-in-a-running-reality board. `ROW_TABLE` reads an id out of
+#: cell 0 and `row_states` looks for state in cells 1+, so a board that puts the
+#: TICK BOX in cell 0 and the id after it is invisible to both halves at once.
+#: 17 rows across two game-track boards.
+#:
+#: This is the ONLY one of three measured dialect families that got a widening.
+#: The other two are refused on their measurement -- see `OR-5`.
+ROW_MARKER_FIRST = re.compile(
+    r"^\|\s*`?(\[[ x~]\])`?\s*\*\*([A-Za-z0-9.\-/]+)\*\*\s*\|", re.MULTILINE
+)
 
-#: Open rows deliberately absent from QUEUE, each with the reason. Anything open and NOT here
-#: and NOT in a lane is an ORPHAN: a row a long run following this prompt never reaches. QC-5
-#: was exactly that — open, listed as a checkpoint, and in no lane.
-QUEUE_EXCLUDED: dict[str, str] = {}
+#: A cell is a STATUS cell only if it BEGINS with one of these, after stripping
+#: emphasis and whitespace.
+#:
+#: ⚠ The "begins with" part is `C1`'s third gap and it is the one that silently
+#: CLOSED rows. The old reader asked `"[x]" in line`, so a row whose PROSE
+#: mentioned a marker was read as carrying it: row `B2` of the space-producers
+#: board quoted `[x] manual, [ ] automated` while describing a half-proven
+#: thing and was ticked out of its own queue, and so was the row describing
+#: THIS defect. A parser that cannot tell a marker from a MENTION of a marker
+#: does not merely miss work — it reports work as finished.
+#: SYMBOL markers may match as a PREFIX -- a glyph is unambiguous.
+DONE_SYMBOLS = ("[x]", "✅", "🅿", "⏭️")
+OPEN_SYMBOLS = (("[~]", "~"), ("[ ]", " "), ("⬜", " "))
 
-RULES = """1 Measure DATA on the real stack (5555/7688); run CODE on lw-iso (base+20000).
-2 A number that reads as success is guilty until checked. RUN it, don't read it.
-3 A criterion that cannot fail is not a criterion; validate a detector on a case it was NOT derived from, else it is green by construction.
-4 A switch has a TIER before a name: deploy ceiling, per-book work.settings, or run param.
-5 A gate's number moves in the SAME COMMIT as the code that moved it. So does a scope list.
-6 Anything that WRITES goes to a throwaway DB. Dev Postgres and Neo4j are READ-ONLY — a count is a read, a MERGE is not. EXCEPT the GRANTS below, which are authorised.
-7 Glossary migrations are an append-only ledger: new step, never edit.
-8 MEASURE THE BATCH BEFORE BUILDING IT. Three times this week it killed the batch; that was the result.
-9 An adapter that cannot honour an operation RAISES, naming its spec section. Never empty, never half-written, never silently truncated.
-10 Do NOT fan out subagents per list element. No workflows, no AgentTool unless I ask.
-11 Tick the box in the COMMIT THAT DOES THE WORK.
-12 NAME THE ROW in every evidence-block heading (T35d, A11, QC-5) — positional attribution is what mis-credited T39.
-13 A divergence RECORDED is not a divergence DIAGNOSED. Prove which side is wrong FROM THE WORKLOAD, not by analogy."""
+#: WORD markers must be UPPERCASE in the source and end at a non-letter.
+#:
+#: ⚠ The first version of this widening allowed any case, and it reintroduced
+#: the very bug it was fixing one layer over: `| **8** | Open register | **DONE
+#: for this pass** |` read as OPEN because cell 1 begins with the word "Open",
+#: and `| `R-57` | OpenMW's preload() ... |` read as OPEN because of "OpenMW".
+#: Three false opens on one closed board. A board writing "Open register" as a
+#: TITLE is not marking status; a board marking status writes `**DONE**`.
+#:
+#: `🔴` was in this list too and is now gone: in this repo it is a SEVERITY
+#: glyph in finding tables, not a state, and `⬜` already covers the open case in
+#: the same tables.
+DONE_WORDS = ("DONE", "COMPLETE", "CLOSED", "PARKED", "WAIVED", "APPLIED", "SUPERSEDED", "N/A")
+OPEN_WORDS = (("TODO", " "), ("OPEN", " "), ("BLOCKED", " "), ("DOING", "~"), ("PARTIAL", "~"))
 
-CYCLE = """CYCLE: READ the sealed row + its spec § → BUILD → BITE → QC → EVIDENCE → ADVANCE. No step skipped. No bite output or no pasted evidence ⇒ FAILS CLOSED: row stays [~] with a five-element deferral, never [x].
-QC is three controls, each getting output or an explicit "N/A because…": (a) gates green, a NEW gate needs --selftest (a hand-bite is invisible to CI); (b) live smoke vs REBUILT images if a service seam is crossed; (c) real-run data if the task produces data.
-BITE = mutate by LINE NUMBER (exact-match replace silently no-ops on CRLF), watch it red for the RIGHT reason, restore, paste it."""
+#: Where "what comes next" is written. Several spellings, because plans differ
+#: and the alternative is each plan editing the tool.
+RESUME_PATTERNS = [
+    re.compile(r"^\*\*RESUME:\s*(.+?)\*\*\s*$", re.MULTILINE),
+    re.compile(r"^RESUME:\s*(.+?)\s*$", re.MULTILINE),
+    re.compile(r"^>?\s*\*\*▶\s*(?:DO\s+)?NEXT[^*]*\*\*\s*[—:-]?\s*(.+?)\s*$", re.MULTILINE),
+]
 
-DISCIPLINE = """NO "BLOCKED", NO "DEFERRED". A task may be unfinished; it may not be undecided. Decide it, spec it in docs/specs/2026-08-13-knowledge-refactor-open-decisions.md, keep building.
-No prose-only cycles. Editing the plan is step 5 of a cycle, never a cycle of its own.
-Commit and push every cycle. Keep the four plan gates green (verify, row-honesty, progress-block --check, acceptance --floor)."""
-
-#: What the PO authorised on 2026-08-21, verbatim enough to act on. This block exists because a
-#: goal prompt whose STOP list re-blocks work that was just approved sends a whole session back
-#: to the same four questions — which is exactly what fifteen consecutive stop-hook firings were.
-GRANTS = """GRANTS (PO 2026-08-30) — authorised; rule 6 and the STOP list do not bar these:
-· QC-5: TICK IT. §12 decided 1a is not satisfiable (7 candidates eliminated by measurement);
-  §18/C46 gated the attribution channel. No further acceptance run is owed.
-· T33: run the causal extractor over the sheet's 2 chapters on lw-iso or a THROWAWAY (LLM
-  spend + graph writes THERE), then --score. The PO labels; you never write a label.
-· T48/T49: run the final verification, update SESSION_HANDOFF, archive the plan.
-· NOT granted: the sibling `infra` stack. It is RETIRED at merge-to-main (§19's five steps),
-  not worked around now."""
-
-STOP_BLOCK = """STOP — these five, nothing else:
-· a stop condition fires: {stops}
-· a ⏸ POST-REVIEW checkpoint GRANTS does not already decide: {pauses}
-· a sealed decision proves wrong
-· a PO decision is owed that GRANTS does not cover
-· a write to a non-throwaway DB that GRANTS does not authorise
-NOT reasons: a row finishing, a green suite, a commit landing, a bug you didn't write, or wanting to check in."""
-
-ROW_RE = re.compile(r"^- \[([ x~])\] \*\*([A-Za-z0-9.\-]+)\*\*", re.MULTILINE)
+#: The plan's own declarations. Optional — everything has a derived default.
+DECL_BLOCK = re.compile(r"```goal-prompt\s*\n(.*?)```", re.DOTALL)
 
 
-_HEADING = re.compile(r"^\s{0,4}#{3,4} ")
+def _strip_md(text: str) -> str:
+    """Plain text out of markdown, so the prompt reads as prose.
 
-
-def _owner_of():
-    """`plan-progress-block.owner_of`, imported rather than reimplemented.
-
-    That rule is already audited and selftested — a second copy here would be the "one home"
-    violation this repo keeps finding, and the two would disagree the first time either moved.
+    Links keep their LABEL and lose their target: a goal condition is read by a
+    model with no filesystem, so a path in it is noise that costs budget.
     """
-    import importlib.util
-    path = Path(__file__).resolve().parent / "plan-progress-block.py"
-    spec = importlib.util.spec_from_file_location("_ppb", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.owner_of
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"\*\*|`|~~|__", "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def stop_markers(plan: str) -> dict[str, str]:
+def _cells(line: str) -> list[str]:
+    """A table row's cells, emphasis and whitespace stripped from each edge."""
+    return [c.strip().strip("*").strip() for c in line.strip().strip("|").split("|")]
+
+
+def _cell_state(cell: str) -> str | None:
+    """The state a cell DECLARES, or `None` if it merely mentions one.
+
+    Symbols match as a prefix; WORDS must be uppercase and end at a non-letter.
+    The test is never `in`. See `DONE_SYMBOLS` and `DONE_WORDS` for what each
+    half of that cost before it was made.
+    """
+    c = cell.lstrip("`*_ ").strip()
+    if not c:
+        return None
+    for mark in DONE_SYMBOLS:
+        if c.startswith(mark):
+            return "x"
+    for mark, state in OPEN_SYMBOLS:
+        if c.startswith(mark):
+            return state
+    # A word marker is UPPERCASE in the source and is a whole word.
+    head = c.split()[0].rstrip(".,;:!)") if c.split() else ""
+    if head and head == head.upper():
+        for mark in DONE_WORDS:
+            if head == mark:
+                return "x"
+        for mark, state in OPEN_WORDS:
+            if head == mark:
+                return state
+    return None
+
+
+def row_states(plan: str) -> dict[str, str]:
+    """`{row_id: ' '|'x'|'~'}`. The plan's own marks are the truth.
+
+    `x` = done. `~` = open/in-flight. ` ` = not started. Both open kinds are
+    queued; only `x` leaves.
+    """
+    cb = {m.group(2): m.group(1) for m in ROW_CHECKBOX.finditer(plan)}
+
+    tbl: dict[str, str] = {}
+    for line in plan.split("\n"):
+        # Format C first: its cell 0 holds BOTH the marker and the id, so
+        # ROW_TABLE would read the marker as the id if it matched at all.
+        if mf := ROW_MARKER_FIRST.match(line):
+            tbl[mf.group(2)] = {"[x]": "x", "[~]": "~", "[ ]": " "}[mf.group(1)]
+            continue
+        m = ROW_TABLE.match(line)
+        if not m:
+            continue
+        rid = m.group(2) or m.group(3)
+        # A STRUCK id is done however the rest of the row reads -- the strike is
+        # on the id itself, which is not a cell that can be mentioned.
+        if m.group(1):
+            tbl[rid] = "x"
+            continue
+        # PARKED FIRST, and the order is a bug this comment marks. A parked row
+        # carries no tick box -- that is what parked MEANS -- so when this test
+        # ran after the state branches it was unreachable behind their
+        # `continue`, and a row the PO had parked would have headed the queue.
+        # The selftest caught it on the first run.
+        cells = _cells(line)
+        state = None
+        for cell in cells[1:]:
+            state = _cell_state(cell)
+            if state is not None:
+                break
+        if state is not None:
+            tbl[rid] = state
+    return cb if len(cb) >= len(tbl) else tbl
+
+
+def declarations(plan: str) -> dict[str, object]:
+    """The plan's optional ```goal-prompt block.
+
+    A tiny key: value / key: [list] / key: | block reader rather than a YAML
+    dependency — this script must run on a bare checkout, and a tool that needs
+    `pip install` before it can print a sentence will not be run.
+    """
+    m = DECL_BLOCK.search(plan)
+    if not m:
+        return {}
+    out: dict[str, object] = {}
+    key, buf = None, []
+    for raw in m.group(1).split("\n"):
+        if key and (raw.startswith("  ") or not raw.strip()):
+            buf.append(raw[2:] if raw.startswith("  ") else "")
+            continue
+        if key:
+            out[key] = "\n".join(buf).rstrip()
+            key, buf = None, []
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        if ":" not in raw:
+            continue
+        k, _, v = raw.partition(":")
+        k, v = k.strip(), v.strip()
+        if v == "|":
+            key, buf = k, []
+        elif v.startswith("[") and v.endswith("]"):
+            out[k] = [x.strip() for x in v[1:-1].split(",") if x.strip()]
+        else:
+            out[k] = v
+    if key:
+        out[key] = "\n".join(buf).rstrip()
+    return out
+
+
+def stop_markers(plan: str, states: dict[str, str]) -> dict[str, str]:
     """`{row: '⏸' | '⛔' | '⏸⛔'}` for every OPEN row that declares a hand-back.
 
-    Read off the plan, because the hand-written list was missing T35 — the RESUME row — and a
-    stop list that is missing an entry is worse than no stop list: it reads as complete.
+    Read off the plan, never hand-listed. In the repo this came from the
+    hand-written list was missing the RESUME row itself — so the prompt would
+    have sent a long run at a row carrying a checkpoint while naming four OTHER
+    rows as the only reasons to stop. **A stop list that is missing an entry is
+    worse than no stop list, because it reads as complete.**
 
-    A marker only counts for the row that OWNS the line it sits on. The plan is a
-    chronological journal, so a row's span carries other rows' evidence blocks, and scanning
-    the raw span would attribute their checkpoints here — the same positional defect that
-    credited T39 with 16/24 blocks.
+    ⚠️ `⏸` is OVERLOADED in real plans: it marks both "POST-REVIEW checkpoint"
+    (a genuine hand-back) and "deferred with a mechanism" (a historical note).
+    Matching the glyph alone made the RESUME row a checkpoint and would have
+    stopped a long run immediately for nothing. So the line must carry the WORD
+    as well as the glyph.
     """
-    owner_of = _owner_of()
-    lines = plan.split(chr(10))
-    rows = [(n, m) for n, m in ((n, ROW_RE.match(l)) for n, l in enumerate(lines)) if m]
-    known = [m.group(2) for _, m in rows]
     out: dict[str, str] = {}
-    for i, (n, m) in enumerate(rows):
-        if m.group(1) != "~":
+    lines = plan.split("\n")
+    positions: list[tuple[int, str, str]] = []
+    for n, line in enumerate(lines):
+        if m := ROW_CHECKBOX.match(line):
+            positions.append((n, m.group(2), "list"))
+        elif m := ROW_TABLE.match(line):
+            positions.append((n, m.group(2), "table"))
+    for i, (n, row, kind) in enumerate(positions):
+        # Only rows the BOARD tracks. A drift register or an open-row table also
+        # puts a backticked id in its first cell, and those are not slices — a
+        # long run cannot "stop at" a row that was never in the queue.
+        if row not in states or states.get(row) == "x":
             continue
-        row = m.group(2)
-        end = rows[i + 1][0] if i + 1 < len(rows) else len(lines)
-        owner, inherited, marks = row, None, set()
+        # A TABLE row is ONE line. A checkbox row owns everything up to the next
+        # row, because that dialect keeps its evidence beneath the row.
+        #
+        # 🔴 Not cosmetic. With the span running to the next match, the LAST
+        # table row in a file absorbed everything after it — including the
+        # RESUME line — so a RESUME reading "the ⏸ POST-REVIEW checkpoint" turned
+        # a drift-register row into a hand-back. Found by running this tool on
+        # the plan it was generating a goal for, which is the only reason it was
+        # found at all: it needs a marker AFTER the last row to show up.
+        end = n + 1 if kind == "table" else (
+            positions[i + 1][0] if i + 1 < len(positions) else len(lines))
+        marks = set()
         for line in lines[n:end]:
-            if _HEADING.match(line):
-                owner, named = owner_of(line, known, inherited, row)
-                if named:
-                    inherited = owner
-            if owner != row:
-                continue
-            # ⚠️ `⏸` IS OVERLOADED and the plan says which meaning is which. Line 1209:
-            # *"QC-3, QC-5, QC-7 — the three ⏸ POST-REVIEW checkpoints"*. T35 also carries a
-            # ⏸, and it means *"DEFERRED with a mechanism"* — a historical parking note, not a
-            # hand-back. The first cut matched the glyph alone and made **T35 a checkpoint**,
-            # which would have stopped a long run on the RESUME row for nothing. Over-stopping
-            # is the failure the run policy exists to prevent, so the marker must carry the
-            # plan's own phrase.
-            if "⏸" in line and "POST-REVIEW" in line.upper():
+            up = line.upper()
+            if "⏸" in line and ("POST-REVIEW" in up or "CHECKPOINT" in up):
                 marks.add("⏸")
-            if "stop condition" in line.lower():
+            if "STOP CONDITION" in up or "⛔" in line:
                 marks.add("⛔")
         if marks:
             out[row] = "".join(sorted(marks))
     return out
 
 
-def row_states(plan: str) -> dict[str, str]:
-    """`{row: ' '|'x'|'~'}`. The checkboxes are the truth; everything else is commentary."""
-    return {m.group(2): m.group(1) for m in ROW_RE.finditer(plan)}
-
-
 def resume_line(plan: str) -> str:
-    """The plan's own RESUME line, stripped to plain text.
+    """What the plan says comes next, quoted rather than restated.
 
-    Read rather than restated: it is regenerated beside the progress block, so quoting it is
-    the one way this prompt cannot disagree with the plan about what comes next.
+    Quoting is the one way this prompt cannot disagree with the plan about the
+    next task. When a plan says nothing, that is reported as a fact rather than
+    invented — an invented next step is exactly the drift the tool prevents.
     """
-    m = re.search(r"^\*\*RESUME:\s*(.+?)\*\*\s*$", plan, re.MULTILINE)
-    if not m:
-        raise SystemExit("goal-prompt: the plan has no **RESUME:** line to quote")
-    text = m.group(1)
-    text = re.sub(r"\*\*|`|~~", "", text)              # bold, code, strike
-    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)  # links keep their label
-    return re.sub(r"\s+", " ", text).strip()
+    for pat in RESUME_PATTERNS:
+        m = pat.search(plan)
+        if m and _strip_md(m.group(1)):
+            return _strip_md(m.group(1))
+    return ""
 
 
-def build(plan: str) -> str:
-    state = row_states(plan)
-    stops = stop_markers(plan)
-    lines = [
-        'Run the GOAL in docs/plans/2026-08-09-knowledge-architecture-refactor.md — "the '
-        'architecture is implemented correctly and a live run proves it."',
-        "",
-        "RUN LONG. Do not hand back between tasks. Stop ONLY for the STOP list. Otherwise: "
-        "finish the row, commit, push, take the next one.",
-        "",
-        "QUEUE (the spec sets this order, not preference)",
+def queue(plan: str, states: dict[str, str], decl: dict[str, object]) -> list[str]:
+    """The open rows, in the order the plan lists them.
+
+    Derived by DEFAULT: board order is an ordering the author already chose, and
+    a second hand-kept list is a second thing to go stale. A plan that needs
+    lanes declares them; a plan that does not gets its board back.
+    """
+    excluded = set(decl.get("excluded", []) or [])
+    lanes = decl.get("lanes")
+    stops = stop_markers(plan, states)
+    # `r in states` is the BOARD test, and leaving it out was a real defect.
+    #
+    # `_row_order` walks every table row in the file, and a plan's drift
+    # register, sealed-decision table and OPEN register all put a backticked id
+    # in the first cell. Those rows carry no state marker, so `row_states` never
+    # records them — and `states.get(r) != "x"` is True for a row it has never
+    # heard of, so all of them entered the queue. Measured on the plan that was
+    # generating its own goal: 1 real open row, 16 queued, with a drift-log
+    # entry and a sealed decision presented to a long autonomous run as work.
+    #
+    # `stop_markers` had this right (`if row not in states: continue`) under a
+    # comment stating the rule in as many words. **The discipline was known,
+    # written down, and applied to one of the two functions that needed it** —
+    # which is `NV-3` at the level of a rule rather than a check: correct in the
+    # place someone was looking, default-uncovered in the place they were not.
+    order = [
+        r for r in _row_order(plan)
+        if r in states and states[r] != "x" and r not in excluded
     ]
-    for name, spec, rows in QUEUE:
-        # A ticked row leaves the queue on its own. The alternative — a hand-kept list — is
-        # what the 08-14 audit found pointing at work that had shipped days earlier.
-        live = [f"{r}{stops.get(r, '')}" for r in rows if state.get(r) != "x"]
+
+    if not lanes:
+        return [f"{r}{stops.get(r, '')}" for r in order]
+
+    out, seen = [], set()
+    for lane in str(lanes).split("\n"):
+        if not lane.strip():
+            continue
+        name, _, rows = lane.partition("=")
+        live = [f"{r.strip()}{stops.get(r.strip(), '')}"
+                for r in rows.split(",") if r.strip() and states.get(r.strip()) != "x"]
+        seen.update(r.strip() for r in rows.split(",") if r.strip())
         if live:
-            lines.append(f"{name} {spec}  " + " → ".join(live))
-    lines += [
+            out.append(f"{name.strip()}  " + " -> ".join(live))
+    return out
+
+
+def _row_order(plan: str) -> list[str]:
+    """Row ids in the order they appear, de-duplicated, first mention wins."""
+    seen, order = set(), []
+    for line in plan.split("\n"):
+        m = ROW_CHECKBOX.match(line) or ROW_TABLE.match(line)
+        if m and m.group(2) not in seen:
+            seen.add(m.group(2))
+            order.append(m.group(2))
+    return order
+
+
+def orphans(plan: str, states: dict[str, str], decl: dict[str, object]) -> list[str]:
+    """Open rows that no declared lane names and no exclusion excuses.
+
+    Only meaningful when a plan declares lanes. In that repo one row was open,
+    carried a checkpoint, and was named by no lane — a long run would have
+    worked through every lane and never heard of it. **An unreachable task is
+    invisible in exactly the way a finished one is**, which is why this is a
+    check and not a habit.
+    """
+    if not decl.get("lanes"):
+        return []
+    excluded = set(decl.get("excluded", []) or [])
+    named = {r.strip()
+             for lane in str(decl["lanes"]).split("\n")
+             for r in lane.partition("=")[2].split(",") if r.strip()}
+    return [r for r, st in states.items()
+            if st != "x" and r not in named and r not in excluded]
+
+
+def build(plan: str, plan_path: str = "the plan") -> str:
+    states = row_states(plan)
+    decl = declarations(plan)
+    stops = stop_markers(plan, states)
+    q = queue(plan, states, decl)
+    resume = resume_line(plan)
+
+    goal = decl.get("goal") or f"finish the open rows in {plan_path}"
+    lines = [
+        f"Run the GOAL in {plan_path} — \"{goal}\".",
         "",
-        "Only T33 waits on a person (the labels). Everything else is yours to close, in order.",
-        "",
-        CYCLE,
-        "",
-        "RULES",
-        RULES,
-        "",
-        DISCIPLINE,
-        "",
-        GRANTS,
-        "",
-        STOP_BLOCK.format(
-            stops=", ".join(r for r, k in stops.items() if "⛔" in k) or "none open",
-            pauses=", ".join(r for r, k in stops.items() if "⏸" in k) or "none open",
-        ),
-        "",
-        "RESUME: " + resume_line(plan),
+        "RUN LONG. Do not hand back between rows. Stop ONLY for the STOP list. Otherwise: "
+        "finish the row, commit, take the next one.",
         "",
     ]
+    if q:
+        lines += ["QUEUE (the plan sets this order, not preference)"]
+        lines += q if decl.get("lanes") else ["  " + " -> ".join(q)]
+        lines.append("")
+    if decl.get("note"):
+        lines += [str(decl["note"]), ""]
+
+    lines += [CYCLE, "", "RULES", str(decl.get("rules") or RULES), "",
+              str(decl.get("discipline") or DISCIPLINE), "", STOP_HEAD]
+
+    for s in STOP_ALWAYS:
+        lines.append(f"- {s}")
+    if any("⛔" in k for k in stops.values()):
+        lines.append("- a stop condition fires: "
+                     + ", ".join(r for r, k in stops.items() if "⛔" in k))
+    if any("⏸" in k for k in stops.values()):
+        lines.append("- a checkpoint is reached: "
+                     + ", ".join(r for r, k in stops.items() if "⏸" in k))
+    if decl.get("po_decisions"):
+        lines.append("- a decision is owed to the human: "
+                     + ", ".join(decl["po_decisions"]))  # type: ignore[arg-type]
+    if decl.get("stop"):
+        for extra in str(decl["stop"]).split("\n"):
+            if extra.strip():
+                lines.append(f"- {extra.strip()}")
+    lines += [STOP_TAIL, ""]
+
+    # An absent RESUME is STATED, never invented. A goal prompt that made up a
+    # next step would be the exact drift this tool exists to prevent, and it
+    # would be invisible — it reads like the plan said it.
+    lines.append("RESUME: " + (resume or
+                 "the plan names no next step — read its board and pick the first open row."))
     return "\n".join(lines)
 
 
-def orphans(plan: str) -> list[str]:
-    """Open rows that no QUEUE lane names and `QUEUE_EXCLUDED` does not excuse.
+# ─── cli ─────────────────────────────────────────────────────────────────────
 
-    🔴 QC-5 was one: open, carrying a ⏸ checkpoint, and named by no run. A long run following
-    this prompt would have worked A → B → C → D and stopped, having never heard of it. An
-    unreachable task is invisible in exactly the way a finished one is, which is why this is a
-    check and not a habit.
+def _discover() -> Path | None:
+    """The single most-recently-modified RUN-STATE, when exactly one is obvious.
+
+    A convenience, never a guess presented as fact: with zero or several
+    candidates it returns None and the caller demands `--plan`. Picking one of
+    five plans by mtime and printing a 4000-character goal for it is precisely
+    the wrong-task failure this file opens with.
     """
-    state = row_states(plan)
-    queued = {r for _, _, rows in QUEUE for r in rows}
-    return [r for r, st in state.items()
-            if st == "~" and r not in queued and r not in QUEUE_EXCLUDED]
+    cands = sorted((REPO / "docs" / "plans").glob("*RUN-STATE.md"),
+                   key=lambda p: p.stat().st_mtime, reverse=True)
+    return cands[0] if len(cands) == 1 else None
 
 
 def main() -> int:
-    if "--selftest" in sys.argv:
+    ap = argparse.ArgumentParser(description="Emit a /goal condition from a plan.")
+    ap.add_argument("--plan", help="path to the plan or RUN-STATE")
+    ap.add_argument("--check", action="store_true", help="audit budget, stops and coverage")
+    ap.add_argument("--selftest", action="store_true", help="prove each check can go red")
+    args = ap.parse_args()
+
+    if args.selftest:
         return selftest()
-    plan = PLAN.read_text(encoding="utf-8")
-    out = build(plan)
-    bad = orphans(plan)
-    if bad:
-        print(f"goal-prompt: UNREACHABLE — {bad} are open and in no QUEUE lane.",
+
+    path = Path(args.plan) if args.plan else _discover()
+    if not path:
+        print("goal-prompt: --plan is required (no single obvious RUN-STATE to default to).",
               file=sys.stderr)
-        print("  Add each to a lane, or to QUEUE_EXCLUDED with the reason. A queue that omits "
-              "an open row sends a long run past it silently.", file=sys.stderr)
+        return 2
+    if not path.exists():
+        print(f"goal-prompt: no such plan: {path}", file=sys.stderr)
+        return 2
+
+    plan = path.read_text(encoding="utf-8")
+    states = row_states(plan)
+    if not states:
+        print(f"goal-prompt: {path} has no rows this tool can read.", file=sys.stderr)
+        print("  Expected `- [~] **ID** …` or a board table whose first cell is `ID`.",
+              file=sys.stderr)
+        return 2
+
+    rel = path.as_posix()
+    try:
+        rel = path.resolve().relative_to(REPO).as_posix()
+    except ValueError:
+        pass
+    out = build(plan, rel)
+    decl = declarations(plan)
+
+    bad = orphans(plan, states, decl)
+    if bad:
+        print(f"goal-prompt: UNREACHABLE — {bad} are open and in no lane.", file=sys.stderr)
+        print("  Add each to a lane, or to `excluded:` with the reason. A queue that omits an "
+              "open row sends a long run past it silently.", file=sys.stderr)
         return 1
     if len(out) > BUDGET:
-        # Never truncate. The section that would be lost is the one at the bottom, and the
-        # bottom is STOP — the half that makes a long run safe.
+        # Never truncate: the section that would be lost is at the bottom, and
+        # the bottom is STOP.
         print(f"goal-prompt: OVER BUDGET — {len(out)} chars, /goal takes {BUDGET}.",
               file=sys.stderr)
-        print(f"  RESUME line alone is {len(resume_line(plan))} chars. Shorten it in the plan; "
-              "a RESUME that will not fit in a goal prompt is too long to be read anyway.",
-              file=sys.stderr)
+        r = resume_line(plan)
+        print(f"  RESUME is {len(r)} of it; the queue is {sum(len(x) for x in queue(plan, states, decl))}. "
+              "Shorten the RESUME line in the plan, or tick what is done.", file=sys.stderr)
         return 1
-    if "--check" in sys.argv:
-        marks = stop_markers(plan)
-        pct = 100 * len(out) / BUDGET
-        print(f"[goal-prompt] OK — {len(out)}/{BUDGET} chars ({pct:.0f}% used, "
-              f"{BUDGET - len(out)} spare); RESUME is {len(resume_line(plan))} of it")
-        # 🔴 Assert against the EMITTED TEXT, not against what was derived a line earlier.
-        # Found by biting the derivation back to a literal: `build` lost T35's ⏸ while this
-        # line still reported "5 hand-back row(s) derived", because it was asking the deriver
-        # rather than reading the output. A check that cannot see what the emitter actually
-        # did is the inject-at-the-chokepoint shape — it proves the chokepoint, not the wiring.
-        # ⚠️ The row must appear WITH ITS MARKER. An earlier cut allowed `or r not in out` as
-        # a fallback and was toothless: biting T35's ⏸ out of the queue left this green,
-        # because the bare string "T35" still appears in the RESUME line and in rule 12's
-        # `T35d`. A check satisfied by an incidental substring is not checking anything.
-        unrendered = [r for r in marks
-                      if r not in QUEUE_EXCLUDED and f"{r}{marks[r]}" not in out]
-        if unrendered:
-            print(f"goal-prompt: DERIVED BUT NOT EMITTED — {unrendered}", file=sys.stderr)
+
+    if args.check:
+        marks = stop_markers(plan, states)
+        openn = sum(1 for s in states.values() if s != "x")
+        print(f"[goal-prompt] OK — {len(out)}/{BUDGET} chars "
+              f"({100 * len(out) / BUDGET:.0f}% used, {BUDGET - len(out)} spare)")
+        print(f"[goal-prompt] {openn} open of {len(states)} row(s); "
+              f"queue is {'lane-declared' if decl.get('lanes') else 'derived from board order'}")
+        # 🔴 Assert against the EMITTED TEXT, not against what was derived a line
+        # earlier. A check that asks the deriver instead of reading the output
+        # proves the deriver, not the wiring — and the row must appear WITH its
+        # marker, or an incidental substring elsewhere satisfies it.
+        missing = [r for r in marks if f"{r}{marks[r]}" not in out]
+        if missing:
+            print(f"goal-prompt: DERIVED BUT NOT EMITTED — {missing}", file=sys.stderr)
             return 1
-        print(f"[goal-prompt] {len(marks)} hand-back row(s) derived AND emitted: "
-              + ", ".join(f"{r}{k}" for r, k in marks.items()))
-        print(f"[goal-prompt] every open row is in a lane or excused "
-              f"({len(QUEUE_EXCLUDED)} excused: {', '.join(QUEUE_EXCLUDED)})")
+        print(f"[goal-prompt] {len(marks)} hand-back row(s) derived AND emitted"
+              + (": " + ", ".join(f"{r}{k}" for r, k in marks.items()) if marks else ""))
+        if not resume_line(plan):
+            print("[goal-prompt] WARN — the plan names no next step; the prompt says so rather "
+                  "than inventing one, but a RESUME line would be better.")
         if BUDGET - len(out) < MIN_HEADROOM:
             print(f"[goal-prompt] WARN — only {BUDGET - len(out)} chars of headroom "
-                  f"(floor {MIN_HEADROOM}). The RESUME line is {len(resume_line(plan))} of the "
-                  "total and grows every cycle; the next edit is the one that breaks this.")
+                  f"(floor {MIN_HEADROOM}). The next edit is the one that breaks this.")
         return 0
+
     print(PREFIX + out)
     return 0
 
 
 def selftest() -> int:
-    fails = []
+    fails: list[str] = []
 
-    def check(name, cond, detail=""):
+    def check(name: str, cond: bool, detail: str = "") -> None:
         print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f" — {detail}" if detail and not cond else ""))
         if not cond:
             fails.append(name)
 
     print("goal-prompt · selftest")
-    sample = ("**RESUME: `T35` — decide whether it CLOSES.**\n"
-              "- [x] **T35** — done\n"
-              "- [~] **T32** — open\n"
-              "- [~] **T33** — open, and this row declares a stop condition\n")
-    out = build(sample)
-    # Scoped to the QUEUE section, not the whole prompt: rule 12 names `T35d` as an example of
-    # a well-formed heading, so a whole-document search reports a hit that means nothing. (The
-    # first cut did exactly that and went red against correct code.)
-    # Split on "T17 is", not the rest of that sentence: rewording the T17 note (as the
-    # 08-24 audit did) silently widened this slice to the whole document, and rule 12 names
-    # `T35d`, so the check went red against correct code. The delimiter is now the part of
-    # the line that is structural rather than editorial.
-    # Split on the BLANK LINE that ends the queue block, not on whatever prose follows
-    # it. The delimiter has now broken twice — first "T17 is NOT" when the sentence was
-    # reworded, then "T17 is" when T17 closed and the line was replaced entirely. A note
-    # under the queue is editorial and will keep changing; the empty line is structural.
-    queue = out.split("QUEUE (")[1].split(chr(10) + chr(10))[0]
-    # ① A ticked row must LEAVE the queue. This is the whole reason the prompt is generated:
-    # a hand-kept queue naming a finished row is what sent ten batches at T17.
-    check("a ticked row drops out of the queue", "T35" not in queue, queue.strip())
-    check("an open row stays", "T32" in queue and "T33" in queue)
-    check("a stop marker rides along", "T33⛔" in queue)
-    check("the RESUME line is quoted from the plan", "decide whether it CLOSES" in out)
-    check("markdown is stripped from it", "`T35`" not in out.split("RESUME:")[-1])
 
-    # ② The budget check must be able to FAIL, or it is decoration. A gate nobody has watched
-    # go red is one of this plan's named failure modes.
-    long_resume = "**RESUME: " + ("x" * 5000) + "**\n- [~] **T32** — open\n"
-    over = build(long_resume)
-    check("the budget check can go red", len(over) > BUDGET, f"{len(over)}")
+    # ① Both dialects, because reading only one is the bias this file removes.
+    cb = "- [x] **T1** — done\n- [~] **T2** — open\n"
+    check("checkbox rows are read", row_states(cb) == {"T1": "x", "T2": "~"}, str(row_states(cb)))
+    tbl = ("| `P1` a thing | `[x]` | evidence |\n"
+           "| `P2` another | `[ ]` | |\n"
+           "| ~~`P0`~~ | ✅ **CLOSED** | done |\n")
+    got = row_states(tbl)
+    check("board-table rows are read", got == {"P1": "x", "P2": " ", "P0": "x"}, str(got))
+    check("a struck-through id counts as done", got.get("P0") == "x", str(got))
 
-    # ③ And the real prompt must currently fit, or the command is broken for its only user.
-    real = build(PLAN.read_text(encoding="utf-8"))
-    check("the REAL prompt fits today", len(real) <= BUDGET, f"{len(real)} > {BUDGET}")
+    # ─── `C1` (2026-08-22). Three MEASURED gaps in this reader, each an arm.
+    #
+    # 1. A BOLDED id. 30 of 51 boards in this repo write one, and every one of
+    #    them parsed as an EMPTY board — including `2026-08-02-actor-substrate`,
+    #    the sibling whose method a whole run copied, at 218 bolded pipe-rows.
+    bold = (
+        "| **1** | measure the thing | **DONE** | evidence |\n"
+        "| **2** | build the thing | ⬜ OPEN | |\n"
+    )
+    got = row_states(bold)
+    check("a BOLDED id is a row", set(got) == {"1", "2"}, str(got))
 
-    # ④ HAND-BACKS ARE DERIVED. The literal this replaced was missing T35 — the RESUME row —
-    # so the prompt would have started a long run on a row carrying a ⏸ checkpoint while
-    # listing four other rows as the only reasons to stop.
-    marked = chr(10).join([
-        "**RESUME: x**",
-        "- [~] **T33** — open",
-        "  ### 🔴 T33a — carries a stop condition",
-        "- [~] **T40** — open, no marker anywhere",
+    # 2. The open-square marker. 27 open rows across three boards carried it as
+    #    their ONLY mark and were invisible to this tool — including every row
+    #    that two other board rows were written to close.
+    check("an open-square marker reads as OPEN, not absent", got.get("2") == " ", str(got))
+
+    # 3. A MENTION is not a MARKER, and this arm matters most: the old reader
+    #    asked `"[x]" in line`, so a row DESCRIBING a half-proven thing was
+    #    ticked and left its own queue. It happened twice in one day — the
+    #    second time to the row describing this very defect.
+    #
+    # ⚠ The first version of this arm put the mention in cell 0 -- the ID cell,
+    #   which the reader skips anyway -- so it passed for the wrong reason. The
+    #   BITE caught it: reverting `startswith` to `in` left the suite green.
+    #   The real defect had the mention in the DESCRIPTION cell, which IS
+    #   scanned, so that is where it goes.
+    q1 = "| `Q1` | its status cell ticks the MANUAL leg and quotes `[x] manual, [ ] automated` | `[ ]` | |\n"
+    q2 = "| `Q2` | the vocabulary is `[x]`, ✅, ⬜ and PARKED | `[ ]` | |\n"
+    got = row_states(q1 + q2)
+    check("a row that MENTIONS a marker is still open", got == {"Q1": " ", "Q2": " "}, str(got))
+
+    # The near-miss in the OTHER direction: a real status cell that carries prose
+    # after its marker must still be read. A rule demanding a bare cell would
+    # silently drop every board that explains itself — most of them.
+    verbose = "| `R1` a thing | ✅ **DONE 2026-08-22 — see §3.4, 3 bites** | evidence |\n"
+    got = row_states(verbose)
+    check("a verbose status cell still reads as done", got == {"R1": "x"}, str(got))
+
+    # `C1` of the world-in-a-running-reality board -- format C, the MARKER-FIRST
+    # board. Cell 0 holds the tick box AND the id, so `ROW_TABLE` (which reads an
+    # id from cell 0) and the status scan (which starts at cell 1) were BOTH
+    # blind to it at once. 17 rows across two game-track boards, four of them
+    # open -- including a PO checkpoint.
+    mfirst = ("| `[x]` **S0** | this RUN-STATE | written |\n"
+              "| `[~]` **S6** | red team | in flight |\n"
+              "| `[ ]` **S9** | SESSION + COMMIT | |\n")
+    got = row_states(mfirst)
+    check("a MARKER-FIRST row is read, id and state both",
+          got == {"S0": "x", "S6": "~", "S9": " "}, str(got))
+
+
+    # A parked row must not read as open — it would head the queue.
+    parked = "| `X1` a thing | 🅿 PARKED by the PO | |\n| `X2` b | `[ ]` | |\n"
+    ps = row_states(parked)
+    check("a PARKED row is not queued", ps.get("X1") == "x" and ps.get("X2") == " ", str(ps))
+
+    # ② A ticked row must LEAVE the queue — the whole reason this is generated.
+    plan = ("**RESUME: `T2` — do the next thing.**\n"
+            "- [x] **T1** — done\n- [~] **T2** — open\n- [~] **T3** — open\n")
+    out = build(plan, "p.md")
+    q = out.split("QUEUE")[1].split("CYCLE")[0]
+    check("a ticked row drops out of the queue", "T1" not in q, q.strip())
+    check("open rows stay", "T2" in q and "T3" in q, q.strip())
+    check("the RESUME line is quoted from the plan", "do the next thing" in out)
+    check("markdown is stripped from it", "`T2`" not in out.split("RESUME:")[-1])
+
+    # ②b A REGISTER row is not a slice. Drift logs, sealed-decision tables and
+    # OPEN registers all put a backticked id in the first cell and carry NO
+    # state marker — and `states.get(r) != "x"` was True for every one of them,
+    # so a plan with a filled-in drift log queued its own drift log. Measured
+    # live: 1 open row, 16 queued.
+    #
+    # The board row here is LAST on purpose. With it first, a bug that queued
+    # everything after it would still put `B1` at the head and the arm would
+    # pass on the right answer for the wrong reason.
+    registers = (
+        "**RESUME: `B1` — the only real row.**\n"
+        "## §3 BOARD\n"
+        "| `B0` shipped | `[x]` | evidence |\n"
+        "| `B1` open | `[ ]` | |\n"
+        "## §4 OPEN\n"
+        "| `EO-1` | a debt row with no tick box | its mechanism |\n"
+        "## §5 DRIFT\n"
+        "| `ED-D1` | a near-miss worth recording |\n"
+        "| `ED-1` | a sealed decision |\n"
+    )
+    rq = build(registers, "p.md").split("QUEUE")[1].split("CYCLE")[0]
+    check("a drift-register row is not queued", "ED-D1" not in rq, rq.strip())
+    check("a sealed-decision row is not queued", "ED-1" not in rq, rq.strip())
+    check("an OPEN-register row is not queued", "EO-1" not in rq, rq.strip())
+    check("...and the real board row still is", "B1" in rq, rq.strip())
+
+    # ③ An absent RESUME is STATED, not invented.
+    noresume = build("- [~] **T9** — open\n", "p.md")
+    check("a missing RESUME is declared, not fabricated",
+          "names no next step" in noresume, noresume.split("RESUME:")[-1])
+
+    # ④ The budget check must be able to go red, or it is decoration.
+    over = build("**RESUME: " + "x" * 5000 + "**\n- [~] **T2** — open\n", "p.md")
+    check("the budget check can go red", len(over) > BUDGET, str(len(over)))
+
+    # ⑤ Hand-backs are DERIVED, and `⏸` is overloaded — the glyph alone made the
+    # RESUME row a checkpoint and would have stopped a long run for nothing.
+    marked = ("- [~] **A1** — open\n"
+              "  note: this row declares a stop condition\n"
+              "- [~] **A2** — open, ⏸ POST-REVIEW checkpoint here\n"
+              "- [~] **A3** — open, ⏸ DEFERRED with a mechanism\n"
+              "- [~] **A4** — open, nothing here\n")
+    st = row_states(marked)
+    mk = stop_markers(marked, st)
+    check("a stop condition is read off the row", mk.get("A1") == "⛔", str(mk))
+    check("a ⏸ POST-REVIEW line IS a hand-back", mk.get("A2") == "⏸", str(mk))
+    check("a ⏸ DEFERRED line is NOT", "A3" not in mk, str(mk))
+    check("a row with no marker is not invented", "A4" not in mk, str(mk))
+    check("a done row cannot be a hand-back",
+          "T1" not in stop_markers("- [x] **T1** — done, stop condition\n",
+                                   {"T1": "x"}), "")
+
+    # ⑤b A TABLE row owns ONE LINE, and a row the board does not track is not a
+    # hand-back at all. Both halves of a defect found by running this tool on a
+    # real plan: the last table row's span ran to EOF, swallowed a RESUME line
+    # reading "the ⏸ POST-REVIEW checkpoint", and reported a DRIFT-REGISTER row
+    # as a reason to stop a long run. Over-stopping is the failure the run policy
+    # exists to prevent, so a false hand-back is not a cosmetic bug.
+    # The tracked row must be LAST, or the bug is not reachable: only the final
+    # row's span runs to EOF. A first draft of this fixture put a drift row after
+    # it, the mutation did not red, and the arm was decoration. Bitten, fixed.
+    spanning = chr(10).join([
+        "| `B2` another | `[x]` | done |",
+        "| `D1` a drift row, tracked by nothing |",
+        "| `B1` a slice | `[ ]` | |",
+        "",
+        "**RESUME: `B1` — and this line mentions a ⏸ POST-REVIEW checkpoint.**",
     ])
-    got = stop_markers(marked)
-    check("a stop condition is READ off the row", got.get("T33") == "⛔", str(got))
-    check("a row with no marker is not invented", "T40" not in got, str(got))
+    sp = row_states(spanning)
+    mk = stop_markers(spanning, sp)
+    check("a table row does not absorb the lines after it", "B1" not in mk, str(mk))
+    check("a row the board does not track is not a hand-back", "D1" not in mk, str(mk))
+    # …and a marker ON a table row's own line still counts, or the fix above
+    # would have been "never see anything", which passes both arms for free.
+    onrow = "| `B3` a slice ⏸ POST-REVIEW checkpoint | `[ ]` | |"
+    check("a marker on the row's OWN line still counts",
+          stop_markers(onrow, row_states(onrow)).get("B3") == "⏸",
+          str(stop_markers(onrow, row_states(onrow))))
 
-    # A marker inside ANOTHER row's evidence block must not leak — the positional defect that
-    # credited T39 with 16/24 blocks, reproduced here on the more dangerous field.
-    leak = chr(10).join([
-        "**RESUME: x**",
-        "- [~] **T39** — open, and the journal lands under it",
-        "  ### ✅ QC-3a — a ⏸ POST-REVIEW checkpoint belonging to QC-3",
-        "- [~] **QC-3** — open",
-    ])
-    lk = stop_markers(leak)
-    check("another row's ⏸ does not leak into the row above it", "T39" not in lk, str(lk))
+    # ⑥ Derived markers must reach the EMITTED TEXT.
+    emitted = build(marked, "p.md")
+    check("a derived stop marker is emitted", "A1⛔" in emitted and "A2⏸" in emitted,
+          emitted.split(STOP_HEAD)[-1])
 
-    # `⏸` IS OVERLOADED. The plan uses it for POST-REVIEW checkpoints AND for 'deferred with
-    # a mechanism'. Matching the glyph alone made T35 — the RESUME row — a checkpoint, which
-    # would stop a long run immediately for nothing.
-    overload = chr(10).join([
-        "**RESUME: x**",
-        "- [~] **QC-3** — open",
-        "  ### 🔴 QC-3a — ⏸ POST-REVIEW checkpoint, present evidence and WAIT",
-        "- [~] **T35** — open",
-        "  ### 🔴 T35z — ⏸ DEFERRED with a mechanism, not merely unstarted",
-    ])
-    ov = stop_markers(overload)
-    check("a ⏸ POST-REVIEW line IS a hand-back", ov.get("QC-3") == "⏸", str(ov))
-    check("a ⏸ DEFERRED line is NOT", "T35" not in ov, str(ov))
+    # ⑦ The plan can override, and an absent block must not crash.
+    decl_plan = ("```goal-prompt\n"
+                 "goal: the thing is done and proven\n"
+                 "po_decisions: [OD-1, OD-2]\n"
+                 "excluded: [T3]\n"
+                 "lanes: |\n"
+                 "  A first = T2\n"
+                 "  B later = T4\n"
+                 "rules: |\n"
+                 "  1 only this rule\n"
+                 "```\n"
+                 "**RESUME: go**\n- [~] **T2** — open\n- [~] **T3** — open\n- [~] **T4** — open\n")
+    d = declarations(decl_plan)
+    check("a declared goal is read", d.get("goal") == "the thing is done and proven", str(d))
+    check("a declared list is read", d.get("po_decisions") == ["OD-1", "OD-2"], str(d))
+    check("a declared block is read", str(d.get("rules")).strip() == "1 only this rule", str(d))
+    do = build(decl_plan, "p.md")
+    check("the declared goal reaches the prompt", "the thing is done and proven" in do)
+    check("declared lanes are used", "A first" in do and "B later" in do, do)
+    check("a declared rule replaces the default", "only this rule" in do and "guilty until" not in do)
+    check("po decisions reach STOP", "OD-1, OD-2" in do, do.split(STOP_HEAD)[-1])
+    check("an excluded row is not queued", "T3" not in do.split("CYCLE")[0].split("QUEUE")[-1])
+    check("no declaration block is fine", declarations("- [~] **T1**\n") == {})
 
-    # ⑤ AN OPEN ROW IN NO LANE IS AN ERROR. QC-5 was exactly this, and nothing said so.
-    stray = chr(10).join([
-        "**RESUME: x**", "- [~] **T32** — queued", "- [~] **T99** — in no lane",
-    ])
-    check("an open row in no lane is reported", "T99" in orphans(stray), str(orphans(stray)))
-    real_plan = PLAN.read_text(encoding="utf-8")
-    check("an EXCLUDED row is not reported",
-          all(r not in orphans(real_plan) for r in QUEUE_EXCLUDED))
-    check("the real plan has no orphans today", orphans(real_plan) == [], str(orphans(real_plan)))
+    # ⑧ An open row in no lane is an ERROR — but only when lanes exist, or every
+    # plan without them would report every row.
+    stray = decl_plan.replace("- [~] **T4** — open", "- [~] **T4** — open\n- [~] **T99** — stray")
+    check("an open row in no lane is reported",
+          "T99" in orphans(stray, row_states(stray), declarations(stray)))
+    check("no lanes means no orphan noise",
+          orphans(plan, row_states(plan), {}) == [])
 
-    # ⑥ The output must be ONE paste: command included.
+    # ⑨ One paste, command included.
     check("the emitted text carries the /goal prefix", PREFIX.strip() == "/goal")
+
     print("\n  all checks passed" if not fails else f"\n  {len(fails)} failure(s)")
     return 1 if fails else 0
 

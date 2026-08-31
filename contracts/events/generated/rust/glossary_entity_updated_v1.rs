@@ -3,7 +3,6 @@
 // A glossary entity was created or updated; payload `op` ("created"/"updated") distinguishes them. Self-sufficient so knowledge-service's glossary_sync never round-trips back.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlossaryEntityUpdatedV1 {

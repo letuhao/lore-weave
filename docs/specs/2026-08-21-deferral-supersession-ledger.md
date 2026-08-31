@@ -1,5 +1,7 @@
 # Deferral supersession ledger
 
+**Reconciles:** **No-Defer-Drift** · **Non-Vacuity** — the ledger is the MECHANISM No-Defer-Drift names: it records which spec retired which plan deferral, so a deferral cannot quietly outlive its decision.
+
 A deferral lives in a **plan** as a heading; a decision that retires it lives in a **spec** as a
 `*Replaces `D-…`*` line. Nothing connected the two, so a spec could declare a deferral replaced
 while the plan heading stayed open — and `plan-final-verification` refuses a `[x]` QC row on the

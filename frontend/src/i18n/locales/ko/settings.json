@@ -227,10 +227,10 @@
       "endpoint_hint": "기본 엔드포인트(OpenAI, Anthropic)를 사용하려면 비워두세요.",
       "api_key": "API 키",
       "api_key_ph_local": "로컬의 경우 선택 사항",
-      "api_key_ph": "sk-...",
       "cancel": "취소",
       "adding": "추가 중...",
-      "submit": "제공업체 추가"
+      "submit": "제공업체 추가",
+      "api_key_ph": "sk-..."
     },
     "edit_dialog": {
       "aria": "제공업체 수정",
@@ -241,14 +241,14 @@
       "endpoint_ph_default": "기본값을 사용하려면 비워두세요",
       "api_key": "API 키",
       "api_key_ph_keep": "••••••••  (현재 키를 유지하려면 비워두세요)",
-      "api_key_ph": "sk-...",
       "api_key_keep_hint": "기존 키를 유지하려면 비워두세요.",
       "max_concurrency": "최대 동시 요청 수",
       "max_concurrency_ph": "무제한",
       "max_concurrency_hint": "이 제공업체가 한 번에 실행할 요청 수입니다. 무제한으로 설정하려면 비워두세요(백엔드에서 결정). 백엔드에 알려진 제한(예: 로컬 GPU)이 있는 경우에만 숫자를 입력하세요.",
       "cancel": "취소",
       "saving": "저장 중...",
-      "submit": "변경 사항 저장"
+      "submit": "변경 사항 저장",
+      "api_key_ph": "sk-..."
     },
     "delete": {
       "title": "{{name}}을(를) 삭제할까요?",
@@ -371,13 +371,13 @@
       "extended_thinking": "심층 사고",
       "json_mode": "JSON 모드",
       "reasoning": "추론",
-      "tts": "TTS",
-      "stt": "STT",
       "image_gen": "이미지 생성",
       "video_gen": "비디오 생성",
       "embedding": "임베딩",
       "rerank": "리랭크",
-      "moderation": "모더레이션"
+      "moderation": "모더레이션",
+      "tts": "TTS",
+      "stt": "STT"
     }
   },
   "services": {
@@ -471,7 +471,6 @@
       "model": "모델",
       "search_ph": "모델 검색...",
       "top": "상위",
-      "ctx": "ctx",
       "model_hint": "검색어를 입력하세요. 목록에 없는 경우 사용자 정의 모델 이름을 입력할 수도 있습니다.",
       "alias": "별칭 (표시 이름)",
       "alias_ph": "예: 내 빠른 모델",
@@ -481,6 +480,7 @@
       "cancel": "취소",
       "adding": "추가 중...",
       "submit": "모델 추가",
+      "ctx": "ctx",
       "pricing_summary": "비용: 입력 ${{input}}/1M · 출력 ${{output}}/1M",
       "pricing_missing": "제공업체에서 가격 정보를 공개하지 않습니다. 모델이 등록된 후 수동으로 추가해 주세요."
     },

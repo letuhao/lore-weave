@@ -14,7 +14,7 @@ func TestLoadSensitivePaths_ShippedFile(t *testing.T) {
 	// (migration 031); the read-audit-query-type-drift-lint CI gate enforces
 	// CHECK == YAML, this asserts the Go loader sees every id.
 	want := []string{
-		"player_index_cross_user",
+		"actor_binding_cross_user",
 		"audit_query",
 		"admin_bulk_export",
 		"bulk_meta_query",

@@ -265,22 +265,55 @@ def mechanisms() -> dict[str, list[str]]:
 # when a row's id leaves the registry OR becomes mechanised, so every row here
 # is on a clock. A reason must say what the TRIGGER is, not restate the task.
 PROSE_ONLY: dict[str, str] = {
-    "D-GATE-ROT-LANGUAGE-BIAS": (
-        "TRIGGER: the first commit that touches either of the two persisted-bytes "
-        "classes - the json.dumps(...).encode() digest inputs (stream_service, "
-        "arc_conformance_orchestrate) or casefold() used as a persisted identity key "
-        "(plan_forge_service x3, world_plan, operations). Both are migrations, not "
-        "edits: flipping ensure_ascii changes every hash so it is a cache/dedup "
-        "invalidation decision, and normalizing an identity key orphans rows already "
-        "keyed the old way. Lost its mechanism 2026-08-03 when the KNOWN_RED row in "
-        "gate-wiring-gate.py was deleted, and the deletion was CORRECT: "
-        "language-bias-gate went green legitimately at e84214cc5 (16 offenders fixed, "
-        "3 baselined with a stated reason, 0 new), and gate-wiring-gate fails on a "
-        "KNOWN_RED row whose gate passes. No mechanism today because the remaining "
-        "classes are IN the 44-row baseline - the gate is a ratchet against NEW "
-        "offenders, so it cannot go red for debt it has already accepted, and "
-        "asserting the baseline still CONTAINS them would red when someone fixes one, "
-        "which is backwards"),
+    "D-HALF-APPLIED-ANNOTATION-NEEDS-A-PARSER": (
+        "TRIGGER: a token-level matcher scoped to `pub NAME: TYPE` "
+        "declarations exists -- a PARSER, not a regex. Prose-only ON PURPOSE: the "
+        "regex version WAS prototyped across 386 docs and produced 47 "
+        "candidates, mostly false (`was` matches ordinary prose; substring "
+        "matching catches `tier` inside `tier_metadata`). Inventing a "
+        "colour-changing check today would BE that gate again, and a "
+        "47-finding baseline in front of a real one is worse than no gate. "
+        "The adjacent case is already mechanised: `amendment-rot-gate` check E "
+        "catches a RETIRED AMENDMENT ID cited as live; this is the "
+        "TYPE-DECLARATION case that check cannot reach."
+    ),
+    "D-REPLAY-PIN-REFUSAL-UNDEFINED": (
+        "TRIGGER: the first comparison site — a rebuild that resolves a ruleset and "
+        "has a pin to disagree with it. Escalated out of the 2026-08-02 command round "
+        "(R1-1). Migration 0016's own COMMENT ON COLUMN promises that replay compares "
+        "the stored digest against the ruleset it resolves under and refuses a "
+        "mismatch (F3). No comparison exists. The STRIP half is fixed 2026-08-06: "
+        "EVENT_COLUMNS now selects ruleset_digest and decode_event reads it instead of "
+        "hardcoding None, guarded by every_decoded_column_is_selected, which reds if "
+        "the column leaves the SELECT. What remains is a DESIGN decision and not an "
+        "edit: the column is nullable and NULL legitimately means no pinned simulation "
+        "produced this event, so F3 must decide whether an absent pin refuses the "
+        "rebuild or admits it and marks it unverifiable. No mechanism today because "
+        "F3 DOES NOT EXIST TO BE TESTED — a check would have no possible violation, "
+        "the NV-2 shape"),
+    "D-RNG-COORDS-SNAPSHOT-ONLY": (
+        "TRIGGER: either coordinate reaching a persisted event shape, or the first "
+        "verification replay that needs to re-derive a roll. Escalated out of the "
+        "command round (R1-2). session_seed and next_action_idx are both RNG "
+        "coordinates fed to role_rng, and both live only in CombatState / "
+        "IslandCheckpoint — re-verified 2026-08-06, three sites, all under "
+        "services/commit-service/src/domain/, never in an envelope, a payload or a "
+        "migration. The checkpoint is authoritative for two values that determine "
+        "every future roll and the log cannot reproduce them, so the P-F rule (a "
+        "snapshot disagreeing with the log is discarded) would discard the only copy. "
+        "No mechanism because a grep-shaped check PASSES TODAY and would keep passing "
+        "for as long as the defect stands — the wrong colour, which is worse than "
+        "no check"),
+    "D-NO-INPUT-LOG": (
+        "TRIGGER: the first commit that writes an input record, or a "
+        "verification-replay harness landing. Escalated out of the command round "
+        "(R1-11). Verification replay's stated input does not exist: grep for "
+        "input_log / inputs_log across crates, services and migrations returns empty, "
+        "re-verified 2026-08-06. Recovery replay folds committed events and is "
+        "unaffected; verification replay has nothing to re-run, which is why O-CI-2 "
+        "could never have been closed by argument. No mechanism because the subject is "
+        "an ABSENT ARTIFACT — nothing in the tree can disagree with a check, the same "
+        "NV-2 shape as D-S04-1's unbuilt service"),
     "D-POOL-PROBE-IS-NOT-A-QUERY": (
         "TRIGGER: the first commit that threads a retrieval call into the pool loop "
         "— the moment probe() output would actually be used as a search. Measured "
@@ -457,6 +490,43 @@ PROSE_ONLY: dict[str, str] = {
         "TRIGGER: the S04 provisioner track resuming. Nothing in this repo can "
         "red on it — the subject is an unbuilt service, so there is no file for a "
         "check to hold. Genuinely prose-only until S04 has code"),
+    # ── SEALED-BINDING (feature #2). Six ids arrived 2026-08-20 during a
+    # RUN-STATE audit. They had existed since 2026-08-14 as `PC-*` in
+    # `docs/plans/`, which this gate does not scan, under a prefix its `ID`
+    # pattern cannot match — so they were invisible twice over and the gate
+    # counted 30 when it should have counted 36. `D-PC-AGENT` is absent from
+    # this table on purpose: it earned an ASSERTED TRIGGER, which is what its
+    # own row had promised and not delivered.
+    "D-PC-METAWRITE-NOOP-EVENT": (
+        "TRIGGER: any consumer that treats an outbox event as proof a row "
+        "changed. `contracts/meta/metawrite.go` runs the data statement then "
+        "appends the audit row and the outbox event unconditionally, so a CAS'd "
+        "UPDATE matching nothing still announces its domain event. Shared by "
+        "every meta table, not introduced by the game tier. At-least-once "
+        "delivery means a duplicate `actor.control.revoked` is inside what a "
+        "consumer must tolerate — it is still an event for a write that changed "
+        "nothing. The fix is a `RowsAffected == 0` guard on the append and "
+        "belongs to whoever owns `contracts/meta`"),
+    "D-PC-SEATS": (
+        "TRIGGER: the first feature that needs a NON-DRIVING seat — spectating or "
+        "GM override. One live driver per actor is enforced by "
+        "`actor_control_binding_one_live_driver`, a UNIQUE index on "
+        "(reality_id, actor_id) WHERE revoked_at IS NULL, so a second seat cannot "
+        "be a second binding. Unreal's one-to-one is an overridable default; ours "
+        "is not. The advisor case is already settled — an LLM that proposes and a "
+        "human that commits is one driver plus an advisor, and the advisor never "
+        "becomes the subject. Genuinely prose-only: the subject is a seat concept "
+        "that does not exist, so there is no file for a check to hold"),
+    "D-PC-SF6-REVERSAL": (
+        "TRIGGER: the adoption itself. `SF-6` refused to type `0021_turn_slot`'s "
+        "`current_turn_actor` because four spellings of who-is-acting already "
+        "existed, and named its own reversal — a single actor-identity type "
+        "adopted repo-wide, at which point the slot should hold it. `0022_actors` "
+        "is the first step toward that type, not the type. When one identity is "
+        "used by `GoneState`'s `EntityRef`, `pii_sdk` and the meta audit tables, "
+        "`0021`'s JSONB column must stop being opaque. Cannot be asserted now: "
+        "the trigger is a type that does not exist yet, and a test naming it "
+        "would not compile"),
     "D-DEFERRAL-GATE-PLATFORM-SCOPE": (
         "TRIGGER: the platform handoff gaining a `deferral-registry:begin` marker. "
         "This gate governs the game tier only; ~360 ids in docs/sessions/ and "

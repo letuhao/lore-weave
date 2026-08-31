@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/loreweave/foundation/contracts/events"
@@ -77,7 +78,7 @@ func renderPython(e *events.RegistryEntry, v uint32, structName string) string {
 	if len(imports) > 0 {
 		b.WriteString("\n")
 	}
-	b.WriteString("from typing import TypedDict\n\n\n")
+	b.WriteString("from typing import " + strings.Join(typingNames(fieldsForEvent(e.Name, v)), ", ") + "\n\n\n")
 	b.WriteString(fmt.Sprintf("class %s(TypedDict):\n", structName))
 	b.WriteString(fmt.Sprintf("    \"\"\"%s\"\"\"\n", e.Description))
 	for _, f := range fieldsForEvent(e.Name, v) {
@@ -98,6 +99,41 @@ func pythonImports(fields []Field) []string {
 	if needsDatetime {
 		out = append(out, "from datetime import datetime")
 	}
+	return out
+}
+
+// typingNames returns the `typing` symbols the rendered module actually uses,
+// always including TypedDict, sorted and de-duplicated.
+//
+// # Why this exists
+//
+// The import line was the literal `from typing import TypedDict`, and the
+// renderer's own comment says "we only import what fields actually need" —
+// which was true of `datetime` and false of everything in `typing`. The first
+// field typed `Any` produced a module that raises
+// `NameError: name 'Any' is not defined` on import, and the package barrel
+// re-exports every module, so importing the package would have failed.
+//
+// It survived because until `channel.turn_boundary` no field used a typing
+// symbol other than TypedDict: the hardcoded line was correct for every input
+// that existed, which is the definition of default-uncovered (`NV-3`). Derived
+// from the fields now, so the next new annotation cannot reintroduce it.
+func typingNames(fields []Field) []string {
+	need := map[string]bool{"TypedDict": true}
+	known := []string{"Any", "Optional", "List", "Dict", "Union", "Literal", "Sequence", "Mapping"}
+	for _, f := range fields {
+		for _, k := range known {
+			// Containment, so `Optional[Any]` pulls in both.
+			if strings.Contains(f.PythonType, k) {
+				need[k] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(need))
+	for k := range need {
+		out = append(out, k)
+	}
+	sort.Strings(out)
 	return out
 }
 

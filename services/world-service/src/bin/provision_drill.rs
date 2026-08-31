@@ -175,10 +175,19 @@ impl Ctx {
         let shard_admin = connect(&self.shard_admin_dsn).await?;
         let handle = tokio::runtime::Handle::current();
         let shard_hostport = self.shard_hostport.clone();
+        let pg_user = env_or("PROVISION_PG_USER", "foundation");
+        let pg_pass = env_or("PROVISION_PG_PASSWORD", "foundation");
+        let sql_dir = env_or("PROVISION_SQL_DIR", "contracts/migrations/per_reality");
         let report = tokio::task::spawn_blocking(move || {
+            // ⚠ These were HARDCODED to "foundation"/"foundation", which pins
+            // this drill to the S12/S13 scale rig and makes it unrunnable
+            // against any other environment -- including the dev stack, where
+            // the role is `loreweave`. That is a fixture masquerading as a tool,
+            // and it is one of the reasons no reality has ever been provisioned
+            // outside the rig. Defaults preserved so the rig is unaffected.
             let mut effects = LiveEffects::new(
                 handle, bridge, shard_admin, shard_hostport,
-                "foundation", "foundation", "contracts/migrations/per_reality",
+                &pg_user, &pg_pass, &sql_dir,
             );
             let snapshot = vec![ShardCapacity {
                 shard_id: ShardId::new(SHARD_HOST_LOGICAL),
@@ -190,6 +199,12 @@ impl Ctx {
                 locale: "en".into(),
                 deploy_cohort: 0,
                 reason: "w1.5-provision-drill".into(),
+                // The drill provisions on behalf of nobody.
+                owner_user_id: None,
+                // The drill measures the FLOW, not world content: an empty
+                // declaration exercises the step's Skipped path, which is the
+                // path every existing caller takes.
+                world: Vec::new(),
             };
             Provisioner::new(CapacityThresholds::default()).provision_reality(req, &snapshot, &mut effects)
         })

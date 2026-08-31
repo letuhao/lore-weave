@@ -7,6 +7,29 @@ note: Not produced by scripts/chunk_doc.py split; authored as new SR-series cont
 
 ## 12AN. Turn-Based Game Reliability UX — SR11 Resolution (2026-04-24)
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #5).** The turn state machine's awaited `llm_processing` state (§12AN.2) and the per-session R7 queue semantics (`queued`, `position_in_queue`) assume a synchronous awaited LLM turn admitted at the session — the current model is dispatch-**never-await** (SL-A3/A4) with deadline + fallback, and admission is at the channel/island (SL-A9). The UX layering (indicators, presence, disconnect policy, error discipline) remains valid over the replacement states. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md). Status markers below predate the island/commit-service model.
 
 **Origin:** SRE Review SR11 — the first SR concern at the product+infra boundary. SR1-SR10 made the platform reliable; SR11 makes failures **coherent to the user**. A turn takes 60-120s (SR1-D2 LLM SLO); during that window, LLMs time out, WS connections drop, pods scale down (SR6-D10), chaos drills fire (SR7), degraded modes activate (SR6-D5). Without disciplined UX, users see spinners-forever, duplicate messages, mysterious disconnects, or worse — they re-send a turn that already charged against S6 budget. SR11 makes every infra failure state map to a specific user-visible state with a clear affordance.

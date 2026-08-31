@@ -3,7 +3,6 @@
 // A glossary entity was permanently removed after its retention window. Irreversible - a consumer that merely hides on this event keeps data the author asked to be destroyed.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlossaryEntityPurgedV1 {

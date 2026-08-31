@@ -1,5 +1,7 @@
 # Knowledge architecture — the two boundaries
 
+**Reconciles:** **Module/service boundaries** · **Reading/writing entity or KG knowledge** — the diagram DRAWS those two rows for the knowledge tier. A diagram that disagrees with them is wrong; it cannot amend them.
+
 **Status:** 🔒 **SEALED 2026-08-09** — the *reasoning* is closed and must not be re-litigated from memory; re-read it. **All 30 opened questions are closed.** No code has changed. Decision register: [ARCHITECTURE-OVERVIEW §9](2026-08-09-ARCHITECTURE-OVERVIEW.md#9--sealed--decision-register). **Opened:** 2026-08-09 · **Branch:** `refactor/entity-lifecycle`
 **Verified against:** `df18e9049`
 **PO decision this draws:** (1) split the data/graph layer behind a port so the vendor is swappable;
