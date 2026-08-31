@@ -56,7 +56,10 @@ router = APIRouter(
 
 @router.get("")
 async def reconcile_jobs(
-    since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    since: datetime | None = Query(
+        None, description="ISO-8601 — rows updated at/after this (the delta sweep)"),
+    ids: list[UUID] | None = Query(
+        None, description="ask about THESE rows; absence from the result means gone"),
     limit: int = Query(1000, ge=1, le=5000, description="page cap — the sweeper's _PAGE_LIMIT"),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
 ) -> dict:
@@ -81,7 +84,31 @@ async def reconcile_jobs(
     # so a future source emitting a different tz-offset can't misorder the merge.
     merged: list[tuple[datetime | None, dict]] = []
 
-    rows = await jobs_repo.list_since(since, limit=limit)
+    # 🔴 EXACTLY ONE MODE PER CALL (owner ruling 2026-08-31, DQ-T65). `since` is the
+    # DELTA sweep this endpoint has always served; `ids` is the EXISTENCE question,
+    # and the caller reads ABSENCE from the result. Both together would make an empty
+    # result ambiguous -- "gone" and "not changed since" are different answers and
+    # must not share a response.
+    #
+    # The literal 422 is deliberate: this function binds a LOCAL `status` in the loop
+    # below, so `status.HTTP_422_UNPROCESSABLE_ENTITY` here would raise
+    # UnboundLocalError -- the module name is shadowed for the whole function.
+    # 🔴 THESE TESTS CALL THE ENDPOINT DIRECTLY, so FastAPI never resolves the defaults and
+    # an omitted parameter arrives as the `Query(...)` object itself, not None. The
+    # exactly-one-mode guard below then sees two "supplied" arguments and 422s a perfectly
+    # ordinary delta call. Normalising by TYPE rather than by identity keeps the function
+    # callable both ways, which is how every other test in this file drives it.
+    since = since if isinstance(since, datetime) else None
+    ids = ids if isinstance(ids, list) else None
+    if (since is None) == (ids is None):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "JOBS_BAD_QUERY",
+                    "message": "pass exactly one of `since` (delta) or `ids` (existence)"},
+        )
+
+    rows = (await jobs_repo.list_by_ids(ids) if ids is not None
+            else await jobs_repo.list_since(since, limit=limit))
     for j in rows:
         status = _canonical_job_status(j.status)
         if status not in _CANONICAL_STATUSES:  # e.g. 'summarizing' — not a JobStatus
@@ -107,7 +134,8 @@ async def reconcile_jobs(
     # wiki-gen UNION — list_since already maps `complete`→`completed` (all wiki statuses
     # are canonical), so no skip-filter is needed here.
     wiki_repo = WikiGenJobsRepo(get_knowledge_pool())
-    for w in await wiki_repo.list_since(since, limit=limit):
+    for w in (await wiki_repo.list_by_ids(ids) if ids is not None
+              else await wiki_repo.list_since(since, limit=limit)):
         cost = w["cost_spent_usd"]
         merged.append((w["updated_at"], {
             "service": "knowledge", "job_id": str(w["job_id"]),

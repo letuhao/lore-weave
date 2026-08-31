@@ -43,7 +43,10 @@ router = APIRouter(
 
 @router.get("")
 async def reconcile_jobs(
-    since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    since: datetime | None = Query(
+        None, description="ISO-8601 — rows updated at/after this (the delta sweep)"),
+    ids: list[UUID] | None = Query(
+        None, description="ask about THESE rows; absence from the result means they are gone"),
     limit: int = Query(1000, ge=1, le=5000, description="page cap — the sweeper's _PAGE_LIMIT"),
     jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
 ) -> dict:
@@ -51,8 +54,33 @@ async def reconcile_jobs(
     updated since `since` (oldest-first, capped at `limit`), in canonical `JobEvent`
     payload shape, for the jobs-service sweep to upsert (heals outbox drift). A full page
     signals the sweeper to continue from the last row rather than skip the overflow.
-    Internal-token (router dep); ALL owners — user-scoping is at the jobs-service read API."""
-    rows = await jobs.list_since(since, limit=limit)
+    Internal-token (router dep); ALL owners — user-scoping is at the jobs-service read API.
+
+    🔴 TWO MODES, AND THE SECOND ONE IS THE POINT (owner ruling 2026-08-31, DQ-T65). `since`
+    is the DELTA sweep this endpoint has always served: it heals rows the source still reports.
+    `ids` is the EXISTENCE question, and it exists because a delta can only ever add — a row
+    that stopped changing, or was deleted, never appears in another `?since=` window, so the
+    projection kept 28 jobs at running/pending for up to 74 days and advertised `cancel` on
+    every one. The caller reads ABSENCE from the result.
+
+    Exactly one mode per call: both together would make an empty result ambiguous — "gone" and
+    "not changed since" are different answers and must not share a response.
+    """
+    # 🔴 THESE TESTS CALL THE ENDPOINT DIRECTLY, so FastAPI never resolves the defaults and
+    # an omitted parameter arrives as the `Query(...)` object itself, not None. The
+    # exactly-one-mode guard below then sees two "supplied" arguments and 422s a perfectly
+    # ordinary delta call. Normalising by TYPE rather than by identity keeps the function
+    # callable both ways, which is how every other test in this file drives it.
+    since = since if isinstance(since, datetime) else None
+    ids = ids if isinstance(ids, list) else None
+    if (since is None) == (ids is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "JOBS_BAD_QUERY",
+                    "message": "pass exactly one of `since` (delta) or `ids` (existence)"},
+        )
+    rows = (await jobs.list_by_ids(ids) if ids is not None
+            else await jobs.list_since(since, limit=limit))
     return {"jobs": [
         {
             # Wire key stays literally "owner_user_id" (jobs-service projection

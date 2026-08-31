@@ -464,6 +464,28 @@ class ExtractionJobsRepo:
             rows = await conn.fetch(query, since, limit)
         return [_row_to_job(r) for r in rows]
 
+    async def list_by_ids(self, ids: list[UUID]) -> list[ExtractionJob]:
+        """The rows among `ids` THIS SERVICE STILL HAS — the existence half of the
+        reconcile contract (owner ruling 2026-08-31, DQ-T65).
+
+        🔴 A DELTA CAN ONLY EVER ADD. `list_since` heals rows the source still reports;
+        a row that stopped changing — or was deleted — never appears in another
+        `?since=` window, so the jobs projection kept 28 rows at running/pending for up
+        to 74 days and advertised `cancel` on every one. THREE of them belong to real
+        users and all three are extraction jobs, 9-11 weeks old.
+
+        The caller reads ABSENCE from the result. Owner-agnostic, exactly like
+        `list_since`, and internal-token gated at the route.
+        """
+        if not ids:
+            return []
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_SELECT_COLS} FROM extraction_jobs WHERE job_id = ANY($1::uuid[])",
+                ids,
+            )
+        return [_row_to_job(r) for r in rows]
+
     async def list_for_project(
         self, user_id: UUID, project_id: UUID, *, limit: int = 50
     ) -> list[ExtractionJob]:

@@ -795,6 +795,29 @@ class GenerationJobsRepo:
         )
         return [_row_to_job(r) for r in rows]
 
+    async def list_by_ids(self, ids: list[UUID]) -> list[GenerationJob]:
+        """The rows among `ids` THIS SERVICE STILL HAS — the other half of the reconcile
+        contract, and the half that was missing.
+
+        🔴 A BACKSTOP THAT READS ONLY WHAT THE SOURCE STILL REPORTS CATCHES DRIFT AND IS BLIND
+        TO ABSENCE. `list_since` is a delta: a row that stopped changing — or was deleted —
+        never appears in any `?since=` window again, so the jobs projection kept 28 rows at
+        running/pending for up to 74 days and went on advertising `cancel` on every one of
+        them. Measured 2026-08-31: all 22 composition rows had NO owning row at all, and
+        across the whole composition population 446 of 910 projection rows have none.
+
+        This answers the question the sweeper could not ask: *of these ids, which are still
+        mine?* Absence from the RESULT is the signal — the caller marks what it does not get
+        back. Owner-agnostic, exactly like `list_since`: the projection mirrors every row and
+        user-scoping happens at the jobs-service read API.
+        """
+        if not ids:
+            return []
+        rows = await self._pool.fetch(
+            f"SELECT {_SELECT_COLS} FROM generation_job WHERE id = ANY($1::uuid[])", ids,
+        )
+        return [_row_to_job(r) for r in rows]
+
     async def cancel(
         self, job_id: UUID, *, conn: asyncpg.Connection | None = None
     ) -> GenerationJob | None:

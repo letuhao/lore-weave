@@ -2,7 +2,7 @@
 
 *Generated 2026-08-31 by `scripts/toolloop/dq_digest.py`. Derived from the ledger at emit time — do not hand-edit; re-run it.*
 
-**19 defects are open and 12 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
+**17 defects are open and 12 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
 
 A ruling goes on the question's row as an `answer_<date>` field. The loop reads it there and builds it **as worded** — if it cannot be built, the question comes back with the measurement showing why, rather than a substituted mechanism.
 
@@ -412,4 +412,12 @@ Each of these carries a ruling or a premise that this loop measured and found wr
 **⚠ Correction on record (parked_2026_08_31):** OWNER 2026-08-31: `park=yes`. PARKED, NOT ANSWERED AND NOT WITHDRAWN. No open defect names this question in `blocked_by_dq`, so it gates nothing; it is a standing question kept as a record rather than a queue item. The state stays `open` on purpose -- marking it `answered` would claim a ruling nobody made, and `withdrawn` would claim the question was wrong. What changes is that the digest lists it separately from the questions that hold work.
 
 **My recommendation:** (b) VERIFY-AND-MARK, one row per cycle, no bulk edit. Each row gets read against today's code; if the defect is gone AND a guard exists it becomes `fixed` citing both; if it is gone with no guard, that is a missing-falsifier finding and the guard is written; if it still reproduces it becomes `open` with a class. Slow and it is the only option that cannot manufacture credit. WHAT I REJECT AND WHY. (a) bulk-mark all 23 `fixed` — forbidden outright: 'never write fixed when the live run exercised only part of the fix', and here there would be no run at all. (c) bulk-`withdrawn` — worse, it says they were never defects when three demonstrably were. (d) declare `proven` terminal for defects — the…
+
+### DQ-T86 — releases 0 defects
+
+**Asked:** A projection row whose owning service no longer has the job is now marked `failed` with detail_status=owner_no_longer_has_row. `failed` OVERSTATES: the job may well have COMPLETED before its row was removed -- measured, most such rows are this harness's own torn-down fixtures. Should `JobStatus` gain a distinct terminal member for it?
+
+**My recommendation:** (c) THEN (b), and (c) is worth doing on its own. The six parallel copies are a latent defect independent of this question: the SDK annotates its own TERMINAL set 'The single source of truth (no parallel set to drift)' and six places drifted from it anyway. One of them was in the file that decides what the projection calls LIVE, and I fixed that one today because this work depended on it. I am NOT recommending (b) on its own evidence yet: the population that would benefit is 3 real-user rows, and 25 of the 28 were this harness's fixtures. The honest reason to do it is correctness of the vocabulary, not the size of today's population.
+
+**Why it is yours, not mine:** It changes a shared enum that nine services read, and it changes what an author is told about a job whose outcome nobody knows. Both are product decisions.
 

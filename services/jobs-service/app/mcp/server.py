@@ -147,7 +147,8 @@ def _with_caps(job: dict[str, Any]) -> dict[str, Any]:
     job["control_caps"] = [
         c.value
         for c in derive_control_caps(
-            job["status"], job["kind"], retryable=_retryable_flag(job)
+            job["status"], job["kind"], retryable=_retryable_flag(job),
+            detail_status=job.get("detail_status"),
         )
     ]
     return job
@@ -413,7 +414,8 @@ async def _control(ctx: MCPContext, service: str, job_id: str, action: str) -> d
     caps = [
         c.value
         for c in derive_control_caps(
-            job["status"], job["kind"], retryable=_retryable_flag(job)
+            job["status"], job["kind"], retryable=_retryable_flag(job),
+            detail_status=job.get("detail_status"),
         )
     ]
     if action not in caps:

@@ -82,6 +82,12 @@ class ReconcileSweeper:
             if self._stop.is_set():
                 break
             await self.sweep_once()
+            # The ABSENCE pass rides the same tick and runs AFTER the delta sweep, never
+            # before: a row the sweep is about to heal must not be asked about and marked
+            # gone in the same pass. Opt-in — it is the only loop here that writes a terminal
+            # status no owning service emitted.
+            if settings.absence_check_enabled:
+                await self.verify_absent_once()
 
     async def sweep_once(self) -> dict[str, int]:
         """Sweep every source once. Returns {service: rows_applied} (for tests/obs)."""
@@ -122,9 +128,73 @@ class ReconcileSweeper:
             log.info("reconcile %s: %d/%d rows applied", service, n, len(rows))
         return n
 
-    async def _fetch(self, base: str, path: str, since: datetime) -> list[dict[str, Any]]:
+    async def verify_absent_once(self) -> dict[str, Any]:
+        """Ask each owner about the rows this projection still calls LIVE, and mark what is gone.
+
+        🔴 THE HALF THE BACKSTOP NEVER HAD (owner ruling 2026-08-31, DQ-T65: "a non-terminal
+        row whose owner no longer has it is DEAD, and is marked so"). `_sweep_source` reads
+        `?since=` — a DELTA — so it can only ever add: a row that stopped changing, or whose
+        owning row was deleted, never appears in another window. Measured 2026-08-31:
+
+            28 rows at running/pending/paused, up to 74 days old, `cancel` advertised on all
+            22 of 22 composition rows had NO owning row at all
+            446 of 910 composition projection rows have no owner (mostly harness teardown)
+
+        DEGRADE-SAFE, AND IT SAYS SO. A source that does not understand `?ids=` answers 422 or
+        404; that service is reported UNVERIFIED and nothing is marked. Silence would be the
+        worse failure here — an absence pass that quietly verifies nothing looks exactly like
+        one where everything is present.
+
+        WHAT `dead` IS CALLED, and it is the one part that is a compromise: `failed` with
+        `detail_status='owner_no_longer_has_row'` and an explicit error. A distinct terminal
+        status would be truer — the job may well have COMPLETED before its row was removed —
+        but `JobStatus` is a closed enum read in 40 files and at least six places carry their
+        own hard-coded terminal tuple, so adding a member is a cross-cutting change that
+        deserves its own decision rather than riding in on this one. Filed, with that count.
+        """
+        out: dict[str, Any] = {}
+        for service in _RECONCILE:
+            try:
+                out[service] = await self._verify_source(service)
+            except Exception as exc:  # noqa: BLE001 — one bad source never stalls the rest
+                log.warning("absence check of %s failed: %s", service, exc)
+                out[service] = {"unverified": True, "reason": str(exc)[:200]}
+        return out
+
+    async def _verify_source(self, service: str) -> dict[str, Any]:
+        base, path = _RECONCILE[service]
+        ids = await store.list_non_terminal_ids(
+            self._pool, service, older_than_s=int(settings.absence_check_min_age_s))
+        ids = ids[: int(settings.absence_check_batch)]
+        if not ids:
+            return {"asked": 0, "gone": 0}
+        try:
+            rows = await self._fetch(base, path, ids=ids)
+        except Exception as exc:  # noqa: BLE001
+            # UNVERIFIED IS A RESULT, NOT A SILENCE. A source without the `?ids=` mode answers
+            # 422/404; reporting 0-gone here would be indistinguishable from "everything is
+            # present" and is exactly the degrade this loop has been burned by.
+            log.warning("absence check %s: source cannot answer ?ids= (%s) — %d rows UNVERIFIED",
+                        service, str(exc)[:120], len(ids))
+            return {"asked": len(ids), "unverified": True, "reason": str(exc)[:200]}
+        present = {str(r.get("job_id")) for r in rows if isinstance(r, dict)}
+        gone = [i for i in ids if i not in present]
+        marked = 0
+        for job_id in gone:
+            if await store.mark_owner_lost(self._pool, service, job_id):
+                marked += 1
+        if marked:
+            log.info("absence check %s: %d of %d asked are gone from their owner — marked",
+                     service, marked, len(ids))
+        return {"asked": len(ids), "gone": len(gone), "marked": marked}
+
+    async def _fetch(self, base: str, path: str, since: datetime | None = None,
+                     *, ids: list[str] | None = None) -> list[dict[str, Any]]:
         url = f"{base}{path}"
-        params = {"since": since.isoformat(), "limit": _PAGE_LIMIT}
+        # Exactly one mode, mirroring the contract the sources enforce: "gone" and "not
+        # changed since" are different answers and must not share a response.
+        params: dict[str, Any] = ({"ids": ids} if ids is not None
+                                  else {"since": since.isoformat(), "limit": _PAGE_LIMIT})
         # W5 (ephemeral wave): shared factory bakes X-Internal-Token + JSON.
         async with build_internal_client(
             base, internal_token=settings.internal_service_token, timeout_s=15.0,

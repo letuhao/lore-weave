@@ -34,7 +34,8 @@ def _retryable_flag(job: dict) -> bool | None:
 def _with_caps(job: dict) -> dict:
     job["control_caps"] = [
         c.value for c in derive_control_caps(
-            job["status"], job["kind"], retryable=_retryable_flag(job))
+            job["status"], job["kind"], retryable=_retryable_flag(job),
+            detail_status=job.get("detail_status"))
     ]
     return job
 
@@ -189,8 +190,13 @@ async def control_job(
     job = await store.get_job(db, user_id, service, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
+    # 🔴 THIS IS THE GATE, NOT THE DISPLAY, and it nearly missed the new argument because its
+    # indentation differed from the other four call sites. The list surfaces offer caps; this
+    # one DECIDES whether an action runs, so a row whose owner lost the job must be refused
+    # here even if some caller believed otherwise.
     caps = [c.value for c in derive_control_caps(
-        job["status"], job["kind"], retryable=_retryable_flag(job))]
+        job["status"], job["kind"], retryable=_retryable_flag(job),
+        detail_status=job.get("detail_status"))]
     if action not in caps:
         raise HTTPException(
             status_code=409,
