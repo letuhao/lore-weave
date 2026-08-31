@@ -393,6 +393,40 @@ def selftest() -> int:
               "declaration")
         ok = False
 
+    # PROSE IS NOT CONFIGURATION. `infra/.env.example` documents the cutover and tells the
+    # operator to pin `neo4j` while migrating; that sentence used to be scored as a
+    # deployment declaring Neo4j, so documenting the switch reddened the gate that guards
+    # it — and the failure named a deployment that does not exist.
+    commented = (
+        "# 2. Set `KNOWLEDGE_GRAPH_BACKEND=neo4j` here while you migrate." + chr(10)
+        + "KNOWLEDGE_GRAPH_BACKEND=age" + chr(10)
+    )
+    if scan_backend_declarations({"infra/.env.example": commented}):
+        print("  FAIL — a `#` COMMENT naming neo4j was scored as a declaration; the file's "
+              "real setting on the next line is `age`")
+        ok = False
+
+    # ...and the negative control, or the fix above would be satisfiable by ignoring the
+    # file entirely. A REAL declaration on an uncommented line must still be caught.
+    if scan_backend_declarations(
+            {"infra/.env.example": commented + "KNOWLEDGE_GRAPH_BACKEND=neo4j" + chr(10)}
+    ) != [("infra/.env.example", "neo4j")]:
+        print("  FAIL — an UNCOMMENTED neo4j declaration was missed once comment-stripping "
+              "was added; the scanner now reads nothing rather than reading prose")
+        ok = False
+
+    # The same shape for the sibling scanner, which had the identical defect.
+    if scan_passage_read_declarations(
+            {"infra/.env.example": "# set KNOWLEDGE_VECTOR_READ_PRIMARY=neo4j to roll back"
+                                   + chr(10)}):
+        print("  FAIL — a `#` comment was scored as a passage read-primary declaration")
+        ok = False
+    if scan_passage_read_declarations(
+            {"infra/x.yml": "KNOWLEDGE_VECTOR_READ_PRIMARY: neo4j" + chr(10)}
+    ) != [("infra/x.yml", "neo4j")]:
+        print("  FAIL — the passage scanner stopped seeing a real declaration")
+        ok = False
+
     # ── A28 — the PARAMETER census, on cases it was not derived from (rule 3) ──
     _port = (chr(10).join([
         "class GraphStore(Protocol):",
@@ -1208,12 +1242,51 @@ MAX_NON_AGE_BACKEND_DECLARATIONS = 0
 MAX_NON_POSTGRES_PASSAGE_READ_DECLARATIONS = 2
 
 
+def _uncommented(text: str) -> str:
+    """The configuration lines of an env/compose file, with `#` comments dropped.
+
+    🔴 BOTH SCANNERS BELOW USED TO `re.finditer` OVER THE WHOLE FILE, so a line of PROSE
+    that happened to contain `KNOWLEDGE_GRAPH_BACKEND=neo4j` was scored as a deployment
+    declaring Neo4j. Found the moment `infra/.env.example` grew a migration note telling
+    operators to set exactly that during a cutover: documenting the switch tripped the
+    gate that guards the switch, and the message named a deployment that does not exist.
+
+    A whole-line `#` and a trailing one are both dropped. Values here are DSNs, engine
+    names and interpolations — none legitimately contains a `#`, so the simple rule is
+    safe, and a quoted `#` would only ever cost a false NEGATIVE on a line no deployment
+    has written.
+    """
+    out = []
+    for line in text.split(chr(10)):
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            continue
+        out.append(line.split("#", 1)[0])
+    return chr(10).join(out)
+
+
 def scan_backend_declarations(sources=None) -> list[tuple[str, str]]:
     """`(where, value)` for every declaration that is NOT `age`.
 
     A `${KNOWLEDGE_GRAPH_BACKEND:-age}` interpolation counts as its DEFAULT, because that is
     what a deployment setting nothing receives — the compose file is the declaration in that
     case, not the absent variable.
+
+    ⚠️ **"EVERY DECLARED DEPLOYMENT" IS NARROWER THAN IT WAS, AND SAYING SO IS THE POINT.**
+    `infra/docker-compose.yml` interpolated `:-age` until 2026-08-31, so a deployment that
+    chose nothing still DECLARED `age` here and this scan saw it. It no longer does: forcing
+    an explicit `age` onto an installation with no AGE database at all was the main-branch
+    upgrade hazard (`db.graph_backend`), and the fallback is now empty. Such a deployment
+    INFERS its engine from what it has provisioned, which means it can legitimately run
+    `neo4j` while declaring nothing — and this scan cannot see it, because there is nothing
+    to read.
+
+    That is a real narrowing of the claim, not a hole to be closed here: the DDL-exit
+    condition is about what deployments DECLARE, and an inferred engine is by definition not
+    a declaration. The scan still has a subject (`infra/.env` and `infra/.env.example` both
+    pin `age`) so it is not vacuous, and the ceiling of 0 still bites on any file that
+    declares `neo4j`. What changed is that "every deployment is on age" was never quite what
+    this measured, and now it is visibly not.
     """
     import glob as _glob
 
@@ -1230,7 +1303,7 @@ def scan_backend_declarations(sources=None) -> list[tuple[str, str]]:
     for where, text in sorted(sources.items()):
         for m in re.finditer(
                 r"KNOWLEDGE_GRAPH_BACKEND\s*[:=]\s*[\"']?(?:\$\{KNOWLEDGE_GRAPH_BACKEND"
-                r":-)?([A-Za-z0-9_]+)", text):
+                r":-)?([A-Za-z0-9_]+)", _uncommented(text)):
             value = m.group(1).strip().lower()
             if value != "age":
                 bad.append((where, value))
@@ -1263,7 +1336,8 @@ def scan_passage_read_declarations(sources=None) -> list[tuple[str, str]]:
     for where, text in sorted(sources.items()):
         for m in re.finditer(
                 r"KNOWLEDGE_VECTOR_READ_PRIMARY\s*[:=]\s*[\"']?"
-                r"(?:\$\{KNOWLEDGE_VECTOR_READ_PRIMARY:-)?([A-Za-z0-9_]+)", text):
+                r"(?:\$\{KNOWLEDGE_VECTOR_READ_PRIMARY:-)?([A-Za-z0-9_]+)",
+                _uncommented(text)):
             value = m.group(1).strip().lower()
             if value != "postgres":
                 bad.append((where, value))

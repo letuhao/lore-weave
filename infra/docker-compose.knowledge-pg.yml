@@ -73,5 +73,39 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # ── THE SWITCH: layering this file IS choosing the AGE engine ──────────────────────────
+  #
+  # Until 2026-08-31 this overlay started a database and told nobody. `KNOWLEDGE_AGE_DB_URL`
+  # defaults to EMPTY in `docker-compose.yml`, so `-f docker-compose.knowledge-pg.yml up` gave
+  # you a running AGE instance that `knowledge-service` had no address for — you also had to
+  # know to edit `.env`. Two half-switches that had to agree, and the failure when they did
+  # not was silent in the usual way: an unaddressed AGE database reads exactly like a book
+  # with no knowledge in it.
+  #
+  # Pointing the service at the instance this same file starts makes the engine choice ONE
+  # action, and it composes with the resolver rather than fighting it: setting this DSN is
+  # itself the evidence `db.graph_backend.resolve_unset_backend` reads, so a stack that layers
+  # this file lands on `age` without anyone naming a backend, and a stack that does not layer
+  # it keeps Neo4j. That is the whole switch:
+  #
+  #     docker compose up -d                                          -> Neo4j (unchanged)
+  #     docker compose -f docker-compose.yml \
+  #                    -f docker-compose.knowledge-pg.yml up -d       -> Apache AGE
+  #
+  # `${KNOWLEDGE_AGE_DB_URL:-...}` and not a bare literal, so an operator who already set the
+  # variable — pointing at a managed Postgres, say — still wins. This supplies a default for
+  # the instance above; it does not seize the setting.
+  #
+  # ⚠️ NOT a backend PIN. This file deliberately does not set `KNOWLEDGE_GRAPH_BACKEND`:
+  # layering the AGE database is evidence, not a command, and someone dual-running during a
+  # migration must be able to keep reads on Neo4j while AGE fills. Pin it in `.env` when you
+  # want the choice stated rather than inferred.
+  knowledge-service:
+    environment:
+      KNOWLEDGE_AGE_DB_URL: ${KNOWLEDGE_AGE_DB_URL:-postgresql://loreweave:loreweave_dev@knowledge-pg:5432/loreweave_knowledge_vectors}
+    depends_on:
+      knowledge-pg:
+        condition: service_healthy
+
 volumes:
   knowledge_pg_data:

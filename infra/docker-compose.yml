@@ -1446,9 +1446,21 @@ services:
       # T54 — the AGE graph. SAME instance as the vector DSN above: knowledge-pg runs
       # loreweave/postgres-knowledge:18, which T42b built to carry both `age` and `vector`.
       KNOWLEDGE_AGE_DB_URL: ${KNOWLEDGE_AGE_DB_URL:-}
-      # §8.1 made AGE the code default; this pins it explicitly on the shared stack so the
+      # §8.1 made AGE the code default; `infra/.env` PINS it for the shared stack, so the
       # backend is STATED rather than inherited (§8.1: "code default + env pin on dev").
-      KNOWLEDGE_GRAPH_BACKEND: ${KNOWLEDGE_GRAPH_BACKEND:-age}
+      #
+      # ⚠️ The fallback here is EMPTY, not `age`, and that is the difference between a safe
+      # upgrade and a broken one. `:-age` passed an EXPLICIT `age` into the container for
+      # every deployment that never chose — including an installation that has only ever run
+      # Neo4j and has no `KNOWLEDGE_AGE_DB_URL` at all. An explicit value beats the service's
+      # own provisioning check, so it would have been told it is an AGE deployment, served an
+      # EMPTY graph, and logged one warning: an unprovisioned store and a store with no rows
+      # are the same bytes to everything downstream.
+      #
+      # Empty means "the operator did not choose", which is what `${VAR:-}` means everywhere
+      # else too; `db.graph_backend.configured_backend` then resolves it from what the
+      # deployment has actually provisioned. Set it in your `.env` to pin one.
+      KNOWLEDGE_GRAPH_BACKEND: ${KNOWLEDGE_GRAPH_BACKEND:-}
       # D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER — the scheduled mirror sweep always
       # DETECTS (see knowledge_glossary_mirror_missing); this decides whether it also
       # CLOSES what it finds by re-emitting through glossary-service's outbox.

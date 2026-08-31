@@ -18,6 +18,7 @@ from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.neo4j import close_neo4j_driver, get_neo4j_driver, init_neo4j_driver
 from app.adapters.graph_store_provider import init_age_pool
+from app.db.graph_backend import configured_backend
 from app.db.neo4j_schema import run_neo4j_schema
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.db.seed_graph_schemas import seed_system_graph_schemas
@@ -212,7 +213,20 @@ async def lifespan(app: FastAPI):
         # HERE rather than on the first graph read. The provider refuses to fall back to
         # Neo4j, and a backend that silently is not the one you selected is the defect this
         # row exists to fix: T42/T43 closed green while `age` could not be selected at all.
-        if os.environ.get("KNOWLEDGE_GRAPH_BACKEND", "age").strip().lower() == "age":
+        # RESOLVED THROUGH `configured_backend`, which is the same function the provider and
+        # the session factory use. This line used to be its own
+        # `os.environ.get("KNOWLEDGE_GRAPH_BACKEND", "age")` — a THIRD copy of the default,
+        # in the one place whose job is to report the engine at startup. An operator reading
+        # this log line has to be reading the same answer the request path will use.
+        _backend = configured_backend()
+        _explicit = os.environ.get("KNOWLEDGE_GRAPH_BACKEND") is not None
+        logger.info(
+            "graph backend: %s (%s)", _backend,
+            "explicit KNOWLEDGE_GRAPH_BACKEND" if _explicit
+            else "inferred from what this deployment has provisioned — set "
+                 "KNOWLEDGE_GRAPH_BACKEND to pin it",
+        )
+        if _backend == "age":
             if not await init_age_pool():
                 logger.warning(
                     "KNOWLEDGE_GRAPH_BACKEND=age but KNOWLEDGE_AGE_DB_URL is unset — graph "

@@ -17,7 +17,11 @@ callers, every operation is at zero — permanently. That floor cannot be satisf
 waiting, only by adoption, so this file is the precondition for choosing an engine by
 measurement rather than by argument (which is what **X1** insisted on).
 
-── DEFAULT IS NEO4J, AND DEFAULT MEANS BEHAVIOUR-IDENTICAL ──────────────────────────────
+── THE DEFAULT IS AGE, AND THIS PARAGRAPH SAID NEO4J UNTIL 2026-08-31 ────────────────────
+T54 flipped the default to `age` (§8.1, PO 2026-08-22) and this docstring was not updated
+with it, so the module explaining the engine choice asserted the opposite of the constant it
+imports. Left uncorrected it is worse than absent: a reader deciding whether an upgrade is
+safe would have concluded it changes nothing.
 `get_graph_store(session)` returns a `Neo4jGraphStore` wrapping the session the caller
 already had. The adapter's methods are thin passthroughs to the same repo functions the
 call sites used before, with the same defaults — so a migrated call site reaches the same
@@ -25,9 +29,11 @@ Cypher through one extra method call. **No second database, no new failure mode,
 configure.** That property is what makes migrating a call site a safe, reviewable change
 rather than a cutover; the engine choice stays with T43 where the design put it.
 
-`KNOWLEDGE_GRAPH_BACKEND=age` selects the AGE adapter instead, and it is deliberately NOT
-the default: AGE is a T43 *candidate*, and defaulting to a candidate would decide the engine
-by configuration drift instead of by the shadow comparison.
+`KNOWLEDGE_GRAPH_BACKEND=neo4j` selects the Neo4j adapter, which wraps the session the caller
+already had: thin passthroughs to the same repo functions with the same defaults, so no second
+database and no new failure mode. An existing installation that has only ever run Neo4j and
+sets nothing still gets it — `configured_backend` resolves an UNSET variable from what the
+deployment has actually provisioned, rather than naming a store it never created.
 """
 
 from __future__ import annotations
@@ -50,6 +56,8 @@ __all__ = ["get_graph_store", "init_age_pool"]
 # edit away from putting half the service on each engine.
 from app.db.graph_backend import BACKEND_ENV as _BACKEND_ENV  # noqa: E402
 from app.db.graph_backend import DEFAULT_BACKEND as _DEFAULT_BACKEND  # noqa: E402
+from app.db.graph_backend import configured_backend as _configured_backend  # noqa: E402
+from app.db.graph_backend import known_backends as _known_backends  # noqa: E402
 
 
 
@@ -77,7 +85,13 @@ def get_graph_store(session: CypherSession) -> GraphStore:
     silently returning Neo4j, because a shadow comparison that quietly compared Neo4j
     against Neo4j would agree perfectly and mean nothing.
     """
-    backend = os.environ.get(_BACKEND_ENV, _DEFAULT_BACKEND).strip().lower()
+    # RESOLVED THROUGH `configured_backend`, not re-read here. This line used to be
+    # `os.environ.get(_BACKEND_ENV, _DEFAULT_BACKEND)` -- a SECOND home for the default,
+    # which is the duplication `db.graph_backend`'s own docstring warns about, and it
+    # also skipped that module's validation: an unknown value fell through both
+    # branches to the ValueError below instead of the registry's message, and an
+    # UNSET variable named `age` on a deployment that has no AGE database at all.
+    backend = _configured_backend()
     if backend == "neo4j":
         return Neo4jGraphStore(session)
     if backend == "age":
@@ -96,8 +110,14 @@ def get_graph_store(session: CypherSession) -> GraphStore:
         # adopting them HERE would smuggle an isolation-model change into an engine swap,
         # and then a divergence could not be attributed to either one.
         return AgeGraphStore(pool, graph_name_for(None))
-    if backend == "":
-        raise ValueError(f"{_BACKEND_ENV} is set but empty — name a backend (neo4j | age)")
+    # UNREACHABLE VIA `configured_backend`, and kept as a belt: that function raises on
+    # an empty value, an unknown name and a registered-but-not-selectable one, so a
+    # name arriving here is a backend the REGISTRY accepts and this dispatch has not
+    # learned to build. That is exactly the gap a new engine opens, so it names the
+    # registry rather than repeating a hardcoded `(neo4j | age)` that would go stale
+    # the moment one is added.
     raise ValueError(
-        f"{_BACKEND_ENV}={backend!r} is not a known graph backend (neo4j | age)"
+        f"{_BACKEND_ENV}={backend!r} is a registered backend that "
+        f"`get_graph_store` cannot construct. Known: {', '.join(_known_backends())}. "
+        f"Adding an engine is a registry entry AND a branch here."
     )
