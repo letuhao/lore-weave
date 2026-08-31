@@ -11,6 +11,8 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -320,5 +322,23 @@ func streamViaResponses(ctx context.Context, client *http.Client, base, secret, 
 		return err
 	}
 	defer resp.Body.Close()
-	return streamResponsesSSE(ctx, resp.Body, emit)
+
+	// 🔴 THE REQUEST THAT FAILED, DESCRIBED — the one thing sixteen refuted hypotheses never
+	// had. Every earlier theory on D-UPSTREAM-ERROR-WITH-NO-MESSAGE was tested against a
+	// RECONSTRUCTION of this call, and every reconstruction succeeded where the real one dies.
+	// A shape, not the body: the body is the author's manuscript. Emitted only on failure, so
+	// a healthy turn pays nothing.
+	failed := false
+	err = streamResponsesSSE(ctx, resp.Body, func(c StreamChunk) error {
+		if c.Kind == StreamChunkError {
+			failed = true
+		}
+		return emit(c)
+	})
+	if failed || err != nil {
+		slog.Warn("responses stream failed — outbound request shape",
+			"model", modelName, "shape", describeResponsesBody(body).String(),
+			"err", fmt.Sprint(err))
+	}
+	return err
 }
