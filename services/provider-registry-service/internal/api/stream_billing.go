@@ -56,6 +56,13 @@ type streamGuard struct {
 	outNonASCII  int
 	finalUsage   *provider.StreamChunk // last usage chunk seen, if any
 	aborted      bool                  // observe tripped the hard-abort
+	// D-UPSTREAM-ERROR-WITH-NO-MESSAGE - an error chunk was forwarded to the caller. The
+	// streamers report a provider failure by EMITTING one and then returning the normal
+	// end-of-stream sentinel, so streamErr is nil and the terminal classifier below scored
+	// the failure as `success`. See finalizeOutcome.
+	errorEmitted bool
+	errorCode    string
+	errorMessage string
 
 	// P0-2 (B1/B2 — full request/response logging). requestPayload is the assembled
 	// provider request (post-injection, bounded); completion accumulates the visible
@@ -199,6 +206,27 @@ func (g *streamGuard) observe(chunk provider.StreamChunk) (abort bool) {
 	case provider.StreamChunkUsage:
 		uc := chunk // copy — chunk is a loop-scoped value at the call site
 		g.finalUsage = &uc
+	case provider.StreamChunkError:
+		// 🔴 THE WITNESS REPORTED SUCCESS ON THE FAILURE IT WAS BUILT TO DESCRIBE. Every
+		// streamer signals a provider failure the same way: emit a StreamChunkError, then
+		// `return errStreamDone` — the SAME sentinel a clean end-of-stream returns. So
+		// streamChat hands finalizeOutcome a nil error and the stream is recorded `success`
+		// in usage_logs and in the terminal log line.
+		//
+		// MEASURED 2026-09-01 on the first reproducible instance this row has had. A turn
+		// that died with `upstream sent "error" with no error message` logged, from this
+		// process: status='success' usage=false chars=0 duration_ms=431. Two rows spent
+		// weeks narrowing to this hop, and when they finally got a line out of it, the line
+		// said the opposite of what happened.
+		//
+		// Recorded here rather than in each streamer because this is the one place every
+		// streamer's chunks pass through — the openai, anthropic and responses paths all
+		// return the same sentinel from their own error branch, and a per-streamer fix would
+		// have to be repeated three times and remembered for the fourth.
+		if !g.errorEmitted {
+			g.errorEmitted = true
+			g.errorCode, g.errorMessage = chunk.Code, chunk.Message
+		}
 	}
 	return false
 }
@@ -230,6 +258,11 @@ func (g *streamGuard) finalizeOutcome(streamErr error) {
 	case errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded):
 		g.requestStatus = "cancelled"
 	case streamErr != nil:
+		g.requestStatus = "provider_error"
+	case g.errorEmitted:
+		// The stream told its CALLER it had failed and then returned the clean-finish
+		// sentinel. A success here is not a mislabel, it is the audit row disagreeing with
+		// what the client was actually sent.
 		g.requestStatus = "provider_error"
 	default:
 		g.requestStatus = "success"
@@ -266,6 +299,13 @@ func (g *streamGuard) finalizeOutcome(streamErr error) {
 		// The provider's own words, not a category. A row that reads "provider reported a
 		// failure without saying why" was written because this string had nowhere to go.
 		lg = append(lg, "err", streamErr.Error())
+	}
+	if g.errorEmitted {
+		// The error the CALLER was sent. On every streamer this travels as a chunk and never
+		// as `streamErr`, so without these two fields the failure the client saw appears in
+		// this process's log as nothing at all — which is how a turn that died upstream came
+		// to be recorded here as a success with no err field to contradict it.
+		lg = append(lg, "chunk_err_code", g.errorCode, "chunk_err", g.errorMessage)
 	}
 	if g.requestStatus == "success" {
 		slog.Info("chat stream finished", lg...)
