@@ -8786,9 +8786,9 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
 
 class _EntityOverrideEditArgs(ForbidExtra):
     op: Annotated[
-        Literal["add", "update", "delete", "restore"],
+        Literal["add", "update", "delete", "restore", "list"],
         Field(description=(
-            "WHICH OPERATION to perform — the dispatch discriminator: add | update | delete | restore. "
+            "WHICH OPERATION to perform — the dispatch discriminator: add | update | delete | restore | list. "
             "Every other argument is optional in the schema because this is a flat superset: "
             "each op reads only ITS OWN fields, and this tool's description says which those are. "
             "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
@@ -8811,6 +8811,12 @@ class _EntityOverrideEditArgs(ForbidExtra):
     # The schema said `object` and nothing said WHAT object — so the model sent the entity's fields
     # as a list. A flat-superset tool declares everything optional, which means the per-op
     # requirement and the SHAPE both have to live in the descriptions or they live nowhere.
+    include_archived: bool = Field(default=False, description=(
+        "op=list only. False (default) lists the overrides that APPLY. True ALSO returns "
+        "SOFT-DELETED ones — this is where an `override_id` for op=restore comes from, and "
+        "before it existed the only way to hold that id was to have written it down before "
+        "deleting. Ignored by every other op."
+    ))
     target_entity_id: str | None = Field(default=None, description=(
         "op=add REQUIRES this. The glossary entity to override, by its entity_id — get it from "
         "glossary_search or glossary_get_entity. Not the override's own id, which is override_id."))
@@ -8827,7 +8833,7 @@ class _EntityOverrideEditArgs(ForbidExtra):
         "Add, update, or delete a per-Work entity override (book-local field changes on a glossary "
         "entity) — the unified entity-override-CRUD entry point. op=add (needs project_id + "
         "target_entity_id; overridden_fields). op=update (needs project_id + override_id; "
-        "overridden_fields). op=delete (needs project_id + override_id) SOFT-deletes — the override stops applying immediately but is recoverable. op=restore (needs project_id + override_id) brings it back; it FAILS if a newer override for that same entity now exists, which is honest rather than clobbering the newer one. EDIT required."
+        "overridden_fields). op=delete (needs project_id + override_id) SOFT-deletes — the override stops applying immediately but is recoverable. op=restore (needs project_id + override_id) brings it back; it FAILS if a newer override for that same entity now exists, which is honest rather than clobbering the newer one. op=list (needs project_id; include_archived) shows this Work's overrides and is WHERE THE override_id FOR op=restore COMES FROM — call it with include_archived=true to see soft-deleted ones. EDIT required."
     ),
     meta=require_meta("A", "book",
                       # 🔴 no_context_fill=["project_id"] WAS TRIED HERE AND TAKEN BACK OUT. The
@@ -8840,9 +8846,18 @@ class _EntityOverrideEditArgs(ForbidExtra):
                       # then — put the target_entity_id into project_id AND book_id on three
                       # different tools, all refused "not found or not accessible".
                       # The remedy is the refusal below, not starving the argument.
+                      # The last three are the DISCOVERY phrasings (DQ-T87 (a)). Run through the
+                      # SHIPPED matcher over the live 316-tool catalogue BEFORE adding, the way
+                      # the scene_link half of this row was: the three recycle-bin prompts went
+                      # 0/3 -> 2/3, each a SINGLETON, and eight neighbouring requests
+                      # ("Show me the entity overrides.", "Restore the entity override.",
+                      # "Show me the outline.", …) came back BYTE-IDENTICAL — zero moved. No
+                      # answerability tie is manufactured, which is the cost DQ-T70 measured.
                       synonyms=["add entity override", "edit entity override", "delete entity override",
                                 "restore entity override", "undo entity override delete",
-                                "override entity field", "manage entity override"],
+                                "override entity field", "manage entity override",
+                                "deleted entity overrides", "archived entity overrides",
+                                "list entity overrides", "entity override recycle bin"],
                       tool_name="composition_entity_override_edit"),
 )
 async def composition_entity_override_edit(ctx: MCPContext, args: _EntityOverrideEditArgs) -> dict:
@@ -8863,11 +8878,60 @@ async def composition_entity_override_edit(ctx: MCPContext, args: _EntityOverrid
             raise ValueError("op=delete requires project_id and override_id")
         return await composition_entity_override_delete(ctx, _EntityOverrideDeleteArgs(
             project_id=args.project_id, override_id=args.override_id))
-    # op == "restore" — the UNDO the soft delete now promises (F3).
-    if not args.project_id or not args.override_id:
-        raise ValueError("op=restore requires project_id and override_id")
-    return await composition_entity_override_restore(ctx, _EntityOverrideDeleteArgs(
-        project_id=args.project_id, override_id=args.override_id))
+    if args.op == "restore":
+        # The UNDO the soft delete promises (F3).
+        if not args.project_id or not args.override_id:
+            raise ValueError("op=restore requires project_id and override_id")
+        return await composition_entity_override_restore(ctx, _EntityOverrideDeleteArgs(
+            project_id=args.project_id, override_id=args.override_id))
+    # op == "list" — DQ-T87 (a). The discovery path op=restore always needed: it takes an
+    # `override_id` and nothing in the catalogue listed what could be restored, so the id was
+    # unobtainable unless the author had recorded it before deleting.
+    if not args.project_id:
+        raise ValueError("op=list requires project_id")
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
+    if work.source_work_id is None:
+        # 🔴 AN EMPTY LIST IS THE WORST ANSWER THIS OP CAN GIVE, and the first live run
+        # gave it 5 times out of 5. The model is handed the book's AMBIENT (canonical)
+        # project_id, and an override exists only on a DERIVATIVE Work. `_require_derivative`
+        # does not actually check that despite its name, and op=list had no downstream write to
+        # fail on, so a canonical project answered {"overrides": [], ok: true} — and every run
+        # told the author "the system reported that no archived overrides exist for this work"
+        # while the override sat there archived. A recycle bin that says EMPTY when it was
+        # handed the wrong drawer is worse than one that refuses: the author stops looking.
+        #
+        # Same refusal the add path already ships, for the same reason it was rewritten: naming
+        # composition_list_derivatives also ARMS it (chat-service's _tools_named_in_refusal runs
+        # on dispatch results), so the model can act on this rather than only read it.
+        return {"success": False, "error": (
+            "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
+            "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
+            "project_id). NOTHING WAS LISTED, and that is not the same as there being nothing to "
+            "list. Call composition_list_derivatives with project_id="
+            "THIS SAME VALUE and NOTHING ELSE — do NOT also pass book_id; that tool takes "
+            "EXACTLY ONE of the two and refuses when both are present. It lists every Work of "
+            "the book; retry op=list with the project_id of the entry whose is_canonical is "
+            "false."
+        )}
+    derivatives = DerivativesRepo(get_pool())
+    rows = await derivatives.list_overrides_for_work(
+        work.id, include_archived=args.include_archived)
+    return {
+        "overrides": [
+            {
+                "override_id": str(o.id),
+                "target_entity_id": str(o.target_entity_id),
+                "overridden_fields": o.overridden_fields,
+                # NAMED, not implied by absence: a caller filtering client-side on a field that
+                # is only present sometimes is how a recycle bin silently shows live rows.
+                "is_archived": bool(getattr(o, "is_archived", False)),
+            }
+            for o in rows
+        ],
+        "include_archived": args.include_archived,
+    }
 
 
 class _SceneLinkEditArgs(ForbidExtra):

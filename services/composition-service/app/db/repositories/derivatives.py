@@ -121,11 +121,27 @@ class DerivativesRepo:
         return DivergenceSpec.model_validate(dict(row)) if row else None
 
     async def list_overrides_for_work(
-        self, work_id: UUID
+        self, work_id: UUID, *, include_archived: bool = False
     ) -> list[EntityOverride]:
+        """The Work's overrides. `include_archived=True` also returns SOFT-DELETED ones.
+
+        🔴 THE UNDO YOU CANNOT REACH. `composition_entity_override_edit` ships an op=restore
+        that takes an `override_id`, and until this flag existed there was NO surface anywhere
+        that listed a deleted override — so the only way to hold that id was to have written it
+        down BEFORE deleting. Measured across the family (D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-
+        RESTORABLE): entity_override was the last LIVE restore family with no discovery path.
+
+        OWNER RULING DQ-T87 (a), 2026-08-31: build it.
+
+        DEFAULT FALSE, AND THAT MATTERS AT TWO CALL SITES that must never see an archived row:
+        `packer/pack.py` (an archived override must not apply to generated prose) and the
+        works router's list endpoint. Both call this positionally, so their behaviour is
+        byte-identical; a guard walks every call site and asserts it.
+        """
+        archived_clause = "" if include_archived else " AND NOT is_archived"
         query = f"""
         SELECT {_OVERRIDE_COLS} FROM entity_override
-        WHERE work_id = $1 AND NOT is_archived
+        WHERE work_id = $1{archived_clause}
         ORDER BY created_at
         """
         async with self._pool.acquire() as c:

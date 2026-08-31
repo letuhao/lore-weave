@@ -7954,19 +7954,26 @@
     }
   },
   "composition_entity_override_edit": {
-    "description": "Add, update, or delete a per-Work entity override (book-local field changes on a glossary entity) — the unified entity-override-CRUD entry point. op=add (needs project_id + target_entity_id; overridden_fields). op=update (needs project_id + override_id; overridden_fields). op=delete (needs project_id + override_id) SOFT-deletes — the override stops applying immediately but is recoverable. op=restore (needs project_id + override_id) brings it back; it FAILS if a newer override for that same entity now exists, which is honest rather than clobbering the newer one. EDIT required.",
+    "description": "Add, update, or delete a per-Work entity override (book-local field changes on a glossary entity) — the unified entity-override-CRUD entry point. op=add (needs project_id + target_entity_id; overridden_fields). op=update (needs project_id + override_id; overridden_fields). op=delete (needs project_id + override_id) SOFT-deletes — the override stops applying immediately but is recoverable. op=restore (needs project_id + override_id) brings it back; it FAILS if a newer override for that same entity now exists, which is honest rather than clobbering the newer one. op=list (needs project_id; include_archived) shows this Work's overrides and is WHERE THE override_id FOR op=restore COMES FROM — call it with include_archived=true to see soft-deleted ones. EDIT required.",
     "inputSchema": {
       "$defs": {
         "_EntityOverrideEditArgs": {
           "additionalProperties": false,
           "properties": {
+            "include_archived": {
+              "default": false,
+              "description": "op=list only. False (default) lists the overrides that APPLY. True ALSO returns SOFT-DELETED ones — this is where an `override_id` for op=restore comes from, and before it existed the only way to hold that id was to have written it down before deleting. Ignored by every other op.",
+              "title": "Include Archived",
+              "type": "boolean"
+            },
             "op": {
-              "description": "WHICH OPERATION to perform — the dispatch discriminator: add | update | delete | restore. Every other argument is optional in the schema because this is a flat superset: each op reads only ITS OWN fields, and this tool's description says which those are. Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path.",
+              "description": "WHICH OPERATION to perform — the dispatch discriminator: add | update | delete | restore | list. Every other argument is optional in the schema because this is a flat superset: each op reads only ITS OWN fields, and this tool's description says which those are. Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path.",
               "enum": [
                 "add",
                 "update",
                 "delete",
-                "restore"
+                "restore",
+                "list"
               ],
               "title": "Op",
               "type": "string"
@@ -8033,13 +8040,20 @@
       },
       "additionalProperties": false,
       "properties": {
+        "include_archived": {
+          "default": false,
+          "description": "op=list only. False (default) lists the overrides that APPLY. True ALSO returns SOFT-DELETED ones — this is where an `override_id` for op=restore comes from, and before it existed the only way to hold that id was to have written it down before deleting. Ignored by every other op.",
+          "title": "Include Archived",
+          "type": "boolean"
+        },
         "op": {
-          "description": "WHICH OPERATION to perform — the dispatch discriminator: add | update | delete | restore. Every other argument is optional in the schema because this is a flat superset: each op reads only ITS OWN fields, and this tool's description says which those are. Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path.",
+          "description": "WHICH OPERATION to perform — the dispatch discriminator: add | update | delete | restore | list. Every other argument is optional in the schema because this is a flat superset: each op reads only ITS OWN fields, and this tool's description says which those are. Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path.",
           "enum": [
             "add",
             "update",
             "delete",
-            "restore"
+            "restore",
+            "list"
           ],
           "title": "Op",
           "type": "string"
@@ -8111,7 +8125,11 @@
         "restore entity override",
         "undo entity override delete",
         "override entity field",
-        "manage entity override"
+        "manage entity override",
+        "deleted entity overrides",
+        "archived entity overrides",
+        "list entity overrides",
+        "entity override recycle bin"
       ],
       "tier": "A"
     }
