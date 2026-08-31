@@ -164,9 +164,22 @@ def test_the_row_carries_the_correction_and_the_split_link():
     # needs to do. What must stay true is that the row is blocked on a question that is genuinely
     # OPEN — asserted against the queue generator's own predicate rather than a hard-coded name,
     # so the next re-point does not silently unblock it either.
-    assert r.get("blocked_by_dq") in _open_dq_names(), (
-        f"blocked_by_dq={r.get('blocked_by_dq')!r} is not an OPEN question — the row is either "
-        "unblocked or pointing at a decision that has already been made")
+    blocker = r.get("blocked_by_dq")
+    if blocker is None:
+        # RULED AND RELEASED. The owner answered on 2026-08-31, the link moved to
+        # `was_blocked_by_dq`, and the row is ready work — so "still blocked" is no longer the
+        # thing to assert. What must stay true is that the release was REAL: a ruling exists and
+        # the row records where it came from, rather than the link simply going missing.
+        assert r.get("was_blocked_by_dq"), (
+            "the row is unblocked and does not say what it was blocked on — a link that "
+            "vanishes loses the decision that released it")
+        prior = LEDGER["deferred_questions"].get(r["was_blocked_by_dq"], {})
+        assert prior.get("state") == "answered", (
+            f"{r['was_blocked_by_dq']} is not answered, yet the row stopped pointing at it")
+    else:
+        assert blocker in _open_dq_names(), (
+            f"blocked_by_dq={blocker!r} is not an OPEN question — the row is in limbo, "
+            "pointing at a decision that has already been made")
 
 
 def test_the_row_says_WHAT_THE_DQ_DOES_NOT_COVER():

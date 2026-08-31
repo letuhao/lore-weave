@@ -116,6 +116,50 @@ class TestNeitherHalfOfTheRuleIsEnoughAlone:
             "a scenario whose tool IS called 5/5 is being excluded on an empty-surface signal")
 
 
+class TestABatchThatNeverReachedTheToolMeasuredNothing:
+    """🔴 THE RUNNER ALREADY SAID SO AND NOTHING READ IT: "NOT REACHED, NOT DECLINED: kg_add_nodes
+    was never called, and all 5 run(s) stopped at a card belonging to another tool". Ten such runs
+    took kg_add_nodes from 0.900 to 0.450 and across the DQ-T51 bar — a tool crossing DOWNWARD
+    with no behaviour having changed."""
+
+    def _run(self, carded=None, calls=()):
+        r = {"scenario": "s", "results": [{"name": c} for c in calls]}
+        if carded:
+            r["pending_approval"] = {"tool": carded}
+        return r
+
+    def _names(self, r):
+        return {c["name"] for c in r.get("results") or []}
+
+    def test_a_batch_where_every_run_stopped_at_another_tools_card_is_excluded(self):
+        group = [self._run(carded="kg_project_create") for _ in range(5)]
+        assert sr._batch_never_reached_it(group, "kg_add_nodes", self._names)
+
+    def test_a_WRONG_PICK_THAT_CARDS_IS_STILL_A_SELECTION(self):
+        """🔴 THE HOLE IN MY FIRST VERSION, found before it shipped. A per-run test excluded 270
+        runs because it also swallowed the model picking a SIBLING that then carded — which is a
+        genuine wrong selection and exactly what D-SURFACING-IS-NECESSARY-BUT-NOT-SUFFICIENT is
+        about. Hiding those would retire a defect by instrument change.
+
+        The whole-batch rule keeps them: if ANY run of the batch reached the tool, the turn
+        demonstrably could get there, so the runs that did not are decisions."""
+        group = [self._run(carded="a_sibling"), self._run(calls=["kg_add_nodes"])]
+        assert not sr._batch_never_reached_it(group, "kg_add_nodes", self._names)
+
+    def test_a_batch_that_carded_on_the_tool_ITSELF_is_kept(self):
+        """A Tier-A tool that raises its own card WAS selected — that is the success path."""
+        group = [self._run(carded="kg_add_nodes") for _ in range(5)]
+        assert not sr._batch_never_reached_it(group, "kg_add_nodes", self._names)
+
+    def test_a_batch_with_no_cards_at_all_is_kept(self):
+        group = [self._run() for _ in range(5)]
+        assert not sr._batch_never_reached_it(group, "kg_add_nodes", self._names)
+
+    def test_the_exclusion_is_counted_and_reported(self, derived):
+        """A silent exclusion is indistinguishable from a small corpus."""
+        assert derived["never_reached_runs_excluded"] > 0
+
+
 class TestTheBarItselfIsUntouched:
     def test_the_bar_is_still_derived_from_power_not_from_the_data(self):
         assert sr.LOTTERY_BELOW == pytest.approx(1.0 - 0.05 ** (1 / 5))
@@ -123,7 +167,23 @@ class TestTheBarItselfIsUntouched:
 
     def test_the_crossings_are_UPWARD_so_no_verdict_got_easier(self, derived):
         """Crossing upward makes a zero EVIDENCE rather than an excused lost draw. A downward
-        crossing would retire a row by side effect, which is what DQ-T51 warned against."""
-        assert derived["lottery_count"] <= 20, (
-            f"{derived['lottery_count']} tools in the lottery band — the exclusion is adding "
-            "tools to it, which means something crossed DOWNWARD")
+        crossing would retire a row by side effect, which is what DQ-T51 warned against.
+
+        🔴 THE BAR WAS A TYPED `<= 20` UNTIL 2026-08-31, AND IT BOTH WORKED AND WAS WRONG. It
+        caught a real downward crossing — ten diagnostic runs took `kg_add_nodes` from 0.900 to
+        0.450, across the bar, with no behaviour having changed — which is exactly its job. But a
+        constant cannot say WHICH tool moved, and the honest repair for a legitimate upward
+        crossing was to edit the number, which is how a ratchet becomes a rubber stamp.
+
+        It now compares against the COMMITTED contract: the set of tools in the band may only
+        SHRINK. Regenerating the contract is a deliberate act that shows every rate change in the
+        diff, so the ratchet holds and the guard cannot go stale.
+        """
+        committed = set(json.loads(
+            (ROOT / "contracts" / "tool-selection-rates.json").read_text("utf-8"))["lottery"])
+        now = set(derived["lottery"])
+        assert committed, "the committed contract has an empty band — is it derived at all?"
+        entered = sorted(now - committed)
+        assert not entered, (
+            f"{len(entered)} tool(s) ENTERED the lottery band — something crossed DOWNWARD and a "
+            f"verdict got easier by side effect: {entered}")

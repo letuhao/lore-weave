@@ -283,6 +283,7 @@
   "story-search-v2": "story_search",
   "structure-template-restore-finds-its-own-id": "composition_structure_template_edit",
   "studio-approved-call-keeps-the-studio-book": "glossary_propose_entities",
+  "t73-a-write-lands-then-the-turn-asks-about-another": "glossary_propose_entities",
   "the-authors-word-linter-reaches-the-linter": "plan_validate",
   "tool-load": "tool_load",
   "tool-load-asks-what-a-TOOL-requires": "tool_load",
@@ -325,10 +326,11 @@
   "world-move-book": "world_move_book",
   "world-update": "world_update"
  },
- "choiceless_runs_excluded": 102,
- "_bar_derivation": "DQ-T51: p = 1-(1-0.95)**(1/5) = 0.4507 — the selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero is evidence about the tool rather than a lost draw. THE DERIVATION IS PRIMARY; the robustness note below is measured fresh each time and is secondary to it. No measured tool lies in [0.431, 0.457), a gap of 0.026, and the bar sits inside it — so every value in that gap classifies the identical set of tools. THAT GAP HAS NARROWED: it was [0.400, 0.500) until 2026-08-30, when a denominator defect was fixed and 117 orphaned runs returned. The bar's justification is its POWER, not the width of this gap; the gap is only evidence that the exact value is not knife-edge.",
- "measured": 80,
- "lottery_count": 20,
+ "choiceless_runs_excluded": 107,
+ "never_reached_runs_excluded": 184,
+ "_bar_derivation": "DQ-T51: p = 1-(1-0.95)**(1/5) = 0.4507 — the selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero is evidence about the tool rather than a lost draw. THE DERIVATION IS PRIMARY; the robustness note below is measured fresh each time and is secondary to it. No measured tool lies in [0.425, 0.475), a gap of 0.050, and the bar sits inside it — so every value in that gap classifies the identical set of tools. THAT GAP HAS NARROWED: it was [0.400, 0.500) until 2026-08-30, when a denominator defect was fixed and 117 orphaned runs returned. The bar's justification is its POWER, not the width of this gap; the gap is only evidence that the exact value is not knife-edge.",
+ "measured": 81,
+ "lottery_count": 18,
  "lottery": [
   "catalog_get_book",
   "composition_arc_import_analyze",
@@ -337,14 +339,12 @@
   "composition_motif_bind_edit",
   "composition_scene_link_edit",
   "glossary_book_sync_apply",
-  "glossary_create_chapter_link",
   "glossary_create_evidence",
   "glossary_extract_entities_from_doc",
   "glossary_propose_batch",
   "jobs_cancel",
   "jobs_pause",
   "kg_ontology_propose",
-  "kg_propose_edge",
   "kg_triage_schema_write",
   "plan_bootstrap_apply",
   "propose_edit",
@@ -364,8 +364,8 @@
   },
   "catalog_get_book": {
    "calls": 5,
-   "runs": 25,
-   "rate": 0.2
+   "runs": 30,
+   "rate": 0.167
   },
   "composition_arc_apply": {
    "calls": 20,
@@ -408,13 +408,13 @@
    "rate": 1.0
   },
   "composition_build_cast_and_graph": {
-   "calls": 80,
-   "runs": 175,
-   "rate": 0.457
+   "calls": 85,
+   "runs": 170,
+   "rate": 0.5
   },
   "composition_canon_rule_restore": {
    "calls": 0,
-   "runs": 35,
+   "runs": 30,
    "rate": 0.0
   },
   "composition_conformance_run": {
@@ -439,12 +439,12 @@
   },
   "composition_entity_override_edit": {
    "calls": 77,
-   "runs": 113,
-   "rate": 0.681
+   "runs": 93,
+   "rate": 0.828
   },
   "composition_generate": {
    "calls": 0,
-   "runs": 34,
+   "runs": 10,
    "rate": 0.0
   },
   "composition_library_translate": {
@@ -474,8 +474,8 @@
   },
   "composition_reference_update": {
    "calls": 23,
-   "runs": 29,
-   "rate": 0.793
+   "runs": 24,
+   "rate": 0.958
   },
   "composition_scene_link_edit": {
    "calls": 1,
@@ -499,13 +499,13 @@
   },
   "glossary_create_chapter_link": {
    "calls": 4,
-   "runs": 10,
-   "rate": 0.4
+   "runs": 5,
+   "rate": 0.8
   },
   "glossary_create_evidence": {
    "calls": 21,
-   "runs": 85,
-   "rate": 0.247
+   "runs": 60,
+   "rate": 0.35
   },
   "glossary_curation_list": {
    "calls": 16,
@@ -529,13 +529,18 @@
   },
   "glossary_ontology_delete": {
    "calls": 5,
-   "runs": 10,
-   "rate": 0.5
+   "runs": 5,
+   "rate": 1.0
   },
   "glossary_propose_batch": {
    "calls": 5,
-   "runs": 20,
-   "rate": 0.25
+   "runs": 15,
+   "rate": 0.333
+  },
+  "glossary_propose_entities": {
+   "calls": 12,
+   "runs": 12,
+   "rate": 1.0
   },
   "glossary_propose_translation": {
    "calls": 4,
@@ -549,8 +554,8 @@
   },
   "jobs_cancel": {
    "calls": 7,
-   "runs": 40,
-   "rate": 0.175
+   "runs": 45,
+   "rate": 0.156
   },
   "jobs_get": {
    "calls": 26,
@@ -559,8 +564,8 @@
   },
   "jobs_pause": {
    "calls": 8,
-   "runs": 39,
-   "rate": 0.205
+   "runs": 44,
+   "rate": 0.182
   },
   "kg_add_nodes": {
    "calls": 9,
@@ -574,13 +579,13 @@
   },
   "kg_ontology_propose": {
    "calls": 1,
-   "runs": 15,
-   "rate": 0.067
+   "runs": 5,
+   "rate": 0.2
   },
   "kg_propose_edge": {
    "calls": 28,
-   "runs": 65,
-   "rate": 0.431
+   "runs": 35,
+   "rate": 0.8
   },
   "kg_triage_place_edge": {
    "calls": 10,
@@ -593,14 +598,14 @@
    "rate": 1.0
   },
   "kg_triage_schema_write": {
-   "calls": 13,
-   "runs": 35,
-   "rate": 0.371
+   "calls": 17,
+   "runs": 40,
+   "rate": 0.425
   },
   "memory_forget": {
    "calls": 15,
-   "runs": 20,
-   "rate": 0.75
+   "runs": 25,
+   "rate": 0.6
   },
   "memory_timeline": {
    "calls": 10,
@@ -609,8 +614,8 @@
   },
   "plan_bootstrap_apply": {
    "calls": 24,
-   "runs": 65,
-   "rate": 0.369
+   "runs": 60,
+   "rate": 0.4
   },
   "plan_keep_material": {
    "calls": 5,
@@ -679,13 +684,13 @@
   },
   "tool_load": {
    "calls": 30,
-   "runs": 60,
-   "rate": 0.5
+   "runs": 45,
+   "rate": 0.667
   },
   "translation_job_control": {
    "calls": 1,
-   "runs": 50,
-   "rate": 0.02
+   "runs": 55,
+   "rate": 0.018
   },
   "translation_patch_block": {
    "calls": 18,

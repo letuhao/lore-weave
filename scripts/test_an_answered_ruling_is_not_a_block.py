@@ -111,11 +111,31 @@ class TestARulingSENTBACKIsAQuestionAgain:
         }}}
         assert G._open_dq_names(led) == {"DQ-R"}
 
-    def test_the_three_returned_rulings_block_in_the_REAL_ledger(self):
-        for name in ("DQ-T44", "DQ-T58", "DQ-T64"):
-            q = LEDGER["deferred_questions"][name]
-            assert "returned_corrected" in q, f"{name} lost its correction marker"
-            assert name in G._open_dq_names(LEDGER), f"{name} is releasing rows despite a correction"
+    def test_a_returned_ruling_blocks_until_a_NEW_one_arrives(self):
+        """Named for three specific questions until 2026-08-31, and the rename is the point.
+
+        🔴 THE GUARD ENCODED A MOMENT, NOT A RULE. It asserted DQ-T44, T58 and T64 were blocking
+        — true while their corrections were unanswered, and false the instant the owner ruled on
+        the CORRECTED question. A guard that names today's rows goes red for the best possible
+        reason and teaches nobody anything.
+
+        The rule it was always protecting: a correction blocks UNTIL a new ruling arrives. Both
+        halves are asserted over whatever the ledger holds, so it cannot go stale again, and it
+        cannot go vacuous — a ledger with no corrections at all fails the floor below.
+        """
+        dqs = LEDGER["deferred_questions"]
+        corrected = {n: q for n, q in dqs.items()
+                     if isinstance(q, dict) and "returned_corrected" in q}
+        assert corrected, "no question carries a correction — has the marker been renamed?"
+        for name, q in corrected.items():
+            answered_after = q.get("state") == "answered" and G._has_ruling(q)
+            if answered_after:
+                assert name not in G._open_dq_names(LEDGER), (
+                    f"{name} was corrected AND re-ruled, yet still blocks — the second ruling "
+                    "cannot release the rows the first one lost")
+            else:
+                assert name in G._open_dq_names(LEDGER), (
+                    f"{name} is releasing rows despite an unanswered correction")
 
     def test_a_ruling_that_was_ACTED_ON_still_releases(self):
         """ANTI-OVERREACH. DQ-T53's ruling was carried out — the owner re-enabled logging and the

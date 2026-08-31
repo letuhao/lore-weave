@@ -43,7 +43,11 @@ BUDGET = 4000
 #: carry a class tag) and the condition landed at 4162/4000. QUEUE is the elastic section exactly
 #: so an overflow is paid for HERE and never by trimming a rule.
 DQ_NAMED = 8   # blocking questions named inline; the rest are counted and linked
-NAMED = 2
+#: 2 -> 1 on 2026-08-31. The new objective's STOP block is longer (it enumerates the four ways a
+#: row may leave `open`, and bars re-blocking a ruled row) and the condition landed at 4187/4000.
+#: QUEUE is the elastic section precisely so an overflow is paid HERE: NEXT still names the resume
+#: pointer, and every open row is counted in the header, so nothing is dropped — only unnamed.
+NAMED = 1
 #: Characters of each named row's invariant to show. Enough to RECOGNISE the row, not to
 #: understand it — a row needing more than this has narration where its invariant should be.
 EXCERPT = 24
@@ -52,59 +56,61 @@ EXCERPT = 24
 CLASS_ORDER = ("contract", "platform", "infra", "model", "instrument")
 
 DURABLE = """\
-Close EVERY open defect in contracts/tool-deep-dive-ledger.json — all classes, not just contract.
+BUILD THE REMEDY EACH OPEN ROW HAS ALREADY BEEN RULED, in contracts/tool-deep-dive-ledger.json.
 
-OBJECTIVE. A defect is DONE when its invariant is NAMED, enforced at ONE chokepoint, a falsifier \
-is proven RED on an ORIGINAL instance, the WHOLE owning suite is green, and the fix is shown by a \
-LIVE run through the real chat path. Then `state: fixed` with evidence on the row.
+OBJECTIVE. Every open row carries an owner ruling under `answer_*` on its question — nothing \
+waits on a decision. A defect is DONE when its invariant is NAMED, enforced at ONE chokepoint, a \
+falsifier is proven RED on an ORIGINAL instance, the WHOLE owning suite is green, and the fix is \
+shown by a LIVE run through the real chat path. Then `state: fixed` with evidence.
 
-THE RUN ENDS ONLY WHEN `goal_prompt_all_defects.py --check` reports no open defect, or says every \
-one left is DQ-blocked, AND `gate.py audit` is clean. NOTHING ELSE ENDS IT. One defect fixed is \
-ONE CYCLE, never the run: the moment a row reaches `fixed`, open the next one IN THE SAME TURN.
+THE RULING IS THE SPEC. Read it BEFORE building and build it AS WORDED. If it cannot be built, \
+the question goes BACK CORRECTED with the measurement showing why — never substitute a mechanism \
+quietly, and never re-open a settled question to dodge the work.
 
-THE OWNER'S DECISIONS ARE THE WORK. Each ruling sits under `answer_*` on its DQ row. READ IT \
-BEFORE BUILDING and build it AS WORDED. If it cannot be built, the question goes BACK CORRECTED \
-with the measurement showing why — never substitute a mechanism quietly.
+THE RUN ENDS ONLY WHEN `goal_prompt_all_defects.py --check` reports no open defect AND `gate.py \
+audit` is clean. NOTHING ELSE ENDS IT. One defect fixed is ONE CYCLE, never the run: the moment a \
+row reaches `fixed`, open the next one IN THE SAME TURN.
 
-NEVER STOP FOR — asking whether to go on; offering to hand back; "want me to…" then silence; a \
-finished cycle; a green suite; a long report; a tidy stopping point. Any turn that has not moved \
-a row to `fixed` MUST END IN A TOOL CALL. Reporting is not progress.
+A ROW LEAVES `open` FOUR WAYS AND THREE ARE NOT `fixed`: `withdrawn` (never a defect), \
+`superseded` (folded into a row that names its mechanism), `cannot_reproduce` (real, no longer \
+happens — the row must carry the ORIGINAL INSTANCE, the re-run WITH ITS COUNT, and what was never \
+demonstrated; audit refuses it otherwise). Blocking is an ESCAPE HATCH, not a route: only on a \
+question filed IN THIS RUN with the measurement that forced it. Re-blocking a ruled row is how a \
+finishable run becomes endless.
 
-BLOCKED IS NOT STOPPED. A defect needing a decision gets its DQ recorded and you MOVE ON.
+NEVER STOP FOR — asking whether to go on; a finished cycle; a green suite; a long report. Any \
+turn that has not moved a row to `fixed` MUST END IN A TOOL CALL. Reporting is not progress.
 
 UNIT. ONE defect per cycle — a floor on rigour, not a cap on effort. DO NOT BATCH ON A BROKEN \
-PLATFORM: a batch measures the platform, not the fix.
+PLATFORM: the batch then measures the platform.
 
-METHOD, in order. 1 INVESTIGATE BEFORE THEORISING: `docker logs infra-<svc>-1`, \
-chat_messages tool_calls/advertised/withheld, batch JSON, store diffs. Read, then \
-reason. 2 NAME THE INVARIANT AND FIX THE CLASS at ONE chokepoint — prefer the \
-place that DESTROYS the information; check FIRST whether the mechanism exists and is merely \
-EMPTY. 3 RUN THE CONTROL THAT COULD REFUTE YOU before writing the fix — measure cost and RECALL, \
+METHOD, in order. 1 INVESTIGATE BEFORE THEORISING: service logs, chat_messages \
+tool_calls/advertised/withheld, batch JSON, store diffs. Read, then reason. 2 NAME THE INVARIANT \
+AND FIX THE CLASS at ONE chokepoint — prefer the place that DESTROYS the information; check FIRST \
+whether the mechanism exists and is merely EMPTY. 3 RUN THE CONTROL THAT COULD REFUTE YOU before writing the fix — measure cost and RECALL, \
 record what you rejected. 4 DEPLOY AND VERIFY BY CONTENT: sha256 from INSIDE the container; \
 restart ai-gateway on a description change. 5 PROVE IT LIVE: real provider, K>=5, throwaway \
 fixture.
 
 EVIDENCE. Proven by a RUN, never by the code looking right, never by a helper test alone — assert \
-the CALL SITE. A CLEAN ARM PROVES NOTHING UNTIL YOU SHOW IT REACHED THE PATH: a scenario that \
-auto-approves never suspends. VERIFY THE VARIED INPUT REACHED THE MODEL. Run the whole owning \
-suite SERIALLY. A failed attempt is RECORDED, not quietly retried. Every fix states what it does \
-NOT cover.
+the CALL SITE. A CLEAN ARM PROVES NOTHING UNTIL YOU SHOW IT REACHED THE PATH. VERIFY THE VARIED \
+INPUT REACHED THE MODEL. Run the whole owning suite SERIALLY. A failed attempt is RECORDED, not \
+quietly retried. Every fix states what it does NOT cover.
 
-CHECK YOUR OWN INSTRUMENT BEFORE REPORTING ITS ANSWER. A census returning a shocking number is \
-usually measuring itself — a key-name scan called 82 rows unproven where 7 was true.
+CHECK YOUR OWN INSTRUMENT BEFORE REPORTING ITS ANSWER: a census with a shocking number is \
+usually measuring itself.
 
-ANTI-CHEAT. Never weaken a bar, a scenario or an expectation to fit; if a bar is wrong, leave it \
-RED and say so. A baseline may only SHRINK. Never split a defect to inflate the count. Never \
-write `fixed` when the live run exercised only part of the fix — say which part is unproven. A \
-row that STOPPED REPRODUCING is not fixed: no fix, no credit. When your own control refutes your \
-own row, WITHDRAW IT and record what misled you. Re-derive every number; a ledger claim is a \
-lead, not a fact.
+ANTI-CHEAT. Never weaken a bar, a scenario or an expectation to fit; a wrong bar stays RED and \
+you say so. A baseline may only SHRINK. Never split a defect to inflate the count. Never write \
+`fixed` when the live run exercised only part of the fix — say which part is unproven. When your \
+own control refutes your own row, WITHDRAW IT and record what misled you. Re-derive every number; \
+a ledger claim is a lead, not a fact.
 
 SAFETY. Never write to the dogfood book: one throwaway fixture per scenario, torn down. A \
 read-only TOOL does not make a read-only TURN. Auth only via /v1/auth/login using git-ignored \
 docs/dev/LOCAL_TEST_ENV.md; never scrape a token or invent a credential. SELECT before any DML. \
-Every open DQ gets a RECOMMENDATION from you and is DECIDED BY THE OWNER — never decide or close \
-one yourself to unblock a defect."""
+Every open DQ gets a RECOMMENDATION and is DECIDED BY THE OWNER — never decide or close one \
+yourself to unblock a defect."""
 
 
 #: A deferred question NAME, matched whole. `DQ-T4` and `DQ-T45` are different questions and one
@@ -223,7 +229,7 @@ def build() -> tuple[str, list[tuple], collections.Counter]:
     extra = " · ".join(f"{n} {c}" for c, n in sorted(counts.items()) if c not in CLASS_ORDER)
     head = (f"QUEUE, derived. {total} open: {by_class}"
             + (f" · {extra}" if extra else "")
-            + ". Contract sorts first; nothing is excluded.")
+            + ". Contract first; nothing excluded.")
     free = [r for r in all_rows if not r[0]]
     if free:
         named = "\n".join(f"  [{cls}] {k}\n    {inv}"

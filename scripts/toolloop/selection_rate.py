@@ -188,6 +188,42 @@ def _choiceless_ids() -> set[str]:
     return {k.split("::", 1)[-1] for k in (d.get("by_design") or {})}
 
 
+def _batch_never_reached_it(group: list, tool: str, called_names) -> bool:
+    """True when EVERY run of this scenario-batch stopped at a card belonging to another tool.
+
+    🔴 A TURN THAT ENDED EARLY DID NOT DECLINE THE TOOL, and the runner already says so in its
+    own summary — nothing was reading it:
+
+        "NOT REACHED, NOT DECLINED: kg_add_nodes was never called, and all 5 run(s) stopped at a
+         card belonging to another tool — kg_project_create (5). `called 0/5` here says the turn
+         ended before kg_add_nodes's turn came, not that the model rejected it."
+
+    MEASURED 2026-08-31 AND IT MOVED A VERDICT. Ten runs of `kg-propose-edge-NODES-ALLOWED`
+    suspended on a `kg_project_create` card; pooled with the real attempts they took
+    `kg_add_nodes` from 0.900 to 0.450 and across the DQ-T51 bar into the lottery band — a tool
+    crossing DOWNWARD with no behaviour having changed, which is the side effect DQ-T51 warned
+    about and the anti-cheat guard here exists to catch. It did catch it.
+
+    🔴 WHOLE-BATCH, NOT PER-RUN, AND THE DIFFERENCE IS THE WHOLE RULE. My first version tested
+    each run alone and excluded 270 of them — because it also swallowed the case where the model
+    picked a SIBLING and that sibling carded, which is a genuine wrong selection and precisely
+    what D-SURFACING-IS-NECESSARY-BUT-NOT-SUFFICIENT is about. Hiding those would retire a defect
+    by instrument change.
+
+    The discriminator is the one `fe_runner` already applies at line ~1281: fire only when the
+    tool was called in NO run of the batch AND every run ended on someone else's card. A batch
+    where some runs reached the tool proves the turn could get there, so the runs that did not
+    are decisions and stay counted. Same rule, same predicate, read from the same field
+    (`pending_approval.tool`, present on all 482 suspended runs on disk).
+    """
+    if any(tool in called_names(r) for r in group):
+        return False
+    blocked = [r for r in group
+               if isinstance(r.get("pending_approval"), dict)
+               and (r["pending_approval"].get("tool") or "") != tool]
+    return bool(group) and len(blocked) == len(group)
+
+
 def _offered_no_choice(run: dict, choiceless: set[str]) -> bool:
     """True when this run's measured turn could not have been a selection at all.
 
@@ -268,6 +304,7 @@ def derive() -> dict:
     calls: collections.Counter = collections.Counter()
     choiceless = _choiceless_ids()
     skipped = 0
+    truncated = 0
     for f in sorted((ROOT / "docs" / "eval" / "toolloop").rglob("*-raw.json")):
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
@@ -275,27 +312,38 @@ def derive() -> dict:
             continue
         if not isinstance(d, list):
             continue
+        # Group this file's runs by scenario BEFORE counting, so the whole-batch test below can
+        # be asked. A per-run test cannot answer it — see `_batch_never_reached_it`.
+        by_scenario: dict[str, list] = {}
         for r in d:
             if not isinstance(r, dict) or r.get("error"):
                 continue
-            tool = want.get(r.get("scenario"))
-            if not tool:
+            if want.get(r.get("scenario")):
+                by_scenario.setdefault(r["scenario"], []).append(r)
+        for scenario, group in by_scenario.items():
+            tool = want[scenario]
+            # A BATCH IN WHICH THE TURN NEVER REACHED THE TOOL MEASURED NOTHING ABOUT SELECTION.
+            # Excluded as a GROUP, at the denominator, for the same reason as `_offered_no_choice`
+            # one line down: a pooled counter cannot be separated again.
+            if _batch_never_reached_it(group, tool, called_names):
+                truncated += len(group)
                 continue
-            # A turn that offered no choice is not a selection observation — see
-            # `_offered_no_choice`. Excluded HERE, at the denominator, because once the arms are
-            # pooled into a single counter they cannot be separated again.
-            if _offered_no_choice(r, choiceless):
-                skipped += 1
-                continue
-            runs[tool] += 1
-            if tool in called_names(r):
-                calls[tool] += 1
+            for r in group:
+                # A turn that offered no choice is not a selection observation — see
+                # `_offered_no_choice`.
+                if _offered_no_choice(r, choiceless):
+                    skipped += 1
+                    continue
+                runs[tool] += 1
+                if tool in called_names(r):
+                    calls[tool] += 1
 
     rates = {t: {"calls": calls[t], "runs": n, "rate": round(calls[t] / n, 3)}
              for t, n in runs.items() if n >= MIN_RUNS}
     lottery = sorted(t for t, v in rates.items() if v["rate"] < LOTTERY_BELOW)
     return {"min_runs": MIN_RUNS, "lottery_below": LOTTERY_BELOW, "_want": want,
             "choiceless_runs_excluded": skipped,
+            "never_reached_runs_excluded": truncated,
             "_bar_derivation": _bar_derivation(rates),
             "measured": len(rates), "lottery_count": len(lottery),
             "lottery": lottery, "rates": dict(sorted(rates.items()))}

@@ -56,9 +56,22 @@ def _live_line(tool: str, called: int = 2, runs: int = 5):
 
 
 def test_a_LOW_rate_tool_carries_its_rate():
+    """🔴 THE COUNTS WERE PINNED AS `1/50` AND WENT STALE THE MOMENT THE CORPUS GREW — 1/55 on
+    2026-08-31, with the RATE unchanged at 0.02 and the verdict therefore identical. A guard that
+    fails when more evidence arrives teaches the next reader to edit the number, which is how a
+    real regression gets edited away too.
+
+    Both halves are still asserted; the counts now come from the same contract the annotation is
+    built from, so the guard checks that the line QUOTES ITS SOURCE rather than that the corpus
+    has a particular size."""
+    import json as _json
+    rates = _json.loads(
+        (ROOT / "contracts" / "tool-selection-rates.json").read_text("utf-8"))["rates"]
+    r = rates["translation_job_control"]
+    assert r["rate"] < 0.1, f"the fixture tool is no longer low-rate ({r}) — pick another"
     line = _live_line("translation_job_control")
-    assert "selection rate 0.02" in line, line
-    assert "1/50" in line
+    assert f"selection rate {r['rate']:.2f}" in line, line
+    assert f"{r['calls']}/{r['runs']}" in line, line
 
 
 def test_a_HIGH_rate_tool_does_not():
