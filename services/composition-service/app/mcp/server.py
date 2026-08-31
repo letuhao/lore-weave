@@ -8276,6 +8276,8 @@ class _ArcTemplateEditArgs(ForbidExtra):
     ]
     # Described for the same reason the motif ids above are: chat-service quotes a required
     # argument's OWN declaration in its refusal, and arms the catalogue tools that text names.
+    # DQ-T34 — `code` (below) is accepted in place of this for update/archive/restore and is
+    # resolved to the id server-side, so a caller holding only what the list tool showed can act.
     arc_id: Annotated[str | None, Field(default=None, description=(
         "the arc template to act on (UUID). NOT a name — list the caller's templates with "
         "composition_arc_template_list and pass the id it returns."
@@ -8319,6 +8321,31 @@ class _ArcTemplateEditArgs(ForbidExtra):
 async def composition_arc_template_edit(ctx: MCPContext, args: _ArcTemplateEditArgs) -> dict:
     """Unified arc-template CRUD dispatch — delegates to the SAME per-op handlers (no logic
     moved). Per-op required fields validated here with a clear ValueError (→ isError)."""
+    # \U0001f534 DQ-T34 (owner 2026-08-31): "an *_edit tool that requires an opaque id must ALSO
+    # accept the human-readable key its own sibling lists." Resolved HERE, once, before any
+    # branch reads `arc_id` — the ops that need an id are update, archive and restore, and doing
+    # it per-branch would be three chances to forget the fourth.
+    #
+    # THE MEASURED FAILURE: op=archive requires arc_id and refuses `code`, and on 5 of 5 runs the
+    # model would not resolve the name — it asked the AUTHOR for a UUID. `code` is already what
+    # op=create takes and what composition_arc_template_list already shows, so this removes the
+    # resolution step rather than inventing an identifier. Across the loop, 48% of every
+    # tool-call failure is a required argument the model could not supply.
+    if not args.arc_id and args.code and args.op != "create":
+        _matches = await ArcTemplateRepo(get_pool()).ids_for_code(_ctx(ctx).user_id, args.code)
+        if len(_matches) > 1:
+            # UNIQUE is (owner, code, lang), so `code` alone is not unique BY SCHEMA even though
+            # it is in today's data. Picking the first would one day archive a translation the
+            # author never named.
+            raise ValueError(
+                f"code {args.code!r} matches {len(_matches)} of your arc templates, so it does "
+                "not identify one. Call composition_arc_template_list and pass the arc_id of "
+                "the row you mean.")
+        if not _matches:
+            raise ValueError(
+                f"no arc template of yours has code {args.code!r}. Call "
+                "composition_arc_template_list to see the codes you have, or pass arc_id.")
+        args = args.model_copy(update={"arc_id": str(_matches[0])})
     if args.op == "create":
         if not args.code or not args.name:
             raise ValueError("op=create requires code and name")
@@ -8333,7 +8360,7 @@ async def composition_arc_template_edit(ctx: MCPContext, args: _ArcTemplateEditA
         ))
     if args.op == "update":
         if not args.arc_id:
-            raise ValueError("op=update requires arc_id — NOT a name. Call composition_arc_template_list to get the id, then call this again")
+            raise ValueError("op=update requires arc_id, or `code` — the human-readable key composition_arc_template_list shows (e.g. 'throwaway-loop-skeleton-b15'), which is resolved for you. A NAME is neither; call composition_arc_template_list to see both.")
         return await composition_arc_template_update(ctx, _ArcTemplateUpdateArgs(
             arc_id=args.arc_id, expected_version=args.expected_version,
             **_present(
@@ -8345,11 +8372,11 @@ async def composition_arc_template_edit(ctx: MCPContext, args: _ArcTemplateEditA
         ))
     if args.op == "archive":
         if not args.arc_id:
-            raise ValueError("op=archive requires arc_id — NOT a name. Call composition_arc_template_list to get the id, then call this again")
+            raise ValueError("op=archive requires arc_id, or `code` — the human-readable key composition_arc_template_list shows (e.g. 'throwaway-loop-skeleton-b15'), which is resolved for you. A NAME is neither; call composition_arc_template_list to see both.")
         return await composition_arc_template_archive(ctx, arc_id=args.arc_id)
     # op == "restore"
     if not args.arc_id:
-        raise ValueError("op=restore requires arc_id — NOT a name. Call composition_arc_template_list to get the id, then call this again")
+        raise ValueError("op=restore requires arc_id, or `code` — the human-readable key composition_arc_template_list shows (e.g. 'throwaway-loop-skeleton-b15'), which is resolved for you. A NAME is neither; call composition_arc_template_list to see both.")
     return await composition_arc_template_restore(ctx, arc_id=args.arc_id)
 
 

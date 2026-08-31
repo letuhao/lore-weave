@@ -312,6 +312,34 @@ class ArcTemplateRepo:
             return None
         raise VersionMismatchError(_row_to_arc(current))
 
+    async def ids_for_code(self, caller_id: UUID, code: str) -> list[UUID]:
+        """Every arc_template of the CALLER'S whose `code` matches — the human-readable key.
+
+        🔴 DQ-T34 (owner 2026-08-31): "an *_edit tool that requires an opaque id must
+        also accept the human-readable key its own sibling lists." Measured on
+        composition_arc_template_edit(op=archive): it requires `arc_id` and refuses `code`, and
+        on 5 of 5 runs the model would not resolve the name — it asked the AUTHOR for a UUID
+        instead. `code` is what op=create already takes and what the sibling list tool already
+        shows, so accepting it here removes the resolution step entirely for the commonest case.
+        Measured 2026-08-23 across the loop: 48% of every tool-call failure is a required
+        argument the model could not supply.
+
+        RETURNS A LIST, NOT A ROW, on purpose. The uniqueness constraint is
+        UNIQUE(owner, code, lang) — `code` alone is NOT unique by schema, even though it is
+        in today's data (57 rows, 57 distinct owner+code pairs). A resolver that silently
+        returned the first match would one day archive a translation the author did not name,
+        so the caller is handed every match and refuses on more than one.
+
+        Scoped to the caller's own rows: resolving a name into somebody else's id would be a
+        tenancy hole dressed as a convenience.
+        """
+        rows = await self._pool.fetch(
+            "SELECT id FROM arc_template WHERE owner_user_id = $1 AND code = $2 "
+            "ORDER BY created_at",
+            caller_id, code,
+        )
+        return [r["id"] for r in rows]
+
     async def archive(
         self, caller_id: UUID, arc_id: UUID, *, book_id: UUID | None = None,
     ) -> str:

@@ -55,7 +55,22 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
 
 MIN_REPEATS = 3
-TERMINAL = ("proven", "blocked")
+#: \U0001f534 `unmeasurable` IS THE THIRD ONE, AND IT EXISTS SO A BAR IS NOT WIDENED.
+#: DQ-T40 (owner 2026-08-31): "DO NOT widen gate.py's excused set. Add a THIRD terminal state
+#: requiring a registered defect id, the arm count, and the clean-run evidence. Widening the
+#: excuse would weaken a LIVE bar, which this loop's rules forbid; a new state records the same
+#: fact without moving the bar."
+#:
+#: THE INSTANCE, measured: composition_motif_link_edit, 35 runs across four arms, 17 transport
+#: failures (~49%), and on the 18 CLEAN runs the tool was called 3/5, 4/5 and 5/5 with its
+#: supplier armed and reached. Thirteen hypotheses for the transport failure were tested and
+#: refuted. At 49% a transport-clean K=5 has ~3% probability, so re-running is not a path.
+#:
+#: The tempting fix was to excuse the LIVE clean bar when every errored run is a named transport
+#: defect. That is a weaker bar for every tool, bought to move one. This state instead lets such
+#: a tool LEAVE the queue with its situation written down, rather than being filed `blocked`,
+#: which reads as a property of the TOOL when the failure is the platform's.
+TERMINAL = ("proven", "blocked", "unmeasurable")
 
 #: The two evidence classes. `renamed` is a redirect row and is neither.
 GATE_BACKED = "gate-backed"
@@ -893,6 +908,21 @@ def missing_evidence_paths(ledger: dict) -> dict:
 
 #: The three things a `cannot_reproduce` row must say, and why each one is not optional.
 #: Keys are the field names; values are what the field has to establish.
+UNMEASURABLE_FIELDS = {
+    "blocked_by_defect": "THE REGISTERED DEFECT ID for the platform failure. Without it this "
+                         "state is 'it did not work and I stopped', which is `blocked` wearing "
+                         "a kinder word \u2014 and it hides a platform bug behind a tool's row.",
+    "arms": "HOW MANY ARMS WERE RUN, WITH THEIR COUNTS. One bad batch is not unmeasurable; a "
+            "rate across arms is what makes re-running futile rather than unlucky.",
+    "clean_run_evidence": "WHAT THE CLEAN RUNS SHOWED. This is the half that separates this "
+                          "state from `blocked`: the tool WAS exercised and did something. A "
+                          "row with no clean-run result has not earned it.",
+}
+
+#: `arms` and `clean_run_evidence` must carry a NUMBER, for the reason `_HAS_A_COUNT` already
+#: guards on the sibling state: "it kept failing" is an impression, "17 of 35 across four arms"
+#: is a measurement, and only the second makes re-running provably not a path.
+
 CANNOT_REPRODUCE_FIELDS = {
     "original_instance": "WHERE IT WAS SEEN. Without this the state means 'never observed', "
                          "which is `withdrawn`, not this.",
@@ -906,6 +936,30 @@ CANNOT_REPRODUCE_FIELDS = {
 #: and it did not happen" and "nobody has seen it lately" — and this ledger has already recorded
 #: mistaking the second for the first (absence of recent traffic read as evidence of removal).
 _HAS_A_COUNT = re.compile(r"\d")
+
+
+def unevidenced_unmeasurable(ledger: dict) -> dict:
+    """{tool: [missing field, ...]} for every tool at `unmeasurable` that has not earned it.
+
+    Same enforcement as `unevidenced_cannot_reproduce`, and for the same reason: a state that
+    removes a tool from the queue on the row's own say-so is a state every hard tool would
+    migrate into. The three fields are the owner's, verbatim from DQ-T40 \u2014 a registered
+    defect id, the arm count, and the clean-run evidence.
+    """
+    out: dict[str, list[str]] = {}
+    for name, row in (ledger.get("tools") or {}).items():
+        if not isinstance(row, dict) or row.get("state") != "unmeasurable":
+            continue
+        missing = []
+        for field in UNMEASURABLE_FIELDS:
+            val = str(row.get(field) or "").strip()
+            if not val:
+                missing.append(field)
+            elif field in ("arms", "clean_run_evidence") and not _HAS_A_COUNT.search(val):
+                missing.append(f"{field} (carries no COUNT)")
+        if missing:
+            out[name] = missing
+    return out
 
 
 def unevidenced_cannot_reproduce(ledger: dict) -> dict:
@@ -1056,12 +1110,20 @@ def cmd_audit(a) -> int:
     stale_blocks = stale_dq_blocks(ledger)
     missing_ev = missing_evidence_paths(ledger)
     unevidenced = unevidenced_cannot_reproduce(ledger)
+    unmeasurable = unevidenced_unmeasurable(ledger)
     if (not orphans and not drift and not aliases and not dq_states and not dangling
             and not status_drift and not stale_blocks and not missing_ev
-            and not unevidenced):
+            and not unevidenced and not unmeasurable):
         print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows), "
               "`progress` agrees with them, and every DQ block is readable by the generator")
         return 0
+    if unmeasurable:
+        print(f"REFUSED — {len(unmeasurable)} tool(s) sit at `unmeasurable` without earning it. "
+              "The state removes a tool from the queue, so it carries a bar (DQ-T40): a "
+              "REGISTERED DEFECT ID for the platform failure, the ARM COUNT, and what the CLEAN "
+              "runs showed. Without the clean-run half it is `blocked` wearing a kinder word:")
+        for n, missing in sorted(unmeasurable.items()):
+            print(f"  {n:40} missing: {', '.join(missing)}")
     if orphans:
         print(f"REFUSED — {len(orphans)} tool(s) have evidence on disk and NO ledger row:")
         for n, f in sorted(orphans.items(), key=lambda x: (x[1], x[0])):
