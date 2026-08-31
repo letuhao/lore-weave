@@ -91,6 +91,9 @@ services:
   mcp-public-gateway:
     ports: !override
       - "28219:8211"
+  meta-bridge:
+    ports: !override
+      - "28090:8090"
   minio:
     ports: !override
       - "29123:9000"
@@ -118,6 +121,9 @@ services:
   provider-registry-service:
     ports: !override
       - "28208:8085"
+  publisher:
+    ports: !override
+      - "28091:8080"
   rabbitmq:
     ports: !override
       - "25795:5672"
@@ -152,3 +158,6 @@ services:
   worker-ai:
     ports: !override
       - "28226:8094"
+  world-service:
+    ports: !override
+      - "27120:7120"
