@@ -36,15 +36,30 @@ if [[ "${1:-}" == "--selftest" ]]; then
     local want="$1" name="$2" toolchain="$3" meta="$4" listed="$5" t rc base
     base="$(basename "$0")"
     t="$(mktemp -d)"
-    mkdir -p "$t/scripts" "$t/services/svc-a" "$t/contracts/service_acl"
+    mkdir -p "$t/scripts" "$t/services/svc-a" "$t/services/svc-ctl" "$t/contracts/service_acl"
     cp "$0" "$t/scripts/$base"
+    # THE CONTROL SERVICE, and why the fixture cannot work without one.
+    #
+    # This gate carries two non-vacuity floors: it exits 2 when ZERO services have a
+    # toolchain file ("the walk reached nothing") and when ZERO of the services it walked
+    # match the meta-write surface ("both make every service vacuously exempt"). Both are
+    # right about the real tree. But two cases below build a tree whose entire SUBJECT is
+    # "nothing matched" -- a stub dir with no toolchain, and a service with no meta
+    # surface -- so the floor fired on the fixture and both cases returned 2 where they
+    # wanted 0. The gate was reporting its own fixture rather than the rule under test.
+    #
+    # svc-ctl satisfies both floors in every case: a toolchain, a meta-write surface, and
+    # an ACL entry so it is never itself the violation. That leaves each case's subject
+    # exactly as it was -- svc-a is still the only thing any case asserts about.
+    echo 'module svc-ctl' > "$t/services/svc-ctl/go.mod"
+    echo 'import "github.com/lw/contracts/meta"' > "$t/services/svc-ctl/main.go"
     [[ "$toolchain" == "yes" ]] && echo 'module svc-a' > "$t/services/svc-a/go.mod"
     if [[ "$meta" == "yes" ]]; then
       echo 'import "github.com/lw/contracts/meta"' > "$t/services/svc-a/main.go"
     else
       echo 'package main' > "$t/services/svc-a/main.go"
     fi
-    { echo 'version: 1'; echo 'services:'; } > "$t/contracts/service_acl/matrix.yaml"
+    { echo 'version: 1'; echo 'services:'; echo '  - name: svc-ctl'; } > "$t/contracts/service_acl/matrix.yaml"
     [[ "$listed" == "yes" ]] && echo '  - name: svc-a' >> "$t/contracts/service_acl/matrix.yaml"
     rc=0
     bash "$t/scripts/$base" >/dev/null 2>&1 || rc=$?

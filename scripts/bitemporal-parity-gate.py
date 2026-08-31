@@ -120,10 +120,16 @@ def _read(path: str) -> str:
         return fh.read()
 
 
-def check(pg_src: str, kg_src: str) -> list[str]:
-    """Rows whose measured presence disagrees with the recorded expectation."""
+def check(pg_src: str, kg_src: str, rows: list | None = None) -> list[str]:
+    """Rows whose measured presence disagrees with the recorded expectation.
+
+    `rows` defaults to the live `PARITY` record and exists so the selftest can drive a
+    SYNTHETIC row. That became necessary the day the two implementations converged: every
+    row now records `kg=True`, so "the KG gains a capability" cannot be staged against the
+    real record at all — there is nothing left to gain. See `selftest`.
+    """
     drift = []
-    for name, pg_probe, kg_probe, pg_want, kg_want, _why in PARITY:
+    for name, pg_probe, kg_probe, pg_want, kg_want, _why in (PARITY if rows is None else rows):
         pg_has = re.search(pg_probe, pg_src) is not None
         kg_has = re.search(kg_probe, kg_src) is not None
         if pg_has != pg_want:
@@ -170,8 +176,27 @@ def selftest() -> int:
     # 🔴 The one that makes this non-vacuous: if the KG GAINS pins, the gate must notice.
     # A gate that only fires on a capability being LOST would let the two sides converge
     # silently, and convergence is the event T46 is waiting for.
-    c("the KG gaining pins is reported",
-      any("neo4j" in d for d in check(pg, kg + "\n valid_to_pinned = false\n")))
+    # 🔴 THE CONVERGENCE HAPPENED, AND IT KILLED THIS CASE'S ORIGINAL FORM.
+    # This used to append `valid_to_pinned = false` to the KG source and assert the gate
+    # reported it. That worked only while the row recorded `kg=False`. Every row now
+    # records `kg=True` — the two implementations converged, which is the event this file
+    # says T46 is waiting for — so the injected text changes nothing measured, `check`
+    # correctly reports no drift, and the case failed while the gate was working perfectly.
+    #
+    # A case that can no longer fire must be restated, not deleted: the property is still
+    # worth pinning, because a gate that only notices a capability being LOST would let a
+    # future divergence-then-reconvergence pass unseen. So it is staged against a SYNTHETIC
+    # row recorded absent, which is the only place "gaining" is still expressible.
+    _synthetic = [("a capability recorded ABSENT on the KG side",
+                   r"valid_to_pinned\s*=\s*false", r"__kg_marker_the_source_lacks__",
+                   True, False, "selftest-only row")]
+    c("the KG GAINING a capability recorded absent is reported",
+      any("neo4j" in d for d in
+          check(pg, kg + "\n__kg_marker_the_source_lacks__\n", rows=_synthetic)))
+    # ...and the same row with the marker ABSENT must stay silent, or the case above would
+    # pass on a `check` that simply reports everything.
+    c("...and that same row is silent when the capability is still absent",
+      check(pg, kg, rows=_synthetic) == [])
     # …and if Postgres LOSES its pin guard, that is the capability regression itself.
     c("postgres losing its pin guard is reported",
       any("postgres" in d for d in check(pg.replace("valid_to_pinned = false", "true"), kg)))

@@ -779,11 +779,37 @@ def check(repo_root: str = REPO_ROOT, search_dirs=SEARCH_DIRS,
     # zero subjects, so a file floor would be strictly shadowed by this one. What can
     # actually go wrong is the ROUTE SHAPE changing under the pattern, leaving a scan that
     # reads every file and recognises nothing — silence that looks like compliance.
+    problems: list[str] = []
     if not staged and subjects == 0:
         print(f"[knowledge-http-surface-gate] ERROR — {n_files} file(s) scanned and NOT ONE "
               f"covered-endpoint reference found. A zero here is a changed route shape, "
               f"not a clean tree.")
         return 2
+
+    # ── SHRINK ARM (GT-F5) — RESTORED. 🔴 THE MERGE DROPPED IT AND NOTHING NOTICED.
+    #
+    # `feat/game-logic` carried this arm; reconciling the two `scan_file` halves kept
+    # `allow_used` being COLLECTED (it is threaded out of `scan_file`, unioned here) and
+    # lost the only code that READ it. The result compiled, passed its own selftest, and
+    # passed `--run-all`: an allowlist entry that suppresses nothing was silently permitted
+    # again, which is the precise failure GT-F5 exists to stop — a dead exemption that
+    # exempts every read under its path the day one appears.
+    #
+    # Found by `gate-bite-harness`, whose mutation for this rule could no longer find its
+    # anchor. That is the harness doing exactly its job: an anchor that stops matching is
+    # either a moved line or a DELETED GUARD, and here it was the second.
+    if not staged:
+        for pref in prefixes:
+            if pref not in allow_used:
+                problems.append(
+                    f"ALLOWLIST_PREFIXES entry {pref!r} suppressed nothing in this tree — it "
+                    f"exempts no read today and would exempt every one under that path the "
+                    f"day one appears.")
+    if problems:
+        print("[knowledge-http-surface-gate] FAIL — a guard that guards nothing:" + chr(10))
+        for line in problems:
+            print(f"  {line}")
+        return 1
 
     if not violations:
         # ── T55: the ledger half. Only meaningful on a FULL scan of the REAL repo.

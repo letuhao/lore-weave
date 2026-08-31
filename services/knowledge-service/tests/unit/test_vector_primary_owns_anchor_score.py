@@ -148,15 +148,40 @@ async def test_a_pg_entity_hit_is_honest_about_what_it_omits():
 
 
 def test_the_deferral_is_recorded_where_the_next_reader_will_look():
-    """A tracked deferral that exists only in a commit message is not tracked. The plan is
-    the artifact the next session reads first."""
+    """A tracked deferral that exists only in a commit message is not tracked.
+
+    🔴 THIS GUARD STOPPED GUARDING, SILENTLY, AND NOTHING SAID SO. It named one path --
+    `docs/plans/2026-08-09-knowledge-architecture-refactor.md` -- and skipped when that path
+    was absent, with the reason *"the suite must run outside a full checkout"*. The plan was
+    then archived to `.ai-factory/archive/plans/`, so the escape hatch written for a PARTIAL
+    checkout started firing in a FULL one, on every run, for as long as anyone has looked.
+    A skip is indistinguishable from a pass, so the assertion below simply stopped happening.
+
+    Two changes, and the second is the one that matters:
+
+    1. It looks in `docs/` for the MARKER rather than at one filename. `D-T25B-PG-ANCHOR-SCORE`
+       is now ANSWERED in `2026-08-13-knowledge-refactor-open-decisions.md` §3.3c -- which is
+       where a retired deferral is SUPPOSED to move (a deferral lives in a plan, the decision
+       that retires it lives in a spec). Keying on the filename made a correct migration of the
+       record look like its disappearance.
+    2. The skip is now impossible whenever `docs/` exists. Only a checkout with no `docs/` tree
+       at all -- an installed package, a service-only image -- can skip here, and that is a
+       condition this test can actually distinguish from "the record is gone".
+    """
     from pathlib import Path
 
-    plan = Path(__file__).resolve().parents[4] / "docs/plans/2026-08-09-knowledge-architecture-refactor.md"
-    if not plan.exists():  # the suite must run outside a full checkout
-        pytest.skip("plan not present in this checkout")
-    assert "D-T25B-PG-ANCHOR-SCORE" in plan.read_text(encoding="utf-8"), (
-        "the deferral vanished from the plan while the code still depends on it"
+    docs = Path(__file__).resolve().parents[4] / "docs"
+    if not docs.is_dir():
+        # The ONLY honest skip: there is no documentation tree to search.
+        pytest.skip("no docs/ tree in this checkout — nothing to search")
+
+    marker = "D-T25B-PG-ANCHOR-SCORE"
+    homes = [p for p in docs.rglob("*.md") if marker in p.read_text(encoding="utf-8")]
+    assert homes, (
+        f"{marker} is recorded NOWHERE under docs/, while the code below still depends on it "
+        f"(`_ENTITY_ATTRS` must not carry `anchor_score`). A deferral that survives only in a "
+        f"commit message is not tracked. If it was retired, the decision belongs in a spec — "
+        f"which is what this test looks for."
     )
 
 

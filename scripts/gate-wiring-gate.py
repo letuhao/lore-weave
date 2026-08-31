@@ -91,6 +91,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -486,6 +487,82 @@ def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float,
     return ok, time.time() - t0, out
 
 
+# ── A REACHABLE STACK, AND THE GATES THAT CAN USE ONE ────────────────────────
+#
+# 🔴 THE FALSE GREEN THIS CLOSES, measured 2026-08-31 rather than imagined.
+# `--run-all` reported `135 GREEN / 0 RED / 27 SKIP` on a box where the isolated stack
+# had been up for 40 hours. At that same moment `POST fact-for-check` was answering 502
+# to every caller, and `kal-read-surface-live-smoke.py` -- one of the 27 -- was the thing
+# that found it, ten minutes later, when a human ran it by hand. The suite was green
+# while a live route was down, on a machine where the gate would have gone red.
+#
+# The cause was that `NEEDS_STACK` is DECLARED, never PROBED: every row printed SKIP and
+# was dropped from `runnable`, with no code path that asks whether a stack is actually
+# there. The registry comment defends the skip -- "VISIBLE AND SKIPPED WITH A REASON, not
+# indistinguishable from a pass" -- and for CI, which has no stack, that is right. On a
+# developer box with one running it is still the answer, and that is the hole.
+#
+# WHY NOT SIMPLY RUN ALL 27 WHEN A STACK IS UP. Measured: they split in two.
+#   · Some run bare and only READ -- `causal-coverage-gate.py` and
+#     `event-order-collision-gate.py` both exit 0 against a live store with no arguments.
+#   · Most cannot. `kal-read-surface-live-smoke.py`, `bitemporal-window-live-smoke.py` and
+#     `kal-auth-boundary-live-smoke.py` each exit 2 with "--book-id is required": they need
+#     nine derived inputs, which is precisely why `architecture-live-proof-iso.sh` exists.
+#   · A third group WRITES, or stands a stack up itself (`archive-worker-live-smoke.sh`).
+#     Attempting those from a shared sweep is not a check, it is a side effect.
+# So the runner attempts the first group and keeps saying SKIP for the rest -- but now it
+# NAMES the command that runs them, instead of leaving a green summary to imply nothing
+# was missed.
+
+#: TCP anchors that mean "a stack is reachable". 25556 is the isolated knowledge-pg that
+#: holds `g_shared` -- the store BOTH bare-runnable gates default to, so a probe of
+#: anything else could say "up" while the thing they read is down. An accept is enough:
+#: the gates report REFUSED themselves if the port answers but the store does not.
+STACK_ANCHORS: tuple[tuple[str, int, str], ...] = (
+    ("127.0.0.1", 25556, "the isolated AGE store (knowledge-pg, g_shared)"),
+)
+
+#: NEEDS_STACK gates that take NO required arguments and only READ, so a sweep may attempt
+#: them the moment a stack answers. Membership is not a judgement call: run the gate bare
+#: against a live stack, and if it exits 2 saying an argument is required it does not
+#: belong here. `self_test` pins that every member is really a NEEDS_STACK row, so a
+#: renamed gate cannot quietly leave the sweep.
+LIVE_BARE: frozenset[str] = frozenset({
+    "scripts/causal-coverage-gate.py",
+    "scripts/event-order-collision-gate.py",
+})
+
+
+def stack_reachable(anchors: tuple[tuple[str, int, str], ...] = STACK_ANCHORS,
+                    timeout: float = 0.6) -> bool:
+    """True when every anchor accepts a TCP connection.
+
+    Deliberately cheap and deliberately quiet: this decides whether to ATTEMPT gates, and
+    a probe that itself failed loudly would trade one false verdict for another. CI has no
+    stack, every connect refuses, and `--run-all` behaves exactly as it did before.
+    """
+    for host, port, _why in anchors:
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                pass
+        except OSError:
+            return False
+    return True
+
+
+def live_plan(names: list[str], stack_up: bool) -> tuple[list[str], list[str]]:
+    """Split the NEEDS_STACK rows into (attempt, skip) for this run.
+
+    Pure, so both branches are testable without a stack and without running a gate --
+    which is the whole difficulty with the thing this function decides.
+    """
+    rows = [n for n in sorted(NEEDS_STACK) if n in names]
+    if not stack_up:
+        return [], rows
+    return ([n for n in rows if n in LIVE_BARE],
+            [n for n in rows if n not in LIVE_BARE])
+
+
 def run_all() -> int:
     """Executed in PARALLEL, and that is not an optimisation.
 
@@ -519,14 +596,18 @@ def run_all() -> int:
         if n in names:
             print(f"  {n:<44} SKIP           too slow for a shared run: {TOO_SLOW[n]}")
 
-    for n in sorted(NEEDS_STACK):
-        if n in names:
-            # Printed, never silent. A skipped gate that says nothing is
-            # indistinguishable from a passing one, and that is the exact
-            # confusion this file exists to remove.
-            print(f"  {n:<44} SKIP           needs a live stack: {NEEDS_STACK[n]}")
+    stack_up = stack_reachable()
+    live_attempt, live_skip = live_plan(names, stack_up)
+    for n in live_skip:
+        # Printed, never silent. A skipped gate that says nothing is
+        # indistinguishable from a passing one, and that is the exact
+        # confusion this file exists to remove.
+        print(f"  {n:<44} SKIP           needs a live stack: {NEEDS_STACK[n]}")
 
     runnable = [n for n in names if n not in NEEDS_STACK and n not in TOO_SLOW]
+    # A reachable stack promotes the read-only, no-argument live gates into the
+    # real run, where they report GREEN or RED like anything else.
+    runnable += live_attempt
 
     # MUTATING gates run SERIALLY, and after everything else.
     #
@@ -665,6 +746,21 @@ def run_all() -> int:
               "exemption — the same reason file-ceiling-gate reds when allowlisted "
               "debt GROWS.")
         rc = 1
+    # THE CLOSING LINE THAT WAS MISSING. Without it a clean sweep printed nothing at all
+    # about the live surface, and "no failures" read as "nothing is wrong" -- which is the
+    # sentence a 502 hid behind for as long as anyone was reading this output.
+    if live_skip:
+        if stack_up:
+            print(f"\ngate-wiring-gate: a stack IS reachable ({STACK_ANCHORS[0][2]}) and "
+                  f"{len(live_attempt)} live gate(s) ran above — but {len(live_skip)} more "
+                  f"still did NOT, because they need derived inputs this sweep cannot "
+                  f"produce (a book, a project, an entity, a minted token).")
+            print("  Nothing here says the live surface is healthy. The command that "
+                  "answers that is:\n      bash scripts/architecture-live-proof-iso.sh")
+        else:
+            print(f"\ngate-wiring-gate: no stack answered at "
+                  f"{STACK_ANCHORS[0][0]}:{STACK_ANCHORS[0][1]}, so {len(live_skip)} live "
+                  f"gate(s) were skipped. This result covers the STATIC surface only.")
     return rc
 
 
@@ -745,6 +841,45 @@ def self_test() -> int:
         fails.append(f"{me} is not wired into the hook or CI — the wiring gate is "
                      "itself unwired, which is precisely the defect it reports")
 
+    # ── the live-stack split (2026-08-31) ────────────────────────────────────
+    # These pin the behaviour that let a 502 sit behind a green summary. All four run
+    # without a stack and without executing a single gate, which is the point: the
+    # decision under test is "what do we even ATTEMPT", and that must be checkable on
+    # the machine where the answer is "nothing".
+    stray = sorted(LIVE_BARE - set(NEEDS_STACK))
+    if stray:
+        fails.append(f"LIVE_BARE names {stray}, which are not NEEDS_STACK rows — a "
+                     "renamed or retired gate would silently leave the live sweep")
+
+    _rows = sorted(NEEDS_STACK)
+    # NON-VACUITY, both ways. An empty LIVE_BARE makes every case below pass while the
+    # sweep attempts nothing; a LIVE_BARE covering everything makes the SKIP arm dead.
+    if not LIVE_BARE:
+        fails.append("LIVE_BARE is empty — the promote-on-a-live-stack arm cannot fire, "
+                     "and every case below would pass by attempting nothing")
+    if not [n for n in _rows if n not in LIVE_BARE]:
+        fails.append("every NEEDS_STACK row is in LIVE_BARE — the skip arm is dead, and "
+                     "the gates that need derived inputs would be attempted bare")
+
+    down_attempt, down_skip = live_plan(_rows, stack_up=False)
+    if down_attempt or down_skip != _rows:
+        fails.append(f"with NO stack, live_plan must attempt nothing and skip all "
+                     f"{len(_rows)} row(s); got attempt={len(down_attempt)} "
+                     f"skip={len(down_skip)} — CI behaviour must be unchanged")
+
+    up_attempt, up_skip = live_plan(_rows, stack_up=True)
+    if set(up_attempt) != {n for n in _rows if n in LIVE_BARE}:
+        fails.append("with a stack, live_plan must attempt exactly the LIVE_BARE rows")
+    if set(up_attempt) & set(up_skip) or set(up_attempt) | set(up_skip) != set(_rows):
+        fails.append("live_plan must PARTITION the NEEDS_STACK rows — a row that lands in "
+                     "neither list is a gate that vanished from the output entirely")
+
+    # The probe must be able to say NO. One that always answered True would run the live
+    # gates on a CI runner, where they would red for the absence of the thing they read.
+    if stack_reachable(anchors=(("127.0.0.1", 1, "a port nothing listens on"),), timeout=0.2):
+        fails.append("stack_reachable said a stack was up on port 1 — a probe that cannot "
+                     "answer NO turns every live gate red in CI")
+
     if fails:
         print("gate-wiring-gate SELF-TEST FAILED:")
         for f in fails:
@@ -752,7 +887,8 @@ def self_test() -> int:
         return 1
     print("gate-wiring-gate: self-test OK — the scope is a predicate (a gate created "
           "tomorrow is covered), every exemption carries a reason, every KNOWN_RED row "
-          "names a deferral, and this gate is itself wired")
+          "names a deferral, the live-stack split partitions NEEDS_STACK and can say "
+          "NO, and this gate is itself wired")
     return 0
 
 

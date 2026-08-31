@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/glossary-service/internal/migrate"
@@ -37,6 +36,70 @@ func openFactsTestDB(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+// ── fixtures ────────────────────────────────────────────────────────────────
+//
+// These tests used to HUNT for a suitable row -- "any live entity whose kind carries a
+// non-name attribute", "any book with >=2 live entities" -- and `t.Skip` when the query
+// came back empty. Two things were wrong with that, and only the first is obvious:
+//
+//  1. On the database CI actually provides (created empty, migrated, nothing seeded)
+//     `TestMergeFactChains` and `TestSplitFactsByEpisode` found nothing and skipped on
+//     EVERY run, while the package still reported ok. Measured 2026-08-31 against a
+//     throwaway: 749 pass, and those two skip.
+//  2. The other three did NOT skip in CI -- but only because sibling tests in this same
+//     package had already written entities through the pool. Their green was a function of
+//     execution ORDER: `go test -run TestFactCore` alone SKIPS, the full package passes.
+//     Coverage that depends on what ran before it is coverage no one can rely on, and it
+//     disappears silently the day the suite is sharded or filtered.
+//
+// So the fixture is built HERE, inside the caller's transaction. That is also what keeps
+// this file's own promise intact -- "all mutations happen in one tx we roll back, no
+// persisted test data" -- because the caller's rollback remains the only cleanup. Seeding
+// through the pool would have persisted rows into the shared throwaway DB and made this
+// suite the cause of the next test's order-dependence rather than the cure.
+type factsFixture struct {
+	bookID uuid.UUID
+	ids    []uuid.UUID
+	attr   string // a non-'name', non-deprecated book_attribute code on the entities' kind
+}
+
+// seedFactsFixture adopts a fresh book, resolves an attribute to write facts about, and
+// creates n live entities in it -- all through q, so a caller passing its own tx keeps
+// everything inside that transaction.
+func seedFactsFixture(t *testing.T, ctx context.Context, q pgxRWQuerier, n int) factsFixture {
+	t.Helper()
+	bookID := uuid.New()
+	adoptTestBook(t, q, bookID)
+	kindID := bookKindID(t, q, bookID, "character")
+
+	// RESOLVED, not hardcoded, and with the same ORDER BY the hunting query used: a change
+	// to the system seed must not leave this file asserting about an attribute the adopted
+	// book does not actually carry. Fatal rather than skip -- after an adopt, "no non-name
+	// attribute on 'character'" is a broken seed, not an absent fixture.
+	var attr string
+	if err := q.QueryRow(ctx, `
+		SELECT ba.code
+		FROM book_attributes ba
+		JOIN book_genres g ON g.genre_id = ba.genre_id
+		WHERE ba.book_id=$1 AND ba.kind_id=$2 AND ba.deprecated_at IS NULL AND ba.code <> 'name'
+		ORDER BY (g.code = 'universal') DESC, ba.sort_order, ba.attr_id
+		LIMIT 1`, bookID, kindID).Scan(&attr); err != nil {
+		t.Fatalf("seedFactsFixture: adopted book has no non-'name' attribute on kind 'character': %v", err)
+	}
+
+	ids := make([]uuid.UUID, 0, n)
+	for i := 0; i < n; i++ {
+		var eid uuid.UUID
+		if err := q.QueryRow(ctx,
+			`INSERT INTO glossary_entities(book_id,kind_id,status,tags) VALUES($1,$2,'active','{}') RETURNING entity_id`,
+			bookID, kindID).Scan(&eid); err != nil {
+			t.Fatalf("seedFactsFixture entity %d: %v", i, err)
+		}
+		ids = append(ids, eid)
+	}
+	return factsFixture{bookID: bookID, ids: ids, attr: attr}
+}
+
 func TestFactCore(t *testing.T) {
 	ctx := context.Background()
 	pool := openFactsTestDB(t)
@@ -48,25 +111,9 @@ func TestFactCore(t *testing.T) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// Find an existing live entity that has a (non-name) book_attribute on its kind,
-	// so refreshEAVProjection can resolve attr_def_id.
-	var entityID, bookID uuid.UUID
-	var chapterID = uuid.New()
-	var attr string
-	err = tx.QueryRow(ctx, `
-		SELECT ge.entity_id, ge.book_id, ba.code
-		FROM glossary_entities ge
-		JOIN book_attributes ba ON ba.book_id = ge.book_id AND ba.kind_id = ge.kind_id AND ba.deprecated_at IS NULL
-		JOIN book_genres g ON g.genre_id = ba.genre_id
-		WHERE ge.deleted_at IS NULL AND ba.code <> 'name'
-		ORDER BY ge.entity_id, (g.code = 'universal') DESC
-		LIMIT 1`).Scan(&entityID, &bookID, &attr)
-	if err == pgx.ErrNoRows {
-		t.Skip("no seeded entity with a book_attribute — skipping")
-	}
-	if err != nil {
-		t.Fatalf("pick entity: %v", err)
-	}
+	f := seedFactsFixture(t, ctx, tx, 1)
+	entityID, bookID, attr := f.ids[0], f.bookID, f.attr
+	chapterID := uuid.New()
 
 	if err := acquireFactChainLock(ctx, tx, entityID, attr); err != nil {
 		t.Fatalf("chain lock: %v", err)
@@ -159,22 +206,8 @@ func TestCloseFact(t *testing.T) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var entityID, bookID uuid.UUID
-	var attr string
-	err = tx.QueryRow(ctx, `
-		SELECT ge.entity_id, ge.book_id, ba.code
-		FROM glossary_entities ge
-		JOIN book_attributes ba ON ba.book_id = ge.book_id AND ba.kind_id = ge.kind_id AND ba.deprecated_at IS NULL
-		JOIN book_genres g ON g.genre_id = ba.genre_id
-		WHERE ge.deleted_at IS NULL AND ba.code <> 'name'
-		ORDER BY ge.entity_id, (g.code = 'universal') DESC
-		LIMIT 1`).Scan(&entityID, &bookID, &attr)
-	if err == pgx.ErrNoRows {
-		t.Skip("no seeded entity with a book_attribute — skipping")
-	}
-	if err != nil {
-		t.Fatalf("pick entity: %v", err)
-	}
+	f := seedFactsFixture(t, ctx, tx, 1)
+	entityID, bookID, attr := f.ids[0], f.bookID, f.attr
 	if err := acquireFactChainLock(ctx, tx, entityID, attr); err != nil {
 		t.Fatalf("chain lock: %v", err)
 	}
@@ -229,22 +262,8 @@ func TestFactSameOrdinalConflict(t *testing.T) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var entityID, bookID uuid.UUID
-	var attr string
-	err = tx.QueryRow(ctx, `
-		SELECT ge.entity_id, ge.book_id, ba.code
-		FROM glossary_entities ge
-		JOIN book_attributes ba ON ba.book_id = ge.book_id AND ba.kind_id = ge.kind_id AND ba.deprecated_at IS NULL
-		JOIN book_genres g ON g.genre_id = ba.genre_id
-		WHERE ge.deleted_at IS NULL AND ba.code <> 'name'
-		ORDER BY ge.entity_id, (g.code = 'universal') DESC
-		LIMIT 1`).Scan(&entityID, &bookID, &attr)
-	if err == pgx.ErrNoRows {
-		t.Skip("no seeded entity with a book_attribute — skipping")
-	}
-	if err != nil {
-		t.Fatalf("pick entity: %v", err)
-	}
+	f := seedFactsFixture(t, ctx, tx, 1)
+	entityID, bookID, attr := f.ids[0], f.bookID, f.attr
 	if err := acquireFactChainLock(ctx, tx, entityID, attr); err != nil {
 		t.Fatalf("chain lock: %v", err)
 	}
@@ -331,32 +350,9 @@ func TestMergeFactChains(t *testing.T) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// two live entities in one book
-	var bookID, winner, loser uuid.UUID
-	rows, err := tx.Query(ctx, `
-		SELECT book_id, entity_id FROM glossary_entities
-		WHERE deleted_at IS NULL
-		  AND book_id = (SELECT book_id FROM glossary_entities WHERE deleted_at IS NULL
-		                 GROUP BY book_id HAVING count(*) >= 2 LIMIT 1)
-		LIMIT 2`)
-	if err != nil {
-		t.Fatalf("pick entities: %v", err)
-	}
-	var ids []uuid.UUID
-	for rows.Next() {
-		var b, e uuid.UUID
-		if err := rows.Scan(&b, &e); err != nil {
-			rows.Close()
-			t.Fatalf("scan: %v", err)
-		}
-		bookID = b
-		ids = append(ids, e)
-	}
-	rows.Close()
-	if len(ids) < 2 {
-		t.Skip("need a book with >=2 live entities")
-	}
-	winner, loser = ids[0], ids[1]
+	f := seedFactsFixture(t, ctx, tx, 2)
+	bookID := f.bookID
+	winner, loser := f.ids[0], f.ids[1]
 
 	app := func(ent uuid.UUID, attr, val string, vf int64) {
 		if err := acquireFactChainLock(ctx, tx, ent, attr); err != nil {
@@ -417,31 +413,9 @@ func TestSplitFactsByEpisode(t *testing.T) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var bookID, source, newEntity uuid.UUID
-	rows, err := tx.Query(ctx, `
-		SELECT book_id, entity_id FROM glossary_entities
-		WHERE deleted_at IS NULL
-		  AND book_id = (SELECT book_id FROM glossary_entities WHERE deleted_at IS NULL
-		                 GROUP BY book_id HAVING count(*) >= 2 LIMIT 1)
-		LIMIT 2`)
-	if err != nil {
-		t.Fatalf("pick entities: %v", err)
-	}
-	var ids []uuid.UUID
-	for rows.Next() {
-		var b, e uuid.UUID
-		if err := rows.Scan(&b, &e); err != nil {
-			rows.Close()
-			t.Fatalf("scan: %v", err)
-		}
-		bookID = b
-		ids = append(ids, e)
-	}
-	rows.Close()
-	if len(ids) < 2 {
-		t.Skip("need a book with >=2 live entities")
-	}
-	source, newEntity = ids[0], ids[1]
+	f := seedFactsFixture(t, ctx, tx, 2)
+	bookID := f.bookID
+	source, newEntity := f.ids[0], f.ids[1]
 
 	ep1, _, err := ingestEpisode(ctx, tx, bookID, uuid.New(), 10, "spE1", "")
 	if err != nil {

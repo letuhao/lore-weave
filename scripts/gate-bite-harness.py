@@ -1229,36 +1229,37 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '            if False:'),
     ],
     "knowledge-http-surface-gate": [
-        ('the facts/snapshot/timeline/attr-values group drops out',
-         '    rf"{_BOOK}/entities/[^\\s\\"\'`]*/(?:facts|canonical-snapshot|timeline|attr-values)\\b"',
-         '    rf"ZZNEVERMATCHZZ"'),
-        ('entities/search drops out of the covered set',
-         '    rf"|{_BOOK}/entities/search\\b"',
-         '    rf"|ZZNEVERMATCH2ZZ"'),
-        ('kg/neighborhood drops out of the covered set',
-         '    rf"|{_BOOK}/kg/neighborhood\\b"',
-         '    rf"|ZZNEVERMATCH3ZZ"'),
-        ('retrieve drops out of the covered set',
-         '    rf"|{_BOOK}/retrieve\\b"',
-         '    rf"|ZZNEVERMATCH4ZZ"'),
+        # The covered set is DERIVED from the KAL read controllers (`_load_covered`), so
+        # the four per-route mutations that used to live here cannot be staged any more --
+        # there is no regex literal to edit. They would not have proved much either: a
+        # route dropping OUT of the pattern yields FEWER violations, not more, so the gate
+        # would go green, and what actually catches a changed route shape is the SUBJECT
+        # FLOOR. This mutation stages exactly that event.
+        ('every derived route drops out (the route shape changed under the pattern)',
+         '        parts.append(frag + r"\\b")',
+         '        parts.append("ZZNEVERMATCHZZ")'),
         ('the owner/KAL exemption widens to every service',
          '    exempt_owner = rel.startswith(EXEMPT_SERVICE_PREFIXES)',
          '    exempt_owner = True'),
         ('the owner/KAL exemption disappears (the federator reds)',
-         '                if is_test_file(rel) or exempt_owner:',
-         '                if False:'),
+         '            if is_test_file(rel) or exempt_owner:',
+         '            if False:'),
         ('the allowlist stops suppressing',
-         '                if matched_prefix is not None:',
-         '                if False:'),
+         '            if matched_prefix is not None:',
+         '            if False:'),
         ('the allowlist shrink arm disabled',
          '            if pref not in allow_used:',
          '            if False:'),
         ('the SUBJECT floor disabled (a restructured route set passes)',
-         '        if subjects == 0:',
+         '    if not staged and subjects == 0:',
          '        if False:'),
-        ('the authored entities LIST endpoint becomes covered',
-         '    rf"{_BOOK}/entities/[^\\s\\"\'`]*/(?:facts|canonical-snapshot|timeline|attr-values)\\b"',
-         '    rf"{_BOOK}/entities\\b"'),
+        # Same reason: the LIST endpoint can no longer be widened by editing a
+        # literal. Widening the DERIVED set is staged at the derivation instead --
+        # every path collapses to the book prefix, so the covered set swallows the
+        # authored routes it must not claim.
+        ('the derived set widens (an authored route becomes covered)',
+         '        frag = re.escape(path).replace(r"\\{\\}", "[^\\\\s\\"\'`/]+")',
+         '        frag = "/internal/books"'),
     ],
     "language-rule-lint": [
         ('the OUTER Cargo.toml marker removed from detect_lang',
@@ -1692,11 +1693,11 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "GO_TRACED_RE='(loreweave/foundation/contracts/tracing|otel/.*trace)'",
          "GO_TRACED_RE='(.)'"),
         ('a NEW untraced handler (ratchet lowered by one)',
-         'TRACING_VIOLATION_BASELINE=49',
-         'TRACING_VIOLATION_BASELINE=48'),
+         'TRACING_VIOLATION_BASELINE=52',
+         'TRACING_VIOLATION_BASELINE=51'),
         ('progress must also red, or the ratchet never falls',
-         'TRACING_VIOLATION_BASELINE=49',
-         'TRACING_VIOLATION_BASELINE=50'),
+         'TRACING_VIOLATION_BASELINE=52',
+         'TRACING_VIOLATION_BASELINE=53'),
     ],
     "transitions-validation-lint": [
         ('an EMPTY contract satisfies every heuristic',
