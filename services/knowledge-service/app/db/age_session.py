@@ -101,6 +101,56 @@ def _split_top_level(text: str) -> list[str]:
     return [p.strip() for p in out if p.strip()]
 
 
+def _strip_comments(text: str) -> str:
+    """Cypher `//` line and `/* */` block comments removed, string literals untouched.
+
+    A COMMENT BETWEEN `RETURN` AND `ORDER BY` TOOK A LIVE ROUTE DOWN. `fact_for_check`
+    documents its tie-break where the tie-break happens -- between the RETURN list and
+    the `ORDER BY` it explains, which is where a reader wants it. `return_columns` slices
+    from the last `RETURN` to the first tail keyword and splits on commas, so the final
+    item came out as `e.participants AS participants` with eleven lines of prose glued to
+    it, stopped matching the identifier pattern, and raised. `POST fact-for-check`
+    answered 502 to every caller, and the KAL read-surface smoke is what found it.
+
+    AGE ITSELF WAS NEVER THE PROBLEM: that same query carries a `//` comment inside its
+    WHERE clause and executes fine, as do its siblings. Only this parser could not read
+    what the engine could, so the parser is what changes -- moving the one comment would
+    leave the next one to find the same edge.
+
+    Quote-aware for the same reason `_split_top_level` is: `RETURN "http://x" AS url`
+    carries `//` inside a string literal, and a naive strip would truncate the query.
+    """
+    out: list[str] = []
+    quote: str | None = None
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if quote:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+        elif ch in "'\"`":
+            quote = ch
+            out.append(ch)
+            i += 1
+        elif ch == "/" and i + 1 < n and text[i + 1] == "/":
+            while i < n and text[i] != "\n":
+                i += 1
+        elif ch == "/" and i + 1 < n and text[i + 1] == "*":
+            end = text.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            out.append(" ")
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
 def return_columns(cypher: str) -> list[str]:
     """The column names a Cypher query's final `RETURN` produces, in order.
 
@@ -112,6 +162,7 @@ def return_columns(cypher: str) -> list[str]:
     `RETURN` and this would take the wrong one. That is a real coupling, so it is asserted
     rather than assumed: a query containing `CALL {` is refused.
     """
+    cypher = _strip_comments(cypher)
     if re.search(r"\bCALL\s*\{", cypher, re.I):
         raise ColumnParseError(
             "cypher contains a `CALL { }` subquery, whose own RETURN would be mistaken for the "
