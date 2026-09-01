@@ -1203,6 +1203,42 @@ def enumerate_group(
 # `superseded_by`) so `tool_list` can show + redirect rather than hide-but-keep-callable
 # (the invisible-but-callable drift class). The policy-allowed ∩ of the C2 visible-set is
 # applied at the public edge (mcp-public-gateway), the only layer holding the key scope.
+#: The index line's ceiling. 140 chars, chosen from the catalogue rather than taste: the first
+#: sentence of a tool description has a median of 107 characters, so most survive whole, while the
+#: tail (max 462) is what the cap exists to stop.
+SHORT_DESCRIPTION_CHARS = 140
+
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+
+
+def _short_description(description: str) -> str:
+    """The index line for `tool_list` (contracts.md C2): the description's FIRST SENTENCE, capped.
+
+    DERIVED, never a second authoring field. Every tool description is already written summary-
+    first, and a hand-written `short_description` beside the real one is a second thing to drift —
+    the same reasoning `_skill_embedding_text` uses for skills. If the convention ever stops
+    holding, the cap still bounds the damage.
+
+    Whitespace is collapsed first so a description wrapped across source lines does not produce an
+    index line full of newlines.
+    """
+    text = " ".join((description or "").split())
+    if not text:
+        return ""
+    m = _SENTENCE_END.search(text)
+    if m:
+        # `_SENTENCE_END` is a lookbehind on [.!?] matching the WHITESPACE that follows, so
+        # `m.start()` is the space itself and the terminator sits at m.start()-1. Slicing to
+        # m.start() keeps the full stop and drops the space; `+1` would keep a trailing blank.
+        text = text[: m.start()]
+    if len(text) > SHORT_DESCRIPTION_CHARS:
+        # Cut on a word boundary where one is near, so the line does not end mid-token.
+        cut = text[:SHORT_DESCRIPTION_CHARS]
+        sp = cut.rfind(" ")
+        text = (cut[:sp] if sp > SHORT_DESCRIPTION_CHARS - 20 else cut).rstrip() + "…"
+    return text
+
+
 def visible_tools(
     catalog: list[dict],
     group: str | None = None,
@@ -1236,7 +1272,23 @@ def visible_tools(
             continue
         entry: dict = {
             "name": name,
-            "description": _fn(tool_def).get("description", "") or "",
+            # ── contracts.md C2 · tool_list IS AN INDEX ──────────────────────────────────────
+            # `short_description`, never the full prose. The listing is BROWSED and the load is
+            # READ; a listing that costs what the load costs buys nothing, which is exactly what
+            # this returned before. Measured 2026-09-01: 192 tools at a mean 303 chars each was
+            # 81.2% of a 71,686-byte payload, and tool_list alone was 21.4% of every tool-result
+            # byte on the platform — its single largest producer.
+            #
+            # The contract had LOST the owner's original design ("a tool_list is a indexing with
+            # short description ... it is a index not a full tool's description"): it named the
+            # field `description` in both tiers, so copying the full text here was correct against
+            # the spec as written. C2 is corrected and this follows it.
+            #
+            # SAFE TO CHANGE HERE because `visible_tools` has exactly two callers, both inside
+            # `tool_list_result` (the "all" branch and the category branch). `tool_load` does NOT
+            # go through this function and keeps the full description, which is the tier that is
+            # supposed to carry it.
+            "short_description": _short_description(_fn(tool_def).get("description", "") or ""),
             "tier": tool_tier(tool_def),
             # ── DQ-T59 (owner 2026-08-28) · THE REFUSAL, PER ENTRY ───────────────────────────
             # "REFUSE a contract question answered from a description-only read — the model must

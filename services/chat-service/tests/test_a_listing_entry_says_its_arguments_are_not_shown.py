@@ -89,12 +89,48 @@ class TestItDoesNotReplaceWhatWasAlreadyThere:
         assert "NOT INCLUDED" in out["schemas"]
         assert "call tool_load" in out["schemas"]
 
-    def test_the_description_is_untouched(self):
-        """The declaration is the tool author's; this adds a field beside it and never edits it.
-        Mutilating descriptions to stop a misread would break every other reader of the payload."""
+    def test_the_listing_carries_a_SHORT_description_not_the_full_one(self):
+        """contracts.md C2: `tool_list` IS AN INDEX — `short_description`, never the full prose.
+
+        🔴 THIS TEST USED TO ASSERT THE OPPOSITE, and it was right to at the time. It was written
+        for DQ-T59, whose change added an `arguments` field BESIDE the description, and it guarded
+        that the addition did not mutilate the text ("the declaration is the tool author's; this
+        adds a field beside it and never edits it"). That reasoning is untouched — nothing here
+        edits the tool author's declaration, which `tool_load` still returns in full.
+
+        What changed is the CONTRACT the listing is written to. C2 named the field `description`
+        in BOTH tiers, so the only difference between list and load was `inputSchema`, and copying
+        the full prose into the listing was correct against the spec. Measured 2026-09-01: 192
+        tools at a mean 303 chars was 81.2% of a 71,686-byte payload and 21.4% of every
+        tool-result byte on the platform. The owner corrected C2 to its original intent — "a
+        tool_list is a indexing with short description ... it is a index not a full tool's
+        description" — and this asserts the corrected contract.
+        """
         e = next(t for t in visible_tools(CATALOG) if t["name"] == "composition_arc_edit")
-        assert e["description"] == (
+        assert "description" not in e, (
+            "the listing still carries a full `description` field — the index tier is supposed to "
+            "carry `short_description` and defer the rest to tool_load")
+        # A one-sentence declaration survives whole: the projection takes the first SENTENCE and
+        # only then caps, so a short description is not damaged to make a point.
+        assert e["short_description"] == (
             "op=create mints a saga/arc (needs book_id; optional arc_template_id).")
+
+    def test_a_LONG_description_is_cut_to_its_first_sentence(self):
+        """The half the fixture above cannot show. `composition_arc_edit`'s declaration is a single
+        short sentence, so it round-trips unchanged and would pass even if the projection did
+        nothing at all — that is a vacuous guard, and this loop has shipped those before."""
+        long_desc = (
+            "List EVERY tool in a category, complete and deterministic. "
+            "This is how you discover a tool that is not already advertised: list the category, "
+            "then call tool_load(name) to get a tool's exact arguments before using it. "
+            "Deprecated tools are labeled with their replacement."
+        )
+        e = visible_tools([_t("catalog_probe", long_desc, tier="R")])[0]
+        assert e["short_description"] == (
+            "List EVERY tool in a category, complete and deterministic.")
+        assert "tool_load(name)" not in e["short_description"], (
+            "the second sentence survived into the index line — the projection is not cutting")
+        assert len(e["short_description"]) < len(long_desc) / 2
 
     def test_a_deprecated_entry_keeps_its_own_labels(self):
         cat = [_t("composition_arc_create", "old", tier="A", visibility="legacy",
