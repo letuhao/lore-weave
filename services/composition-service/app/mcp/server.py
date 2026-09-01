@@ -9403,7 +9403,10 @@ class _GlossaryBuildArgs(ForbidExtra):
 async def composition_build_cast_and_graph(ctx: MCPContext, args: _GlossaryBuildArgs) -> dict:
     tc = _ctx(ctx)
     from app.deps import get_glossary_build_service
-    from app.services.glossary_build.service import GlossaryBuildError
+    from app.services.glossary_build.service import (
+        GlossaryBuildError,
+        next_sentence_for,
+    )
 
     svc = await get_glossary_build_service()
     owner = UUID(str(tc.user_id))
@@ -9437,7 +9440,19 @@ async def composition_build_cast_and_graph(ctx: MCPContext, args: _GlossaryBuild
                    GrantLevel.VIEW if args.op == "status" else GrantLevel.EDIT)
 
         if args.op == "status":
-            return {
+            # 🔴 EVERY OP IN THIS PROTOCOL RETURNS `next` EXCEPT THIS ONE, and this is the op
+            # that hands back the worklist. op=start's `next` is "Show the user this worklist;
+            # call op='approve_plan' when they agree" — so approving has a PRECONDITION the
+            # caller must be holding. On the confirmation turn it is not: chat-service rehydrates
+            # history from `role, content` alone, so turn 1's result is gone. `status` is the one
+            # op that can restore it, and it said nothing about what it was for.
+            #
+            # MEASURED: op=approve_plan has been called ZERO times across 95 calls and 89
+            # sessions. Naming the next op in the ACTIVE_RUN refusal alone did not move it.
+            #
+            # The sentence comes from `next_sentence_for`, which shares its state table with the
+            # refusal, so the two cannot drift.
+            _out = {
                 "run_id": str(run_id), "status": current["status"],
                 "items": [{"name": i["name"], "kind": i["kind"], "depth": i["depth"],
                            "status": i["status"], "skip_reason": i.get("skip_reason")}
@@ -9445,6 +9460,10 @@ async def composition_build_cast_and_graph(ctx: MCPContext, args: _GlossaryBuild
                 "edges": current.get("edges") or [],
                 "error_message": current.get("error_message"),
             }
+            _nxt = next_sentence_for(current["status"])
+            if _nxt:
+                _out["next"] = _nxt
+            return _out
         if args.op == "approve_plan":
             out = await svc.approve_plan(run_id, owner, worklist=args.worklist)
             return {"run_id": str(run_id), "status": out["status"],

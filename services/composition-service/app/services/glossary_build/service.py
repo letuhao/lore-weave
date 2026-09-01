@@ -86,6 +86,43 @@ _NEXT_OP_FOR_STATUS = {
     "kg_projecting": "status",
 }
 
+#: The SENTENCE for each state, in this tool's own `next` idiom. Every op but `status` already
+#: returned one; `status` returned the worklist and said nothing about what to do with it.
+#:
+#: 🔴 WHY THAT IS THE GAP THAT MATTERS. op=start's `next` is "Show the user this worklist; call
+#: op=approve_plan when they agree" -- so approving has a PRECONDITION: the caller must be holding
+#: the worklist. On the confirmation turn the caller is not: chat-service rehydrates history from
+#: `role, content` alone, so turn 1's tool result, worklist and run_id included, does not exist on
+#: turn 2. `op=status` is the one op that can hand it back, and it was the one op that never said
+#: what it was for.
+#:
+#: MEASURED: op=approve_plan has been called ZERO times across 95 calls and 89 sessions; every
+#: recorded call is `start` or a card. Naming the next op in the ACTIVE_RUN refusal alone did not
+#: move it (K=5, no change) -- which is consistent with a caller told to approve something it
+#: cannot show.
+_NEXT_SENTENCE_FOR_STATUS = {
+    "plan_ready": ("The worklist is in `items` above. Show it to the user, then call "
+                   "op='approve_plan' with this run_id when they agree."),
+    "edges_ready": ("The proposed relationships are in `edges` above. Show them to the user, "
+                    "then call op='approve_edges' with this run_id to write them."),
+    "planning": "Still planning — poll op='status' again with this run_id.",
+    "building": "Still building — poll op='status' again with this run_id.",
+    "proposing": "Still proposing — poll op='status' again with this run_id.",
+    "kg_projecting": "Still projecting the graph — poll op='status' again with this run_id.",
+    "done": "This run is finished; nothing further to call.",
+    "cancelled": "This run was cancelled; start a new one with op='start' if you still want it.",
+}
+
+
+def next_sentence_for(status: str) -> str | None:
+    """What the caller does next in `status`, or None when there is nothing true to say.
+
+    One home, so the refusal and the status op cannot drift from each other -- a five-of-six
+    mismatch between two such lists is exactly how a book was stranded for two weeks (see
+    Repo.active_run_for_book).
+    """
+    return _NEXT_SENTENCE_FOR_STATUS.get(str(status or ""))
+
 
 class Repo:
     """Thin asyncpg repo — every query filters by owner_user_id (+ book scope).
@@ -272,10 +309,20 @@ class GlossaryBuildService:
         nxt = _NEXT_OP_FOR_STATUS.get(status)
         if not nxt:
             return base
+        # 🔴 POINTING STRAIGHT AT THE NEXT OP WAS NOT ENOUGH, MEASURED. This refusal
+        # already named run_id and the continuing op, and op=approve_plan still went uncalled
+        # (K=5, no change). The reason is a PRECONDITION: approving means showing the worklist
+        # first, and on the confirmation turn the caller no longer holds it. So a state whose
+        # next op needs the run's own data says how to GET it back before naming that op.
+        _restore = ("Call op='status' with that run_id first to read the run's current data, "
+                    "show it to the user, then ")
+        _needs_data = status in ("plan_ready", "edges_ready")
         return (
             f"{base}: run_id={active['run_id']} is at status '{status}'. "
-            f"Do NOT call op='start' again -- continue that run with "
-            f"op='{nxt}' (pass run_id={active['run_id']}), or abandon it with op='cancel'."
+            f"Do NOT call op='start' again -- "
+            + (_restore if _needs_data else "continue that run with ")
+            + f"op='{nxt}' (pass run_id={active['run_id']}), "
+            f"or abandon it with op='cancel'."
         )
 
     async def plan(self, run_id: UUID, owner: UUID) -> dict:
