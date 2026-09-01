@@ -336,6 +336,15 @@ class Settings(BaseSettings):
     # `load_skill` was called is NOT the measure — a turn that proceeds without guidance is
     # a loss, because absent guidance is the defect this question was opened on.
     skill_router_preload: bool = True
+    # DQ-T90 arm (b) — embed the CONTRASTIVE skill texts instead of the L1 descriptions. Default
+    # OFF: the arm must beat the control's measured 70.0% before it becomes the shipped path.
+    # See `_CONTRASTIVE` in skill_router.py for why the texts collide and how the replacements
+    # are written.
+    skill_contrastive_desc: bool = False
+    # DQ-T90 arm (a) — override ROUTER_MAX_ADDITIONS (the top-K cap). 0 = use the shipped 2. The
+    # K-sweep priced 2→3 at +6.1 points for 270 more injected skills of which 250 are never used,
+    # on a smooth curve with no knee; this makes it measurable rather than argued.
+    router_max_additions: int = 0
     # CP-2.7 — THE ROUTE. When ON, a turn's advertised set comes from
     # `contracts/agent-runtime-manifest.json` and from nothing else: no core tools, no
     # `find_tools`, no frontend extras. "Old declarations are not hidden. They are ABSENT."

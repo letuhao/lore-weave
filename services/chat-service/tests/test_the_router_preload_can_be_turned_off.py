@@ -88,3 +88,47 @@ def skill_registry_settings():
     from app.config import settings
 
     return settings
+
+
+class TestTheContrastiveTextsAreTheOnesEmbedded:
+    """`skill_contrastive_desc` — DQ-T90 arm (b), both states.
+
+    The arm rewrites what the ROUTER embeds, not what the reader sees, so the assertion has to be
+    on `_skill_embedding_text`. Getting this wrong would be invisible: the arm would run, cost a
+    batch, and measure the control.
+    """
+
+    def test_OFF_the_L1_description_is_embedded(self, monkeypatch):
+        from app.services import skill_router as sr
+
+        monkeypatch.setattr(skill_registry_settings(), "skill_contrastive_desc", False,
+                            raising=False)
+        text = sr._skill_embedding_text("book")
+        assert "save and restore draft revisions" in text, (
+            "the shipped L1 description is not what the router embedded with the flag off")
+
+    def test_ON_the_contrastive_text_replaces_it(self, monkeypatch):
+        from app.services import skill_router as sr
+
+        monkeypatch.setattr(skill_registry_settings(), "skill_contrastive_desc", True,
+                            raising=False)
+        text = sr._skill_embedding_text("book")
+        assert "librarianship, not authorship" in text
+        assert "save and restore draft revisions" not in text, (
+            "the flag is on and the old description is still what gets embedded")
+
+    def test_the_collision_that_motivated_the_arm_is_actually_addressed(self, monkeypatch):
+        """🔴 NON-VACUITY. Both texts could differ while still sharing the vocabulary that made
+        `book` and `translation` the closest pair in the catalogue (0.7715). The arm is worthless
+        if the replacements still both say 'chapters' and 'publish', so that is asserted directly
+        rather than assumed from the fact that the strings changed."""
+        from app.services import skill_router as sr
+
+        monkeypatch.setattr(skill_registry_settings(), "skill_contrastive_desc", True,
+                            raising=False)
+        book = sr._skill_embedding_text("book").lower()
+        translation = sr._skill_embedding_text("translation").lower()
+        shared = {w for w in ("chapters", "publish") if w in book and w in translation}
+        assert not shared, (
+            f"the contrastive texts still share {shared} — the exact tokens that put these two at "
+            "0.7715 cosine, the closest pair in the catalogue")
