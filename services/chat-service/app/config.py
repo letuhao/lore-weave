@@ -315,6 +315,27 @@ class Settings(BaseSettings):
     # demand. The domain's TOOLS stay hot regardless (surface_hot_domains is
     # surface-driven, not skill-body-driven) — only the verbose prose defers.
     lazy_skill_bodies: bool = True
+    # `skill_router_preload` — the Intent→Skill Router's SMART PRELOAD. When ON (shipped
+    # behaviour) the router cosine-ranks the turn's intent against every skill and preloads
+    # the top `ROUTER_MAX_ADDITIONS` L2 bodies. When OFF the turn keeps its base/pinned/
+    # mode-bound skills and the L1 index, and the model pulls a body itself with
+    # `load_skill` — the twin of `tool_load`.
+    #
+    # 🔴 ADDED AS THE ARM OF AN A/B, NOT AS A PRODUCT LEVER, and defaulted TRUE so the
+    # CONTROL is the shipped path byte-for-byte. DQ-T90 measured why the arm is worth
+    # running: ALL 66 of 66 pairs of distinct skills are more similar to each other than the
+    # 0.35 floor a skill must clear to be injected, so no cap and no threshold can rank
+    # them — the correct domain misses by a median 0.0266 in a field 0.1537 wide. Meanwhile
+    # `load_skill` is advertised on 5,982 messages, has never failed (66 of 66 ok), and is
+    # used in 7 sessions, against 123 for `tool_load`. The hypothesis this flag exists to
+    # test is that the preload SUPPRESSES the mechanism that would fix the row: the model is
+    # handed two bodies it did not ask for, with no signal they are the wrong ones.
+    #
+    # THE BAR, so an arm cannot win by being cheaper: does the CORRECT skill's body end up
+    # PRESENT on more than 64.8% of turns (the router's own measured hit rate)? Whether
+    # `load_skill` was called is NOT the measure — a turn that proceeds without guidance is
+    # a loss, because absent guidance is the defect this question was opened on.
+    skill_router_preload: bool = True
     # CP-2.7 — THE ROUTE. When ON, a turn's advertised set comes from
     # `contracts/agent-runtime-manifest.json` and from nothing else: no core tools, no
     # `find_tools`, no frontend extras. "Old declarations are not hidden. They are ABSENT."

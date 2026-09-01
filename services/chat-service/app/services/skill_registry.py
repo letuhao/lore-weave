@@ -700,6 +700,16 @@ async def resolve_skills_to_inject_async(
                 if sk and _skill_visible(sk, active):
                     base.append(code)
 
+    # DQ-T90 arm (e): with the preload OFF the turn keeps its base/pinned/mode-bound skills
+    # and the L1 index, and the model pulls a body with `load_skill` instead of being handed
+    # the router's top-2. Defaulted ON, so this is a no-op on the shipped path — see
+    # `skill_router_preload` in config.py for the bar the arm must clear.
+    from app.config import settings  # noqa: PLC0415 — local, matching this module's style
+
+    if not settings.skill_router_preload:
+        logger.info("skill router preload DISABLED (DQ-T90 arm e); base skills only")
+        return base
+
     try:
         from app.services.skill_router import route_additional_skills  # noqa: PLC0415
 
