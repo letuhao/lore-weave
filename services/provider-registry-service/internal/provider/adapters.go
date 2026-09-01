@@ -1367,10 +1367,51 @@ func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, secret stri
 	return out, usage, nil
 }
 
+// HealthCheck proves the endpoint is reachable AND, when a key is configured, that the key
+// actually works.
+//
+// 🔴 IT USED TO CALL Invoke WITH AN EMPTY MODEL NAME. Local Ollama tolerated that; ollama.com
+// answers `404 model '' not found`, so a cloud provider that demonstrably serves completions was
+// reported unhealthy. Measured 2026-09-01 against the live endpoint.
+//
+// 🔴 AND THE OBVIOUS REPLACEMENT IS A GUARD THAT CANNOT FAIL. Listing models looks like the
+// natural cheap check, but on ollama.com BOTH listing endpoints answer 200 to a BOGUS key:
+//
+//	GET /api/tags    good key -> 200   bogus key -> 200
+//	GET /v1/models   good key -> 200   bogus key -> 200
+//	GET /api/ps      good key -> 401   (not served for cloud keys at all)
+//	POST /api/chat   good key -> 200   bogus key -> 401   <- the only one that discriminates
+//
+// So a listing-based health check would pass with a revoked or mistyped key and the failure
+// would surface later as a dead turn. Only a real completion authenticates.
+//
+// THE SHAPE, therefore, and it is deliberately different for the two deployments:
+//   - reachability first, via the model listing, which also supplies a model name we know the
+//     endpoint serves (asking for an invented one is what broke this in the first place);
+//   - then, ONLY when a secret is configured, one minimal completion to prove the credential.
+//     Local Ollama takes no key and skips it, so the common path costs nothing extra.
+//
+// num_predict 1 keeps the cost of the auth proof at a single token.
 func (a *ollamaAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) error {
-	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "",
-		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
-	return err
+	models, err := a.ListModels(ctx, endpointBaseURL, secret)
+	if err != nil {
+		return fmt.Errorf("endpoint unreachable: %w", err)
+	}
+	if len(models) == 0 {
+		return fmt.Errorf("endpoint reachable but serves no models")
+	}
+	if secret == "" {
+		// Local Ollama: nothing to authenticate, and reachability is the whole question.
+		return nil
+	}
+	if _, _, err := a.Invoke(ctx, endpointBaseURL, secret, models[0].ProviderModelName,
+		map[string]any{
+			"messages":   []map[string]any{{"role": "user", "content": "hi"}},
+			"max_tokens": 1,
+		}); err != nil {
+		return fmt.Errorf("credential rejected by %s: %w", models[0].ProviderModelName, err)
+	}
+	return nil
 }
 
 // Stream — Ollama supports streaming via its OpenAI-compatible
