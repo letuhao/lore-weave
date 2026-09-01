@@ -3735,7 +3735,9 @@ def _money_arg_note(dropped: dict) -> str:
 
 
 def _invented_supplier_ids(args_obj: dict, contract: dict | None,
-                           tool_def_props: dict | None = None) -> list[str]:
+                           tool_def_props: dict | None = None,
+                           runtime_held_context_ids: frozenset[str] | set[str] | None = None
+                           ) -> list[str]:
     """`*_id` args the CONTRACT says the runtime owes, which the model filled in with a non-UUID.
 
     🔴 MEASURED LIVE 2026-08-12, journey `autonomous-drafting` (book 019ff497). The model called
@@ -3953,8 +3955,42 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
         ):
             out.append(name)
             continue
+        # ── DQ-T78 (owner 2026-08-31) — THE NARROW VERSION OF THE CONTEXT-ID EXEMPTION ─────
+        # "Keep the exemption for a value the runtime could plausibly have injected; drop it for
+        # one it could not. The code path says which is which."
+        #
+        # THE CODE PATH, and this is a PROPERTY rather than an outcome. `_inject_context_ids`
+        # runs BEFORE this check on the same args, and it SUBSTITUTES a malformed context id
+        # with the value the server holds — but only `if not val: continue`, i.e. only when the
+        # server HAS one. So:
+        #   * the runtime HELD a value  -> any junk was already replaced, and what is here is the
+        #     runtime's own id. Exempt, which is exactly the case the five red tests bought:
+        #     dropping `b1` once deleted a value the runtime itself had supplied.
+        #   * the runtime held NOTHING  -> it cannot have injected this value. The exemption's
+        #     own reasoning does not reach it, and every such value on record is a model
+        #     invention.
+        #
+        # SO THE RULE IS NOT A SHAPE BLACKLIST. This row has watched six of those measured and
+        # rejected on its sibling; a length or vocabulary test would be the seventh.
+        #
+        # PRECISION, measured over every recorded call before shipping, as the ruling required —
+        # the 166 values the exemption still lets through:
+        #     39 'all'   13 'book_list'   12 'current_book_id'   11 'Mị Đế' (a book TITLE)
+        #     11 LOOP-THROWAWAY fixture names   13 wrapped arrays   6 '0'   5 malformed UUIDs
+        # NOT ONE has ever returned ok: 'all' 0 of 39, 'book_list' 0 of 13, the fixture names 0.
+        # That is CORROBORATION and deliberately not the basis — this loop has already been
+        # burned reading "never succeeded" as "was invented", and a platform sentinel never
+        # succeeds either. The basis is the code path above.
+        #
+        # DEFAULT-SAFE: when the caller says nothing (None), every context id stays exempt and
+        # the behaviour is exactly as before, so a caller that has not been taught this cannot
+        # start dropping ids by accident. The live call site passes what the turn actually holds.
+        _ctx_exempt = (
+            name in _RUNTIME_CONTEXT_IDS
+            and (runtime_held_context_ids is None or name in runtime_held_context_ids)
+        )
         if (
-            name not in _RUNTIME_CONTEXT_IDS
+            not _ctx_exempt
             and isinstance(value, str)
             and _declares_uuid(tool_def_props, name)
             and not _is_uuid(value)
@@ -7794,6 +7830,12 @@ async def _stream_with_tools(
                             args_obj, _inv_block,
                             ((_tool_def_for_args or {}).get("function", {})
                              .get("parameters", {}) or {}).get("properties"),
+                            # DQ-T78 — the names the runtime actually HELD this turn. A context
+                            # id it never had is one it cannot have injected.
+                            runtime_held_context_ids=frozenset(
+                                n for n in _RUNTIME_CONTEXT_IDS
+                                if str((context_ids or {}).get(n) or "").strip()
+                            ),
                         )
                     except Exception:
                         _invented_ids = []

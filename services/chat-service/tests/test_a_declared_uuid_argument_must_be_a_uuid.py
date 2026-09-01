@@ -147,11 +147,16 @@ class TestTheContextIdsAreDeliberatelyExempt:
         props = {"book_id": {"type": "string", "description": "the book's id (UUID)"}}
         assert _invented_supplier_ids({"book_id": "b1"}, None, props) == []
 
-    def test_what_this_STILL_DOES_NOT_REACH_is_asserted_not_assumed(self):
-        """🔴 165 OF THE 320 ARE NOT COVERED and the biggest are named here, so nobody reads
-        this widening as having closed D-FIXTURE-NAME-IS-THE-MOST-PLAUSIBLE-LOOKING-ID. A
-        fixture name, a book TITLE and "all" carry no placeholder token; catching them needs
-        the declaration-driven arm, which is the one that once deleted a runtime value."""
+    def test_the_DEFAULT_still_exempts_them_so_an_untaught_caller_is_unchanged(self):
+        """🔴 THIS TEST USED TO SAY THESE VALUES ARE UNCOVERED, FULL STOP. Its old docstring:
+        "165 OF THE 320 ARE NOT COVERED and the biggest are named here, so nobody reads this
+        widening as having closed D-FIXTURE-NAME-IS-THE-MOST-PLAUSIBLE-LOOKING-ID."
+
+        DQ-T78 (owner 2026-08-31) closed that gap with the NARROW version: a context id is
+        exempt only when the runtime actually HELD a value for it. This assertion is now about
+        the DEFAULT — a caller that says nothing about what the turn held gets exactly the old
+        behaviour, so a caller not yet taught the parameter cannot start dropping ids by
+        accident. The sibling below asserts the live path, where they ARE caught."""
         props = {"project_id": {"type": "string", "description": "the project (a UUID)"},
                  "book_id": {"type": "string", "description": "the book's id (UUID)"}}
         for arg, value in (
@@ -161,6 +166,53 @@ class TestTheContextIdsAreDeliberatelyExempt:
             ("project_id", "Mị Đế"),
         ):
             assert _invented_supplier_ids({arg: value}, None, props) == [], (arg, value)
+
+    def test_the_ROWS_OWN_INSTANCE_is_caught_when_the_runtime_held_nothing(self):
+        """DQ-T78's narrow version, on the row's founding instance verbatim.
+
+        The runtime held NO project_id on that turn, so it cannot have injected a fixture name —
+        the exemption's own reasoning does not reach the value, and it is dropped so the model
+        is told the argument is required and goes to look it up."""
+        props = {"project_id": {"type": "string", "description": "the project (a UUID)"},
+                 "book_id": {"type": "string", "description": "the book's id (UUID)"}}
+        held = frozenset({"book_id"})   # a book turn with no project in context
+        for arg, value in (
+            ("project_id", "LOOP-THROWAWAY-composition-derivative-edit-seeded-0-f5d5d3ed"),
+            ("project_id", "Mị Đế"),
+            ("project_id", "[]"),
+        ):
+            assert _invented_supplier_ids(
+                {arg: value}, None, props, runtime_held_context_ids=held) == [arg], (arg, value)
+
+    def test_a_HELD_context_id_is_still_exempt_which_is_what_the_five_reds_bought(self):
+        """🔴 THE CASE THAT ONCE BROKE THE DISPATCH. When the runtime HAS a value for a context
+        id, `_inject_context_ids` has already substituted anything malformed — so what arrives
+        here is the runtime's own. Dropping it deleted a value the runtime itself supplied."""
+        props = {"book_id": {"type": "string", "description": "the book's id (UUID)"}}
+        held = frozenset({"book_id", "chapter_id", "project_id"})
+        assert _invented_supplier_ids(
+            {"book_id": "b1"}, None, props, runtime_held_context_ids=held) == []
+
+    def test_a_NON_context_id_never_needed_the_parameter(self):
+        """The narrowing must not change the arm's behaviour for everything else."""
+        props = {"world_id": {"type": "string", "description": "the world (UUID)"}}
+        for held in (None, frozenset(), frozenset({"book_id"})):
+            assert _invented_supplier_ids(
+                {"world_id": "Ashfall"}, None, props,
+                runtime_held_context_ids=held) == ["world_id"], held
+
+    def test_the_LIVE_CALL_SITE_passes_what_the_turn_held(self):
+        """🔴 THE HELPER PASSING PROVES NOTHING IF THE CALL SITE DOES NOT TEACH IT. The default
+        is deliberately the OLD behaviour, so a site that never passes the parameter silently
+        keeps the gap this row is about."""
+        import inspect
+
+        import app.services.stream_service as ss
+
+        src = inspect.getsource(ss)
+        assert "runtime_held_context_ids=frozenset(" in src, (
+            "no call site tells _invented_supplier_ids what the turn actually held, so the "
+            "narrow exemption is inert and the row's instance still passes through")
 
     def test_but_a_non_context_id_beside_it_still_is(self):
         """The exemption is per-argument, not per-call: a bad world_id is still caught when a
