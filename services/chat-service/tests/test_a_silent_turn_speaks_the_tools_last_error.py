@@ -31,6 +31,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from app.services.stream_service import (  # noqa: E402
     _GENERIC_ERROR_TEXT,
+    _author_facing_error,
     _client_safe_error,
     _last_tool_error_for_author,
 )
@@ -102,8 +103,20 @@ class TestItIsSanitisedByTheEXISTINGPath:
         assert SRC.count('("traceback", "file ", "/usr/", "password", "secret")') == 1, (
             "the unsafe-marker list appears more than once — the sanitiser has been duplicated"
         )
-        assert "safe_msg = _client_safe_error(str(exc))" in SRC, (
-            "the original error handler no longer routes through the shared sanitiser"
+        # 🔴 THIS ASSERTION USED TO READ:
+        #     assert "safe_msg = _client_safe_error(str(exc))" in SRC
+        # It matched the handler's LITERAL SOURCE LINE, so it went red the moment that
+        # line was rewritten to route through _author_facing_error — even though the
+        # invariant it guards (ONE sanitiser, and the handler uses it) was still held.
+        # A guard anchored on source text cannot tell a refactor from a regression.
+        # Re-aimed: name the seam structurally, then prove the BEHAVIOUR.
+        assert "_author_facing_error(exc)" in SRC, (
+            "the error handler no longer routes through _author_facing_error, which is "
+            "the only remaining path to the shared sanitiser"
+        )
+        leaky, _ = _author_facing_error(Exception("Traceback (most recent call last): File x"))
+        assert leaky == _GENERIC_ERROR_TEXT, (
+            "the handler's path stopped sanitising — a traceback would reach an author"
         )
 
 

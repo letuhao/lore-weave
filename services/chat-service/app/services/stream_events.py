@@ -243,8 +243,14 @@ class StreamEmitter(Protocol):
         {runId, toolCallId, toolName} so the FE knows what to execute/resume)."""
         ...
 
-    def error(self, safe_msg: str) -> list[str]:
-        """Turn failed — the already-sanitized error message."""
+    def error(self, safe_msg: str, code: str = "STREAM_ERROR") -> list[str]:
+        """Turn failed — the already-sanitized message, plus the MACHINE code.
+
+        `code` used to be hardcoded "STREAM_ERROR" at the AG-UI emit site, so every
+        failure — a spend cap, an unpriced model, an upstream 500 — reached the FE
+        indistinguishable, and the FE could only show raw backend prose. It is a
+        parameter so the client can render the one case it can actually act on.
+        """
         ...
 
     def done(self) -> list[str]:
@@ -316,7 +322,8 @@ class LegacyEmitter:
         # agui-only).
         return [_sse({"type": "finish-message", **payload})]
 
-    def error(self, safe_msg: str) -> list[str]:
+    def error(self, safe_msg: str, code: str = "STREAM_ERROR") -> list[str]:
+        # Legacy has no code channel; the message already carries the author-facing text.
         return [_sse({"type": "error", "errorText": safe_msg})]
 
     def done(self) -> list[str]:
@@ -603,7 +610,7 @@ class AgUiEmitter:
         lines.append(_sse({"type": "RUN_FINISHED", "result": result}))
         return lines
 
-    def error(self, safe_msg: str) -> list[str]:
+    def error(self, safe_msg: str, code: str = "STREAM_ERROR") -> list[str]:
         # RUN_ERROR is a hard terminator — AG-UI consumers discard partial
         # message state, so we do NOT emit a (misleading) END for the open
         # message; just reset so a later done() is a clean no-op.
@@ -612,7 +619,9 @@ class AgUiEmitter:
         return [_sse({
             "type": "RUN_ERROR",
             "message": safe_msg,
-            "code": "STREAM_ERROR",
+            # Was the literal "STREAM_ERROR" for every failure. The FE's RunErrorEvent
+            # has always had a `code` field; nothing ever put a real value in it.
+            "code": code,
         })]
 
     def done(self) -> list[str]:

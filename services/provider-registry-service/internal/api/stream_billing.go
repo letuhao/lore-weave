@@ -100,7 +100,11 @@ func (s *Server) preflightStream(
 	// max_tokens (or the config default); tts cost is exact.
 	estimate, err := s.estimator.EstimateUSD(op, inputMap, pricing, 1)
 	if errors.Is(err, billing.ErrUnpriced) {
-		writeError(w, http.StatusPaymentRequired, "LLM_QUOTA_EXCEEDED", "model pricing not configured")
+		// LLM_MODEL_UNPRICED, not LLM_QUOTA_EXCEEDED. Both are 402, but they are
+		// OPPOSITE problems: "you have spent your budget" (raise the limit, or wait
+		// for the daily window) vs "this model has no price table" (set its pricing).
+		// Sharing one code made every author-facing message wrong for one of them.
+		writeError(w, http.StatusPaymentRequired, "LLM_MODEL_UNPRICED", "model pricing not configured")
 		return nil, false
 	}
 	if err != nil {

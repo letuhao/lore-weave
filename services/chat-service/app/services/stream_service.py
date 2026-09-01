@@ -11098,6 +11098,47 @@ def _client_safe_error(msg: str) -> str:
     ) else msg
 
 
+#: Author-facing text for the failures an author can actually ACT on.
+#:
+#: 🔴 THE GATEWAY'S OWN STRINGS ARE OPERATOR PROSE. A tripped spend limit arrived as
+#: "insufficient budget: estimated $0.11920000, available daily $0.00000000 / monthly
+#: $0.00000000" — true, and useless: it names no cause the author recognises, does not
+#: say the limit is THEIR OWN setting rather than a platform cap, and points at no place
+#: to change it. It reached the FE under a hardcoded code of "STREAM_ERROR", so the
+#: client could not tell it apart from an upstream 500 either.
+_AUTHOR_FACING_ERRORS: dict[str, str] = {
+    "LLM_QUOTA_EXCEEDED": (
+        "You have reached your own daily spend limit. This is your setting, not a "
+        "platform cap — raise it under Usage → Spend guardrail, or wait for the daily "
+        "window to reset. Nothing was sent to the provider, so nothing was charged."
+    ),
+    "LLM_BYOK_KEY_CAP_EXCEEDED": (
+        "This API key has reached the spend cap set for it. Raise the key's cap, or "
+        "use a different key. Nothing was sent to the provider, so nothing was charged."
+    ),
+    "LLM_MODEL_UNPRICED": (
+        "This model has no pricing configured, so its spend cannot be tracked and the "
+        "call was refused. Set its input/output rates under Models — a model that runs "
+        "locally should be registered at 0."
+    ),
+}
+
+
+def _author_facing_error(exc: Exception) -> tuple[str, str]:
+    """(author-facing message, machine code) for one failed turn.
+
+    An unrecognised failure keeps EXACTLY the previous behaviour — the sanitized
+    exception text — so this adds a better message for the cases we understand
+    without degrading any case we do not. The real code still rides along, so the
+    FE can branch on it later without another backend change.
+    """
+    code = getattr(exc, "code", "") or "STREAM_ERROR"
+    friendly = _AUTHOR_FACING_ERRORS.get(code)
+    if friendly:
+        return friendly, code
+    return _client_safe_error(str(exc)), code
+
+
 def _last_tool_success_for_author(tool_calls_history: list[dict]) -> str | None:
     """DQ-T75, owner 2026-08-31: what a turn that produced no text and had NOTHING FAIL read.
 
@@ -12892,7 +12933,7 @@ async def _emit_chat_turn(
 
     except Exception as exc:
         logger.exception("Stream error for session %s", session_id)
-        safe_msg = _client_safe_error(str(exc))
+        safe_msg, _err_code = _author_facing_error(exc)
         # DBT-CHAT-PERSIST — persist whatever the model already streamed before
         # the throw so the turn is not lost on reload; is_error marks it and the
         # FE badges it "incomplete". (Covers the reported case: a mid-turn BE
@@ -12910,7 +12951,7 @@ async def _emit_chat_turn(
                 advertised_tools=_advertised.advertised_json(),
                 withheld_tools=_advertised.withheld_json(),
             )
-        for line in emitter.error(safe_msg):
+        for line in emitter.error(safe_msg, _err_code):
             yield line
 
     # ── Post-turn best-effort side-effects (auto-title + billing) ────────────
