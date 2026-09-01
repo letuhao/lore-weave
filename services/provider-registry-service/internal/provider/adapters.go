@@ -1279,13 +1279,32 @@ type ollamaAdapter struct {
 
 const ollamaDefaultBase = "http://localhost:11434"
 
-func (a *ollamaAdapter) ListModels(ctx context.Context, endpointBaseURL, _ string) ([]ModelInventory, error) {
+// ollamaAuthHeaders carries the API key when there is one.
+//
+// 🔴 EVERY OLLAMA METHOD USED TO TAKE THE SECRET AS `_` AND THROW IT AWAY, which made the
+// adapter local-only by construction: no Authorization header could ever be sent, so an
+// Ollama CLOUD endpoint (https://ollama.com, which serves both /api/chat and an
+// OpenAI-compatible /v1) authenticated nothing and 401'd. The kind was already registerable
+// and the context_length validation already special-cased it, so the gap was invisible from
+// the outside — it only appeared on a request that needed to prove who it was.
+//
+// Local Ollama sends no key and is unaffected: an empty secret yields no header, which is
+// byte-identical to the previous behaviour. Same idiom as lmStudioAdapter.
+func ollamaAuthHeaders(secret string) map[string]string {
+	headers := map[string]string{}
+	if secret != "" {
+		headers["Authorization"] = "Bearer " + secret
+	}
+	return headers
+}
+
+func (a *ollamaAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
 	base := strings.TrimRight(endpointBaseURL, "/")
 	if base == "" {
 		base = ollamaDefaultBase
 	}
 	// Ollama exposes GET /api/tags to list local models
-	out, err := getJSON(ctx, a.client, base+"/api/tags", nil)
+	out, err := getJSON(ctx, a.client, base+"/api/tags", ollamaAuthHeaders(secret))
 	if err != nil {
 		return nil, fmt.Errorf("list models: %w", err)
 	}
@@ -1315,7 +1334,7 @@ func (a *ollamaAdapter) ListModels(ctx context.Context, endpointBaseURL, _ strin
 	return models, nil
 }
 
-func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, _ string, modelName string, input map[string]any) (map[string]any, Usage, error) {
+func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, secret string, modelName string, input map[string]any) (map[string]any, Usage, error) {
 	base := strings.TrimRight(endpointBaseURL, "/")
 	if base == "" {
 		base = ollamaDefaultBase
@@ -1338,7 +1357,7 @@ func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, _ string, m
 	if len(options) > 0 {
 		payload["options"] = options
 	}
-	out, err := postJSON(ctx, a.client, base+"/api/chat", nil, payload)
+	out, err := postJSON(ctx, a.client, base+"/api/chat", ollamaAuthHeaders(secret), payload)
 	if err != nil {
 		return nil, Usage{}, err
 	}
@@ -1358,7 +1377,7 @@ func (a *ollamaAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret
 // /v1/chat/completions endpoint (separate from the /api/chat NDJSON path
 // used by Invoke). This implementation uses the OpenAI-compat path so it
 // shares the SSE parser with openai/lm_studio.
-func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, modelName string, input map[string]any, emit EmitFn) error {
+func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, secret string, modelName string, input map[string]any, emit EmitFn) error {
 	base := strings.TrimRight(endpointBaseURL, "/")
 	if base == "" {
 		base = ollamaDefaultBase
@@ -1384,7 +1403,7 @@ func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, m
 		body["tool_choice"] = v
 	}
 	forwardOptionalChatFields(input, body)
-	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", nil, body)
+	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", ollamaAuthHeaders(secret), body)
 	if err != nil {
 		return err
 	}
