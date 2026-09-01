@@ -96,16 +96,34 @@ def strip_go_comments(src: str) -> str:
 
 
 def env_dsn_test_files() -> list[pathlib.Path]:
-    """Test files that connect to a database named by the ENVIRONMENT — i.e. possibly a shared,
-    already-migrated one. A test that builds its own ephemeral database is excluded."""
-    out = []
+    """Test files that can reach a database named by the ENVIRONMENT — i.e. possibly a shared,
+    already-migrated one.
+
+    🔴 SCOPED BY PACKAGE, NOT BY FILE, AND THE FIRST VERSION OF THIS GUARD GOT THAT WRONG. Go
+    tests share a package-level pool helper: `canon_content_test.go` calls `migrate.UpOutbox`
+    and contains no `os.Getenv` of its own, because a sibling file in the same package reads the
+    DSN. A per-file filter therefore saw 3 files where package scope sees 7, and a future test
+    calling a superseded step through a shared helper would have passed unnoticed — the exact
+    blind spot that let this defect ship twice.
+
+    A file that provisions its OWN ephemeral database is still excluded individually: it cannot
+    reach a shared database whatever its package siblings do (internal/migrate/g4_cutover_test.go
+    legitimately calls step functions this way).
+    """
+    env_packages = set()
+    by_package: dict[pathlib.Path, list[pathlib.Path]] = {}
     for p in SERVICE.rglob("*_test.go"):
+        by_package.setdefault(p.parent, []).append(p)
         src = p.read_text(encoding="utf-8", errors="replace")
-        if "os.Getenv(" not in src:
-            continue
-        if "ephemeralPool(" in src:
-            continue
-        out.append(p)
+        if "os.Getenv(" in src and "ephemeralPool(" not in src:
+            env_packages.add(p.parent)
+
+    out = []
+    for pkg in env_packages:
+        for p in by_package[pkg]:
+            if "ephemeralPool(" in p.read_text(encoding="utf-8", errors="replace"):
+                continue
+            out.append(p)
     return out
 
 
