@@ -5159,7 +5159,24 @@ async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
     if node is None:
         _structures = StructureRepo(get_pool())
         _sn = await _structures.get(node_id)
-        if _sn is not None and getattr(_sn, "project_id", None) == pid:
+        # 🔴 THIS CONDITION COULD NEVER BE TRUE, so the refusal below has never fired. It read
+        # `_sn.project_id`, and StructureNode's own docstring says the field is deliberately
+        # absent: "`book_id` is the SCOPE key, set directly — NO composition_work join, NO
+        # project_id, NO user_id". `getattr(..., None)` therefore returned None, None != pid, and
+        # every arc fell through to the uniform `not found or not accessible` — the exact dead
+        # end DQ-T58's ruling was built to replace.
+        #
+        # PROVEN by driving the call directly, no model in the loop
+        # (scripts/toolloop/t58_arc_refusal_probe.py): seed an arc, bind a motif to it, and the
+        # answer was "not found or not accessible" with none of the four things the ruling
+        # requires. The refusal has been shipped since 2026-08-30 and had never run — the row
+        # attributed that to the model never forming the call, and the model never forming it is
+        # true AND was hiding this.
+        #
+        # THE SCOPE KEY IS THE BOOK, which is what the structure tree is scoped by and what
+        # `_book_or_deny` already resolved for the Work. Same book => the caller owns this arc,
+        # so naming its KIND leaks nothing the uniform error exists to hide.
+        if _sn is not None and getattr(_sn, "book_id", None) == meta.book_id:
             raise ValueError(
                 f"node_id {args.node_id} is a {_sn.kind}, and this tool binds a motif to a "
                 "CHAPTER. Whether a motif on a whole arc means a property of the arc or a "

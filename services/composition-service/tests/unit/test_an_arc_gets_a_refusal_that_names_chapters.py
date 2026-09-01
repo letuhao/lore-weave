@@ -34,8 +34,20 @@ SRC = (pathlib.Path(__file__).resolve().parents[2] / "app" / "mcp" / "server.py"
 
 
 def _bind_handler() -> str:
-    i = SRC.index("    node = await outline.get_node(node_id)")
-    return SRC[i:i + 2600]
+    """The WHOLE handler, via AST.
+
+    🔴 THIS SLICED 2,600 CHARACTERS FROM AN ANCHOR AND THREE OF THIS FILE'S FOUR
+    ASSERTIONS WENT RED WHEN A COMMENT WAS ADDED ABOVE THE REFUSAL. The refusal text had not
+    changed; it had moved past the end of the window. A fixed-width window over source is an
+    instrument that reports on its own boundaries, and this file's messages ("the refusal no
+    longer names chapters") would have sent the next reader after a regression that did not
+    exist."""
+    import ast
+
+    for n in ast.walk(ast.parse(SRC)):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and                 n.name == "composition_motif_bind":
+            return ast.unparse(n)
+    raise AssertionError("composition_motif_bind not found — renamed?")
 
 
 class TestTheRefusalNamesWhatTheToolDoesBindTo:
@@ -57,7 +69,10 @@ class TestTheRefusalNamesWhatTheToolDoesBindTo:
         """`outline_node` holds scenes as well as chapters. A scene is not a chapter either, and
         an author who passes one deserves the same sentence rather than a silent bind."""
         block = _bind_handler()
-        assert 'node.kind != "chapter"' in block, (
+        # Quote-agnostic: the block now comes from `ast.unparse`, which normalises string
+        # quoting, so a test written against the source's double quotes would fail on a
+        # formatting difference and read as a missing guard.
+        assert ('node.kind != "chapter"' in block or "node.kind != 'chapter'" in block), (
             "only the arc case is handled — a scene node_id would still fall through to the bind")
 
     def test_the_uniform_refusal_still_covers_a_genuinely_unknown_id(self):
@@ -68,9 +83,22 @@ class TestTheRefusalNamesWhatTheToolDoesBindTo:
         assert block.count("uniform_not_accessible()") >= 2, (
             "the not-accessible path was collapsed; an unknown or foreign id must still get the "
             "uniform answer")
-        assert 'getattr(_sn, "project_id", None) == pid' in block, (
-            "the arc-shaped refusal is not scoped to the caller's own project — it would confirm "
-            "the existence of another project's arc")
+        # 🔴 THIS ASSERTION PINNED A CONDITION THAT COULD NEVER BE TRUE. It required
+        # `getattr(_sn, "project_id", None) == pid`, and StructureNode's own docstring says the
+        # field is deliberately absent: "`book_id` is the SCOPE key, set directly — NO
+        # composition_work join, NO project_id, NO user_id". So the scope check always failed,
+        # every arc fell through to the uniform refusal, and the arc-shaped message this file
+        # exists to guard had NEVER FIRED — proven 2026-09-01 by driving the call directly
+        # (scripts/toolloop/t58_arc_refusal_probe.py): an arc got "not found or not accessible"
+        # with none of the four things the ruling requires.
+        #
+        # THE SECURITY INTENT IS UNCHANGED AND IS NOW ACTUALLY ENFORCED. The scope key for the
+        # structure tree is the BOOK, and `_book_or_deny` has already verified the caller holds
+        # EDIT on that book — so comparing the arc's book to the gated book confirms nothing the
+        # caller cannot already see. An arc in another book still gets the uniform answer.
+        assert "getattr(_sn, 'book_id', None) == meta.book_id" in block, (
+            "the arc-shaped refusal is not scoped to the caller's own book — it would confirm "
+            "the existence of an arc in a book they cannot see")
 
 
 class TestTheArcPhrasingIsDeclared:
