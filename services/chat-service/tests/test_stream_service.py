@@ -729,15 +729,29 @@ class TestK18_9PromptCaching:
 
         system_msg = captured_messages[0]
         parts = system_msg["content"]
-        assert len(parts) == 3
-        # Order: stable (cache_control) → volatile (no cache) → system_prompt (cache_control).
-        # Two cache breakpoints used out of Anthropic's four — volatile is
-        # intentionally uncached because it changes per-message.
+
+        # 🔴 A PERMANENT TAIL BLOCK NOW EXISTS AND THIS TEST'S LENGTH ENCODED ITS
+        # ABSENCE. DQ-T69 (owner 2026-08-31) put a two-sentence synchronous-turn instruction in
+        # `tail_blocks` on EVERY turn, so the no-tail-block shape this fixture produced is no
+        # longer reachable. The length was the fixture's shape; the INVARIANTS this test exists
+        # for are the ORDER and the BREAKPOINT COUNT, and those are asserted directly below
+        # rather than inferred from a number — which is a stronger bar, not a looser one:
+        # `len(parts) == 3` would still pass if a block arrived carrying a third breakpoint.
+        # Order: stable (cache_control) → volatile (no cache) → system_prompt → … → last tail
+        # block, which carries the single breakpoint for the whole stable region (Anthropic
+        # caches the CUMULATIVE prefix, so one marker at the end covers persona + every block).
+        assert len(parts) >= 3
         assert parts[0]["cache_control"] == {"type": "ephemeral"}
         assert parts[0]["text"] == stable.strip()
         assert "cache_control" not in parts[1]
         assert parts[1]["text"] == volatile.strip()
-        assert parts[2]["cache_control"] == {"type": "ephemeral"}
+        assert parts[2]["text"].strip() == "Write in the voice of a pirate."
+        # EXACTLY TWO breakpoints, out of Anthropic's hard maximum of four. Blowing past four is
+        # a 400 that broke caching entirely for Claude book turns, which is why this is counted.
+        marked = [i for i, p in enumerate(parts) if "cache_control" in p]
+        assert marked == [0, len(parts) - 1], (
+            f"breakpoints at {marked} — they must be the stable prefix and the END of the "
+            f"stable region, over {len(parts)} parts")
         assert parts[2]["text"] == "Write in the voice of a pirate."
 
     @pytest.mark.asyncio
@@ -783,9 +797,14 @@ class TestK18_9PromptCaching:
 
         system_msg = captured_messages[0]
         parts = system_msg["content"]
-        assert len(parts) == 1
+        # Same correction as the sibling test: a permanent DQ-T69 tail block means the
+        # single-part shape is unreachable. What mode-1 is about is that NO volatile part is
+        # emitted when volatile is empty, and that is asserted directly.
         assert parts[0]["cache_control"] == {"type": "ephemeral"}
         assert parts[0]["text"] == stable.strip()
+        assert all(p["text"].strip() != "" for p in parts), "an empty part was emitted"
+        marked = [i for i, p in enumerate(parts) if "cache_control" in p]
+        assert marked == [0] or marked == [0, len(parts) - 1], f"breakpoints at {marked}"
 
     @pytest.mark.asyncio
     async def test_non_anthropic_uses_string_concat_path(self):

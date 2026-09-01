@@ -10175,6 +10175,30 @@ async def stream_response(
                 "already covers. Following the rail is how you avoid getting the order wrong."
             )
 
+    # ── DQ-T69 (owner 2026-08-31) — A TURN CANNOT KEEP A PROMISE MADE ABOUT LATER ──────────
+    # "(b) AN UPSTREAM SYSTEM-PROMPT INSTRUCTION, one or two sentences, A/B'd before shipping
+    # broadly. Not a reactive matcher: the population is ~0.3% and this loop's own development of
+    # the detector rejected two clauses before landing on a working count, so a matcher is real
+    # ongoing maintenance for five instances."
+    #
+    # THE DEFECT. A turn ends promising a LATER message ("I'll send the summary shortly") or
+    # asking the author to WAIT ("give me a moment"). The turn is fully synchronous: it ends when
+    # the reply ends, and no further message will ever arrive. Measured over 158 batches / 1,551
+    # runs: 5 clean instances, store unmoved, nothing queued, nothing pending.
+    #
+    # 🔴 THE WORDING IS THE WHOLE RISK, AND THE RULING SAYS SO: it "must match the row's precise
+    # characterisation — a promise of a LATER MESSAGE or a request to WAIT, discriminated by
+    # determiner — so it does not also suppress a legitimate in-turn intention like 'I'll cancel
+    # them now'." So this names the two forbidden SHAPES and explicitly blesses the in-turn one,
+    # rather than banning the future tense, which would cost the model a sentence it needs.
+    synchronous_turn_note = (
+        "THIS TURN IS SYNCHRONOUS: it ends when your reply ends, and you cannot send a follow-up "
+        "message afterwards. Never promise a LATER message and never ask the user to wait — no "
+        "'I'll send it shortly', 'give me a moment', 'stand by'. Saying what you are doing IN "
+        "this turn is fine ('I'll cancel them now'); if something cannot be finished here, say "
+        "so plainly and say what you need."
+    )
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -10204,6 +10228,7 @@ async def stream_response(
         workflow_directive_block,  # WS-5 — prefer an authored workflow rail over improvising
         pinned_rail_text,    # WS-3 (C6) — the mode's PINNED rail, already in context
         book_context_note,
+        synchronous_turn_note,  # DQ-T69 — a turn cannot keep a promise about later
         CATALOGUE_UNAVAILABLE_NOTICE if _catalogue_outage else None,
     ]
     _system_content = build_system_message(
