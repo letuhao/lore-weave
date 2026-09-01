@@ -51,7 +51,12 @@ func loadPreconfig(data []byte) []ModelInventory {
 type Adapter interface {
 	ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error)
 	Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error)
-	HealthCheck(ctx context.Context, endpointBaseURL, secret string) error
+	// HealthCheck probes a credential. It returns the Usage it INCURRED, because on
+	// every cloud provider this probe is a real, billable completion — and every
+	// implementation used to discard that fact, so the spend reached the provider
+	// and never reached usage_logs. A caller that cannot attribute the usage may
+	// ignore it; one that can MUST record it.
+	HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error)
 
 	// Stream — Phase 1a (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN). Open a
 	// streaming chat completion against the provider and emit canonical
@@ -1006,10 +1011,14 @@ func (a *openaiAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, mod
 	return out, usage, nil
 }
 
-func (a *openaiAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) error {
-	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "gpt-4o-mini",
-		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
-	return err
+func (a *openaiAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error) {
+	// max_tokens:1 — this probe asks "does the credential work", not for prose. It was
+	// UNCAPPED against a hardcoded paid model, so every health check bought an
+	// arbitrarily long completion that nothing recorded.
+	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, "gpt-4o-mini",
+		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}},
+			"max_tokens": 1})
+	return u, err
 }
 
 func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
@@ -1210,10 +1219,14 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	return out, usage, nil
 }
 
-func (a *anthropicAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) error {
-	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "claude-3-5-sonnet-20241022",
-		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
-	return err
+func (a *anthropicAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error) {
+	// max_tokens:1 — this probe asks "does the credential work", not for prose. It was
+	// UNCAPPED against a hardcoded paid model, so every health check bought an
+	// arbitrarily long completion that nothing recorded.
+	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, "claude-3-5-sonnet-20241022",
+		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}},
+			"max_tokens": 1})
+	return u, err
 }
 
 // Stream — Phase 1c-anthropic. Closes D-PHASE-1C-ANTHROPIC. Anthropic's
@@ -1415,26 +1428,29 @@ func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, secret stri
 //     Local Ollama takes no key and skips it, so the common path costs nothing extra.
 //
 // num_predict 1 keeps the cost of the auth proof at a single token.
-func (a *ollamaAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) error {
+func (a *ollamaAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error) {
 	models, err := a.ListModels(ctx, endpointBaseURL, secret)
 	if err != nil {
-		return fmt.Errorf("endpoint unreachable: %w", err)
+		return Usage{}, fmt.Errorf("endpoint unreachable: %w", err)
 	}
 	if len(models) == 0 {
-		return fmt.Errorf("endpoint reachable but serves no models")
+		return Usage{}, fmt.Errorf("endpoint reachable but serves no models")
 	}
 	if secret == "" {
 		// Local Ollama: nothing to authenticate, and reachability is the whole question.
-		return nil
+		// No completion, so genuinely zero usage — not an unreported one.
+		return Usage{}, nil
 	}
-	if _, _, err := a.Invoke(ctx, endpointBaseURL, secret, models[0].ProviderModelName,
+	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, models[0].ProviderModelName,
 		map[string]any{
 			"messages":   []map[string]any{{"role": "user", "content": "hi"}},
 			"max_tokens": 1,
-		}); err != nil {
-		return fmt.Errorf("credential rejected by %s: %w", models[0].ProviderModelName, err)
+		})
+	if err != nil {
+		// The call still SPENT if it reached the model; a rejected credential did not.
+		return u, fmt.Errorf("credential rejected by %s: %w", models[0].ProviderModelName, err)
 	}
-	return nil
+	return u, nil
 }
 
 // Stream — Ollama supports streaming via its OpenAI-compatible
@@ -1637,10 +1653,14 @@ func (a *lmStudioAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, m
 	return out, usage, nil
 }
 
-func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) error {
-	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "",
-		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
-	return err
+func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error) {
+	// max_tokens:1 — this probe asks "does the credential work", not for prose. It was
+	// UNCAPPED against a hardcoded paid model, so every health check bought an
+	// arbitrarily long completion that nothing recorded.
+	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, "",
+		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}},
+			"max_tokens": 1})
+	return u, err
 }
 
 // Stream — LM Studio is OpenAI-compatible on /v1/chat/completions, so this

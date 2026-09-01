@@ -1452,11 +1452,20 @@ func (s *Server) providerHealth(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "M03_PROVIDER_KIND_UNSUPPORTED", "unsupported provider kind")
 		return
 	}
-	if err := adapter.HealthCheck(r.Context(), cred.EndpointBaseURL, cred.Secret); err != nil {
+	hcUsage, hcErr := adapter.HealthCheck(r.Context(), cred.EndpointBaseURL, cred.Secret)
+	// D-BILL-UNRECORDED-PROBE — the probe is a REAL completion on every cloud provider,
+	// and nothing recorded it: our usage_logs read 18 rows against the provider's own
+	// dashboard of 23 for the same model. Record it on BOTH outcomes (a rejected
+	// credential can still have spent) and attribute it to a model registered under this
+	// credential. When none is registered there is nothing to attribute to; say so in the
+	// log rather than inventing a model_ref, because a wrong attribution is worse than a
+	// named gap.
+	s.recordProbeUsage(r.Context(), userID, cred.ProviderCredentialID, "health_check", hcUsage, hcErr)
+	if hcErr != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"provider_credential_id": cred.ProviderCredentialID,
 			"healthy":                false,
-			"message":                err.Error(),
+			"message":                hcErr.Error(),
 		})
 		return
 	}
@@ -2503,9 +2512,23 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		"messages": []map[string]any{
 			{"role": "user", "content": "Hi"},
 		},
+		// D-BILL-UNRECORDED-PROBE — capped. A verify asks "does this model answer", not
+		// for prose, and this ping was UNCAPPED against whatever model was registered.
+		"max_tokens": 1,
 	}
 
-	output, _, invokeErr := adapter.Invoke(ctx, endpointBaseURL, secret, providerModelName, pingInput)
+	output, pingUsage, invokeErr := adapter.Invoke(ctx, endpointBaseURL, secret, providerModelName, pingInput)
+	// The usage used to go into `_`. It is a real completion on a real credential, so it
+	// is booked here on BOTH outcomes — modelRef is in scope on this path, so unlike the
+	// credential health check there is nothing to guess about attribution.
+	if pingUsage.InputTokens > 0 || pingUsage.OutputTokens > 0 {
+		st := "success"
+		if invokeErr != nil {
+			st = "provider_error"
+		}
+		s.recordSyncUsage(ctx, userID, modelID, "verify", st,
+			pingUsage.InputTokens, pingUsage.OutputTokens, nil, nil, nil)
+	}
 
 	latencyMs := time.Since(start).Milliseconds()
 
@@ -3070,6 +3093,44 @@ func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID
 				"operation", operation, "request_id", reqID.String(), "err", err)
 		}
 	}()
+}
+
+// recordProbeUsage books the spend of a credential PROBE (health check / verify).
+//
+// 🔴 THESE CALLS WERE FREE ONLY IN OUR LEDGER. Every adapter's HealthCheck issues a real
+// completion, and three of the four did it UNCAPPED against a hardcoded paid model. None
+// was recorded, so the provider's request count ran ahead of ours with no way to tell that
+// drift from a leak.
+//
+// Attribution: a probe targets a CREDENTIAL, not a user_model, so there is no model_ref in
+// hand. We adopt an active model registered under that credential. If the credential has
+// none, we log and skip — never a synthetic model_ref, which would put fabricated rows in
+// the spend ledger to make a number look complete.
+func (s *Server) recordProbeUsage(ctx context.Context, userID, credentialID uuid.UUID,
+	purpose string, u provider.Usage, probeErr error) {
+	if s.pool == nil || s.guardrail == nil {
+		return
+	}
+	if u.InputTokens == 0 && u.OutputTokens == 0 {
+		return // no completion happened (local Ollama's reachability-only path)
+	}
+	var modelRef uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+SELECT user_model_id FROM user_models
+WHERE provider_credential_id = $1 AND owner_user_id = $2 AND is_active = true
+ORDER BY created_at LIMIT 1`, credentialID, userID).Scan(&modelRef)
+	if err != nil {
+		slog.Warn("probe spend is UNATTRIBUTED — no active model under this credential",
+			"purpose", purpose, "credential_id", credentialID.String(),
+			"input_tokens", u.InputTokens, "output_tokens", u.OutputTokens)
+		return
+	}
+	status := "success"
+	if probeErr != nil {
+		status = "provider_error"
+	}
+	s.recordSyncUsage(ctx, userID, modelRef, purpose, status,
+		u.InputTokens, u.OutputTokens, nil, nil, nil)
 }
 
 // ── K12.1 — Embedding endpoint ──────────────────────────────────────────────

@@ -123,7 +123,7 @@ func TestOllamaHealthCheckProvesTheCredentialNotJustReachability(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := newOllamaTestAdapter().HealthCheck(context.Background(), srv.URL, "sk-test"); err != nil {
+	if _, err := newOllamaTestAdapter().HealthCheck(context.Background(), srv.URL, "sk-test"); err != nil {
 		t.Fatalf("HealthCheck: %v", err)
 	}
 	if len(paths) < 2 || paths[len(paths)-1] != "/api/chat" {
@@ -154,7 +154,7 @@ func TestOllamaHealthCheckFAILSWhenTheCredentialIsRejected(t *testing.T) {
 	// 🔴 THE TEETH. Listing succeeds (as it does on the real endpoint even with a bogus key) and
 	// only the completion fails. A check that passed here would be exactly the guard-that-cannot-
 	// fail this fix exists to avoid.
-	if err := newOllamaTestAdapter().HealthCheck(context.Background(), srv.URL, "bogus"); err == nil {
+	if _, err := newOllamaTestAdapter().HealthCheck(context.Background(), srv.URL, "bogus"); err == nil {
 		t.Fatal("HealthCheck reported HEALTHY on a credential the endpoint rejected — the " +
 			"listing passed and nothing checked the key")
 	}
@@ -169,7 +169,7 @@ func TestOllamaHealthCheckSkipsTheCompletionForLocal(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := newOllamaTestAdapter().HealthCheck(context.Background(), srv.URL, ""); err != nil {
+	if _, err := newOllamaTestAdapter().HealthCheck(context.Background(), srv.URL, ""); err != nil {
 		t.Fatalf("HealthCheck (local): %v", err)
 	}
 	for _, p := range paths {
@@ -177,5 +177,73 @@ func TestOllamaHealthCheckSkipsTheCompletionForLocal(t *testing.T) {
 			t.Error("local Ollama takes no key, so there is nothing to authenticate — spending a " +
 				"completion on every health check is a cost the common path should not pay")
 		}
+	}
+}
+
+// 🔴 D-BILL-UNRECORDED-PROBE — THE PROBE SPENDS, AND SAID SO TO NOBODY.
+//
+// HealthCheck returned only `error`. The completion it issues on a cloud credential is a
+// real, billable request, and discarding its Usage meant nothing downstream could record
+// it: usage_logs held 18 rows for nemotron-3-super while the provider's own dashboard
+// showed 23 for the same model. That drift is indistinguishable from a leak.
+//
+// Three of the four adapters were worse than this one — openai and anthropic probed
+// HARDCODED PAID MODELS with no max_tokens at all, so each health check bought an
+// arbitrarily long completion.
+func TestOllamaHealthCheckReportsTheUsageItSpent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/tags":
+			_, _ = w.Write([]byte(`{"models":[{"name":"glm-5.3-flash"}]}`))
+		case "/api/chat":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			// Ollama's /api/chat takes the cap as options.num_predict, NOT max_tokens —
+			// Invoke translates it. Asserting the wrong key here passed vacuously in an
+			// earlier draft of this test.
+			opts, _ := body["options"].(map[string]any)
+			if opts == nil || opts["num_predict"] == nil {
+				t.Errorf("the probe was sent UNCAPPED (options=%v) — a credential check asks "+
+					"whether the key works, not for prose, and an uncapped probe buys whatever "+
+					"the model emits", body["options"])
+			}
+			_, _ = w.Write([]byte(`{"message":{"content":"ok"},"prompt_eval_count":7,"eval_count":1}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	u, err := newOllamaTestAdapter().HealthCheck(context.Background(), srv.URL, "sk-test")
+	if err != nil {
+		t.Fatalf("HealthCheck: %v", err)
+	}
+	if u.InputTokens == 0 && u.OutputTokens == 0 {
+		t.Error("HealthCheck reported ZERO usage for a probe that ran a completion — the " +
+			"caller cannot book spend it is never told about, which is exactly how our " +
+			"ledger drifted 5 calls behind the provider's")
+	}
+}
+
+// The mirror: local Ollama runs NO completion, so zero usage here is the truth, not a
+// dropped number. recordProbeUsage keys on this to skip writing an empty row.
+func TestOllamaHealthCheckReportsZeroUsageWhenItDidNotSpend(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/chat" {
+			t.Error("local Ollama must not be probed with a completion")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"name":"gemma4:latest"}]}`))
+	}))
+	defer srv.Close()
+
+	u, err := newOllamaTestAdapter().HealthCheck(context.Background(), srv.URL, "")
+	if err != nil {
+		t.Fatalf("HealthCheck (local): %v", err)
+	}
+	if u.InputTokens != 0 || u.OutputTokens != 0 {
+		t.Errorf("local probe reported usage %+v — it ran no completion, so a non-zero "+
+			"figure here would put invented spend in the ledger", u)
 	}
 }
