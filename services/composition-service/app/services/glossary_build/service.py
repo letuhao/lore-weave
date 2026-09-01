@@ -100,11 +100,26 @@ _NEXT_OP_FOR_STATUS = {
 #: recorded call is `start` or a card. Naming the next op in the ACTIVE_RUN refusal alone did not
 #: move it (K=5, no change) -- which is consistent with a caller told to approve something it
 #: cannot show.
+#: 🔴 THE FIRST WORDING WAS WRITTEN FOR TURN 1 AND READ AS "STOP" ON TURN 2. It said "Show it to
+#: the user, then call op='approve_plan' when they agree" — correct when the plan has just been
+#: made, and wrong on the turn that RECOVERS it, because by then the user has already agreed.
+#:
+#: MEASURED (t64-protocol5, K=5): three of five runs reached op=status, received the worklist,
+#: the run_id AND that sentence, and called nothing further. The scenario's turn 2 is literally
+#: "Yes, that worklist is right — go ahead and build them", so the tool was telling the model to
+#: go back and ask for an agreement it was already holding.
+#:
+#: THE INVARIANT: an instruction returned WITH recovered state must be valid for the turn that
+#: recovers it, not only for the turn that created it. The tool cannot know which turn it is on,
+#: so it names both cases instead of assuming the earlier one.
 _NEXT_SENTENCE_FOR_STATUS = {
-    "plan_ready": ("The worklist is in `items` above. Show it to the user, then call "
-                   "op='approve_plan' with this run_id when they agree."),
-    "edges_ready": ("The proposed relationships are in `edges` above. Show them to the user, "
-                    "then call op='approve_edges' with this run_id to write them."),
+    "plan_ready": ("The worklist is in `items` above. If the user has ALREADY approved it, call "
+                   "op='approve_plan' with this run_id NOW — do not ask again. If they have not "
+                   "seen it yet, show it to them and call op='approve_plan' when they agree."),
+    "edges_ready": ("The proposed relationships are in `edges` above. If the user has ALREADY "
+                    "approved them, call op='approve_edges' with this run_id NOW — do not ask "
+                    "again. If they have not seen them yet, show them and call "
+                    "op='approve_edges' when they agree."),
     "planning": "Still planning — poll op='status' again with this run_id.",
     "building": "Still building — poll op='status' again with this run_id.",
     "proposing": "Still proposing — poll op='status' again with this run_id.",

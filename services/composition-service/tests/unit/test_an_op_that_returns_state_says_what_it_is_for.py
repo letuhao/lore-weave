@@ -37,8 +37,30 @@ class TestEveryStateSaysWhatToDo:
             s = gb.next_sentence_for(status)
             assert s, f"{status} says nothing"
             assert op in s, f"{status} does not name op='{op}': {s!r}"
-            assert "Show it to the user" in s or "Show them to the user" in s, (
+            assert "show it to them" in s or "show them and call" in s, (
                 f"{status} names the op but not the precondition its own protocol states: {s!r}")
+
+    def test_a_gate_does_not_send_a_model_BACK_for_an_agreement_it_already_has(self):
+        """🔴 THE WORDING WAS WRITTEN FOR TURN 1 AND READ AS "STOP" ON TURN 2.
+
+        It said "Show it to the user, then call op='approve_plan' when they agree" -- correct
+        when the plan has just been made, and wrong on the turn that RECOVERS it, because by
+        then the user has already agreed.
+
+        MEASURED (t64-protocol5, K=5): three of five runs reached op=status, received the
+        worklist, the run_id AND that sentence, and called nothing further. The scenario's turn 2
+        is literally "Yes, that worklist is right -- go ahead and build them".
+
+        THE INVARIANT: an instruction returned WITH recovered state must be valid for the turn
+        that recovers it. The tool cannot know which turn it is on, so it names BOTH cases."""
+        for status in ("plan_ready", "edges_ready"):
+            s = gb.next_sentence_for(status)
+            assert "ALREADY approved" in s, (
+                f"{status} assumes the user has not seen the data yet: {s!r} — on the turn that "
+                "recovers it they have, and the sentence sends the model back to ask again")
+            assert "NOW" in s and "do not ask again" in s, (
+                f"{status} names the already-approved case without telling the model to act on "
+                "it: {s!r}")
 
     def test_a_polling_state_says_to_poll(self):
         for status in ("planning", "building", "proposing", "kg_projecting"):
