@@ -47,6 +47,10 @@ type streamGuard struct {
 	modelRef    uuid.UUID
 	op          string // "chat" | "tts"
 	pricing     billing.Pricing
+	// providerKind — D-BILL-PROVIDER-KIND. The chat stream is the highest-volume
+	// producer of usage_logs rows; without this the /record payload hardcoded "" and
+	// the dominant traffic was unattributable.
+	providerKind string
 
 	// chat-only running tally.
 	inputCostUSD float64 // fixed: estimated input tokens × input price
@@ -86,7 +90,7 @@ type streamGuard struct {
 func (s *Server) preflightStream(
 	w http.ResponseWriter, r *http.Request,
 	userID uuid.UUID, op, modelSource string, modelRef uuid.UUID,
-	pricing billing.Pricing, inputMap map[string]any,
+	pricing billing.Pricing, inputMap map[string]any, providerKind string,
 ) (*streamGuard, bool) {
 	if s.guardrail == nil {
 		return nil, true
@@ -167,6 +171,7 @@ func (s *Server) preflightStream(
 		modelRef:      modelRef,
 		op:            op,
 		pricing:       pricing,
+		providerKind:  providerKind,
 		abortUSD:      minFloat(res.DailyAvailable, res.MonthlyAvailable),
 	}
 	if op == "chat" {
@@ -415,6 +420,7 @@ func (g *streamGuard) settle(ctx context.Context) {
 		if err := g.guardrail.RecordUsage(ctx, billing.UsageRecord{
 			RequestID:     g.jobID,
 			OwnerUserID:   g.ownerUserID,
+			ProviderKind:  g.providerKind,
 			ModelSource:   g.modelSource,
 			ModelRef:      g.modelRef,
 			Operation:     g.op,

@@ -10,7 +10,7 @@ import "testing"
 
 func TestBuildUsageFields_Contract(t *testing.T) {
 	f := buildUsageFields("req-1", "owner-1", "camp-1", "mcpkey-1", "user_model", "model-1",
-		"translation", "0.00012345", 120, 30, "success", `{"messages":[]}`, `{"text":"hi"}`)
+		"translation", "0.00012345", 120, 30, "success", `{"messages":[]}`, `{"text":"hi"}`, "lm_studio")
 
 	want := map[string]string{
 		"request_id":       "req-1",
@@ -26,6 +26,7 @@ func TestBuildUsageFields_Contract(t *testing.T) {
 		"request_status":   "success", // carried from the row (#32)
 		"request_payload":  `{"messages":[]}`,
 		"response_payload": `{"text":"hi"}`,
+		"provider_kind":    "lm_studio",
 	}
 	if len(f) != len(want) {
 		t.Fatalf("field count: got %d want %d (%v)", len(f), len(want), f)
@@ -45,7 +46,7 @@ func TestBuildUsageFields_NullsArePassthroughEmpty(t *testing.T) {
 	// A non-campaign job (campaign="") and a media/unpriced job (cost="") carry
 	// empty strings — the consumer treats "" as null. Zero tokens stringify to "0".
 	f := buildUsageFields("req-2", "owner-2", "", "", "platform_model", "model-2",
-		"image_gen", "", 0, 0, "", "", "")
+		"image_gen", "", 0, 0, "", "", "", "")
 	if f["campaign_id"] != "" {
 		t.Fatalf("campaign_id: want empty, got %v", f["campaign_id"])
 	}
@@ -72,7 +73,7 @@ func TestCampaignFields_StripsPayloads(t *testing.T) {
 	// #32 /review-impl MED — the campaign_usage stream must NOT carry the plaintext
 	// request/response payloads (the spend consumer reads only cost/ids).
 	full := buildUsageFields("r", "o", "c", "", "user_model", "m", "chat", "0.01", 5, 5,
-		"success", `{"in":1}`, `{"out":1}`)
+		"success", `{"in":1}`, `{"out":1}`, "openai")
 	camp := campaignFields(full)
 	if _, ok := camp["request_payload"]; ok {
 		t.Fatal("campaign fields must not include request_payload")
@@ -92,8 +93,29 @@ func TestBuildUsageFields_CarriesFailedStatus(t *testing.T) {
 	// #32 — a failed/cancelled call now carries its real status (not hardcoded
 	// "success") so usage-billing audits every call distinctly.
 	f := buildUsageFields("req-3", "owner-3", "", "", "user_model", "model-3",
-		"chat", "", 0, 0, "failed", `{"messages":[]}`, "")
+		"chat", "", 0, 0, "failed", `{"messages":[]}`, "", "lm_studio")
 	if f["request_status"] != "failed" {
 		t.Fatalf("request_status: want failed, got %v", f["request_status"])
+	}
+}
+
+// 🔴 D-BILL-PROVIDER-KIND — THE ORIGINAL INSTANCE. usage_logs.provider_kind was empty
+// on 99,683 of 103,072 rows (96.7%), last populated 2026-07-21. The direct /record HTTP
+// path always carried it; the JOBS path — which became the dominant producer — never
+// did, because usage_outbox had no such column, buildUsageFields had no such parameter,
+// and usage-billing's parseUsageEvent had nothing to read. Nothing failed. Spend simply
+// could not be attributed to a provider, which is the first question anyone asks of a
+// bill. Assert the key REACHES the wire; the consumer half is asserted in
+// usage-billing's parseUsageEvent test.
+func TestBuildUsageFields_CarriesProviderKind(t *testing.T) {
+	f := buildUsageFields("r", "o", "", "", "user_model", "m", "chat", "0.01", 5, 5,
+		"success", "", "", "ollama")
+	got, ok := f["provider_kind"]
+	if !ok {
+		t.Fatal("provider_kind is absent from the usage-stream fields — every row the " +
+			"jobs path writes lands with provider_kind='' and spend cannot be attributed")
+	}
+	if got != "ollama" {
+		t.Errorf("provider_kind = %v, want \"ollama\"", got)
 	}
 }

@@ -192,6 +192,15 @@ type UsageRecord struct {
 	RequestStatus string
 	InputPayload  map[string]any
 	OutputPayload map[string]any
+
+	// ProviderKind ("openai" | "anthropic" | "ollama" | "lm_studio" | …) — the
+	// provider that served the call. D-BILL-PROVIDER-KIND: this used to be absent
+	// from the struct and hardcoded to "" in the /record payload below, so 96.7% of
+	// usage_logs rows (99,683 of 103,072) carried no provider at all and spend could
+	// not be attributed. Empty is still ACCEPTED (usage-billing dropped its CHECK),
+	// so an un-resolving caller degrades rather than failing — but every caller in
+	// this service now resolves it from the same row it read the model from.
+	ProviderKind string
 }
 
 // RecordUsage posts a model-level usage entry to usage-billing's
@@ -199,10 +208,10 @@ type UsageRecord struct {
 // model-level biller). request_id = the job_id, so a retry is idempotent on
 // the usage-billing side. Best-effort: the caller logs the error.
 //
-// provider_kind is left empty — the worker does not resolve it (the
-// D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS gap the callers also accept);
-// usage-billing's stale provider_kind CHECK is dropped in the 6a-β migration
-// so an empty value is now accepted.
+// provider_kind is carried from the caller (D-BILL-PROVIDER-KIND, closing the
+// old D-PHASE5E-BILLING-PROVIDER-KIND-ANALYTICS gap). usage-billing's stale
+// provider_kind CHECK was dropped in the 6a-β migration, so an empty value from
+// a caller that cannot resolve one is still accepted rather than fatal.
 func (c *GuardrailClient) RecordUsage(ctx context.Context, rec UsageRecord) error {
 	// P0-2 — request_status is now carried from the caller (the terminal outcome),
 	// not hardcoded "success", so an aborted/errored/cancelled stream records its real
@@ -214,7 +223,7 @@ func (c *GuardrailClient) RecordUsage(ctx context.Context, rec UsageRecord) erro
 	payload := map[string]any{
 		"request_id":     rec.RequestID,
 		"owner_user_id":  rec.OwnerUserID,
-		"provider_kind":  "",
+		"provider_kind":  rec.ProviderKind,
 		"model_source":   rec.ModelSource,
 		"model_ref":      rec.ModelRef,
 		"input_tokens":   rec.InputTokens,

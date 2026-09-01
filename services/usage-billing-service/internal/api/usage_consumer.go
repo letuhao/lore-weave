@@ -173,7 +173,8 @@ func (c *UsageConsumer) handleMessage(ctx context.Context, values map[string]any
 
 // parseUsageEvent maps a Redis-stream field map (all string values, per S4b
 // buildUsageFields) to usageLogParams. cost_usd empty/unparseable → flat fallback
-// (rare: unpriced model). provider_kind + payloads are absent on the jobs path.
+// (rare: unpriced model). provider_kind now rides the stream (D-BILL-PROVIDER-KIND);
+// it is '' only for a row written before usage_outbox carried the column.
 func parseUsageEvent(v map[string]any) (usageLogParams, error) {
 	get := func(k string) string {
 		s, _ := v[k].(string)
@@ -222,6 +223,7 @@ func parseUsageEvent(v map[string]any) (usageLogParams, error) {
 	return usageLogParams{
 		RequestID:     reqID,
 		OwnerUserID:   owner,
+		ProviderKind:  get("provider_kind"),
 		ModelSource:   get("model_source"),
 		ModelRef:      modelRef,
 		InputTokens:   inTok,

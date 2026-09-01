@@ -3037,9 +3037,23 @@ func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID
 		status = "success"
 	}
 	detached := observability.DetachedContext(ctx)
+	// D-BILL-PROVIDER-KIND — resolved HERE rather than threaded through the six
+	// call sites (rerank/embed/web_search × success/provider_error), two of which
+	// have no providerKind in scope at all. One place, so a future sync op cannot
+	// forget it. Best-effort: a lookup failure leaves "" — the same value every row
+	// carried before, never a lost audit row.
+	// s.pool is nil on a Server built as a bare literal (unit tests), exactly as
+	// s.guardrail is above — guard it the same way rather than panicking.
+	var providerKind string
+	if s.pool != nil {
+		_ = s.pool.QueryRow(ctx,
+			`SELECT provider_kind FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+			modelRef, userID).Scan(&providerKind)
+	}
 	rec := billing.UsageRecord{
 		RequestID:     reqID,
 		OwnerUserID:   userID,
+		ProviderKind:  providerKind,
 		ModelSource:   "user_model",
 		ModelRef:      modelRef,
 		Operation:     operation,
@@ -3363,8 +3377,9 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	// still records, just without an exact cost. Only reported prompt_tokens count.
 	var embedCostPtr *float64
 	if result.PromptTokens > 0 {
-		var pricing billing.Pricing
-		if uerr := json.Unmarshal(pricingBytes, &pricing); uerr == nil {
+		// DecodePricing (not Unmarshal) so a LOCAL embedding model bills $0 rather
+		// than its stored cloud rate. endpointBaseURL is already in scope here.
+		if pricing, uerr := billing.DecodePricing(pricingBytes, endpointBaseURL); uerr == nil {
 			if c, cerr := billing.PriceEmbedding(result.PromptTokens, pricing); cerr == nil {
 				embedCostPtr = &c
 			}
