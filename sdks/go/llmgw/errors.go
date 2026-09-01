@@ -34,6 +34,11 @@ func (e *Error) Error() string {
 }
 
 // Unwrap returns the sentinel error for errors.Is chain-walking.
+//
+// Stays a SINGLE-error Unwrap on purpose. A transport failure joins its cause
+// into `inner` (see newTransportError) rather than returning []error, because
+// the stdlib errors.Unwrap() function returns nil for a multi-error Unwrap —
+// which would silently break every caller that walks the chain that way.
 func (e *Error) Unwrap() error { return e.inner }
 
 // Sentinel errors. Match via errors.Is(err, ErrXxx) — never compare
@@ -98,6 +103,35 @@ func newErrorFromCode(code, message string, statusCode int) *Error {
 		Message:    message,
 		StatusCode: statusCode,
 		inner:      codeSentinels[code], // nil if unknown — OK
+	}
+}
+
+// newTransportError wraps a real transport/context failure, KEEPING the cause so
+// errors.Is can still see it. Use this — never newErrorFromCode — whenever the
+// message is built from another error's text.
+//
+// 🔴 THE CAUSE USED TO BE THROWN AWAY. The transport formatted the real error into
+// Message with `+err.Error()` and kept only the code sentinel, so
+// errors.Is(err, context.Canceled) was FALSE for a cancelled request — a caller
+// could not tell "the user cancelled" from "the network broke", which is the exact
+// distinction cancellation handling is built on. It surfaced as a FLAKY test:
+// TestWaitTerminal_ContextCancellation passed when the cancel landed between polls
+// and failed when it landed mid-request, so it went red only under load.
+func newTransportError(code, message string, statusCode int, cause error) *Error {
+	inner := codeSentinels[code]
+	switch {
+	case inner != nil && cause != nil:
+		// Both reachable from one error: errors.Is(err, ErrHTTPTransport) says WHAT
+		// kind of failure, errors.Is(err, context.Canceled) says WHY.
+		inner = fmt.Errorf("%w: %w", inner, cause)
+	case inner == nil:
+		inner = cause
+	}
+	return &Error{
+		Code:       code,
+		Message:    message,
+		StatusCode: statusCode,
+		inner:      inner,
 	}
 }
 
