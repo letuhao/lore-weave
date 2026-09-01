@@ -2,11 +2,21 @@
 
 *Generated 2026-09-01 by `scripts/toolloop/dq_digest.py`. Derived from the ledger at emit time — do not hand-edit; re-run it.*
 
-**17 defects are open and 1 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
+**12 defects are open and 3 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
 
 A ruling goes on the question's row as an `answer_<date>` field. The loop reads it there and builds it **as worded** — if it cannot be built, the question comes back with the measurement showing why, rather than a substituted mechanism.
 
 ## All open questions, by how many defects they release
+
+### DQ-T91 — releases 2 defects
+
+**Asked:** A chat turn dies because the provider drops the model between two passes of the SAME turn. The request is provably fine. What should the platform do about a provider error that produced NOTHING — retry it, prevent the eviction, or keep telling the author the turn failed?
+
+**My recommendation:** (a) AND (b), and they are not alternatives: (b) makes it stop happening on this machine, (a) makes it survivable anywhere. (a) is the one I would build, and its bar is narrow on purpose: retry ONLY when the stream produced no output delta and no usage chunk. That is provably not a partial answer, so a retry cannot double-write, double-bill, or replay half a reply to the author. Anything broader — retrying a stream that emitted tokens — I would not build without a separate ruling. (c) is the cleanest engineering answer and the most disruptive; it is worth having as a position on whether one provider should serve both roles, but it is not this row's to settle. (d) I would argue against. The a…
+
+**Why it is yours, not mine:** Every option changes what happens on EVERY provider error, or changes the machine's configuration. A retry is a behaviour change on a path that currently fails closed; pinning or pre-loading models is host configuration on the owner's machine; and doing nothing is a decision too, since the measured cost is a dead turn for the author. None of these is a bug fix I can take on my own authority.
+
+**Blocks:** `D-THE-STALL-CONCENTRATES-ON-COMPOSITION-MOTIF-SEARCH`, `D-UPSTREAM-ERROR-WITH-NO-MESSAGE`
 
 ### DQ-T88 — releases 1 defect
 
@@ -17,6 +27,16 @@ A ruling goes on the question's row as an `answer_<date>` field. The loop reads 
 **Why it is yours, not mine:** Every option changes a cross-cutting runtime behaviour: what history the model receives, or what the runtime does with a result field. The ruling I was given (fix the description) was built exactly as worded and measured twice; this question is the correction going back, with the evidence that forced it.
 
 **Blocks:** `D-A-PIPELINE-TOOL-COMPETES-WITH-ITS-OWN-PARTS`
+
+### DQ-T90 — releases 1 defect
+
+**Asked:** The score-distribution instrument DQ-T67 required now exists and has run. Which lever moves, given the cap owns 83% of the failures but the correct domain misses by a median 0.0266 in a field only 0.1537 wide?
+
+**My recommendation:** (b), and (c) alongside it as bookkeeping. The cap owns the failures but only because the ranking hands it an unrankable list: a median margin of 0.0266 means the cap boundary is falling inside embedding noise, so ANY cap number is arbitrary. Raising the cap treats the symptom and the K-sweep already priced it — a smooth curve with no knee is what buying coverage by brute force looks like. (a) is defensible as a stopgap IF the owner wants the 29.2% reduced today and accepts the context cost; it is cheap and reversible. I would not ship it as the answer. (d) is the most interesting and the least measured: nothing here says whether surfaced tools rank the skills better than the prompt does. It…
+
+**Why it is yours, not mine:** Every option changes what every turn receives — more injected context, different skill texts, or a different ranking signal. DQ-T67 explicitly deferred the lever choice until the instrument existed; it exists now, so this is that choice, with the numbers it was waiting for.
+
+**Blocks:** `D-THE-INTENT-ROUTERS-TOP-K-CAP-CROWDS-OUT-THE-RIGHT-DOMAIN`
 
 ### DQ-T2 — releases 0 defects
 

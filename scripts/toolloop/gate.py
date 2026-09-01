@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import functools
 
+import call_outcome
 import selection_rate
 import json
 import hashlib
@@ -1069,7 +1070,19 @@ def _record(a, path: pathlib.Path, row: dict, reason: str) -> None:
             f"ship_audit and falsifier are on file in the same entry.")
     if reason:
         note += f" BLOCKED REASON: {reason}"
-    tools[a.tool] = {**prev, "state": a.state, "cycle": ledger.get("progress", {}).get("last_batch"),
+    # DQ-T74, answered by the owner 2026-08-31: "STATE IT, DO NOT DEMOTE. A tool's verdict must
+    # say what its calls actually returned -- 'proven (reachable; 0 of N calls returned ok)' --
+    # so the silent half is audible without re-opening part of the catalogue by side effect."
+    #
+    # The verdict is written HERE, so this is where it has to say it. Stamped onto the row rather
+    # than only printed, because a sentence that exists solely in a terminal nobody kept is not a
+    # verdict -- and a reader of the ledger is the person the ruling is for.
+    #
+    # It changes no STATE, which is the half of the ruling that says "do not demote": the tool
+    # keeps `proven` and gains a clause saying which sense of the word was earned.
+    verdict = a.state + call_outcome.annotate(a.tool)
+    tools[a.tool] = {**prev, "state": a.state, "verdict": verdict,
+                     "cycle": ledger.get("progress", {}).get("last_batch"),
                      "note": note, "evidence_file": path.as_posix(),
                      "evidence_class": "gate-backed", "counts_toward_release": True}
     # Every counter, from one place. See recompute_progress() for why it is not an inline literal.
@@ -1111,9 +1124,17 @@ def cmd_audit(a) -> int:
     missing_ev = missing_evidence_paths(ledger)
     unevidenced = unevidenced_cannot_reproduce(ledger)
     unmeasurable = unevidenced_unmeasurable(ledger)
+    stale_verdicts = {}
+    for _n, _row in tools.items():
+        _state = _row.get("state")
+        if not _state:
+            continue
+        _want = _state + call_outcome.annotate(_n)
+        if _row.get("verdict") != _want:
+            stale_verdicts[_n] = (_row.get("verdict"), _want)
     if (not orphans and not drift and not aliases and not dq_states and not dangling
             and not status_drift and not stale_blocks and not missing_ev
-            and not unevidenced and not unmeasurable):
+            and not unevidenced and not unmeasurable and not stale_verdicts):
         print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows), "
               "`progress` agrees with them, and every DQ block is readable by the generator")
         return 0
@@ -1141,6 +1162,32 @@ def cmd_audit(a) -> int:
             LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10),
                               encoding="utf-8")
             print(f"  -> rewrote {len(drift)} field(s) from the rows. Re-run `audit` to confirm.")
+    # ── DQ-T74 (owner 2026-08-31) — A VERDICT MUST SAY WHAT ITS CALLS RETURNED ─────────────
+    # "STATE IT, DO NOT DEMOTE ... so the silent half is audible without re-opening part of the
+    # catalogue by side effect." `_record` stamps it at conclude time; this keeps it TRUE
+    # afterwards. Without a standing check the annotation is a one-day fact: every batch adds
+    # calls, and a row that says "0 of 79 calls returned ok" while the tool has since succeeded
+    # is worse than no annotation, because it is confidently wrong rather than merely silent.
+    #
+    # Read from the CONTRACT, never the database, so `audit` stays offline like every other bar
+    # here. Refreshing the contract is `python scripts/toolloop/call_outcome.py`, which is also
+    # what re-stamps the rows.
+    if stale_verdicts:
+        print(f"REFUSED — {len(stale_verdicts)} tool row(s) carry a verdict that no longer "
+              "matches what their calls returned. It is DERIVED from "
+              "contracts/tool-call-outcomes.json; re-run `python scripts/toolloop/"
+              "call_outcome.py` to refresh both, or `audit --fix-verdicts` to restamp from the "
+              "contract as it stands:")
+        for _n, (_have, _want) in sorted(stale_verdicts.items())[:8]:
+            print(f"  {_n:38} stored={str(_have)[:44]!r}")
+            print(f"  {'':38} rows say={_want[:44]!r}")
+        if len(stale_verdicts) > 8:
+            print(f"  … and {len(stale_verdicts) - 8} more")
+        if getattr(a, "fix_verdicts", False):
+            _changed = call_outcome.stamp(ledger, call_outcome.load())
+            LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10),
+                              encoding="utf-8")
+            print(f"  -> restamped {len(_changed)} row(s) from the contract. Re-run `audit`.")
     if stale_blocks:
         print(f"REFUSED — {len(stale_blocks)} OPEN row(s) are blocked on a question that is no "
               "longer open. The queue is hiding work that is READY, and `--check` can report "
@@ -1248,7 +1295,8 @@ def cmd_conclude(a) -> int:
         print(f"ledger missing: {LEDGER}")
         return 3
     _record(a, path, row, "")
-    print(f"gate PASSED for {a.tool} → RECORDED {a.state} in the ledger")
+    print(f"gate PASSED for {a.tool} → RECORDED "
+          f"{a.state}{call_outcome.annotate(a.tool)} in the ledger")
     print("  (the gate proves the EVIDENCE exists; it does not prove the root cause is right)")
     return 0
 
@@ -1271,6 +1319,9 @@ def main() -> int:
     au = sub.add_parser("audit")
     au.add_argument("--fix-progress", action="store_true",
                     help="recompute the `progress` block FROM the rows (never the other way)")
+    au.add_argument("--fix-verdicts", action="store_true",
+                    help="restamp each row's `verdict` from contracts/tool-call-outcomes.json "
+                         "(DQ-T74). Refresh the contract itself with call_outcome.py")
     au.set_defaults(fn=cmd_audit)
     a = ap.parse_args()
     return a.fn(a)
