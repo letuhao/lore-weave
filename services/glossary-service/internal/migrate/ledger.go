@@ -185,6 +185,33 @@ var chain = []Step{
 	// run first, it would call the broken body and repair nothing while reporting success.
 	{"0060_glossary_recalc_restore", UpGlossaryRecalcRestore},
 	{"0061_backfill_null_cached_name", BackfillNullCachedName},
+
+	// 🔴 0066/0067 — 0060 WAS REVERTED ON THE RUNNING DATABASE and could not be re-applied.
+	// Measured 2026-09-01: the deployed recalculate_entity_snapshot was byte-identical to
+	// 0004's body again (103 lines, zero mentions of cached_name) while schema_migrations
+	// still recorded 0060 as applied on 2026-08-26 — so RunChain skipped it forever and
+	// glossary_search could not match an entity by name. Entities created 2026-08-31 were
+	// 108 of 108 with cached_name NULL.
+	//
+	// WHY IT WAS REVERTED: a test called the step FUNCTIONS directly
+	// (internal/events/revision_consumer_test.go ran {"UpSnapshot", migrate.UpSnapshot} against
+	// GLOSSARY_TEST_DB_URL), which bypasses ApplyOnce and re-executes 0004's SQL. That call site
+	// is now migrate.RunChain, and scripts/test_a_migration_step_reaches_the_db_only_through_
+	// the_ledger.py fails the build if any env-DSN test reaches a step that redefines the
+	// function again.
+	//
+	// A NEW ENTRY, never an edit to 0060 — the same rule 0060 itself was written under, now
+	// applied to the repair of the repair. The FUNCTIONS are reused, not copied: a second copy
+	// of the body is a second thing to drift, and this defect IS two definitions disagreeing.
+	// Restore before backfill: run the other way the backfill calls the broken body and repairs
+	// nothing while reporting success.
+	//
+	// WHAT THIS DOES NOT DO: it does not make the body self-healing. If some other out-of-chain
+	// path re-installs 0004's SQL, this reverts again and needs another new step. Closing that
+	// would mean RunChain verifying the deployed body rather than trusting the ledger, which is
+	// a design change and not this row's documented fix.
+	{"0066_glossary_recalc_restore_2", UpGlossaryRecalcRestore},
+	{"0067_backfill_null_cached_name_2", BackfillNullCachedName},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
