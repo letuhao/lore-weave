@@ -2,7 +2,7 @@
 
 *Generated 2026-09-01 by `scripts/toolloop/dq_digest.py`. Derived from the ledger at emit time — do not hand-edit; re-run it.*
 
-**10 defects are open and 4 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
+**9 defects are open and 4 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
 
 A ruling goes on the question's row as an `answer_<date>` field. The loop reads it there and builds it **as worded** — if it cannot be built, the question comes back with the measurement showing why, rather than a substituted mechanism.
 

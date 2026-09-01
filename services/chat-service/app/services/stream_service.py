@@ -11056,6 +11056,51 @@ def _client_safe_error(msg: str) -> str:
     ) else msg
 
 
+def _last_tool_success_for_author(tool_calls_history: list[dict]) -> str | None:
+    """DQ-T75, owner 2026-08-31: what a turn that produced no text and had NOTHING FAIL read.
+
+    "(a) REPORT WHAT THE TOOL RETURNED. A turn that produced no text and had nothing fail is not
+    empty-handed -- it holds a successful tool result, and it says what it read, from the record
+    already in the turn. No new prose is invented, which is the same rule that made DQ-T33
+    answerable and the reason a generic line was declined there."
+
+    THE TWENTY THIS IS FOR. DQ-T33's fallback surfaces the last tool ERROR and reaches 74 of the
+    94 recorded blank turns. The other twenty are the worst subset, not an edge: single-call turns
+    that ran a read tool, got `ok: true`, and said nothing. The tool worked, the data came back,
+    and the author got a blank reply -- so there is no error to surface and the sibling correctly
+    returns None.
+
+    🔴 IT NAMES THE CALL, NEVER THE CONTENT. The rule both DQ-T33 and DQ-T75 turn on is
+    REPORTING, NOT INVENTING, and summarising a result payload would be inventing: this function
+    has no way to know which part of a package tree or a job record the author asked about, and a
+    wrong summary of a real result is worse than silence, because it reads as an answer. So it
+    reports the one thing the record states outright -- which tools ran and returned successfully
+    -- and leaves the author to ask for what they wanted.
+
+    Returns None when no successful call is recorded, so a turn with nothing true to say stays
+    silent, exactly as before. Absence of a result is not licence to invent one.
+    """
+    names: list[str] = []
+    for tc in tool_calls_history or []:
+        if not isinstance(tc, dict) or tc.get("ok") is not True:
+            continue
+        # A carded call is not a completed read: it is a PROPOSAL the author has still to
+        # approve, and the carded path never reaches this site anyway. Excluded so a future
+        # caller cannot pick one up.
+        if tc.get("pending"):
+            continue
+        name = tc.get("tool")
+        if isinstance(name, str) and name and name not in names:
+            names.append(name)
+    if not names:
+        return None
+    if len(names) == 1:
+        return (f"I ran {names[0]} and it returned successfully, but I did not write a reply. "
+                "Ask me again and I will report what it said.")
+    return (f"I ran {', '.join(names[:-1])} and {names[-1]}, and they returned successfully, but "
+            "I did not write a reply. Ask me again and I will report what they said.")
+
+
 def _last_tool_error_for_author(tool_calls_history: list[dict]) -> str | None:
     """DQ-T33, owner 2026-08-28: the last TOOL error of a turn that produced no text.
 
@@ -12167,6 +12212,12 @@ async def _emit_chat_turn(
         _silent_turn = not "".join(full_content).strip()
         if _silent_turn:
             _tool_last_word = _last_tool_error_for_author(tool_calls_history)
+            if not _tool_last_word:
+                # DQ-T75 — nothing FAILED, so there is no error to surface. The turn is still not
+                # empty-handed: it holds a successful result, and the owner's ruling is that it
+                # says what it read. Second in order deliberately, so an error always wins: a
+                # turn that both failed a call and succeeded at another must report the failure.
+                _tool_last_word = _last_tool_success_for_author(tool_calls_history)
             if _tool_last_word:
                 full_content.append(_tool_last_word)
                 for _line in emitter.text_delta(_tool_last_word):
