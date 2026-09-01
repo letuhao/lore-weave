@@ -1290,6 +1290,28 @@ const ollamaDefaultBase = "http://localhost:11434"
 //
 // Local Ollama sends no key and is unaffected: an empty secret yields no header, which is
 // byte-identical to the previous behaviour. Same idiom as lmStudioAdapter.
+// ollamaKeepAlive holds the model — and therefore its KV cache — resident between requests.
+//
+// Ollama's prompt cache is IMPLICIT and prefix-based: a request sharing a byte-for-byte prefix
+// with the previous one skips the prefill for the matched tokens. The default unloads the model
+// after 5 MINUTES of inactivity and dumps the cache with it, so a concurrency-1 eval batch with
+// gaps between turns pays a full cold prefill every time. This platform's prompts carry ~19k
+// schema tokens before any content — exactly the shape prefix caching exists for.
+//
+// 🔴 SENT ON BOTH PATHS, VERIFIED RATHER THAN ASSUMED. `keep_alive` is an Ollama-NATIVE field and
+// Stream posts to the OpenAI-compatible /v1/chat/completions, where an unknown field is how LM
+// Studio produced 5-of-5 HTTP 400s on an object `tool_choice` after seven green guards. Probed
+// live before shipping: POST /api/chat + keep_alive -> 200, POST /v1/chat/completions +
+// keep_alive -> 200.
+//
+// NOT num_ctx, and that is measured rather than overlooked: against the live cloud endpoint a
+// prompt of 8,458 tokens was processed WHOLE (prompt_eval_count 8458) and the model recalled a
+// marker placed at the very start, so hosted models are not served with a small default window.
+// num_ctx remains a real concern for LOCAL ollama, where llama.cpp does default small — but no
+// local ollama provider exists here to measure it on, and threading context_length to the adapter
+// changes the Stream signature and its callers.
+const ollamaKeepAlive = "60m"
+
 func ollamaAuthHeaders(secret string) map[string]string {
 	headers := map[string]string{}
 	if secret != "" {
@@ -1340,9 +1362,10 @@ func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, secret stri
 		base = ollamaDefaultBase
 	}
 	payload := map[string]any{
-		"model":    modelName,
-		"messages": extractMessages(input),
-		"stream":   false,
+		"model":      modelName,
+		"messages":   extractMessages(input),
+		"stream":     false,
+		"keep_alive": ollamaKeepAlive,
 	}
 	options := map[string]any{}
 	if v, ok := input["temperature"]; ok {
@@ -1424,8 +1447,9 @@ func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, secret stri
 		base = ollamaDefaultBase
 	}
 	body := map[string]any{
-		"model":    modelName,
-		"messages": extractMessages(input),
+		"model":      modelName,
+		"messages":   extractMessages(input),
+		"keep_alive": ollamaKeepAlive,
 	}
 	if v, ok := input["temperature"]; ok {
 		body["temperature"] = v
