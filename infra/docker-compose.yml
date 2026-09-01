@@ -1005,6 +1005,12 @@ services:
       # oneshot-deadvertise (2026-07-25) — how a completed one-shot create (kg_project_create
       # once its project exists) is kept off the agent surface: off|existence|session|per_turn.
       # MEASURED winner = session (57→1 attempts, ~5x fewer tokens; see config.py).
+      # DQ-T90 arm (e). Defaults TRUE so the shipped path is unchanged; set to 0/false to run a
+      # turn with the Intent→Skill Router's preload OFF (base/pinned skills + the L1 index, and
+      # the model pulls a body with `load_skill`). A lever with no way to reach the container is
+      # not a lever — the A/B needs to flip it WITHOUT a rebuild, so the two arms differ by this
+      # and nothing else.
+      SKILL_ROUTER_PRELOAD: "${SKILL_ROUTER_PRELOAD:-true}"
       ONESHOT_DEADVERTISE_MODE: "${ONESHOT_DEADVERTISE_MODE:-session}"
       RAIL_ACTION_GATE_MODE: "${RAIL_ACTION_GATE_MODE:-done_suppress}"
       T5_INTENT_GATE_ENABLED: "${T5_INTENT_GATE_ENABLED:-false}"
