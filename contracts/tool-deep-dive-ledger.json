@@ -6560,6 +6560,19 @@
    "why_it_is_its_own_row": "Found while building DQ-T37 and unrelated to it: one is step tools, this is the workflow's own surfaces. Folding it in would bury a tool-level contract break inside a row about tool names.",
    "FIXED_2026_09_01__and_my_own_framing_was_wrong": "🔴 I FILED THIS AS 'THE SCHEMA DISAGREES WITH ITS VALIDATOR, AND WHICH LIST IS CORRECT IS A RULING'. Both halves were wrong, and reading the source rather than the symptom settled it in minutes.\n\nTHE VOCABULARY WAS NEVER IN DOUBT. `enumWorkflowSurfaces` is DERIVED from `validWorkflowSurfaces = {book, editor, studio}`; migrate.go seeds '{book,editor,studio}'; TestWorkflowSurfaceVocabularyIsTheSeededOne pins it to the seeded set; and another test already guards against a skill surface LEAKING INTO the list. Every authority agrees.\n\nTHE DEFECT WAS ONE WRONG FUNCTION AT ONE CALL SITE: workflows.go:146 called `invalidSurface` — the SKILL checker, which tests against {chat, compose, translate, admin}. So the tool published one vocabulary and enforced another, and because the two sets share NO members, registry_propose_workflow could not be called with ANY surfaces value at all.\n\nWHAT THE EXISTING GUARDS COULD NOT SEE, which is the transferable part: they assert the LIST is right, and it was. Nothing asserted that the VALIDATOR USES IT. The same call-site gap this loop has now recorded four times in two days.\n\nPROVEN LIVE by the same direct probe that found it. Before: surfaces=['book'] — a value the published schema offers — refused on all four probe cases with 'invalid surface: must be one of: chat, compose, translate, admin'. After: accepted, with the all-real control proposing successfully and the three fabricated-tool cases still refused for their own reason.\n\nTHE REFUSAL NOW NAMES THE VOCABULARY IT ENFORCES, built from validWorkflowSurfaces rather than a hard-coded list, so the two cannot drift apart again in text.\n\nTHREE TESTS ENCODED THE DEFECT and were corrected, not weakened: workflow fixtures declaring Surfaces:['chat'] passed only because the skill checker accepted it. Their assertions are untouched; the incidental surface is now a workflow surface. The case that asserts 'invalid surface' for a nonsense value still passes.\n\nFALSIFIER: three guards in workflow_surfaces_test.go — every PUBLISHED surface is accepted, every SKILL surface is refused, and the refusal names the workflow vocabulary and not the skill one. Proven red by restoring the one-word call (`invalidSurface`), compiling, files restored byte-identical. Whole agent-registry-service module green.",
    "what_it_does_NOT_cover": "The SKILL surface path is untouched and still validates against {chat, compose, translate, admin}, which is correct for skills — `invalidSurface` keeps its callers in skills.go and skills_crud.go. This row was only ever about the workflow path borrowing it.\n\nNOT PROVEN THROUGH A CHAT TURN: the evidence is a direct MCP probe against the deployed service, which is how the defect was found and is the same instrument on both sides. No recorded chat turn passes `surfaces` to this tool — unsurprising, since until today any value was refused."
+  },
+  "D-A-TERMINOLOGY-DRAFT-CARRIES-A-DEFINITION-AND-NO-TERM": {
+   "state": "open",
+   "defect_class": "contract",
+   "found": "2026-09-01",
+   "status": "OPEN -- found while measuring the residue of D-GLOSSARY-READS-RETURN-ok-true-result-null-ON-A-SEEDED-BOOK's backfill. Not a split of that row: that one is a database FUNCTION failing to maintain a column; this one is a WRITER never supplying the value.",
+   "what": "42 `terminology` entities in a REAL authoring book (1,677 named entities alongside them) carry category + definition + usage_note and NO name and NO term attribute. cached_name NULL, normalized_name empty, entity_snapshot holding only kind metadata. The author is shown a definition -- '一種大型鳥類，用於飛行。' -- for nothing, and cannot find it by name because it has no name.",
+   "measured": "Book 019fb89f-0aab-75ba-bf99-f21f98d409f4, alive + not deleted + cached_name IS NULL: 57 rows.\n     41 with 3 attribute values (category, definition, usage_note)\n      1 with 2\n     15 with 0\n  ZERO of the 57 have a name/term attribute value. All are status='draft'. Attribute codes present across them: category 42, definition 42, usage_note 41 -- and no name/term at all.",
+   "why_it_matters": "A terminology entry whose term is missing is unusable in both directions: the author cannot search for it, and the definition names nothing. It is also invisible to the repair that exists -- the 0061/0067 backfill is deliberately bounded to rows with a recoverable name/term value, so these are skipped by design and no amount of re-running it helps.",
+   "the_control_that_refutes_the_obvious_reading": "🔴 'THE NAME IS SOMEWHERE ELSE' WAS CHECKED AND IS FALSE. cached_name NULL, normalized_name empty, and entity_snapshot carries only the kind block ({\"kind\": {\"code\": \"terminology\", ...}}) with no name field. There is no other place on the row holding it.",
+   "and_it_is_NOT_the_harness": "Established by a discriminator rather than assumed, because the sibling row was already burned once by counting its own eval traffic. The 646 platform-wide NULL-cached_name rows are ~89% throwaway fixture books (71 books with no named entity at all -> 564 rows). THIS book is the opposite shape: 1,677 NAMED entities alongside 57 nulls, created 2026-08-01. A fixture does not accumulate 1,677 named entities.",
+   "what_is_NOT_established": "WHICH WRITER created them, and whether a terminology proposal is ever legitimately termless (e.g. a draft awaiting the author to supply the word). Both are needed before a fix is designed, and neither is measured. The creating path is the next step: all 42 were created on one day in one book, which is the shape of a single extraction or bulk-propose run.",
+   "how_it_was_found": "Chasing a limit I had stated on the sibling row -- 'the backfill reaches 11 of 646' -- after first CORRECTING that number down to ~71 real-corpus rows when the discriminator showed the rest were fixtures. I had written that no user-visible harm was shown; this is the control that refuted my own sentence."
   }
  },
  "deferred_questions": {
@@ -7887,7 +7900,7 @@
   "tools_proven": 199,
   "tools_blocked": 0,
   "defects_proven": 0,
-  "defects_open": 6,
+  "defects_open": 7,
   "deferred_questions": 67,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -7902,7 +7915,7 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 204,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 218,
+  "defects_total": 219,
   "defects_fixed": 180,
   "defects_withdrawn": 24,
   "defects_superseded": 1,
