@@ -117,7 +117,9 @@ def main() -> int:
 
     print(f"{'arm':10} {'scored':>7} {'correct skill PRESENT':>23} {'load_skill':>11} "
           f"{'median schema tok':>18}")
-    for label, r in (("CONTROL", ctl), ("ARM (e)", arm)):
+    # 🔴 The second row was hardcoded "ARM (e)" and printed that label while scoring arm (b),
+    # which is how a result gets filed against the wrong arm. It now names the FILE.
+    for label, r in (("CONTROL", ctl), (arm["file"][:26], arm)):
         print(f"{label:10} {r['scored']:7} {r['hit']:>10} = {r['pct']:5.1f}%  "
               f"{r['load_skill_calls']:>11} {r['median_schema_tokens']:>18}")
         if r["missed"]:
@@ -126,12 +128,18 @@ def main() -> int:
     print()
     delta = arm["pct"] - ctl["pct"]
     if arm["pct"] > ctl["pct"]:
-        print(f"ARM (e) IS AHEAD by {delta:.1f} points on this scenario set.")
+        print(f"THE ARM IS AHEAD by {delta:.1f} points on this scenario set.")
     elif arm["pct"] < ctl["pct"]:
-        print(f"ARM (e) IS BEHIND by {-delta:.1f} points — the model did not fetch what the "
+        print(f"THE ARM IS BEHIND by {-delta:.1f} points — the model did not fetch what the "
               "router was preloading, which is the round-trip risk this arm carries.")
     else:
         print("NO DIFFERENCE on this scenario set.")
+    # 🔴 THE NOISE FLOOR, MEASURED ON THIS HARNESS: two runs of the SAME configuration scored
+    # 70.0% and 75.9%. One extra hit in thirty is 5.9 points, so anything under ~6 is not a
+    # result, and even a larger gap needs a significance test at this n.
+    if abs(delta) < 6.0:
+        print("   ...WHICH IS INSIDE THE ~5.9-POINT NOISE FLOOR measured on this harness "
+              "(two runs of the SAME config scored 70.0% and 75.9%). Not a ranking.")
     print("🔴 n is small on a scenario batch. This ranks the arms on THESE scenarios; it does not "
           "reproduce the 64.8% corpus figure, which is over deduped prompts from the chat store "
           "and is a different population. Do not subtract the two.")
