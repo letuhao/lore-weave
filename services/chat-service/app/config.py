@@ -340,7 +340,11 @@ class Settings(BaseSettings):
     # OFF: the arm must beat the control's measured 70.0% before it becomes the shipped path.
     # See `_CONTRASTIVE` in skill_router.py for why the texts collide and how the replacements
     # are written.
-    skill_contrastive_desc: bool = False
+    # ADOPTED 2026-09-01 after the A/B: pooled 52 of 58 (89.7%) against the control's 43 of 57
+    # (75.4%), +14.2 points at slightly LOWER token cost, reproduced exactly across two paired
+    # runs, Fisher p = 0.052. Default flipped ON; set SKILL_CONTRASTIVE_DESC=0 to revert, which
+    # is also how the control arm is re-measured.
+    skill_contrastive_desc: bool = True
     # DQ-T90 arm (a) — override ROUTER_MAX_ADDITIONS (the top-K cap). 0 = use the shipped 2. The
     # K-sweep priced 2→3 at +6.1 points for 270 more injected skills of which 250 are never used,
     # on a smooth curve with no knee; this makes it measurable rather than argued.

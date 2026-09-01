@@ -1013,7 +1013,7 @@ services:
       SKILL_ROUTER_PRELOAD: "${SKILL_ROUTER_PRELOAD:-true}"
       # DQ-T90 arms (b) and (a). Both default to the shipped behaviour so the CONTROL is
       # unchanged; each arm is one env var so the three runs differ by one thing at a time.
-      SKILL_CONTRASTIVE_DESC: "${SKILL_CONTRASTIVE_DESC:-false}"
+      SKILL_CONTRASTIVE_DESC: "${SKILL_CONTRASTIVE_DESC:-true}"
       ROUTER_MAX_ADDITIONS: "${ROUTER_MAX_ADDITIONS:-0}"
       ONESHOT_DEADVERTISE_MODE: "${ONESHOT_DEADVERTISE_MODE:-session}"
       RAIL_ACTION_GATE_MODE: "${RAIL_ACTION_GATE_MODE:-done_suppress}"
