@@ -6593,6 +6593,20 @@
    "🔴 THE TRADE THAT STOPS ME SHIPPING THE 13x VERSION": "tool_load exists to fetch the full description on demand -- and the model calls tool_list 2,007 times against tool_load's 169. IT LISTS TWELVE TIMES MORE OFTEN THAN IT LOADS, so it is DECIDING FROM THE DESCRIPTIONS IN THE LIST. Cut them to bare names and it either makes far more tool_load round trips (a failure shape this platform records) or picks worse. The 60-char label is the version to measure first, and its bar is whether the model still reaches the RIGHT tool as often -- an A/B, not an assumption, because 'it can still choose from 60 chars' is the kind of claim this loop has been wrong about before.",
    "what_is_NOT_measured": "Whether the glossary three are large for the same reason (full prose per row) or a different one (whole tables returned). Their payloads have not been broken down the way tool_list's was, and the remedy differs: an index tier for the first, paging for the second. That read is the next step and it is a corpus query, not a batch.",
    "how_often_is_it_actually_CALLED__and_I_had_sized_it_on_the_WRONG_payload__2026_09_01": "OWNER 2026-09-01: '38 kB still very huge if every turn agent call it? or it only call when it need?' Measured, and it corrects my own sizing.\n\n🔴 I SIZED THIS ON THE LARGEST PAYLOAD, WHICH IS 1.4% OF CALLS. Every figure I quoted (71,686 bytes, 81.2% descriptions, 2.1x) came from a `category:\"all\"` response. The model almost never asks for all:\n     book         1,345 calls   p50  7.6 kB\n     translation    327         p50  4.8 kB\n     settings        99         p50  3.0 kB\n     glossary        88         p50   17 kB\n     composition     53         p50   28 kB\n     all             19         p50  131 kB\n     (omitted=all)    9         p50   89 kB\n28 of 2,007 calls are the whole catalogue. The TYPICAL call is a category at 3-8 kB.\n\nIT IS NOT CALLED EVERY TURN. 271 assistant turns in the entire store call it, across 232 sessions, and 190 of those 271 call it exactly ONCE.\n\nAND THE BYTES AND THE CALL COUNT ARE TWO DIFFERENT PROBLEMS:\n     1 call     190 turns     190 calls   4,995 kB   <- the BYTES live here, ~26 kB per turn\n     2-3         59            130 calls   1,496 kB\n     4-10         9             53 calls     521 kB\n     11-50        5            143 calls     685 kB\n     50+          8          1,491 calls   1,486 kB   <- the CALL COUNT lives here\nEight turns made 1,491 calls -- 74% of all tool_list traffic -- but with small category payloads. So a runaway loop and a fat payload are separate defects, and the loop is not this row.\n\nTHE LOOP IS ALREADY FIXED, checked before claiming it. Those turns are dated 2026-07-09, 07-15, 07-20 (the 569-call one) and 08-04. The repeat-call cut shipped 2026-08-30 (d30d9949a, 'bound one response stream's identical tool calls'). The last runaway PREDATES it by 26 days and there has been none since.\n\nWHAT THIS DOES TO THIS ROW: it right-sizes it rather than retiring it. The fix still removes about 59% of tool_list's total bytes, because descriptions dominate a category payload exactly as they dominate the whole-catalogue one. But the case is 'the typical single call costs ~26 kB and should cost ~11', not 'every turn pays 33 kB'. The second sentence would have been wrong."
+  },
+  "D-THE-OLLAMA-ADAPTER-SENDS-NEITHER-KEEP-ALIVE-NOR-NUM-CTX": {
+   "state": "open",
+   "defect_class": "contract",
+   "found": "2026-09-01",
+   "found_by": "OWNER research on Ollama prompt caching, checked against the adapter",
+   "status": "OPEN. Recorded BEFORE the model-comparison batch ran, so a poor cloud result cannot be explained away afterwards and a good one cannot bury it.",
+   "the_invariant": "A registered model's context_length must reach the provider, and a provider whose cache is keyed on an idle timer must be told to hold it.",
+   "what": "ollamaAdapter builds its request options from `temperature` and `num_predict` only. It sends NO `num_ctx` and NO `keep_alive`, in either Invoke (/api/chat) or Stream (/v1/chat/completions).",
+   "why_num_ctx_is_the_serious_half": "The platform REQUIRES context_length when registering an ollama model -- server.go refuses the write without it ('context_length is required for ollama/lm_studio') -- and then never sends it. Ollama's documented behaviour is that num_ctx defaults small (2048-4096) and that CHANGING it between requests makes the engine treat the request as a different model configuration and reload. This loop's own measured prompts carry ~19,351 schema tokens before any content, so if the default applies the prompt is TRUNCATED. A truncated prompt makes a strong model look weak, which would be this platform's defect presented as a model's failing.",
+   "why_keep_alive_is_the_cheaper_half": "Ollama unloads a model and dumps its KV cache after 5 minutes of inactivity by default. Every eval batch here runs at concurrency 1 with gaps, so each request may pay a full cold prefill. Setting keep_alive (e.g. '60m') is a one-field change. Cost, not correctness.",
+   "how_a_cache_hit_would_even_be_MEASURED": "🔴 NOT by token counts, and this is the trap. Ollama's `prompt_eval_count` reports the TOTAL CONTEXT SIZE of the request, not the tokens actually computed -- so it is identical on a hit and a miss and cannot detect caching. The signal is `prompt_eval_duration` (nanoseconds), which drops by roughly an order of magnitude on a hit (962ms -> 54ms in the reference the owner supplied). The platform records neither field today.",
+   "and_the_prefix_rule_is_a_PLATFORM_property_nobody_has_checked": "Ollama's cache is strictly prefix-based and byte-for-byte: any dynamic value near the START of the prompt invalidates everything after it. So whether this platform benefits from caching at all depends on whether its system prompt begins with anything that changes per turn -- a timestamp, a session id, a re-ordered tool list. That is a checkable property of build_system_message / _tail_blocks and it has NOT been checked. It also applies to every AutoPrefixCache provider, not just ollama.",
+   "what_is_NOT_established": "Whether Ollama CLOUD honours num_ctx the way local llama.cpp does -- a hosted model may be served with a fixed context the client cannot set, in which case the truncation risk is local-only and the registered context_length is merely decorative rather than harmful. Not measured, and the distinction decides how serious this row is."
   }
  },
  "deferred_questions": {
@@ -7936,7 +7950,7 @@
   "tools_proven": 199,
   "tools_blocked": 0,
   "defects_proven": 0,
-  "defects_open": 5,
+  "defects_open": 6,
   "deferred_questions": 67,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -7951,7 +7965,7 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 204,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 220,
+  "defects_total": 221,
   "defects_fixed": 180,
   "defects_withdrawn": 27,
   "defects_superseded": 1,

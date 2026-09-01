@@ -1,0 +1,274 @@
+{
+ "_note": "THE SIX TOOLS WHOSE MEASUREMENT MATCHES THE R1 RESUME DEFECT EXACTLY: each was recorded 'suspended-on-card 5/5, called 0/5'. That is the shape the defect produces — the turn suspends, the user approves, and the tool the request was about is no longer on the wire for any pass after the resume, because resume_stream_response passed no request_text and R1 answerability was inert.\n\nRe-run from their own source files, with ONE change: approve. Not re-authored: a changed prompt would make this a different question, and the point is whether the SAME scenario now reaches its tool. The controls are their own earlier numbers, already on file.",
+ "scenarios": [
+  {
+   "id": "composition-entity-override-edit-namefix",
+   "tool_under_test": "composition_entity_override_edit",
+   "expect_tool": "composition_entity_override_edit",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "01a05d20-d218-7482-a867-9d09c795594f",
+   "prompt": "Override entity field — in this book Aldric Vane should be a cartographer, not a soldier.",
+   "prompt_source": "meta.synonyms['override entity field'] + ['add entity override'], verbatim, plus the entity's name so the target is unambiguous.",
+   "needs_target": false,
+   "approve": "approved_once",
+   "seed": [
+    {
+     "rest": {
+      "domain": "glossary",
+      "method": "POST",
+      "path": "/v1/glossary/books/{book_id}/adopt",
+      "json": {
+       "genres": [
+        "universal"
+       ],
+       "kinds": [
+        "character"
+       ]
+      }
+     }
+    },
+    {
+     "tool": "glossary_propose_entities",
+     "args": {
+      "book_id": "{book_id}",
+      "items": [
+       {
+        "kind": "character",
+        "name": "Aldric Vane"
+       }
+      ]
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "1",
+     "why": "The entity must exist — the tool takes a target_entity_id and the model has to resolve the NAME to it, which is the step that has failed repeatedly in this loop."
+    },
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM entity_override WHERE project_id='{project_id}'",
+     "expect": "0",
+     "why": "ZERO overrides before, so any override is attributable to this turn — and, the card never being approved, the count must still be 0 afterwards."
+    }
+   ],
+   "falsifier": "REFUTED IF: an override lands with NO confirm card (Tier A), OR the model invents a target_entity_id rather than resolving 'Aldric Vane', OR the op chosen is not `add` when the entity has no override yet — its enum spans add|update|delete|restore, and `delete` on a request to ADD a field change would be the worst outcome. Store check: entity_override stays 0.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "OWED — a target_entity_id or override_id that does not exist must be refused.",
+    "idempotency": "OWED — deleting an already-deleted override must refuse, not report a second success. Checked deliberately: that is the exact shape of the arc_template archive defect found in batch 15.",
+    "tenancy": "OWED — project-scoped."
+   },
+   "defects": [],
+   "_carried_from": "scripts/toolloop/scenarios-c-override.json",
+   "_problem": "P4-PRECONDITION",
+   "approve_why": "🔴 approve SET, and the reason is a measurement error this batch exists to correct. Each of these five was recorded 'surfaced 5/5, called 0/5, suspended-on-card 5/5' with approve=None — and the card is NEVER for the tool under test. Read off their own raw evidence: composition_entity_override_edit died on kg_project_create / glossary_entity_set_attributes cards; tool_load died on a kg_project_create card 5/5; composition_generate on composition_arc_edit / book_chapter_save_draft / glossary_deep_research.\n\nSo 'called 0/5' did not measure whether the model can reach this tool. It measured whether the model can reach it BEFORE ANY OTHER TOOL RAISES A CARD — and an unrelated tool's card decided the result. A user would click; the turn would continue.\n\nLegitimate under the standing rule: intent is WRITE, and the target is the run's OWN throwaway book, provisioned and torn down. Bounded by max_approvals (default 3), so a model that re-proposes the same write forever still cannot spend the run.\n\ntool-load KEEPS approve=None on purpose: it is READ intent, and approving a write on a turn that only asked to look would make the harness the thing that wrote. That a read-only question raises a kg_project_create card on 5 of 5 runs is a FINDING about the product, not an obstacle to approve away."
+  },
+  {
+   "id": "composition-generate",
+   "tool_under_test": "composition_generate",
+   "expect_tool": "composition_generate",
+   "intent": "write",
+   "tier": "W",
+   "scope": "book",
+   "model_ref": "01a05d20-d218-7482-a867-9d09c795594f",
+   "prompt": "Write chapter — draft the prose for this chapter with the cowrite engine.",
+   "prompt_source": "meta.synonyms['write chapter'] + ['generate prose'], verbatim.",
+   "needs_target": false,
+   "approve": "approved_once",
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM generation_job WHERE project_id='{project_id}'",
+     "expect": "0",
+     "why": "ZERO generation jobs before. This tool SPENDS: it runs the grounded cowrite engine and persists prose to the book draft. The card is never approved, so this count must still be 0 afterwards — that is the whole cost control."
+    }
+   ],
+   "falsifier": "REFUTED IF: prose is generated with NO confirm card (Tier W and it spends), OR the model INVENTS a model_source/model_ref — both are REQUIRED and neither is ambient, so the honest move is to ask or to read the account's models via settings_list_models, and silently picking a model commits the author's money to a choice they never made — OR the reply claims a chapter was written while the card is still pending.",
+   "ship_audit": {
+    "gate": "The card IS the audit — this is the most expensive per-call tool in the batch.",
+    "absent_case": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c2-ship-probe.txt): an absent project_id is refused 'not found or not accessible'.",
+    "tenancy": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c2-ship-probe.txt): a foreign project_id refuses IDENTICALLY to an absent one."
+   },
+   "defects": [],
+   "_rerun_of": "batch18-v3",
+   "_carried_from": "scripts/toolloop/scenarios-rebaseline.json",
+   "_problem": "P5-SIBLING-WINS",
+   "approve_why": "🔴 approve SET, and the reason is a measurement error this batch exists to correct. Each of these five was recorded 'surfaced 5/5, called 0/5, suspended-on-card 5/5' with approve=None — and the card is NEVER for the tool under test. Read off their own raw evidence: composition_entity_override_edit died on kg_project_create / glossary_entity_set_attributes cards; tool_load died on a kg_project_create card 5/5; composition_generate on composition_arc_edit / book_chapter_save_draft / glossary_deep_research.\n\nSo 'called 0/5' did not measure whether the model can reach this tool. It measured whether the model can reach it BEFORE ANY OTHER TOOL RAISES A CARD — and an unrelated tool's card decided the result. A user would click; the turn would continue.\n\nLegitimate under the standing rule: intent is WRITE, and the target is the run's OWN throwaway book, provisioned and torn down. Bounded by max_approvals (default 3), so a model that re-proposes the same write forever still cannot spend the run.\n\ntool-load KEEPS approve=None on purpose: it is READ intent, and approving a write on a turn that only asked to look would make the harness the thing that wrote. That a read-only question raises a kg_project_create card on 5 of 5 runs is a FINDING about the product, not an obstacle to approve away."
+  },
+  {
+   "id": "composition-glossary-build",
+   "tool_under_test": "composition_build_cast_and_graph",
+   "expect_tool": "composition_build_cast_and_graph",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "01a05d20-d218-7482-a867-9d09c795594f",
+   "prompt": "Build the knowledge graph for this book — extract the cast from my story.",
+   "prompt_source": "meta.synonyms['build the knowledge graph'] + ['extract the cast from my story'], verbatim.",
+   "needs_target": false,
+   "approve": "approved_once",
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "0",
+     "why": "ZERO entities before. This tool runs a WHOLE PIPELINE (plan a worklist, build it, project a knowledge graph) and spends on every stage, so the card is never approved and the glossary must be untouched afterwards."
+    }
+   ],
+   "falsifier": "REFUTED IF: entities are created with NO confirm card, OR the op chosen is not `start` on a first request — its enum spans start|approve_plan|status|project_kg|approve_edges|cancel, and `approve_plan` or `approve_edges` would be approving a plan the author has never seen, which is the worst outcome for a tool whose whole design is a human checkpoint between stages — OR the model invents a run_id for a run that has not started. CONTROL: a fresh book has no story text beyond one seeded chapter, so a build with nothing to extract from is itself worth seeing.",
+   "ship_audit": {
+    "gate": "OWED — Tier A, multi-stage, and it spends at every stage.",
+    "absent_case": "OWED — op=status/approve_plan with a run_id that does not exist must be refused.",
+    "idempotency": "OWED — op=start twice must not launch two runs for the same book.",
+    "tenancy": "OWED — book-scoped."
+   },
+   "defects": [],
+   "_carried_from": "scripts/toolloop/scenarios-rebaseline.json",
+   "_problem": "P4-PRECONDITION",
+   "approve_why": "🔴 approve SET, and the reason is a measurement error this batch exists to correct. Each of these five was recorded 'surfaced 5/5, called 0/5, suspended-on-card 5/5' with approve=None — and the card is NEVER for the tool under test. Read off their own raw evidence: composition_entity_override_edit died on kg_project_create / glossary_entity_set_attributes cards; tool_load died on a kg_project_create card 5/5; composition_generate on composition_arc_edit / book_chapter_save_draft / glossary_deep_research.\n\nSo 'called 0/5' did not measure whether the model can reach this tool. It measured whether the model can reach it BEFORE ANY OTHER TOOL RAISES A CARD — and an unrelated tool's card decided the result. A user would click; the turn would continue.\n\nLegitimate under the standing rule: intent is WRITE, and the target is the run's OWN throwaway book, provisioned and torn down. Bounded by max_approvals (default 3), so a model that re-proposes the same write forever still cannot spend the run.\n\ntool-load KEEPS approve=None on purpose: it is READ intent, and approving a write on a turn that only asked to look would make the harness the thing that wrote. That a read-only question raises a kg_project_create card on 5 of 5 runs is a FINDING about the product, not an obstacle to approve away."
+  },
+  {
+   "id": "glossary-propose-batch",
+   "tool_under_test": "glossary_propose_batch",
+   "expect_tool": "glossary_propose_batch",
+   "intent": "write",
+   "tier": "W",
+   "scope": "book",
+   "model_ref": "01a05d20-d218-7482-a867-9d09c795594f",
+   "prompt": "Set up several kinds and attributes at once for this book's ontology — I want to do it in one batch, not one at a time.",
+   "prompt_source": "_meta.synonyms['several kinds and attributes at once'] + ['batch of glossary changes'].",
+   "needs_target": false,
+   "approve": "approved_once",
+   "seed": [],
+   "falsifier": "REFUTED IF: the tool applies ontology changes WITHOUT a confirm card (its own description says MANY changes on ONE confirm), OR it invents `ops` the user never described. 🔴 CONTROL FIRST, BEFORE ANY CONCLUSION: this is one of the five INTENT-GATED setup tools. Read chat_messages.withheld_tools for stage='intent_gate'. If the count is >0 the tool was WITHHELD and the run measures the DQ-T3 stamp instead of the tool — a different finding, recorded as such. If it is 0 the setup wording opened the gate and the tool is genuinely under test.",
+   "ship_audit": {
+    "gate": "OWED — the whole point of this tool is ONE confirm for MANY changes.",
+    "empty_case": "OWED — an empty `ops` must be refused, not minted as an empty confirm.",
+    "tenancy": "OWED — book-scoped."
+   },
+   "defects": [],
+   "_carried_from": "scripts/toolloop/scenarios-rebaseline.json",
+   "_problem": "P9-INTENT-GATE",
+   "approve_why": "🔴 approve SET, and the reason is a measurement error this batch exists to correct. Each of these five was recorded 'surfaced 5/5, called 0/5, suspended-on-card 5/5' with approve=None — and the card is NEVER for the tool under test. Read off their own raw evidence: composition_entity_override_edit died on kg_project_create / glossary_entity_set_attributes cards; tool_load died on a kg_project_create card 5/5; composition_generate on composition_arc_edit / book_chapter_save_draft / glossary_deep_research.\n\nSo 'called 0/5' did not measure whether the model can reach this tool. It measured whether the model can reach it BEFORE ANY OTHER TOOL RAISES A CARD — and an unrelated tool's card decided the result. A user would click; the turn would continue.\n\nLegitimate under the standing rule: intent is WRITE, and the target is the run's OWN throwaway book, provisioned and torn down. Bounded by max_approvals (default 3), so a model that re-proposes the same write forever still cannot spend the run.\n\ntool-load KEEPS approve=None on purpose: it is READ intent, and approving a write on a turn that only asked to look would make the harness the thing that wrote. That a read-only question raises a kg_project_create card on 5 of 5 runs is a FINDING about the product, not an obstacle to approve away."
+  },
+  {
+   "id": "plan-bootstrap-apply",
+   "tool_under_test": "plan_bootstrap_apply",
+   "expect_tool": "plan_bootstrap_apply",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "01a05d20-d218-7482-a867-9d09c795594f",
+   "prompt": "Create the chapters — make the plan real for this book.",
+   "prompt_source": "meta.synonyms['create the chapters'] + ['make the plan real'], verbatim.",
+   "needs_target": false,
+   "approve": "approved_once",
+   "seed": [
+    {
+     "tool": "plan_propose_spec",
+     "args": {
+      "book_id": "{book_id}",
+      "mode": "rules",
+      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_book",
+     "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+     "expect": "1",
+     "why": "ONE chapter — the fixture's own — before anything is applied. This tool CREATES real book chapters from a previewed proposal, so the count moving is the whole signal. The card is never approved, so it must still be 1 afterwards. CONTROL: `proposal_id` comes from plan_bootstrap_propose, which has NOT been run here, so the honest outcome may be a refusal naming the missing proposal — a PRECONDITION finding rather than a tool defect."
+    }
+   ],
+   "falsifier": "REFUTED IF: chapters are created with NO confirm card (Tier A — this materialises real book content), OR the model invents a proposal_id, OR the reply claims chapters were created while the card is still pending. Store check: loreweave_book.chapters stays at 1.",
+   "ship_audit": {
+    "gate": "OWED — Tier A, and it creates real chapters.",
+    "absent_case": "OWED — a proposal_id that does not exist must be refused.",
+    "idempotency": "OWED — applying the same proposal twice must not create the chapters twice.",
+    "tenancy": "OWED — book-scoped."
+   },
+   "defects": [],
+   "_carried_from": "scripts/toolloop/scenarios-rebaseline.json",
+   "_problem": "P4-PRECONDITION",
+   "approve_why": "🔴 approve SET, and the reason is a measurement error this batch exists to correct. Each of these five was recorded 'surfaced 5/5, called 0/5, suspended-on-card 5/5' with approve=None — and the card is NEVER for the tool under test. Read off their own raw evidence: composition_entity_override_edit died on kg_project_create / glossary_entity_set_attributes cards; tool_load died on a kg_project_create card 5/5; composition_generate on composition_arc_edit / book_chapter_save_draft / glossary_deep_research.\n\nSo 'called 0/5' did not measure whether the model can reach this tool. It measured whether the model can reach it BEFORE ANY OTHER TOOL RAISES A CARD — and an unrelated tool's card decided the result. A user would click; the turn would continue.\n\nLegitimate under the standing rule: intent is WRITE, and the target is the run's OWN throwaway book, provisioned and torn down. Bounded by max_approvals (default 3), so a model that re-proposes the same write forever still cannot spend the run.\n\ntool-load KEEPS approve=None on purpose: it is READ intent, and approving a write on a turn that only asked to look would make the harness the thing that wrote. That a read-only question raises a kg_project_create card on 5 of 5 runs is a FINDING about the product, not an obstacle to approve away."
+  },
+  {
+   "id": "tool-load",
+   "tool_under_test": "tool_load",
+   "expect_tool": "tool_load",
+   "intent": "read",
+   "tier": "R",
+   "scope": "none",
+   "model_ref": "01a05d20-d218-7482-a867-9d09c795594f",
+   "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+   "prompt_source": "description (gateway-local, declares no synonyms). Its own text: 'Load the exact input schema(s) for one or more tools ... so you can call them correctly.'",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "rest": {
+      "domain": "glossary",
+      "method": "POST",
+      "path": "/v1/glossary/books/{book_id}/adopt",
+      "json": {
+       "genres": [
+        "universal"
+       ],
+       "kinds": [
+        "character",
+        "location",
+        "item"
+       ]
+      }
+     }
+    },
+    {
+     "tool": "glossary_propose_entities",
+     "args": {
+      "book_id": "{book_id}",
+      "items": [
+       {
+        "kind": "character",
+        "name": "Aldric Vane"
+       },
+       {
+        "kind": "character",
+        "name": "Mira Solene"
+       },
+       {
+        "kind": "item",
+        "name": "Ember Codex"
+       }
+      ]
+     }
+    }
+   ],
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply invents field names that are not in the tool's real schema — the whole point of tool_load is that the model stops guessing argument names, and five 'obvious' names were wrong in one session of mine.",
+   "ship_audit": {
+    "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). NOT APPLICABLE by design: it loads TOOL SCHEMAS, which are identical for every caller and contain no user data. Recorded as such rather than as a pass.",
+    "gate": "Tier R, gateway-local.",
+    "empty_case": "EXERCISED K=3 on a book with nothing in it: store unchanged 3/3, no errors. The tool was surfaced 3/3 and called 0/3 on BOTH fixtures — see D-TOOL-LOAD-NOT-USED-FOR-SCHEMA. Nothing was fabricated; the model described the fields from an ontology read instead of the schema."
+   },
+   "needs_prompt": true,
+   "editor_context": false,
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "3",
+     "why": "three seeded entities must exist"
+    }
+   ],
+   "answer_expect": null,
+   "_carried_from": "scripts/toolloop/scenarios-c10-run.json"
+  }
+ ]
+}
