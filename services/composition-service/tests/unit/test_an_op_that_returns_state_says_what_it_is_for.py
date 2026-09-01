@@ -73,6 +73,55 @@ class TestTheTwoTablesCannotDrift:
                 f"{status}: the map says op={op!r} and the sentence says {s!r}")
 
 
+class TestTheRequiredIdNamesItsOwnDiscoveryRoute:
+    """A required id whose ONLY supplier is a refusal must say so.
+
+    🔴 MEASURED, batch t64-protocol3, K=5: 20 of 24 calls were `op=start`, and on a book that
+    already has a run every one is refused ACTIVE_RUN. The run_id description said "if you have
+    no run_id, the op you want is `start`" -- correct about the only available route, and silent
+    about what taking it produces. So the refusal read as a dead end.
+
+    THERE IS NO LISTING OP. The six are start | approve_plan | status | project_kg |
+    approve_edges | cancel, and none finds an existing run, so `start` genuinely IS the discovery
+    step and its refusal carries the id.
+    """
+
+    def _run_id_description(self) -> str:
+        import app.mcp.server as srv
+
+        f = srv._GlossaryBuildArgs.model_fields["run_id"]
+        return " ".join(str(getattr(f, "description", "") or "").split())
+
+    def test_it_names_ACTIVE_RUN_as_where_the_id_comes_from(self):
+        d = self._run_id_description()
+        assert "ACTIVE_RUN" in d, (
+            "the run_id description does not name the refusal that carries the id, so a model "
+            "that has no run_id is told to call an op guaranteed to be refused and nothing more")
+
+    def test_it_says_the_refusal_is_NOT_a_dead_end(self):
+        d = self._run_id_description()
+        assert "dead end" in d or "discovery" in d, (
+            "it names the refusal without saying the refusal is the answer")
+
+    def test_it_still_forbids_inventing_one(self):
+        """The half that was already right must survive the rewrite: this tool has been called
+        with fabricated ids before, and 'never invent one' is why that stopped."""
+        assert "Never invent one" in self._run_id_description()
+
+    def test_no_listing_op_exists_which_is_WHY_start_is_the_route(self):
+        """🔴 THE FIX RESTS ON AN ABSENCE, so the absence is asserted. If a listing op is ever
+        added, this description should point at IT rather than at a refusal."""
+        import typing
+
+        import app.mcp.server as srv
+
+        ops = set(typing.get_args(
+            srv._GlossaryBuildArgs.model_fields["op"].annotation))
+        assert "list" not in ops and "runs" not in ops, (
+            f"a listing op now exists ({sorted(ops)}) — the run_id description should name it "
+            "instead of sending the caller through a refusal")
+
+
 class TestTheCallSitesUseIt:
     def test_the_status_op_CALLS_the_sentence_map(self):
         """🔴 THIS GUARD WAS VACUOUS AND ITS OWN FALSIFIER CAUGHT IT. The first version asserted

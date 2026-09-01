@@ -9319,9 +9319,25 @@ class _GlossaryBuildArgs(ForbidExtra):
     ]
     # book_id OPTIONAL (ambient_book) — omitted inside a studio, resolves from X-Book-Id.
     book_id: str | None = None
+    # 🔴 "IF YOU HAVE NO run_id, THE OP YOU WANT IS `start`" IS TRUE AND WAS NOT ENOUGH.
+    # Measured 2026-09-01 (batch t64-protocol3, K=5): 20 of 24 calls were `start`, and on a book
+    # that already has a run every one of them is refused ACTIVE_RUN. The advice was correct
+    # about the only available route and silent about what happens when you take it, so the
+    # refusal read as a dead end instead of as the answer.
+    #
+    # THERE IS NO LISTING OP — the six are start | approve_plan | status | project_kg |
+    # approve_edges | cancel — so `start` genuinely IS the discovery step, and its ACTIVE_RUN
+    # refusal NAMES the run_id and the op that continues. Saying so turns a refusal loop into a
+    # documented two-step: start, read the id off the refusal, then continue.
+    #
+    # Measured on the same batch: the one run that read the refusal went on to call `status` and
+    # received the worklist and its instruction — the chain works when the model knows it is one.
     run_id: Annotated[str | None, Field(description=(
         "The run this call belongs to, from op=start's result. Required by every op EXCEPT "
-        "`start`. Never invent one: if you have no run_id, the op you want is `start`."
+        "`start`. Never invent one. If you have no run_id: call op='start' — on a book with a "
+        "run already in progress it is REFUSED with ACTIVE_RUN, and that refusal NAMES the "
+        "run_id and the op that continues it, so read the id from there and carry on. The "
+        "refusal is the discovery step, not a dead end."
     ))] = None
     # 🔴 THESE THREE CARRIED NO DESCRIPTION AT ALL, and op=start REQUIRES two of them.
     # Measured 2026-08-25: once the tool finally started being selected (6 of 15 runs), every
