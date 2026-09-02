@@ -33,37 +33,41 @@ LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
 BUDGET = 4000
 
 
-def _corpus_call_counts() -> collections.Counter:
-    """DISTINCT recorded calls per tool across every batch on disk.
+def _citable_tools() -> set:
+    """Tools a GATE-READY file puts UNDER TEST -- the only thing that can be cited.
 
-    🔴 DISTINCT toolCallId, NEVER TOOL_CALL_START events. These files emit the start event TWICE
-    per call, and counting events doubles everything -- a finding was built and withdrawn on that
-    exact error on 2026-09-02.
+    🔴 THIS REPLACES A RAW-CALL-COUNT BUCKET, AND THE DIFFERENCE COST A FALSE LEDGER ROW. The
+    first version asked "was this tool CALLED >=5 times in a recorded batch?" That is not what
+    `gate.is_gate_backed` asks. It reads the gate-ready artefact's top-level `tools` array -- the
+    tools a batch was TESTING -- and a tool merely reached during someone else's scenario is not
+    in it.
+
+    composition_reference_list is the instance: called 5/5 in c-reflist1, absent from that file's
+    `tools` array (the batch was testing its CONSUMER), and I cited it anyway. It was the only
+    row in 207 claiming `gate-backed` and failing the definition -- exactly the shortcut gate.py's
+    own docstring names.
+
+    So the bucket is derived from the SAME predicate the audit applies, not from a proxy.
     """
-    seen = collections.Counter()
-    for path in glob.glob(str(ROOT / "docs" / "eval" / "toolloop" / "*" / "*-raw.json")):
+    out = set()
+    for path in glob.glob(str(ROOT / "docs" / "eval" / "toolloop" / "*" / "*.json")):
+        if path.endswith("-raw.json"):
+            continue
         try:
-            recs = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+            d = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
         except Exception:
             continue
-        if not isinstance(recs, list):
+        if not isinstance(d, dict):
             continue
-        for r in recs:
-            if not isinstance(r, dict):
-                continue
-            ids = {c.get("toolCallId"): c.get("toolCallName")
-                   for c in (r.get("tool_calls") or [])
-                   if isinstance(c, dict) and c.get("type") == "TOOL_CALL_START"
-                   and c.get("toolCallId")}
-            for name in set(ids.values()):
-                if name:
-                    seen[name] += 1
-    return seen
+        for x in (d.get("tools") or []):
+            if isinstance(x, dict) and x.get("tool"):
+                out.add(x["tool"])
+    return out
 
 
 def derive() -> dict:
     led = json.loads(LEDGER.read_text(encoding="utf-8"))
-    calls = _corpus_call_counts()
+    citable = _citable_tools()
 
     soft = {k: v for k, v in led["tools"].items()
             if isinstance(v, dict)
@@ -72,8 +76,11 @@ def derive() -> dict:
 
     buckets = {"from_disk": [], "partial": [], "live": []}
     for name in sorted(soft):
-        n = calls.get(name, 0)
-        buckets["from_disk" if n >= 5 else "partial" if n > 0 else "live"].append(name)
+        # from_disk means CITABLE: some gate-ready file already puts this tool under test.
+        # Everything else needs a cycle of its own; `partial` is retained as a bucket name but
+        # is now always empty, because the predicate is binary -- a file either lists the tool
+        # or it does not. Kept rather than removed so the emitted text stays stable.
+        buckets["from_disk" if name in citable else "live"].append(name)
 
     # A ruling that commissioned work and carries no `built_*`/`shipped_*` stamp. The rule is
     # SHARED with goal_prompt_all_defects rather than re-implemented, because the two generators
