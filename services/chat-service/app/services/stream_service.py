@@ -4660,9 +4660,22 @@ async def _stream_with_tools(
         # adoption only if it wins. Shipping it on by default would be asserting the result of
         # a measurement nobody has run.
         #
-        # Never seeded on a CONTINUE pass: the server already holds that history, and adding
-        # it would duplicate results the model can see.
-        if settings.replay_prior_tool_results and not _continuing and session_id:
+        # 🔴 THIS EXCLUDED `_continuing` AND THAT KILLED THE FEATURE. The comment read
+        # "never seeded on a CONTINUE pass: the server already holds that history" -- which is
+        # true of the TRANSCRIPT and false of the TOOL RESULTS, and the results are the whole
+        # subject. On a stateful chain the provider holds what it was sent, and what it was sent
+        # never contained the results either, because a result lives on the assistant row rather
+        # than as its own turn. So the exclusion removed exactly the case the feature exists for.
+        #
+        # MEASURED: the 2026-09-02 A/B ran both arms with the flag verified True inside the
+        # running service and logged ZERO replays in either -- 5/5 vs 5/5, a result that says
+        # nothing because the mechanism never executed. No exception and no info line were
+        # logged, which is what identified the branch as never entered.
+        #
+        # THE COST THE OLD COMMENT WAS GROPING AT IS REAL AND IS BOUNDED, not ignored: on a
+        # stateful chain this adds ONE system message per turn, and the 16 kB session budget caps
+        # what it can carry.
+        if settings.replay_prior_tool_results and session_id:
             try:
                 from app.db.tool_call_history import results_for_replay
                 _replayed = await results_for_replay(get_pool(), str(session_id))
@@ -4677,6 +4690,9 @@ async def _stream_with_tools(
                     }] + working
                     logger.info("replayed %d prior tool result(s) (session=%s)",
                                 len(_replayed), session_id)
+                else:
+                    # A skip is as interesting as a firing when a whole A/B can turn on it.
+                    logger.info("replay: nothing to replay (session=%s)", session_id)
             except Exception:  # noqa: BLE001 — an enrichment must never take the turn down
                 logger.warning("prior-result replay failed (session=%s)", session_id,
                                exc_info=True)

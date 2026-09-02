@@ -115,9 +115,18 @@ def test_the_replay_is_WIRED_and_DEFAULT_OFF():
            / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
     assert "settings.replay_prior_tool_results" in src, "the flag is declared and never read"
     assert "results_for_replay" in src, "the projection helper is never called"
-    # It must NOT run on a CONTINUE pass: the server already holds that history there, and
-    # replaying would duplicate results the model can already see.
+    # 🔴 RE-AIMED 2026-09-02, AND THIS ASSERTION USED TO ENFORCE THE DEFECT. It required
+    # `not _continuing` in the condition, on the reasoning that "the server already holds that
+    # history there". That is true of the TRANSCRIPT and false of the TOOL RESULTS — and the
+    # results are the whole subject. On a stateful chain the provider holds what it was sent,
+    # and what it was sent never contained the results either, because a result lives on the
+    # assistant row rather than as its own turn. So the exclusion removed exactly the case the
+    # feature exists for.
+    #
+    # MEASURED: the 2026-09-02 A/B ran both arms with the flag verified True inside the running
+    # service and logged ZERO replays in either — 5/5 vs 5/5, a result that says nothing because
+    # the mechanism never executed. This assertion is what had protected the cause.
     i = src.index("settings.replay_prior_tool_results")
-    assert "not _continuing" in src[i:i + 120], (
-        "the replay is not excluded from stateful CONTINUE passes, where it would duplicate "
-        "history the server already holds")
+    assert "not _continuing" not in src[i:i + 120], (
+        "the replay is excluded from stateful CONTINUE passes again — that is exactly the case "
+        "it exists for, and excluding it makes the feature unobservable rather than off")
