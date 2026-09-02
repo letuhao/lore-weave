@@ -5973,18 +5973,71 @@ async def composition_arc_import_analyze(ctx: MCPContext, args: _ArcImportArgs) 
 
 
 class _ConformanceRunArgs(ForbidExtra):
+    """🔴 THE DECLARED REQUIRED-LIST WAS NOT SATISFIABLE, AND NOTHING ON THE WIRE SAID SO.
+
+    The schema advertises `required: [project_id, scope]` and SIX properties with no
+    description at all, while the handler refuses per scope. Measured over the recorded
+    corpus — 37 calls, ZERO successes, the whole population of this tool:
+
+        arc_id is required when scope='arc'                                    8
+        chapter_id is required when scope='chapter'                            3
+        model_ref is required when scope='arc' (the deep overlay tags prose)   3
+        pydantic validation errors (1, 2 and 3 at a time)                     11
+        missing required argument(s) / the repeat breaker                      7
+        not found or not accessible                                            5
+
+    A caller that supplies exactly what the schema declares is refused for a missing
+    argument, whichever scope it picks. The conditional rule WAS written down — in the code
+    comment kept below — where the model never sees it. Same shape as DQ-T4's `,omitempty`
+    and DQ-T5's refusal naming a tool it could not reach: the knowledge existed for a human
+    and never reached the wire.
+
+    Stated in the FIELD DESCRIPTIONS rather than as `if/then` JSON Schema on purpose: the
+    platform's own missing-argument refusal quotes a property's description back to the model
+    ("The tool DOES declare what this is — …"), so a description is load-bearing here, while
+    conditional-schema support across MCP clients is not something this repo relies on
+    anywhere else.
+    """
+
     project_id: str
-    scope: Literal["chapter", "arc"]
-    chapter_id: str | None = None
+    scope: Annotated[
+        Literal["chapter", "arc"],
+        Field(description=(
+            "WHICH SCOPE, and it decides which other arguments are REQUIRED: 'chapter' needs "
+            "chapter_id; 'arc' needs BOTH arc_id and model_ref (+ model_source). Picking a "
+            "scope without its partner is refused."
+        )),
+    ]
+    chapter_id: Annotated[
+        str | None,
+        Field(description="REQUIRED when scope='chapter' — the chapter to check (a UUID)."),
+    ] = None
     # BA4 (23): arc-scope conformance diffs the SPEC (structure_node) against the
     # prose — pass `arc_id` (a structure_node id), NOT a template id. "Did the prose
     # realize MY plan" is the question; template drift is the separate
     # composition_arc_template_drift tool. The arc-scope deep overlay
     # (D-W10-ARC-CONFORMANCE-DEEP-JOB) also tags the book's prose with a BYOK
     # classify model, so `model_ref` is required for arc scope.
-    arc_id: str | None = None
-    model_ref: str | None = None
-    model_source: str | None = None
+    arc_id: Annotated[
+        str | None,
+        Field(description=(
+            "REQUIRED when scope='arc' — the arc/saga STRUCTURE_NODE id (a UUID) from "
+            "composition_arc_list, NOT a template id. Template drift is the separate "
+            "composition_arc_template_drift tool."
+        )),
+    ] = None
+    model_ref: Annotated[
+        str | None,
+        Field(description=(
+            "REQUIRED when scope='arc' — the arc-scope deep overlay tags the book's prose "
+            "with a BYOK classify model. The model's id (UUID) from settings_list_models; "
+            "NOT a name or an alias."
+        )),
+    ] = None
+    model_source: Annotated[
+        str | None,
+        Field(description="Accompanies model_ref: 'user_model' or 'platform_model'."),
+    ] = None
 
 
 @mcp_server.tool(
