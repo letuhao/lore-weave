@@ -293,6 +293,44 @@ def _answer_norm(text: str) -> str:
     ).strip()
 
 
+#: DQ-T6 (i), owner ruling 2026-09-02 — a trailing `s` on a word of 4+ characters, and nothing
+#: else. No stemmer, no plural table, no irregulars. The 3-char floor keeps `is`/`as`/`us` and
+#: every two-letter word intact; it is the smallest guard that stops the rule inventing words.
+_TRAILING_S = re.compile(r"(\w{3,})s\b")
+
+
+def _depluralised(text: str) -> str:
+    """The request with simple plurals folded — used BESIDE the raw form, never instead of it.
+
+    🔴 THE DEFECT, measured 2026-09-02. `composition_arc_suggest` declares "suggest an arc
+    structure". Asked "Suggest some arc structures for this book.", the answerable set was
+    [composition_arc_list] — the tool that answers was not in it, was advertised 0/5, and the
+    model used a WRITE (composition_structure_template_edit) on 5 of 5 runs. One letter.
+
+    🔴 WHY BESIDE AND NOT INSTEAD, WHICH IS THE WHOLE DESIGN. The ruling reads "match a declared
+    synonym against a lightly normalised request", and the literal reading — normalise the
+    request and match against that — was BUILT AND MEASURED FIRST. It is catastrophic: over 410
+    recorded prompts it LOSES a tool on 169 of them (41%) and gains 2, because a request folded
+    to the singular stops matching every synonym that is itself plural (`composition_motif_link_
+    edit` declares "link motifs" and lost 131). Prompts with no answerable set at all went 6 → 18.
+
+    Normalising BOTH sides is worse in the other direction: 83.9% of prompts gain a tool, because
+    the synonym "list my books" folds to "list my book" and then matches "…add a character to my
+    book". That is precisely the false-positive class `_synonym_pattern` exists to prevent.
+
+    So the request is matched in BOTH forms and the DECLARATION IS NEVER REWRITTEN. That is
+    additive by construction — it cannot lose a match, which the measurement confirms at 0 — and
+    it keeps the property this matcher is valued for: what a tool declares is what it means.
+
+    THE COST, measured before it shipped, as the ruling required: 138 of 410 prompts gain a tool
+    (33.7%), and 131 of those are ONE repeated fixture scenario ("Link motifs — …") gaining
+    `composition_motif_search` alongside the link tool it already had. The remaining 7 are
+    outline_node_edit ×3, memory_remember ×3, book_read ×1. Re-run with
+    scripts/toolloop/measure_plural_normalisation.py --mode additive.
+    """
+    return _TRAILING_S.sub(r"\1", text)
+
+
 #: A synonym written entirely in latin script. `\b` is only meaningful for these.
 _LATIN_SYNONYM = re.compile(r"^[a-z0-9][a-z0-9 \-_'/]*$")
 
@@ -381,6 +419,11 @@ def answerable_tools(request_text: str | None, catalog: list[dict]) -> set[str]:
     lp = _answer_norm(request_text)
     if not lp:
         return set()
+    # DQ-T6 (i) — the request in BOTH forms. `_depluralised` carries the measurement and the
+    # reason this widens rather than replaces. Identical when the request has no plural, so the
+    # common case costs one extra `search` against the same string.
+    lp_dep = _depluralised(lp)
+    _forms = (lp,) if lp_dep == lp else (lp, lp_dep)
     hits: list[tuple[int, str]] = []
     for td in catalog:
         name = tool_name(td)
@@ -415,7 +458,8 @@ def answerable_tools(request_text: str | None, catalog: list[dict]) -> set[str]:
                 continue
             ns = _answer_norm(syn)
             pat = _synonym_pattern(ns) if ns else None
-            if ns and (pat.search(lp) if pat is not None else ns in lp):
+            # The DECLARATION is matched as written, against each form of the request.
+            if ns and any((pat.search(f) if pat is not None else ns in f) for f in _forms):
                 # longest match wins the ceiling — a 3-word synonym is far stronger evidence
                 # than a 1-word one, so a truncated set keeps the most specific answers.
                 hits.append((len(ns), name))
