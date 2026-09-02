@@ -88,9 +88,11 @@ convenience — it is the only reachable form.
 
 ## 2. The ordering (required by the ruling)
 
-**Wave 1 — the only measured-unreachable argument.** `source_entity_id`: one supplier
-(`kg_triage_list`), on the wire for 4 of 46 calls. Plus the ten zero-supplier arguments above,
-which are unreachable by construction. Small, and it is where the value is.
+**Wave 1 — the only measured-unreachable argument. STATUS: kg_propose_edge BUILT 2026-09-02
+(both endpoints accept a name; id wins; ambiguity refuses with candidates). The BAR in §3 is
+NOT yet measured, so Wave 1 is built but not proven.** `source_entity_id`: one supplier
+(`kg_triage_list`), on the wire for 4 of 46 calls. Plus the twenty-five zero-supplier arguments above
+(seven of them required somewhere), which are unreachable by construction. Small, and it is where the value is.
 
 **Wave 2 — the entity family**, where the resolver already exists: `entity_id` (10 required),
 `target_entity_id`. `findEntityByNameOrAlias` and `canonicalize_entity_name` do the work already;
