@@ -1,0 +1,25 @@
+{
+  "scenarios": [
+    {
+      "id": "t76-wave1-record-a-relationship-between-two-named-entities",
+      "tool_under_test": "kg_propose_edge",
+      "expect_tool": "kg_propose_edge",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+      "prompt_source": "meta.synonyms ['record that they know each other', 'know each other'] — and CHECKED AGAINST answerable_tools before running: it returns exactly ['kg_propose_edge'], nothing else. The two names are the fixture's own seeded entities, so a correct call is expressible without inventing anything.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "🔴 THIS IS THE **AFTER** HALF OF DQ-T76 WAVE 1's BAR, and the BEFORE is already on record (scripts/toolloop/wave1_fabrication_baseline.py): over 53 recorded kg_propose_edge calls, 36 (68%) passed NEITHER endpoint id, 17 passed at least one, and ZERO were wrong-family — KG_ENDPOINT_NOT_NODE has never once been recorded.\n\nSO THE METRIC IS THE OMISSION RATE, not a wrong-family rate that cannot fall below zero. Wave 1 PASSES only if BOTH halves hold:\n  (1) the share of calls supplying an endpoint (by NAME or by id) RISES clearly above the 32% baseline; and\n  (2) the CALL VOLUME does not fall — the plan says outright that a rate improving because nobody called the tool is not a pass.\n\nREFUTED IF the model still omits both endpoints at ~68%. That would mean name-in did not reach the behaviour, and per the plan a wave that does not move the rate on the arguments it touched is signature churn to STOP on rather than continue past.\n\nNOISE: this harness's measured run-to-run floor is ~6 points (DQ-T90), so at K=5 only a large move is readable. A 1-run difference establishes nothing and must not be reported as one.\n\nCONTROL, and it is a real risk to name: the fixture must actually HAVE those two entities as graph nodes, or every run correctly refuses and the arm measures the fixture rather than the fix — the failure that cost sweep 2 a scenario and cost this loop a whole defect row earlier today.",
+      "ship_audit": {
+        "gate": "a confirm card is EXPECTED — Tier A. The edge parks in the triage inbox and is NEVER written to the graph directly (INV-K1), so a suspended run is the designed outcome, not a failure.",
+        "empty_case": "OWED — a name matching nothing must refuse with KG_ENDPOINT_NAME_NOT_FOUND, and a name matching several must refuse WITH the candidates rather than pick.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    }
+  ]
+}
