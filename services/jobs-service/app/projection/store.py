@@ -27,6 +27,17 @@ from typing import Any, Optional
 from loreweave_jobs import TERMINAL as _TERMINAL_SET
 from loreweave_jobs import JobEvent
 
+# 🔴 THE FOUR SQL COPIES — DQ-T86 (c), owner ruling 2026-08-31. The upsert below encoded the
+# terminal vocabulary FOUR more times as literal ('completed','failed','cancelled') lists, and
+# these were the dangerous copies: the WHERE clause is what decides whether an incoming event
+# may overwrite the row. Add a member to JobStatus and a job in the new terminal state reads as
+# NON-terminal here, so a later non-terminal event REGRESSES a finished job — silently, and in
+# the store rather than in a view.
+#
+# Rendered from the SDK set, then substituted below rather than via an f-string: the SQL
+# contains `'{}'::jsonb`, which an f-string would try to interpolate.
+_TERMINAL_SQL = "(" + ",".join(f"'{s.value}'" for s in sorted(_TERMINAL_SET, key=lambda x: x.value)) + ")"
+
 # Monotonic upsert. The ON CONFLICT WHERE clause encodes the ordering rules above
 # so an out-of-order / replayed event can never regress the row.
 _UPSERT = """
@@ -66,16 +77,21 @@ ON CONFLICT (service, job_id) DO UPDATE SET
 WHERE
   -- terminal incoming: always apply, UNLESS it is an OLDER terminal landing on a
   -- newer terminal (don't let a stale cancelled clobber a later completed).
-  ( EXCLUDED.status IN ('completed','failed','cancelled')
-    AND NOT ( job_projection.status IN ('completed','failed','cancelled')
+  ( EXCLUDED.status IN {_TERMINAL_SQL}
+    AND NOT ( job_projection.status IN {_TERMINAL_SQL}
               AND EXCLUDED.job_updated_at < job_projection.job_updated_at ) )
   OR
   -- non-terminal incoming: only over a non-terminal current row, and only forward
   -- in time (>= so an equal-stamp replay of the same status is a harmless no-op write).
-  ( EXCLUDED.status NOT IN ('completed','failed','cancelled')
-    AND job_projection.status NOT IN ('completed','failed','cancelled')
+  ( EXCLUDED.status NOT IN {_TERMINAL_SQL}
+    AND job_projection.status NOT IN {_TERMINAL_SQL}
     AND EXCLUDED.job_updated_at >= job_projection.job_updated_at )
 """
+# Substituted, not interpolated — see the note on _TERMINAL_SQL above. Asserted rather than
+# assumed: a silent no-op replace would leave the sentinel in the SQL and fail at execution
+# time, on a write path, which is the worst place to find out.
+assert "{_TERMINAL_SQL}" in _UPSERT, "the terminal-set sentinel is missing from _UPSERT"
+_UPSERT = _UPSERT.replace("{_TERMINAL_SQL}", _TERMINAL_SQL)
 
 
 def _jsonb(value: Any) -> Optional[str]:

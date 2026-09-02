@@ -29,7 +29,9 @@ Dual-run: the bespoke `/v1/jobs` REST API is NOT removed.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
+
+from loreweave_jobs import JobStatus as _SdkJobStatus
 
 from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp.exceptions import ToolError
@@ -108,6 +110,24 @@ _install_validation_error_rewriter(mcp_server)
 JobStatus = Literal[
     "pending", "running", "paused", "cancelling", "completed", "failed", "cancelled"
 ]
+
+# 🔴 A Literal CANNOT BE DERIVED, SO IT IS GUARDED INSTEAD — DQ-T86 (c), owner ruling
+# 2026-08-31. The other five copies of the status vocabulary now read the SDK at runtime; a
+# `Literal` has to be written out for the type checker and the JSON-schema enum, so the copy is
+# unavoidable here. What IS avoidable is the copy drifting in silence, which is the whole defect
+# this ruling names: add a member to the SDK's JobStatus and this enum would go on advertising
+# the old vocabulary to every model, with nothing anywhere to say so.
+#
+# Fails at IMPORT, deliberately. A mismatch is a contract error, and the alternative is a tool
+# schema that quietly under-reports what a job can be.
+_SDK_STATUSES = frozenset(s.value for s in _SdkJobStatus)
+_ADVERTISED_STATUSES = frozenset(get_args(JobStatus))
+if _ADVERTISED_STATUSES != _SDK_STATUSES:
+    raise RuntimeError(
+        "jobs_mcp JobStatus has drifted from loreweave_jobs.JobStatus (DQ-T86): "
+        f"advertised-only={sorted(_ADVERTISED_STATUSES - _SDK_STATUSES)}, "
+        f"sdk-only={sorted(_SDK_STATUSES - _ADVERTISED_STATUSES)}. Update this Literal."
+    )
 
 
 def _single_value(arg_name: str, value: str | list[str] | None) -> str | None:
