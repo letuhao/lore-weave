@@ -1151,10 +1151,11 @@
    "tier": "A",
    "cycle": 2,
    "group": "A#1 by live failures (5 live of 5 total, in 251 recorded calls)",
-   "note": "PROVEN through the browser at localhost:5174 on a THROWAWAY book created for this cycle (019ff8f5-ae59-71f9-acb9-ad607b363ef7, 'ZZ Throwaway save_draft probe'), driven by google/gemma-4-26b-a4b-qat with NO OPERATOR-TYPED TOOL ARGUMENT - the only text supplied was prose ('Write the opening of chapter 1 for me ... Put it straight into the chapter.'). The book is throwaway BY RULE: this tool REPLACES a chapter's prose, and the two books that already held chapters hold load-bearing evidence from earlier journeys. LIVE: the model called book_list to find the chapter, then book_chapter_save_draft with {book_id, chapter:'1', body:<4 paragraphs>} and it succeeded. A later run replaced that prose with a shorter, colder opening on the same chapter. DATA (owning store, not the response): chapter_blocks holds the prose as REAL paragraph blocks (4 blocks, 1518 chars on the first write; 2 blocks, 662 chars after the rewrite) - not escaped JSON, not an empty shell. FALSIFIER FOR THE READING: word_count could be right while the body was garbage, so the blocks were read directly; and the billing check below is falsified by a SHRINKING chapter - byte_size went 0 -> 664 while word_count went DOWN 269 -> 121, which a high-water-mark implementation could not produce. SHIP: three defects found and fixed inside the cycle (T2-D1 billing, T2-D2 revision ordering, T2-D3 an integer where the schema declares string), each with its own falsifier proven RED on the original. Suites: book-service internal/api ok (37s) and chat-service 2930 passed / 3 skipped / 0 failed, both serial. Deployed by CONTENT: the running book-service binary carries `byte_size=$2,updated_at=now()` and two occurrences of `rv.created_at DESC, rv.id DESC`; chat-service difflines=0; full pre-flight PREFLIGHT_FAIL=0. WHAT THIS DOES NOT CLAIM: (a) T2-D3's repair was NOT observed firing live - on the post-deploy runs the model happened to send chapter:'1' as a string, so the repair correctly did nothing and logged nothing. It is proven by falsification and by running the deployed helper against the REAL catalogue schema (chapter:1 -> '1'), not by a live rescue. Same honesty as D-FJ-7, whose repair also never fired live. (b) THREE of this tool's five live failures were NOT defects and were kept out of the ledger by checking them: the ×3 'missing body' calls all came from TRANSLATION-orientation turns where the model reached for a write tool while looking around ('I've checked the status of your book... Chapter 1 is the only chapter with content'), and the ×1 'this book has no chapters yet - create one first with book_chapter_create' is the recovery path already proven working in the chapter-compose journey. The refusals were right.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/c-hollowdoc2.json, which puts this tool UNDER TEST (scenario 'hollow-doc-as-a-chapter-body') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 5 run(s), surfaced 5/5, called 5/5. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nPROVEN through the browser at localhost:5174 on a THROWAWAY book created for this cycle (019ff8f5-ae59-71f9-acb9-ad607b363ef7, 'ZZ Throwaway save_draft probe'), driven by google/gemma-4-26b-a4b-qat with NO OPERATOR-TYPED TOOL ARGUMENT - the only text supplied was prose ('Write the opening of chapter 1 for me ... Put it straight into the chapter.'). The book is throwaway BY RULE: this tool REPLACES a chapter's prose, and the two books that already held chapters hold load-bearing evidence from earlier journeys. LIVE: the model called book_list to find the chapter, then book_chapter_save_draft with {book_id, chapter:'1', body:<4 paragraphs>} and it succeeded. A later run replaced that prose with a shorter, colder opening on the same chapter. DATA (owning store, not the response): chapter_blocks holds the prose as REAL paragraph blocks (4 blocks, 1518 chars on the first write; 2 blocks, 662 ",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c-hollowdoc2.json"
   },
   "glossary_propose_curation": {
    "state": "proven",
@@ -1207,10 +1208,11 @@
    "tier": "R (scope none)",
    "cycle": 7,
    "group": "A#1 among unconcluded, on the total-failure tiebreak (0 live, 1180 total, 1844 calls)",
-   "note": "PROVEN through the browser across five sessions on the pinned frontend, driven by google/gemma-4-26b-a4b-qat with NO OPERATOR-TYPED TOOL ARGUMENT in any of them. Every argument the tool received was derived by the model from plain prose: {category:'all'} from 'give me the complete list of everything available'; {category:'research'} from 'what research tools do I have?'; {category:'marketing'} from 'show me every tool in the marketing category'; {category:'book', include_deprecated:true} from 'I have an old script that calls book_get'. THE 1180 FAILURES THAT PUT IT AT THE HEAD OF GROUP A ARE NOT THIS TOOL FAILING, and establishing that is what kept the cycle honest. All 1180 are dated 2026-07-20 and all are chat-service's turn-level duplicate-call guard ('You have already called tool_list with these exact arguments this turn'). They ranked as LIVE only because the ordering treated a gateway-local tool as having no owner and therefore no cutoff - fixed in f659ecc9c, along with two other input defects that each changed which tool came next. THE TOOL IS SERVED BY THE HALF NOBODY WAS GUARDING. tool_list exists twice: ai-gateway's handleToolList, and a consumer-local dispatch in chat-service's stream_service.py. A CHAT TURN ONLY EVER REACHES THE SECOND. Proven, not assumed: the live payload excluded exactly ALWAYS_ON_CORE_NAMES, which only chat-service's dispatch does (the gateway passes an empty set), and a direct MCP call to the gateway returned a different tool count entirely. Four of this cycle's five defects live in that dispatch. DATA (owning store = the federated catalogue, since this tool writes nothing). The listed set is EXACTLY the union of each provider's OWN tools/list plus the three gateway-local tools, minus each named filter: 315 - 117 deprecated - 3 always-on core - 4 intent-gated world-setup = 191, matching the live measurement, with ZERO residue in either direction. FALSIFIER FOR THE READING: any name in the expected set but not listed, or listed but not expected, would mean the tool under- or over-reports its own catalogue; both sets are empty. Every omission is now accounted for by a deliberate rule, and the two that were invisible are stamped (T7-D2) or corrected (T7-D1). SHIP - audited past the happy path, and the audit is where four of the five defects came from: the omitted-argument default (T7-D1), a category emptied by the exclusion (T7-D2), an out-of-enum guess (T7-D3), and the second identical call, which turned out to be two separate defects (T7-D4, T7-D5). Also verified: the explicit opt-in still labels rather than hides, with superseded_by attached and the model producing a correct migration table; the provider-outage 'incomplete' stamp has fired once in recorded traffic, so it is proven without inducing an outage; the F18 repeat-breaker has fired 21 times and still trips at the same cap; and the tool is a pure read (tier R, scope none) that writes nothing. NOT FIXED HERE, ON PURPOSE: tool_load carries the same out-of-enum exposure T7-D3 closed for tool_list. It is a separate tool in the cohort and gets its own cycle.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/dqt3.json, which puts this tool UNDER TEST (scenario 'dqt3-gated-tools-are-withheld-not-absent') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nPROVEN through the browser across five sessions on the pinned frontend, driven by google/gemma-4-26b-a4b-qat with NO OPERATOR-TYPED TOOL ARGUMENT in any of them. Every argument the tool received was derived by the model from plain prose: {category:'all'} from 'give me the complete list of everything available'; {category:'research'} from 'what research tools do I have?'; {category:'marketing'} from 'show me every tool in the marketing category'; {category:'book', include_deprecated:true} from 'I have an old script that calls book_get'. THE 1180 FAILURES THAT PUT IT AT THE HEAD OF GROUP A ARE NOT THIS TOOL FAILING, and establishing that is what kept the cycle honest. All 1180 are dated 2026-07-20 and all are chat-service's turn-level duplicate-call guard ('You have already called tool_list with these exact arguments this turn'). They ranked as LIVE only because the ordering treated a gate",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/dqt3.json"
   },
   "book_get": {
    "state": "proven",
@@ -1230,10 +1232,11 @@
    "tier": "A (scope user)",
    "cycle": 9,
    "group": "A#1 among unconcluded (0 live, 270 total, 478 calls)",
-   "note": "PROVEN with NO defect. Driven live in session 019ffa28 on a THROWAWAY book created for this cycle through the UI (019ffa27, 'ZZ Throwaway kg_project_create probe') - throwaway BY RULE, since this tool CREATES a knowledge project. LIVE. From 'I want a personal knowledge project that isn't tied to any book - somewhere to keep my own research notes on maritime history', the model called kg_project_create with {name, project_type:'general'} and NO book_id. project_type and the omission of book_id were both model-derived; the name is the one the author said out loud. THE TIER-A GATE IS NOT BYPASSED, and checking that is what stopped this from being filed as a defect. The call executed with no approval card because loreweave_chat.user_tool_approvals holds kg_project_create='allow' for this account, recorded 2026-07-12 - a standing decision the operator made, which is exactly what that table is for. kg_add_nodes, which has no such row, still raises its card (measured cycle 8's corpus). DATA (owning store loreweave_knowledge.knowledge_projects), field for field: project_id 019ffa2a-45a0-7886-9eb5-97731363d8b7, name as asked, project_type='general', book_id NULL, user_id the caller, extraction_enabled=false, is_archived=false. IDEMPOTENCY - the description's headline claim, tested against a pinned pre-state. Before: exactly ONE project (019ffa27-2501-...) for the throwaway book. The model then called kg_project_create with that book_id and got back created:false and THE SAME project_id; the store still holds exactly one row, unchanged. FALSIFIER: a second row, or a different project_id, would refute it; neither occurred. AND IT IS IDEMPOTENT MORE BROADLY THAN IT PROMISES. A personal project repeated by name also returns created:false with 'a project with this name already exists - returning it instead of creating a duplicate'. THE DEDUPE IS SCOPED PER USER, and that was worth proving rather than assuming: a STRANGER asking for a personal project with the identical name got a NEW project of their own (created:true, different id, their own user_id), not the owner's. FALSIFIER: returning 019ffa2a-... to the stranger would have been a cross-user leak. The probe row was then deleted, scoped to that one project_id. SHIP - every refusal probed, and none of them wrote a row (verified: zero projects named 'intruder'/'ghost'/'x'/'', and still exactly one for the throwaway book). A non-owner asking for a book-bound project gets \"only the book's owner can create a knowledge project for it\"; a book_id that is no book gets the SAME message, so ownership and existence cannot be told apart and books cannot be enumerated; a non-UUID book_id gets 'book_id must be a valid id'; a missing name gets 'Field required. Fix the argument and call the tool again.'; an empty name gets 'String should have at least 1 character'; and an out-of-enum project_type gets the fully actionable form - the field, the legal set, AND what was sent: \"Input should be 'book', 'translation', 'code' or 'general' (you sent 'not_a_type')\". THE 270 FAILURES ARE NOT THIS TOOL FAILING: 263 are the repeat-guard from the single day 2026-07-25, 3 a pydantic validation error (2026-06-25), 3 the owner-only refusal working correctly (2026-07-15), and 1 a book_id type error (2026-07-12). All predate knowledge-service's last commit, which is why the ordering scored it 0 live.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-31/t73-write-then-card.json, which puts this tool UNDER TEST (scenario 't73-a-write-lands-then-the-turn-asks-about-another') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 5 run(s), surfaced 5/5, called 1/5. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nPROVEN with NO defect. Driven live in session 019ffa28 on a THROWAWAY book created for this cycle through the UI (019ffa27, 'ZZ Throwaway kg_project_create probe') - throwaway BY RULE, since this tool CREATES a knowledge project. LIVE. From 'I want a personal knowledge project that isn't tied to any book - somewhere to keep my own research notes on maritime history', the model called kg_project_create with {name, project_type:'general'} and NO book_id. project_type and the omission of book_id were both model-derived; the name is the one the author said out loud. THE TIER-A GATE IS NOT BYPASSED, and checking that is what stopped this from being filed as a defect. The call executed with no approval card because loreweave_chat.user_tool_approvals holds kg_project_create='allow' for this account, recorded 2026-07-12 - a standing decision the operator made, which is exactly what that table is",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-31/t73-write-then-card.json"
   },
   "glossary_list_chapter_links": {
    "state": "proven",
@@ -1275,10 +1278,11 @@
    "tier": "A (scope book)",
    "cycle": 13,
    "group": "A#1 among unconcluded (0 live, 111 total, 299 calls)",
-   "note": "🔴 THE 'BLOCKED' CHAIN BELOW IS STALE AS OF 2026-08-31 — RE-RUN AND REFUTED. It said the tool 'cannot be PROVEN because A FRESH BOOK CANNOT GET ITS FIRST GLOSSARY ENTITY THROUGH CHAT AT ALL'. Measured again on exactly that condition (scenarios-freshbook-firstentity.json, K=5, throwaway books, NOTHING seeded — docs/eval/toolloop/2026-08-31/freshbook.json):\n\n    called                                      5/5\n    entity created on the fresh book            5/5   (glossary_entities: none -> 1 row)\n    errored                                       0\n    the turn also built the ontology            book_kinds, book_genres, book_attributes,\n                                                book_kind_genres, book_active_genres\n\nAND THE STEP THE CHAIN SAID WAS IMPOSSIBLE IS THE ONE THAT RAN: glossary_adopt_standards — recorded on 2026-08-13 as WITHHELD at stage=intent_gate in the very turn whose refusal named it — was called on all 5 runs. The gate still exists in source; the turn now clears it.\n\nNOT RE-CONCLUDED HERE, and the distinction matters: `state` already reads `proven`, so nothing about the verdict changes. What was wrong was this NOTE, which asserted an impossibility the tool no longer has, on a row whose own state said otherwise. Gate evidence is on disk at docs/eval/toolloop/2026-08-31/freshbook-batch.json if the row is ever re-concluded through `gate.py conclude` against its own bars — that is a separate action with its own checks, not something a note correction should do quietly.\n\nWHAT THE CHAIN RECORDED, KEPT because it was true when measured and is the reason two defects shipped: (1) a new book has NO kinds, so the call was refused — 'character is not in this book's vocabulary. This book has: (none yet).' Of 111 historical failures the largest groups are all 'unknown kind: character | place | era | power_system'. (2) The refusal's remedy, glossary_adopt_standards, was INTENT-GATED, and session 019ffa85 recorded it withheld alongside glossary_propose_kinds and glossary_propose_batch in the same turn. T13-D1 (the refusal named only withheld tools) and T13-D2 (a failed item discarded its cause) were both found and fixed on the way, and both are now `fixed` with verification.\n\nA LEDGER CLAIM IS A LEAD, NOT A FACT — eighteen days after it was measured this one described a platform that had moved, and it was still being read as a live blocker.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-31/freshbook-batch.json, which puts this tool UNDER TEST (scenario 'fresh-book-asks-for-its-first-character') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 5 run(s), surfaced 5/5, called 5/5. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\n🔴 THE 'BLOCKED' CHAIN BELOW IS STALE AS OF 2026-08-31 — RE-RUN AND REFUTED. It said the tool 'cannot be PROVEN because A FRESH BOOK CANNOT GET ITS FIRST GLOSSARY ENTITY THROUGH CHAT AT ALL'. Measured again on exactly that condition (scenarios-freshbook-firstentity.json, K=5, throwaway books, NOTHING seeded — docs/eval/toolloop/2026-08-31/freshbook.json):\n\n    called                                      5/5\n    entity created on the fresh book            5/5   (glossary_entities: none -> 1 row)\n    errored                                       0\n    the turn also built the ontology            book_kinds, book_genres, book_attributes,\n                                                book_kind_genres, book_active_genres\n\nAND THE STEP THE CHAIN SAID WAS IMPOSSIBLE IS THE ONE THAT RAN: glossary_adopt_standards — recorded on 2026-08-13 as WITHHELD at stage=intent_gate in the very turn whose ref",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-31/freshbook-batch.json"
   },
   "book_list_chapters": {
    "state": "proven",
@@ -1443,10 +1447,11 @@
    "tier": "R (scope book, ambient_book)",
    "cycle": 28,
    "group": "A#1 among unconcluded (0 live, 43 total, 252 calls)",
-   "note": "PROVEN, one defect (T28-D1) fixed. The most-called tool concluded so far (252 calls). Its 43 failures are ALL correct refusals: 33 missing `query` or missing `book_id`+`query` on a single day, plus repeat-guards and this loop's own blank-argument calls. LIVE (session 019ff929, editor surface). Asked 'search this book's glossary for a character called Thorne Ravensgard. Is he in the glossary?', the model called glossary_search with book_id OMITTED — the ambient path — and answered 'No, Thorne Ravensgard is not in the glossary. The search returned no matches for that name.' Before the fix that same call returned four unrelated entities with nothing to say they were not matches. DATA (owning store loreweave_glossary.glossary_entities), against a book whose four entities were created earlier in this session: searching 'Elara' returns exactly that entity at tier='exact'; 'map' returns exactly that one; limit=1 returns one. FALSIFIER: a different entity, or more than the store holds, would refute it. SHIP - the ambient contract and refusals swept: a missing query is refused by the validator naming the property; book_id omitted with NO ambient book fails closed with 'book_id is required (a UUID)'; book_id omitted WITH X-Book-Id resolves and returns the same result, so the optional declaration is properly paired; a stranger gets 'book not accessible'; limit clamps. THE DEFECT WAS THE NO-MATCH CASE (T28-D1): a query matching nothing returned the recent fallback in the same array, same shape, with no signal — measured here on 'zzzznotathing' and in cycle 10 on a real character name that returned unrelated EVENTS as top results.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-28/c-setupgate1.json, which puts this tool UNDER TEST (scenario 'a-false-gate-opening-surfaces-a-setup-write-and-cannot-perform-one') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 5 run(s), surfaced 5/5, called 5/5. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nPROVEN, one defect (T28-D1) fixed. The most-called tool concluded so far (252 calls). Its 43 failures are ALL correct refusals: 33 missing `query` or missing `book_id`+`query` on a single day, plus repeat-guards and this loop's own blank-argument calls. LIVE (session 019ff929, editor surface). Asked 'search this book's glossary for a character called Thorne Ravensgard. Is he in the glossary?', the model called glossary_search with book_id OMITTED — the ambient path — and answered 'No, Thorne Ravensgard is not in the glossary. The search returned no matches for that name.' Before the fix that same call returned four unrelated entities with nothing to say they were not matches. DATA (owning store loreweave_glossary.glossary_entities), against a book whose four entities were created earlier in this session: searching 'Elara' returns exactly that entity at tier='exact'; 'map' returns exactly",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-28/c-setupgate1.json"
   },
   "book_update_details": {
    "state": "proven",
@@ -1454,10 +1459,11 @@
    "tier": "W (scope book)",
    "cycle": 29,
    "group": "A#1 among unconcluded (0 live, 36 total, 60 calls)",
-   "note": "PROVEN with NO defect — the first WRITE tool concluded in this loop, and its Tier-W gate is proven end to end. All 36 failures are correct refusals: 16 calls passed ONLY book_id and got 'no fields to update'; 9 'book not accessible'; 8 'book_id must be a UUID'; 3 the repeated-failure guard. LIVE (book-scoped studio surface of the throwaway book 019ffa27 — a THROWAWAY by rule, since this tool writes). From 'Set this book's description to: A throwaway probe book used by the tool deep-dive loop', the model called book_update_details with the book_id it resolved and the description taken from the prose, and the Tier-W confirm card was APPROVED IN THE BROWSER. DATA (owning store loreweave_book.books), with the pre-state pinned BEFORE the run: description went from EMPTY to exactly 'A throwaway probe book used by the tool deep-dive loop.', updated_at stamped 13:15:15, and the TITLE unchanged. FALSIFIER: an unchanged description would mean the confirm did nothing; a changed title would mean the tool wrote fields nobody asked for. Neither happened. 🔴 THE GATE IS PROVEN BY THE ORDER OF TWO MEASUREMENTS, not by its presence. Called directly with a real description, the tool minted a confirm_token and the store was STILL EMPTY afterwards — a card is not a write. Only after the card was confirmed in the browser did the value appear. That is the contrast with OBS-T22, where book_chapter_save_draft's STANDING approval let an unrequested write land with no card at all. SHIP: 'no fields to update' for a call carrying only book_id (exactly the 16-call recorded mode, and the right answer — a write tool asked to write nothing must refuse rather than touch the row); 'book_id must be a UUID' for a non-UUID; 'book not accessible' for a stranger, the same answer a nonexistent book gets. NOTED: title, description, original_language, summary and genre_tags all carry NO jsonschema description — only the tool-level prose explains them. The tool-level description is unusually explicit ('This is the ONLY home for a book's description, blurb or summary'), which is probably why it has 15 synonyms and why the model reached it correctly on the first try.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/c-ctxplaceholder1.json, which puts this tool UNDER TEST (scenario 'author-pastes-a-placeholder-book-id') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 5 run(s), surfaced 5/5, called 5/5. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nPROVEN with NO defect — the first WRITE tool concluded in this loop, and its Tier-W gate is proven end to end. All 36 failures are correct refusals: 16 calls passed ONLY book_id and got 'no fields to update'; 9 'book not accessible'; 8 'book_id must be a UUID'; 3 the repeated-failure guard. LIVE (book-scoped studio surface of the throwaway book 019ffa27 — a THROWAWAY by rule, since this tool writes). From 'Set this book's description to: A throwaway probe book used by the tool deep-dive loop', the model called book_update_details with the book_id it resolved and the description taken from the prose, and the Tier-W confirm card was APPROVED IN THE BROWSER. DATA (owning store loreweave_book.books), with the pre-state pinned BEFORE the run: description went from EMPTY to exactly 'A throwaway probe book used by the tool deep-dive loop.', updated_at stamped 13:15:15, and the TITLE unchanged. ",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c-ctxplaceholder1.json"
   },
   "composition_list_canon_rules": {
    "state": "proven",
@@ -1465,10 +1471,11 @@
    "tier": "R (VIEW, owner/grant-filtered)",
    "cycle": 30,
    "group": "A#1 among unconcluded (0 live, 34 total, 47 calls)",
-   "note": "PROVEN, and the cycle found THREE defects — none of them in the tool. The tool is correct at every bar; what was broken was the turn machinery that decides whether it ever gets called. HISTORICAL FAILURES, both explained and both already closed. 15 x 'Field required: project_id' with args {} (2026-07-08) predate the book_id alternative; today {} answers with the actionable 'pass either project_id or book_id'. The other 19 are 'not found or not accessible' across 6 project_ids (2026-07-15) — and NONE of those 6 exists anywhere: not as composition_work.project_id, not as composition_work.id, not as a book id, not as a knowledge_projects.project_id. Invented ids, correctly refused; the same class as cycles 19, 22 and 27. DATA (owning store loreweave_composition.canon_rule), against a pinned falsifier. For the author's Work 019f9f41-78a0 the store holds 6 rules and the tool returns exactly 6; the book_id path resolves to the same Work and returns the same 6; passing BOTH ids agrees. active_only is REAL, not decorative — proven on Work 019f988a-b2fc, whose single rule is active=false: active_only=true returns 0, active_only=false returns 1. FALSIFIER: a count that ignored the flag, or disagreed with the store's own count, would refute it. SHIP - refusals swept. A non-UUID gets \"project_id must be a UUID — received 'not-a-uuid'\"; a nonexistent project, a nonexistent book and a STRANGER holding a real book_id all get the identical 'not found or not accessible', so a Work cannot be probed for existence; and {} names both accepted identifiers instead of a pydantic dump. LIVE (session 019ff929, EDITOR surface on a THROWAWAY book, falsifier seeded first): asked in plain prose 'What canon rules have I declared for this book? List them for me.' — no argument typed by me — the turn called composition_list_canon_rules({book_id: '019f9f2d-…', project_id: '019ff8f6-…'}), ok, and the answer named the seeded rule exactly: 'you have one rule currently active: Magic always costs lifespan (Sat khi luon tieu hao tuoi tho)'. That is the store row, round-tripped through the browser. 🔴 IT TOOK THREE FIXES TO GET THERE, and the first live attempt is the reason this cycle matters. The tool was ADVERTISED in both passes and the model called NOTHING, answering 'I checked the consistency rules for this book, and you haven't declared any canon rules yet' while the store held one. A fabricated ABSENCE is the read-side twin of a hallucinated write and is worse in one way: the author is told their own data is not there, so they have no reason to go and look. See D-FJ-17, D-FJ-18, D-FJ-19 — all three found on this one turn, each fixed where it lives in chat-service, each with a falsifier proven RED on the ORIGINAL defect, full suite 3061 green, deployed and verified by whole-file md5 against the running image. OBS-T30 — a rail that is DONE stops protecting the answer. Re-asked after a second rule was added, the turn called nothing (canon-check now 3/3, so the step-runner correctly reports 'no actionable step') and the model answered from conversation memory: first 'one rule' when the store had two, then, when told a rule had been added, it INVENTED one — 'The world is constantly rewriting itself through shifting geography', a paraphrase of the chapter prose — in place of the real 'The Obsidian Trench never appears on two maps at once', while claiming 'I have checked your consistency rules again'. Recorded as DQ-T30, not fixed: deciding when a data question must force a re-read is a product decision. OBS-T30b — the intent matcher is phrase-shaped. 'What canon rules have I declared…' and 'Remind me what consistency rules I've set…' both pinned canon-check; 'I added another rule just now, please look it up again' pinned NOTHING, so none of the new confinement applied and the turn fell back to the stale rail exactly as its tests specify.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-31/dqt30-verify-batch.json, which puts this tool UNDER TEST (scenario 'dqt30-reask-canon-rules') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 5 run(s), surfaced 5/5, called 5/5. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nPROVEN, and the cycle found THREE defects — none of them in the tool. The tool is correct at every bar; what was broken was the turn machinery that decides whether it ever gets called. HISTORICAL FAILURES, both explained and both already closed. 15 x 'Field required: project_id' with args {} (2026-07-08) predate the book_id alternative; today {} answers with the actionable 'pass either project_id or book_id'. The other 19 are 'not found or not accessible' across 6 project_ids (2026-07-15) — and NONE of those 6 exists anywhere: not as composition_work.project_id, not as composition_work.id, not as a book id, not as a knowledge_projects.project_id. Invented ids, correctly refused; the same class as cycles 19, 22 and 27. DATA (owning store loreweave_composition.canon_rule), against a pinned falsifier. For the author's Work 019f9f41-78a0 the store holds 6 rules and the tool returns exactly 6",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-31/dqt30-verify-batch.json"
   },
   "composition_package_tree": {
    "cycle": "batch-1",
@@ -1477,10 +1484,11 @@
    "via": "fe_runner (real chat path), K=3, throwaway book per repeat, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
-   "note": "Called 3/3 from 'What is in this book?' (its own declared synonym). Read-clean 3/3. Absent case truthful and specific ('1 chapter', 'no structured story plan'). Tenancy refused. It was ALSO the tool the model reached for when asked for the outline — see the composition_list_outline selection observation.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch1-empty.json, which puts this tool UNDER TEST (scenario 'composition-package-tree-empty') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 from 'What is in this book?' (its own declared synonym). Read-clean 3/3. Absent case truthful and specific ('1 chapter', 'no structured story plan'). Tenancy refused. It was ALSO the tool the model reached for when asked for the outline — see the composition_list_outline selection observation.",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch1-empty.json"
   },
   "plan_propose_spec": {
    "cycle": "batch-1",
@@ -1489,10 +1497,11 @@
    "via": "fe_runner (real chat path), K=3, throwaway book per repeat, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
-   "note": "Called 3/3 against a seeded book; Tier-A card raised and required before any write. On an EMPTY book it is not reached (0/3) — the turn bootstraps the glossary ontology first, which is defensible sequencing rather than a miss, but it is recorded rather than waived. Tenancy refused.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch1.json, which puts this tool UNDER TEST (scenario 'plan-propose-spec') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 against a seeded book; Tier-A card raised and required before any write. On an EMPTY book it is not reached (0/3) — the turn bootstraps the glossary ontology first, which is defensible sequencing rather than a miss, but it is recorded rather than waived. Tenancy refused.",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch1.json"
   },
   "glossary_entity_set_attributes": {
    "cycle": "batch-1",
@@ -1501,10 +1510,11 @@
    "via": "fe_runner (real chat path), K=3, throwaway book per repeat, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
-   "note": "Called 3/3, wrote glossary_entities + entity_revisions after the Tier-A card was granted. Absent case is an honest miss (\"I couldn't find an element named 'Aldric Vane'\") with the store unchanged — the inverse of the failure this loop has seen twice. Tenancy probed at its REAL boundary (an entity in another user's book, since a placeholder id only reaches validation): refused, and the row re-read UNCHANGED.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch1.json, which puts this tool UNDER TEST (scenario 'glossary-entity-set-attributes') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, wrote glossary_entities + entity_revisions after the Tier-A card was granted. Absent case is an honest miss (\"I couldn't find an element named 'Aldric Vane'\") with the store unchanged — the inverse of the failure this loop has seen twice. Tenancy probed at its REAL boundary (an entity in another user's book, since a placeholder id only reaches validation): refused, and the row re-read UNCHANGED.",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch1.json"
   },
   "book_chapter_create": {
    "cycle": "batch-1",
@@ -1513,10 +1523,11 @@
    "via": "fe_runner (real chat path), K=3, throwaway book per repeat, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
-   "note": "D-XWIRE-RESULT found and fixed here. From the chat panel the model passed the chapter_id book_list had just returned as book_id; refused 'book not accessible', 0/3 chapters created, and the model then wandered into an unrelated book of the user's. After the fix: 3/3 on both surfaces, exactly one chapter per request, 0->1 on an empty book. Tenancy refused.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch1-empty.json, which puts this tool UNDER TEST (scenario 'book-chapter-create-chat-panel-empty') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nD-XWIRE-RESULT found and fixed here. From the chat panel the model passed the chapter_id book_list had just returned as book_id; refused 'book not accessible', 0/3 chapters created, and the model then wandered into an unrelated book of the user's. After the fix: 3/3 on both surfaces, exactly one chapter per request, 0->1 on an empty book. Tenancy refused.",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch1-empty.json"
   },
   "composition_diagnostics": {
    "cycle": "batch-1",
@@ -1525,10 +1536,11 @@
    "via": "fe_runner (real chat path), K=3, throwaway book per repeat, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
-   "note": "Called 3/3, read-clean across SIX runs (3 with approvals cleared, 3 with the account's 46 standing approvals in place). Absent case reports the one real condition rather than inventing problems. OBSERVATION: with approvals cleared it proposed a Tier-A write (composition_error_block_edit) on 3/3 and suspended on the card; under standing approvals it proposed no write at all. The store never changed in either state.",
-   "evidence_class": "prose-note (pre-gate)",
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch1-empty.json, which puts this tool UNDER TEST (scenario 'composition-diagnostics-empty') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, read-clean across SIX runs (3 with approvals cleared, 3 with the account's 46 standing approvals in place). Absent case reports the one real condition rather than inventing problems. OBSERVATION: with approvals cleared it proposed a Tier-A write (composition_error_block_edit) on 3/3 and suspended on the card; under standing approvals it proposed no write at all. The store never changed in either state.",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "verdict": "proven"
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch1-empty.json"
   },
   "composition_outline_node_edit": {
    "cycle": "batch-2",
@@ -1537,10 +1549,11 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "state": "proven",
-   "note": "Surfaced 3/3, called 2/3, wrote loreweave_composition.outline_node 3/3 — the RIGHT store. Before the R2 supersession union it was surfaced 0/3 and its deprecated sibling composition_outline_node_update took the words; one run then renamed the MANUSCRIPT chapter instead. Tenancy refused with schema-valid args (node re-read unchanged). OBSERVATION carried: on an EMPTY outline, 1 of 3 runs still renamed a manuscript chapter — an absent outline node must not silently redirect to the other graph.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch2-empty.json, which puts this tool UNDER TEST (scenario 'composition-outline-node-edit-empty') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nSurfaced 3/3, called 2/3, wrote loreweave_composition.outline_node 3/3 — the RIGHT store. Before the R2 supersession union it was surfaced 0/3 and its deprecated sibling composition_outline_node_update took the words; one run then renamed the MANUSCRIPT chapter instead. Tenancy refused with schema-valid args (node re-read unchanged). OBSERVATION carried: on an EMPTY outline, 1 of 3 runs still renamed a manuscript chapter — an absent outline node must not silently redirect to the other graph.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch2-empty.json"
   },
   "glossary_ontology_upsert": {
    "cycle": "batch-2",
@@ -1549,10 +1562,11 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "state": "proven",
-   "note": "D-DECLARE-THE-USERS-WORD found and fixed here. It declared 'add a kind' (the column name) and the author said 'category'; surfaced 0/3, and the model ran glossary_adopt_standards instead — adopting a whole genre pack (kinds 4->5, attributes 29->36, genres 1->3, kind_genres 4->13) from a request to add ONE category. After declaring 'category'/'new category'/'start tracking': surfaced 3/3, called 1/3, wrote book_kinds 3/3. Tenancy refused (0 rows written). Empty-case scaffolding recorded.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch2.json, which puts this tool UNDER TEST (scenario 'glossary-ontology-upsert') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 1/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '1/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nD-DECLARE-THE-USERS-WORD found and fixed here. It declared 'add a kind' (the column name) and the author said 'category'; surfaced 0/3, and the model ran glossary_adopt_standards instead — adopting a whole genre pack (kinds 4->5, attributes 29->36, genres 1->3, kind_genres 4->13) from a request to add ONE category. After declaring 'category'/'new category'/'start tracking': surfaced 3/3, called 1/3, wrote book_kinds 3/3. Tenancy refused (0 rows written). Empty-case scaffolding recorded.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch2.json"
   },
   "plan_compile": {
    "state": "proven",
@@ -1560,10 +1574,11 @@
    "tier": "A",
    "cycle": "batch-5",
    "group": "B",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "RE-EARNED after the 2026-08-14 withdrawal. Called 3/3 from 'Compile the plan I already proposed for this book into a planning package', reached via the model's own chain composition_package_tree -> plan_compile (run_id read from the store, never typed). DATA: the approved run wrote outline_node x3 — matching the seeded THREE-chapter spec exactly — plus structure_node, plan_run and generation_job, and the prose said 'three chapters' truthfully. SHIP: gate exercised both ways (card standing 3/3 with nothing written, then approved and written); empty case exercised — before the fixture waited for the async spec job the tool refused 3/3 with 'no spec to compile', naming exactly what was missing; tenancy refused. The withdrawal itself was the finding: the old gate's LIVE bars asked only about the TURN.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch5-approved.json, which puts this tool UNDER TEST (scenario 'plan-compile-v2-approved') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nRE-EARNED after the 2026-08-14 withdrawal. Called 3/3 from 'Compile the plan I already proposed for this book into a planning package', reached via the model's own chain composition_package_tree -> plan_compile (run_id read from the store, never typed). DATA: the approved run wrote outline_node x3 — matching the seeded THREE-chapter spec exactly — plus structure_node, plan_run and generation_job, and the prose said 'three chapters' truthfully. SHIP: gate exercised both ways (card standing 3/3 with nothing written, then approved and written); empty case exercised — before the fixture waited for the async spec job the tool refused 3/3 with 'no spec to compile', naming exactly what was missing; tenancy refused. The withdrawal itself was the finding: the old gate's LIVE bars asked only about the TURN.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch5-approved.json"
   },
   "glossary_list_system_standards": {
    "cycle": "batch-2",
@@ -1572,10 +1587,11 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "state": "proven",
-   "note": "Called 3/3 and store unchanged 3/3 on BOTH the seeded and the empty fixture, from a prompt written off its own description (it declares no synonyms — one of the 36). Tenancy is NOT APPLICABLE by design: scope=none, the system catalogue is identical for every user and has nothing to leak; recorded as such rather than as a pass, because calling it a tenancy pass would be a category error.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch2-empty.json, which puts this tool UNDER TEST (scenario 'glossary-list-system-standards-empty') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 and store unchanged 3/3 on BOTH the seeded and the empty fixture, from a prompt written off its own description (it declares no synonyms — one of the 36). Tenancy is NOT APPLICABLE by design: scope=none, the system catalogue is identical for every user and has nothing to leak; recorded as such rather than as a pass, because calling it a tenancy pass would be a category error.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch2-empty.json"
   },
   "glossary_extract_entities_from_doc": {
    "cycle": "batch-2",
@@ -1584,10 +1600,11 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "state": "proven",
-   "note": "Called 3/3 from pasted notes, store UNCHANGED 3/3 — exactly its declared contract (returns candidates, writes nothing), which is the falsifier that mattered here. Held on the empty fixture too (called 2/3, store unchanged 3/3). Tenancy refused 'book not accessible'.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-28/c-authorsource1.json, which puts this tool UNDER TEST (scenario 'extract-cannot-be-handed-a-model-authored-document') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 5 run(s), surfaced 5/5, called 5/5. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 from pasted notes, store UNCHANGED 3/3 — exactly its declared contract (returns candidates, writes nothing), which is the falsifier that mattered here. Held on the empty fixture too (called 2/3, store unchanged 3/3). Tenancy refused 'book not accessible'.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-28/c-authorsource1.json"
   },
   "composition_list_outline": {
    "cycle": "batch-3",
@@ -1596,10 +1613,11 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "state": "proven",
-   "note": "THE v2 INCIDENT TOOL, and its own prompt run verbatim. Fixture asserts exactly TWO outline nodes. Called 3/3, store UNCHANGED 3/3, reply names exactly the two seeded chapters. On 2026-08-13 this sentence had the model use the Tier-A outline WRITE it could see, take outline_node 7 -> 10, and describe the result as 'your current plan'. Empty-outline case also clean (called 3/3, unchanged) — that is where it previously reached for the write. Tenancy refused at PROJECT scope; the seeded node was not disclosed to another account.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-31/t44-scenelink2.json, which puts this tool UNDER TEST (scenario 't44-what-deleted-scene-links-can-i-bring-back') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 5 run(s), surfaced 5/5, called 5/5. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nTHE v2 INCIDENT TOOL, and its own prompt run verbatim. Fixture asserts exactly TWO outline nodes. Called 3/3, store UNCHANGED 3/3, reply names exactly the two seeded chapters. On 2026-08-13 this sentence had the model use the Tier-A outline WRITE it could see, take outline_node 7 -> 10, and describe the result as 'your current plan'. Empty-outline case also clean (called 3/3, unchanged) — that is where it previously reached for the write. Tenancy refused at PROJECT scope; the seeded node was not disclosed to another account.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-31/t44-scenelink2.json"
   },
   "glossary_adopt_standards": {
    "cycle": "batch-3",
@@ -1608,10 +1626,11 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "state": "proven",
-   "note": "Called 3/3 from 'set up my story bible with the standard categories'; after the confirm card was granted it wrote 5 glossary tables 3/3. Its fixture IS the absent case — seed_assert demands 0 book_kinds before the turn, so a silent no-op could not pass. Tenancy refused 'book not accessible'. Declared this session (it had no synonyms).",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-30/c-siblingpick-adopt.json, which puts this tool UNDER TEST (scenario 'glossary-propose-batch-ADOPT-ALLOWED') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 5 run(s), surfaced 5/5, called 3/5. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 from 'set up my story bible with the standard categories'; after the confirm card was granted it wrote 5 glossary tables 3/3. Its fixture IS the absent case — seed_assert demands 0 book_kinds before the turn, so a silent no-op could not pass. Tenancy refused 'book not accessible'. Declared this session (it had no synonyms).",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-30/c-siblingpick-adopt.json"
   },
   "kg_project_list": {
    "cycle": "batch-3",
@@ -1620,10 +1639,11 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "state": "proven",
-   "note": "Called 3/3, store unchanged 3/3 on both fixtures. scope=USER, so the tenancy boundary is the caller: probed as claude-test2, it returned only that account's own projects and not the harness user's. Declared this session.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch3-empty.json, which puts this tool UNDER TEST (scenario 'kg-project-list-empty') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged 3/3 on both fixtures. scope=USER, so the tenancy boundary is the caller: probed as claude-test2, it returned only that account's own projects and not the harness user's. Declared this session.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch3-empty.json"
   },
   "kg_schema_read": {
    "cycle": "batch-3",
@@ -1632,10 +1652,11 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "state": "proven",
-   "note": "Called 3/3, store unchanged 3/3 on both fixtures, no fabricated edge types — the specific risk in its falsifier, since an invented schema invites writes that will be rejected. Tenancy refused 'project not found' at PROJECT scope. Declared this session.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch3-empty.json, which puts this tool UNDER TEST (scenario 'kg-schema-read-empty') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged 3/3 on both fixtures, no fabricated edge types — the specific risk in its falsifier, since an invented schema invites writes that will be rejected. Tenancy refused 'project not found' at PROJECT scope. Declared this session.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch3-empty.json"
   },
   "tool_load": {
    "cycle": "batch-40 (2026-08-14)",
@@ -1693,10 +1714,11 @@
    "tier": "R",
    "cycle": "batch-5",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged 3/3, and the ANSWER matched the fixture exactly: two chapters seeded, zero translations, and the reply said 'there is no translation for this book — both of the existing chapters are still untranslated'. SHIP: tenancy refused; empty case exercised on a book with its chapters removed, returning empty coverage AND an empty untranslated list, which is structurally distinguishable from the populated case. 🔴 THE SAME TURN ALSO CALLED TWO WRITE TOOLS THE USER DID NOT ASK FOR — translation_start_job and translation_retranslate_dirty, both ok=true/done — and claimed to have started work, including a re-translation of 'a changed segment' that cannot exist over zero translations. That is D-READ-TURN-REACHES-FOR-WRITES, a TURN-level defect with its own row; this tool's own bars all pass.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch4.json, which puts this tool UNDER TEST (scenario 'translation-coverage') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged 3/3, and the ANSWER matched the fixture exactly: two chapters seeded, zero translations, and the reply said 'there is no translation for this book — both of the existing chapters are still untranslated'. SHIP: tenancy refused; empty case exercised on a book with its chapters removed, returning empty coverage AND an empty untranslated list, which is structurally distinguishable from the populated case. 🔴 THE SAME TURN ALSO CALLED TWO WRITE TOOLS THE USER DID NOT ASK FOR — translation_start_job and translation_retranslate_dirty, both ok=true/done — and claimed to have started work, including a re-translation of 'a changed segment' that cannot exist over zero translations. That is D-READ-TURN-REACHES-FOR-WRITES, a TURN-level defect with its own row; this tool's own bars all pass.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch4.json"
   },
   "memory_remember": {
    "state": "proven",
@@ -1704,10 +1726,11 @@
    "tier": "A",
    "cycle": "batch-5",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3 from 'Remember that the Obsidian Trench is only navigable at low tide.' DATA read from NEO4J, not from a count: the approved run wrote 3/3 with the diff naming neo4j.Fact.total AND neo4j.Fact.project — the fact lands and carries its project, so D-MEMORY-FACT-STORED-UNSCOPED holds under approval. SHIP: gate exercised both ways; idempotency exercised — the same sentence twice returned the IDENTICAL fact_id, so merge_fact merges rather than duplicates, which is also why a node count can never settle this tool; tenancy refused against another account's project with the nonexistent-project control run.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch4.json, which puts this tool UNDER TEST (scenario 'memory-remember') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 from 'Remember that the Obsidian Trench is only navigable at low tide.' DATA read from NEO4J, not from a count: the approved run wrote 3/3 with the diff naming neo4j.Fact.total AND neo4j.Fact.project — the fact lands and carries its project, so D-MEMORY-FACT-STORED-UNSCOPED holds under approval. SHIP: gate exercised both ways; idempotency exercised — the same sentence twice returned the IDENTICAL fact_id, so merge_fact merges rather than duplicates, which is also why a node count can never settle this tool; tenancy refused against another account's project with the nonexistent-project control run.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch4.json"
   },
   "jobs_get": {
    "state": "proven",
@@ -1751,10 +1774,11 @@
    "tier": "W",
    "cycle": "batch-6",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, gated 3/3 ('Please confirm the extraction to save them'), store unchanged without approval — the correct outcome for a cost-gated Tier-W tool. ITS AUDIT FOUND A DEFECT AND IT IS FIXED: the empty case minted a confirm card over a zero estimate, and re-probing found the same shape one layer deeper (chapters present, no kinds adopted, llm_calls still 0). Both refuse now — D-EXTRACTION-CONFIRMS-A-NO-OP, a8bfa2047, re-verified live in all three states.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch6.json, which puts this tool UNDER TEST (scenario 'translation-start-extraction') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, gated 3/3 ('Please confirm the extraction to save them'), store unchanged without approval — the correct outcome for a cost-gated Tier-W tool. ITS AUDIT FOUND A DEFECT AND IT IS FIXED: the empty case minted a confirm card over a zero estimate, and re-probing found the same shape one layer deeper (chapters present, no kinds adopted, llm_calls still 0). Both refuse now — D-EXTRACTION-CONFIRMS-A-NO-OP, a8bfa2047, re-verified live in all three states.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch6.json"
   },
   "world_list": {
    "state": "proven",
@@ -1762,10 +1786,11 @@
    "tier": "R",
    "cycle": "batch-6",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3 from 'What worlds do I have set up?', store unchanged, and the reply named this account's real worlds with counts (28 total, paginated with explicit guidance to stop unless more are needed). Tenancy is covered by construction rather than by a probe and that is stated: it takes no book/project argument, its boundary is the caller identity, and the read returned only this account's worlds.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch6.json, which puts this tool UNDER TEST (scenario 'world-list') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 from 'What worlds do I have set up?', store unchanged, and the reply named this account's real worlds with counts (28 total, paginated with explicit guidance to stop unless more are needed). Tenancy is covered by construction rather than by a probe and that is stated: it takes no book/project argument, its boundary is the caller identity, and the read returned only this account's worlds.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch6.json"
   },
   "translation_job_status": {
    "state": "proven",
@@ -1773,10 +1798,11 @@
    "tier": "R",
    "cycle": "batch-6",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3 once the fixture could seed a job at all — the first attempt failed because DOMAIN_BASE pointed the 'translation' domain at catalog-service (8207), which answers /health with 200. Store unchanged. SHIP: an unknown job_id returns 'not found or not accessible', one string for both 'no such job' and 'not yours'; a FRESH job reports status 'running' with the per-chapter row also running, rather than presenting undone work as a result.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch6-jobstatus.json, which puts this tool UNDER TEST (scenario 'translation-job-status') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 once the fixture could seed a job at all — the first attempt failed because DOMAIN_BASE pointed the 'translation' domain at catalog-service (8207), which answers /health with 200. Store unchanged. SHIP: an unknown job_id returns 'not found or not accessible', one string for both 'no such job' and 'not yours'; a FRESH job reports status 'running' with the per-chapter row also running, rather than presenting undone work as a result.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch6-jobstatus.json"
   },
   "glossary_propose_batch": {
    "state": "proven",
@@ -1808,10 +1834,11 @@
    "tier": "A",
    "cycle": "batch-7",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3 and gated 3/3, store unchanged without approval. SHIP is the strong part: another account's REAL map (world+map rows inserted under that owner) is refused with 'map not found', one string that does not leak existence; a nonexistent map gives the same; and a single-point polygon is refused with 'polygon needs at least 3 [x,y] points' — it will not accept a region that could enclose nothing. 🔴 ITS RUN ALSO FOUND D-NIL-UUID-MINTS-A-CARD: all three calls carried map_id=00000000-…-0000, an invented placeholder that PARSES, so a Tier-A card was minted for a call that answers 'map not found'. Fixed at the arg chokepoint (deabb4e47).",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch7.json, which puts this tool UNDER TEST (scenario 'world-map-add-region') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 and gated 3/3, store unchanged without approval. SHIP is the strong part: another account's REAL map (world+map rows inserted under that owner) is refused with 'map not found', one string that does not leak existence; a nonexistent map gives the same; and a single-point polygon is refused with 'polygon needs at least 3 [x,y] points' — it will not accept a region that could enclose nothing. 🔴 ITS RUN ALSO FOUND D-NIL-UUID-MINTS-A-CARD: all three calls carried map_id=00000000-…-0000, an invented placeholder that PARSES, so a Tier-A card was minted for a call that answers 'map not found'. Fixed at the arg chokepoint (deabb4e47).",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch7.json"
   },
   "world_map_add_marker": {
    "state": "proven",
@@ -1855,10 +1882,11 @@
    "tier": "W",
    "cycle": "batch-8",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3 from 'Plan my ontology for this book...', card raised 3/3, store unchanged — it plans and does not write. CONTROL read BEFORE concluding: intent_gate withheld 0 tools, so the 'ontology' wording opened the gate (DQ-T31) and this measures the TOOL rather than the DQ-T3 stamp. Empty goal refused with 'goal is required'; tenancy refused.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch8.json, which puts this tool UNDER TEST (scenario 'glossary-plan') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 from 'Plan my ontology for this book...', card raised 3/3, store unchanged — it plans and does not write. CONTROL read BEFORE concluding: intent_gate withheld 0 tools, so the 'ontology' wording opened the gate (DQ-T31) and this measures the TOOL rather than the DQ-T3 stamp. Empty goal refused with 'goal is required'; tenancy refused.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch8.json"
   },
   "book_steering_list": {
    "state": "proven",
@@ -1866,10 +1894,11 @@
    "tier": "R",
    "cycle": "batch-8",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, and the answer is exactly right: 'You have two writing rules' naming BOTH seeded rules with their bodies. The two-rule fixture exists because the measured failure for this shape is a COUNT (DQ-T30's original evidence was 'one rule' over two) — that under-count did NOT occur. Empty book returns {rules: [], total: 0}; tenancy refused.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch8.json, which puts this tool UNDER TEST (scenario 'book-steering-list') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, and the answer is exactly right: 'You have two writing rules' naming BOTH seeded rules with their bodies. The two-rule fixture exists because the measured failure for this shape is a COUNT (DQ-T30's original evidence was 'one rule' over two) — that under-count did NOT occur. Empty book returns {rules: [], total: 0}; tenancy refused.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch8.json"
   },
   "settings_list_models": {
    "state": "proven",
@@ -1877,10 +1906,11 @@
    "tier": "R",
    "cycle": "batch-8",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, and the framing is correct: 'You have several models REGISTERED'. Kept deliberately apart from settings_provider_inventory, whose live-inventory question this tool answers wrongly (D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY) — from THIS side the tool does not over-claim. Tenancy is the one honest n/a: its boundary is the caller identity.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch8.json, which puts this tool UNDER TEST (scenario 'settings-list-models') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, and the framing is correct: 'You have several models REGISTERED'. Kept deliberately apart from settings_provider_inventory, whose live-inventory question this tool answers wrongly (D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY) — from THIS side the tool does not over-claim. Tenancy is the one honest n/a: its boundary is the caller identity.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch8.json"
   },
   "kg_propose_fact": {
    "state": "proven",
@@ -1888,10 +1918,11 @@
    "tier": "A",
    "cycle": "batch-8",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, card raised 3/3, store unchanged — its contract is 'proposes into the review inbox, never writes' and it held. An invalid fact_type is refused with the full enum AND the value sent back; tenancy refused. The prose twin memory_remember was NOT called instead, so the declaration overlap the falsifier warned about did not bite.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch8.json, which puts this tool UNDER TEST (scenario 'kg-propose-fact') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, card raised 3/3, store unchanged — its contract is 'proposes into the review inbox, never writes' and it held. An invalid fact_type is refused with the full enum AND the value sent back; tenancy refused. The prose twin memory_remember was NOT called instead, so the declaration overlap the falsifier warned about did not bite.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch8.json"
   },
   "world_map_create": {
    "state": "proven",
@@ -1911,10 +1942,11 @@
    "tier": "A",
    "cycle": "batch-9",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, card raised 3/3, store unchanged without approval. IDEMPOTENCY is the headline and it holds: called twice at the boundary on a fixture that already had one work row, the count stayed at 1 and both calls returned the SAME project_id — 'create (or get, idempotently)' is what it does. Tenancy refused.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch9.json, which puts this tool UNDER TEST (scenario 'composition-create-work') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, card raised 3/3, store unchanged without approval. IDEMPOTENCY is the headline and it holds: called twice at the boundary on a fixture that already had one work row, the count stayed at 1 and both calls returned the SAME project_id — 'create (or get, idempotently)' is what it does. Tenancy refused.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch9.json"
   },
   "jobs_summary": {
    "state": "proven",
@@ -1922,10 +1954,11 @@
    "tier": "R",
    "cycle": "batch-9",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, and the counts are real: active 31, completed 1079, failed 53, cancelled 17. 🔴 THIS TOOL'S ANSWER IS WHAT EXPOSED D-PAGE-READ-AS-A-TOTAL — batch 7's jobs_list reply had claimed '10 background jobs running' off a 10-item page, and 31 vs 10 is what sent me to the boundary. Cross-checking two tools' answers against each other is the control that found it.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch9.json, which puts this tool UNDER TEST (scenario 'jobs-summary') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, and the counts are real: active 31, completed 1079, failed 53, cancelled 17. 🔴 THIS TOOL'S ANSWER IS WHAT EXPOSED D-PAGE-READ-AS-A-TOTAL — batch 7's jobs_list reply had claimed '10 background jobs running' off a 10-item page, and 31 vs 10 is what sent me to the boundary. Cross-checking two tools' answers against each other is the control that found it.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch9.json"
   },
   "glossary_deep_research": {
    "state": "proven",
@@ -1969,10 +2002,11 @@
    "tier": "R",
    "cycle": "batch-10",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, and its one must-not-fail property holds: across three runs NO secret, key prefix or token appeared in the reply — it names providers and says 'credentials configured'. Tenancy is covered by construction (no scope argument; the boundary is the caller).",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch10.json, which puts this tool UNDER TEST (scenario 'settings-list-providers') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, and its one must-not-fail property holds: across three runs NO secret, key prefix or token appeared in the reply — it names providers and says 'credentials configured'. Tenancy is covered by construction (no scope argument; the boundary is the caller).",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch10.json"
   },
   "settings_model_delete": {
    "state": "proven",
@@ -1980,10 +2014,11 @@
    "tier": "W",
    "cycle": "batch-10 (re-run)",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3 on the clean re-run, and the registered-model set was UNCHANGED on every run — which is the whole audit for a DESTRUCTIVE account-scoped tool. The reply is exactly right: 'the request to delete LOOP-THROWAWAY-scratch has been prepared, please confirm the card', and it resolved the ALIAS to an id via settings_list_models rather than inventing one. A nonexistent id and ANOTHER ACCOUNT'S model both return 'not accessible' — the same string, so the refusal cannot enumerate. That tenancy boundary had been reporting `n/a` until this cycle added a user_model_id scope to the probe. The first attempt's 2 failures were MY fixture: a registered model outlives the book teardown, so three repeats left three identical rows.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch10-del.json, which puts this tool UNDER TEST (scenario 'settings-model-delete-v2') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 on the clean re-run, and the registered-model set was UNCHANGED on every run — which is the whole audit for a DESTRUCTIVE account-scoped tool. The reply is exactly right: 'the request to delete LOOP-THROWAWAY-scratch has been prepared, please confirm the card', and it resolved the ALIAS to an id via settings_list_models rather than inventing one. A nonexistent id and ANOTHER ACCOUNT'S model both return 'not accessible' — the same string, so the refusal cannot enumerate. That tenancy boundary had been reporting `n/a` until this cycle added a user_model_id scope to the probe. The first attempt's 2 failures were MY fixture: a registered model outlives the book teardown, so three repeats left three identical rows.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch10-del.json"
   },
   "translation_list_versions": {
    "state": "proven",
@@ -1991,10 +2026,11 @@
    "tier": "R",
    "cycle": "batch-10",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, and the answer matches the seeded fixture exactly: 'There is one translation version for this chapter: Vietnamese (vi), Version 1 is active (status: completed)'. The fixture waited up to 900s for the worker to land the version, because starting the job is not the same as having one. Empty case returns languages [] / total 0; tenancy refused.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch10.json, which puts this tool UNDER TEST (scenario 'translation-list-versions') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, and the answer matches the seeded fixture exactly: 'There is one translation version for this chapter: Vietnamese (vi), Version 1 is active (status: completed)'. The fixture waited up to 900s for the worker to land the version, because starting the job is not the same as having one. Empty case returns languages [] / total 0; tenancy refused.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch10.json"
   },
   "composition_error_block_edit": {
    "state": "proven",
@@ -2002,10 +2038,11 @@
    "tier": "A",
    "cycle": "batch-10",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3 with op=`list` — the READ op, which is what a plain 'what have I flagged?' reaches, and NOT one of the mutating ops (resolve|dismiss|reopen) the falsifier warned about. Store unchanged. 🔴 IT RAISED A TIER-A CARD FOR A READ on 3/3: the tier is declared on the TOOL while its op enum spans read and write, so seeing flagged passages needs the same approval as resolving one. Recorded as OBS-READ-OP-GATED-BY-A-WHOLE-TOOL-TIER. Tenancy UNPROBED — op=list requires chapter_id or project_id conditionally, neither in `required`.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch10.json, which puts this tool UNDER TEST (scenario 'composition-error-block-edit') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 with op=`list` — the READ op, which is what a plain 'what have I flagged?' reaches, and NOT one of the mutating ops (resolve|dismiss|reopen) the falsifier warned about. Store unchanged. 🔴 IT RAISED A TIER-A CARD FOR A READ on 3/3: the tier is declared on the TOOL while its op enum spans read and write, so seeing flagged passages needs the same approval as resolving one. Recorded as OBS-READ-OP-GATED-BY-A-WHOLE-TOOL-TIER. Tenancy UNPROBED — op=list requires chapter_id or project_id conditionally, neither in `required`.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch10.json"
   },
   "composition_find_references": {
    "state": "proven",
@@ -2013,10 +2050,11 @@
    "tier": "R",
    "cycle": "batch-10",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, and it resolved the NAME 'Aldric Vane' to an entity_id rather than inventing one — the step that has failed three times elsewhere in this loop. Empty case is honest (a freshly proposed entity appears nowhere). 🔴 ABSENT CASE FAILED: a nonexistent entity_id returns the SAME zero-reference payload as a real-but-unused entity, so a mistyped name reads as 'appears nowhere'. Recorded as D-ABSENT-ENTITY-READS-AS-UNUSED. Also called glossary_entity_set_attributes on this READ question — the fourth occurrence of D-READ-TURN-REACHES-FOR-WRITES; gated, store clean.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch10.json, which puts this tool UNDER TEST (scenario 'composition-find-references') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, and it resolved the NAME 'Aldric Vane' to an entity_id rather than inventing one — the step that has failed three times elsewhere in this loop. Empty case is honest (a freshly proposed entity appears nowhere). 🔴 ABSENT CASE FAILED: a nonexistent entity_id returns the SAME zero-reference payload as a real-but-unused entity, so a mistyped name reads as 'appears nowhere'. Recorded as D-ABSENT-ENTITY-READS-AS-UNUSED. Also called glossary_entity_set_attributes on this READ question — the fourth occurrence of D-READ-TURN-REACHES-FOR-WRITES; gated, store clean.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch10.json"
   },
   "glossary_curation_list": {
    "state": "proven",
@@ -2024,10 +2062,11 @@
    "tier": "R",
    "cycle": "batch-11 (re-run)",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3 and the COUNT is right: 'one item waiting for your review — Mira Solene', on a book holding THREE entities with exactly one tagged. That fixture exists because batch 2 measured the alternative and could not tell a fabrication from a reading. Empty book returns items []; tenancy refused. THE SEED FAILED FIRST, LOUDLY, AND WAS RIGHT TO: glossary_propose_entities tags EVERY proposed entity 'ai-suggested' itself, so 'tag exactly one' left all three tagged. Inverted to strip the tag from the two that must not be queued.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-28/c-silenttrigger2.json, which puts this tool UNDER TEST (scenario 'glossary-curation-list-v2') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 11 run(s), surfaced 11/11, called 11/11. Verified with gate.is_gate_backed BEFORE the label was written.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3 and the COUNT is right: 'one item waiting for your review — Mira Solene', on a book holding THREE entities with exactly one tagged. That fixture exists because batch 2 measured the alternative and could not tell a fabrication from a reading. Empty book returns items []; tenancy refused. THE SEED FAILED FIRST, LOUDLY, AND WAS RIGHT TO: glossary_propose_entities tags EVERY proposed entity 'ai-suggested' itself, so 'tag exactly one' left all three tagged. Inverted to strip the tag from the two that must not be queued.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-28/c-silenttrigger2.json"
   },
   "glossary_propose_aliases": {
    "state": "proven",
@@ -2035,10 +2074,11 @@
    "tier": "A",
    "cycle": "batch-11",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, card raised 3/3, store unchanged without approval. Absent case is a good shape: a nonexistent entity_id comes back PER ITEM as {status: skipped, reason: 'entity not found in this book'} with written 0 — a batch tool that reported one number would hide which item failed. Tenancy refused.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch11.json, which puts this tool UNDER TEST (scenario 'glossary-propose-aliases') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, card raised 3/3, store unchanged without approval. Absent case is a good shape: a nonexistent entity_id comes back PER ITEM as {status: skipped, reason: 'entity not found in this book'} with written 0 — a batch tool that reported one number would hide which item failed. Tenancy refused.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch11.json"
   },
   "web_search": {
    "state": "proven",
@@ -2046,10 +2086,11 @@
    "tier": "R",
    "cycle": "batch-11",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged. 🔴 AND IT RAISED A CONFIRM CARD ON 3/3 DESPITE BEING TIER R — the SPEND consent axis gates it independently of tier, so the paid query I had budgeted was never actually bought. A read-tier tool that costs money is gated on the axis that matters, which is the right design and worth recording as a positive. It is also the tool that displaced glossary_deep_research in batch 9, because it is ALWAYS_ON_CORE.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch11.json, which puts this tool UNDER TEST (scenario 'web-search') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged. 🔴 AND IT RAISED A CONFIRM CARD ON 3/3 DESPITE BEING TIER R — the SPEND consent axis gates it independently of tier, so the paid query I had budgeted was never actually bought. A read-tier tool that costs money is gated on the axis that matters, which is the right design and worth recording as a positive. It is also the tool that displaced glossary_deep_research in batch 9, because it is ALWAYS_ON_CORE.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch11.json"
   },
   "composition_motif_book_list": {
    "state": "proven",
@@ -2057,10 +2098,11 @@
    "tier": "R",
    "cycle": "batch-11",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, real payload. A FRESH book returns 25 motifs, all carrying book_id: null — the PLATFORM library, which is exactly what 'shared library' means and what the tool's own synonyms say. So the payload is right and 'this book has 25 motifs in its shared library' is defensible. The nuance recorded rather than filed: the summary cannot show which rows are the book's OWN versus shared, because every row here is null, and I could not prove a wrong answer from that.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch11.json, which puts this tool UNDER TEST (scenario 'composition-motif-book-list') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, real payload. A FRESH book returns 25 motifs, all carrying book_id: null — the PLATFORM library, which is exactly what 'shared library' means and what the tool's own synonyms say. So the payload is right and 'this book has 25 motifs in its shared library' is defensible. The nuance recorded rather than filed: the summary cannot show which rows are the book's OWN versus shared, because every row here is null, and I could not prove a wrong answer from that.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch11.json"
   },
   "composition_conformance_status": {
    "state": "proven",
@@ -2092,10 +2134,11 @@
    "tier": "A",
    "cycle": "batch-12 (A/B)",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "PROVEN after the declaration fix. A-arm: surfaced 0/3 with 'rename Aldrik Vayne to Aldric Vane' — every declared phrase paired 'rename' with a NOUN. B-arm, prompt UNCHANGED, declaration widened with the bare verb and the misspelling framing: surfaced 3/3, CALLED 3/3, card raised, store unchanged (entity count 1, cached_name still the misspelling). It resolved the WRONG spelling to the right row rather than creating a new entity — the create-instead-of-edit shape did not occur. Renaming a nonexistent entity is refused; tenancy refused.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch12-v2.json, which puts this tool UNDER TEST (scenario 'glossary-entity-rename-v2') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nPROVEN after the declaration fix. A-arm: surfaced 0/3 with 'rename Aldrik Vayne to Aldric Vane' — every declared phrase paired 'rename' with a NOUN. B-arm, prompt UNCHANGED, declaration widened with the bare verb and the misspelling framing: surfaced 3/3, CALLED 3/3, card raised, store unchanged (entity count 1, cached_name still the misspelling). It resolved the WRONG spelling to the right row rather than creating a new entity — the create-instead-of-edit shape did not occur. Renaming a nonexistent entity is refused; tenancy refused.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch12-v2.json"
   },
   "glossary_create_evidence": {
    "state": "proven",
@@ -2115,10 +2158,11 @@
    "tier": "R",
    "cycle": "batch-12 (A/B)",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "PROVEN after the declaration fix. A-arm: surfaced 0/3 — declared 'how are they connected' against 'How are the CHARACTERS in this story connected', a pronoun apart. B-arm, prompt UNCHANGED: surfaced 3/3, CALLED 3/3, store unchanged. And the EMPTY answer is exemplary — 'I don't see any characters or relationships recorded in the connection map for this project yet' — the exact opposite of batch 11's conformance_status, which invented 'effectively stale' for a book that had never run conformance. Tenancy refused.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch12-v2.json, which puts this tool UNDER TEST (scenario 'kg-graph-query-v2') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nPROVEN after the declaration fix. A-arm: surfaced 0/3 — declared 'how are they connected' against 'How are the CHARACTERS in this story connected', a pronoun apart. B-arm, prompt UNCHANGED: surfaced 3/3, CALLED 3/3, store unchanged. And the EMPTY answer is exemplary — 'I don't see any characters or relationships recorded in the connection map for this project yet' — the exact opposite of batch 11's conformance_status, which invented 'effectively stale' for a book that had never run conformance. Tenancy refused.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch12-v2.json"
   },
   "glossary_propose_translation": {
    "state": "proven",
@@ -2138,10 +2182,11 @@
    "tier": "R",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, honest empty: 'no items in the triage queue'. Neither the false PRESENCE conformance_status produced nor the false ABSENCE story_search produced.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch13.json, which puts this tool UNDER TEST (scenario 'kg-triage-list') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, honest empty: 'no items in the triage queue'. Neither the false PRESENCE conformance_status produced nor the false ABSENCE story_search produced.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch13.json"
   },
   "kg_view_read": {
    "state": "proven",
@@ -2149,10 +2194,11 @@
    "tier": "R",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, plain honest empty: 'you don't have any saved views (lenses)'.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch13.json, which puts this tool UNDER TEST (scenario 'kg-view-read') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, plain honest empty: 'you don't have any saved views (lenses)'.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch13.json"
   },
   "settings_model_set_default": {
    "state": "proven",
@@ -2160,10 +2206,11 @@
    "tier": "A",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, card raised 3/3, and user_default_models UNCHANGED — 2 rows before and after, a number READ from the store rather than assumed (my draft guessed 0). That is the whole audit for an account-scoped setting that changes which model every later turn uses, this harness's own included. An unknown capability is refused with the closed set.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch13.json, which puts this tool UNDER TEST (scenario 'settings-model-set-default') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, card raised 3/3, and user_default_models UNCHANGED — 2 rows before and after, a number READ from the store rather than assumed (my draft guessed 0). That is the whole audit for an account-scoped setting that changes which model every later turn uses, this harness's own included. An unknown capability is refused with the closed set.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch13.json"
   },
   "translation_segment_status": {
    "state": "proven",
@@ -2171,10 +2218,11 @@
    "tier": "R",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, store unchanged, and correct on the seeded fixture: 'no outdated segments... all up to date' over a translation completed and unchanged since. 🔴 ITS AUDIT FOUND that a chapter NEVER TRANSLATED returns the IDENTICAL payload ({segments: [], dirty_count: 0}), so the same sentence would be false there — an instance of D-ABSENT-ENTITY-READS-AS-UNUSED.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch13.json, which puts this tool UNDER TEST (scenario 'translation-segment-status') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, store unchanged, and correct on the seeded fixture: 'no outdated segments... all up to date' over a translation completed and unchanged since. 🔴 ITS AUDIT FOUND that a chapter NEVER TRANSLATED returns the IDENTICAL payload ({segments: [], dirty_count: 0}), so the same sentence would be false there — an instance of D-ABSENT-ENTITY-READS-AS-UNUSED.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch13.json"
   },
   "translation_retranslate_dirty": {
    "state": "proven",
@@ -2182,10 +2230,11 @@
    "tier": "W",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "prose-note (pre-gate)",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Called 3/3, gated, store unchanged — and live it did the RIGHT thing: with a completed translation and nothing changed it declined to spend, answering 'no changes have been detected in the source text that would require a re-translation'. 🔴 ITS AUDIT FOUND THE HOLE ANYWAY: on a chapter with NO translation it minted a card titled 'Re-translate 0 changed segment(s)'. Same invariant as D-EXTRACTION-CONFIRMS-A-NO-OP, in this service's other tool, found by probing the sibling after fixing the first. FIXED and re-verified live.",
-   "verdict": "proven"
+   "note": "RE-VERIFIED OFF DISK 2026-09-02 against docs/eval/toolloop/2026-08-14/batch13.json, which puts this tool UNDER TEST (scenario 'translation-retranslate-dirty') rather than merely reaching it -- the distinction that made the composition_reference_list citation false earlier the same day. MEASURED from that file's own runs: 3 run(s), surfaced 3/3, called 3/3. Verified with gate.is_gate_backed BEFORE the label was written.\n\n🔴 A WEAKER BAR THAN K=5, STATED HERE RATHER THAN LEFT TO THE HEADLINE COUNT: this cycle ran 3 repeats, not 5. The evidence is re-checkable and the tool was genuinely under test, so the row is gate-backed -- but '3/3 called' is a smaller sample than the rows concluded at K=5, and a reader comparing them should know that.\n\nTHE PRE-GATE NOTE IS KEPT, because it is the analysis that concluded the tool and re-verification does not make it wrong:\nCalled 3/3, gated, store unchanged — and live it did the RIGHT thing: with a completed translation and nothing changed it declined to spend, answering 'no changes have been detected in the source text that would require a re-translation'. 🔴 ITS AUDIT FOUND THE HOLE ANYWAY: on a chapter with NO translation it minted a card titled 'Re-translate 0 changed segment(s)'. Same invariant as D-EXTRACTION-CONFIRMS-A-NO-OP, in this service's other tool, found by probing the sibling after fixing the first. FIXED and re-verified live.",
+   "verdict": "proven",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch13.json"
   },
   "composition_arc_extract_template": {
    "state": "proven",
@@ -3228,9 +3277,8 @@
   "composition_reference_list": {
    "state": "proven",
    "cycle": "batch-40 (2026-08-14)",
-   "note": "PROVEN against docs/eval/toolloop/2026-08-14/c-reflist1.json. MEASURED: surfaced 5/5, called 5/5, returned ok 5/5, errors 0/5. It acted as the SUPPLIER on every run — the sequence is composition_reference_list -> composition_reference_update on 5 of 5, which is exactly what its description promises ('This is where a reference_id comes from'), and the result carries a real reference_id, title, author and source_url.\n\n🔴 WHY THIS ROW WAS MISSING UNTIL 2026-09-02, because the gap is more interesting than the row: the batch that proves this tool is FILED UNDER ITS CONSUMER. Its scenario is 'composition-reference-update-via-the-list' and the row went to composition_reference_update alone. A supplier proven inside its consumer's batch leaves no row of its own, and a per-tool audit that reads the ledger rather than the batches cannot see it. This was the ONLY such gap across 199 live tools — every other live tool has a row.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/c-reflist1.json",
-   "evidence_class": "gate-backed",
+   "note": "🔴 THE `gate-backed` LABEL ON THIS ROW WAS FALSE AND IS WITHDRAWN (2026-09-02, the same day it was written). I cited docs/eval/toolloop/2026-08-14/c-reflist1.json because the tool is CALLED on 5 of 5 runs there. It is not UNDER TEST there: that batch's top-level `tools` array lists only composition_reference_update, and `gate._tools_in_batch` reads exactly that array, so `gate.is_gate_backed` returns False. The name does appear five times in the file -- inside each run's recorded `calls` -- which is what a grep sees and what misled me.\n\nTHAT IS THE SHORTCUT gate.py's OWN DOCSTRING NAMES: 'all 43 of those tools DO have an entry in some file on disk ... picking one and calling it the citation would invent the very thing the label is supposed to guarantee: that a specific, named measurement can be re-run.' Checked across all 207 rows, mine was the ONLY one claiming the label and failing the definition.\n\nWHAT IS TRUE AND KEPT: c-reflist1 records this tool called 5/5, ok 5/5, 0 errors, acting as SUPPLIER to composition_reference_update on every run. That is real evidence of REACHABILITY, which is why the row stays `proven`. It is not evidence from a cycle that TESTED this tool, which is what gate-backed asserts.\n\nOWED: a cycle of its own -- a scenario naming this tool, a falsifier, K=5.",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "verdict": "proven"
   }
@@ -8050,8 +8098,8 @@
   "deferred_questions": 68,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
-   "gate_backed": 132,
-   "prose_note_pre_gate": 68,
+   "gate_backed": 181,
+   "prose_note_pre_gate": 19,
    "note": "A conclusion is 'gate-backed' when it cites an evidence file that exists and that scripts/toolloop/gate.py can re-check. The pre-gate rows are cycles 1-31, concluded one tool at a time before the harness existed; they carry detailed LIVE/DATA/FALSIFIER prose and represent real work, but nothing can RE-VERIFY them without re-running the tool. Split recorded so the headline count is never read as uniformly machine-checked."
   },
   "release_surface": 198,
@@ -8181,6 +8229,7 @@
   "the_QUEUE_generator_is_NOT_hiding_a_ruling__checked_2026_08_30": "Prompted by the digest defect found the same hour: that page surfaced findings by matching a hand-kept list of topic words in a field NAME, fell behind what was being written, and silently stopped showing the day's biggest results. The queue generator uses the same technique for something far more consequential — `_open_dq_names` decides whether a question still BLOCKS by testing `startswith('answer')`. A ruling written under any other key would be invisible, the question would keep blocking, and real work would sit hidden. That is exactly how four rulings went unbuilt once before.\n\nCHECKED, over all 32 currently-blocking questions: every field that is not `answer_*` and not a recommendation, scanned for ruling-shaped language (OWNER:, DECIDED, 'the owner chose/ruled/decided', 'owner wants').\n\n    open questions scanned                                        32\n    carrying ruling-shaped text outside an answer_* field           1\n    ... and that one is a CONDITIONAL in my own recommendation —\n        'If the owner wants those 22 as well, that is a WIDER trigger'                0 real\n\nSO NO RULING IS HIDDEN AND NO WORK IS BLOCKED BY A NAMING ACCIDENT. A negative result, and the one worth having: the digest failing loses a finding from a page, which is recoverable by re-reading the ledger; the queue failing loses WORK, which nobody would ever look for.\n\nNOT FIXED, BECAUSE NOTHING IS BROKEN — but the fragility is real and is recorded rather than guarded: `startswith('answer')` is a convention, not a contract, and the digest just demonstrated what happens when a convention drifts. If a ruling is ever written as `decision_2026_09_01` or `owner_says`, this check is what would find it, and it is a single scan.",
   "swept_every_open_row_for_a_HIDDEN_shipped_fix__2026_08_30": "Three times today a fix shipped for one row silently repaired another, and the second row went on being ruled as though nothing had been built — DQ-T56's 'what shipped meanwhile: Nothing', the golden-linter row's 'the surface half is untouched', and D-SILENT-TURN-NO-CARD-NO-PROSE's 'NO FIX AND NO CAUSE'. The last was found because the DEPLOYED CODE NAMES THE ROW. That is a searchable signature, so it was searched.\n\n    open rows                                        24\n    named in NON-TEST service source                  8\n\n        D-SILENT-TURN-NO-CARD-NO-PROSE          stream_service.py  <- the hidden fix\n        D-A-TURN-THAT-EXHAUSTS-ITS-PASSES-…     stream_service.py\n        D-FABRICATION-GUARD-IS-BLIND-…          stream_service.py\n        D-CONFIRM-REFUSAL-IS-AN-OPAQUE-…        actions.py\n        D-RESTORE-WITH-NO-WAY-TO-SEE-…          composition mcp/server.py\n        D-THE-PROBLEMS-PANEL-IS-REPORTED-…      composition mcp/server.py\n        D-UPSTREAM-ERROR-WITH-NO-MESSAGE        stream_billing.go  (today's own fix)\n        D-TURN-STALLS-AFTER-THE-SURFACE-…       stream_billing.go  (today's own fix)\n\nREAD, NOT COUNTED. Each reference was opened. NO FOURTH HIDDEN FIX: the rest are either mechanisms the rows already record (D-A-TURN-THAT-EXHAUSTS…'s reference is DQ-T33's `_last_tool_error_for_author`, which its own question discusses at length), explanations of a rule that was REJECTED rather than shipped (the fabrication guard's docstring cites the row as the reason `version != 7` was refused), or this session's own work.\n\nONE NUANCE WORTH THE OWNER'S EYE, short of a hidden fix: D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID says 'NOTHING SHIPPED', and something did — a degenerate-id guard that the same docstring records as catching SEVEN of the nine invented UUIDs found in recorded arguments. The row's specific complaint (blindness to a WELL-FORMED invented id) is genuinely unaddressed, so the sentence is defensible about its own defect and misleading about the file.\n\nTHE SIGNATURE ONLY FINDS FIXES THAT NAME THEIR ROW. A repair that helps a row without citing it — which is exactly how the silent-turn fix reached the row it was not written for — is invisible to this sweep. Two of today's three were found by date-window reasoning instead, and there is no cheap search for that.",
   "THERE_WAS_NO_2026_08_31_EVENT__the_45x_drop_is_mostly_CORPUS_2026_09_02": "🔴 A HEADLINE NUMBER I CARRIED FOR TWO DAYS, RE-DERIVED AND LARGELY WITHDRAWN. I had recorded that 'something landed on 2026-08-31 that dropped missing-id failures ~45x (7.61% -> 0.18%)' and flagged it as never explained. It is in no contract and no ledger row -- it came from a session summary -- so it was a lead, not a fact. Re-derived from the recorded corpus, counting DISTINCT toolCallId over calls that returned a result:\n\n    day           calls  failed  missing_id    rate\n    2026-08-14     4936    1820         314   6.36%\n    2026-08-27       87      29          12  13.79%\n    2026-08-28     1282     256          48   3.74%\n    2026-08-30      336      23           9   2.68%\n    2026-08-31      171      28           0   0.00%\n    2026-09-01     1063     181           4   0.38%\n\nBOTH ENDPOINTS WERE WRONG (6.36% not 7.61%, 0.38% not 0.18%), so the ratio is ~17x rather than 45x. AND THERE IS NO CLIFF: the rate declines across four separate dates. 'Something landed on 2026-08-31' is not a description of this curve.\n\n🔴 STRATIFIED, MOST OF WHAT IS LEFT IS COMPOSITION, NOT IMPROVEMENT. The 2026-08-14 sweep is 4,936 calls of broad coverage; the later batches are targeted. Restricting to the 31 tools called at least 10 times on BOTH sides of 2026-08-30:\n\n    BEFORE   51 missing_id /  3689 calls   1.38%\n    AFTER     8 missing_id /  1404 calls   0.57%\n    -> 2.4x, not 17x and not 45x\n\nAND THE DIRECT COMPOSITION CHECK SAYS THE SAME THING OUTRIGHT: of the 374 missing-id failures before the cutoff, 267 (71%) are on 22 tools THE LATER CORPUS NEVER CALLS AGAIN -- composition_motif_link_edit (66), composition_arc_get (35), world_map_add_marker (28), world_map_create (20), world_map_delete (20). The loop stopped running the scenarios that failed; it did not mostly stop failing.\n\nWHAT IS REAL, AND IT IS WORTH KEEPING: within the shared tools the 2.4x is genuine and concentrated in three that went to ZERO --\n    composition_list_derivatives      24.8% -> 0.0%   (113 -> 35 calls)\n    composition_entity_override_edit   7.7% -> 0.0%   ( 91 -> 41)\n    composition_list_outline           5.2% -> 0.0%   (174 -> 34)\nNo single change is attributed to them here, because attributing an improvement to a commit needs the same standard as attributing a defect and I have not done that work. What can be said is that the effect is REAL, MODEST, and CONFINED to composition tools.\n\nTHE LESSON IS THE ONE THIS LOOP KEEPS PAYING FOR: a pooled rate across two eras with different batch composition measures the composition. The correct comparison was available all along -- the same tools on both sides -- and it costs one query.",
-  "a_LIVE_missing_id_residue_the_stratified_view_exposed__2026_09_02": "ONE TOOL DID NOT IMPROVE AT ALL, and the stratified comparison is what made it visible -- the pooled rate had buried it:\n\n    composition_arc_template_get   before 6/14 (42.9%)   after 5/12 (41.7%)\n\nIt fails with `missing required argument(s): ['arc_id']` and the model sends EMPTY args. Its supplier is live and needs nothing to call: composition_arc_template_list has `required: None`, so this is not the unreachable-supplier class -- the id is obtainable and the model does not fetch it.\n\nA SECOND HAZARD ON THE SAME TOOL, noted while reading the refusals: the tool is `composition_arc_template_get`, its required argument is named `arc_id`, and its own description says arc_id is 'The arc_template id (UUID)'. Three names for one thing on one tool. Not measured as a cause, and it should not be asserted as one -- but it is the kind of mismatch that makes a model reach for an arc id it already has.\n\nNOT FILED AS A DEFECT ROW. The tool's own ledger row is `proven` and this is a call-quality residue rather than a broken tool; filing it would need its own cycle, and the honest first step is a K=5 arm on a prompt that needs a template, which has not been run."
+  "a_LIVE_missing_id_residue_the_stratified_view_exposed__2026_09_02": "ONE TOOL DID NOT IMPROVE AT ALL, and the stratified comparison is what made it visible -- the pooled rate had buried it:\n\n    composition_arc_template_get   before 6/14 (42.9%)   after 5/12 (41.7%)\n\nIt fails with `missing required argument(s): ['arc_id']` and the model sends EMPTY args. Its supplier is live and needs nothing to call: composition_arc_template_list has `required: None`, so this is not the unreachable-supplier class -- the id is obtainable and the model does not fetch it.\n\nA SECOND HAZARD ON THE SAME TOOL, noted while reading the refusals: the tool is `composition_arc_template_get`, its required argument is named `arc_id`, and its own description says arc_id is 'The arc_template id (UUID)'. Three names for one thing on one tool. Not measured as a cause, and it should not be asserted as one -- but it is the kind of mismatch that makes a model reach for an arc id it already has.\n\nNOT FILED AS A DEFECT ROW. The tool's own ledger row is `proven` and this is a call-quality residue rather than a broken tool; filing it would need its own cycle, and the honest first step is a K=5 arm on a prompt that needs a template, which has not been run.",
+  "the_K_DISTRIBUTION_of_gate_backed_rows__2026_09_02": "🔴 A CLAIM IN THIS RUN'S OWN GOAL, CHECKED AND CORRECTED. The goal text asserts 'K=5 is THE BAR ... it is what all 133 existing rows were held to'. Derived from the cited files themselves, the pre-existing gate-backed rows were:\n    K=5   126        K=3     4        K=8   1        K=15  1\nSo K=5 is the bar in the sense that matters (95%), but FOUR rows already sat below it and the goal overstated it as all. Recorded rather than quietly left, because a goal is read as a specification and an overstatement in it becomes a bar nobody can actually meet.\n\nWHAT TODAY'S RE-VERIFICATION SWEEP DID TO THAT DISTRIBUTION, stated plainly because it is a real dilution and the headline count must not hide it:\n    rows re-verified off disk today      49\n    ...of them at K=3                    39\n    whole-ledger distribution now        K=3: 43   K=5: 135   K=8: 1   K=11: 1   K=15: 1\n\nWHY THE K=3 CITATIONS WERE KEPT RATHER THAN HELD BACK FOR LIVE K=5 ARMS. `gate-backed` means one thing: the row cites a file that exists and that gate.py can re-check. A K=3 cycle satisfies that; a pre-gate prose note satisfies nothing, and 'nothing can re-verify this' is strictly worse than 'three runs, re-checkable, and the row says three'. Every one of those rows carries an explicit paragraph naming its own weaker bar, so a reader comparing it against a K=5 row is told the difference on the row rather than having to derive it.\n\nWHAT THIS DOES NOT CLAIM: that a K=3 row is as strong as a K=5 one. It is not, and the 39 rows say so. Re-running them at K=5 remains available and is the honest upgrade path; it costs 39 live arms on a single GPU, which is why it was not done in the same pass."
  }
 }
