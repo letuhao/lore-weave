@@ -396,3 +396,104 @@ def refusal_message(resolutions: list[Resolution]) -> str:
         else:
             parts.append(f"{r.param}: could not be resolved ({r.outcome}); pass the id directly.")
     return " ".join(parts)
+
+
+# ── The ABSENT-argument branch (DQ-T76) ──────────────────────────────────────
+#
+# 🔴 EVERYTHING ABOVE RESOLVES A NAME SITTING IN AN ID FIELD. Measured on the corpus AFTER
+# that shipped, that is the SMALLER failure by an order of magnitude:
+#
+#     the id argument is ABSENT entirely   685 failures / 55 tools   (89%)
+#     a NAME was passed into an id field    86 failures / 20 tools   (11%)
+#
+# 🔴 AND THE OBVIOUS REMEDY IS ALREADY BUILT AND ALREADY MEASURED FAILING. `argument_emitters`
+# declares WHICH TOOL SUPPLIES each required id — 88 pairs, and **632 of the 723 failures
+# (87%) are on pairs it ALREADY covers**. The refusal names that supplier to the model. Of
+# 605 (session, tool) pairs that failed this way, only **51 (8%) ever succeeded with that
+# tool again in the same session** — and that count is generous, since it credits successes
+# that happened BEFORE the failure. Telling the model where the id comes from is a mechanism
+# that FIRES and does not MATTER.
+#
+# So this branch does what the name branch does — it FETCHES — rather than advising. The
+# two-branch contract is unchanged and is the whole safety story: exactly one candidate
+# substitutes, anything else REFUSES. Ambiguity here is not hypothetical; the 5.3 pilot
+# measured it at 37.5% of contested calls, which is why there is no "pick the best" arm.
+#
+# What a refusal returns is still strictly better than today: the model currently gets the
+# NAME OF A TOOL TO GO CALL, and gets back the actual rows to choose between.
+
+#: Prefixes that name the id's ROLE in a call, not the KIND of record it identifies.
+#: `composition_motif_link_edit` requires from_motif_id/to_motif_id while its supplier
+#: `composition_motif_link_list` returns `motif_id` — 168 failures that a literal-name match
+#: scores as unsupplied.
+_ROLE_PREFIX = re.compile(r"^(from|to|source|target|parent|child|left|right)_")
+
+#: Where a human label lives, in preference order. A candidate without one is still returned
+#: — an id with no label is worse to choose between, but hiding it would be worse still.
+_LABEL_FIELDS = ("cached_name", "name", "title", "display_name", "label", "alias")
+
+
+def bare_id_field(param: str) -> str:
+    """`from_motif_id` → `motif_id`. The role is about this call; the field is about the record."""
+    return _ROLE_PREFIX.sub("", param)
+
+
+def harvest(result: Any, id_field: str, _depth: int = 0) -> tuple[Candidate, ...]:
+    """Every record in a supplier's result that carries `id_field` as a canonical UUID.
+
+    🔴 **THE VALUE MUST BE A UUID, NOT MERELY THE KEY.** Keyed on the field NAME alone, the
+    sizing pass credited `tool_load` as a supplier of world_id/map_id/job_id — it returns tool
+    SCHEMAS, where every id parameter appears as a property KEY. A schema describes an
+    argument; it is not a value anything can pass. Requiring the value to parse as a UUID
+    removes that entire class, and it reuses `looks_like_an_id` so this agrees with the name
+    branch about what an id IS rather than keeping a second opinion.
+
+    Walks nested structures because suppliers wrap their rows differently (`entities[]`,
+    `models[]`, `page.items[]`); depth is bounded so a cyclic or pathological payload cannot
+    spin. Order is preserved and duplicates by id are collapsed — the same record appearing
+    twice is one choice, not an ambiguity.
+    """
+    if _depth > 8:
+        return ()
+    out: list[Candidate] = []
+    if isinstance(result, dict):
+        value = result.get(id_field)
+        if looks_like_an_id(value):
+            label = ""
+            for f in _LABEL_FIELDS:
+                if isinstance(result.get(f), str) and result[f].strip():
+                    label = result[f].strip()
+                    break
+            out.append(Candidate(id=str(value), name=label, quality="listed"))
+        for v in result.values():
+            out.extend(harvest(v, id_field, _depth + 1))
+    elif isinstance(result, list):
+        for v in result:
+            out.extend(harvest(v, id_field, _depth + 1))
+    seen: set[str] = set()
+    unique: list[Candidate] = []
+    for c in out:
+        if c.id not in seen:
+            seen.add(c.id)
+            unique.append(c)
+    return tuple(unique)
+
+
+def decide_absent(param: str, supplier_tool: str, result: Any) -> Resolution:
+    """The two branches for a MISSING id, from an already-fetched supplier result.
+
+    Mirrors `decide` deliberately, including its vocabulary, so a reader comparing the two
+    branches sees one contract rather than two dialects. `sent` is empty because nothing was
+    sent — that is the difference between this branch and the name branch, and it is worth
+    being able to see in a recorded resolution.
+    """
+    candidates = harvest(result, bare_id_field(param))
+    if len(candidates) == 1:
+        return Resolution(param=param, ref_type=supplier_tool, sent="",
+                          resolved=candidates[0].id, candidates=candidates,
+                          outcome="resolved")
+    if not candidates:
+        return Resolution(param=param, ref_type=supplier_tool, sent="",
+                          candidates=(), outcome="no_match")
+    return Resolution(param=param, ref_type=supplier_tool, sent="",
+                      candidates=candidates, outcome="ambiguous")
