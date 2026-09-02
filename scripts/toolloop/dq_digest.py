@@ -80,14 +80,28 @@ def build() -> str:
 
     out: list[str] = []
     w = out.append
-    w("# Open decisions — the tool-loop is waiting on these")
+    # The title branches for the same reason the summary does: "waiting on these" contradicts
+    # its own body once nothing is open, and a heading is the part a reader trusts fastest.
+    w("# Open decisions — the tool-loop is waiting on these" if open_rows
+      else "# Open decisions — standing questions, none blocking")
     w("")
     w(f"*Generated {_dt.date.today().isoformat()} by `scripts/toolloop/dq_digest.py`. "
       "Derived from the ledger at emit time — do not hand-edit; re-run it.*")
     w("")
-    w(f"**{len(open_rows)} defects are open and {len(blocks)} of these questions are what hold "
-      f"them.** The loop's own check reports every open defect as decision-blocked, so nothing "
-      f"else moves until some of these are ruled on.")
+    # 🔴 THIS SENTENCE USED TO BE UNCONDITIONAL and asserted "nothing else moves until
+    # some of these are ruled on". On 2026-09-02 the last open defect was withdrawn, and the
+    # digest went on telling the reader the loop was decision-blocked with ZERO defects open —
+    # a header that contradicted its own body two lines below. A generated summary that cannot
+    # describe the empty case is a stale artefact waiting to happen, so it now branches.
+    if open_rows:
+        w(f"**{len(open_rows)} defect(s) are open and {len(blocks)} of these questions are what "
+          f"hold them.** The loop's own check reports every open defect as decision-blocked, so "
+          f"nothing else moves until some of these are ruled on.")
+    else:
+        w(f"**No defect is open.** The {len(ranked)} question(s) below hold no work: each is a "
+          f"standing question kept as a record, and answering one releases nothing that is "
+          f"currently blocked. They are still worth ruling on when convenient — a question left "
+          f"open is analysis nobody has decided to act on, not analysis that was wrong.")
     w("")
     w("A ruling goes on the question's row as an `answer_<date>` field. The loop reads it there "
       "and builds it **as worded** — if it cannot be built, the question comes back with the "
