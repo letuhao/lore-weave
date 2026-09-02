@@ -75,22 +75,55 @@ class TestItResolvesFromTheWorkAndNeverGuesses:
         assert "role_ref(" in self._src()
 
     def test_it_refuses_rather_than_choosing_a_model_to_spend_through(self):
-        """🔴 THE LINE THIS ROW WILL BE JUDGED ON. There is a populated ACCOUNT-tier default and
-        it would resolve — through the author's `chat` model, on a prose call nobody priced.
-        DQ-T35 calls that a product decision; an unruled product decision must not be taken
-        silently inside a bug fix."""
+        """🔴 RE-AIMED 2026-09-02 ON THE OWNER'S RULING (DQ-T89 (b)). ITS PREMISE EXPIRED.
+
+        THIS TEST USED TO FORBID THE ACCOUNT TIER OUTRIGHT, and its own words say exactly why:
+        "there is a populated ACCOUNT-tier default and it would resolve — through the author's
+        `chat` model, on a prose call nobody priced. DQ-T35 calls that a product decision; an
+        UNRULED product decision must not be taken silently inside a bug fix."
+
+        Every clause of that is still true except one: it is no longer unruled. The owner ruled
+        (b) on 2026-09-02 — add a `composer` capability and fall back to THAT. So the account
+        tier is now consulted, it is not silent, and crucially it does NOT reach for the chat
+        model: it reads a role the author set for PROSE. The objection was never "the account
+        tier is wrong", it was "spending someone's chat model on prose is a choice nobody made".
+
+        WHY IT WAS RULED AT ALL, measured 2026-09-01: 0 of 664 Works carry the model_roles map,
+        so the Work tier answered ~2% of books and this refusal fired on the other 98% — the
+        model retried, the loop breaker tripped, and the turn wrote prose through
+        book_chapter_save_draft instead. The refusal was correct and it was also the reason the
+        tool was never reached.
+
+        THE INVARIANT THAT SURVIVES, and it is the one worth guarding: never spend through a
+        model the author did not choose FOR PROSE.
+        """
         src = self._src()
-        assert "will not pick a model on your behalf" in src, (
-            "the no-resolution path does not refuse — check it has not started defaulting")
-        # 🔴 STRIP THE COMMENTS FIRST. The block above EXPLAINS why the account tier is not
-        # used, so it names `user_default_models` — and a whole-source search was therefore
-        # satisfied by my own prose while proving nothing about the code. A guard that its own
-        # documentation can defeat is not a guard.
-        code = " ".join(ln for ln in src.splitlines()
-                        if not ln.lstrip().startswith("#"))
-        assert "user_default_models" not in code and "resolve_user_default_model" not in code, (
-            "the ACCOUNT tier is being used; DQ-T35 rules that a product call and the ruling "
-            "did not settle which capability a spending tool falls back to")
+        code = " ".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
+
+        # It still refuses when NEITHER tier answers. Anchored on a fragment that is contiguous
+        # in ONE source line: the message is a multi-line implicit concatenation, so a phrase
+        # spanning the join ("...on your " + "behalf...") is not present in the source text at
+        # all — which is how the first version of this assertion failed against working code.
+        assert "the runtime will not pick one on your" in src, (
+            "the no-resolution path no longer refuses — with nothing configured anywhere, the "
+            "runtime must not choose a model to spend the author's money through")
+
+        # 🔴 THE TEETH: the account leg must ask for `composer`, never for `chat`. Reaching for
+        # the chat default is the exact failure the original test was written against, and it
+        # would still be one — the ruling added a capability precisely to avoid it.
+        assert 'resolve_default_model(str(ctx.user_id), "composer")' in code, (
+            "the account leg is missing or no longer asks for the composer role")
+        assert 'resolve_default_model(str(ctx.user_id), "chat")' not in code, (
+            "the account tier is being read through the CHAT capability — choosing a model for "
+            "conversation is not consent to spend it on a long prose generation, which is why "
+            "DQ-T89 (b) added a composer role instead of borrowing one")
+
+        # STRIP THE COMMENTS FIRST — kept from the original for the reason it records: the block
+        # here EXPLAINS the account tier, so a whole-source search is satisfied by the prose and
+        # proves nothing about the code. A guard its own documentation can defeat is not a guard.
+        assert "_work" in code and "role_ref(" in code, (
+            "the WORK tier is gone — the account default must be a FALLBACK, never the first "
+            "thing consulted, or a per-book voice choice stops being honoured")
 
     def test_the_refusal_tells_the_caller_how_to_supply_one(self):
         src = self._src()

@@ -38,6 +38,21 @@ var defaultModelCapabilities = map[string]bool{
 	// A ROLE validated against 'chat' (like planner/distill); evaluate.py resolves it + refuses to
 	// score when it equals the actor.
 	"critic": true,
+	// "composer" (DQ-T89 (b), owner ruling 2026-09-02) — the model that WRITES PROSE.
+	//
+	// 🔴 WHY A NEW CAPABILITY RATHER THAN BORROWING 'chat'. composition_generate resolves its
+	// model from the Work, and MEASURED 2026-09-01: 0 of 664 Works carry the `model_roles` map
+	// and 13 carry the legacy scalar — so the Work tier answers ~2% of books. On the other 98%
+	// the tool refused, the model retried, the loop breaker tripped, and the turn wrote prose
+	// through book_chapter_save_draft instead. The tool was never reached.
+	//
+	// Falling back to 'chat' was the cheap option and the owner did not take it: choosing a
+	// model for conversation is not consent to spend it on a long prose generation, which is the
+	// most expensive call on this platform. Naming the role is what makes that consent explicit.
+	//
+	// A ROLE, not a model flag — validated against 'chat' below, exactly like planner/distill/
+	// critic, so every chat model the picker offers is assignable.
+	"composer": true,
 }
 
 // defaultModelCapQuery is THE capability-validation rule for assigning a
@@ -56,7 +71,10 @@ func defaultModelCapQuery(capability string) (query, capJSON, validateCap string
 	validateCap = capability
 	// planner + distill + critic are ROLES that run as a chat call → validated against the 'chat' flag, so
 	// the picker's chat models are all assignable (WS-3.0 adds distill; WS-5.10 adds critic; D-PLAN-PLANNER-DEFAULT-FE added planner).
-	if capability == "planner" || capability == "distill" || capability == "critic" {
+	// DQ-T89 (b) adds "composer" to the same family: prose generation runs as a chat call, so the
+	// role is validated against the 'chat' flag and every model the picker offers is assignable.
+	if capability == "planner" || capability == "distill" || capability == "critic" ||
+		capability == "composer" {
 		validateCap = "chat"
 	}
 	capJSON = fmt.Sprintf(`{"%s":true}`, validateCap)

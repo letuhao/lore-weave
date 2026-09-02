@@ -3211,13 +3211,26 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
     # carries `settings["model_roles"]` ({role: {model_ref, model_source}}) with legacy scalars
     # behind it, and `role_ref` reads exactly that pair. Nothing new is invented here.
     #
-    # \U0001f534 WHAT THIS DELIBERATELY DOES NOT DO, because DQ-T35 says it is a product call
-    # and the ruling did not settle it: fall back to the ACCOUNT tier. `user_default_models` is
-    # populated, but its capabilities are chat|distill|planner|rerank \u2014 there is no composer
-    # or prose capability \u2014 so defaulting there would mean spending the author's money
-    # through their CHAT model on a prose-generation call. Choosing which capability a spending
-    # tool falls back to is not a bug fix. When nothing resolves, this REFUSES and says how to
-    # set it, rather than guessing with the author's money or failing opaquely.
+    # \U0001f534 THE ACCOUNT TIER, ADDED BY DQ-T89 (b) \u2014 owner ruling 2026-09-02. The comment
+    # that used to sit here said this deliberately did NOT fall back to the account, because
+    # `user_default_models` held chat|distill|planner|rerank and "defaulting there would mean
+    # spending the author's money through their CHAT model on a prose-generation call".
+    #
+    # THAT IS STILL TRUE OF 'chat', AND IT IS WHY THE RULING ADDED A CAPABILITY RATHER THAN
+    # BORROWING ONE. The owner took (b) over my recommendation of (c): a `composer` role now
+    # exists in provider-registry, so the account tier can answer this question in the author's
+    # own words instead of by inference. It is validated against the chat flag, so every model
+    # the picker offers is assignable to it.
+    #
+    # WHY THE ACCOUNT TIER WAS NEEDED AT ALL, measured 2026-09-01: 0 of 664 Works carry the
+    # `model_roles` map and 13 carry the legacy scalar, so the Work tier answers ~2% of books.
+    # On the other 98% this refused, the model retried, the loop breaker tripped after two
+    # identical failures, and the turn wrote prose through book_chapter_save_draft instead \u2014
+    # the tool was never reached.
+    #
+    # THE CASCADE IS BOOK THEN ACCOUNT, and that order is the ruling's: a per-book choice is
+    # more specific than an account-wide one, and it is how authors think about voice.
+    # 'chat' is NOT in the account leg \u2014 only the role the author set for PROSE.
     if not args.model_ref or not args.model_source:
         _work = await works.get(pid)
         _src, _ref = (None, None)
@@ -3226,12 +3239,21 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
             if _ref and _src:
                 break
         if not (_ref and _src):
+            from app.clients.llm_client import get_llm_client  # local, as elsewhere in this file
+
+            _acct = await get_llm_client().resolve_default_model(str(ctx.user_id), "composer")
+            if _acct:
+                # `user_model` is the only source the account tier can return: the endpoint
+                # resolves a row in `user_models`, which is what a user_model_id names.
+                _src, _ref = "user_model", _acct
+        if not (_ref and _src):
             return {"success": False, "error": (
-                "model_ref was omitted and this Work has no model configured to fall back to. "
-                "Every generation SPENDS, so the runtime will not pick a model on your behalf. "
-                "Either pass model_ref (a UUID from settings_list_models) with its model_source, "
-                "or set a default for this Work first. NOTE: a model_ref without a model_source "
-                "is a half-written setting and is refused the same way."
+                "model_ref was omitted, and neither this Work nor your account has a model to "
+                "write with. Every generation SPENDS, so the runtime will not pick one on your "
+                "behalf. Either pass model_ref (a UUID from settings_list_models) with its "
+                "model_source, set a default for this Work, or set your account's COMPOSER "
+                "default in Settings \u2014 the model you want prose written with. NOTE: a model_ref "
+                "without a model_source is a half-written setting and is refused the same way."
             )}
         args = args.model_copy(update={"model_ref": args.model_ref or str(_ref),
                                        "model_source": args.model_source or str(_src)})
