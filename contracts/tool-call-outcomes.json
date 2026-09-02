@@ -81,10 +81,10 @@
    "calls": 5
   },
   "book_list": {
-   "done": 808,
+   "done": 809,
    "deferred": 0,
    "failed": 39,
-   "calls": 847
+   "calls": 848
   },
   "book_list_chapters": {
    "done": 61,
@@ -267,10 +267,10 @@
    "calls": 47
   },
   "composition_arc_template_list": {
-   "done": 64,
+   "done": 70,
    "deferred": 0,
    "failed": 4,
-   "calls": 68
+   "calls": 74
   },
   "composition_authoring_run_create": {
    "done": 2,
@@ -405,10 +405,10 @@
    "calls": 75
   },
   "composition_get_derivative_context": {
-   "done": 39,
+   "done": 44,
    "deferred": 0,
    "failed": 12,
-   "calls": 51
+   "calls": 56
   },
   "composition_get_generation_job": {
    "done": 13,
@@ -425,8 +425,8 @@
   "composition_get_outline_node": {
    "done": 7,
    "deferred": 0,
-   "failed": 26,
-   "calls": 33
+   "failed": 30,
+   "calls": 37
   },
   "composition_get_prose": {
    "done": 1,
@@ -435,10 +435,10 @@
    "calls": 1
   },
   "composition_get_work": {
-   "done": 36,
+   "done": 37,
    "deferred": 0,
-   "failed": 119,
-   "calls": 155
+   "failed": 121,
+   "calls": 158
   },
   "composition_library_translate": {
    "done": 5,
@@ -459,10 +459,10 @@
    "calls": 186
   },
   "composition_list_outline": {
-   "done": 204,
+   "done": 210,
    "deferred": 0,
    "failed": 134,
-   "calls": 338
+   "calls": 344
   },
   "composition_motif_adopt": {
    "done": 24,
@@ -543,10 +543,10 @@
    "calls": 6
   },
   "composition_package_tree": {
-   "done": 737,
+   "done": 744,
    "deferred": 0,
-   "failed": 53,
-   "calls": 790
+   "failed": 56,
+   "calls": 800
   },
   "composition_reference_list": {
    "done": 10,
@@ -681,10 +681,10 @@
    "calls": 26
   },
   "glossary_curation_list": {
-   "done": 80,
+   "done": 90,
    "deferred": 0,
    "failed": 0,
-   "calls": 80
+   "calls": 90
   },
   "glossary_deep_research": {
    "done": 1,
@@ -885,10 +885,10 @@
    "calls": 6
   },
   "glossary_search": {
-   "done": 526,
+   "done": 530,
    "deferred": 0,
    "failed": 99,
-   "calls": 625
+   "calls": 629
   },
   "glossary_set_genres": {
    "done": 0,
@@ -916,15 +916,15 @@
   },
   "jobs_get": {
    "done": 160,
-   "deferred": 0,
+   "deferred": 1,
    "failed": 126,
-   "calls": 286
+   "calls": 287
   },
   "jobs_list": {
-   "done": 446,
+   "done": 461,
    "deferred": 0,
-   "failed": 201,
-   "calls": 647
+   "failed": 208,
+   "calls": 669
   },
   "jobs_pause": {
    "done": 0,
@@ -933,10 +933,10 @@
    "calls": 15
   },
   "jobs_summary": {
-   "done": 119,
+   "done": 120,
    "deferred": 0,
    "failed": 9,
-   "calls": 128
+   "calls": 129
   },
   "kg_add_nodes": {
    "done": 111,
@@ -953,8 +953,8 @@
   "kg_build": {
    "done": 3,
    "deferred": 0,
-   "failed": 52,
-   "calls": 55
+   "failed": 57,
+   "calls": 60
   },
   "kg_build_graph": {
    "done": 0,
@@ -1006,9 +1006,9 @@
   },
   "kg_project_set_embedding_model": {
    "done": 2,
-   "deferred": 34,
+   "deferred": 39,
    "failed": 1,
-   "calls": 37
+   "calls": 42
   },
   "kg_propose_edge": {
    "done": 18,
@@ -1139,8 +1139,8 @@
   "plan_bootstrap_propose": {
    "done": 69,
    "deferred": 0,
-   "failed": 25,
-   "calls": 94
+   "failed": 27,
+   "calls": 96
   },
   "plan_compile": {
    "done": 3,
@@ -1193,8 +1193,8 @@
   "plan_pass_status": {
    "done": 52,
    "deferred": 0,
-   "failed": 5,
-   "calls": 57
+   "failed": 6,
+   "calls": 58
   },
   "plan_propose_spec": {
    "done": 161,
@@ -1305,10 +1305,10 @@
    "calls": 5
   },
   "settings_list_models": {
-   "done": 220,
+   "done": 230,
    "deferred": 0,
    "failed": 27,
-   "calls": 247
+   "calls": 257
   },
   "settings_list_providers": {
    "done": 11,
@@ -1371,22 +1371,22 @@
    "calls": 25
   },
   "tool_list": {
-   "done": 834,
+   "done": 838,
    "deferred": 0,
    "failed": 1180,
-   "calls": 2014
+   "calls": 2018
   },
   "tool_load": {
-   "done": 198,
+   "done": 202,
    "deferred": 0,
    "failed": 0,
-   "calls": 198
+   "calls": 202
   },
   "translation_coverage": {
-   "done": 105,
+   "done": 110,
    "deferred": 0,
    "failed": 26,
-   "calls": 131
+   "calls": 136
   },
   "translation_job_control": {
    "done": 2,
@@ -1413,10 +1413,10 @@
    "calls": 32
   },
   "translation_retranslate_dirty": {
-   "done": 88,
+   "done": 93,
    "deferred": 0,
    "failed": 0,
-   "calls": 88
+   "calls": 93
   },
   "translation_save_edited_version": {
    "done": 0,
@@ -1443,10 +1443,10 @@
    "calls": 19
   },
   "translation_start_job": {
-   "done": 94,
+   "done": 104,
    "deferred": 0,
    "failed": 10,
-   "calls": 104
+   "calls": 114
   },
   "translation_update_settings": {
    "done": 4,
