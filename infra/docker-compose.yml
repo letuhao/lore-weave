@@ -1014,6 +1014,17 @@ services:
       # DQ-T90 arms (b) and (a). Both default to the shipped behaviour so the CONTROL is
       # unchanged; each arm is one env var so the three runs differ by one thing at a time.
       SKILL_CONTRASTIVE_DESC: "${SKILL_CONTRASTIVE_DESC:-true}"
+      # DQ-T88 (a) — replay prior turns' tool RESULTS into the turn, bounded (2 kB/result,
+      # 16 kB/turn, ids preserved through the trim). DEFAULT FALSE: the owner's correction
+      # is that results are not stored BECAUSE they are large, so the bound makes replay
+      # affordable without making it right. Adopt only on an A/B, the way
+      # SKILL_CONTRASTIVE_DESC above was adopted.
+      #
+      # 🔴 IT IS HERE SO THE ARM CAN BE SET ON THE REAL SERVICE. A previous attempt used
+      # `docker compose run --service-ports`, which puts the container on the network but
+      # does NOT take over the compose service name the gateway routes to — so that batch
+      # measured the STOPPED service and produced 3 errors and zero replay log lines.
+      REPLAY_PRIOR_TOOL_RESULTS: "${REPLAY_PRIOR_TOOL_RESULTS:-false}"
       ROUTER_MAX_ADDITIONS: "${ROUTER_MAX_ADDITIONS:-0}"
       ONESHOT_DEADVERTISE_MODE: "${ONESHOT_DEADVERTISE_MODE:-session}"
       RAIL_ACTION_GATE_MODE: "${RAIL_ACTION_GATE_MODE:-done_suppress}"
