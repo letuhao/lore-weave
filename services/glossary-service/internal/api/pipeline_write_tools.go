@@ -59,7 +59,7 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 }
 
 type createEvidenceToolIn struct {
-	BookID           string  `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID           string  `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID         string  `json:"entity_id" jsonschema:"the entity (UUID)"`
 	AttrValueID      string  `json:"attr_value_id" jsonschema:"the attribute value the evidence supports (UUID; must belong to the entity)"`
 	EvidenceType     string  `json:"evidence_type,omitempty" jsonschema:"quote (default) | summary | reference"`
@@ -114,7 +114,7 @@ func (s *Server) toolCreateEvidence(ctx context.Context, _ *mcp.CallToolRequest,
 }
 
 type createChapterLinkToolIn struct {
-	BookID    string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID    string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID  string `json:"entity_id" jsonschema:"the entity (UUID)"`
 	ChapterID string `json:"chapter_id" jsonschema:"the chapter to link (UUID; must belong to the book)"`
 	Relevance string `json:"relevance,omitempty" jsonschema:"major | appears (default) | mentioned"`

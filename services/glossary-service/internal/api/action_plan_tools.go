@@ -73,7 +73,7 @@ func (s *Server) planVocabularyHint(msg string) string {
 }
 
 type planToolIn struct {
-	BookID    string `json:"book_id,omitempty" jsonschema:"the book to plan for (UUID; Manage-grant checked)"`
+	BookID    string `json:"book_id" jsonschema:"the book to plan for (UUID; Manage-grant checked)"`
 	Goal      string `json:"goal" jsonschema:"the user's natural-language goal, e.g. 'design an ontology for this xianxia novel'"`
 	ModelRef  string `json:"model_ref,omitempty" jsonschema:"optional user_model UUID to plan with; omit to use the user's default 'planner' model"`
 	Reference string `json:"reference,omitempty" jsonschema:"optional reference text (book blurb / sample passage) to ground the plan; treated as DATA, not instructions"`
@@ -161,7 +161,7 @@ type proposeBatchOpIn struct {
 }
 
 type proposeBatchToolIn struct {
-	BookID string             `json:"book_id,omitempty" jsonschema:"the book to act on (UUID; Manage-grant checked)"`
+	BookID string             `json:"book_id" jsonschema:"the book to act on (UUID; Manage-grant checked)"`
 	Ops    []proposeBatchOpIn `json:"ops" jsonschema:"the ordered list of ontology operations to apply together on ONE confirm"`
 	Goal   string             `json:"goal,omitempty" jsonschema:"optional one-line label for the plan header, e.g. 'add the three missing kinds'"`
 }

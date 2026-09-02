@@ -62,7 +62,7 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 // ── sync_available (R) ────────────────────────────────────────────────────────
 
 type syncAvailableToolIn struct {
-	BookID string `json:"book_id,omitempty" jsonschema:"the book to diff against its standards (UUID)"`
+	BookID string `json:"book_id" jsonschema:"the book to diff against its standards (UUID)"`
 }
 
 func (s *Server) toolBookSyncAvailable(ctx context.Context, _ *mcp.CallToolRequest, in syncAvailableToolIn) (*mcp.CallToolResult, syncAvailableResp, error) {
@@ -98,7 +98,7 @@ type syncApplyItemToolIn struct {
 }
 
 type syncApplyToolIn struct {
-	BookID string                `json:"book_id,omitempty" jsonschema:"the book to sync (UUID)"`
+	BookID string                `json:"book_id" jsonschema:"the book to sync (UUID)"`
 	Items  []syncApplyItemToolIn `json:"items" jsonschema:"the per-row choices to apply"`
 }
 

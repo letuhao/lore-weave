@@ -68,7 +68,7 @@ type deepResearchParams struct {
 }
 
 type deepResearchToolIn struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity to research (UUID)"`
 	Query    string `json:"query" jsonschema:"what to look up on the web"`
 	// `,omitempty` keeps max_results OPTIONAL in the generated MCP arg schema —

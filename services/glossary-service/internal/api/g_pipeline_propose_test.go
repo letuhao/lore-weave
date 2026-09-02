@@ -41,7 +41,7 @@ func TestPipelinePropose_InputGuards(t *testing.T) {
 
 	// missing identity
 	if _, _, err := s.toolProposeStatusChange(context.Background(), nil, struct {
-		BookID    string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+		BookID    string   `json:"book_id" jsonschema:"the book (UUID)"`
 		Status    string   `json:"status" jsonschema:"active | inactive | draft"`
 		EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
 	}{BookID: book, Status: "active", EntityIDs: []string{uuid.NewString()}}); err == nil {
@@ -49,7 +49,7 @@ func TestPipelinePropose_InputGuards(t *testing.T) {
 	}
 	// bad status
 	if _, _, err := s.toolProposeStatusChange(ctxWithUser(uuid.New()), nil, struct {
-		BookID    string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+		BookID    string   `json:"book_id" jsonschema:"the book (UUID)"`
 		Status    string   `json:"status" jsonschema:"active | inactive | draft"`
 		EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
 	}{BookID: book, Status: "bogus", EntityIDs: []string{uuid.NewString()}}); err == nil {
@@ -58,7 +58,7 @@ func TestPipelinePropose_InputGuards(t *testing.T) {
 	// merge: no losers distinct from winner
 	w := uuid.NewString()
 	if _, _, err := s.toolProposeMerge(ctxWithUser(uuid.New()), nil, struct {
-		BookID   string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+		BookID   string   `json:"book_id" jsonschema:"the book (UUID)"`
 		WinnerID string   `json:"winner_id" jsonschema:"the entity to KEEP (UUID)"`
 		LoserIDs []string `json:"loser_ids" jsonschema:"the entities to merge away (UUIDs; same kind as the winner)"`
 	}{BookID: book, WinnerID: w, LoserIDs: []string{w}}); err == nil {
@@ -144,7 +144,7 @@ func TestPipelinePropose_StatusChangeRoundTrip(t *testing.T) {
 	e1, e2 := seed(), seed()
 
 	_, card, err := f.srv.toolProposeStatusChange(ctxWithUser(f.ownerID), nil, struct {
-		BookID    string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+		BookID    string   `json:"book_id" jsonschema:"the book (UUID)"`
 		Status    string   `json:"status" jsonschema:"active | inactive | draft"`
 		EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
 	}{BookID: f.bookID.String(), Status: "active", EntityIDs: []string{e1.String(), e2.String()}})
@@ -192,7 +192,7 @@ func TestPipelinePropose_StatusChangeNoOpWarnsWhenAlreadyAtTarget(t *testing.T) 
 	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE entity_id=$1`, id) }) //nolint:errcheck
 
 	_, card, err := f.srv.toolProposeStatusChange(ctxWithUser(f.ownerID), nil, struct {
-		BookID    string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+		BookID    string   `json:"book_id" jsonschema:"the book (UUID)"`
 		Status    string   `json:"status" jsonschema:"active | inactive | draft"`
 		EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
 	}{BookID: f.bookID.String(), Status: "active", EntityIDs: []string{id.String()}})
@@ -228,7 +228,7 @@ func TestPipelinePropose_StatusChangeRealChangeCarriesNoWarning(t *testing.T) {
 	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE entity_id=$1`, id) }) //nolint:errcheck
 
 	_, card, err := f.srv.toolProposeStatusChange(ctxWithUser(f.ownerID), nil, struct {
-		BookID    string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+		BookID    string   `json:"book_id" jsonschema:"the book (UUID)"`
 		Status    string   `json:"status" jsonschema:"active | inactive | draft"`
 		EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
 	}{BookID: f.bookID.String(), Status: "active", EntityIDs: []string{id.String()}})
@@ -262,7 +262,7 @@ func TestPipelinePropose_MergeRoundTrip(t *testing.T) {
 	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM merge_journal WHERE winner_entity_id=$1`, winner) }) //nolint:errcheck
 
 	_, card, err := f.srv.toolProposeMerge(ctxWithUser(f.ownerID), nil, struct {
-		BookID   string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+		BookID   string   `json:"book_id" jsonschema:"the book (UUID)"`
 		WinnerID string   `json:"winner_id" jsonschema:"the entity to KEEP (UUID)"`
 		LoserIDs []string `json:"loser_ids" jsonschema:"the entities to merge away (UUIDs; same kind as the winner)"`
 	}{BookID: f.bookID.String(), WinnerID: winner.String(), LoserIDs: []string{loser.String()}})
@@ -331,7 +331,7 @@ func TestPipelinePropose_ReassignPreviewsDroppedAttrs(t *testing.T) {
 	}
 
 	_, card, err := f.srv.toolProposeReassignKind(ctxWithUser(f.ownerID), nil, struct {
-		BookID   string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+		BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
 		EntityID string `json:"entity_id" jsonschema:"the entity to move (UUID)"`
 		KindCode string `json:"kind_code" jsonschema:"the target kind's code (see glossary_book_ontology_read)"`
 	}{BookID: f.bookID.String(), EntityID: entityID.String(), KindCode: "location"})
@@ -377,7 +377,7 @@ func TestPipelinePropose_ReassignSameKindWarnsOnNoOp(t *testing.T) {
 	t.Cleanup(func() { pool.Exec(context.Background(), `DELETE FROM glossary_entities WHERE entity_id=$1`, entityID) }) //nolint:errcheck
 
 	_, card, err := f.srv.toolProposeReassignKind(ctxWithUser(f.ownerID), nil, struct {
-		BookID   string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+		BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
 		EntityID string `json:"entity_id" jsonschema:"the entity to move (UUID)"`
 		KindCode string `json:"kind_code" jsonschema:"the target kind's code (see glossary_book_ontology_read)"`
 	}{BookID: f.bookID.String(), EntityID: entityID.String(), KindCode: "character"}) // same kind it's already on

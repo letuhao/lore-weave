@@ -74,7 +74,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 // proposeStatusChangeToolIn is named (not inline) so the registration can build
 // its closed-set schema from the same type the handler decodes (W0 #2).
 type proposeStatusChangeToolIn struct {
-	BookID    string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID    string   `json:"book_id" jsonschema:"the book (UUID)"`
 	Status    string   `json:"status" jsonschema:"active | inactive | draft"`
 	EntityIDs []string `json:"entity_ids" jsonschema:"the entities to change (UUIDs)"`
 }
@@ -133,7 +133,7 @@ func (s *Server) curationStatusChangeCore(ctx context.Context, req *mcp.CallTool
 // toolProposeRestoreRevision is the LEGACY thin wrapper — glossary_propose_curation
 // op=restore_revision is the unified entry; both share curationRestoreRevisionCore.
 func (s *Server) toolProposeRestoreRevision(ctx context.Context, req *mcp.CallToolRequest, in struct {
-	BookID     string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID     string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID   string `json:"entity_id" jsonschema:"the entity (UUID)"`
 	RevisionID string `json:"revision_id" jsonschema:"the revision to restore to (UUID; see glossary_get_entity include=revisions)"`
 }) (*mcp.CallToolResult, any, error) {
@@ -185,7 +185,7 @@ func (s *Server) curationRestoreRevisionCore(ctx context.Context, req *mcp.CallT
 // toolProposeReassignKind is the LEGACY thin wrapper — glossary_propose_curation
 // op=reassign_kind is the unified entry; both share curationReassignKindCore.
 func (s *Server) toolProposeReassignKind(ctx context.Context, req *mcp.CallToolRequest, in struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity to move (UUID)"`
 	KindCode string `json:"kind_code" jsonschema:"the target kind's code (see glossary_book_ontology_read)"`
 }) (*mcp.CallToolResult, any, error) {
@@ -253,7 +253,7 @@ func (s *Server) curationReassignKindCore(ctx context.Context, req *mcp.CallTool
 // toolProposeMerge is the LEGACY thin wrapper — glossary_propose_curation op=merge is the
 // unified entry; both share curationMergeCore.
 func (s *Server) toolProposeMerge(ctx context.Context, req *mcp.CallToolRequest, in struct {
-	BookID   string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID   string   `json:"book_id" jsonschema:"the book (UUID)"`
 	WinnerID string   `json:"winner_id" jsonschema:"the entity to KEEP (UUID)"`
 	LoserIDs []string `json:"loser_ids" jsonschema:"the entities to merge away (UUIDs; same kind as the winner)"`
 }) (*mcp.CallToolResult, any, error) {

@@ -119,7 +119,7 @@ func (s *Server) RegisterEntityDocExtractTools(srv *mcpsdk.Server) {
 }
 
 type extractEntitiesFromDocIn struct {
-	BookID string `json:"book_id,omitempty" jsonschema:"the book whose ontology grounds the extraction (UUID; View-grant checked)"`
+	BookID string `json:"book_id" jsonschema:"the book whose ontology grounds the extraction (UUID; View-grant checked)"`
 	// DQ-T55, owner 2026-08-28: "REPLACE source_markdown WITH A REFERENCE THE RUNTIME RESOLVES
 	// … so the server fetches the text and the model cannot author its own source at all. The
 	// point is STRUCTURAL, not defensive: fabricated source material stops being something to

@@ -157,7 +157,7 @@ func (s *Server) RegisterEntityAttributeEditTools(srv *mcp.Server) {
 }
 
 type entityRenameToolIn struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book the entity belongs to (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book the entity belongs to (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity to rename (UUID)"`
 	Name     string `json:"name" jsonschema:"the entity's new display name"`
 }
@@ -211,7 +211,7 @@ func entityAttributeSetSchema() *jsonschema.Schema {
 }
 
 type entitySetAttributesToolIn struct {
-	BookID     string            `json:"book_id,omitempty" jsonschema:"the book the entity belongs to (UUID)"`
+	BookID     string            `json:"book_id" jsonschema:"the book the entity belongs to (UUID)"`
 	EntityID   string            `json:"entity_id" jsonschema:"the entity to edit (UUID)"`
 	Attributes map[string]string `json:"attributes,omitempty" jsonschema:"attr_code -> new value; empty string clears the value; a code not yet on the entity is added"`
 	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE, optional): omit to leave untouched; any

@@ -129,7 +129,7 @@ type ontologyUpsertItemIn struct {
 
 type ontologyUpsertToolIn struct {
 	Scope  string                 `json:"scope" jsonschema:"REQUIRED: book | user — which tenancy tier to write to"`
-	BookID string                 `json:"book_id,omitempty" jsonschema:"required when scope=book; omit when scope=user"`
+	BookID string                 `json:"book_id" jsonschema:"required when scope=book; omit when scope=user"`
 	Items  []ontologyUpsertItemIn `json:"items" jsonschema:"1-50 items; each independently created or updated by base_version presence"`
 }
 
@@ -446,7 +446,7 @@ type ontologyDeleteItemIn struct {
 
 type ontologyDeleteToolIn struct {
 	Scope  string                 `json:"scope" jsonschema:"book | user"`
-	BookID string                 `json:"book_id,omitempty" jsonschema:"required when scope=book"`
+	BookID string                 `json:"book_id" jsonschema:"required when scope=book"`
 	Items  []ontologyDeleteItemIn `json:"items"`
 }
 

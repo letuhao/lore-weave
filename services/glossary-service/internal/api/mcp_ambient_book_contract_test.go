@@ -121,6 +121,21 @@ func TestTheAmbientResidueIsStatedNotSilent(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("DQ-T4 residue — %d tools declare book_id optional without WithAmbientBook: %v",
-		len(residue), residue)
+	// 🔴 THIS WAS A LOG LINE, AND IT IS NOW AN ASSERTION. Its own comment said the count "is
+	// not asserted as zero — that would be a lie about the service today". DQ-T4 was answered
+	// 2026-08-31 — OWNER: "(a) DECLARE book_id REQUIRED on the 37 remaining glossary tools" —
+	// and built 2026-09-02, so zero is now the truth and a log line would let the next tool
+	// re-open the gap silently.
+	//
+	// A tool that legitimately resolves the book from the envelope belongs in the OTHER half of
+	// this rule: tag it WithAmbientBook and it leaves this set by construction, checked by
+	// TestAmbientTaggedToolsStillDeclareBookIDOptional above.
+	if len(residue) != 0 {
+		t.Errorf("%d glossary tool(s) declare book_id OPTIONAL without WithAmbientBook: %v.\n"+
+			"An optional book_id IS the advertised promise of the ambient contract - a model "+
+			"inside a book studio may omit it - and these handlers call the NON-ambient "+
+			"bookToolAuth, so the omission is refused with book_id-must-be-a-UUID. Either "+
+			"declare it required (DQ-T4 ruling) or implement the contract you advertise "+
+			"(WithAmbientBook + bookToolAuthAmbient).", len(residue), residue)
+	}
 }

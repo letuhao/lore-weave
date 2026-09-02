@@ -78,7 +78,7 @@ func (s *Server) mintGrantActionCard(userID, bookID uuid.UUID, descriptor, title
 // ── schema create (migrated from the retired schema-confirm path) ─────────────
 
 type proposeKindToolIn struct {
-	BookID      string   `json:"book_id,omitempty" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	BookID      string   `json:"book_id" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
 	Code        string   `json:"code" jsonschema:"machine code for the kind, e.g. power_system"`
 	Name        string   `json:"name" jsonschema:"display name, e.g. Power System"`
 	Description string   `json:"description,omitempty" jsonschema:"optional description"`
@@ -102,7 +102,7 @@ type proposeKindAttrIn struct {
 }
 
 type proposeAttrToolIn struct {
-	BookID      string   `json:"book_id,omitempty" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	BookID      string   `json:"book_id" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
 	KindCode    string   `json:"kind_code" jsonschema:"the kind to add the attribute to (code — see glossary_book_ontology_read)"`
 	Code        string   `json:"code" jsonschema:"machine code for the attribute, e.g. cultivation_realm"`
 	Name        string   `json:"name" jsonschema:"display name"`
@@ -177,7 +177,7 @@ func (s *Server) toolProposeNewKind(ctx context.Context, req *mcp.CallToolReques
 // ── batch schema create — the WHOLE ontology on ONE confirm ──────────────────
 
 type proposeKindsToolIn struct {
-	BookID string              `json:"book_id,omitempty" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	BookID string              `json:"book_id" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
 	Kinds  []proposeKindItemIn `json:"kinds" jsonschema:"the kinds to create — EACH with its defining attributes; ALL land together on ONE confirm card"`
 }
 
@@ -360,7 +360,7 @@ func (s *Server) toolProposeNewAttribute(ctx context.Context, req *mcp.CallToolR
 // ── book_delete (the CP-1 canary — destructive cascade, class C) ──────────────
 
 type bookDeleteToolIn struct {
-	BookID    string `json:"book_id,omitempty" jsonschema:"the book to delete from (UUID)"`
+	BookID    string `json:"book_id" jsonschema:"the book to delete from (UUID)"`
 	Level     string `json:"level" jsonschema:"what to delete: genre | kind | attribute"`
 	Code      string `json:"code" jsonschema:"the code of the genre/kind, or (for level=attribute) the attribute's own code"`
 	KindCode  string `json:"kind_code,omitempty" jsonschema:"for level=attribute: the kind code the attribute belongs to"`

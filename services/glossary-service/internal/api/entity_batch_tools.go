@@ -69,7 +69,7 @@ type proposeEntityItemIn struct {
 }
 
 type proposeEntitiesToolIn struct {
-	BookID string                `json:"book_id,omitempty" jsonschema:"the book to add entities to (UUID)"`
+	BookID string                `json:"book_id" jsonschema:"the book to add entities to (UUID)"`
 	Items  []proposeEntityItemIn `json:"items" jsonschema:"1-50 entities to propose; each succeeds or fails independently"`
 }
 

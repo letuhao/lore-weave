@@ -709,7 +709,7 @@ func (s *Server) toolListKinds(ctx context.Context, _ *mcp.CallToolRequest, _ li
 const tagAssistant = "assistant"
 
 type proposeEntityToolIn struct {
-	BookID     string         `json:"book_id,omitempty" jsonschema:"the book to add the entity to (UUID)"`
+	BookID     string         `json:"book_id" jsonschema:"the book to add the entity to (UUID)"`
 	Kind       string         `json:"kind" jsonschema:"the entity kind code (e.g. character, place) — see glossary_book_ontology_read"`
 	Name       string         `json:"name" jsonschema:"the entity's name"`
 	Attributes map[string]any `json:"attributes,omitempty" jsonschema:"optional attribute code → value map"`

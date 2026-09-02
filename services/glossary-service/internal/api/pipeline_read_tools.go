@@ -211,7 +211,7 @@ func (s *Server) queryUnknownEntities(ctx context.Context, bookID uuid.UUID, sta
 const pipelineReadCap = 200
 
 type mergeCandToolIn struct {
-	BookID string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID string `json:"book_id" jsonschema:"the book (UUID)"`
 	Status string `json:"status,omitempty" jsonschema:"proposed (default) | dismissed | merged — omit this argument for the default; do not send an empty string"`
 }
 type mergeCandidatesOut struct {
@@ -327,7 +327,7 @@ func (s *Server) toolListEntityRevisions(ctx context.Context, _ *mcp.CallToolReq
 }
 
 type bookOnlyToolIn struct {
-	BookID string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID string `json:"book_id" jsonschema:"the book (UUID)"`
 	// External MCP feedback (2026-07-08, "the inboxes never drain") — both list tools
 	// sharing this type used to return every entity regardless of status, so
 	// approving/rejecting a triage item never removed it from the NEXT call's
