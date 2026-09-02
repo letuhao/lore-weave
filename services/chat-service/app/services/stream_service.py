@@ -7939,11 +7939,22 @@ async def _stream_with_tools(
                     _disambig: tuple[str, str, Any] | None = None
                     if _missing_args and _ma_msg is None:
                         try:
-                            from app.agentruntime.refresolve import decide_absent as _dec_abs
-                            from app.agentruntime.toolcontract import declared_emitter as _demit
+                            from app.agentruntime.refresolve import (
+                                decide_absent as _dec_abs,
+                                emitter_tool_and_field as _emit_tf,
+                            )
                             _dis_reg = _tool_contract_registry()
+                            _dis_block = (_dis_reg.get("argument_emitters")
+                                          if isinstance(_dis_reg, dict) else None) or {}
                             for _mp in _missing_args:
-                                _sup = _demit(_dis_reg, c["name"], _mp)
+                                # The entry may be a bare tool name (same field) or {tool, field}
+                                # — the supplier often returns the id under a different key
+                                # (composition_arc_list gives nodes[].id for `node_id`).
+                                _tf = _emit_tf(
+                                    (_dis_block.get(c["name"]) or {}).get(_mp)
+                                    if isinstance(_dis_block.get(c["name"]), dict) else None,
+                                    _mp)
+                                _sup, _sfield = _tf if _tf else (None, "")
                                 # A supplier must be a READ. Auto-dispatching one the author never
                                 # asked for is the same safety property `check_resolver` enforces
                                 # for the name branch: a non-read here would perform an
@@ -7984,7 +7995,7 @@ async def _stream_with_tools(
                                 yield {"tool_call": _schunk}
                                 if not (_senv and _senv.get("success")):
                                     continue
-                                _dres = _dec_abs(_mp, _sup, _senv.get("result"))
+                                _dres = _dec_abs(_mp, _sup, _senv.get("result"), _sfield)
                                 if _dres.outcome == "ambiguous":
                                     _disambig = (_mp, _sup, _dres)
                                     break

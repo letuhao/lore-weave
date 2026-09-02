@@ -509,7 +509,18 @@ def declared_emitter(registry: dict, tool: str, param: str) -> str | None:
     if type(per_tool) is not dict:
         return None
     raw = per_tool.get(param)
-    return raw if type(raw) is str and raw else None
+    if type(raw) is str and raw:
+        return raw
+    # 🔴 AN ENTRY MAY ALSO NAME THE FIELD, and this arm is what keeps that from SILENTLY
+    # disabling the sentence above. DQ-T76 needs `{tool, field}` for the pairs whose supplier
+    # returns the id under a different key (composition_arc_list returns `nodes[].id` for
+    # composition_arc_get's `node_id`). Without this, upgrading an entry to the mapping form
+    # would make declared_emitter return None and the refusal would go back to "this tool does
+    # not declare which side supplies them" — losing a working message to gain a new one.
+    if type(raw) is dict:
+        tool_name = raw.get("tool")
+        return tool_name if type(tool_name) is str and tool_name else None
+    return None
 
 
 def declared_supplier(contract: dict, param: str) -> str | None:

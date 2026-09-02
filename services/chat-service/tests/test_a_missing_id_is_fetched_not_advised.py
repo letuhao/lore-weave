@@ -145,3 +145,40 @@ def test_every_other_input_refuses_rather_than_guessing():
 
 def test_a_malformed_candidate_row_cannot_widen_the_offer():
     assert accept_pick("motif_id", A, [{"name": "no id here"}, None, "junk"]) is None
+
+
+# ── the supplier's field is DECLARED, not guessed ────────────────────────────
+
+from app.agentruntime.refresolve import emitter_tool_and_field  # noqa: E402
+
+# A real composition_arc_list payload: rows carry `id`, NOT `node_id`.
+ARC_LIST = {"nodes": [
+    {"id": "01a0214c-47c6-7a8c-b7c8-ba611a68dc72", "title": "Arc I — The Hollow Keep",
+     "book_id": "01a0214c-45d2-727f-a52d-a447bc940185", "parent_id": None},
+]}
+
+
+def test_a_bare_string_entry_keeps_meaning_same_field():
+    assert emitter_tool_and_field("world_map_list", "map_id") == ("world_map_list", "map_id")
+    # ...and the role prefix still collapses
+    assert emitter_tool_and_field("x_list", "from_motif_id") == ("x_list", "motif_id")
+
+
+def test_an_entry_may_NAME_the_field():
+    """🔴 THE BIGGEST PAIR LEFT. `composition_arc_get` needs `node_id`; its declared supplier
+    `composition_arc_list` returns `nodes[].id`. Matching on the parameter's own name finds
+    nothing there, so a correct supplier reads as empty — 46 failures since 2026-08-24."""
+    assert emitter_tool_and_field(
+        {"tool": "composition_arc_list", "field": "id"}, "node_id",
+    ) == ("composition_arc_list", "id")
+
+    bare = decide_absent("node_id", "composition_arc_list", ARC_LIST)
+    assert bare.outcome == "no_match", "matching on node_id must find nothing in this payload"
+    declared = decide_absent("node_id", "composition_arc_list", ARC_LIST, "id")
+    assert declared.outcome == "resolved"
+    assert declared.resolved == "01a0214c-47c6-7a8c-b7c8-ba611a68dc72"
+
+
+def test_a_malformed_entry_yields_no_supplier_rather_than_a_guess():
+    for bad in (None, "", {}, {"field": "id"}, {"tool": ""}, 7, []):
+        assert emitter_tool_and_field(bad, "node_id") is None, bad

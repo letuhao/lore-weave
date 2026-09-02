@@ -479,7 +479,32 @@ def harvest(result: Any, id_field: str, _depth: int = 0) -> tuple[Candidate, ...
     return tuple(unique)
 
 
-def decide_absent(param: str, supplier_tool: str, result: Any) -> Resolution:
+def emitter_tool_and_field(entry: Any, param: str) -> tuple[str, str] | None:
+    """Read an `argument_emitters` entry as (supplier tool, id field).
+
+    🔴 A TOOL NAME ALONE IS NOT ENOUGH, and the largest remaining failure proves it:
+    `composition_arc_get` needs `node_id` and its declared supplier
+    `composition_arc_list` returns `nodes[].id`. Matching on the parameter's own name finds
+    nothing there, so the supplier looks empty when it is in fact the right one — 46 failures
+    since 2026-08-24, the biggest single pair left.
+
+    A bare string keeps its meaning ("same field name"), so every existing entry is unchanged;
+    a mapping may name the field explicitly. Declared, never guessed: a generic "any `id` will
+    do" rule is unsafe, because in `composition_motif_link_list` the `links[].id` rows are LINK
+    ids while the motif id sits at top level — a blind rule harvests the wrong record.
+    """
+    if isinstance(entry, str) and entry:
+        return entry, bare_id_field(param)
+    if isinstance(entry, dict):
+        tool = entry.get("tool")
+        if isinstance(tool, str) and tool:
+            field = entry.get("field")
+            return tool, (field if isinstance(field, str) and field else bare_id_field(param))
+    return None
+
+
+def decide_absent(param: str, supplier_tool: str, result: Any,
+                  id_field: str | None = None) -> Resolution:
     """The two branches for a MISSING id, from an already-fetched supplier result.
 
     Mirrors `decide` deliberately, including its vocabulary, so a reader comparing the two
@@ -487,7 +512,7 @@ def decide_absent(param: str, supplier_tool: str, result: Any) -> Resolution:
     sent — that is the difference between this branch and the name branch, and it is worth
     being able to see in a recorded resolution.
     """
-    candidates = harvest(result, bare_id_field(param))
+    candidates = harvest(result, id_field or bare_id_field(param))
     if len(candidates) == 1:
         return Resolution(param=param, ref_type=supplier_tool, sent="",
                           resolved=candidates[0].id, candidates=candidates,
