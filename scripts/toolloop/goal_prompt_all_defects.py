@@ -101,9 +101,9 @@ INVARIANT, FIX THE CLASS at ONE chokepoint — prefer where the information DIES
 check FIRST if the mechanism exists and is merely EMPTY. 3 RUN THE CONTROL THAT REFUTES \
 YOU before writing the fix. 4 DEPLOY AND VERIFY BY CONTENT: sha256 from INSIDE the \
 container; restart ai-gateway on a description change. 5 PROVE IT LIVE: real provider, \
-K>=5, throwaway fixture, CONCURRENCY 1 (parallel batches starve the local GPU and every \
-run dies of no_output_timeout, which reads like a refuted remedy).
-
+K>=5, throwaway fixture, CONCURRENCY 1, ONE arm per background task (parallel \
+batches starve the local GPU: every run dies of no_output_timeout, reading as a \
+refuted remedy).
 EVIDENCE. Proven by a RUN, never by code looking right, never by a helper test — \
 ASSERT EVERY CALL SITE, not the one you edited. A CLEAN ARM PROVES \
 NOTHING UNTIL YOU SHOW IT REACHED THE PATH. Run the whole owning suite. A failed attempt is \
@@ -122,7 +122,10 @@ SAFETY. Never write to the dogfood book: one throwaway fixture per scenario, tor
 read-only TOOL is not a read-only TURN. Auth only via /v1/auth/login using the \
 git-ignored docs/dev/LOCAL_TEST_ENV.md; never scrape a token or invent one. SELECT \
 before any DML. Every open DQ gets a RECOMMENDATION and is DECIDED BY THE OWNER — never \
-decide or close one yourself to unblock a defect."""
+decide or close one yourself to unblock a defect.
+
+SPEND. LOCAL MODEL ONLY. A PAID run needs the owner's yes and its CALL COUNT stated \
+first; probe one before scaling."""
 
 
 #: A deferred question NAME, matched whole. `DQ-T4` and `DQ-T45` are different questions and one
