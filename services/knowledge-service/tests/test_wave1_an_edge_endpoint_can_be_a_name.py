@@ -7,11 +7,21 @@ argument on the platform with a genuinely unreachable supplier — advertised on
 that passed it, 9%) and the arguments with ZERO observed suppliers. Both of kg_propose_edge's
 endpoints are in that set.
 
-🔴 THE FAILURE IS MEASURED, NOT PREDICTED. Batch c-kgedge3, 2026-08-26: on 3 of 3 edge calls the
-model passed the GLOSSARY entity ids — matched exactly against the run's own seed_ids. They were
-well-formed UUIDs naming real objects of the WRONG FAMILY, which no shape guard can catch and
-which the tool's own description had already tried to prevent in prose. A name cannot be the
-wrong family.
+🔴 THE FAILURE IS MEASURED — AND THIS DOCSTRING FIRST NAMED THE WRONG ONE. It cited "batch
+c-kgedge3, 2026-08-26: on 3 of 3 edge calls the model passed the GLOSSARY entity ids", taken from
+the tool's own source comment. That is UNVERIFIABLE: no c-kgedge3 file exists and there is no
+2026-08-26 batch directory, and KG_ENDPOINT_NOT_NODE appears in ZERO recorded results.
+
+WHAT IS RE-CHECKABLE, over all 53 distinct kg_propose_edge calls in the corpus:
+
+    passed at least one endpoint id     17   (32%)
+    passed NEITHER                      36   (68%)   <- the dominant failure
+    wrong-family (KG_ENDPOINT_NOT_NODE)  0
+
+So the model does not pass the WRONG id — it passes NO id, because it has no reachable way to get
+one. That is exactly the ground the owner's (f) ruling rests on, and a NAME is something the model
+demonstrably has: the request that triggers this tool is "record that Aldric and Mira know each
+other". Wave 1 is aimed at the 68%, not at the unverifiable 3-of-3.
 
 The rules asserted here are the plan's, and each answers a failure it names:
   ID WINS when both arrive — an id is unambiguous, a name is not.

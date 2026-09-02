@@ -360,10 +360,22 @@ class KgProposeEdgeArgs(ProjectScopedArgs):
     # ZERO observed suppliers in the recorded corpus. The plan's Wave 3 (run_id, project_id,
     # world_id, all ~100% supplied) is explicitly NOT in scope.
     #
-    # AND THE FAILURE IS MEASURED, NOT PREDICTED: batch c-kgedge3, 2026-08-26 -- on 3 of 3 edge
-    # calls the model passed the GLOSSARY entity ids, matched exactly against the run's own
-    # seed_ids. Well-formed UUIDs naming real objects of the WRONG FAMILY. A name cannot be the
-    # wrong family.
+    # 🔴 AND THE FAILURE IS MEASURED -- BUT NOT THE ONE THIS COMMENT FIRST CLAIMED. It said
+    # "batch c-kgedge3, 2026-08-26 -- on 3 of 3 edge calls the model passed the GLOSSARY entity
+    # ids". That was taken from this tool's own older source comment and is UNVERIFIABLE: there
+    # is no c-kgedge3 file on disk and no 2026-08-26 batch directory at all. The measurement may
+    # have been real and its file not kept -- that is not the same as it being false -- but
+    # nobody can re-check it, and KG_ENDPOINT_NOT_NODE (the refusal a wrong-family id triggers)
+    # appears in ZERO recorded results.
+    #
+    # THE DOMINANT FAILURE IS OMISSION, over all 53 distinct kg_propose_edge calls recorded:
+    #     passed at least one endpoint id     17   (32%)
+    #     passed NEITHER                      36   (68%)   <- this
+    #     wrong-family (KG_ENDPOINT_NOT_NODE)  0
+    # The model does not pass the WRONG id; it passes NO id, because it has no reachable way to
+    # get one -- which is exactly the ground the owner's (f) ruling rests on. A NAME is something
+    # it demonstrably has: the request that triggers this tool is "record that Aldric and Mira
+    # know each other". Re-derive with scripts/toolloop/wave1_fabrication_baseline.py.
     source_entity_id: str | None = Field(default=None, min_length=1, max_length=200)
     target_entity_id: str | None = Field(default=None, min_length=1, max_length=200)
     source_name: str | None = Field(default=None, min_length=1, max_length=200)

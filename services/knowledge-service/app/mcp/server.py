@@ -1337,7 +1337,18 @@ async def kg_propose_edge(
     # :Entity NODE id are different objects with the same shape and the same name. These
     # arguments require the NODE id (existing_entity_node_ids matches on Entity.id, and
     # KG_ENDPOINT_NOT_NODE rejects anything else up front), and "the id of the source entity"
-    # invites the other one. Measured 2026-08-26, batch c-kgedge3: on 3 of 3 edge calls the
+    # invites the other one.
+    #
+    # 🔴 THE CITATION BELOW IS UNVERIFIABLE, checked 2026-09-02. There is no c-kgedge3 file on
+    # disk and no 2026-08-26 batch directory, and KG_ENDPOINT_NOT_NODE appears in ZERO recorded
+    # results. The measurement may have been real and its file not kept — that is NOT the same as
+    # the claim being false — but nobody can re-check it, and three other comments in this
+    # service cite the same missing batch. What IS re-checkable: over 53 recorded
+    # kg_propose_edge calls, 36 (68%) passed NEITHER endpoint id and 0 were wrong-family. The
+    # id-family guidance below stays, because it is cheap and still correct; it is simply not the
+    # dominant failure. See scripts/toolloop/wave1_fabrication_baseline.py.
+    #
+    # Measured 2026-08-26, batch c-kgedge3: on 3 of 3 edge calls the
     # model passed the GLOSSARY entity ids — matched exactly against the run's own seed_ids —
     # well-formed UUIDs naming real objects of the wrong family. Say which family, and say
     # where one comes from; a caller holding the wrong id has no other way to find out.
