@@ -497,3 +497,24 @@ def decide_absent(param: str, supplier_tool: str, result: Any) -> Resolution:
                           candidates=(), outcome="no_match")
     return Resolution(param=param, ref_type=supplier_tool, sent="",
                       candidates=candidates, outcome="ambiguous")
+
+
+def accept_pick(param: str, pick: Any, candidates: Any) -> str | None:
+    """The id to substitute for a disambiguation resume, or None to refuse.
+
+    🔴 **THE PICK MUST BE ONE WE OFFERED.** The resume payload arrives from the client, so an
+    id that was never on the card is not a choice — it is an unvalidated identifier reaching a
+    tool the author approved for a DIFFERENT row. Membership in the offered set is the whole
+    check; shape alone would accept any well-formed UUID.
+
+    Refuses rather than guesses on every other input — a cancelled card, a stale payload, a
+    name instead of an id. Choosing on the author's behalf is the exact move this card exists
+    to avoid, and it would be worst here, where a pick can drive a destructive call.
+    """
+    if not param or not isinstance(pick, str) or not looks_like_an_id(pick):
+        return None
+    offered = {
+        str(c.get("id")) for c in (candidates or [])
+        if isinstance(c, dict) and c.get("id")
+    }
+    return pick if pick in offered else None

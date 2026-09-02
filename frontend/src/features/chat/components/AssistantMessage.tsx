@@ -23,6 +23,7 @@ import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
 import { TaskConfirmCard } from './TaskConfirmCard';
 import { BatchConfirmCard, type BatchChild } from './BatchConfirmCard';
 import { ToolApprovalCard, isToolApprovalRecord } from './ToolApprovalCard';
+import { DisambiguationCard, isDisambiguationRecord } from './DisambiguationCard';
 import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
 import { SkillProposalCard, skillProposal, type SkillProposal } from './SkillProposalCard';
 import { ActivityStrip } from './ActivityStrip';
@@ -264,8 +265,12 @@ export function AssistantMessage({
         // book_create, so it can't route by name). Approve once / Always allow
         // / Deny resume the run via the standard tool-results endpoint.
         const approvals = toolCalls.filter(isToolApprovalRecord);
+        // DQ-T76 — a pending disambiguation suspend. Like tool_approval it routes by the
+        // `args.kind` marker, not by name: the record's `tool` is the SERVER tool that needs
+        // the id (e.g. world_map_delete), so it can never route by tool name.
+        const disambiguations = toolCalls.filter(isDisambiguationRecord);
         const proposals = toolCalls.filter(
-          (tc) => isPendingFrontend(tc) && !isToolApprovalRecord(tc),
+          (tc) => isPendingFrontend(tc) && !isToolApprovalRecord(tc) && !isDisambiguationRecord(tc),
         );
         // ext-tasks (T1c(3)) — a pending durable-gate suspend (the record carries a
         // `task`). Its tool is a SERVER tool (e.g. composition_create_derivative), not
@@ -286,6 +291,7 @@ export function AssistantMessage({
           .filter((p): p is SkillProposal => p !== null);
         const rest = toolCalls.filter(
           (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc)
+            && !isDisambiguationRecord(tc)
             && !skillProposal(tc) && !(tc.pending === true && !!tc.task),
         );
         // Model-independent human gate: auto-render a confirm card for any completed
@@ -340,6 +346,10 @@ export function AssistantMessage({
             {/* RAID C2 — Tier-A approval cards (Approve once / Always / Deny). */}
             {approvals.map((tc) => (
               <ToolApprovalCard key={tc.toolCallId ?? `${tc.tool}-approval`} record={tc} />
+            ))}
+            {/* DQ-T76 — "which one did you mean?" (the ambiguous 76%). */}
+            {disambiguations.map((tc) => (
+              <DisambiguationCard key={tc.toolCallId ?? `${tc.tool}-disambiguation`} record={tc} />
             ))}
             {translationCards.map((tc) => (
               <TranslationReviewCard key={tc.toolCallId ?? `${tc.tool}-${tc.iteration ?? 0}`} record={tc} />

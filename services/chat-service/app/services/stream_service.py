@@ -7916,6 +7916,105 @@ async def _stream_with_tools(
                         )
                     else:
                         _ma_msg = None  # built below, once the declared contract is resolved
+                    # ── DQ-T76 · HAND OVER THE ROWS, DO NOT NAME A TOOL TO GO CALL ───────────
+                    # 🔴 NAMING THE SUPPLIER IS ALREADY DONE, AND IS ALREADY MEASURED FAILING.
+                    # `argument_emitters` declares which tool supplies each required id and
+                    # covers 632 of 723 recorded failures (87%); the refusal names it to the
+                    # model. Of 605 (session, tool) pairs that failed this way, only 51 (**8%**)
+                    # ever succeeded with that tool again in the same session — and that count is
+                    # GENEROUS, crediting successes from before the failure. It is a mechanism
+                    # that FIRES and does not MATTER.
+                    #
+                    # 🔴 AND FETCHING IT AUTOMATICALLY CANNOT BE THE ANSWER EITHER. Replayed over
+                    # real recorded supplier results, exactly one candidate comes back for only
+                    # ~6% of these; **76% return MANY rows**. When the author says "delete the
+                    # map" and the account holds twelve, no amount of fetching says which one —
+                    # the information is not in the request. A "pick the best" arm would be a
+                    # guess deciding a destructive call.
+                    #
+                    # So the ambiguous case goes to the HUMAN, which is the W3C Entity
+                    # Reconciliation contract's `match: false` arm: when the service cannot
+                    # choose, a person disambiguates. The author gets the rows; the model gets
+                    # out of a loop it demonstrably does not escape.
+                    _disambig: tuple[str, str, Any] | None = None
+                    if _missing_args and _ma_msg is None:
+                        try:
+                            from app.agentruntime.refresolve import decide_absent as _dec_abs
+                            from app.agentruntime.toolcontract import declared_emitter as _demit
+                            _dis_reg = _tool_contract_registry()
+                            for _mp in _missing_args:
+                                _sup = _demit(_dis_reg, c["name"], _mp)
+                                # A supplier must be a READ. Auto-dispatching one the author never
+                                # asked for is the same safety property `check_resolver` enforces
+                                # for the name branch: a non-read here would perform an
+                                # unrequested action on the way to refusing.
+                                if not _sup or declared_lane(
+                                        cat_index.get(_sup) or plain_index.get(_sup) or {}) != "read":
+                                    continue
+                                _st0 = _time.monotonic()
+                                try:
+                                    _senv = await knowledge_client.mcp_execute_tool(
+                                        user_id=user_id, session_id=session_id,
+                                        project_id=project_id,
+                                        book_id=(context_ids or {}).get("book_id"),
+                                        tool_name=_sup, tool_args={}, admin_token=admin_token,
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    _senv = None
+                                # 🔴 THE SUPPLIER GENUINELY RUNS, SO IT IS STAMPED AS A REAL
+                                # DISPATCH — the CP-0.3 rule, and its guard caught this missing.
+                                # An unstamped execution is filed as our own breaker prose, which
+                                # inverts the one distinction the field exists to make. The cost
+                                # claim for this branch is "one extra read replaces a dead-end
+                                # refusal"; nobody can check that if the numerator is invisible.
+                                # `resolver_for` keeps it out of the population of calls the MODEL
+                                # chose, and it is NOT appended to `working`: the author asked for
+                                # this, the model did not.
+                                _schunk = {
+                                    "id": f"{c['id']}:supply:{_mp}", "iteration": iteration,
+                                    "tool": _sup, "args": {},
+                                    "ok": bool(_senv and _senv.get("success")),
+                                    "result": None,
+                                    "error": None if _senv else "supplier dispatch failed",
+                                    "resolver_for": {"tool": c["name"], "param": _mp, "sent": ""},
+                                }
+                                instrument.stamp_tool_call(
+                                    _schunk, source=instrument.SOURCE_TOOL,
+                                    latency_ms=int((_time.monotonic() - _st0) * 1000))
+                                yield {"tool_call": _schunk}
+                                if not (_senv and _senv.get("success")):
+                                    continue
+                                _dres = _dec_abs(_mp, _sup, _senv.get("result"))
+                                if _dres.outcome == "ambiguous":
+                                    _disambig = (_mp, _sup, _dres)
+                                    break
+                        except Exception:  # noqa: BLE001 — never take the turn down for a card
+                            logger.warning("DQ-T76: candidate fetch failed for %s.%s",
+                                           c["name"], _missing_args, exc_info=True)
+                            _disambig = None
+                    if _disambig is not None:
+                        _dp, _dsup, _dr = _disambig
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": c["name"],
+                            "args": {
+                                "kind": "disambiguation",
+                                "tool": c["name"],
+                                "param": _dp,
+                                "supplier": _dsup,
+                                "args": args_obj,
+                                # Capped: a picker is a list a person reads, and the 44-row
+                                # suppliers in this corpus would make it a wall. `truncated` says
+                                # so rather than silently showing a prefix as if it were all.
+                                "candidates": [
+                                    {"id": _cd.id, "name": _cd.name}
+                                    for _cd in _dr.candidates[:25]
+                                ],
+                                "truncated": len(_dr.candidates) > 25,
+                                "total": len(_dr.candidates),
+                            },
+                        }
+                        break
                     # ── CP-5.4 · WHO OWES THIS ARGUMENT ──────────────────────────────────────
                     # 🔴 One sentence was covering two OPPOSITE situations. Measured over 266
                     # missing-argument failures / 87 sessions: the largest single case is
@@ -13132,10 +13231,19 @@ async def resume_stream_response(
     # server execution (or the denial), computed below once knowledge_client +
     # project_id are in scope — NOT the generic outcome echo.
     _approval_args = susp.pending_tool_call.get("args")
+    # DQ-T76 — a disambiguation pick resumes through the APPROVAL machinery on purpose.
+    # The author chose a row; the tool then has to run with every guard the approved path
+    # already carries — the saved-book repair, the listed-scalar-id unwrap, and the standing
+    # deny re-check that stops a stale card executing a tool blocked since it was raised.
+    # Rebuilding any of that beside it would be a second, weaker execution site.
+    is_disambiguation = (
+        isinstance(_approval_args, dict)
+        and _approval_args.get("kind") == "disambiguation"
+    )
     is_approval = (
         isinstance(_approval_args, dict)
         and _approval_args.get("kind") == "tool_approval"
-    )
+    ) or is_disambiguation
     # ext-tasks (T1c(3.c)) — a durable-gate suspend (step b marked pending["task"]).
     # Like an approval, its tool result is the REAL execution (call the domain's
     # provide-input tool below once knowledge_client is in scope), NOT the outcome echo.
@@ -13314,7 +13422,31 @@ async def resume_stream_response(
         # Same scalar-id list-unwrap the main dispatch does — the frozen consent args can carry
         # gemma's project_id=[uuid] (measured: connect-people 400'd "you sent a list").
         _coerce_listed_scalar_ids(_tool_args)
-        _decision = outcome if outcome in ("approved_once", "approved_always", "denied", "denied_always") else "denied"
+        if is_disambiguation:
+            # The outcome IS the chosen id. Anything else — a cancelled card, a stale
+            # payload, a value that is not an id — is a refusal, never a guess: picking on
+            # the author's behalf is the exact move this card exists to avoid.
+            # Validation lives in `refresolve.accept_pick` — pure, and therefore testable
+            # as the security property it is, rather than as prose inside this generator.
+            from app.agentruntime.refresolve import accept_pick as _accept_pick
+            _dparam = str(_approval_args.get("param") or "")
+            # 🔴 THE PICK RIDES `applied_text`, NOT `outcome`. FrontendToolOutcome is a CLOSED
+            # union of literals; widening it to carry a UUID would turn every consumer's
+            # exhaustive check into a string comparison that can no longer tell a missing case
+            # from a value. The outcome stays an enum ('disambiguated'), and the id travels in
+            # the text channel the resume endpoint already carries.
+            _picked = (
+                _accept_pick(_dparam, applied_text, _approval_args.get("candidates"))
+                if outcome == "disambiguated" else None
+            )
+            if _picked is not None:
+                _tool_args = {**_tool_args, _dparam: _picked}
+                _decision = "approved_once"
+            else:
+                logger.info("DQ-T76: disambiguation resume rejected (param=%r)", _dparam)
+                _decision = "denied"
+        else:
+            _decision = outcome if outcome in ("approved_once", "approved_always", "denied", "denied_always") else "denied"
 
         # Track C WS-3 — the resume path is the ONE execution site that does not run
         # through the in-loop gate, so it must re-check the standing decision itself. A

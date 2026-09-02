@@ -54,7 +54,11 @@ export type FrontendToolOutcome =
   // D3 (PO sign-off) — "Never allow" ON THE CARD: persists a standing DENY for this
   // tool (mirrors approved_always's persist) AND feeds "denied by user" (executes
   // nothing). The natural moment to refuse a tool forever is when it is asking.
-  | 'denied_always';
+  | 'denied_always'
+  // DQ-T76 — the disambiguation picker. The chosen id travels in `applied_text`, NOT here:
+  // this union is a CLOSED set and widening it to `string` would turn every exhaustive
+  // check on it into a comparison that cannot tell a missing case from a value.
+  | 'disambiguated';
 
 // RAID C2 — HITL permission mode. Persisted per-device in localStorage
 // (mirrors the editor's lw_editor_compose_mode pattern): a UI preference,

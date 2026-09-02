@@ -109,3 +109,39 @@ def test_a_pathological_payload_cannot_spin():
         node = node["x"]
     node["motif_id"] = "e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f"
     assert harvest(deep, "motif_id") == (), "depth bound did not hold"
+
+
+# ── the resume: what the author picked must be what we offered ───────────────
+
+from app.agentruntime.refresolve import accept_pick  # noqa: E402
+
+A = "e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f"
+B = "11111111-2222-4333-8444-555555555555"
+OFFERED = [{"id": A, "name": "A Grudge Older Than the Holder"}, {"id": B, "name": "The Debt Unpaid"}]
+
+
+def test_a_pick_from_the_card_is_accepted():
+    assert accept_pick("motif_id", A, OFFERED) == A
+    assert accept_pick("motif_id", B, OFFERED) == B
+
+
+def test_an_id_we_never_offered_is_REFUSED():
+    """🔴 THE SECURITY PROPERTY. The resume payload comes from the client. A well-formed UUID
+    that was never on the card is not a choice — it is an unvalidated identifier reaching a
+    tool the author approved for a DIFFERENT row. Shape alone would wave it through."""
+    never_shown = "99999999-8888-4777-8666-555555555555"
+    assert accept_pick("motif_id", never_shown, OFFERED) is None
+
+
+def test_every_other_input_refuses_rather_than_guessing():
+    for bad in (None, "", "Ember Codex", "default", 3, {"id": A}, [A]):
+        assert accept_pick("motif_id", bad, OFFERED) is None, bad
+    # a cancelled card / empty offer set can never yield a pick
+    assert accept_pick("motif_id", A, []) is None
+    assert accept_pick("motif_id", A, None) is None
+    # ...and a resume with no parameter names nothing to substitute INTO
+    assert accept_pick("", A, OFFERED) is None
+
+
+def test_a_malformed_candidate_row_cannot_widen_the_offer():
+    assert accept_pick("motif_id", A, [{"name": "no id here"}, None, "junk"]) is None
