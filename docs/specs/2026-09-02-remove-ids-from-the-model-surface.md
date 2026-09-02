@@ -70,9 +70,19 @@ description.** Four live tools say "by name" — `book_steering_delete`, `glossa
 exists (`findEntityByNameOrAlias`, glossary-service `extraction_handler.go:1430`) but **nothing
 advertises it on the tool surface**, which is the gap (f) is really about.
 
-**Ten arguments have ZERO observed suppliers** (`revision_id`, `pass_id`, `import_source_id`,
-`source_ref`, `source_entity_id`, `fact_id`, `edited_from_version_id`, and others). For these,
-"name in" is not a convenience — it is the only reachable form.
+**TWENTY-FIVE arguments have ZERO observed suppliers** — `revision_id`, `pass_id`,
+`import_source_id`, `source_ref`, `source_entity_id`, `fact_id`, `edited_from_version_id`,
+`session_id`, `part_id`, `after_id`, `image_ref`, `scene_id`, `new_parent_arc_id`,
+`parent_arc_id`, `structure_node_id`, `plan_run_id`, `rule_id`, `block_id`, `outline_node_id`,
+`location_entity_id`, `new_parent_id`, `winner_id`, `source_schema_id`, `structure_template_id`,
+`before_chapter_id`. Seven of them are REQUIRED somewhere. For these, "name in" is not a
+convenience — it is the only reachable form.
+
+> 🔴 **CORRECTED 2026-09-02.** This paragraph said **ten**. Re-derived by
+> `id_surface_census.py`, it is twenty-five; the original came from reading a truncated view of
+> the census output rather than the census. The ORDERING is unaffected — these were already
+> Wave 1 — but a plan that miscounts its own scope by 2.5x invites the next reader to size the
+> work from the wrong number, so it is corrected in place rather than in a footnote.
 
 ---
 

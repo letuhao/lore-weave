@@ -1341,19 +1341,32 @@ async def kg_propose_edge(
     # model passed the GLOSSARY entity ids — matched exactly against the run's own seed_ids —
     # well-formed UUIDs naming real objects of the wrong family. Say which family, and say
     # where one comes from; a caller holding the wrong id has no other way to find out.
-    source_entity_id: Annotated[
-        str,
-        "The graph NODE id of the relationship's source — NOT a glossary entity id. Get it "
-        "from kg_add_nodes (which returns each node's id) or kg_graph_query; if the entity "
-        "exists only in the glossary, kg_add_nodes with mode=from_glossary turns it into a "
-        "node first.",
-    ],
-    target_entity_id: Annotated[
-        str,
-        "The graph NODE id of the relationship's target — NOT a glossary entity id. Same "
-        "source as source_entity_id.",
-    ],
     edge_type: Annotated[str, "The relationship edge-type code (see kg_schema_read)."],
+    # DQ-T76 (f) WAVE 1 — NAME IN / HANDLE THROUGH. The NAME is now the declared way in and the
+    # id is legacy-but-accepted. Names are listed FIRST because argument order is part of what a
+    # model reads.
+    source_name: Annotated[
+        str | None,
+        "The NAME of the relationship's source entity — the ordinary way to say it, e.g. "
+        "\"Aldric Vane\". The server resolves it to the graph node. If the name matches more "
+        "than one entity the call is REFUSED with the candidates, so nothing is guessed.",
+    ] = None,
+    target_name: Annotated[
+        str | None,
+        "The NAME of the relationship's target entity. Same resolution as source_name.",
+    ] = None,
+    source_entity_id: Annotated[
+        str | None,
+        "LEGACY, still accepted: the graph NODE id of the source — NOT a glossary entity id. "
+        "Prefer source_name. If you pass both, the ID wins and the result says so in "
+        "`resolved_by`. Node ids come from kg_add_nodes or kg_graph_query.",
+    ] = None,
+    target_entity_id: Annotated[
+        str | None,
+        "LEGACY, still accepted: the graph NODE id of the target — NOT a glossary entity "
+        "id. Prefer target_name, which cannot be the wrong id family at all. Same source as "
+        "source_entity_id.",
+    ] = None,
     source_kind: Annotated[
         str | None, "Optional — the source entity's node kind, for validation."
     ] = None,
@@ -1373,11 +1386,13 @@ async def kg_propose_edge(
     ] = None,
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    args: dict[str, Any] = {
-        "source_entity_id": source_entity_id,
-        "target_entity_id": target_entity_id,
-        "edge_type": edge_type,
-    }
+    args: dict[str, Any] = {"edge_type": edge_type}
+    # Only send what was actually given: the args model requires each endpoint as an id OR a
+    # name, and forwarding a None would look like a supplied-but-empty value.
+    for k, v in (("source_entity_id", source_entity_id), ("target_entity_id", target_entity_id),
+                 ("source_name", source_name), ("target_name", target_name)):
+        if v is not None:
+            args[k] = v
     if project_id is not None:
         args["project_id"] = project_id
     if source_kind is not None:

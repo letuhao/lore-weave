@@ -237,10 +237,10 @@
    "calls": 21
   },
   "composition_arc_suggest": {
-   "done": 40,
+   "done": 46,
    "deferred": 0,
    "failed": 51,
-   "calls": 91
+   "calls": 97
   },
   "composition_arc_template_archive": {
    "done": 0,
@@ -435,10 +435,10 @@
    "calls": 1
   },
   "composition_get_work": {
-   "done": 31,
+   "done": 36,
    "deferred": 0,
    "failed": 119,
-   "calls": 150
+   "calls": 155
   },
   "composition_library_translate": {
    "done": 5,
@@ -459,10 +459,10 @@
    "calls": 186
   },
   "composition_list_outline": {
-   "done": 199,
+   "done": 204,
    "deferred": 0,
    "failed": 134,
-   "calls": 333
+   "calls": 338
   },
   "composition_motif_adopt": {
    "done": 24,
@@ -543,16 +543,16 @@
    "calls": 6
   },
   "composition_package_tree": {
-   "done": 732,
+   "done": 737,
    "deferred": 0,
    "failed": 53,
-   "calls": 785
+   "calls": 790
   },
   "composition_reference_list": {
-   "done": 5,
+   "done": 10,
    "deferred": 0,
    "failed": 0,
-   "calls": 5
+   "calls": 10
   },
   "composition_reference_update": {
    "done": 0,
@@ -610,9 +610,9 @@
   },
   "glossary_adopt_standards": {
    "done": 47,
-   "deferred": 75,
+   "deferred": 80,
    "failed": 50,
-   "calls": 172
+   "calls": 177
   },
   "glossary_book_create": {
    "done": 12,
@@ -627,10 +627,10 @@
    "calls": 3
   },
   "glossary_book_ontology_read": {
-   "done": 593,
+   "done": 598,
    "deferred": 0,
    "failed": 79,
-   "calls": 672
+   "calls": 677
   },
   "glossary_book_patch": {
    "done": 17,
@@ -771,10 +771,10 @@
    "calls": 2
   },
   "glossary_list_system_standards": {
-   "done": 368,
+   "done": 373,
    "deferred": 0,
    "failed": 13,
-   "calls": 381
+   "calls": 386
   },
   "glossary_list_unknown_entities": {
    "done": 1,
@@ -975,10 +975,10 @@
    "calls": 73
   },
   "kg_list_templates": {
-   "done": 54,
+   "done": 59,
    "deferred": 0,
    "failed": 51,
-   "calls": 105
+   "calls": 110
   },
   "kg_ontology_propose": {
    "done": 6,

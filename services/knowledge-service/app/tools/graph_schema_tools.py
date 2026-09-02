@@ -351,13 +351,45 @@ class KgProposeEdgeArgs(ProjectScopedArgs):
 
     model_config = ConfigDict(extra="forbid")
 
-    source_entity_id: str = Field(min_length=1, max_length=200)
-    target_entity_id: str = Field(min_length=1, max_length=200)
+    # DQ-T76 (f) WAVE 1 — name in / handle through. The two ids stay ACCEPTED and become
+    # OPTIONAL; a caller may instead pass the entity's NAME and the handler resolves it.
+    #
+    # 🔴 THIS IS WAVE 1 BECAUSE IT IS WHERE THE MEASUREMENT POINTS. `source_entity_id` is the
+    # single argument on the platform with a genuinely unreachable supplier -- a supplier was
+    # advertised on 4 of the 46 calls that passed it (9%) -- and both of these arguments have
+    # ZERO observed suppliers in the recorded corpus. The plan's Wave 3 (run_id, project_id,
+    # world_id, all ~100% supplied) is explicitly NOT in scope.
+    #
+    # AND THE FAILURE IS MEASURED, NOT PREDICTED: batch c-kgedge3, 2026-08-26 -- on 3 of 3 edge
+    # calls the model passed the GLOSSARY entity ids, matched exactly against the run's own
+    # seed_ids. Well-formed UUIDs naming real objects of the WRONG FAMILY. A name cannot be the
+    # wrong family.
+    source_entity_id: str | None = Field(default=None, min_length=1, max_length=200)
+    target_entity_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_name: str | None = Field(default=None, min_length=1, max_length=200)
+    target_name: str | None = Field(default=None, min_length=1, max_length=200)
     edge_type: str = Field(min_length=1, max_length=_CODE_MAX)
     source_kind: str | None = Field(default=None, max_length=_CODE_MAX)
     target_kind: str | None = Field(default=None, max_length=_CODE_MAX)
     valid_from: int | None = Field(default=None, ge=0)
     valid_to: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_endpoints_are_expressed(self) -> "KgProposeEdgeArgs":
+        """Each endpoint must arrive as an id OR a name — never as neither.
+
+        🔴 MAKING THE IDS OPTIONAL WITHOUT THIS WOULD BE A REGRESSION, not a migration: a call
+        omitting both would have parked an edge with no endpoints instead of being refused at
+        mint. The plan's backward-compatibility rule is "accept BOTH forms", not "accept none".
+        """
+        for side in ("source", "target"):
+            if not getattr(self, f"{side}_entity_id") and not getattr(self, f"{side}_name"):
+                raise ValueError(
+                    f"{side} endpoint is missing: pass {side}_entity_id (a graph NODE id from "
+                    f"kg_add_nodes) or {side}_name (the entity's name, which the server "
+                    f"resolves)"
+                )
+        return self
 
     @model_validator(mode="after")
     def _validate_temporal_window(self) -> "KgProposeEdgeArgs":
@@ -981,13 +1013,43 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "edge type is temporal you MUST supply valid_from (the chapter "
         "ordinal it began); otherwise the proposal is rejected.",
         {
+            # DQ-T76 (f) WAVE 1 — the NAME is the declared way in; the id is legacy-but-accepted.
+            # 🔴 THIS IS THE THIRD PLACE THIS TOOL'S SHAPE IS DECLARED (arg model, MCP signature,
+            # and here) and a test exists precisely because they drift:
+            # test_schema_properties_match_arg_model_fields caught this one the moment the arg
+            # model gained the names. Names FIRST, because argument order is part of what a
+            # model reads.
+            "source_name": {
+                "type": "string",
+                "description": (
+                    "The NAME of the relationship's source entity, e.g. \"Aldric Vane\" — the "
+                    "ordinary way to say it. The server resolves it to the graph node. If the "
+                    "name matches more than one entity the call is REFUSED with the candidates, "
+                    "so nothing is guessed."
+                ),
+            },
+            "target_name": {
+                "type": "string",
+                "description": (
+                    "The NAME of the relationship's target entity. Same resolution as "
+                    "source_name."
+                ),
+            },
             "source_entity_id": {
                 "type": "string",
-                "description": "The id of the relationship's source entity.",
+                "description": (
+                    "LEGACY, still accepted: the graph NODE id of the source — NOT a glossary "
+                    "entity id. Prefer source_name. If you pass both, the ID wins and the "
+                    "result says so in `resolved_by`."
+                ),
             },
             "target_entity_id": {
                 "type": "string",
-                "description": "The id of the relationship's target entity.",
+                "description": (
+                    "LEGACY, still accepted: the graph NODE id of the target — NOT a "
+                    "glossary entity id. Same source as source_entity_id. Prefer target_name, "
+                    "which cannot be the wrong id family at all."
+                ),
             },
             "edge_type": {
                 "type": "string",
@@ -1016,7 +1078,9 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
             "project_id": _PROJECT_ID_PROP,
         },
-        ["source_entity_id", "target_entity_id", "edge_type"],
+        # Only edge_type stays REQUIRED: each endpoint may arrive as an id OR a name, and the
+        # arg model's validator refuses a call that supplies neither.
+        ["edge_type"],
     ),
     # UNIFIED node creation (catalog-unification 2026-07-22): mode supersedes kg_create_node
     # + kg_project_entities_to_nodes (which stay for existing callers).
@@ -2093,7 +2157,53 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
     # the glossary entities into the graph first (kg_project_entities_to_nodes).
     # This READS Neo4j (INV-K1 is about not WRITING it — the write stays human-
     # gated), the one stateful check worth a round-trip to avoid the dead-end.
-    endpoint_ids = [args.source_entity_id, args.target_entity_id]
+    # ── DQ-T76 (f) WAVE 1 — NAME IN / HANDLE THROUGH ────────────────────────────────────
+    # Resolve any endpoint given by NAME to its graph node id, here, where a Neo4j READ is
+    # already sanctioned (the precheck below does one; INV-K1 is about not WRITING).
+    #
+    # THE RULES ARE THE PLAN'S, and each answers a failure it names:
+    #   ID WINS when both arrive. An id is unambiguous and a name is not, so preferring the
+    #   name would make a precise caller LESS precise.
+    #   SAY WHICH WON. The plan's own warning: "an accept-both tool that silently prefers one
+    #   is how a migration becomes a defect." The result carries `resolved_by`.
+    #   AMBIGUITY REFUSES WITH THE CANDIDATES and never picks. Two entities called "Aldric"
+    #   is not a case where one of them is probably right -- guessing here writes a
+    #   relationship between the wrong characters into a human's review inbox.
+    from app.db.neo4j_repos.entities import find_entities_by_name
+
+    resolved_by: dict[str, str] = {}
+    endpoint_ids: list[str] = []
+    async with neo4j_session() as session:
+        for side in ("source", "target"):
+            given_id = getattr(args, f"{side}_entity_id")
+            given_name = getattr(args, f"{side}_name")
+            if given_id:
+                resolved_by[side] = "id"
+                endpoint_ids.append(given_id)
+                continue
+            matches = await find_entities_by_name(
+                session, user_id=str(owner), project_id=project_str, name=given_name,
+            )
+            if not matches:
+                raise ToolExecutionError(
+                    f"no entity named '{given_name}' in this project — check the spelling, or "
+                    f"pass {side}_entity_id (a graph NODE id from kg_add_nodes).",
+                    code="KG_ENDPOINT_NAME_NOT_FOUND",
+                    detail={"side": side, "name": given_name},
+                )
+            if len(matches) > 1:
+                cands = [{"entity_id": str(m.id), "name": m.name} for m in matches[:10]]
+                raise ToolExecutionError(
+                    f"'{given_name}' matches {len(matches)} entities — say which one by passing "
+                    f"{side}_entity_id. Candidates: "
+                    + ", ".join(f"{c['name']} ({c['entity_id']})" for c in cands),
+                    code="KG_ENDPOINT_NAME_AMBIGUOUS",
+                    detail={"side": side, "name": given_name, "candidates": cands},
+                )
+            resolved_by[side] = "name"
+            endpoint_ids.append(str(matches[0].id))
+
+    args.source_entity_id, args.target_entity_id = endpoint_ids[0], endpoint_ids[1]
     async with neo4j_session() as session:
         present = await existing_entity_node_ids(
             session, user_id=str(owner), ids=endpoint_ids,
@@ -2136,6 +2246,13 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
         "item_type": parked.item_type,
         "signature": parked.signature,
         "on_schema": issue is None,
+        # DQ-T76 (f) Wave 1 — WHICH FORM WON, per endpoint. The plan's own warning is that "an
+        # accept-both tool that silently prefers one is how a migration becomes a defect", so a
+        # caller who passed a name can see the id it became, and a caller who passed both can
+        # see that the id took precedence rather than discovering it later.
+        "resolved_by": resolved_by,
+        "source_entity_id": args.source_entity_id,
+        "target_entity_id": args.target_entity_id,
     }
 
 
