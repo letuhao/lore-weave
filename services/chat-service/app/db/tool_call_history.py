@@ -237,3 +237,127 @@ async def ids_returned_under_key(pool: asyncpg.Pool, session_id: str, key: str) 
                 if v not in out:
                     out.append(v)
     return out
+
+
+# ── DQ-T88 (a) WITH A CEILING — replaying prior turns' tool RESULTS ──────────────────────────
+#
+# OWNER 2026-09-01: "try claude code idea" — replay tool results across turns, in the shape the
+# Messages API uses, where a result is a content block in the transcript and survives to the next
+# turn by construction. THEN THE OWNER CORRECTED THE BUILD, and the correction is why the caps
+# below exist: "i don't think problem only come from resent or store but the tool return so much
+# data and it cause context bloated, that why the tool result is not store".
+#
+# That account is causal in the opposite direction to the one I had: results are not stored
+# BECAUSE they are large, so replaying them unbounded relocates the problem into every turn.
+# MEASURED over 5,182 sessions that made a tool call:
+#     average tool_calls bytes per session   10,346      (author+assistant PROSE: 1,759)
+#     median                                  3,270
+#     p95                                    38,369
+#     MAX                                   890,805
+# The replay is ~6x everything anyone actually said, and the tail is nearly a megabyte. So a
+# trimmed projection is not a refinement of the ruling — it is the only affordable form of it,
+# which is what "(a) WITH A CEILING" means.
+#
+# AND THE COST IS CONCENTRATED, which is what makes a per-result cap effective rather than
+# arbitrary: FIVE tools are 64.6% of all result bytes (tool_list 21.4%, glossary_book_ontology_read
+# 20.1%, glossary_list_system_standards 10.0%, glossary_task_provide_input 7.9%, world_list 5.2%).
+
+#: Bytes of a single result carried verbatim before it is projected. Chosen from the measured
+#: distribution, not by taste: the per-session MEDIAN is 3,270 bytes across ALL of a session's
+#: calls, so 2 kB per result leaves a typical session untouched while the p95/max tail — which is
+#: one or two enormous results, never many small ones — is projected.
+#: Any uuid in a result body. Used ONLY to preserve ids when a result is projected — an id is the
+#: one thing a later turn cannot re-derive from a trimmed payload.
+_ANY_UUID = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+REPLAY_RESULT_CAP = 2_048
+
+#: Total bytes of replayed results per turn. p95 of a whole session is 38 kB, so 16 kB admits the
+#: great majority of sessions whole and bounds the 890 kB worst case at ~2% of itself.
+REPLAY_SESSION_BUDGET = 16_384
+
+
+def project_result(tool: str, result, cap: int = REPLAY_RESULT_CAP) -> str:
+    """A result small enough to replay, preserving what the next turn actually needs.
+
+    🔴 WHAT IS PRESERVED IS NOT THE PREFIX. Truncating to the first N bytes keeps the opening
+    brace and loses the ids, and an id is the one thing a later turn cannot re-derive — it is the
+    whole subject of the fabricated-id work. So an oversized result keeps every uuid it returned
+    and says what was dropped, rather than keeping a readable head and a useless tail.
+
+    A result that already fits is returned unchanged: the common case must cost nothing.
+    """
+    blob = result if isinstance(result, str) else json.dumps(result, default=str)
+    if len(blob) <= cap:
+        return blob
+    ids: list[str] = []
+    for v in _ANY_UUID.findall(blob):
+        if v not in ids:
+            ids.append(v)
+    # 🔴 THE NOTE IS BUILT FIRST AND THE HEAD IS SIZED TO WHAT IS LEFT. A first version reserved
+    # a fixed 240 bytes for it and appended afterwards, which OVERSHOT the cap whenever a result
+    # carried many ids — measured at 2,416 bytes against a 2,048 cap, on the very payload shape
+    # (an ontology read) that made the cap necessary. A ceiling that the worst case walks through
+    # is not a ceiling, and the whole point of this function is that the caller can trust `cap`.
+    note = (f'… [{tool}: {len(blob)} bytes, trimmed to fit the turn. '
+            f'{len(ids)} id(s) returned: {", ".join(ids[:12])}'
+            f'{" …" if len(ids) > 12 else ""}. '
+            f'Call {tool} again if you need the rest.]')
+    if len(note) >= cap:
+        # Pathological: more ids than the cap can hold. The IDS are what matter, so keep the note
+        # and drop the body entirely rather than returning a head with no explanation.
+        return note[:cap]
+    return blob[: cap - len(note)] + note
+
+
+async def results_for_replay(
+    pool: "asyncpg.Pool", session_id: str, *,
+    budget: int = REPLAY_SESSION_BUDGET, cap: int = REPLAY_RESULT_CAP,
+) -> list[dict]:
+    """Prior turns' SUCCESSFUL tool results, newest first, within a byte budget.
+
+    NEWEST FIRST is the retention rule and it is deliberate: when the budget binds, the results a
+    turn is most likely to need are the ones it just produced. The list is returned in
+    chronological order so a caller can append it as transcript.
+
+    `ok` only — a failed call handed nothing over, and replaying its error text would re-teach the
+    model a wall it already hit (the repeated-failure breaker is the mechanism for that, and it
+    works on THIS turn's evidence).
+    """
+    try:
+        rows = await pool.fetch(
+            """
+            SELECT tool_calls
+              FROM chat_messages
+             WHERE session_id = $1::uuid
+               AND tool_calls IS NOT NULL
+             ORDER BY sequence_num DESC
+            """,
+            session_id,
+        )
+    except Exception:  # noqa: BLE001 — replay is an enrichment; a turn must never die for it
+        logger.warning("replay history unavailable for session=%s", session_id, exc_info=True)
+        return []
+
+    out: list[dict] = []
+    spent = 0
+    for r in rows:
+        raw = r["tool_calls"]
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+        if not isinstance(raw, list):
+            continue
+        for tc in reversed(raw):
+            if not isinstance(tc, dict) or not tc.get("ok") or tc.get("result") is None:
+                continue
+            tool = str(tc.get("tool") or "")
+            body = project_result(tool, tc.get("result"), cap)
+            if spent + len(body) > budget:
+                return list(reversed(out))
+            spent += len(body)
+            out.append({"tool": tool, "id": tc.get("id"), "result": body})
+    return list(reversed(out))

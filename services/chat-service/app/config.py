@@ -344,6 +344,19 @@ class Settings(BaseSettings):
     # (75.4%), +14.2 points at slightly LOWER token cost, reproduced exactly across two paired
     # runs, Fisher p = 0.052. Default flipped ON; set SKILL_CONTRASTIVE_DESC=0 to revert, which
     # is also how the control arm is re-measured.
+    # DQ-T88 (a) — replay prior turns' tool RESULTS into the turn, bounded (2 kB/result,
+    # 16 kB/turn, ids preserved through the trim; see db/tool_call_history.results_for_replay).
+    #
+    # DEFAULT OFF. The owner ruled "try claude code idea" and then CORRECTED the build: "the
+    # tool return so much data and it cause context bloated, that why the tool result is not
+    # store". On that account replaying is replaying the thing that made storing unattractive,
+    # so the bound makes it affordable without making it right. Measured cost if unbounded:
+    # median 3,270 bytes/session, p95 38,369, MAX 890,805 — against 1,759 bytes of everything
+    # the author and assistant actually said.
+    #
+    # Adopt the way DQ-T90 arm (b) was adopted: A/B against the shipped path on a multi-turn
+    # scenario where a prior result matters, and flip this only if it wins.
+    replay_prior_tool_results: bool = False
     skill_contrastive_desc: bool = True
     # DQ-T90 arm (a) — override ROUTER_MAX_ADDITIONS (the top-K cap). 0 = use the shipped 2. The
     # K-sweep priced 2→3 at +6.1 points for 270 more injected skills of which 250 are never used,

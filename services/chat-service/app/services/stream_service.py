@@ -4645,6 +4645,41 @@ async def _stream_with_tools(
         # pass-0 content so E1 can splice full-context + the tool results appended since.
         _continuing = bool(stateful and previous_response_id and delta_messages is not None)
         working: list[dict] = list(delta_messages) if _continuing else list(messages)
+        # ── DQ-T88 (a) WITH A CEILING — replay prior turns' tool RESULTS ──────────────────
+        # OWNER 2026-09-01: "try claude code idea". The Messages API is stateless — a tool
+        # result is a content block in the transcript, so it survives to the next turn by
+        # construction. THIS PLATFORM IS THE OUTLIER: results live on the ASSISTANT row, so a
+        # rehydrated conversation carries ZERO of them and 1,503 of 5,655 sessions lose them.
+        #
+        # 🔴 DEFAULT OFF, AND THAT IS THE OWNER'S OWN CORRECTION SPEAKING: "the tool return so
+        # much data and it cause context bloated, that why the tool result is not store". On
+        # that account replaying is replaying the thing that made storing unattractive. The
+        # projection bounds it (2 kB/result, 16 kB/turn, ids preserved), but a bound is not
+        # evidence that the trade is worth making — and this platform's own precedent for a
+        # context change of this size is DQ-T90: a flag, an A/B against the shipped path, and
+        # adoption only if it wins. Shipping it on by default would be asserting the result of
+        # a measurement nobody has run.
+        #
+        # Never seeded on a CONTINUE pass: the server already holds that history, and adding
+        # it would duplicate results the model can see.
+        if settings.replay_prior_tool_results and not _continuing and session_id:
+            try:
+                from app.db.tool_call_history import results_for_replay
+                _replayed = await results_for_replay(get_pool(), str(session_id))
+                if _replayed:
+                    working = [{
+                        "role": "system",
+                        "content": (
+                            "Results your earlier tool calls in this conversation returned "
+                            "(trimmed where large — call the tool again for the rest):\n"
+                            + "\n".join(f"{r['tool']}: {r['result']}" for r in _replayed)
+                        ),
+                    }] + working
+                    logger.info("replayed %d prior tool result(s) (session=%s)",
+                                len(_replayed), session_id)
+            except Exception:  # noqa: BLE001 — an enrichment must never take the turn down
+                logger.warning("prior-result replay failed (session=%s)", session_id,
+                               exc_info=True)
         _initial_working_len = len(working)
         # C6: on a resume pass, seed the token totals from the suspended first
         # run so the final usage is summed across both runs (design D10).
