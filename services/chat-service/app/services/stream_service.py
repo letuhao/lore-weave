@@ -10720,9 +10720,18 @@ async def stream_response(
                     if session_row else set(),
                 )
                 if _superseded:
+                    # 🔴 THIS SENTENCE DESCRIBED THE PRE-2026-08-25 RULE (DQ-T2). It said
+                    # "whose replacement is on the same wire", which was the NARROW rule: drop a
+                    # legacy tool only when its named successor is present. The rule was WIDENED
+                    # on 2026-08-25 to drop EVERY legacy tool, with or without a replacement --
+                    # measured against the live catalogue, 117 legacy tools of which 31 have no
+                    # successor at all, and the gate withholds them regardless. The comment above
+                    # was corrected then; this log line was not, so the one artefact a reader
+                    # actually sees at runtime went on teaching the narrower rule.
                     logger.info(
-                        "superseded gate: withholding %d legacy tool(s) whose replacement is on "
-                        "the same wire: %s", len(_superseded), sorted(_superseded)[:8],
+                        "superseded gate: withholding %d legacy tool(s) — EVERY legacy tool is "
+                        "dropped, with or without a named replacement: %s",
+                        len(_superseded), sorted(_superseded)[:8],
                     )
                 # GUI-nav tools deprecated 2026-07-25 — only the editor/book_scoped frontend
                 # tools (propose_edit / glossary) are advertised now.

@@ -1654,13 +1654,44 @@ func (a *lmStudioAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, m
 }
 
 func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error) {
-	// max_tokens:1 — this probe asks "does the credential work", not for prose. It was
-	// UNCAPPED against a hardcoded paid model, so every health check bought an
-	// arbitrarily long completion that nothing recorded.
-	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, "",
-		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}},
+	// 🔴 THIS PROBE SENT AN EMPTY MODEL NAME. The ollama adapter carried the identical bug and
+	// was fixed on 2026-09-01 ("THE OLD CHECK CALLED Invoke WITH AN EMPTY MODEL NAME — tolerated
+	// locally, `404 model '' not found` on ollama.com, so a working cloud provider reported
+	// unhealthy"). The fix was ported to ollama and NOT to here, which is the recurring shape in
+	// this file: a repair lands on the adapter it was found on and its siblings keep the defect.
+	//
+	// 🔴 AND ON LM STUDIO AN EMPTY NAME IS WORSE THAN A 404, BECAUSE OF JIT LOADING. LM Studio
+	// loads a model on demand when one is requested. A health check that asks for a completion
+	// makes the host load a model — the local target here is a 26B — so a probe that is supposed
+	// to ask "are you there?" can pin the GPU for tens of seconds. The batch runner already pays
+	// for that once; a health check must not pay for it again.
+	//
+	// SO REACHABILITY IS THE WHOLE QUESTION HERE, and listing answers it without spending
+	// anything. Same shape as the local-Ollama arm: no completion, so genuinely zero usage
+	// rather than an unreported one.
+	models, err := a.ListModels(ctx, endpointBaseURL, secret)
+	if err != nil {
+		return Usage{}, fmt.Errorf("endpoint unreachable: %w", err)
+	}
+	if len(models) == 0 {
+		return Usage{}, fmt.Errorf("endpoint reachable but serves no models")
+	}
+	if secret == "" {
+		// LM Studio's local server takes no key: there is no credential to prove.
+		return Usage{}, nil
+	}
+	// A secret WAS configured (LM Studio can sit behind a proxy that requires one), so the
+	// question becomes "does the credential work" and only a completion discriminates —
+	// exactly the finding recorded on the ollama adapter, where both listing endpoints
+	// answered 200 to a bogus key. Named model, capped at one token.
+	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, models[0].ProviderModelName,
+		map[string]any{"messages": []map[string]any{{"role": "user", "content": "hi"}},
 			"max_tokens": 1})
-	return u, err
+	if err != nil {
+		// The call still SPENT if it reached the model; a rejected credential did not.
+		return u, fmt.Errorf("credential rejected by %s: %w", models[0].ProviderModelName, err)
+	}
+	return u, nil
 }
 
 // Stream — LM Studio is OpenAI-compatible on /v1/chat/completions, so this
