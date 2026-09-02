@@ -81,10 +81,10 @@
    "calls": 5
   },
   "book_list": {
-   "done": 798,
+   "done": 808,
    "deferred": 0,
    "failed": 39,
-   "calls": 837
+   "calls": 847
   },
   "book_list_chapters": {
    "done": 61,
@@ -99,10 +99,10 @@
    "calls": 6
   },
   "book_read": {
-   "done": 442,
+   "done": 447,
    "deferred": 0,
    "failed": 208,
-   "calls": 650
+   "calls": 655
   },
   "book_scene_list": {
    "done": 11,
@@ -177,10 +177,10 @@
    "calls": 79
   },
   "catalog_list_public_books": {
-   "done": 44,
+   "done": 49,
    "deferred": 0,
    "failed": 2,
-   "calls": 46
+   "calls": 51
   },
   "chat_search_sessions": {
    "done": 36,
@@ -543,10 +543,10 @@
    "calls": 6
   },
   "composition_package_tree": {
-   "done": 727,
+   "done": 732,
    "deferred": 0,
    "failed": 53,
-   "calls": 780
+   "calls": 785
   },
   "composition_reference_list": {
    "done": 5,

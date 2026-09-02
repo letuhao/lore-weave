@@ -83,6 +83,27 @@
         "tenancy": "book-scoped throwaway fixture."
       },
       "defects": []
+    },
+    {
+      "id": "softsweep-composition-get-work",
+      "tool_under_test": "composition_get_work",
+      "expect_tool": "composition_get_work",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the composition work for this book.",
+      "prompt_source": "meta.synonyms ['composition work'], quoted CONTIGUOUSLY. 🔴 THE FIRST ATTEMPT (softsweep2) ASKED 'What's the authoring workspace for this book' and the tool was advertised 0/5 -- MY SCENARIO'S FAULT, not the platform's. The declared synonym is \"the book's authoring workspace\"; my paraphrase reordered it, so the contiguous phrase never appeared and answerable_tools returned [] for the whole request. Verified directly against the live matcher before re-running: this prompt returns ['composition_get_work']. A fixture that does not match the shipped declaration tests the fixture -- the same lesson glossary_propose_batch taught this loop earlier today.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_get_work is not ADVERTISED on 5/5. It requires nothing, so surfacing is the only gate. CONTROL, already measured: the FAILED first attempt is the control -- a paraphrase surfaced it 0/5 while this contiguous quote is answerable, so a miss here would mean something other than the matcher is dropping it. NOTE the turn was still ANSWERED correctly on that failed arm, by composition_package_tree, so 0/5 there was never a broken turn.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — a book with no Work must say so, not invent one.",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
     }
   ]
 }
