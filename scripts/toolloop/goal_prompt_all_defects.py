@@ -56,7 +56,41 @@ DQ_NAMED = 8   # blocking questions named inline; the rest are counted and linke
 #: would have asserted two dozen builds nobody re-verified, which is the ledger defect this whole
 #: goal exists to avoid. So the stream carries the rulings THIS round commissioned; earlier ones
 #: are out of scope for this goal and stay that way until someone checks them one at a time.
-ROUND_KEY = "answer_2026_08_31_round4"
+# 🔴 THIS WAS A SINGLE HARDCODED ROUND KEY ("answer_2026_08_31_round4") AND IT HID THREE
+# RULINGS. `ruled_unbuilt` required that exact key, so a ruling given in ANY LATER round was
+# invisible: DQ-T76, DQ-T88 and DQ-T90 were all ruled 2026-09-01 and never counted, and
+# `--check` reported "nothing is ruled-unbuilt" while three owner rulings sat unbuilt. The note
+# above already warned that "a queue that cannot see a work stream reports the run complete when
+# it is not" — and the constant was doing exactly that, one round later.
+#
+# 🔴 AND THE OBVIOUS REPAIR — a bare "answer_" prefix — IS THE OTHER FAILURE THE NOTE ABOVE
+# DESCRIBES. Tried: it reported THIRTY-FOUR unbuilt, pulling in every pre-convention ruling whose
+# remedy shipped weeks ago and was never stamped, because the stamp convention did not exist yet.
+# That is the same over-report the note records, and backfilling stamps across it "would have
+# asserted two dozen builds nobody re-verified".
+#
+# SO THE BOUND IS THE CONVENTION'S START DATE, not one round and not all history. A ruling from
+# the day the stamp was invented onward is expected to carry one; anything earlier is out of
+# scope by the reasoning above and stays that way "until someone checks them one at a time".
+# A NEW ROUND NOW JOINS AUTOMATICALLY — which is the property the hardcoded key lacked.
+ROUND_PREFIX = "answer_"
+STAMP_CONVENTION_FROM = "2026_08_31"
+
+
+def _ruling_rounds(q: dict) -> list[str]:
+    """Answer keys from the stamp convention onward, oldest first.
+
+    Keys look like `answer_2026_09_02` or `answer_2026_08_31_round4`; the date is the 3 fields
+    after the prefix, so a plain string compare on it orders and bounds them correctly.
+    """
+    out = []
+    for k in q:
+        if not k.startswith(ROUND_PREFIX):
+            continue
+        parts = k[len(ROUND_PREFIX):].split("_")
+        if len(parts) >= 3 and "_".join(parts[:3]) >= STAMP_CONVENTION_FROM:
+            out.append(k)
+    return sorted(out)
 DQ_EXCERPT = 58
 RULED_NAMED = 2   # ruled-unbuilt shown inline; the rest counted
 NAMED = 1
@@ -204,13 +238,14 @@ def ruled_unbuilt(led: dict) -> list[tuple[str, str]]:
     for name, q in (led.get("deferred_questions") or {}).items():
         if not isinstance(q, dict) or q.get("state") != "answered":
             continue
-        if ROUND_KEY not in q:
+        rounds = _ruling_rounds(q)
+        if not rounds:
             continue
         if any(k.startswith(("built", "shipped")) for k in q):
             continue
         if any(name in blob for blob in open_rows.values()):
             continue  # an open row already carries this work; it is queued as that row
-        out.append((name, " ".join(str(q[ROUND_KEY]).split())[:DQ_EXCERPT]))
+        out.append((name, " ".join(str(q[rounds[-1]]).split())[:DQ_EXCERPT]))
     return sorted(out)
 
 
@@ -315,7 +350,12 @@ def build() -> tuple[str, list[tuple], collections.Counter]:
                 f"{len(ruled)} left. Stamp `built_*` on the question when done.\n"
                 + "\n".join(f"  {q} — {a}" for q, a in shown))
         if rest:
-            tail += "\n  +" + ", ".join(q for q, _ in rest)
+            # 🔴 TRIMMED, NOT TRUNCATED — the same rule the defect queue above follows. Naming
+            # all of them overflowed the 4000-char budget (4068) once the date-bounded rule
+            # started seeing every round instead of one hardcoded key. The tail is COUNTED and
+            # pointed at the digest, which carries them in full, so nothing is dropped here —
+            # only unnamed.
+            tail += f"\n  +{len(rest)} more, all in docs/sessions/OPEN_DECISIONS.md"
         if not free:
             nxt = f"NEXT. {ruled[0][0]} (ruled, unbuilt)"
     return (f"/goal {DURABLE}\n\n{head}\n{named}{tail}\n\n{nxt}\n",
