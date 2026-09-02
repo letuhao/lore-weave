@@ -25,20 +25,30 @@ function actually sees:
     distinct hex <= 2           20                      0
     UUID version != 7       11,618                      -
 
-`distinct <= 2` is NOT shipped: its 20 are hand-authored sentinels that DO resolve
-(00000000-…-00000000000a and siblings), and refusing a value that exists is a false refusal
-even when the value is ugly. `version != 7` is refuted outright by 11,618 genuine v4 ids —
-exactly as D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID warned it would be.
+`version != 7` is refuted outright by 11,618 genuine v4 ids — exactly as
+D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID warned it would be. Re-derived later over
+every uuid column in five databases, it is 1,073,328 of 1,296,259 distinct ids: five sixths of
+every identifier the platform holds. That rule is dead.
 
-THE ONE COST, NAMED: `11111111-1111-1111-1111-111111111111` exists as a seeded
-`chat_messages.message_id`. The rule refuses it. That is the entire false-positive surface
-across 38,314 ids, and the nil UUID — the other match — was already refused by `_is_nil_uuid`.
+🔴 `distinct <= 2` SHIPPED 2026-09-02 ON THE OWNER'S RULING (DQ-T92), SIX WEEKS AFTER THIS FILE
+SAID IT WOULD NOT. What changed is the DENOMINATOR, not the rule. Every rejection of it —
+including the paragraph this replaces — measured it against the STORES, where it fires on 21
+hand-authored sentinels that DO resolve. The guard never inspects a stored id. It inspects a tool
+ARGUMENT, and on 14,037 UUID-shaped `*_id` arguments it has ZERO false positives; the sentinel
+appears zero times as an argument, and so does this row's own quoted instance.
 
-RECALL IS PARTIAL AND THAT IS THE PRICE. Of the nine invented UUIDs in recorded tool arguments
-these catch seven; `66966666-…` and `76767676-…` have two distinct digits and no long run, and
-reaching them needs the rule that also refuses a sentinel. A guard that is right about what it
-flags is worth more than one that flags more, because a false refusal deletes an argument the
-model supplied correctly.
+AND THE SENTINELS ARE STILL SAFE — BY PROVENANCE, NOT BY SHAPE. `_invented_supplier_ids` now
+takes the turn's `IdLedger`, and a value the PLATFORM published to the model is never refused as
+invented, whatever its digits look like. That is the property a literal exemption would only
+approximate, and the row's caution names why the approximation is not good enough: "this loop has
+already paid once for a blacklist that the very next run walked around."
+
+THE EXEMPTION COSTS NOTHING AND, TODAY, FIRES NOTHING: of 58 degenerate arguments in the whole
+recorded corpus, 58 were never published in-session and 0 were published. It is a safety valve
+against the failure that killed the UUID-version rule, not a filter carrying present load.
+
+RECALL IS STILL PARTIAL. Three distinct hex digits is outside the rule and stays outside it;
+widening again needs its own measurement on the ARGUMENT population.
 """
 from __future__ import annotations
 
@@ -85,13 +95,109 @@ def test_a_real_id_is_untouched():
     assert _invented_supplier_ids({"proposal_id": REAL}, contract=None) == []
 
 
+class _Ledger:
+    """The provenance oracle, with `IdLedger`'s one relevant method.
+
+    Not a stand-in for `IdLedger` — `test_the_real_IdLedger_satisfies_this_protocol` below
+    pins the production class to the same shape, so this stub cannot drift away from it.
+    """
+
+    def __init__(self, **published):
+        self._by_value = {v: k for k, v in published.items()}
+
+    def type_of(self, value):
+        return self._by_value.get(value)
+
+
 def test_a_RESOLVING_sentinel_is_left_alone():
-    """🔴 THE RULE THAT WAS MEASURED AND REJECTED. `distinct <= 2` would catch two more
-    fabrications and would also refuse twenty ids that exist in the stores. Refusing a value
-    that resolves is a false refusal even when the value is ugly."""
-    assert not _is_degenerate_uuid(SENTINEL)
-    assert not _is_degenerate_uuid(TWO_DIGIT)
-    assert _invented_supplier_ids({"proposal_id": SENTINEL}, contract=None) == []
+    """🔴 RE-AIMED 2026-09-02 ON THE OWNER'S RULING (DQ-T92): the sentinel is spared by
+    PROVENANCE, not by shape.
+
+    THIS TEST USED TO ASSERT `not _is_degenerate_uuid(SENTINEL)` — that the SHAPE test does not
+    reach it. That is no longer true and is no longer the guarantee worth holding. `distinct <= 2`
+    now ships, because on the population this guard actually inspects — 14,037 UUID-shaped `*_id`
+    ARGUMENTS — it has ZERO false positives and the sentinel occurs zero times there. The 20-ids
+    figure that blocked it for six weeks was measured against the STORES, which this function
+    never sees.
+
+    WHAT MUST STILL HOLD, AND IT IS THE STRONGER PROPERTY: a value the PLATFORM published to the
+    model is never refused as invented, whatever its digits look like. That is a statement about
+    the guard end to end, so it is asserted through `_invented_supplier_ids` and not through the
+    shape helper.
+    """
+    # The shape arm DOES fire now — stated outright so this test cannot be read as still
+    # claiming the old guarantee.
+    assert _is_degenerate_uuid(SENTINEL)
+    assert _is_degenerate_uuid(TWO_DIGIT)
+
+    # 🔴 THE GUARANTEE. The platform handed this value over under `entity_id`; the model
+    # did not invent it; the guard must not delete it.
+    assert _invented_supplier_ids(
+        {"proposal_id": SENTINEL}, contract=None,
+        published_ids=_Ledger(entity_id=SENTINEL)) == []
+
+
+def test_the_exemption_is_PROVENANCE_and_not_a_LIST_OF_SHAPES():
+    """🔴 THE TEETH, and the reason the ruling chose provenance over a literal exemption.
+
+    A sentinel-SHAPED value the platform never published is still refused, and a value that
+    looks nothing like a sentinel is spared the moment the platform vouches for it. Neither
+    half is derivable from the value's digits, which is exactly the point: a shape exemption
+    is a blacklist, and this row's own caution is that "this loop has already paid once for a
+    blacklist that the very next run walked around".
+    """
+    # Same shape, no provenance -> refused.
+    assert _invented_supplier_ids({"proposal_id": SENTINEL}, contract=None) == ["proposal_id"]
+    # A ledger that saw a DIFFERENT value does not vouch for this one.
+    assert _invented_supplier_ids(
+        {"proposal_id": SENTINEL}, contract=None,
+        published_ids=_Ledger(entity_id="01a04107-5b4a-789c-8b22-30f17c8abb01")
+    ) == ["proposal_id"]
+    # A NINETEENTH sentinel, one nobody added to any list, is spared for the same reason as the
+    # eighteen that exist — the property is not fitted to today's values.
+    ninth = "00000000-0000-0000-0000-0000000000ff"
+    assert _is_degenerate_uuid(ninth)
+    assert _invented_supplier_ids(
+        {"proposal_id": ninth}, contract=None, published_ids=_Ledger(node_id=ninth)) == []
+
+
+def test_the_exemption_FAILS_SAFE_when_no_ledger_is_threaded():
+    """A caller that forgets `published_ids` must lose the EXEMPTION, never the GUARD.
+
+    The opposite default would turn every un-threaded call site into a silently disabled
+    fabrication guard, which is the failure mode this file exists to prevent.
+    """
+    for ledger in (None, _Ledger()):
+        assert _invented_supplier_ids(
+            {"proposal_id": REPDIGIT}, contract=None, published_ids=ledger) == ["proposal_id"]
+
+
+def test_a_BROKEN_ledger_does_not_take_the_dispatch_down_with_it():
+    """The oracle is advisory. If it raises, the guard still answers — by refusing, which is
+    the safe direction."""
+
+    class _Broken:
+        def type_of(self, value):
+            raise RuntimeError("ledger unavailable")
+
+    assert _invented_supplier_ids(
+        {"proposal_id": REPDIGIT}, contract=None, published_ids=_Broken()) == ["proposal_id"]
+
+
+def test_the_real_IdLedger_satisfies_this_protocol():
+    """🔴 THE STUB ABOVE IS NOT THE THING THAT SHIPS. This asserts the production
+    `IdLedger` answers the same question the same way — otherwise every test above could pass
+    against a stub while the wired call site spares nothing."""
+    from app.services.id_ledger import IdLedger
+
+    led = IdLedger()
+    led.record({"result": {"entities": [{"entity_id": SENTINEL}]}})
+    assert led.type_of(SENTINEL) == "entity_id"
+    assert led.type_of(REPDIGIT) is None
+    assert _invented_supplier_ids({"proposal_id": SENTINEL}, contract=None,
+                                  published_ids=led) == []
+    assert _invented_supplier_ids({"proposal_id": REPDIGIT}, contract=None,
+                                  published_ids=led) == ["proposal_id"]
 
 
 def test_the_threshold_has_a_measured_margin():
@@ -148,14 +254,52 @@ def test_the_precision_holds_against_the_LIVE_stores():
     if len(ids) < 5000:
         pytest.skip(f"only {len(ids)} ids readable; not a precision measurement")
     fired = sorted(u for u in ids if _is_degenerate_uuid(u))
-    assert fired == ["00000000-0000-0000-0000-000000000000",
-                     "11111111-1111-1111-1111-111111111111"], fired
+
+    # 🔴 RE-AIMED WITH THE RULE 2026-09-02. `distinct <= 2` fires on MORE stored ids than
+    # the two this used to pin — the sentinel family is real and resolving — and pinning the
+    # exact list would make this a fixture of today's data rather than a property.
+    #
+    # THE PROPERTY THAT MUST HOLD: every stored id the shape arm refuses is one the PROVENANCE
+    # exemption spares once it actually reaches an argument, because a stored id reaches the
+    # model only by being published to it. If that ever fails, the rule refuses a value the
+    # platform can vouch for, and it must not ship in that state.
+    from app.services.id_ledger import IdLedger
+    for u in fired:
+        led = IdLedger()
+        led.record({"entity_id": u})
+        assert _invented_supplier_ids({"entity_id": u}, contract=None,
+                                      published_ids=led) == [], (
+            f"{u} is a REAL id in the stores that the guard refuses even after the platform "
+            f"published it — the provenance exemption is not reaching this value")
+
+    # The two the all-identical arm already caught are still caught, so the widening is
+    # additive and did not lose an original catch.
+    assert "00000000-0000-0000-0000-000000000000" in fired
+    assert "11111111-1111-1111-1111-111111111111" in fired
 
 
-def test_the_fabrications_this_does_NOT_catch_are_recorded():
-    """Every fix states what it does not cover, and here the uncovered part is a list."""
-    for missed in (TWO_DIGIT, "76767676-7676-7676-7676-767676767676"):
-        assert not _is_degenerate_uuid(missed), (
-            "this now fires — the recall/precision trade recorded on the row has changed and "
-            "must be re-measured rather than quietly widened"
-        )
+def test_the_two_digit_fabrications_are_NOW_caught():
+    """🔴 THIS TEST INVERTED 2026-09-02, AND ITS OLD FORM IS WHY.
+
+    It used to assert these are NOT caught, with the message "this now fires — the
+    recall/precision trade recorded on the row has changed and must be re-measured rather than
+    quietly widened". That tripwire did its job: the trade WAS re-measured (14,037 arguments,
+    zero false positives, DQ-T92) and the owner ruled on the result, so the widening is neither
+    quiet nor unmeasured. `66966666-…` is the instance
+    D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID was opened on, and
+    `76666666-…` is the one seen 22 times in the recorded corpus.
+    """
+    for now_caught in (TWO_DIGIT, "76767676-7676-7676-7676-767676767676",
+                       "76666666-7666-7666-7666-766666666666"):
+        assert _is_degenerate_uuid(now_caught), now_caught
+        assert _invented_supplier_ids({"proposal_id": now_caught},
+                                      contract=None) == ["proposal_id"]
+
+
+def test_the_recall_this_still_does_NOT_reach_is_recorded():
+    """Every fix states what it does not cover. THREE distinct digits is outside the rule, and
+    that boundary is deliberate rather than an oversight — widening it again needs its own
+    measurement on the ARGUMENT population, not this file's permission."""
+    three_digits = "12121212-2121-1212-2121-121212121233"
+    assert len(set(three_digits.replace("-", ""))) == 3
+    assert not _is_degenerate_uuid(three_digits)

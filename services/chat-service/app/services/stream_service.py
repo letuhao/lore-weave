@@ -3437,6 +3437,13 @@ _HEX_ORDER = "0123456789abcdef"
 #: every uuid column in all eight databases is SIX. Eight leaves a two-nibble margin.
 _DEGENERATE_SEQ_RUN = 8
 
+#: How few DISTINCT hex nibbles a 32-nibble id must have before it reads as typed rather than
+#: minted. MEASURED on the population this guard actually inspects — 14,037 UUID-shaped `*_id`
+#: tool ARGUMENTS — where it has ZERO false positives. It is deliberately NOT measured against
+#: the stores: 21 stored ids match it, every one of them a hand-authored sentinel, and those are
+#: spared by PROVENANCE at the call site rather than by weakening the shape test. See DQ-T92.
+_DEGENERATE_DISTINCT_MAX = 2
+
 
 def _is_degenerate_uuid(value: str) -> bool:
     """A syntactically valid UUID that is RECOGNISABLY a placeholder.
@@ -3470,17 +3477,45 @@ def _is_degenerate_uuid(value: str) -> bool:
     value is ugly. `version != 7` is refuted outright: 11,618 genuine v4 ids are in the stores,
     exactly as D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID warned.
 
-    RECALL IS PARTIAL AND THAT IS THE PRICE OF THE PRECISION. Of the nine invented UUIDs found
-    in recorded tool arguments these catch seven; `66966666-…-6666` and `76767676-…-7676` have
-    two distinct digits and no long run, and reaching them needs the rule that also refuses a
-    sentinel. A guard that is right about what it flags is worth more here than one that flags
-    more, because a false refusal deletes an argument the model supplied correctly.
+    🔴 THE `distinct <= 2` ARM WAS ADDED 2026-09-02, AFTER SEVEN REJECTED CANDIDATES, AND
+    THE THING THAT CHANGED IS THE DENOMINATOR — NOT THE RULE. Every refusal above measured it
+    against the STORES (20 hits, later 21) and concluded it refuses ids that resolve. But this
+    function never sees a stored id; it sees a tool ARGUMENT. Re-measured on that population:
+
+        UUID-shaped `*_id` ARGUMENTS examined          14,037
+        matched by `distinct <= 2`                          4 values
+            00000000-…-000000000000   x33   already caught by the all-identical arm
+            76666666-7666-…-766666666666  x22   ← THE RECALL THIS BUYS
+            77777777-…-777777777777    x2   already caught
+            66666666-…-666666666666     x1   already caught
+        FALSE POSITIVES                                     0
+        the RESOLVING sentinel 00000000-…-00000000000a      0 occurrences, ever
+        this row's quoted instance 66966666-…                0 occurrences, ever
+
+    🔴 AND THE SENTINEL IS SPARED BY PROVENANCE, NOT BY SHAPE — which is the owner's ruling
+    and the reason this is not the blacklist the row warned against. `00000000-…-00000000000a`
+    and its seventeen siblings ARE real, resolving ids in the live glossary store, all v0, and
+    this arm's shape test does fire on them. What spares them is `published_ids` at the call site
+    below: a value the PLATFORM handed the model this turn was not invented by the model, whatever
+    it looks like. A shape exemption is a list to be walked around; provenance is the property
+    that actually distinguishes the two cases.
+
+    🔴 STATED PLAINLY BECAUSE IT MATTERS: on today's corpus the provenance exemption SPARES
+    NOTHING. Of 58 degenerate arguments ever recorded, 58 were never published in-session and 0
+    were published — so it costs zero recall and, today, fires zero times. It is a safety valve,
+    not a filter: it exists so that the failure that killed the version rule (refusing a value the
+    runtime itself issued) cannot happen when a sentinel does reach an argument.
+
+    RECALL IS STILL PARTIAL AND THAT IS STILL THE PRICE OF THE PRECISION. `66966666-…` — this
+    row's own quoted instance — has two distinct digits and IS now caught; `76767676-…` likewise.
+    A guard that is right about what it flags is worth more here than one that flags more, because
+    a false refusal deletes an argument the model supplied correctly.
     """
     try:
         raw = f"{UUID(value).int:032x}"
     except (ValueError, AttributeError, TypeError):
         return False
-    if len(set(raw)) == 1:
+    if len(set(raw)) <= _DEGENERATE_DISTINCT_MAX:
         return True
     run = 1
     for i in range(1, len(raw)):
@@ -3758,7 +3793,8 @@ def _money_arg_note(dropped: dict) -> str:
 
 def _invented_supplier_ids(args_obj: dict, contract: dict | None,
                            tool_def_props: dict | None = None,
-                           runtime_held_context_ids: frozenset[str] | set[str] | None = None
+                           runtime_held_context_ids: frozenset[str] | set[str] | None = None,
+                           published_ids=None,
                            ) -> list[str]:
     """`*_id` args the CONTRACT says the runtime owes, which the model filled in with a non-UUID.
 
@@ -3826,6 +3862,44 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
         # The nil UUID and its family: syntactically valid, knowably invented. Same drop-then-
         # report-missing path, which is the sentence that sends the model to look the id up.
         if isinstance(value, str) and (_is_nil_uuid(value) or _is_degenerate_uuid(value)):
+            # 🔴 DQ-T92 — PROVENANCE OUTRANKS SHAPE, AND THIS IS THE OWNER'S RULING.
+            # The two arms above test what a value LOOKS like. That is the right question only
+            # while nobody can vouch for the value, and this turn's `IdLedger` can: it holds
+            # every `*_id` the PLATFORM published to the model, from the turn's context ids and
+            # from every tool result it returned. A value on that list was not invented by the
+            # model — it was handed to it — so refusing it is a false refusal by construction,
+            # whatever its digits look like.
+            #
+            # WHY THIS EXISTS RATHER THAN A LIST OF SPARED VALUES. The `distinct <= 2` arm fires
+            # on the platform's own RESOLVING sentinel `00000000-…-00000000000a` and its
+            # seventeen siblings, which are real resolving rows in the glossary store. A literal
+            # exemption would be a blacklist fitted to today's data — the exact failure this
+            # row's caution names ("this loop has already paid once for a blacklist that the
+            # very next run walked around"). Provenance is not fitted to anything: mint a
+            # nineteenth sentinel tomorrow and it is spared for the same reason as the other
+            # eighteen, without touching this file.
+            #
+            # FAIL-SAFE, AND THAT DIRECTION IS DELIBERATE. No ledger, or a value the ledger has
+            # not seen, means NO exemption and the guard fires — so a caller that forgets to
+            # thread it loses the safety valve, never the guard.
+            #
+            # AND IT SPARES NOTHING TODAY, WHICH IS RECORDED RATHER THAN HIDDEN: of the 58
+            # degenerate `*_id` arguments in the whole recorded corpus, 58 were never published
+            # in-session and 0 were published. Zero recall cost, zero firings. It is here so the
+            # failure that killed the UUID-version rule cannot recur, not because it is load-
+            # bearing on the present data.
+            _seen_as = None
+            if published_ids is not None:
+                try:
+                    _seen_as = published_ids.type_of(value)
+                except Exception:
+                    _seen_as = None
+            if _seen_as:
+                logger.info(
+                    "fabrication guard SPARED %s=%s: the platform published it this turn as %s",
+                    name, value[:64], _seen_as,
+                )
+                continue
             out.append(name)
             continue
         # 🔴 THE REQUIREMENT IS DECLARED IN PROSE NO VALIDATOR READS. Measured 2026-08-14 across
@@ -7089,6 +7163,10 @@ async def _stream_with_tools(
                         _fe_args, None,
                         ((_fe_def or {}).get("function", {}).get("parameters", {}) or {})
                         .get("properties"),
+                        # DQ-T92 — the same provenance exemption the backend path gets. A
+                        # frontend tool is the branch every earlier repair was hand-ported to
+                        # after being found missing here; porting this one with it.
+                        published_ids=_id_ledger,
                     )
                     _fe_dropped = {n: _fe_args.get(n) for n in _fe_invented}
                     for _n in _fe_invented:
@@ -7862,6 +7940,9 @@ async def _stream_with_tools(
                                 n for n in _RUNTIME_CONTEXT_IDS
                                 if str((context_ids or {}).get(n) or "").strip()
                             ),
+                            # DQ-T92 — what the PLATFORM published this turn. Spares a
+                            # runtime-issued value the shape arms would otherwise refuse.
+                            published_ids=_id_ledger,
                         )
                     except Exception:
                         _invented_ids = []
