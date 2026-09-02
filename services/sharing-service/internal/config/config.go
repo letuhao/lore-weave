@@ -12,6 +12,12 @@ type Config struct {
 	BookServiceInternalURL     string
 	GlossaryServiceInternalURL string
 	InternalServiceToken       string
+	// DQ-T38 residue (owner 2026-09-02) — the book-lifecycle consumer that drops a sharing
+	// policy whose book is gone. OPTIONAL on purpose: unset simply disables the consumer and
+	// the service still starts, which is how GlossaryServiceInternalURL above already behaves.
+	// A cleanup that refuses to boot without Redis would make this service harder to run than
+	// it was before, for a feature that only tidies orphaned rows.
+	RedisURL                   string
 }
 
 func Load() (*Config, error) {
@@ -25,6 +31,7 @@ func Load() (*Config, error) {
 		// 503, but the service still starts. Default = the compose service URL.
 		GlossaryServiceInternalURL: getEnv("GLOSSARY_SERVICE_INTERNAL_URL", "http://glossary-service:8088"),
 		InternalServiceToken:       os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		RedisURL:                   os.Getenv("REDIS_URL"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

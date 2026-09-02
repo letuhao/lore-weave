@@ -1,6 +1,11 @@
 # THE GOAL PROMPT — tool RESOLUTION loop
 
-> **STATUS 2026-08-22: ACTIVE.** Successor to
+> **STATUS: COMPLETE (2026-09-02).** Its denominator was the **65 blocked tools**. That
+> number is now ZERO — 0 open defect rows, 0 blocked tools, every owner ruling built and
+> stamped. The dated figures below are a snapshot of 2026-08-22 and stay as written; live
+> counts are derived in `contracts/tool-deep-dive-ledger.json` by `gate.py audit`.
+>
+> **Originally — STATUS 2026-08-22: ACTIVE.** Successor to
 > [`2026-08-13-tool-deep-dive-GOAL.md`](2026-08-13-tool-deep-dive-GOAL.md), whose loop is
 > **COMPLETE** — 198 of 198 concluded, 133 proven, 65 blocked, audit clean at 203 rows.
 >

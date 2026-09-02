@@ -1,6 +1,16 @@
 # THE GOAL PROMPT — tool deep-dive loop
 
-> **STATUS 2026-08-21: ACTIVE — v2.** The v1 directive was cleared after batch 18; this is its
+> **STATUS: COMPLETE (superseded 2026-09-02).** This loop finished — every shippable tool is
+> concluded and every defect row it opened is closed. The dated figures below are an honest
+> SNAPSHOT of 2026-08-21 and are left as written; do not read them as current. Live counts are
+> derived in `contracts/tool-deep-dive-ledger.json` (`gate.py audit` recomputes `progress` from
+> the rows and refuses to let it drift) and in `docs/sessions/OPEN_DECISIONS.md` (generated,
+> with a currency test).
+>
+> **WHY THE WORD MATTERS:** a plan that says ACTIVE is re-entered. This one said so for twelve
+> days after it was done, which is how a finished stream gets re-served as work.
+>
+> **Originally — STATUS 2026-08-21: ACTIVE — v2.** The v1 directive was cleared after batch 18; this is its
 > replacement, rewritten against the real state rather than re-dated. State when written, derived
 > not typed: **109 of 198 shippable concluded** (81 proven, 28 blocked, 0 in flight), **89
 > remaining**, batches 1-18 closed.

@@ -1,6 +1,11 @@
 # RUNBOOK — the tool RESOLUTION loop
 
-> **STATUS 2026-08-22: ACTIVE.** Successor to
+> **STATUS: COMPLETE (2026-09-02).** Its denominator was "the 65 tools that loop could not
+> prove". That number is now ZERO: 0 open defect rows, 0 blocked tools, and every owner ruling
+> built and stamped. The dated figures below are a snapshot of 2026-08-22 and stay as written.
+> Live counts: `contracts/tool-deep-dive-ledger.json`, derived by `gate.py audit`.
+>
+> **Originally — STATUS 2026-08-22: ACTIVE.** Successor to
 > [`2026-08-13-tool-deep-dive-RUNBOOK.md`](2026-08-13-tool-deep-dive-RUNBOOK.md), which is
 > **COMPLETE**: 198 of 198 shippable tools concluded, 133 proven, 65 blocked, `gate.py audit` clean
 > at 203 rows.
