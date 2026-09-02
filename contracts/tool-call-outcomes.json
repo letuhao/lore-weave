@@ -81,10 +81,10 @@
    "calls": 5
   },
   "book_list": {
-   "done": 781,
+   "done": 798,
    "deferred": 0,
    "failed": 39,
-   "calls": 820
+   "calls": 837
   },
   "book_list_chapters": {
    "done": 61,
@@ -99,10 +99,10 @@
    "calls": 6
   },
   "book_read": {
-   "done": 422,
+   "done": 442,
    "deferred": 0,
-   "failed": 201,
-   "calls": 623
+   "failed": 208,
+   "calls": 650
   },
   "book_scene_list": {
    "done": 11,
@@ -237,10 +237,10 @@
    "calls": 21
   },
   "composition_arc_suggest": {
-   "done": 31,
+   "done": 40,
    "deferred": 0,
    "failed": 51,
-   "calls": 82
+   "calls": 91
   },
   "composition_arc_template_archive": {
    "done": 0,
@@ -351,10 +351,10 @@
    "calls": 10
   },
   "composition_create_work": {
-   "done": 4,
-   "deferred": 7,
+   "done": 5,
+   "deferred": 12,
    "failed": 5,
-   "calls": 16
+   "calls": 22
   },
   "composition_decompile_arcs": {
    "done": 15,
@@ -401,8 +401,8 @@
   "composition_generate": {
    "done": 0,
    "deferred": 13,
-   "failed": 56,
-   "calls": 69
+   "failed": 62,
+   "calls": 75
   },
   "composition_get_derivative_context": {
    "done": 39,
@@ -437,8 +437,8 @@
   "composition_get_work": {
    "done": 31,
    "deferred": 0,
-   "failed": 114,
-   "calls": 145
+   "failed": 119,
+   "calls": 150
   },
   "composition_library_translate": {
    "done": 5,
@@ -459,10 +459,10 @@
    "calls": 186
   },
   "composition_list_outline": {
-   "done": 198,
+   "done": 199,
    "deferred": 0,
    "failed": 134,
-   "calls": 332
+   "calls": 333
   },
   "composition_motif_adopt": {
    "done": 24,
@@ -531,10 +531,10 @@
    "calls": 1
   },
   "composition_outline_node_edit": {
-   "done": 14,
+   "done": 18,
    "deferred": 8,
    "failed": 29,
-   "calls": 51
+   "calls": 55
   },
   "composition_outline_node_update": {
    "done": 6,

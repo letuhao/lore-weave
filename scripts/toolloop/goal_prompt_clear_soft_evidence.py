@@ -69,10 +69,25 @@ def derive() -> dict:
     led = json.loads(LEDGER.read_text(encoding="utf-8"))
     citable = _citable_tools()
 
+    # 🔴 LEGACY TOOLS ARE EXCLUDED, AND LEAVING THEM IN COST A LIVE K=5 BATCH. The first version
+    # filtered on the LEDGER alone (proven + not gate-backed) and never asked the catalogue
+    # whether the tool still ships. Five soft rows are `visibility: legacy` with a named
+    # successor -- book_get -> book_read, book_list_chapters -> book_list, book_get_chapter ->
+    # book_read, plus glossary_list_chapter_links and glossary_web_search. The superseded gate
+    # drops every one of them from every wire by design.
+    #
+    # So a sweep queued them as work, and batch softsweep1 spent 15 of its 20 runs measuring
+    # three dead tools: all three were advertised 0/5, which is CORRECT behaviour, and every
+    # request was answered properly by the successor (book_read / book_list). The repo's own
+    # standing rule says it: deprecated tools are out of scope for every fix AND every count.
+    _cat = json.loads((ROOT / "contracts" / "tool-catalog-cache.json").read_text(encoding="utf-8"))
+    _legacy = {k for k, v in _cat.items()
+               if isinstance(v, dict) and (v.get("meta") or {}).get("visibility") == "legacy"}
     soft = {k: v for k, v in led["tools"].items()
             if isinstance(v, dict)
             and v.get("evidence_class") not in ("gate-backed",)
-            and v.get("state") == "proven"}
+            and v.get("state") == "proven"
+            and k not in _legacy}
 
     buckets = {"from_disk": [], "partial": [], "live": []}
     for name in sorted(soft):
