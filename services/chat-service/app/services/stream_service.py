@@ -3353,6 +3353,7 @@ def _arm_tools(
     activation_state: dict | None,
     discovery_catalog,
     context_length,
+    unlockable_gated: dict | None = None,
 ) -> list[str]:
     """Put `names` on the wire for the rest of this turn. THE one place that does it.
 
@@ -3387,6 +3388,27 @@ def _arm_tools(
     fresh = [n for n in names if n not in active_tool_names]
     if not fresh:
         return []
+    # 🔴 DQ-T5 (OWNER 2026-08-31): "A REFUSAL UNLOCKS THE TOOL IT NAMES, for the rest of that
+    # turn." Arming a name the N5a-FULL capability floor removed was INERT: the turn catalogue is
+    # filtered ONCE, before the tool loop, so the name went into `activated_tools` while its
+    # SCHEMA was absent and nothing reached the wire.
+    #
+    # MEASURED 2026-08-13 (sessions 019ffa85 / 019ffa92 / 019ffa96, a throwaway book): a fresh
+    # book has no kinds, so glossary_propose_entities refuses and NAMES glossary_adopt_standards
+    # — which was recorded WITHHELD at stage=intent_gate in the SAME turn as the refusal that
+    # named it, and stayed withheld even on the explicit prose "Set up my book — adopt the
+    # standard lore categories for it". A new book had no entry point to its own glossary.
+    #
+    # The ruling's own words: "the platform already does exactly this for a pinned rail's step
+    # tools, so the mechanism exists and only its trigger is new." A pinned rail is exempted
+    # inside `filter_intent_gated_setup_tools`; a REFUSAL cannot be, because it happens after
+    # that filter has already run. So the def is restored HERE, at the one place that arms.
+    if unlockable_gated:
+        for n in fresh:
+            spec = unlockable_gated.get(n)
+            if spec is not None and not any(
+                    (d.get("function") or {}).get("name") == n for d in discovery_catalog):
+                discovery_catalog.append(spec)
     active_tool_names.update(fresh)
     if activation_state is not None:
         activation_state["activated_tools"] = merge_activated_tools(
@@ -4421,6 +4443,10 @@ async def _stream_with_tools(
     plan_turn=None,
     plan_events_out: list | None = None,
     discovery_catalog: list[dict] | None = None,
+    #: DQ-T5 — the defs the N5a-FULL capability floor removed from `discovery_catalog`,
+    #: keyed by name. A refusal that NAMES one unlocks it for the rest of the turn; nothing
+    #: else reads this, so an un-named gated tool stays off the wire exactly as today.
+    unlockable_gated: dict | None = None,
     discovery_extra_frontend: list[dict] | None = None,
     discovery_seed_names: set[str] | None = None,
     curated: bool = False,
@@ -8946,8 +8972,19 @@ async def _stream_with_tools(
                                 c["name"], _po_args, _po_help[:160],
                             )
                 if _refusal_text and discovery:
+                    # 🔴 DQ-T5 — MATCH AGAINST THE GATED NAMES TOO, or the unlock can never fire.
+                    # `cat_index` is built from the FILTERED catalogue, so a tool the N5a-FULL
+                    # capability floor removed is not in it and `_tools_named_in_refusal` cannot
+                    # see the name at all. Restoring its def in `_arm_tools` would be dead code
+                    # without this: the recovery list it feeds would never contain the name.
+                    # Measured shape (2026-08-13): glossary_propose_entities refuses on a fresh
+                    # book and NAMES glossary_adopt_standards, which was withheld at
+                    # stage=intent_gate in that same turn.
+                    _recovery_index = dict(cat_index or {})
+                    if unlockable_gated:
+                        _recovery_index.update(unlockable_gated)
                     _recovery = _tools_named_in_refusal(
-                        _refusal_text, cat_index, active_tool_names,
+                        _refusal_text, _recovery_index, active_tool_names,
                         exclude=c["name"])
                     if not _recovery:
                         logger.info(
@@ -8963,6 +9000,11 @@ async def _stream_with_tools(
                             activation_state=activation_state,
                             discovery_catalog=discovery_catalog,
                             context_length=context_length,
+                            # DQ-T5: a REFUSAL may unlock a gated tool. Only this call site and
+                            # the missing-argument one pass it — a tool named in ordinary PROSE
+                            # still cannot open the floor, which is the over-reach N5a-FULL exists
+                            # to stop.
+                            unlockable_gated=unlockable_gated,
                         )
                         _tool_content = (_tool_content or "") + (
                             "\n\n[SYSTEM] " + ", ".join(_recovery) + " "
@@ -10135,6 +10177,11 @@ async def stream_response(
         #
         # Read OUTSIDE the branch that fetched, so it covers whichever catalogue this turn loaded.
         # Gating it on `not admin_context` was how the admin path came to have neither half.
+    #: DQ-T5 — the defs the N5a-FULL capability floor removes, so a REFUSAL that names one can
+    #: unlock it later in the turn. Declared at FUNCTION scope on purpose: the filter that fills
+    #: it lives two blocks in, and binding it there left the name UNDEFINED whenever tools are
+    #: disabled — 56 tests caught that, all of them raising at the call site rather than here.
+    unlockable_gated: dict = {}
     if not disable_tools and kctx.tool_calling_enabled:
         _catalogue_outage = instrument.catalogue_outage_registered()
     _turn_async_tools = frozenset(
@@ -10551,6 +10598,17 @@ async def stream_response(
                     catalog, injected_skill_codes, set(pinned_step_tools or ()),
                     request_text=user_message_content,
                 )
+                # DQ-T5 — what the floor just REMOVED, kept so a refusal that names one can
+                # unlock it later in this turn (`_arm_tools`). Captured here because this is the
+                # only place both lists exist; nothing reads it unless a refusal names the tool,
+                # so an un-named gated tool stays off the wire exactly as before.
+                _kept_names = {
+                    (d.get("function") or {}).get("name") for d in discovery_catalog
+                }
+                unlockable_gated = {
+                    nm: d for d in catalog
+                    if (nm := (d.get("function") or {}).get("name")) and nm not in _kept_names
+                }
                 # ── D-SUPERSEDED-TOOL-COMPETES-WITH-ITS-REPLACEMENT ───────────────────────
                 # CAT-4 states the invariant in tool_discovery: "A legacy tool must never be
                 # discoverable: excluded from search_catalog() and from every domain hot-seed."
@@ -10767,6 +10825,7 @@ async def stream_response(
             else MAX_TOOL_ITERATIONS
         ),
         discovery_catalog=discovery_catalog,
+        unlockable_gated=unlockable_gated,
         discovery_extra_frontend=discovery_extra_frontend,
         discovery_seed_names=discovery_seed_names,
         curated=curated_mode,
@@ -11571,6 +11630,10 @@ async def _emit_chat_turn(
     planner_model_ref: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
     discovery_catalog: list[dict] | None = None,
+    #: DQ-T5 — the defs the N5a-FULL capability floor removed from `discovery_catalog`. Built
+    #: beside that filter in `stream_response` and passed in, exactly as the catalogue itself
+    #: is: a REFUSAL that names one unlocks it for the rest of the turn.
+    unlockable_gated: dict | None = None,
     discovery_extra_frontend: list[dict] | None = None,
     discovery_seed_names: set[str] | None = None,
     curated: bool = False,
@@ -12043,6 +12106,10 @@ async def _emit_chat_turn(
                     "project_id": str(project_id) if project_id else None,
                 },
                 discovery_catalog=discovery_catalog,
+                # DQ-T5 — the defs the capability floor removed, so a REFUSAL that names one
+                # can unlock it for the rest of this turn. `unlockable_gated` is defined
+                # beside the filter above and is {} when discovery is off.
+                unlockable_gated=unlockable_gated,
                 discovery_extra_frontend=discovery_extra_frontend,
                 discovery_seed_names=discovery_seed_names,
                 curated=curated,
@@ -13652,6 +13719,9 @@ async def resume_stream_response(
             )]
 
     resume_discovery_catalog: list[dict] | None = None
+    #: DQ-T5 — the resumed turn keeps the same unlock: a refusal on the pass that acts on
+    #: an approval must be able to name a gated tool too, or the unlock dies at the card.
+    resume_unlockable_gated: dict = {}
     resume_extra_frontend: list[dict] | None = None
     resume_seed_names: set[str] | None = None
     tool_defs: list[dict] = []
@@ -13708,6 +13778,11 @@ async def resume_stream_response(
                 catalog, resume_injected_skills, set(susp.pinned_step_tools or ()),
                 request_text=susp.user_message_content,
             )
+            _resume_kept = {(d.get("function") or {}).get("name") for d in resume_discovery_catalog}
+            resume_unlockable_gated = {
+                nm: d for d in catalog
+                if (nm := (d.get("function") or {}).get("name")) and nm not in _resume_kept
+            }
             # The generic frontend tools (core) + the glossary write-back tools, both
             # available on resume; _stream_with_tools advertises {core} ∪ {discovered}
             # ∪ extra_frontend per pass.
@@ -13841,6 +13916,7 @@ async def resume_stream_response(
             else MAX_TOOL_ITERATIONS
         ),
         discovery_catalog=resume_discovery_catalog,
+        unlockable_gated=resume_unlockable_gated,
         discovery_extra_frontend=resume_extra_frontend,
         discovery_seed_names=resume_seed_names,
         curated=tool_pins.curated_mode,
