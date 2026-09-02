@@ -88,9 +88,27 @@ convenience — it is the only reachable form.
 
 ## 2. The ordering (required by the ruling)
 
-**Wave 1 — the only measured-unreachable argument. STATUS: kg_propose_edge BUILT 2026-09-02
-(both endpoints accept a name; id wins; ambiguity refuses with candidates). The BAR in §3 is
-NOT yet measured, so Wave 1 is built but not proven.** `source_entity_id`: one supplier
+**Wave 1 — the only measured-unreachable argument.**
+
+> 🔴 **STATUS 2026-09-02: BUILT on `kg_propose_edge`, and its BAR MEASURED — the target is
+> REFUTED.** Both endpoints accept a name (id wins; ambiguity refuses with candidates). But
+> stratified per batch, on a fixture whose entities are seeded the model ALREADY supplies both
+> ids **5 of 5** — `c-kgedge-nodes`, at K=5, which is the bar. The 38% pooled omission comes from
+> 2026-08-14 batches predating the id-family description fix (80%, 100%) and a different p4-*
+> scenario family (29–45%).
+>
+> So the after-arm would compare 5/5 against 5/5. **There is no rate for name-in to improve on
+> this tool**, and §3 says a wave that cannot move the rate is signature churn to stop on. The
+> build is kept — additive, zero measured losses, and the reference implementation of §4's rules
+> for Waves 2–3 — but **no rate improvement is claimed for it.**
+>
+> Two instrument errors were corrected before that number was believed: reading `_args` without
+> unwrapping the Tier-A approval envelope (reported 68%, actually 38%), and pooling across
+> batches with different preconditions. Both are failures this loop had already paid for once.
+>
+> **Recommendation to the owner: re-aim the BAR, not the wave** — take Wave 2 (`entity_id`,
+> required in 10 tools, resolver already written) rather than hunting a tool where Wave 1's
+> measurement can succeed. `source_entity_id`: one supplier
 (`kg_triage_list`), on the wire for 4 of 46 calls. Plus the twenty-five zero-supplier arguments above
 (seven of them required somewhere), which are unreachable by construction. Small, and it is where the value is.
 

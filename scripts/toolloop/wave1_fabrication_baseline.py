@@ -40,6 +40,24 @@ UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
                      r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 
+def _unwrap(raw) -> dict:
+    """The call's REAL arguments, through the Tier-A approval envelope.
+
+    🔴 A TIER-A CARD WRAPS THE CALL ONE LEVEL DEEPER: `{"kind": "tool_approval", "tool": ...,
+    "args": {...}}`. Reading `_args` directly therefore sees NO endpoint ids on every carded
+    call and scores them all as omissions. The first version of this baseline did exactly that
+    and reported a 68% omission rate; unwrapped, it is 39%. This loop has now paid for the same
+    mistake twice -- it also produced a false "(no op) 30 calls, 0 ok" finding earlier.
+    """
+    try:
+        a = json.loads(raw or "{}")
+    except Exception:
+        return {}
+    if isinstance(a, dict) and a.get("kind") == "tool_approval":
+        a = a.get("args") or {}
+    return a if isinstance(a, dict) else {}
+
+
 def scan(since: str | None) -> dict:
     stat = collections.defaultdict(collections.Counter)
     batches = set()
@@ -68,10 +86,7 @@ def scan(since: str | None) -> dict:
                 if tool != TOOL:
                     continue
                 batches.add(pathlib.Path(path).name)
-                try:
-                    a = json.loads(args_by_id.get(cid) or "{}")
-                except Exception:
-                    a = {}
+                a = _unwrap(args_by_id.get(cid))
                 content = res_by_id.get(cid) or ""
                 for arg in WAVE1_ARGS:
                     v = a.get(arg)
