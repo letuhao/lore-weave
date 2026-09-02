@@ -20,14 +20,14 @@
         {
           "via": "fe_runner",
           "rep": 0,
-          "book_id": "01a062dc-d091-76e7-a9b5-deb36e672eab",
-          "project_id": "01a062dc-d1db-7548-b1e0-332b01f98017",
+          "book_id": "01a062ed-25c4-7d95-986a-0917742c374c",
+          "project_id": "01a062ed-271b-7b47-9fbe-b6aaaf79a237",
           "seed_ids": {
-            "01a062dc-d091-76e7-a9b5-deb36e672eab": "fixture book_id",
-            "01a062dc-d1db-7548-b1e0-332b01f98017": "fixture project_id (composition_work)",
-            "01a062dc-d124-7644-9631-55820f7ea5c9": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+            "01a062ed-25c4-7d95-986a-0917742c374c": "fixture book_id",
+            "01a062ed-271b-7b47-9fbe-b6aaaf79a237": "fixture project_id (composition_work)",
+            "01a062ed-2669-7f2f-941f-6315238e04d6": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
           },
-          "session_id": "01a062dd-2526-7ac0-92f4-e693abf8ee20",
+          "session_id": "01a062ed-7e12-7809-bbcc-8a6436ea3bb2",
           "prompt": "Read the first one you found and tell me what it contains.",
           "scenario_prompt": "List the arc templates I can use.",
           "prior_turns": [
@@ -332,7 +332,7 @@
                   "workflow_load"
                 ]
               ],
-              "text": "You have several arc templates available in your library. Here are the ones that currently have content or specific structures:\n\n### **Custom Templates (Authored by You)**\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`): A 2-chapter span template featuring a \"Main\" thread with motifs for an *Auction House Treasure* and a *Betrayal Hinted*.\n*   **i146 Portable** (`i146.portable`): A 2-chapter span template with two threads: *Combat* (motif: `duel`) and *Romance* (motif: `meet`).\n*   **i146 Round Trip** (`i146.roundtrip`): Similar to the Portable version, structured for *Combat* and *Romance* threads.\n*   **Throwaway Loop Skeleton** (`throwaway-loop-skeleton-b15`): A specialized skeleton for loop-based structures.\n*   **My Reusable Act Structure** (Multiple versions): You have several v"
+              "text": "You have several arc templates available in your library. Here are the ones that currently have structure, layout, or pacing data defined:\n\n### Structured Templates\nThese templates include specific threads, motifs, or pacing instructions:\n\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`)\n    *   **Span:** 2 chapters\n    *   **Threads:** Main\n    *   **Layout:** \n        *   Ch 1: `cultivation.auction_house_treasure`\n        *   Ch 2: `hook.betrayal_hinted`\n    *   **Roster:** Hero\n*   **i146 Portable** (`i146.portable`)\n    *   **Span:** 2 chapters\n    *   **Threads:** Combat, Romance\n    *   **Layout:** \n        *   Ch 1: `duel` (Combat)\n        *   Ch 2: `meet` (Romance)\n    *   **Pacing:** Tension level 52 for both chapters.\n*   **i146 Round Trip** (`i146.roundtrip`)\n    *   **Span:"
             }
           ],
           "called": true,
@@ -452,15 +452,15 @@
             "before": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.764236+00"
+                "latest": "2026-09-02 16:21:44.169855+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.764236+00"
+                "latest": "2026-09-02 16:21:44.169855+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.764236+00"
+                "latest": "2026-09-02 16:21:44.169855+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -468,15 +468,15 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.764236+00"
+                "latest": "2026-09-02 16:21:44.169855+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.955586+00"
+                "latest": "2026-09-02 16:21:44.35355+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.946389+00"
+                "latest": "2026-09-02 16:21:44.345765+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -502,15 +502,15 @@
             "after": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.764236+00"
+                "latest": "2026-09-02 16:21:44.169855+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.764236+00"
+                "latest": "2026-09-02 16:21:44.169855+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.764236+00"
+                "latest": "2026-09-02 16:21:44.169855+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -518,19 +518,19 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.764236+00"
+                "latest": "2026-09-02 16:21:44.169855+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.955586+00"
+                "latest": "2026-09-02 16:21:44.35355+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:03:53.946389+00"
+                "latest": "2026-09-02 16:21:44.345765+00"
               },
               "loreweave_knowledge.extraction_pending": {
-                "rows": 1,
-                "latest": "2026-09-02 16:04:34.175446+00"
+                "rows": 2,
+                "latest": "2026-09-02 16:22:29.125306+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -558,24 +558,24 @@
             "loreweave_knowledge.extraction_pending": {
               "before": null,
               "after": {
-                "rows": 1,
-                "latest": "2026-09-02 16:04:34.175446+00"
+                "rows": 2,
+                "latest": "2026-09-02 16:22:29.125306+00"
               }
             }
           },
-          "answer": "The first template I found is called **\"Apply Smoke\"** (`smoke-apply-20198`).\n\nIt is currently an **empty template**. It has no summary, genre tags, threads, layout, pacing, or arc roster defined. It appears to be a placeholder or a starting point for a new structure.\n\nI did not re-read the book, and my answer may be stale."
+          "answer": "The first template I found is **\"Apply Smoke\"** (`smoke-apply-20198`).\n\nCurrently, it is an **empty template**. It contains no structural data, meaning it has no:\n*   **Summary** or **Genre Tags**\n*   **Threads** (narrative tracks)\n*   **Layout** (specific motifs or chapter spans)\n*   **Pacing** (tension or rhythm instructions)\n*   **Arc Roster** (character or element assignments)\n\nIt is essentially a blank canvas waiting for you to define its structure.\n\nI did not re-read the book in this turn, so my answer may be stale."
         },
         {
           "via": "fe_runner",
           "rep": 1,
-          "book_id": "01a062dd-c856-7318-892c-30ca0e40526d",
-          "project_id": "01a062dd-c99d-716f-98ca-2fe43d4ae5cb",
+          "book_id": "01a062ee-29cc-7ebc-bbf1-d24a80aabe16",
+          "project_id": "01a062ee-2b2c-7081-a855-b796d33d41e7",
           "seed_ids": {
-            "01a062dd-c856-7318-892c-30ca0e40526d": "fixture book_id",
-            "01a062dd-c99d-716f-98ca-2fe43d4ae5cb": "fixture project_id (composition_work)",
-            "01a062dd-c8eb-77da-b503-f88217c17525": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+            "01a062ee-29cc-7ebc-bbf1-d24a80aabe16": "fixture book_id",
+            "01a062ee-2b2c-7081-a855-b796d33d41e7": "fixture project_id (composition_work)",
+            "01a062ee-2a6d-7d55-a489-0e384861ac73": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
           },
-          "session_id": "01a062de-1d41-78a7-b57b-213523f86ae9",
+          "session_id": "01a062ee-81ba-77ad-89d7-da5a934709bc",
           "prompt": "Read the first one you found and tell me what it contains.",
           "scenario_prompt": "List the arc templates I can use.",
           "prior_turns": [
@@ -880,7 +880,7 @@
                   "workflow_load"
                 ]
               ],
-              "text": "You have several arc templates available in your library. Here are the ones that currently have content or specific structures:\n\n### **Custom Templates (Authored by You)**\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`): A 2-chapter span template with a \"Main\" thread, featuring motifs like an *Auction House Treasure* and a *Betrayal Hinted*.\n*   **i146 Portable** (`i146.portable`): A 2-chapter span template with \"Combat\" and \"Romance\" threads, using *Duel* and *Meet* motifs.\n*   **i146 Round Trip** (`i146.roundtrip`): Similar to the Portable version, structured for combat and romance.\n*   **Throwaway Loop Skeleton** (`throwaway-loop-skeleton-b15`): A structural skeleton for loop-based narratives.\n*   **My Reusable Act Structure** (Multiple versions): You have several versions of a cus"
+              "text": "You have several arc templates available in your library. Here are the ones I found:\n\n### **Custom Templates (Authored by You)**\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`): A 2-chapter span template featuring a \"Main\" thread with motifs like *Auction House Treasure* and *Betrayal Hinted*.\n*   **i146 Portable** (`i146.portable`): A 2-chapter span template with \"Combat\" and \"Romance\" threads, using *Duel* and *Meet* motifs.\n*   **i146 Round Trip** (`i146.roundtrip`): Similar to the portable version, structured for combat and romance.\n*   **Throwaway Loop Skeleton** (`throwaway-loop-skeleton-b15`)\n*   **My Reusable Act Structure** (Multiple versions: `journey-1784228311822`, `journey-1784258079911`, `journey-1784258201676`, `journey-1784258258900`)\n*   **TLE Arc Template** (`tle_arc"
             }
           ],
           "called": true,
@@ -1000,15 +1000,15 @@
             "before": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.195394+00"
+                "latest": "2026-09-02 16:22:50.733596+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.195394+00"
+                "latest": "2026-09-02 16:22:50.733596+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.195394+00"
+                "latest": "2026-09-02 16:22:50.733596+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -1016,15 +1016,15 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.195394+00"
+                "latest": "2026-09-02 16:22:50.733596+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.379641+00"
+                "latest": "2026-09-02 16:22:50.931585+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.371823+00"
+                "latest": "2026-09-02 16:22:50.92303+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -1050,15 +1050,15 @@
             "after": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.195394+00"
+                "latest": "2026-09-02 16:22:50.733596+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.195394+00"
+                "latest": "2026-09-02 16:22:50.733596+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.195394+00"
+                "latest": "2026-09-02 16:22:50.733596+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -1066,19 +1066,19 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.195394+00"
+                "latest": "2026-09-02 16:22:50.733596+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.379641+00"
+                "latest": "2026-09-02 16:22:50.931585+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:04:57.371823+00"
+                "latest": "2026-09-02 16:22:50.92303+00"
               },
               "loreweave_knowledge.extraction_pending": {
                 "rows": 2,
-                "latest": "2026-09-02 16:05:39.505549+00"
+                "latest": "2026-09-02 16:23:34.357189+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -1107,23 +1107,23 @@
               "before": null,
               "after": {
                 "rows": 2,
-                "latest": "2026-09-02 16:05:39.505549+00"
+                "latest": "2026-09-02 16:23:34.357189+00"
               }
             }
           },
-          "answer": "The first template I found is called **\"Apply Smoke\"** (`smoke-apply-20198`).\n\nHowever, it is currently an **empty template**. It contains no defined threads, layout, pacing, or roster—it's essentially a blank canvas waiting for you to add structure.\n\nI did not re-read the book, and my previous answer may be stale."
+          "answer": "The first template I found is called **\"Apply Smoke\"** (`smoke-apply-20198`).\n\nCurrently, it is an **empty template**. It contains no defined threads, layout, pacing, or roster, and it doesn't have a summary or genre tags assigned to it yet. It's essentially a blank canvas ready for you to build a structure.\n\nI did not re-read the book in this turn, so my answer may be stale."
         },
         {
           "via": "fe_runner",
           "rep": 2,
-          "book_id": "01a062de-bfa4-7627-bcf8-34db38b88dbb",
-          "project_id": "01a062de-c0f6-7df6-9d8a-7e0ab07dcd29",
+          "book_id": "01a062ef-2803-7b5f-a988-53b109545cdf",
+          "project_id": "01a062ef-2953-7724-a17d-ff3d160c0415",
           "seed_ids": {
-            "01a062de-bfa4-7627-bcf8-34db38b88dbb": "fixture book_id",
-            "01a062de-c0f6-7df6-9d8a-7e0ab07dcd29": "fixture project_id (composition_work)",
-            "01a062de-c03e-715b-b154-529dd4ec7d71": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+            "01a062ef-2803-7b5f-a988-53b109545cdf": "fixture book_id",
+            "01a062ef-2953-7724-a17d-ff3d160c0415": "fixture project_id (composition_work)",
+            "01a062ef-28a4-73a4-8c27-e06555c40d64": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
           },
-          "session_id": "01a062df-11f7-78bd-9c3e-0537c9769596",
+          "session_id": "01a062ef-8102-7ad0-b350-35a16c5dddf7",
           "prompt": "Read the first one you found and tell me what it contains.",
           "scenario_prompt": "List the arc templates I can use.",
           "prior_turns": [
@@ -1428,7 +1428,7 @@
                   "workflow_load"
                 ]
               ],
-              "text": "You have 31 arc templates available in your library. Here are some of the most notable ones:\n\n### **Custom & Reusable Templates**\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`): A 2-chapter span template featuring a \"Main\" thread with motifs like *Auction House Treasure* and *Betrayal Hinted*.\n*   **i146 Portable** (`i146.portable`): A 2-chapter span template with \"combat\" and \"romance\" threads, using *Duel* and *Meet* motifs.\n*   **i146 Round Trip** (`i146.roundtrip`): Similar to the portable version, structured for combat and romance.\n*   **My Reusable Act Structure** (Multiple versions): Several custom-authored versions of your own act structures.\n*   **Throwaway Loop Skeleton** (`throwaway-loop-skeleton-b15`): A specialized skeleton for loop-based structures.\n*   **TLE Arc Templa"
+              "text": "You have several arc templates available in your library. Here are the ones I found:\n\n### **Custom Templates (Authored by You)**\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`): A 2-chapter span featuring a \"Main\" thread with motifs like *Auction House Treasure* and *Betrayal Hinted*.\n*   **i146 Portable** (`i146.portable`): A 2-chapter span with \"Combat\" and \"Romance\" threads.\n*   **i146 Round Trip** (`i146.roundtrip`): Similar to the portable version, spanning 2 chapters with \"Combat\" and \"Romance\" threads.\n*   **Throwaway Loop Skeleton** (`throwaway-loop-skeleton-b15`)\n*   **My Reusable Act Structure** (Multiple versions: `journey-1784228311822`, `journey-1784258079911`, `journey-1784258201676`, `journey-1784258258900`)\n*   **TLE Arc Template** (`tle_arc_tmpl`)\n*   **Loop B15 Probe"
             }
           ],
           "called": true,
@@ -1548,15 +1548,15 @@
             "before": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.509886+00"
+                "latest": "2026-09-02 16:23:55.812022+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.509886+00"
+                "latest": "2026-09-02 16:23:55.812022+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.509886+00"
+                "latest": "2026-09-02 16:23:55.812022+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -1564,15 +1564,15 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.509886+00"
+                "latest": "2026-09-02 16:23:55.812022+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.701832+00"
+                "latest": "2026-09-02 16:23:55.9934+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.694141+00"
+                "latest": "2026-09-02 16:23:55.986583+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -1598,15 +1598,15 @@
             "after": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.509886+00"
+                "latest": "2026-09-02 16:23:55.812022+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.509886+00"
+                "latest": "2026-09-02 16:23:55.812022+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.509886+00"
+                "latest": "2026-09-02 16:23:55.812022+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -1614,19 +1614,19 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.509886+00"
+                "latest": "2026-09-02 16:23:55.812022+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.701832+00"
+                "latest": "2026-09-02 16:23:55.9934+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:06:00.694141+00"
+                "latest": "2026-09-02 16:23:55.986583+00"
               },
               "loreweave_knowledge.extraction_pending": {
                 "rows": 2,
-                "latest": "2026-09-02 16:06:44.395326+00"
+                "latest": "2026-09-02 16:24:39.655646+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -1655,23 +1655,23 @@
               "before": null,
               "after": {
                 "rows": 2,
-                "latest": "2026-09-02 16:06:44.395326+00"
+                "latest": "2026-09-02 16:24:39.655646+00"
               }
             }
           },
-          "answer": "The first template I found is **\"Apply Smoke\"** (`smoke-apply-20198`).\n\nIt is currently an **empty template**. It contains no defined threads, layout, pacing, or arc roster, meaning it serves as a blank slate for you to build a custom structure from scratch.\n\nI did not re-read the book on this turn, so my previous answer may be stale."
+          "answer": "The first template I found is **\"Apply Smoke\"** (`smoke-apply-20198`).\n\nCurrently, it is an empty template. It contains no summary, genre tags, threads, layout, pacing, or roster. It appears to be a placeholder or a newly created template that hasn't been configured with any structural elements yet.\n\nI did not re-read the book, and my answer may be stale."
         },
         {
           "via": "fe_runner",
           "rep": 3,
-          "book_id": "01a062df-b7c0-7a19-9b7e-34b0e05634ef",
-          "project_id": "01a062df-b92c-7ef5-91ce-48b3b66567e5",
+          "book_id": "01a062f0-2f04-736b-a8cc-5b51cff211c2",
+          "project_id": "01a062f0-307f-741f-831a-81177df502d8",
           "seed_ids": {
-            "01a062df-b7c0-7a19-9b7e-34b0e05634ef": "fixture book_id",
-            "01a062df-b92c-7ef5-91ce-48b3b66567e5": "fixture project_id (composition_work)",
-            "01a062df-b866-7c43-8b22-7c8109386cfd": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+            "01a062f0-2f04-736b-a8cc-5b51cff211c2": "fixture book_id",
+            "01a062f0-307f-741f-831a-81177df502d8": "fixture project_id (composition_work)",
+            "01a062f0-2fac-711d-bcf4-e61b6e1ced4b": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
           },
-          "session_id": "01a062e0-0937-752f-bfb9-75c86552b246",
+          "session_id": "01a062f0-8745-7792-8493-688c2997e196",
           "prompt": "Read the first one you found and tell me what it contains.",
           "scenario_prompt": "List the arc templates I can use.",
           "prior_turns": [
@@ -1976,7 +1976,7 @@
                   "workflow_load"
                 ]
               ],
-              "text": "You have 31 arc templates available in your library. Here are some of the most notable ones:\n\n### **Custom & Reusable Templates**\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`): A 2-chapter span template featuring a \"Main\" thread with motifs like *Auction House Treasure* and *Betrayal Hinted*.\n*   **i146 Portable** (`i146.portable`): A 2-chapter span template with \"Combat\" and \"Romance\" threads, using *Duel* and *Meet* motifs.\n*   **i146 Round Trip** (`i146.roundtrip`): Similar to the portable version, structured for combat and romance.\n*   **My Reusable Act Structure** (Multiple versions): Several custom-authored versions of your own act structures.\n*   **Throwaway Loop Skeleton** (`throwaway-loop-skeleton-b15`): A specialized skeleton for loop-based structures.\n*   **TLE Arc Templa"
+              "text": "You have 31 arc templates available in your library. Here are some of the most notable ones:\n\n### **Custom & Reusable Templates**\n*   **Deep Smoke Arc**: A 2-chapter span featuring a \"Main\" thread with motifs like *cultivation auction house treasure* and *betrayal hinted*.\n*   **i146 Portable / Round Trip**: 2-chapter templates that weave together *combat* (duel) and *romance* (meet) threads.\n*   **My Reusable Act Structure**: You have several versions of this (e.g., `journey-1784228311822`, `journey-1784258079911`) which you can use to define your own preferred pacing and layout.\n*   **Throwaway Loop Skeleton**: A specialized template for testing or rapid prototyping.\n*   **TLE Arc Template**: A custom template you've authored.\n\n### **Shared & System Templates**\n*   **E2E Shared Arcs**: S"
             }
           ],
           "called": true,
@@ -2096,15 +2096,15 @@
             "before": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.038482+00"
+                "latest": "2026-09-02 16:25:03.14789+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.038482+00"
+                "latest": "2026-09-02 16:25:03.14789+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.038482+00"
+                "latest": "2026-09-02 16:25:03.14789+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -2112,15 +2112,15 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.038482+00"
+                "latest": "2026-09-02 16:25:03.14789+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.243949+00"
+                "latest": "2026-09-02 16:25:03.36648+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.235879+00"
+                "latest": "2026-09-02 16:25:03.358235+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -2146,15 +2146,15 @@
             "after": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.038482+00"
+                "latest": "2026-09-02 16:25:03.14789+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.038482+00"
+                "latest": "2026-09-02 16:25:03.14789+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.038482+00"
+                "latest": "2026-09-02 16:25:03.14789+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -2162,15 +2162,19 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.038482+00"
+                "latest": "2026-09-02 16:25:03.14789+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.243949+00"
+                "latest": "2026-09-02 16:25:03.36648+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:07:04.235879+00"
+                "latest": "2026-09-02 16:25:03.358235+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 2,
+                "latest": "2026-09-02 16:25:44.894935+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -2194,20 +2198,28 @@
               }
             }
           },
-          "store_diff": {},
-          "answer": "The first template I found is called **\"Apply Smoke\"** (`smoke-apply-20198`).\n\nIt is currently an **empty template**. It contains no defined threads, layout, pacing, or arc roster. It appears to be a placeholder or a shell waiting for structure to be added.\n\nI did not re-read the book in this turn, so my previous answer may be stale."
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-09-02 16:25:44.894935+00"
+              }
+            }
+          },
+          "answer": "The first template I found is called **\"Apply Smoke\"** (`smoke-apply-20198`).\n\nCurrently, it is an **empty template**. It contains no defined threads, layout, pacing, or roster. It appears to be a placeholder or a starting point that hasn't been configured with any specific story structure yet.\n\nI did not re-read the book, and my answer may be stale."
         },
         {
           "via": "fe_runner",
           "rep": 4,
-          "book_id": "01a062e0-aecb-7628-b286-1d3105f9888a",
-          "project_id": "01a062e0-b009-7939-b78b-1d7d21113550",
+          "book_id": "01a062f1-2d33-7858-ac9e-914111b9b24c",
+          "project_id": "01a062f1-2e7a-76a8-abcb-233b2f76848f",
           "seed_ids": {
-            "01a062e0-aecb-7628-b286-1d3105f9888a": "fixture book_id",
-            "01a062e0-b009-7939-b78b-1d7d21113550": "fixture project_id (composition_work)",
-            "01a062e0-af5c-7981-9d87-f39fa51a711d": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+            "01a062f1-2d33-7858-ac9e-914111b9b24c": "fixture book_id",
+            "01a062f1-2e7a-76a8-abcb-233b2f76848f": "fixture project_id (composition_work)",
+            "01a062f1-2dc8-7f5f-b69b-414b102d0c1c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
           },
-          "session_id": "01a062e1-0467-77d5-8e1c-e5a6bf75ca4c",
+          "session_id": "01a062f1-8518-72b2-b62b-776f267b976d",
           "prompt": "Read the first one you found and tell me what it contains.",
           "scenario_prompt": "List the arc templates I can use.",
           "prior_turns": [
@@ -2512,7 +2524,7 @@
                   "workflow_load"
                 ]
               ],
-              "text": "You have several arc templates available in your library. Here are the ones that currently have content or specific structures:\n\n### **Custom Templates (Authored by You)**\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`): A 2-chapter span template featuring a \"Main\" thread with motifs for an *Auction House Treasure* and a *Betrayal Hinted*.\n*   **i146 Portable** (`i146.portable`): A 2-chapter span template with two threads: \"Combat\" (motif: *Duel*) and \"Romance\" (motif: *Meet*).\n*   **i146 Round Trip** (`i146.roundtrip`): Similar to the Portable version, structured for \"Combat\" and \"Romance\" threads.\n*   **Throwaway Loop Skeleton** (`throwaway-loop-skeleton-b15`): A structural skeleton for loop-based narratives.\n*   **My Reusable Act Structure** (Multiple versions): You have several ve"
+              "text": "You have 31 arc templates available in your library. Here are some of the most relevant ones:\n\n### **Custom & Reusable Templates**\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`): A 2-chapter span template with a \"Main\" thread, featuring motifs like *Auction House Treasure* and *Betrayal Hinted*.\n*   **i146 Portable** (`i146.portable`): A 2-chapter span template with \"Combat\" and \"Romance\" threads, using *Duel* and *Meet* motifs.\n*   **i146 Round Trip** (`i146.roundtrip`): Similar to the portable version, structured for combat and romance.\n*   **My Reusable Act Structure** (Multiple versions): Several custom-authored versions of your own act structures.\n*   **Throwaway Loop Skeleton** (`throwaway-loop-skeleton-b15`): A specialized skeleton for loop-based structures.\n*   **TLE Arc Temp"
             }
           ],
           "called": true,
@@ -2632,15 +2644,15 @@
             "before": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.260408+00"
+                "latest": "2026-09-02 16:26:08.200845+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.260408+00"
+                "latest": "2026-09-02 16:26:08.200845+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.260408+00"
+                "latest": "2026-09-02 16:26:08.200845+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -2648,15 +2660,15 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.260408+00"
+                "latest": "2026-09-02 16:26:08.200845+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.439454+00"
+                "latest": "2026-09-02 16:26:08.384111+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.432928+00"
+                "latest": "2026-09-02 16:26:08.377676+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -2682,15 +2694,15 @@
             "after": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.260408+00"
+                "latest": "2026-09-02 16:26:08.200845+00"
               },
               "loreweave_book.chapter_blocks": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.260408+00"
+                "latest": "2026-09-02 16:26:08.200845+00"
               },
               "loreweave_book.chapter_drafts": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.260408+00"
+                "latest": "2026-09-02 16:26:08.200845+00"
               },
               "loreweave_book.chapter_raw_objects": {
                 "rows": 1,
@@ -2698,15 +2710,19 @@
               },
               "loreweave_book.chapter_revisions": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.260408+00"
+                "latest": "2026-09-02 16:26:08.200845+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.439454+00"
+                "latest": "2026-09-02 16:26:08.384111+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-09-02 16:08:07.432928+00"
+                "latest": "2026-09-02 16:26:08.377676+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 2,
+                "latest": "2026-09-02 16:26:50.199674+00"
               },
               "loreweave_jobs.job_projection.owner": {
                 "rows": 1042,
@@ -2730,13 +2746,21 @@
               }
             }
           },
-          "store_diff": {},
-          "answer": "The first template I found, **\"Apply Smoke\"** (`smoke-apply-20198`), is currently an empty shell. It has no summary, genre tags, threads, layout, pacing, or roster defined. It appears to be a placeholder or a template that hasn't been populated with any structural data yet.\n\nI did not re-read the book, and my previous answer may be stale."
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-09-02 16:26:50.199674+00"
+              }
+            }
+          },
+          "answer": "The first template I found is called **\"Apply Smoke\"** (`smoke-apply-20198`).\n\nCurrently, it is an **empty template**. It contains no defined threads, layout, pacing, or roster, and it doesn't have a summary or genre tags assigned to it yet. It appears to be a placeholder or a starting point for a new structure.\n\nI did not re-read the book in this turn, so my answer may be stale."
         }
       ],
       "surfaced_count": 5,
       "called_count": 5,
-      "wrote_count": 3,
+      "wrote_count": 5,
       "suspended_count": 0
     }
   ]
