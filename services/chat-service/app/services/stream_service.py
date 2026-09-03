@@ -7664,9 +7664,18 @@ async def _stream_with_tools(
                                 "args": args_obj, "ok": False, "result": None, "error": _cap_err,
                             }}
                             continue
+                        # DQ-V4 2026-09-03 — this suspends as `batch_confirm`, NOT as
+                        # `confirm_action`. It is not a confirm the MODEL requested: it is the
+                        # PLATFORM interrupting a runaway turn, and it carries no confirm_token
+                        # because there is no server-side action to commit — Confirm simply lets
+                        # the turn continue. Reusing `confirm_action` for it meant the frontend
+                        # had to tell the two apart by "the token is empty", which is a property
+                        # of the payload standing in for an identity. Every filter that had to
+                        # exclude it (explicitTokens, confirmProposals) did so by testing the
+                        # token; they now exclude it by NAME, which is what they meant.
                         suspended_call = {
                             "id": c["id"],
-                            "name": "confirm_action",
+                            "name": "batch_confirm",
                             "args": {
                                 "confirm_token": "",
                                 "descriptor": f"{c['name']}.batch",

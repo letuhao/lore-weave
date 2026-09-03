@@ -257,6 +257,14 @@ export function AssistantMessage({
           'glossary_propose_entity_edit',
           'glossary_confirm_action',
           'confirm_action',
+          // DQ-V4 — the Tier-A auto-apply cap. NOT a confirm the model asked for: the platform
+          // interrupted a runaway turn, so it carries no confirm_token and Confirm just lets the
+          // turn continue. It suspended as 'confirm_action' until 2026-09-03 and was told apart
+          // from a real confirm by its EMPTY token; it has its own name now.
+          //
+          // 🔴 IF THIS NAME IS MISSING HERE THE CARD DOES NOT RENDER AT ALL, and the cap — the
+          // enforceable bound on injection damage — becomes an invisible stall.
+          'batch_confirm',
         ];
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
@@ -386,6 +394,11 @@ export function AssistantMessage({
                 return <ConfirmCard key={key} record={tc} />;
               }
               if (tc.tool === 'confirm_action') return <ConfirmActionCard key={key} record={tc} />;
+              // The Tier-A cap gate. Same card as a generic confirm — it has a title, a
+              // reason and Confirm/Cancel — but with no token there is nothing to preview
+              // and nothing to POST: Confirm resumes the suspended run, which is exactly
+              // what ConfirmActionCard already does when confirm_token is empty.
+              if (tc.tool === 'batch_confirm') return <ConfirmActionCard key={key} record={tc} />;
               // propose_record_edit dispatch REMOVED (auto-gate M5); its RecordDiffCard renderer
               // is deleted. book_update_details' server-built diff renders via ConfirmActionCard
               // (auto-confirm path below: minted confirm_token + changes[], descriptor 'book.meta').

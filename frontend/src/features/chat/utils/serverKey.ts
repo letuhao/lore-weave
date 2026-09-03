@@ -24,7 +24,7 @@ export const PREFIX_TO_SERVER: Record<string, string> = {
 
 // Mirror of chat-service frontend_tools.FRONTEND_TOOL_NAMES — browser-executed
 // tools group under "ui" regardless of prefix (glossary_confirm_action etc.).
-// Pinned by serverKey.test.ts against contracts/frontend-tools.contract.json
+// Pinned by serverKey.test.ts against contracts/browser-tools.contract.json
 // (the committed cross-language SoT) — a BE-side tool add/remove fails that
 // test instead of silently mis-grouping a chip.
 export const FRONTEND_TOOL_NAMES = new Set([
@@ -37,6 +37,8 @@ export const FRONTEND_TOOL_NAMES = new Set([
   'ui_show_panel',
   'ui_watch_job',
   'confirm_action',
+  // DQ-V4 — the Tier-A cap gate. Browser-rendered like the rest of this group.
+  'batch_confirm',
   'ui_open_studio_panel',
   'ui_focus_manuscript_unit',
 ]);

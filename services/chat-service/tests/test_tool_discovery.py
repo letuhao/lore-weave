@@ -416,7 +416,7 @@ class TestTierAVolumeCapH7:
     @pytest.mark.asyncio
     async def test_sixth_same_op_tier_a_escalates_to_batch_confirm(self):
         """After TIER_A_SAME_OP_CAP auto-writes of the SAME op, the next one
-        suspends on a batch confirm_action instead of auto-applying (H7/H2)."""
+        suspends on a batch_confirm instead of auto-applying (H7/H2)."""
         kc = _kc()
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
 
@@ -436,7 +436,9 @@ class TestTierAVolumeCapH7:
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
         pending = suspends[0]["suspend"]["pending_tool_call"]
-        assert pending["name"] == "confirm_action"
+        # DQ-V4 — the PLATFORM cap gate, not a confirm the model asked for. It has its own
+        # name so the frontend stops telling it apart by "the confirm_token is empty".
+        assert pending["name"] == "batch_confirm"
         assert pending["args"]["items"]  # batch card carries the held op
         assert pending["args"]["domain"] == "chapter"
 
@@ -488,7 +490,9 @@ class TestTierAVolumeCapH7:
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
         pending = suspends[0]["suspend"]["pending_tool_call"]
-        assert pending["name"] == "confirm_action"
+        # DQ-V4 — the PLATFORM cap gate, not a confirm the model asked for. It has its own
+        # name so the frontend stops telling it apart by "the confirm_token is empty".
+        assert pending["name"] == "batch_confirm"
         assert pending["args"]["items"]  # batch card carries the held op
 
 
