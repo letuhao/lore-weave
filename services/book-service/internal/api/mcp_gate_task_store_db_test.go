@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	lwmcp "github.com/loreweave/loreweave_mcp"
+	lwpg "github.com/loreweave/loreweave_mcp/pgstore"
 )
 
 const gateTestDescriptor = "test.gate"
@@ -37,8 +38,8 @@ func TestPgTaskStore_MultiReplica_ProposeOnA_AcceptOnB(t *testing.T) {
 	var hits []map[string]any
 	reg := lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)}
 	// Two independent store instances over the same DB = two replicas.
-	replicaA := NewPgTaskStore(pool, reg)
-	replicaB := NewPgTaskStore(pool, reg)
+	replicaA := lwpg.NewPgTaskStore(pool, reg)
+	replicaB := lwpg.NewPgTaskStore(pool, reg)
 
 	owner := uuid.New().String()
 	task, err := replicaA.Create(gateTestDescriptor, owner,
@@ -93,7 +94,7 @@ func TestPgTaskStore_DeclineCancelsWithoutResolver(t *testing.T) {
 	_, pool := dbTestServer(t)
 	ctx := context.Background()
 	var hits []map[string]any
-	store := NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)})
+	store := lwpg.NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)})
 
 	task, _ := store.Create(gateTestDescriptor, uuid.New().String(), map[string]any{"chapter_id": "c"}, nil, 0)
 	res, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": false})
@@ -112,7 +113,7 @@ func TestPgTaskStore_DeclineCancelsWithoutResolver(t *testing.T) {
 func TestPgTaskStore_TTLExpiryLapsesToFailed(t *testing.T) {
 	_, pool := dbTestServer(t)
 	ctx := context.Background()
-	store := NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(new([]map[string]any))})
+	store := lwpg.NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(new([]map[string]any))})
 
 	task, _ := store.Create(gateTestDescriptor, uuid.New().String(), nil, nil, 1) // 1ms TTL
 	// A Get with `now` past the TTL lapses the row to failed/task_expired and persists it.
@@ -132,7 +133,7 @@ func TestPgTaskStore_TTLExpiryLapsesToFailed(t *testing.T) {
 func TestPgTaskStore_CancelIdempotentThenReject(t *testing.T) {
 	_, pool := dbTestServer(t)
 	ctx := context.Background()
-	store := NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(new([]map[string]any))})
+	store := lwpg.NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(new([]map[string]any))})
 
 	task, _ := store.Create(gateTestDescriptor, uuid.New().String(), nil, nil, 0)
 	c, err := store.Cancel(task.TaskID)
@@ -152,7 +153,7 @@ func TestPgTaskStore_ConcurrentAccept_SingleWinner(t *testing.T) {
 	_, pool := dbTestServer(t)
 	ctx := context.Background()
 	var hits []map[string]any
-	store := NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)})
+	store := lwpg.NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)})
 
 	task, _ := store.Create(gateTestDescriptor, uuid.New().String(), map[string]any{"chapter_id": "z"}, nil, 0)
 

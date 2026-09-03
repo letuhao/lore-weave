@@ -1,9 +1,24 @@
-package api
+// Package pgstore is THE Postgres-backed lwmcp.TaskStore for Go services.
+//
+// 🔴 PROMOTED INTO THE KIT 2026-09-03, AND THE REASON IS THE COUNT. This began in
+// book-service; glossary-service then copied it, describing itself as "a straight mirror".
+// By 2026-09-03 there were THREE independent implementations of one store and none in an
+// SDK (the third is Python, now sdks/python/loreweave_mcp/pg_task_store.py), and the two
+// Go copies had ALREADY DRIFTED — 66 diff lines apart. The repo's SDK-First standard is
+// ">=2 users => SDK, never copy-paste"; it was at three, and three more services need this
+// store to close the ext-tasks gate (knowledge, translation, provider-registry).
+//
+// A SUBPACKAGE, not the kit root: this pulls in jackc/pgx, and the kit root is imported by
+// services that would then carry it for nothing. Measured before choosing — every Go
+// service that already depends on loreweave_mcp ALSO already depends on pgx, so no
+// consumer gains a dependency it lacked, and one that never imports pgstore never links it.
+package pgstore
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -243,10 +258,33 @@ func (s *PgTaskStore) notWaitingOrNotFound(ctx context.Context, taskID string) (
 	if err != nil {
 		return nil, err
 	}
+	// 🔴 THE EXPIRY REASON IS COMPUTED, PERSISTED, AND MUST NOT BE WITHHELD. This block came
+	// from GLOSSARY's copy, not book's, and merging it is the whole argument for promoting the
+	// store: the two Go copies had drifted, and the SDK must carry the SUPERSET or promotion is
+	// a silent regression for whichever service wrote the better version.
+	//
+	// Measured before the glossary fix: a task still listed `input_required`, whose 10-minute
+	// TTL had lapsed 17 days earlier, answered the generic "task is not awaiting input" —
+	// leaving the caller to wonder why a pending task refused. The reason was already in the
+	// row. Wrapped, never replaced, so `errors.Is(err, ErrTaskNotWaiting)` keeps working.
+	//
+	// The FIRST branch is the one that fires in practice: ProvideInput's ownership pre-check
+	// calls Get(), whose own lazy sweep has usually already stamped error='task_expired' and
+	// status='failed' by the time control reaches here — so the second branch, which requires a
+	// NON-terminal row, never fires on the path a real caller takes. Glossary's first attempt at
+	// this fix measured no change live for exactly that reason. Read the recorded reason first.
+	if cur.ErrorMsg == "task_expired" {
+		return nil, fmt.Errorf(
+			"%w — it EXPIRED (its %dms TTL lapsed before anyone answered it); re-run the action "+
+				"that proposed it to get a fresh task", lwmcp.ErrTaskNotWaiting, cur.TTLMs)
+	}
 	if !lwmcp.IsTaskTerminal(cur.Status) && cur.Expired(time.Now()) {
 		_, _ = s.pool.Exec(ctx, `
 			UPDATE mcp_gate_tasks SET status='failed', error='task_expired', updated_at=now()
 			WHERE task_id=$1 AND status NOT IN ('completed','failed','cancelled')`, taskID)
+		return nil, fmt.Errorf(
+			"%w — it EXPIRED (its %dms TTL lapsed before anyone answered it); re-run the action "+
+				"that proposed it to get a fresh task", lwmcp.ErrTaskNotWaiting, cur.TTLMs)
 	}
 	return nil, lwmcp.ErrTaskNotWaiting
 }

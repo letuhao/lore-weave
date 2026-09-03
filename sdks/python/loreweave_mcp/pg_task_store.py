@@ -1,15 +1,36 @@
-"""ext-tasks durable-gate PERSISTENT store — asyncpg (M1c).
+"""ext-tasks durable-gate PERSISTENT store — asyncpg. THE one Python implementation.
 
-The Python mirror of book-service's Go PgTaskStore (D-MCPTASKS-GO-STORE): a Postgres-
-backed lwmcp.TaskStore so a propose on one replica and its accept on another (or after a
-restart/deploy) resolve the SAME task exactly once. It persists only DATA
+A Postgres-backed `lwmcp.TaskStore` so a propose on one replica and its accept on another
+(or after a restart/deploy) resolve the SAME task exactly once. It persists only DATA
 ({descriptor, owner_user_id, payload}); the write to run on accept is the resolver
 registered for the descriptor (reconstructed on any replica — no closure). The accept is
 an ATOMIC single-winner UPDATE (input_required→working), so two concurrent accepts can't
 both run the resolver (the double-confirm guard).
 
-Constructed with a pool GETTER (not a pool): the store is built at module import, before
-the asyncpg pool exists — the getter is called lazily per operation.
+Constructed with a pool GETTER (not a pool): the store is typically built at module
+import, before the asyncpg pool exists — the getter is called lazily per operation.
+
+🔴 PROMOTED INTO THE KIT 2026-09-03, AND THE REASON IS THE COUNT. This began as
+composition-service's local mirror of book-service's Go store, and by the time anyone
+looked there were THREE independent implementations and none in an SDK:
+
+    services/composition-service/app/mcp/pg_task_store.py     (this file's origin)
+    services/book-service/internal/api/mcp_gate_task_store.go
+    services/glossary-service/internal/api/mcp_gate_task_store.go
+
+The repo's SDK-First standard is ">=2 users => SDK, never copy-paste"; it was at three,
+and the two Go copies had already drifted (66 diff lines, the second describing itself as
+"a straight mirror" of the first). Three more services need this store to close the
+ext-tasks gate — knowledge, translation, provider-registry — which would have made five.
+
+🔴 DELIBERATELY NOT EXPORTED FROM `loreweave_mcp/__init__.py`. That module imports its
+submodules eagerly, so registering this one would put `asyncpg` on the import path of
+every consumer of the kit, including the many that never touch Postgres. Import it by
+path instead:
+
+    from loreweave_mcp.pg_task_store import PgTaskStore
+
+`asyncpg` is therefore an OPTIONAL dependency: you already have it if you need this.
 """
 from __future__ import annotations
 
@@ -34,6 +55,38 @@ from loreweave_mcp.tasks import (
     TaskStore,
     TERMINAL,
 )
+
+#: The canonical schema for the durable ext-tasks gate store. ONE definition, beside the ONE
+#: implementation that reads it.
+#:
+#: 🔴 THIS DDL WAS ALSO COPIED PER SERVICE — book-service/internal/migrate/migrate.go,
+#: composition-service/app/db/migrate.py, glossary-service/internal/migrate/mcp_gate_tasks.go —
+#: which is the same drift risk as the store itself, one level down. A store promoted into a kit
+#: while its schema stays copy-pasted still lets one service's table diverge from the code that
+#: queries it. Services apply this constant; they do not retype the columns.
+#:
+#: Idempotent by construction (IF NOT EXISTS), so applying it from a new migration step on a
+#: service that already has the table is a no-op rather than a conflict.
+PG_TASK_STORE_DDL = """
+CREATE TABLE IF NOT EXISTS mcp_gate_tasks (
+  task_id          TEXT PRIMARY KEY,
+  status           TEXT NOT NULL
+                     CHECK (status IN ('working','input_required','completed','failed','cancelled')),
+  descriptor       TEXT NOT NULL,
+  owner_user_id    UUID NOT NULL,
+  payload          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  input_requests   JSONB,
+  result           JSONB,
+  error            TEXT,
+  ttl_ms           INTEGER NOT NULL,
+  poll_interval_ms INTEGER NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_owner ON mcp_gate_tasks (owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_status ON mcp_gate_tasks (status, created_at);
+"""
+
 
 _COLS = (
     "task_id, status, descriptor, owner_user_id, payload, input_requests, "

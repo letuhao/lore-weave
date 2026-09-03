@@ -1,4 +1,4 @@
-package api
+package pgstore
 
 import (
 	"os"
@@ -6,6 +6,12 @@ import (
 	"testing"
 )
 
+// MOVED HERE FROM glossary-service 2026-09-03, WITH THE CODE IT GUARDS. The store was promoted
+// into this kit because it existed three times and none of them was an SDK; glossary's copy was
+// the one carrying this fix, and book's — the version promoted first — did NOT. Merging the
+// SUPERSET is the whole point of a promotion, and this guard is what proves the better half
+// survived. Left in glossary it read a path that no longer exists and failed for the wrong reason.
+//
 // TOOLV2 LOOP #239 — the expiry reason was computed, persisted, and then withheld.
 //
 // Measured on a real gate task: 60 tasks sat in status input_required, one of them created
@@ -22,7 +28,7 @@ import (
 // error is WRAPPED rather than replaced so errors.Is(err, lwmcp.ErrTaskNotWaiting) keeps working
 // for callers that branch on it — sharpening a message must not break the contract around it.
 func TestTheExpiryBranchSaysWhyNotJustThatItRefused(t *testing.T) {
-	src, err := os.ReadFile("mcp_gate_task_store.go")
+	src, err := os.ReadFile("pg_task_store.go")
 	if err != nil {
 		t.Fatalf("read source: %v", err)
 	}
@@ -49,7 +55,7 @@ func TestTheExpiryBranchSaysWhyNotJustThatItRefused(t *testing.T) {
 // The wrap must preserve the sentinel: existing callers use errors.Is on ErrTaskNotWaiting, and a
 // message improvement that silently changes the error identity is a worse bug than the one fixed.
 func TestTheWrapKeepsTheSentinelIntact(t *testing.T) {
-	src, err := os.ReadFile("mcp_gate_task_store.go")
+	src, err := os.ReadFile("pg_task_store.go")
 	if err != nil {
 		t.Fatalf("read source: %v", err)
 	}
