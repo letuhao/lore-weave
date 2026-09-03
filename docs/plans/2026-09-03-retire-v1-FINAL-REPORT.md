@@ -239,18 +239,19 @@ imports now.
 
 ## 7. What is NOT done
 
-1. **The frontend the app serves is built from a DIFFERENT BRANCH, and I did not touch it.**
-   `batch_confirm`'s FE half is committed here and typechecks (`tsc` clean, 240 frontend test
-   files green, its guard proven red-able) — but the running `lw-iso-frontend-1` container is
-   built from `D:\Works\source\lore-weave-mvp`, a second checkout of this same repository
-   sitting on `refactor/kal-and-mcp-runtime` (`87690ed98`). The backend services under test
-   (`infra-*`) ARE built from this branch; the frontend is not.
+1. ~~The frontend is built from a different branch.~~ **That was wrong, and it was wrong in a
+   way worth naming.** I ran `docker inspect` on `lw-iso-frontend-1` because its name contained
+   "frontend", found it built from a second checkout on another branch, and reported that the app
+   was served from code this branch does not control. It is not: `infra-frontend-1` serves
+   :5174 — the port the harness had been driving all along — and is built from THIS repo's
+   `infra/docker-compose.yml`. `lw-iso-frontend-1` sits on :25174 and is a different stack
+   entirely.
 
-   So the card change is not in front of a user, and putting it there means merging this branch
-   into that one or rebuilding that checkout from this branch. That is a cross-branch deployment
-   decision, not a step in this work, so it is left for the owner. **This is also why "the stack
-   is up" was never evidence that the stack ran this branch** — the same trap that let the board
-   read green over a v1 deployment, one level out.
+   **I inspected the container whose NAME matched instead of the one serving the traffic**, then
+   built a conclusion about branch boundaries on top of it. The check that would have caught it
+   in one step is the one I had already used twice that day: ask which container publishes the
+   port, not which container sounds right. Both frontends are rebuilt from this branch.
+
 2. **One durable task sits in `input_required`** on the throwaway probe book, by design — it is
    P2's evidence. It is on a `ZZ Throwaway` book, never the dogfood book.
 3. **The live run used one model and one turn** for P4's population. The probes are deterministic
