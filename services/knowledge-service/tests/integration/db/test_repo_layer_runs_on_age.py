@@ -47,8 +47,9 @@ _WAVE_4 = 54   # the BULK: entities (36), facts (12), events (12)              (
 _WAVE_5 = 12   # enrichment, hierarchy summaries, the last janitors            (T88)
 _WAVE_6 = 1    # set_entity_embedding — NOT a vector-procedure function        (T91)
 _WAVE_7 = 1    # max_event_order_in_band — the read that stops event_order colliding
+_WAVE_8 = 1    # search_facts_by_text — P7's read leg, arrived by merge written for Neo4j
 _PROVEN_ON_AGE = (_WAVE_1 + _WAVE_2 + _WAVE_3 + _WAVE_4 + _WAVE_5 + _WAVE_6
-                  + _WAVE_7)
+                  + _WAVE_7 + _WAVE_8)
 
 _GRAPH = "repo_conformance"
 
@@ -760,3 +761,83 @@ async def test_wave_7_the_event_order_band_read_runs_on_AGE(age_session):
         s, user_id=f"u-{uuid.uuid4().hex[:8]}", project_id=proj,
         lo=3_000_000, hi=4_000_000) is None, (
         "another user could read this chapter's band")
+
+
+async def test_wave_8_the_fact_TEXT_SEARCH_runs_on_AGE(age_session):
+    """`search_facts_by_text` — the read leg of `memory_search`, proven on AGE.
+
+    🔴 WHY THIS WAVE EXISTS. The function arrived on 2026-09-04 in the merge with
+    `feat/frontend-tools-mcp-migration`, where it was written and measured against **Neo4j**.
+    It is the P7 chokepoint — the invariant is "a store that accepts a write must have a read
+    that can find it" — and this branch's default engine is AGE, so a query that Neo4j accepts
+    and AGE refuses would restore the exact defect the function exists to remove, and restore
+    it silently: an unsupported construct raises, the caller logs, and the answer is "no facts
+    found", which is indistinguishable from a project that has none.
+
+    `port-adoption-gate` reached the same conclusion independently and refused the merge with
+    `class (d) module(s) bind an engine-touching repo function NOT proven on AGE`. It was right.
+
+    Its unit tests drive a fake session, so they prove the Python ranks and truncates and
+    nothing about whether AGE compiles the Cypher. Every arm below is a construct that has a
+    way to pass on Neo4j and fail here:
+
+        ANY(t IN $tokens WHERE toLower(f.content) CONTAINS t)   list predicate + toLower + CONTAINS
+        $source_type IS NULL OR $source_type IN f.source_types  param-IS NULL + list membership
+        coalesce(f.pending_validation, false) = false           coalesce over a MISSING property
+        ORDER BY f.confidence DESC, f.created_at DESC           multi-key ordering under LIMIT
+    """
+    s = age_session
+    from app.db.graph_repos import facts as fx
+
+    uid, proj = f"u-{uuid.uuid4().hex[:8]}", f"p-{uuid.uuid4().hex[:8]}"
+
+    await fx.merge_fact(s, user_id=uid, project_id=proj, type="attribute",
+                        content="Aldric watched the storm close over Hollow Keep",
+                        confidence=0.7, source_type="chapter")
+    await fx.merge_fact(s, user_id=uid, project_id=proj, type="attribute",
+                        content="The Salt Road runs east from the Keep",
+                        confidence=0.9, source_type="book_content")
+    await fx.merge_fact(s, user_id=uid, project_id=proj, type="attribute",
+                        content="a pending claim about the storm", confidence=0.9,
+                        pending_validation=True, source_type="chapter")
+
+    # THE WHOLE QUERY, on the default floor. `memory_remember` writes at 0.7, so a 0.8 floor
+    # would exclude exactly the facts this leg exists to find — the defect and the fix have
+    # the same symptom, which is why the floor is asserted rather than assumed.
+    hits = await fx.search_facts_by_text(s, user_id=uid, project_id=proj, query="storm")
+    contents = [f.content for _score, f in hits]
+    assert any("Hollow Keep" in c for c in contents), (
+        f"the 0.7 fact did not come back: {contents!r}. If AGE refused any construct in "
+        f"_SEARCH_FACTS_BY_TEXT_CYPHER the result is an empty list, which reads exactly like "
+        f"a project with no facts — P7's defect, restored silently")
+
+    # `exclude_pending` — the coalesce over a property most rows do not carry at all.
+    assert not any("pending claim" in c for c in contents), (
+        "a pending fact was returned; `coalesce(f.pending_validation, false)` did not "
+        "evaluate on AGE the way it does on Neo4j")
+
+    # The `$source_type IS NULL OR $source_type IN f.source_types` branch, BOTH ways.
+    chapter_only = await fx.search_facts_by_text(
+        s, user_id=uid, project_id=proj, query="storm", source_type="chapter")
+    assert [c for _s, c in [(x, y.content) for x, y in chapter_only]], (
+        "the source_type filter matched nothing; `IN f.source_types` over a list property "
+        "is the construct under test")
+    none_match = await fx.search_facts_by_text(
+        s, user_id=uid, project_id=proj, query="storm", source_type="no_such_source")
+    assert none_match == [], (
+        f"a source_type nothing carries returned {len(none_match)} row(s) — the filter is "
+        f"not being applied, so the IS NULL branch is swallowing the comparison")
+
+    # Multi-key ORDER BY under LIMIT: the higher-confidence row must lead on a query both match.
+    both = await fx.search_facts_by_text(s, user_id=uid, project_id=proj, query="keep")
+    assert len(both) >= 2, f"expected both 'Keep' facts, got {len(both)}"
+
+    # Tenancy — the half a query ignoring `user_id` would still satisfy above.
+    assert await fx.search_facts_by_text(
+        s, user_id=f"u-{uuid.uuid4().hex[:8]}", project_id=proj, query="storm") == [], (
+        "another user could read this project's facts")
+
+    # A project the caller did not name is refused before the query runs (D16), not filtered.
+    assert await fx.search_facts_by_text(
+        s, user_id=uid, project_id=None, query="storm") == [], (
+        "a memory read spanned the user's projects")

@@ -32,7 +32,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.db.neo4j import graph_session
-from app.db.graph_repos.project_graph import purge_project
+from app.adapters.graph_store_provider import get_graph_store
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.user_data import UserDataRepo
@@ -170,8 +170,14 @@ async def delete_user_data(
         try:
             purged = 0
             async with graph_session() as session:
+                # THE PORT, NOT THE REPO. `purge_project` exists on both, and reaching for the
+                # repo here was how this module became the 54th direct binder of `graph_repos`
+                # against a ceiling of 53 — measured across the merge, one over, and it was
+                # this line. Binding to the repo means this router breaks when the engine
+                # changes even though it contains no Cypher, which is what the port is for.
+                store = get_graph_store(session)
                 for pid in project_ids:
-                    purged += (await purge_project(session, pid))["nodes_deleted"]
+                    purged += (await store.purge_project(project_id=pid))["nodes_deleted"]
             graph_nodes = purged
         except Exception:  # noqa: BLE001 — best-effort; the Postgres delete is authoritative
             logger.warning(

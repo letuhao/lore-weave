@@ -137,15 +137,21 @@ class FakeUserDataRepo:
 
 class FakePurge:
     """Records which projects were purged, so a test can assert the ERASURE reached
-    Neo4j and not merely that Postgres returned a number."""
+    the graph and not merely that Postgres returned a number.
+
+    MERGE 2026-09-04 — the router now reaches `purge_project` through the GraphStore PORT,
+    not the repo, so this fake is patched in as the store rather than as a module-level
+    function. It kept the same recording behaviour; only the seam moved. Patching the old
+    name raised AttributeError rather than passing silently, which is the good failure.
+    """
 
     def __init__(self) -> None:
         self.purged: list[str] = []
         self.fail = False
 
-    async def __call__(self, session, project_id: str) -> dict[str, int]:
+    async def purge_project(self, *, project_id: str) -> dict[str, int]:
         if self.fail:
-            raise RuntimeError("neo4j down")
+            raise RuntimeError("graph down")
         self.purged.append(project_id)
         return {"nodes_deleted": 7, "indexes_dropped": 1}
 
@@ -160,7 +166,7 @@ def purge(monkeypatch: pytest.MonkeyPatch) -> FakePurge:
 
     fake = FakePurge()
     monkeypatch.setattr("app.routers.public.user_data.graph_session", _fake_session)
-    monkeypatch.setattr("app.routers.public.user_data.purge_project", fake)
+    monkeypatch.setattr("app.routers.public.user_data.get_graph_store", lambda _s: fake)
     return fake
 
 

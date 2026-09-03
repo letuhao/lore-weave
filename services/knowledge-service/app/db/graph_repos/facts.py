@@ -799,7 +799,27 @@ async def facts_for_subject(
 #
 # TOKEN-ANY IN CYPHER, RANKED AND FLOORED IN PYTHON, and the split is deliberate: the relative floor
 # needs the best score across the whole result set, which a per-row predicate cannot know.
+# 🔴 `UNWIND … WITH DISTINCT`, NOT `ANY(t IN $tokens WHERE …)`. AGE REFUSES THE SECOND FORM.
+#
+# This query arrived on 2026-09-04 in the merge with `feat/frontend-tools-mcp-migration`,
+# written and measured against Neo4j. Run against AGE — this branch's default engine — it
+# raised `PostgresSyntaxError: syntax error at or near "WHERE"`. The list-predicate `WHERE`
+# inside `ANY(...)` is the one construct AGE's parser will not take; every other clause here
+# was probed on a live AGE store and accepted, including `$x IS NULL OR $x IN f.list_prop`
+# and `coalesce` over a property most rows do not carry.
+#
+# WHY IT MATTERS MORE THAN A SYNTAX ERROR NORMALLY WOULD. This is the read leg of
+# `memory_search`, and its invariant (P7) is "a store that accepts a write must have a read
+# that can find it". The caller wraps it in a try/except and logs, so on AGE the failure
+# renders as `no facts found` — which is indistinguishable from a project that has none. The
+# fix and the defect have the same symptom, which is why this is proven by
+# `test_wave_8_the_fact_TEXT_SEARCH_runs_on_AGE` against a live graph rather than by a mock.
+#
+# UNWIND multiplies a fact by the number of tokens it matches, so `WITH DISTINCT f` collapses
+# it back BEFORE the ORDER BY — the same shape `facts_for_subject` uses one file over, and for
+# the same reason. Standard Cypher, so Neo4j is unaffected.
 _SEARCH_FACTS_BY_TEXT_CYPHER = """
+UNWIND $tokens AS t
 MATCH (f:Fact)
 WHERE f.user_id = $user_id
   AND ($project_id IS NULL OR f.project_id = $project_id)
@@ -809,7 +829,8 @@ WHERE f.user_id = $user_id
   AND f.valid_until IS NULL
   AND f.archived_at IS NULL
   AND f.content IS NOT NULL
-  AND ANY(t IN $tokens WHERE toLower(f.content) CONTAINS t)
+  AND toLower(f.content) CONTAINS t
+WITH DISTINCT f
 RETURN f
 ORDER BY f.confidence DESC, f.created_at DESC
 LIMIT $scan_limit

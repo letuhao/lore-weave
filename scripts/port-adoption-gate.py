@@ -149,7 +149,14 @@ MAX_CONCRETE_IMPORTERS = 53
 #: 20 -> 21 (2026-08-24, T17 A32): `extraction/glossary_writeback.py` calls
 #: `find_gap_candidates` through the port and drops its `graph_repos` import entirely — which
 #: is why the CEILING moves in the same commit for the first time in this batch.
-MIN_GRAPHSTORE_ADOPTERS = 21
+#: 21 -> 22 (2026-09-04, merge with feat/frontend-tools-mcp-migration): `routers/public/
+#: user_data.py` calls `purge_project` through the port — the SAME operation A31 moved
+#: `routers/public/projects.py` onto, so this closes the pair rather than opening anything.
+#: It was found by the ceiling rather than chosen: that merge left the module importing
+#: `graph_repos.project_graph` and direct binding read 54 against a ceiling of 53. The delta
+#: was measured across the merge — one module, and it was this one — so the fix was the port
+#: rather than a raised ceiling, and the CEILING is unchanged at 53 as a result.
+MIN_GRAPHSTORE_ADOPTERS = 22
 _CONCRETE = "graph_repos"
 
 #: T25 (3)'s REAL precondition, and it is not a database operation.
@@ -1721,7 +1728,15 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: procedure at all, and running it (T91) showed it writes and enforces tenancy on AGE
 #: unchanged. Adjacency to the vector layer was doing the work that a measurement should
 #: have.
-MIN_AGE_PROVEN_FUNCTIONS = 119
+#: 119 -> 120 (2026-09-04, merge with feat/frontend-tools-mcp-migration): `search_facts_by_text`
+#: — and this gate is why it is proven rather than shipped. The function arrived from a branch
+#: that wrote and measured it against Neo4j; against AGE its `ANY(t IN $tokens WHERE …)` raised
+#: `syntax error at or near "WHERE"`. It is the read leg of `memory_search`, whose caller logs
+#: and returns "no facts", so on the default engine the failure would have rendered as an empty
+#: project — the P7 defect it exists to remove, restored silently. Rewritten as
+#: `UNWIND … WITH DISTINCT` (the shape `facts_for_subject` already uses) and proven by
+#: `test_wave_8_the_fact_TEXT_SEARCH_runs_on_AGE` against a live graph.
+MIN_AGE_PROVEN_FUNCTIONS = 120
 
 #: T17 A33 — class (d) modules binding an ENGINE-TOUCHING repo function not yet proven on AGE.
 #: This is §10.1's second path expressed as a number, and it is **0**: of the 32 modules the
