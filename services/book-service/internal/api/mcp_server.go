@@ -234,7 +234,14 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"provided fields change.",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{
 			"rename book", "edit book", "edit book details", "update book details", "book blurb",
-			"set genre", "set description", "update description", "change the description",
+			"set genre", "set description", "update description",
+			// DQ-T41 (owner, 2026-08-27): a synonym collision is a CATALOGUE defect, not a
+			// ranking problem -- "if they have different purpose and role, change description
+			// to avoid duplicated". The bare "change the description" named no object, so it
+			// claimed "Change the description of the GLOSSARY SKILL" as readily as a book's.
+			// Measured over 281 corpus turns: naming the object costs book_update_details
+			// exactly one turn -- registry_update_skill's, which was never its to answer.
+			"change the book description",
 			"update the book description", "set summary", "update summary", "set blurb",
 			"set synopsis", "write the book description"}),
 		s.toolBookUpdateMeta)

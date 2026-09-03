@@ -1197,7 +1197,19 @@ _JOB_CONTROL_TIER = {"cancel": "A", "pause": "A", "resume": "W", "retry": "W"}
         # exercising: it was never called on either arm.
         synonyms=["cancel this translation job", "pause this translation job",
                   "resume the translation", "retry the translation",
-                  "stop this translation job", "restart translation"],
+                  "stop this translation job", "restart translation",
+                  # DQ-T41 (owner, 2026-08-27): a collision is fixed in the CATALOGUE,
+                  # not arbitrated at request time. Measured 2026-09-03: "Stop the
+                  # translation for this book." was answerable by jobs_cancel ALONE --
+                  # the GENERIC jobs tool, which declares "stop the translation" while
+                  # this domain tool did not. Removing the borrowed phrase from
+                  # jobs_cancel was measured first and is WORSE: the sentence then
+                  # reaches nobody, and jobs_cancel loses its own turn ("Stop the
+                  # translation one."). So the domain tool claims the domain sentence,
+                  # scoped so it does not collide: normalised "stop translation book"
+                  # against jobs_cancel's "stop translation". Both are now reachable on
+                  # it, which is arm (a) -- the request reaches the tool built for it.
+                  "stop the translation for this book"],
         tool_name="translation_job_control",
     ),
 )

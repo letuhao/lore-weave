@@ -1395,7 +1395,7 @@
         "set genre",
         "set description",
         "update description",
-        "change the description",
+        "change the book description",
         "update the book description",
         "set summary",
         "update summary",
@@ -24098,7 +24098,8 @@
         "resume the translation",
         "retry the translation",
         "stop this translation job",
-        "restart translation"
+        "restart translation",
+        "stop the translation for this book"
       ],
       "tier": "W"
     }
