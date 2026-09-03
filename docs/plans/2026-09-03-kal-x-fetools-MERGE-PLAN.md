@@ -3,6 +3,17 @@
 **Written:** 2026-09-03 · **Target:** `refactor/kal-and-mcp-runtime` @ `87690ed98` (PR #219)
 · **Source:** `feat/frontend-tools-mcp-migration` @ `168b4f318`
 
+Reconciles: MCP Tool I/O Standard · Reading/writing entity or KG knowledge · Frontend-Tool
+Contract — all three are surfaces the two branches edited from opposite ends. Both touched the
+same MCP servers (`knowledge-service/app/mcp/server.py`,
+`glossary-service/internal/api/mcp_server.go`), which §1.1 Class A resolves. KAL's
+`neo4j_repos`→`graph_repos` sweep *is* the KG read/write path, and §2 is the dead references it
+leaves in FE's callers — including FE's own P7 chokepoint. And FE renames the Frontend-Tool
+Contract row's own SoT (`contracts/frontend-tools.contract.json` →
+`contracts/browser-tools.contract.json`), so that index link dies at the merge; repointing it is
+part of §3 Phase 2. No row governs branch reconciliation itself, which is why this is a plan and
+not a new standard.
+
 This is not a merge. A trial merge finished in one command with 23 conflicts — and produced a
 tree where **the P7 invariant is silently disabled and its own falsifier no longer imports.**
 The conflicts are the easy part; this plan is mostly about what merges *clean and wrong*.
@@ -42,19 +53,37 @@ catalogue does not need extending for them.** One worry retired.
 
 ### 1.1 Twenty-three conflicts, in four classes
 
-**Class A — mechanical: take FE's content, apply KAL's rename (5 files).** KAL renamed
-`app/db/neo4j_repos/` to `app/db/graph_repos/` (14 files, R100..R061) and `neo4j_session()` to
-`graph_session()` so Apache AGE can replace Neo4j. Its edits to the MCP surface are almost
-entirely that sweep — verified on `mcp/server.py`, `reader_tools.py`, `project_tools.py`. FE's
-edits are MCP v2 feature work. **Orthogonal reasons, same lines. Not a design decision.**
+**Class A — the rename sweep. MEASURED 2026-09-03, and the first version of this section was
+wrong.** KAL renamed `app/db/neo4j_repos/` to `app/db/graph_repos/` (14 files, R100..R061) and
+`neo4j_session()` to `graph_session()` so Apache AGE can replace Neo4j. I wrote that all five
+files resolve mechanically — FE's content, KAL's rename. **Counting KAL's non-rename lines per
+file refutes that for three of them:**
 
 ```
-services/knowledge-service/app/mcp/server.py                    KAL 5/5    FE 514/54
-services/knowledge-service/app/tools/graph_schema_tools.py      KAL 32/31  FE 426/38
-services/knowledge-service/app/routers/public/graph_views.py    KAL 14/60  FE 75/11
-services/knowledge-service/app/db/graph_repos/facts.py          rename/modify
-services/knowledge-service/app/db/graph_repos/relations.py      rename/modify
+file                          KAL non-rename +/-   verdict
+app/mcp/server.py                        0         TRUE Class A — pure rename
+app/tools/graph_schema_tools.py         28         mostly rename, small real change
+app/routers/public/graph_views.py       63         mixed
+app/db/graph_repos/facts.py            357         NOT Class A  <- see below
+app/db/graph_repos/relations.py        394         NOT Class A
 ```
+
+**`facts.py` and `relations.py` invert the rule.** KAL's work there is **AGE dialect
+compatibility** — Cypher rewritten because AGE cannot compile what Neo4j accepts. Its own
+comments say so: *"§10.1 — `WITH DISTINCT f` rather than `RETURN DISTINCT f … ORDER BY`. AGE
+compiles the … after it. AGE refuses the second form."* Taking FE's content there would
+reintroduce Cypher the default engine cannot run — the same shape as the `fact-for-check` 502 in
+PR #219.
+
+FE's side of those two files is small and additive: **`facts.py` +166/−1, and it is exactly three
+functions** — `query_tokens`, `rank_facts_by_overlap`, `search_facts_by_text`, which together
+*are* FE's P7 fix. `relations.py` is +6/−1.
+
+> **Resolution: take KAL's content, port FE's three functions onto it.** Then check the new
+> `_SEARCH_FACTS_BY_TEXT_CYPHER` against AGE — it was written against Neo4j and never passed
+> through `app/db/cypher_dialect.render`. It carries no `{NOW}` token so it needs no render, but
+> `ANY(t IN $tokens WHERE toLower(f.content) CONTAINS t)` and `IN f.source_types` are unverified
+> on AGE. **Unverified, not broken — this must be measured, not assumed.**
 
 **Class B — genuine two-sided design; read both (6 files).**
 
@@ -240,13 +269,14 @@ this specific class is caught by a machine next time, rather than by a person re
 The queue for `/goal` derives from these rows — a ticked row leaves it by itself. Detail for each
 lives in the section it cites.
 
-- [ ] **B0** — baseline KAL: `gate-wiring-gate --run-all`, gate self-tests **bare and
+- [x] **B0** — baseline KAL: `gate-wiring-gate --run-all`, gate self-tests **bare and
   `--selftest`**, knowledge units, `book-service go build`, `eventgen-validate`. Verify PR #219's
-  137/0/25 and 149; do not inherit the claim. (§3 Phase 0)
-- [ ] **B1** — baseline FE: `problem_remaining.py` exits 0, and the `scripts/` suite's **18**
-  pre-existing failures. This is the attribution baseline. (§3 Phase 0)
-- [ ] **M1** — merge `--no-commit`; resolve **Class A**, the 5 mechanical files, by rule: FE's
-  content, KAL's rename. (§1.1)
+  137/0/25 and 149; do not inherit the claim. (§3 Phase 0 · evidence §8)
+- [x] **B1** — baseline FE: `problem_remaining.py` exits 0, and the `scripts/` suite's **18**
+  pre-existing failures. This is the attribution baseline. (§3 Phase 0 · evidence §8)
+- [ ] **M1** — merge `--no-commit`; resolve the rename-sweep files. **Only `mcp/server.py` is
+  mechanical**; `facts.py`/`relations.py` invert the rule — take KAL, port FE's three functions.
+  (§1.1, as corrected by B0)
 - [ ] **M2** — resolve **Class B**, the 6 two-sided files. `ledger.go` by reading the ledger,
   never by taking a side. (§1.1, §4.3)
 - [ ] **M3** — resolve **Class C**, the 5 gate/CI files: union of the bars, every count
@@ -268,6 +298,64 @@ lives in the section it cites.
 - [ ] **V4** — a live run through the real stack. A 502 route is invisible to both boards. (§3 Phase 4)
 - [ ] **R1** — **STOP CONDITION** — §4.1: rename `app/db/neo4j.py`, still named for one engine,
   or record it as a named follow-up. Owner's decision; mechanical now, worse per caller. (§4.1)
+
+---
+
+## 8. Evidence
+
+### B0 — KAL at `87690ed98`, measured 2026-09-03
+
+| check | result |
+|---|---|
+| `gate-wiring-gate --run-all` | **135 GREEN / 2 RED / 23 SKIP** |
+| gate self-tests (hook's `--selftest` set) | **20/20 scripts pass**, 347 individual PASS lines |
+| knowledge unit suite | **4502 passed**, 19 warnings, 86s |
+| `book-service go build ./...` | exit **0** |
+| `eventgen-validate` | **PASS** — 26 generated Python modules import cleanly |
+
+**PR #219 claims 137 GREEN / 0 RED / 25 SKIP. It does not hold at HEAD, and both deltas are
+explained rather than waved away:**
+
+1. **`phase0-reconcile-gate` was red because of THIS DOCUMENT.** It requires a `Reconciles:` line
+   on every spec dated ≥ 2026-08-06, and the plan had none. Self-inflicted an hour before the
+   measurement. Fixed in the same commit; the gate then exits 0 over 38 specs against 132 index
+   rows. It also caught a second mistake: I had written `A — why A · B — why B`, copying an
+   anti-pattern from its own docstring, so only `A` was checked. The field is
+   `A · B · C — prose`.
+2. **`raw-sql-lint` was red on two GITIGNORED local files** — `_smoke_a2s1b2.py:51` and
+   `_smoke_a2s1b2_fullchain.py:135`, neither tracked, both leftover debris in the working tree.
+   **Bitten, not deduced:** moved aside → exit **0** ("no unparameterized SQL value interpolation,
+   3693 files scanned"); restored byte-exact → exit **1**. Not KAL's state.
+
+With both accounted for, KAL is **137 GREEN / 0 RED** — the claim verified rather than inherited.
+`SKIP` is 23 not 25 because a stack was reachable and two live gates ran.
+
+> **Finding worth keeping: `raw-sql-lint` scans untracked, gitignored files**, so its verdict
+> depends on whose working tree it runs in. That is the same family as PR #219's gate that
+> "reported its interpreter, not the tree". Not fixed here — it is not this merge's bug — but V2
+> must not attribute it to the merge.
+
+Knowledge units are **4502**, not PR #219's 4489: the suite grew. Measured, not assumed.
+
+### B1 — FE at `168b4f318`, measured 2026-09-03
+
+| check | result |
+|---|---|
+| `problem_remaining.py` | exit **0** — `problems=16 cleared=16`, `tools 65/65 proven` |
+| `scripts/` suite | **18 failed, 958 passed, 1 skipped** in 744s |
+
+The 18 matches the recorded pre-existing count exactly. **Any 19th failure after the merge is
+mine.** (The background task line read "exited with code 0" because my command ended in `tail`,
+which reports the pipe's exit, not pytest's — the counts are the evidence, not that line.)
+
+### What B0 refuted
+
+Counting KAL's non-rename churn per file **killed this plan's own Class A rule** for three of its
+five files — see §1.1, corrected. `facts.py` (357 lines) and `relations.py` (394) are AGE dialect
+work, not a rename, and taking FE's content there would ship Cypher the default engine cannot
+compile. The rule now inverts for those two.
+
+---
 
 ```goal-prompt
 goal: one reconciled branch whose merge broke nothing it cannot name
