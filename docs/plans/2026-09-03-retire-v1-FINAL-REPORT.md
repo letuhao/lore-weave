@@ -1,5 +1,7 @@
 # Architecture v1 retirement — final report
 
+Reconciles: Frontend-Tool Contract · Agent GUI Reconciliation (09) · Chat-agent ↔ MCP wiring — the report of the retirement those rows' rules were moved through; evidence, not a new model.
+
 **Date:** 2026-09-03 · **Branch:** `feat/frontend-tools-mcp-migration` · **Verdict:** `v1 IS DEAD`
 
 Reproduce every claim below:

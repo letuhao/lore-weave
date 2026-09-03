@@ -375,61 +375,19 @@ def fingerprint(hit: tuple[str, int, str]) -> str:
 # no finding — the mechanism, not the prose, is what found it. A comment recording a
 # deletion is not a deletion.
 BASELINE: frozenset[str] = frozenset({
-    # ── PRUNED 2026-08-30 (T48ay) — 10 entries removed, none by fixing a route.
-    # The inline-cap detector below now SEES the clamp these entries were parked
-    # around, which is what their own note asked for: 'clearing these properly
-    # means teaching the lint to find the clamp'. An entry that matches no current
-    # hit is worse than none: it asserts debt that does not exist and makes the
-    # tracked count unfalsifiable. Pruned by INTERSECTION with the live scan, never
-    # by regenerating wholesale, so a genuinely new offender cannot be absorbed.
-    # ── Verified 2026-07-31 (D-QC-GATES-BUILT-BUT-NOT-WIRED). This lint had never run
-    # in CI; when it was first executed it reported these five, and all five are LINT
-    # PRECISION false positives, checked one at a time rather than baselined on sight:
-    #   · dek_shred_sweeper / reparse_sweeper — `batchSize` is a parameter of a background
-    #     sweeper (`RunDekShredSweeper(ctx, interval, batchSize)`), set by the server. No
-    #     client can influence it.
-    #   · entities_by_ids_handler — `if limit > 500 { limit = 500 }`.
-    #   · entity_handler — same clamp; the `limit+1` is the documented peek-ahead row.
-    # The regex sees `LIMIT $N` with a variable and cannot see a clamp 3-40 lines earlier.
-    # Baselined WITH the verification rather than left red, so a genuinely unclamped route
-    # still fails. Clearing these properly means teaching the lint to find the clamp.
-    #   · epub_asset_retention — `limit` is the server-owned 100-item batch passed by
-    #     RunEPUBAssetRetentionSweeper; no request path supplies it. This is the same
-    #     background-sweeper exception as the two entries below, verified against the
-    #     call site rather than weakening the handler scan for every API file.
-    "services/book-service/internal/api/epub_asset_retention.go::LIMIT $2",
-    "services/book-service/internal/api/dek_shred_sweeper.go::ORDER BY last_attempt_at ASC NULLS FIRST, requested_at ASC LIMIT $1`, batchSize)",
-    "services/book-service/internal/api/reparse_sweeper.go::LIMIT $1`, batchSize)",
-    # Go handler-layer list queries carrying today's PERF-3 debt. Many use a
-    # server-set cap (batchSize/pipelineReadCap/*ListCap) and are safe; a few
-    # (sharing listPublicInternal, statistics, usage-billing) are genuinely
-    # unclamped client limits — tracked debt, not fixed by this lint.
-    # ── 2026-07-29 · three verified NON-defects, traced before baselining ──────
-    # The lint recognises a clamp by the NAME of the helper (`clampLimit` /
-    # `parseLimitOffset`). These three clamp correctly without using it, so they
-    # read as unbounded and are not. Each was traced to the value's source:
-    #
-    #   dek_shred_sweeper / reparse_sweeper — NOT ROUTES. `batchSize` is a
-    #     parameter of `RunDekShredSweeper(ctx, interval, batchSize)`, a
-    #     background sweeper started at boot with an operator-set batch. No
-    #     client can reach it, which is outside this lint's own stated subject
-    #     ("every list/search ENDPOINT").
-    #   entity_handler — clamped INLINE and completely:
-    #     `limit := queryInt(q.Get("limit"), 200)`, then `<1 → 1`, `>500 → 500`.
-    #     glossary-service has no `clampLimit` to route through; introducing one
-    #     for a single call site would be a different change than this lint asks
-    #     for.
-    #
-    # The fourth finding from that run was NOT baselined — `mcp_worlds.go` was
-    # fixed, because its inline clamp DISAGREED with the helper beside it
-    # (over-max → 20 rather than the 100 `clampLimit` returns, so `world_list`
-    # and `book_list` answered the same over-request differently).
-    "services/book-service/internal/api/dek_shred_sweeper.go::ORDER BY last_attempt_at ASC NULLS FIRST, requested_at ASC LIMIT $1`, batchSize)",
-    "services/book-service/internal/api/reparse_sweeper.go::LIMIT $1`, batchSize)",
-
+    # REFRESHED 2026-09-04 by the merge with feat/frontend-tools-mcp-migration. The SET
+    # did not change -- 24 rows before and after, no file added, no file removed. Two
+    # FINGERPRINTS moved, because that merge added `deletedClause(deleted)` to four
+    # queries in select_for_context_handler.go (its recycle-bin read), and this baseline
+    # keys on the line's TEXT. The routes then read as NEW while their own rows read as
+    # fixed -- the shrink arm firing on both ends of one edit. Regenerated rather than
+    # hand-patched, and the before/after counts are the check that it is a refresh and
+    # not a widening. The limits there are the server constant `pinnedCap = 10`, not a
+    # client value, which is the case this lint's own message calls fine.
     "services/auth-service/internal/api/handlers.go::ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`, userID, limit, offset)",
     "services/auth-service/internal/api/mcp_audit.go::LIMIT $3 OFFSET $4`, uid, keyID, limit, offset)",
     "services/book-service/internal/api/dek_shred_sweeper.go::ORDER BY last_attempt_at ASC NULLS FIRST, requested_at ASC LIMIT $1`, batchSize)",
+    "services/book-service/internal/api/epub_asset_retention.go::LIMIT $2",
     "services/book-service/internal/api/favorites.go::ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`, userID, limit, offset)",
     "services/book-service/internal/api/import.go::ORDER BY ts ASC LIMIT $2",
     "services/book-service/internal/api/reparse_sweeper.go::LIMIT $1`, batchSize)",
@@ -442,8 +400,8 @@ BASELINE: frozenset[str] = frozenset({
     "services/glossary-service/internal/api/merge_candidates_handler.go::q += ` LIMIT $3`",
     "services/glossary-service/internal/api/pipeline_read_tools.go::ORDER BY revision_num DESC LIMIT $2`, entityID, entityRevisionsListCap)",
     "services/glossary-service/internal/api/plan_ops.go::q += ` LIMIT $2`",
-    "services/glossary-service/internal/api/select_for_context_handler.go::LIMIT $3`, selectCols)",
-    "services/glossary-service/internal/api/select_for_context_handler.go::LIMIT $4`, selectCols)",
+    "services/glossary-service/internal/api/select_for_context_handler.go::LIMIT $3`, selectCols, deletedClause(deleted))",
+    "services/glossary-service/internal/api/select_for_context_handler.go::LIMIT $4`, selectCols, deletedClause(deleted))",
     "services/glossary-service/internal/api/server.go::LIMIT $3`",
     "services/glossary-service/internal/api/server.go::LIMIT $4",
     "services/glossary-service/internal/api/server.go::LIMIT $4`",

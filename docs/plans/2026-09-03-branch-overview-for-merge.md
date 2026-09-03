@@ -1,5 +1,7 @@
 # `feat/frontend-tools-mcp-migration` — branch overview, written for the merge
 
+Reconciles: none — it is a branch SURVEY, not a design: commit counts, a conflict-surface measurement and a list of predicted breakages, all derived from git at two named heads. `grep -nE '^\|' docs/standards/README.md` over the index finds no row that governs comparing two branches; the merge PLAN it feeds does cite three rows, and that is where the overlap lives.
+
 **Written:** 2026-09-03 · **Head:** `73d3615d6` · **Merge-base with `origin/main`:** `de2e0416d` (2026-08-03)
 
 This exists because the merge is the next task and the survey behind it must not have to be

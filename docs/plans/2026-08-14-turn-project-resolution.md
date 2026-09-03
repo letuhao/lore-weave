@@ -1,5 +1,7 @@
 # D-MEMORY-FACT-STORED-UNSCOPED — a turn's project is never resolved from its book
 
+Reconciles: Reading/writing entity or KG knowledge · MCP Tool I/O Standard — the defect is a KG WRITE landing outside the project it belongs to, which is the first row's path, and the cause is scope taken from an argument rather than the envelope, which is the second row's scope-from-envelope rule. It is an application of both, not a new scoping model.
+
 **Status:** proposal. Investigated 2026-08-14, not yet implemented.
 
 ---

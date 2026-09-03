@@ -1,5 +1,7 @@
 # The twelve invariants — final report
 
+Reconciles: MCP Tool I/O Standard · Agent GUI Reconciliation (09) — every one of the twelve is a turn-level invariant about a tool being reachable, called, and honestly reported, which is those two rows' territory. What it adds is enforcement at a chokepoint, not a rule: the report's own §2 is about mechanisms that existed and were never called.
+
 **Date:** 2026-09-03 · **Branch:** `feat/frontend-tools-mcp-migration`
 
 ```

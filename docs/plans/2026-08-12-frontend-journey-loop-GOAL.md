@@ -1,5 +1,7 @@
 # THE GOAL PROMPT — frontend journey loop
 
+Reconciles: Frontend-Tool Contract · Agent GUI Reconciliation (09) — a journey is the agent affecting the GUI end to end, which is exactly what those two rows govern: the cross-language arg contract, and the 3-lane no-data-bearing-frontend-tools model. The loop measures whether the declared behaviour happens; it does not redefine it.
+
 > **STATUS: COMPLETE (2026-08-13) — DO NOT PASTE THIS AS A `/goal`.** Both denominators
 > closed (12/12 workflows, 5/5 real skills). The instruction below to paste the block as a
 > session goal would re-enter a finished loop. *(Added 2026-09-03.)*

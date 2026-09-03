@@ -1,5 +1,7 @@
 # TOOL DEEP-DIVE RUNBOOK — 2026-08-13
 
+Reconciles: MCP Tool `_meta` Completeness Law + Tool Liveness · MCP Tool I/O Standard — the procedure for the GOAL beside it; the rules are those rows', this file is how they are applied per tool.
+
 > **STATUS: COMPLETE (2026-09-02).** Its denominator closed at 198 of 198 shippable tools
 > concluded, and the successor [`2026-08-22-tool-resolution-RUNBOOK.md`](2026-08-22-tool-resolution-RUNBOOK.md)
 > — itself now COMPLETE — drove the then-65 blocked tools to zero. **Do not re-enter this loop.**

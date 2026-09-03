@@ -1,5 +1,7 @@
 # BUILD PLAN + RUN-STATE — Retire architecture v1
 
+Reconciles: Frontend-Tool Contract · Agent GUI Reconciliation (09) · Chat-agent ↔ MCP wiring — retiring the chat-service frontend-tool construct changes WHERE those three rows' rules are enforced, not what they say. The contract's SoT moves with it (`frontend-tools.contract.json` → `browser-tools.contract.json`), which is why the index row is repointed rather than a second contract being introduced.
+
 > **FINAL REPORT (2026-09-03):** [`docs/plans/2026-09-03-retire-v1-FINAL-REPORT.md`](2026-09-03-retire-v1-FINAL-REPORT.md) — verdict `v1 IS DEAD`, every DQ-V6 decision, and what is deliberately not done.
 
 - **Spec:** [`docs/specs/2026-09-03-retire-architecture-v1.md`](../specs/2026-09-03-retire-architecture-v1.md)

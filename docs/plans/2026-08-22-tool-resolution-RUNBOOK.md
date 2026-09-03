@@ -1,5 +1,7 @@
 # RUNBOOK — the tool RESOLUTION loop
 
+Reconciles: MCP Tool `_meta` Completeness Law + Tool Liveness · MCP Tool I/O Standard — the procedure for the GOAL beside it; same two rows.
+
 > **STATUS: COMPLETE (2026-09-02).** Its denominator was "the 65 tools that loop could not
 > prove". That number is now ZERO: 0 open defect rows, 0 blocked tools, and every owner ruling
 > built and stamped. The dated figures below are a snapshot of 2026-08-22 and stay as written.

@@ -1,5 +1,7 @@
 # TOOL-V2 LOOP — one tool, one full development cycle
 
+Reconciles: MCP Tool I/O Standard · MCP Tool `_meta` Completeness Law + Tool Liveness — the loop's unit is one TOOL taken through a full cycle, so its bar is those two rows' bar: the I/O discipline for what a tool takes and returns, and the G1-G4 liveness gates for whether it is selected, arg-shaped, executed and effectful. It adds no rule; it is the sweep that applies them tool by tool.
+
 **Status:** ✅ **CLOSED 2026-08-12** — 319 of 319 concluded, 316 proven, 3 blocked (see §"THE LOOP IS CLOSED" near the foot of this file). Superseded by [`2026-08-12-frontend-journey-loop-RUNBOOK.md`](2026-08-12-frontend-journey-loop-RUNBOOK.md). **Do not re-enter this loop.** *(This line read "open 2026-08-10" until 2026-09-03, contradicting the file's own closure notice ~1500 lines below it — and a plan that says open is re-entered.)* · **SSOT for progress:** `contracts/agent-runtime-toolv2-ledger.json`,
 written only through `scripts/toolv2-loop.py --record`.
 

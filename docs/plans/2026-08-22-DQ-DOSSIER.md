@@ -1,5 +1,7 @@
 # THE DEFERRED-QUESTION DOSSIER — thirteen decisions, in one sitting
 
+Reconciles: MCP Tool I/O Standard · MCP Tool `_meta` Completeness Law + Tool Liveness — thirteen decisions about the tool surface, every one of them settling how an existing rule in those two rows applies to a specific tool. A record of rulings, not a standard.
+
 > **STATUS: CLOSED (2026-09-02) — every question in this dossier is ANSWERED. Nothing here
 > is an ask.** This is the record of thirteen decisions and the reasoning that produced
 > them; the text below is written in the present tense as of 2026-08-22 and is left as

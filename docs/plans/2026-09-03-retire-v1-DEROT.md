@@ -1,5 +1,7 @@
 # DE-ROT WORKLIST — Slice V0 of the v1 retirement
 
+Reconciles: Frontend-Tool Contract · Agent GUI Reconciliation (09) — the de-rot pass for the retirement beside it: it corrects documents that still describe the v1 construct those two rows govern. It changes no rule.
+
 Companion to [`2026-09-03-retire-v1-BUILD.md`](2026-09-03-retire-v1-BUILD.md). Every line number
 below was read back from the file before being written here.
 

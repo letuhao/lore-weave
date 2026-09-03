@@ -1,5 +1,7 @@
 # Spec — Retire architecture v1 (the chat-service frontend-tool construct)
 
+Reconciles: Frontend-Tool Contract · Agent GUI Reconciliation (09) · Chat-agent ↔ MCP wiring — the spec for the retirement; it relocates the enforcement point those three rows describe and renames the contract file one of them cites, and defines nothing new.
+
 > **FINAL REPORT (2026-09-03):** [`docs/plans/2026-09-03-retire-v1-FINAL-REPORT.md`](../plans/2026-09-03-retire-v1-FINAL-REPORT.md) — verdict `v1 IS DEAD`, every DQ-V6 decision, and what is deliberately not done.
 
 - **Date:** 2026-09-03

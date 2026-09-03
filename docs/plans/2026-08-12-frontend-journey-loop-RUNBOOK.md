@@ -1,5 +1,7 @@
 # FRONTEND JOURNEY LOOP — one journey, driven by a real model, through the real UI
 
+Reconciles: Frontend-Tool Contract · Agent GUI Reconciliation (09) — the runbook for the GOAL beside it; same two rows, same reason. It carries the procedure, not a new rule.
+
 > **STATUS: COMPLETE (2026-08-13).** Both declared denominators closed — 12/12 workflows,
 > 5/5 real skills. Superseded by
 > [`2026-08-13-tool-deep-dive-RUNBOOK.md`](2026-08-13-tool-deep-dive-RUNBOOK.md), itself now

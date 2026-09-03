@@ -1,5 +1,7 @@
 # THE GOAL PROMPT — tool RESOLUTION loop
 
+Reconciles: MCP Tool `_meta` Completeness Law + Tool Liveness · MCP Tool I/O Standard — its denominator was the tools the liveness chain had left BLOCKED; closing them is that row's own definition of done, with the I/O row deciding what a resolved tool must look like.
+
 > **STATUS: COMPLETE (2026-09-02).** Its denominator was the **65 blocked tools**. That
 > number is now ZERO — 0 open defect rows, 0 blocked tools, every owner ruling built and
 > stamped. The dated figures below are a snapshot of 2026-08-22 and stay as written; live

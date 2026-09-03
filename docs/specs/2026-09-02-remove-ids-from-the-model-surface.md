@@ -1,5 +1,7 @@
 # Removing ids from the model surface — the migration plan (DQ-T76 (f))
 
+Reconciles: MCP Tool I/O Standard · A new MCP tool (input args + return shape) — removing opaque ids from what a model must supply is a change to the INPUT half of both rows, and it is written as a migration under them rather than as a competing argument convention.
+
 **Owner ruling, 2026-09-01:** *"approve DQ-T76 but we need migrate a lot of thing for this, need
 a serious plan and test"* — approving **(f) name in / handle through**, and requiring the plan
 before any tool changes.

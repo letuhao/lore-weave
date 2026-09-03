@@ -1,5 +1,7 @@
 # THE GOAL PROMPT — tool deep-dive loop
 
+Reconciles: MCP Tool `_meta` Completeness Law + Tool Liveness · MCP Tool I/O Standard — the deep dive's per-tool verdict IS the liveness row's G1-G4 chain, run to conclusion on every shippable tool, with the I/O row supplying what a correct call and return look like.
+
 > **STATUS: COMPLETE (superseded 2026-09-02).** This loop finished — every shippable tool is
 > concluded and every defect row it opened is closed. The dated figures below are an honest
 > SNAPSHOT of 2026-08-21 and are left as written; do not read them as current. Live counts are

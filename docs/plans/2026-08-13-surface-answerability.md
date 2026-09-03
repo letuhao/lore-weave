@@ -1,5 +1,7 @@
 # Surface answerability — the invariant behind a defect class that has now shipped twice
 
+Reconciles: MCP Tool I/O Standard · MCP Tool `_meta` Completeness Law + Tool Liveness — answerability is the question those rows leave open: both say what a tool must DECLARE, and neither says that a declaration must match the sentence a person actually types. This proposal is that missing half, and it belongs beside them rather than as a third home.
+
 **Status:** proposal
 **Date:** 2026-08-13
 **Evidence:** ledger `contracts/tool-deep-dive-ledger.json`, pilot run `scripts/toolloop/fe_runner.py`
