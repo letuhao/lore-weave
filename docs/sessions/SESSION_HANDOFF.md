@@ -1,17 +1,59 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `c25b8be99` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-09-03
+**Branch:** `feat/frontend-tools-mcp-migration` · updated 2026-09-03
 
-> 🔴 **THIS BLOCK WENT 495 COMMITS STALE (2026-08-25 → 2026-09-03) AND EVERY NUMBER IN IT WAS
-> WRONG.** `AGENTS.md` calls this file the source of truth for current status and orders every
-> session to open with it, so a stale block here is the most expensive stale block in the repo.
-> **Re-derive before quoting — never copy a number out of this file:**
+> 🔴 **NO HEAD SHA IS WRITTEN HERE ANY MORE, AND NO COUNTS EITHER.** This block went 495 commits
+> stale (2026-08-25 → 2026-09-03) with every number in it wrong, was corrected, and then went
+> **10 commits stale again within the same day** — still naming a HEAD from before the v1
+> retirement landed. `AGENTS.md` calls this file the source of truth for current status and orders
+> every session to open with it, so a stale block here is the most expensive stale block in the
+> repo. A sha typed into a document is wrong the moment the next commit lands; the fix is not a
+> better habit, it is not writing it down.
+>
+> **Derive everything. Never copy a number out of this file:**
 >
 > ```
-> cd scripts/toolloop && python gate.py audit        # ⚠ must cd; it imports call_outcome by bare name
-> cd scripts/toolloop && python problem_remaining.py # exits 1 while stopping is not legitimate
-> cat docs/sessions/OPEN_DECISIONS.md                # generated; the live DQ set
+> git log --oneline -1                                  # where HEAD actually is
+> cd scripts/toolloop && python problem_remaining.py    # exits 1 while stopping is not legitimate
+> cd scripts/toolloop && python gate.py audit           # ⚠ must cd; imports call_outcome by bare name
+> cat docs/sessions/OPEN_DECISIONS.md                   # generated; the live DQ set
+> python scripts/v1_retire/runstate.py                  # the v1-retirement board, D1..D8
+> python scripts/v1_retire/gates.py --selftest          # G1..G6, each proven red-able
+> python scripts/v1_retire/live_probe.py                # what the source board cannot see
 > ```
+
+## 📗 2026-09-03 — ARCHITECTURE v1 IS RETIRED, in source AND deployed
+
+`services/chat-service/app/services/frontend_tools.py` is deleted. The three KIND-C tools
+(`confirm_action`, `glossary_confirm_action`, `glossary_propose_entity_edit`) are ai-gateway
+DIRECTIVE tools — they have no server executor, which is what keeps the human gate real.
+
+Full account, including every decision taken without asking and every measurement error made
+along the way: [`docs/plans/2026-09-03-retire-v1-FINAL-REPORT.md`](../plans/2026-09-03-retire-v1-FINAL-REPORT.md).
+
+**The board went green while the running stack still ran v1** — chat-service's image still held
+`frontend_tools.py`, ai-gateway predated the identity fix, translation had no gate at all. A
+source board cannot see a deployment. Every changed service is now rebuilt and redeployed from
+this branch, and `live_probe.py` measures the running system rather than the repository.
+
+## 📕 The tool-deep-dive loop is STILL OPEN — 12 problems, and none of them is DQ-blocked
+
+`problem_remaining.py` exits 1. Every tool in the denominator reads `proven`, and **no further
+tool run can close any of these**: each needs its invariant written, enforced at one chokepoint,
+and a falsifier proven RED on an original instance.
+
+> 🔴 **THE "BLOCKED ON DQ-Tnn" LABELS ARE STALE. Every DQ they cite is ANSWERED** — DQ-T31, T32,
+> T33, T35, T36 and T41, all ruled on between 2026-08-28 and 2026-08-31, while the statuses
+> naming them as blockers are dated 2026-08-22..24 and were never revisited.
+> `OPEN_DECISIONS.md` agrees: *none blocking, 0 questions hold work.* Do not re-ask them; build
+> the answers that already exist.
+
+**P3-NAME-TO-ID was a false positive and is now cleared.** Its status read `CLEARED 2026-08-24 —
+7 of 7 proven` while a superseded field, `cannot_clear_2026_08_23`, still carried the words
+"CANNOT BE CLEARED". The checker scanned every string field and read a historical record as a
+live veto — so finished work stayed open, and the only way to satisfy it would have been to
+delete the history. A dated field is now skipped when the status is strictly newer; an UNDATED
+one still vetoes, and a dated one NEWER than the status still vetoes.
 
 ## 📕 2026-09-02 — the RESOLUTION loop CLOSED: 200 of 200 proven, 0 blocked, 0 defects open
 

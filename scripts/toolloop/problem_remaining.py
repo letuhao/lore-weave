@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import re
 import json
 import pathlib
 import sys
@@ -90,6 +91,18 @@ def _is_empty(p: dict) -> bool:
     return not (p.get("tools") or [])
 
 
+def _field_date(name: str) -> str:
+    """The YYYY-MM-DD a field NAME carries, or "" — e.g. cannot_clear_2026_08_23 -> 2026-08-23."""
+    m = re.search(r"(20\d\d)[_-](\d\d)[_-](\d\d)", name)
+    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else ""
+
+
+def _status_date(status: str) -> str:
+    """The LATEST date the status text carries, or ""."""
+    ds = re.findall(r"20\d\d-\d\d-\d\d", status or "")
+    return max(ds) if ds else ""
+
+
 def _definition_complete(p: dict) -> tuple[bool, str]:
     """Does the problem meet the CLEARED definition, beyond its tools reading proven?
 
@@ -97,13 +110,32 @@ def _definition_complete(p: dict) -> tuple[bool, str]:
     `blocked_on_dq_2026_08_23` beginning "P8 CANNOT BE CLEARED WITHOUT DQ-T32" in a field
     that is not `status`, and the headline still called it CLEARED — so scanning only
     `status` would have missed the plainest possible statement that it is not.
+
+    🔴 BUT A DATED FIELD IS A RECORD OF WHEN IT WAS WRITTEN, NOT A CLAIM ABOUT NOW.
+    Measured 2026-09-03: P3-NAME-TO-ID reported unmet because `cannot_clear_2026_08_23` still
+    contains "CANNOT BE CLEARED" — while its own `status` reads "CLEARED 2026-08-24 — 7 of 7
+    proven" and it carries a cleared_note. The blocker named in that field (a tool that could
+    not be adjudicated) was resolved the NEXT DAY, and the field was correctly left in place as
+    history. A checker that reads a superseded record as a live veto marks finished work open
+    forever, and the only way to satisfy it is to DELETE the history — which is the opposite of
+    what this ledger is for.
+
+    So a dated field is skipped when the status is strictly newer. Every DQ these problems cite
+    (DQ-T31/32/33/35/36/41) was answered by 2026-08-31 while the fields naming them as blockers
+    are dated 2026-08-22..24, so this is the general case here, not one row's special pleading.
+    An UNDATED field still vetoes: with no date it cannot be shown superseded.
     """
+    own = (p.get("status") or "").strip()
+    sdate = _status_date(own)
     for key, val in p.items():
         if key in ("tools", "cycle") or not isinstance(val, str):
             continue
-        if "CANNOT BE CLEARED" in val.upper():
-            return False, f"`{key}` says it CANNOT BE CLEARED: {val.split('.')[0][:80]}"
-    own = (p.get("status") or "").strip()
+        if "CANNOT BE CLEARED" not in val.upper():
+            continue
+        fdate = _field_date(key)
+        if fdate and sdate and sdate > fdate:
+            continue  # superseded: the status was written after this record
+        return False, f"`{key}` says it CANNOT BE CLEARED: {val.split('.')[0][:80]}"
     if _is_empty(p):
         return False, ("EMPTY — every tool moved out on a named cause; nothing was proven "
                        "under it and its invariant is untouched")
