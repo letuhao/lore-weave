@@ -193,6 +193,13 @@ async def load_glossary_anchors(
     return anchors
 
 
+#: How many projected node ids the tool hands back. `entity_ids=None` projects a whole glossary,
+#: so this is a payload bound, not a limit on the work: the projection still writes every node and
+#: `nodes_truncated` reports that the id list is short. A caller that needs the rest names its
+#: entity_ids explicitly, which is the same escape hatch `truncated` already documents.
+NODES_RETURNED_CAP = 50
+
+
 # ── WS-4B: kg_project_entities_to_nodes ────────────────────────────────
 
 
@@ -212,6 +219,19 @@ class ProjectionResult:
     existing: int = 0
     seen: int = 0
     skipped: int = 0
+    #: 🔴 THE IDS, BECAUSE COUNTS CANNOT BE CHAINED. Measured 2026-08-23 over K=5: this projection
+    #: is the documented prerequisite of `kg_propose_edge`, which REQUIRES source_entity_id and
+    #: target_entity_id — and the tool returned only counts. The model, having created two nodes
+    #: and been told "nodes_created: 2", had no id to pass, so it invented one and used it for
+    #: BOTH endpoints (66966666-6666-6666-6666-666666666666). The platform's fabricated-id guard
+    #: could not help: it tests SYNTAX, and a repdigit UUID parses fine.
+    #:
+    #: The loop already held each `Entity` and threw it away into `_`. BOUNDED at
+    #: `NODES_RETURNED_CAP` because `entity_ids=None` projects the WHOLE glossary and an unbounded
+    #: id list would be a payload the caller never asked for; `nodes_truncated` says so rather
+    #: than silently returning a short list, the same discipline `truncated` already follows.
+    nodes: tuple[dict, ...] = field(default_factory=tuple)
+    nodes_truncated: bool = False
     truncated: bool = False
     # Entities that could NOT be anchored because another node in the SAME
     # (user_id, project_id) already claims their `glossary_entity_id`. The Neo4j
@@ -250,9 +270,10 @@ async def project_glossary_entities_to_nodes(
     """
     rows, truncated = await _load_projection_rows(glossary_client, book_id, entity_ids)
     created = existing = skipped = conflicted = 0
+    projected: list[dict] = []
     for eid, name, kind, aliases in rows:
         try:
-            _, was_created = await upsert_glossary_anchor_counted(
+            _entity, was_created = await upsert_glossary_anchor_counted(
                 session,
                 user_id=user_id,
                 project_id=project_id,
@@ -286,6 +307,10 @@ async def project_glossary_entities_to_nodes(
             created += 1
         else:
             existing += 1
+        # The id the SUCCESSOR needs. Appended after the counters so an upsert that raised
+        # above cannot contribute an id for a node that was never written.
+        if len(projected) < NODES_RETURNED_CAP:
+            projected.append({"entity_id": _entity.id, "name": name, "kind": kind})
 
     logger.info(
         "WS-4B: projection complete — book=%s project=%s seen=%d created=%d "
@@ -296,6 +321,8 @@ async def project_glossary_entities_to_nodes(
     return ProjectionResult(
         created=created, existing=existing, seen=len(rows), skipped=skipped,
         truncated=truncated, conflicted=conflicted,
+        nodes=tuple(projected),
+        nodes_truncated=(created + existing) > len(projected),
     )
 
 

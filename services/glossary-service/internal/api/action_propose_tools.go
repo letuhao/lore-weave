@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -77,7 +78,7 @@ func (s *Server) mintGrantActionCard(userID, bookID uuid.UUID, descriptor, title
 // ── schema create (migrated from the retired schema-confirm path) ─────────────
 
 type proposeKindToolIn struct {
-	BookID      string   `json:"book_id,omitempty" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	BookID      string   `json:"book_id" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
 	Code        string   `json:"code" jsonschema:"machine code for the kind, e.g. power_system"`
 	Name        string   `json:"name" jsonschema:"display name, e.g. Power System"`
 	Description string   `json:"description,omitempty" jsonschema:"optional description"`
@@ -101,7 +102,7 @@ type proposeKindAttrIn struct {
 }
 
 type proposeAttrToolIn struct {
-	BookID      string   `json:"book_id,omitempty" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	BookID      string   `json:"book_id" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
 	KindCode    string   `json:"kind_code" jsonschema:"the kind to add the attribute to (code — see glossary_book_ontology_read)"`
 	Code        string   `json:"code" jsonschema:"machine code for the attribute, e.g. cultivation_realm"`
 	Name        string   `json:"name" jsonschema:"display name"`
@@ -176,7 +177,7 @@ func (s *Server) toolProposeNewKind(ctx context.Context, req *mcp.CallToolReques
 // ── batch schema create — the WHOLE ontology on ONE confirm ──────────────────
 
 type proposeKindsToolIn struct {
-	BookID string              `json:"book_id,omitempty" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
+	BookID string              `json:"book_id" jsonschema:"the book whose schema to extend (UUID; ownership-checked)"`
 	Kinds  []proposeKindItemIn `json:"kinds" jsonschema:"the kinds to create — EACH with its defining attributes; ALL land together on ONE confirm card"`
 }
 
@@ -269,6 +270,49 @@ func (a kindAttrSpec) FieldTypeOrDefault() string {
 	return a.FieldType
 }
 
+// unknownKindMessage names the kinds this book actually has, and what to do when the one the
+// caller wanted is not among them.
+//
+// The bare form was `"unknown kind: " + kindCode` — the category the caller CANNOT use, and
+// nothing else. Its own sibling two lines up already does better for a code-known set
+// ("invalid field_type: X (text|textarea|select|number|date|tags|url|boolean)"), and the batch
+// entity tool does better for this very concept: it explains what an unknown kind means and
+// names glossary_adopt_standards / glossary_propose_kinds as the way to create one.
+//
+// A book's kind set is per-book DATA, so it cannot be a schema enum — which is exactly the case
+// where the rejection has to carry it. `kindMap` is already loaded at the call site for the
+// lookup that just failed, so naming it costs a map walk and no query.
+func unknownKindMessage(kindCode string, kindMap map[string]uuid.UUID) string {
+	have := make([]string, 0, len(kindMap))
+	for k := range kindMap {
+		have = append(have, k)
+	}
+	sort.Strings(have)
+
+	var sb strings.Builder
+	sb.WriteString("unknown kind: ")
+	sb.WriteString(kindCode)
+	if len(have) == 0 {
+		// A different answer, and it must not read like the first: no kind_code could have
+		// worked, so the caller should create categories rather than guess another code.
+		sb.WriteString(". This book has no kinds yet — adopt the system ones with " +
+			"glossary_adopt_standards, or create custom ones with glossary_propose_kinds, then retry.")
+		return sb.String()
+	}
+	shown := have
+	if len(shown) > _attrCodesInMessage {
+		shown = shown[:_attrCodesInMessage]
+	}
+	sb.WriteString(". Kinds in this book: ")
+	sb.WriteString(strings.Join(shown, ", "))
+	if len(have) > len(shown) {
+		fmt.Fprintf(&sb, " (+%d more)", len(have)-len(shown))
+	}
+	sb.WriteString(". To add a new one, use glossary_adopt_standards (system kinds) or " +
+		"glossary_propose_kinds (custom), then retry.")
+	return sb.String()
+}
+
 func (s *Server) toolProposeNewAttribute(ctx context.Context, req *mcp.CallToolRequest, in proposeAttrToolIn) (*mcp.CallToolResult, any, error) {
 	userID, ok := userIDFromCtx(ctx)
 	if !ok {
@@ -297,7 +341,7 @@ func (s *Server) toolProposeNewAttribute(ctx context.Context, req *mcp.CallToolR
 	}
 	kindID, ok := kindMap[kindCode]
 	if !ok {
-		return nil, confirmCardOut{}, errors.New("unknown kind: " + kindCode)
+		return nil, confirmCardOut{}, errors.New(unknownKindMessage(kindCode, kindMap))
 	}
 	var desc *string
 	if d := strings.TrimSpace(in.Description); d != "" {
@@ -316,7 +360,7 @@ func (s *Server) toolProposeNewAttribute(ctx context.Context, req *mcp.CallToolR
 // ── book_delete (the CP-1 canary — destructive cascade, class C) ──────────────
 
 type bookDeleteToolIn struct {
-	BookID    string `json:"book_id,omitempty" jsonschema:"the book to delete from (UUID)"`
+	BookID    string `json:"book_id" jsonschema:"the book to delete from (UUID)"`
 	Level     string `json:"level" jsonschema:"what to delete: genre | kind | attribute"`
 	Code      string `json:"code" jsonschema:"the code of the genre/kind, or (for level=attribute) the attribute's own code"`
 	KindCode  string `json:"kind_code,omitempty" jsonschema:"for level=attribute: the kind code the attribute belongs to"`

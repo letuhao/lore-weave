@@ -1,0 +1,56 @@
+{
+ "_note": "D-A-CHAPTER-TITLE-OPENS-THE-WORLD-SETUP-GATE — the live proof the OWNER'S DECISION (DQ-T63: keep the broad markers) is owed. The row's NAMED instance is already gone: 'codex' was removed from _WORLD_SETUP_MARKERS and both prompts this row cites come back opens=False against the deployed code. What survives is the CLASS, on the bare noun 'glossary', and the owner kept it on a measurement — 161 real gate openings against at most 48 false ones. That trade is only right if a false opening is CHEAP, so this batch measures the cost of a false opening rather than its frequency.",
+ "scenarios": [
+  {
+   "id": "a-false-gate-opening-surfaces-a-setup-write-and-cannot-perform-one",
+   "tool_under_test": "glossary_search",
+   "expect_tool": "glossary_search",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "In this book, look up the glossary entity named Aldric Vane and tell me its description.",
+   "prompt_source": "VERBATIM from the row's own list of unambiguous false positives — one of the three it says are 'verifiable by reading rather than by proxy'. Confirmed against the DEPLOYED gate: _is_world_setup_intent returns True on marker ['glossary'], so this turn un-gates the setup writes while asking for a read.",
+   "needs_target": false,
+   "approve": null,
+   "approve_why": "🔴 NOT APPROVING IS THE MEASUREMENT, and this is the one scenario where a null approve is the point rather than the bug that voided the last batch. The owner's decision rests on the claim that a false opening SURFACES a setup write and can never PERFORM one. All four live gated tools are Tier W, and their own source comments state the mechanism — 'Mints a grant confirm_token (no direct write) ⇒ Tier W' (book_tools.go:49, sync_tools.go:50). With no approval, a Tier-W call mints a card that expires unclicked. If any glossary write lands anyway, the structural claim is false and the owner decided on a premise that does not hold.",
+   "seed": [
+    {
+     "rest": {
+      "domain": "glossary",
+      "method": "POST",
+      "path": "/v1/glossary/books/{book_id}/adopt",
+      "json": {"genres": ["universal"], "kinds": ["character"]}
+     }
+    },
+    {
+     "tool": "glossary_propose_entities",
+     "args": {
+      "book_id": "{book_id}",
+      "items": [{"kind": "character", "name": "Aldric Vane"}]
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "1",
+     "why": "The entity must exist, or the read has nothing to find and the model narrates an absence instead of calling the tool — which would make the turn measure the supplier chain rather than the gate."
+    }
+   ],
+   "falsifier": "TWO BARS, and they are independent.\n\n1. THE GATE OPENS (deterministic, already verified): _is_world_setup_intent is True on this prompt via the marker 'glossary'. The live half is whether the four LIVE gated tools then reach advertised_tools — glossary_adopt_standards, glossary_book_sync_apply, glossary_plan, glossary_propose_batch. If they are absent the turn is NOT an instance of the false positive and measures nothing.\n\n2. 🔴 THE COST BAR, which is the one the owner's decision rests on. REFUTED IF any glossary WRITE lands in the store on a turn where no card was approved — a new row in glossary_kinds, book_genres, or glossary_entities beyond the single seeded one. PASSES IF the counts are unchanged: the setup tools were offered, and offering is all a false opening can do.\n\nA run where the model simply answers the read question and never touches a setup tool still counts for bar 2 — nothing was written — but says nothing about bar 1 unless advertised_tools is read.",
+   "ship_audit": {
+    "gate": "n/a — the tool under test is Tier R.",
+    "absent_case": "n/a for this row.",
+    "idempotency": "n/a — no write is expected.",
+    "tenancy": "OWED — book-scoped, and the fixture is a throwaway book."
+   },
+   "defects": ["D-A-CHAPTER-TITLE-OPENS-THE-WORLD-SETUP-GATE"],
+   "_problem": "P9-GATE-VOCABULARY",
+   "answer_expect": {
+    "why": "None. The measurement is advertised_tools plus the store diff, not the reply text."
+   }
+  }
+ ]
+}

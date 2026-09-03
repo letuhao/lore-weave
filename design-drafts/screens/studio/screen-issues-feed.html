@@ -996,7 +996,7 @@
   <b>What this mock does NOT propose.</b> <b>(1)</b> No new dock panel, and <b>no <code>"issues"</code> in the
   <code>panel_id</code> enum.</b> That enum is machine-locked to <code>OPENABLE_STUDIO_PANELS</code>; a pseudo-id with no catalog row
   <b>reds <code>panelCatalogContract.test.ts</code> by construction</b> — and rightly, since <code>ui_open_studio_panel</code> resolves through
-  dockview, which cannot mount the bottom panel. <code>contracts/frontend-tools.contract.json</code> must be <b>byte-identical</b> before and
+  dockview, which cannot mount the bottom panel. <code>contracts/browser-tools.contract.json</code> must be <b>byte-identical</b> before and
   after this wave (DoD-5). <b>(2)</b> No editing. The feed <b>routes</b>; the target panels own their OCC writes and their own 412s.
   <b>(3)</b> No human surface for <code>composition_package_tree</code> — for <i>that</i> tool AN-12's premise <b>holds</b> (the tree is
   <code>plan-hub</code>, the spine is <code>chapter-browser</code>, coverage is the PH21 tray). Building a "book at a glance" panel <i>would</i>

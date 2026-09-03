@@ -1,0 +1,56 @@
+[
+ {
+  "tool": "composition_authoring_run_manage",
+  "pre": [],
+  "args": {
+   "op": "start",
+   "book_id": "01a02d3a-de99-7b23-b4ea-9da8f399ee36",
+   "run_id": "01a02d3a-e213-71f4-aabc-0d18a50777d0"
+  },
+  "first": [
+   "ok",
+   {
+    "confirm_token": "eyJkIjoiY29tcG9zaXRpb24uYXV0aG9yaW5nX3J1bl9zdGFydCIsImV4cCI6MTc4NzQ2NTg0NCwicCI6eyJib29rX2lkIjoiMDFhMDJkM2EtZGU5OS03YjIzLWI0ZWEtOWRhOGYzOTllZTM2IiwicnVuX2lkIjoiMDFhMDJkM2EtZTIxMy03MWY0LWFhYmMtMGQxOGE1MDc3N2QwIn0sInIiOiIwMWEwMmQzYS1lMjEzLTcxZjQtYWFiYy0wZDE4YTUwNzc3ZDAiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.BeOqJ2N5AqnzW47SwaACDihMq5TdhwSIuU7cPN_CYZA",
+    "descriptor": "composition.authoring_run_start",
+    "title": "Start the authoring run (spends LLM tokens)",
+    "domain": "composition",
+    "requires": "human confirmation via the review surface — this spends LLM tokens; nothing drafts until confirmed"
+   }
+  ],
+  "confirm": {
+   "first": [
+    "query: 409 {\"detail\":{\"code\":\"action_error\",\"detail\":\"start requires status=gated, run is draft\"}}",
+    "body: 422 {\"detail\":[{\"type\":\"missing\",\"loc\":[\"query\",\"token\"],\"msg\":\"Field required\",\"input\":null}]}"
+   ],
+   "second": [
+    "query: 409 {\"detail\":{\"code\":\"action_error\",\"detail\":\"start requires status=gated, run is draft\"}}",
+    "body: 422 {\"detail\":[{\"type\":\"missing\",\"loc\":[\"query\",\"token\"],\"msg\":\"Field required\",\"input\":null}]}"
+   ]
+  },
+  "second": [
+   "ok",
+   {
+    "confirm_token": "eyJkIjoiY29tcG9zaXRpb24uYXV0aG9yaW5nX3J1bl9zdGFydCIsImV4cCI6MTc4NzQ2NTg2MCwicCI6eyJib29rX2lkIjoiMDFhMDJkM2EtZGU5OS03YjIzLWI0ZWEtOWRhOGYzOTllZTM2IiwicnVuX2lkIjoiMDFhMDJkM2EtZTIxMy03MWY0LWFhYmMtMGQxOGE1MDc3N2QwIn0sInIiOiIwMWEwMmQzYS1lMjEzLTcxZjQtYWFiYy0wZDE4YTUwNzc3ZDAiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.wf6laZ7zpiOIIn5uJo4ntcTQ5-sWUmqKkxKfUVAV_Fo",
+    "descriptor": "composition.authoring_run_start",
+    "title": "Start the authoring run (spends LLM tokens)",
+    "domain": "composition",
+    "requires": "human confirmation via the review surface — this spends LLM tokens; nothing drafts until confirmed"
+   }
+  ],
+  "diff_first": {},
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing about idempotency.",
+  "first_had_effect": false,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [],
+   "book_id": "01a02d3a-de99-7b23-b4ea-9da8f399ee36",
+   "title": "LOOP-THROWAWAY-idem-composition_authoring_run_manage-3194cf96",
+   "tables": {
+    "composition(project)": "01a02d3a-e03b-711c-b2d2-7a68c3590b82"
+   }
+  }
+ }
+]

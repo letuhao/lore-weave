@@ -1,0 +1,32 @@
+{
+  "_note": "settings_provider_inventory asked only its own question - the old prompt's first half was fully answerable by settings_list_models.",
+  "scenarios": [
+    {
+      "id": "settings-provider-inventory-single-question",
+      "tool_under_test": "settings_provider_inventory",
+      "expect_tool": "settings_provider_inventory",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What models does my configured provider actually offer right now? Show me its live inventory — not the ones I've already registered.",
+      "prompt_source": "The tool's own declared synonyms ('models this provider offers', 'inventory') and the distinction its own description draws: 'its LIVE inventory, fetched from the provider. This is NOT the same set as settings_list_models, which lists models already REGISTERED in this account.'\n\n🔴 THE OLD PROMPT ASKED TWO QUESTIONS AND ONE TOOL ANSWERED THE OTHER. It read 'What models can I use? Show me what my configured provider actually offers.' Measured 5/5: the model called settings_list_models three or four times per run, answered the FIRST question accurately and completely - its replies say 'REGISTERED in your account', so nothing false was said - and never answered the second. The two questions have different answers: 18 registered against 69 offered, both counted by calling the tools directly.\n\nThat was a real finding about COMPLETENESS and it is recorded as one. It was not a fair test of THIS tool, because a prompt whose first half is fully satisfied by a sibling measures which half the model answers, not whether the tool is reachable. This prompt asks only the question this tool exists for.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "answer_expect": {
+        "all_of": [
+          "provider"
+        ],
+        "why": "Deliberately weak, and here is why rather than by omission: the live inventory is fetched from the provider and its contents change, so pinning a model NAME would make this assertion go red on an unrelated day. What the answer must show is that the PROVIDER's offering was reported. The strong check is the tool call itself, which LIVE called covers, plus the gate's read-is-read bar."
+      },
+      "falsifier": "REFUTED IF: the reply lists REGISTERED models (settings_list_models' answer) while claiming to have read the provider's live inventory — those are different sets and conflating them is the defect. CONTROL: this tool REQUIRES provider_credential_id, which only settings_list_providers supplies, so a correct turn is a two-call chain; a turn that calls only settings_list_providers has not reached the tool under test.",
+      "ship_audit": {
+        "empty_case": "OWED — a provider that is down must say so, not return an empty list as if it offered nothing.",
+        "tenancy": "OWED — user-scoped; another account's credential must not be readable."
+      },
+      "defects": []
+    }
+  ]
+}

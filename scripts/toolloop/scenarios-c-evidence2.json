@@ -1,0 +1,75 @@
+{
+  "_note": "glossary_create_evidence with the state it actually needs: an entity carrying an ATTRIBUTE VALUE. Diagnosed from its required args (entity_id, attr_value_id, original_text) after two wrong causes.",
+  "scenarios": [
+    {
+      "id": "glossary-create-evidence-attrvalue",
+      "tool_under_test": "glossary_create_evidence",
+      "expect_tool": "glossary_create_evidence",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Back up Aldric Vane's role with a passage from the chapter — cite where it says he climbed the black stair.",
+      "prompt_source": "_meta.synonyms['back this up with a passage'] + ['cite where this is stated'].",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane",
+                "attributes": {
+                  "occupation": "cartographer"
+                }
+              }
+            ]
+          },
+          "why": "🔴 THE ATTRIBUTE VALUE IS THE POINT. glossary_create_evidence REQUIRES attr_value_id — 'the attribute value the evidence supports (must belong to the entity)' — and the seed created an entity with NO attribute values, so there was nothing to attach evidence to and the tool was unreachable. Measured 0/5 twice.\n\n'occupation' is a real character attribute (7,852 books carry it), and attributes are written by propose_entities only AT CREATION — a re-call for an existing name+kind does NOT merge them on, which is why an earlier probe reported attributes_skipped: ['occupation'] against an entity that already existed."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist. NOTE the deeper precondition this scenario is really testing: evidence attaches to an ATTRIBUTE VALUE (attr_value_id), not to the entity, so the model must first find or create an attribute value. If it cannot, that is a PRECONDITION-CHAIN finding like kg_propose_edge's, not a defect in this tool."
+        },
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM entity_attribute_values v JOIN glossary_entities e ON e.entity_id=v.entity_id JOIN book_attributes a ON a.attr_id=v.attr_def_id WHERE e.book_id='{book_id}' AND a.code='occupation'",
+          "expect": "1",
+          "why": "The OCCUPATION value must exist by name. A bare count over the entity's values passes on 'name', which propose_entities writes for every entity — so it would be green on exactly the empty state that made this tool unreachable."
+        }
+      ],
+      "falsifier": "REFUTED IF: evidence lands with NO confirm card, OR the quoted original_text is not actually in the chapter (a fabricated citation is the worst outcome here), OR the model invents an attr_value_id.\n\n🔴 THE OLD CONTROL WAS INVALIDATED BY THIS SCENARIO'S OWN FIXTURE and is replaced. It read: 'the fixture has no attribute values, so a turn that cannot proceed is the precondition chain'. That was written for scenarios-c-evidence.json, whose seed created an entity with no attribute values. THIS seed creates the `occupation` value and asserts it BY NAME, so a turn that cannot proceed is no longer explained by the precondition — leaving the old control in place would have excused the exact failure the fixture was rebuilt to expose.\n\nNEW CONTROL: the seed assertion joins book_attributes and requires code='occupation'. A bare count over the entity's values would pass on `name`, which propose_entities writes for every entity.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an attr_value_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION",
+      "approve_why": "Measured with approve=null first: SUSPENDED 5/5 on a Tier-A card for glossary_propose_entities — a DIFFERENT tool, upstream of the one under test — so the turn ended before glossary_create_evidence could ever be reached. An `allow-under-test` row for the tool under test does not help, because the card is not for it.\n\nClicking is what the user does here, and the target is this run's OWN throwaway book and the entity its own seed created, torn down afterwards. Bounded by max_approvals=3."
+    }
+  ]
+}

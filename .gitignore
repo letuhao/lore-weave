@@ -395,3 +395,15 @@ AGENTS.local.md
 
 # scratch backups made while biting (see AGENTS.md: BITE)
 *.bak
+.vlive*/
+.vcode*/
+.vmetric*/
+
+# Gate verdict caches: LOCAL accelerators keyed on a tree digest. Never committed — CI runs
+# both gates with --force, and a verdict from one machine certifies nothing on another.
+contracts/*-verdict.json
+scripts/toolloop/fe_runner_auth.json
+
+# Tool-loop fixture provenance manifests — live state about this machine's runs, written by
+# scripts/toolloop/provision.py so `--sweep` can remove an un-torn-down fixture BY ID.
+scripts/toolloop/.fixtures/

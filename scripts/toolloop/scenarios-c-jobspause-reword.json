@@ -1,0 +1,56 @@
+{
+  "_note": "🔴 A NEW QUESTION FOR SEVEN ROWS, AND IT IS LABELLED ONE. Measured 2026-08-23: these tools' recorded prompts ask a READ question about a tool that WRITES — 'What background jobs do I have running?' for jobs_CANCEL, 'What do I know about X?' for memory_FORGET. The model answers the question asked and never calls the write tool, because nobody asked it to, so the rows do not measure the tool they name.\n\nThese prompts ask for the tool's ACTUAL ACTION, in a user's words, containing a declared synonym contiguously (the matcher needs that — proven by a controlled A/B on composition_reference_update). Seeds and falsifiers carry over UNEDITED.\n\nThis does NOT inherit the old rows' conclusions and does not overwrite them: a different question gets a different answer, and both stay on file.\n\nWHAT WOULD REFUTE IT: still called 0/5 when the prompt plainly asks for the action. Then the block is not the prompt.",
+  "scenarios": [
+    {
+      "id": "jobs-pause-asked",
+      "tool_under_test": "jobs_pause",
+      "expect_tool": "jobs_pause",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Pause job — hold the background job that's running on this book for now.",
+      "follow_ups": [
+        "Pause that one for now."
+      ],
+      "prompt_source": "Turn 1 is jobs_list's own purpose; the MEASURED turn is jobs_pause's synonyms ['pause job'] + ['pause a running job'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'pending', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+            "why": "The same single-statement pending job. PAUSE and CANCEL are near-neighbours with adjacent synonyms, which is exactly why each of these two scenarios names the other as its wrong-tool failure."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}' AND status='pending'",
+          "expect": "1",
+          "why": "ONE pending job. The card is never approved, so it must still be 'pending' — neither 'paused' nor 'cancelled'."
+        }
+      ],
+      "falsifier": "REFUTED IF: the job is paused with NO confirm card, OR the model reaches for `jobs_cancel` instead — cancel is terminal and pause is not, so cancelling a job the author asked to hold destroys work they meant to resume, and the two tools' synonym sets sit right beside each other — OR it invents a job_id. CONTROL: pause 'stops dispatching new units + drains in-flight; resume later from the GUI', so a reply promising to resume it automatically, or offering a resume tool, is describing something this tool does not provide.",
+      "ship_audit": {
+        "gate": "OWED — Tier A; the description says no confirm.",
+        "absent_case": "OWED — a job_id that does not exist must be refused.",
+        "idempotency": "OWED — pausing an already-paused job must be a clear no-op.",
+        "tenancy": "OWED — the CALLER'S OWN jobs only."
+      },
+      "defects": [],
+      "_rerun_of": "batch39",
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION",
+      "_original_prompt": "What background jobs do I have running?",
+      "_reworded_2026_08_25": {
+        "from": "Pause the translation one for now.",
+        "to": "Pause that one for now.",
+        "why": "🔴 FOLLOW-UP REWORDED 2026-08-25, and this INVALIDATES the run it was concluded on. The opening prompt was always right for this tool; the FOLLOW-UP asked for a different one, and the gate measures the LAST turn. When the generic jobs_* phrases and the translation-specific ones were de-duplicated (4976cc055) that crossing became visible: 'Pause the translation one for now.' reaches translation_job_control, and 'Cancel that job.' reaches jobs_cancel. Verified offline against the deployed matcher BEFORE spending a run - the new wording reaches its own tool and NOTHING else. The tool must be RE-MEASURED; the previous conclusion rests on wording that can no longer reach it."
+      }
+    }
+  ],
+  "_why": "RE-MEASURE of jobs_pause after its follow-up was reworded 2026-08-25. The tool was concluded 5/5 on 'Pause the translation one for now.', a sentence that now reaches translation_job_control instead — so the previous conclusion rests on wording that can no longer reach this tool. Same scenario, same seed, same approval mode; only the follow-up changed, and the new one was verified offline to reach jobs_pause and nothing else."
+}

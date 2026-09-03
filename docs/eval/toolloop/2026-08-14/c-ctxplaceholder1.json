@@ -1,0 +1,1095 @@
+{
+  "batch": "c-ctxplaceholder1",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "book_update_details",
+      "scenario": "author-pastes-a-placeholder-book-id",
+      "intent": "write",
+      "falsifier": "REFUTED IF `book_id` still carries `YOUR_BOOK_ID_HERE` when the call reaches the tool — the guard did not fire. PASSES IF the argument is GONE and the refusal tells the model the value is not an identifier this platform issues. A run where the model silently substitutes the ambient book id instead is a THIRD outcome and must be read as neither: the guard is about what it does with the value it was given.",
+      "answer_expect": {
+        "why": "None. The guard's behaviour on the wire is the measurement, read from the recorded tool calls and the service log."
+      },
+      "falsifier_sha": "308347b76aaf8dfb",
+      "ship_audit": {
+        "gate": "OWED — Tier A, it writes book metadata.",
+        "absent_case": "OWED — a book id that does not exist must be refused.",
+        "idempotency": "OWED — the same update twice must not duplicate anything.",
+        "tenancy": "OWED — book-scoped, and the fixture is a throwaway."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0430e-6976-7bae-ba57-70ac26f080ee",
+          "project_id": "01a0430e-6ac6-7b47-b924-1bd67095a49e",
+          "seed_ids": {
+            "01a0430e-6976-7bae-ba57-70ac26f080ee": "fixture book_id",
+            "01a0430e-6ac6-7b47-b924-1bd67095a49e": "fixture project_id (composition_work)",
+            "01a0430e-6a16-797e-aa6e-5dc63a5cfa72": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a0430e-af3e-78d3-b983-6f7a2db3f6d6",
+          "prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "scenario_prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_update_details"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "book_update_details",
+              "result_head": "{\"ok\": true, \"result\": {\"changes\": [{\"field_label\": \"Description\", \"new_value\": \"The Ember Codex\", \"old_value\": \"Tool-loop throwaway fixture \\u2014 created and deleted by scripts/toolloop/provision.py. Safe to delete.\", \"target\": \"description\"}], \"confirm_token\": \"eyJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLTh"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "call": "book_update_details"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.270405+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.270405+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.270405+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.270405+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.452274+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.445659+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.270405+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.270405+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.270405+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.270405+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.452274+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:13.445659+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The change to update the book's description to 'The Ember Codex' is ready for you to confirm."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0430f-0e88-7a61-950e-ab3250891ca4",
+          "project_id": "01a0430f-0fc8-7f21-bfb9-9f387c8aea68",
+          "seed_ids": {
+            "01a0430f-0e88-7a61-950e-ab3250891ca4": "fixture book_id",
+            "01a0430f-0fc8-7f21-bfb9-9f387c8aea68": "fixture project_id (composition_work)",
+            "01a0430f-0f1e-74b5-a165-1e0e9ec375e6": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a0430f-6d1b-7a7d-99df-04314fa17f22",
+          "prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "scenario_prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_update_details"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "book_update_details",
+              "result_head": "{\"ok\": true, \"result\": {\"changes\": [{\"field_label\": \"Description\", \"new_value\": \"The Ember Codex\", \"old_value\": \"Tool-loop throwaway fixture \\u2014 created and deleted by scripts/toolloop/provision.py. Safe to delete.\", \"target\": \"description\"}], \"confirm_token\": \"eyJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLTh"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "call": "book_update_details"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.517955+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.517955+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.517955+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.517955+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.693517+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.688509+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.517955+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.517955+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.517955+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.517955+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.693517+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:50:55.688509+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The change to update the book's description to 'The Ember Codex' is ready for you to confirm."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0430f-cc0f-77e6-883d-34aed44bc2e3",
+          "project_id": "01a0430f-cd62-7d3b-aaf4-caf96a440d31",
+          "seed_ids": {
+            "01a0430f-cc0f-77e6-883d-34aed44bc2e3": "fixture book_id",
+            "01a0430f-cd62-7d3b-aaf4-caf96a440d31": "fixture project_id (composition_work)",
+            "01a0430f-cca2-7337-8271-b419c364a93a": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04310-2d16-7f2e-a382-09b59bf661ae",
+          "prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "scenario_prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_update_details"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "book_update_details",
+              "result_head": "{\"ok\": true, \"result\": {\"changes\": [{\"field_label\": \"Description\", \"new_value\": \"The Ember Codex\", \"old_value\": \"Tool-loop throwaway fixture \\u2014 created and deleted by scripts/toolloop/provision.py. Safe to delete.\", \"target\": \"description\"}], \"confirm_token\": \"eyJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLTh"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "call": "book_update_details"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.033997+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.033997+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.033997+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.033997+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.232155+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.226213+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.033997+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.033997+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.033997+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.033997+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.232155+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:51:44.226213+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The change to update the book's description to 'The Ember Codex' is ready for you to confirm."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a04310-ab28-71f2-b9a4-920cad7c35ec",
+          "project_id": "01a04310-ac5b-703a-a2f6-d2203fdab685",
+          "seed_ids": {
+            "01a04310-ab28-71f2-b9a4-920cad7c35ec": "fixture book_id",
+            "01a04310-ac5b-703a-a2f6-d2203fdab685": "fixture project_id (composition_work)",
+            "01a04310-abb5-7d18-ad06-88cc9f866d13": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04310-fc14-7a77-a605-75fced2ebaa2",
+          "prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "scenario_prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_update_details"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "book_update_details",
+              "result_head": "{\"ok\": true, \"result\": {\"changes\": [{\"field_label\": \"Description\", \"new_value\": \"The Ember Codex\", \"old_value\": \"Tool-loop throwaway fixture \\u2014 created and deleted by scripts/toolloop/provision.py. Safe to delete.\", \"target\": \"description\"}], \"confirm_token\": \"eyJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLTh"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "call": "book_update_details"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.141704+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.141704+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.141704+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.141704+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.311819+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.306478+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.141704+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.141704+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.141704+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.141704+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.311819+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:52:41.306478+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The change to update the book's description to 'The Ember Codex' is ready for you to confirm."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a04311-53fd-7499-9428-341782c8db24",
+          "project_id": "01a04311-5556-7ed5-a458-9ca06de9b2b4",
+          "seed_ids": {
+            "01a04311-53fd-7499-9428-341782c8db24": "fixture book_id",
+            "01a04311-5556-7ed5-a458-9ca06de9b2b4": "fixture project_id (composition_work)",
+            "01a04311-54a3-7af4-9dae-b9889e7d736c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04311-a4dd-727d-8f29-cfbd6ec76041",
+          "prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "scenario_prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_update_details"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "book_update_details",
+              "result_head": "{\"ok\": true, \"result\": {\"changes\": [{\"field_label\": \"Description\", \"new_value\": \"The Ember Codex\", \"old_value\": \"Tool-loop throwaway fixture \\u2014 created and deleted by scripts/toolloop/provision.py. Safe to delete.\", \"target\": \"description\"}], \"confirm_token\": \"eyJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLTh"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "call": "book_update_details"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "book_update_details"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.387459+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.387459+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.387459+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.387459+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.572426+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.566057+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.387459+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.387459+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.387459+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.387459+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.572426+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 11:53:24.566057+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The change to update the book's description to 'The Ember Codex' is ready for you to confirm."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "absent": {
+    "verdict": "refused",
+    "detail": "MCP composition_arc_apply error: Error executing tool composition_arc_apply: not found or not accessible"
+  },
+  "empty": {
+    "verdict": "refused",
+    "detail": "MCP composition_arc_apply error: Error executing tool composition_arc_apply: arc_template_id must be a UUID — received ''. Compare it against the id you meant to send; a repeated or dropped group is the usual cause."
+  },
+  "malformed": {
+    "verdict": "refused",
+    "detail": "MCP composition_arc_apply error: Error executing tool composition_arc_apply: arc_template_id must be a UUID — received 'not-a-uuid'. Compare it against the id you meant to send; a repeated or dropped group is the usual c"
+  }
+}

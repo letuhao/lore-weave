@@ -274,7 +274,7 @@ lives in the section it cites.
   137/0/25 and 149; do not inherit the claim. (§3 Phase 0 · evidence §8)
 - [x] **B1** — baseline FE: `problem_remaining.py` exits 0, and the `scripts/` suite's **18**
   pre-existing failures. This is the attribution baseline. (§3 Phase 0 · evidence §8)
-- [ ] **M1** — merge `--no-commit`; resolve the rename-sweep files. **Only `mcp/server.py` is
+- [x] **M1** — merge `--no-commit`; resolve the rename-sweep files. **Only `mcp/server.py` is
   mechanical**; `facts.py`/`relations.py` invert the rule — take KAL, port FE's three functions.
   (§1.1, as corrected by B0)
 - [ ] **M2** — resolve **Class B**, the 6 two-sided files. `ledger.go` by reading the ledger,
@@ -283,9 +283,9 @@ lives in the section it cites.
   re-derived. `docker-compose.yml` is three-way and must not regain a backend default. (§1.1, §4.2)
 - [ ] **M4** — resolve **Class D**, the 7 prose/config files, including the `goal-prompt.md`
   add/add. Commit the merge **without** `--no-verify`. (§1.1)
-- [ ] **S1** — fix the **5 silent hard-break** files, `executor.py:632` first — FE's P7
+- [x] **S1** — fix the **5 silent hard-break** files, `executor.py:632` first — FE's P7
   chokepoint. (§2, §2.1)
-- [ ] **S2** — re-point the **2 source-substring assertions**; leave the 19 cosmetic mentions
+- [x] **S2** — re-point the **2 source-substring assertions**; leave the 19 cosmetic mentions
   alone. (§2.2)
 - [ ] **G1** — build the **import-resolution gate**: every `from app.X import Y` resolves.
   Proven RED on `executor.py:632` before green. None of the repo's 133 gates catches this. (§3 Phase 3)
@@ -347,6 +347,53 @@ Knowledge units are **4502**, not PR #219's 4489: the suite grew. Measured, not 
 The 18 matches the recorded pre-existing count exactly. **Any 19th failure after the merge is
 mine.** (The background task line read "exited with code 0" because my command ended in `tail`,
 which reports the pipe's exit, not pytest's — the counts are the evidence, not that line.)
+
+### M1 + S1 + S2 — the knowledge-service half, 2026-09-03
+
+`git merge --no-commit --no-ff` produced **23 conflicts**, exactly as the trial predicted.
+
+**Knowledge unit suite: 4705 passed, 0 failed** (KAL baseline 4502 — the merge adds 203 tests).
+
+**S1/S2 were pulled forward into M1, and the decision is recorded rather than deferred:**
+`user_data.py:34`'s module-level dead import — predicted in §2 — blocked *collection of the whole
+knowledge-service suite*, so M1 could not be verified without it. The sequence exists to serve
+attribution, not to block evidence.
+
+What the resolutions actually were:
+
+| file | resolution |
+|---|---|
+| `app/mcp/server.py` | pure rename; dropped `AuthorableKind`, unused in the merged body |
+| `app/db/graph_repos/facts.py` | **union** — KAL's AGE dialect + FE's three P7 functions |
+| `app/db/graph_repos/relations.py` | **union** — see below |
+| `app/routers/public/graph_views.py` | KAL's side; the Cypher lives in `graph_repos` now (T17) |
+| `app/db/graph_repos/graph_views.py` | FE's isolated-node Cypher rehomed here |
+| `app/tools/graph_schema_tools.py` | FE's feature work + KAL's paths; imports repointed |
+| `tests/unit/test_graph_schema_tools.py` | **three-way** — neither branch's fake works alone |
+
+**Four things this found that a conflict list cannot.**
+
+1. **`coalesce($valid_until, …)` — taking either side alone loses something real.** KAL had the
+   AGE dialect token but the *pre-fix* form; FE had the idempotency fix (a repeat must not rewrite
+   history, measured through `memory_forget`) but `datetime()`, which stores the wrong type on
+   AGE. Resolved to the union in both `facts.py` and `relations.py`. Checked the two bulk
+   invalidations too — they filter `valid_until IS NULL`, so the defect cannot fire there. **No
+   change made where none was needed.**
+2. **A silent regression in the timeline order.** KAL's T17 move of `_TIMELINE_CYPHER` carried
+   `ORDER BY coalesce(r.valid_from, 2147483647)` — **wall-clock**, the order the extractor wrote
+   the edges. FE had fixed it to `coalesce(r.valid_from_ordinal, 9223372036854775807)` —
+   narrative position, 64-bit sentinel. Taking KAL's file wholesale would have shipped timelines
+   ordered by extraction time. Caught by FE's test, restored.
+3. **A dead symbol my own grep could never have found.** `user_data.py` had a *second* broken
+   import — `purge_project`, which KAL **moved** from `neo4j_helpers` to
+   `graph_repos/project_graph.py`. §2 searched for two renamed *names*; a moved symbol matches
+   neither. It surfaced only because the suite would not collect. **This is Phase 3's argument,
+   measured: 133 gates and not one of them looks at whether an import resolves.**
+4. **A guard re-anchored, then bitten.** `test_the_merge_really_bumps_version_unconditionally`
+   anchored on `ON MATCH SET` and a bare assignment; KAL replaced both with `CASE WHEN existed`
+   because AGE has neither `ON CREATE SET` nor `ON MATCH SET`. Behaviour preserved, anchors stale.
+   Re-anchored on the CASE — then **proven still red**: making the bump conditional fails it,
+   restoring passes, `git diff` byte-identical.
 
 ### What B0 refuted
 

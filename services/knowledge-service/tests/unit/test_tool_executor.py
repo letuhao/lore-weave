@@ -18,6 +18,7 @@ import pytest
 from app.ports.vector_store import VectorHit
 from app.tools.executor import (
     TOOL_FACT_CONFIDENCE,
+    _empty_story_search_note,
     TOOL_FACT_SOURCE_TYPE,
     ToolContext,
     execute_tool,
@@ -331,7 +332,8 @@ async def test_memory_search_chat_source_skips_manuscript_leg(monkeypatch):
 async def test_memory_recall_entity_happy(monkeypatch):
     entity = SimpleNamespace(
         id="e1", name="Kai", canonical_name="kai", kind="character",
-        aliases=["the swordsman"], confidence=0.9,
+        aliases=["the swordsman"], confidence=0.9, project_id=str(_PROJECT),
+        anchor_score=1.0,
     )
     detail = SimpleNamespace(
         entity=entity,
@@ -351,6 +353,60 @@ async def test_memory_recall_entity_happy(monkeypatch):
     assert res.result["found"] is True
     assert res.result["entity"]["name"] == "Kai"
     assert res.result["relations"][0]["predicate"] == "duels"
+
+
+@pytest.mark.asyncio
+async def test_THE_OTHER_MATCHES_LIST_DISTINGUISHES_THE_MATCHES_IT_LISTS(monkeypatch):
+    """`other_matches` must carry what tells the matches APART, not the name they share.
+
+    They are found BY name, so the name is the one field guaranteed to be identical across
+    every row — measured on the corpus, all 13 calls that populated this field returned
+    five entries with exactly one distinct value. The live probe behind this test found 5
+    listed out of 47 matches, every one in a different project, with `entity` an arbitrary
+    one of them and nothing in the payload admitting either fact.
+    """
+    def _e(pid: str, conf: float) -> SimpleNamespace:
+        return SimpleNamespace(id=f"e-{pid}", name="Lâm Uyên", canonical_name="lam uyen",
+                               kind="character", aliases=[], confidence=conf,
+                               project_id=pid, anchor_score=1.0)
+
+    matches = [_e(f"p{i}", 1.0 - i / 100) for i in range(9)]
+    detail = SimpleNamespace(entity=matches[0], relations=[],
+                             relations_truncated=False, total_relations=0)
+    # T17 — the name lookup moved behind the graph-store port, so it is patched THERE, the way
+    # every sibling in this file does. Patching a module attribute that no longer exists raised
+    # AttributeError rather than quietly passing, which is the good failure.
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=matches)))
+    monkeypatch.setattr("app.tools.executor.get_entity_with_relations",
+                        AsyncMock(return_value=detail))
+    res = await execute_tool(_ctx(), "memory_recall_entity", {"entity_name": "Lâm Uyên"})
+    assert res.success
+    others = res.result["other_matches"]
+
+    # THE defect, stated so the red says what regressed: a row that is a bare NAME
+    # carries the one field every match shares, and is not a disambiguation at all.
+    assert all(isinstance(o, dict) for o in others), (
+        f"other_matches rows must be objects that can be told apart, got {others!r} — "
+        "a list of names cannot disambiguate matches that were found BY name")
+    assert len({o["project_id"] for o in others}) == len(others), (
+        f"every listed match must be distinguishable, got {others}")
+
+    # `project_id` specifically, because it is an ARGUMENT of this tool — the model can act
+    # on it by re-calling scoped to one project. A field it cannot act on is decoration.
+    assert set(others[0]) >= {"name", "kind", "project_id", "confidence", "anchor_score"}
+
+    # The tiebreak is real but lives in the Cypher (anchor_score DESC, confidence DESC).
+    # Returning both sort keys is what makes the pick legible instead of arbitrary-looking.
+    assert {"anchor_score", "confidence"} <= set(res.result["entity"])
+    assert "project_id" in res.result["entity"], (
+        "the CHOSEN match must say which one it is, or the caller cannot tell that a pick "
+        "was made at all")
+
+    # Truncation must be visible, the way `relations_truncated` next to it already is —
+    # and the total is DERIVED from the match list (the Cypher has no LIMIT), never typed.
+    assert len(others) == 5 and res.result["other_matches_total"] == len(matches) - 1
+    assert res.result["other_matches_total"] > len(others)
 
 
 @pytest.mark.asyncio
@@ -1049,3 +1105,41 @@ def test_events_filter_cypher_carries_the_diary_exclusion_predicate():
     from app.db.graph_repos import events as ev
     assert "exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
     assert "NOT coalesce(e.project_id, '') IN $exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
+
+
+# ── story_search's empty-result advice (TOOLV2 LOOP #67) ──────────────
+
+
+class TestTheEmptyNoteNeverRecommendsALegThatDidNotRun:
+    """S1 row 12, and it happened 9 times on 2026-07-15: an empty result carrying
+    `degraded: {"semantic": "not_indexed"}` was followed by the note "try mode='semantic'".
+    The tool said the semantic leg could not run and recommended it in the next key.
+
+    The model has no way to know the advice is void, so it spends its next call on the one
+    thing guaranteed to fail — and gets the same note back."""
+
+    def test_A_NOT_INDEXED_PROJECT_IS_NOT_TOLD_TO_TRY_SEMANTIC(self):
+        note = _empty_story_search_note("hybrid", {"semantic": "not_indexed"})
+        assert "mode='semantic'" not in note, (
+            f"the leg that just failed must not be the recommendation: {note!r}")
+        assert "no indexed passages" in note
+        # And it names what would CLEAR the obstacle, not just what the obstacle is.
+        assert "kg_project_set_embedding_model" in note
+
+    def test_A_SEMANTIC_QUERY_IS_NOT_TOLD_TO_TRY_SEMANTIC(self):
+        """The same dead end in a smaller form: recommending the mode already in use."""
+        note = _empty_story_search_note("semantic", {})
+        assert "mode='semantic'" not in note, note
+        assert "mode='exact'" in note
+
+    def test_AN_UNKNOWN_DEGRADED_LEG_IS_NAMED_RATHER_THAN_IGNORED(self):
+        """A leg this function has no special case for must still be surfaced — silently
+        giving the default advice would hide that the search was incomplete."""
+        note = _empty_story_search_note("hybrid", {"rerank": "unavailable"})
+        assert "rerank" in note and "unavailable" in note, note
+
+    def test_THE_ORDINARY_EMPTY_RESULT_KEEPS_ITS_ORIGINAL_ADVICE(self):
+        """Nothing degraded and an exact query — semantic IS the useful next step, and the
+        fix must not cost the case that always worked."""
+        note = _empty_story_search_note("exact", {})
+        assert "mode='semantic'" in note, note

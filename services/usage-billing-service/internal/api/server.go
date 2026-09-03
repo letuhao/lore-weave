@@ -857,7 +857,16 @@ func (s *Server) getUsageSummary(w http.ResponseWriter, r *http.Request) {
 	err := s.pool.QueryRow(r.Context(), `
 SELECT COUNT(*), COALESCE(SUM(total_tokens),0), COALESCE(SUM(total_cost_usd),0),
        COALESCE(SUM(CASE WHEN billing_decision='credits' THEN total_tokens ELSE 0 END),0),
-       COALESCE(SUM(CASE WHEN request_status!='success' THEN 1 ELSE 0 END),0)
+       -- 🔴 NOT a NEGATION of success. That expression was written when the CHECK permitted
+       -- only success | provider_error | billing_rejected, so every non-success WAS an error.
+       -- Widening request_status to carry 'failed' | 'cancelled' | 'aborted' would have
+       -- silently redefined this user-facing errorRate: a request the AUTHOR cancelled,
+       -- or a stream they aborted, is not a fault of theirs and must not inflate the
+       -- error rate their dashboard shows them. Enumerated rather than negated, so a
+       -- future status has to be classified deliberately instead of defaulting to
+       -- "error".
+       COALESCE(SUM(CASE WHEN request_status IN
+         ('provider_error','billing_rejected','failed') THEN 1 ELSE 0 END),0)
 FROM usage_logs
 WHERE owner_user_id=$1 AND `+where, userID).Scan(&requestCount, &totalTokens, &totalCost, &creditCount, &errorCount)
 	if err != nil {
@@ -874,7 +883,16 @@ WHERE owner_user_id=$1 AND `+where, userID).Scan(&requestCount, &totalTokens, &t
 	var prevTotalCost float64
 	_ = s.pool.QueryRow(r.Context(), `
 SELECT COUNT(*), COALESCE(SUM(total_tokens),0), COALESCE(SUM(total_cost_usd),0),
-       COALESCE(SUM(CASE WHEN request_status!='success' THEN 1 ELSE 0 END),0)
+       -- 🔴 NOT a NEGATION of success. That expression was written when the CHECK permitted
+       -- only success | provider_error | billing_rejected, so every non-success WAS an error.
+       -- Widening request_status to carry 'failed' | 'cancelled' | 'aborted' would have
+       -- silently redefined this user-facing errorRate: a request the AUTHOR cancelled,
+       -- or a stream they aborted, is not a fault of theirs and must not inflate the
+       -- error rate their dashboard shows them. Enumerated rather than negated, so a
+       -- future status has to be classified deliberately instead of defaulting to
+       -- "error".
+       COALESCE(SUM(CASE WHEN request_status IN
+         ('provider_error','billing_rejected','failed') THEN 1 ELSE 0 END),0)
 FROM usage_logs
 WHERE owner_user_id=$1 AND `+prevWhere, userID).Scan(&prevRequestCount, &prevTotalTokens, &prevTotalCost, &prevErrorCount)
 	var prevErrorRate float64

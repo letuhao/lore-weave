@@ -1,0 +1,569 @@
+{
+  "batch": "c-arcapply",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_arc_apply",
+      "scenario": "composition-arc-apply-named",
+      "intent": "write",
+      "falsifier": "REFUTED IF: an arc is materialised with NO confirm card, OR the model invents an arc_template_id rather than listing the library first (composition_arc_template_list is the supplier), OR it applies one of the account's 31 OTHER templates instead of the one named.\n\nCONTROL: the seed assertion keys on this run's nonce, so 'the template exists' cannot be satisfied by the pre-existing debris.",
+      "answer_expect": null,
+      "falsifier_sha": "8d0cb882f049a935",
+      "ship_audit": {
+        "gate": "OWED — Tier A; applying a template materialises structure.",
+        "absent_case": "OWED — an arc_template_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped, and the template library is account-scoped: another account's template must not apply."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02e6c-2159-7460-a4d5-ccbe08eac8c7",
+          "session_id": "01a02e6c-4eb3-72fd-989d-613712020780",
+          "prompt": "Yes, go ahead and do it.",
+          "scenario_prompt": "Apply arc template — use my library arc template 'The {run_word} Ascent' on this book.",
+          "prior_turns": [
+            {
+              "prompt": "Apply arc template — use my library arc template 'The Lamapilo Ascent' on this book.",
+              "called": [
+                "composition_arc_apply",
+                "composition_arc_suggest"
+              ],
+              "text": "I tried to apply 'The Lamapilo Ascent' to your book, but I couldn't complete the process because there is no existing chapter or scene structure for me to map the template onto.\n\nTo use an arc template, the book needs a defined outline (chapters and scenes) first. Would you like to start by building a plan for your story?\n\nI did not re-read the book's current state before answering, so my previous response was based on the error returned by the tool rather than a fresh scan of your manuscript. My information may be stale."
+            }
+          ],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.667216+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.667216+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.667216+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.667216+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.852+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.844421+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.667216+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.667216+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.667216+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.667216+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.852+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:40:33.844421+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked your book's structure, and while you have one chapter written, there isn't a formal outline (arcs or scenes) in place yet. \n\nBecause an arc template is a blueprint for a story's structure, I can't \"apply\" it to nothing. Instead, we need to create the foundation first.\n\nSince you've already started writing, I can use your existing chapter as a starting point to build a full story plan. Would you like me to:\n\n1.  **Extract the story from what you've already written** to propose a chapter-by-chapter plan?\n2.  **Start from scratch** if you have a specific story idea or outline in mind?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02e6c-d9b9-74ec-b084-eb53725953e8",
+          "session_id": "01a02e6d-17cc-7368-af34-ea8394d46088",
+          "prompt": "Yes, go ahead and do it.",
+          "scenario_prompt": "Apply arc template — use my library arc template 'The {run_word} Ascent' on this book.",
+          "prior_turns": [
+            {
+              "prompt": "Apply arc template — use my library arc template 'The Varisuni Ascent' on this book.",
+              "called": [
+                "composition_arc_apply",
+                "composition_arc_suggest",
+                "composition_list_outline",
+                "composition_package_tree"
+              ],
+              "text": "I couldn't apply 'The Varisuni Ascent' because I couldn't find an arc template with that exact name in your library. \n\nI can see several other templates available to you, such as \"E2E Hero Journey\" or \"Deep Smoke Arc,\" but none match the name you provided. \n\nCould you double-check the name of the template, or would you like me to list all the templates in your library so you can pick the correct one?"
+            }
+          ],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_arc_suggest",
+            "composition_arc_template_get"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:20.893512+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:20.893512+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:20.893512+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:20.893512+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:21.125259+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:21.117639+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:20.893512+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:20.893512+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:20.893512+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:20.893512+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:21.125259+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:41:21.117639+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've looked through your library, but I still can't find an arc template named \"The Varisuni Ascent.\" \n\nHere are the templates I found in your library:\n* **Deep Smoke Arc**\n* **E2E Hero Journey**\n* **Shared Live**\n* **BB Arc 1784273647**\n* **BB Arc 1784273680**\n\nIt's possible the name is slightly different, or perhaps it hasn't been saved as a template yet. Could you check the name again, or let me know if one of the ones above is the one you meant?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02e6d-a1c6-7192-b424-7b8e9d85ef96",
+          "session_id": "01a02e6d-cef6-7433-86e5-c6aef829321d",
+          "prompt": "Yes, go ahead and do it.",
+          "scenario_prompt": "Apply arc template — use my library arc template 'The {run_word} Ascent' on this book.",
+          "prior_turns": [
+            {
+              "prompt": "Apply arc template — use my library arc template 'The Patitile Ascent' on this book.",
+              "called": [
+                "composition_arc_apply",
+                "composition_arc_suggest"
+              ],
+              "text": "I tried to apply 'The Patitile Ascent' to your book, but I couldn't complete the process because there is no existing chapter or scene structure for me to map the template onto.\n\nTo use an arc template, the book needs a foundation of chapters or scenes first. Would you like to start by building a plan for your story, or do you have some notes I can use to create the first chapters?\n\nI did not re-read the book's current state before responding, so my previous answer may be stale. I am currently relying on the information provided in the last tool output."
+            }
+          ],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_list_derivatives",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.110812+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.110812+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.110812+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.110812+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.356481+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.34079+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.110812+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.110812+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.110812+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.110812+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.356481+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:12.34079+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked your book's structure. It currently has one chapter, but it hasn't been assigned to an arc yet, which is why I can't apply the template directly.\n\nTo use 'The Patitile Ascent', we first need to turn your story idea into a structured plan. Once we have a plan (an \"Arc Overview\"), I can then map your template onto it.\n\n**How would you like to proceed?**\n\n1.  **I have a story idea/notes:** Paste them here, and I will use them to build your world's categories, your cast, and your story plan in one go.\n2.  **I want to start from scratch:** Tell me the basic premise of your story, and we'll begin building the foundation."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02e6e-4bb4-79af-a843-d2fff10f0e77",
+          "session_id": "01a02e6e-7819-7b59-a957-ed06410fdbfc",
+          "prompt": "Yes, go ahead and do it.",
+          "scenario_prompt": "Apply arc template — use my library arc template 'The {run_word} Ascent' on this book.",
+          "prior_turns": [
+            {
+              "prompt": "Apply arc template — use my library arc template 'The Sikikato Ascent' on this book.",
+              "called": [
+                "composition_arc_apply",
+                "composition_arc_suggest",
+                "composition_list_outline",
+                "composition_package_tree"
+              ],
+              "text": "I couldn't find an arc template named \"The Sikikato Ascent\" in your library. I can see several other private templates, but none match that name.\n\nCould you double-check the name or provide the ID for the template you'd like to use? Once I have the correct one, I'll apply it to your book immediately."
+            }
+          ],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_arc_suggest",
+            "composition_arc_template_get"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.604042+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.604042+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.604042+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.604042+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.840286+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.826041+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.604042+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.604042+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.604042+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.604042+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.840286+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:42:55.826041+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02e6e-f1a0-74cf-a862-760ca2f46fcb",
+          "session_id": "01a02e6f-2a4d-773d-a0c0-e6c7f48a9f5a",
+          "prompt": "Yes, go ahead and do it.",
+          "scenario_prompt": "Apply arc template — use my library arc template 'The {run_word} Ascent' on this book.",
+          "prior_turns": [
+            {
+              "prompt": "Apply arc template — use my library arc template 'The Gezegaku Ascent' on this book.",
+              "called": [
+                "composition_arc_apply",
+                "composition_arc_suggest",
+                "composition_list_outline",
+                "composition_package_tree"
+              ],
+              "text": "I tried to apply 'The Gezegaku Ascent' to your book, but I couldn't find that specific template in your library. I see a few other private arcs in your collection, but none with that name.\n\nAdditionally, your book currently has no planned arcs or structure—it only contains one chapter. To apply an arc template, the book needs a defined structure (an outline with chapters or scenes) for the template to \"land\" on.\n\nWould you like me to:\n1. **Search your library** for a different template?\n2. **Help you build an outline** first so we have a structure to apply an arc to?\n\nI did not re-read the book or your library in this turn, so my previous answer may be stale. I am ready to call the necessary tools to get the most current information if you would like me to proceed."
+            }
+          ],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_arc_suggest",
+            "composition_arc_template_get"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.06599+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.06599+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.06599+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.06599+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.29328+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.285882+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.06599+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.06599+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.06599+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.06599+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.29328+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:43:38.285882+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've looked through your library, but I still can't find a template named \"The Gezegaku Ascent.\" I can see a few other private templates you've created, but none match that name.\n\nIt's also worth noting that because your book currently only has one chapter and no established outline, I can't \"apply\" a template to it yet. An arc template needs a structure (a series of chapters or scenes) to map its beats onto.\n\nTo move forward, would you like to:\n1. **Search for a different template** by name?\n2. **Start building an outline** for your book? Once we have a sequence of chapters or scenes, we can apply a template to them."
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0,
+      "blocked_reason": "ON THE WIRE AND UNREACHABLE: the model cannot obtain arc_template_id, because the supplier (composition_arc_template_list) is on no pass of the surface and the repair that should name it names nothing.\n\nTHE OLD REASON IS REFUTED AND THE SCENARIO IS REBUILT. p4-confirm blocked this as 'an unanswerable prompt, and the model is right' — it said 'use ONE OF my library arc templates', named no target, and seeded nothing. This scenario seeds its OWN arc template (nonced code loop-arc-{run_id}, name 'The {run_word} Ascent', one real system motif in its layout) and NAMES it in the request, and the seed assertion keys on the run's own nonce so it cannot pass on the account's 31 pre-existing templates.\n\nMEASURED K=5, ZERO errored runs, called 0/5. What the model did instead, 3 of 5 runs:\n  composition_arc_template_get  arc_id='The Varisuni Ascent'   <- a NAME where a UUID is required\n  -> the id-repair replies 'look it up with the tool named above and pass the id it returns'\n  -> composition_arc_suggest    <- a guess; NOT the supplier\nand it closed with 'I still can't find an arc template named \"The Varisuni Ascent\"' — about a template its own run had just created. The other 2 runs went to composition_list_outline / composition_package_tree and never reached the library at all.\n\nTHE TOOL ITSELF WAS ADVERTISED. Established from chat-service's own per-pass wire log on c-arcapply2 (identical scenario and code, logging added): R1 answerability matched ['book_list', 'composition_arc_apply', 'composition_arc_suggest'] on every pass of the real request and composition_arc_apply was on the wire for 4 passes of each session. NOT claimed from the harness's agentSurface record, which was shown the same day to disagree with that log — see D-HARNESS-agentSurface-DISAGREES-WITH-THE-WIRE-LOG.\n\nSo the blocker is the supplier, not the tool and no longer the prompt: composition_arc_template_list exists and is federated (Tier R, synonyms 'list arc templates' / 'my arc templates' / 'arc skeleton library') and never reached a single pass. Third instance today of a required id whose supplier is absent from the surface, after glossary_create_evidence/attr_value_id and this one; filed with D-THE-ID-REPAIR-SENTENCE-NAMES-A-TOOL-THAT-IS-NOT-THERE, which measures 45 of 86 id-requiring tools naming no supplier at all.\n\nSHIP cases (gate, absent_case, tenancy) remain unexercised: the tool has never completed a call."
+    }
+  ]
+}

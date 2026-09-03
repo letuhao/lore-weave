@@ -23,6 +23,28 @@ class ProviderRegistryClient:
         resp.raise_for_status()
         return ProviderCredentials(**resp.json())
 
+    async def resolve_embedding_model(self, user_id: str) -> tuple[str, str] | None:
+        """GET /internal/embedding-model — the model skill_router's intent-embedding call
+        (and any other embedding caller) should use, WITH a fallback (D-A-TOOL-REACHES-THE-
+        WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE): the user's explicit 'embedding' default if they
+        set one, else their best ACTIVE model carrying the embedding capability flag. Mirrors
+        `internalResolvePlannerModel`'s shape server-side — an unset explicit default must not
+        mean "no capability", only "no preference stated". Best-effort: any error / no
+        capable model returns None, exactly like `get_default_model`."""
+        url = f"{self._base}/internal/embedding-model"
+        try:
+            async with build_internal_client(
+                self._base, internal_token=self._token,
+                timeout_s=5, trace_id_provider=trace_id_var.get,
+            ) as client:
+                resp = await client.get(url, params={"user_id": user_id})
+            if resp.status_code == 200:
+                data = resp.json()
+                return (data.get("model_source", "user_model"), data["user_model_id"])
+            return None
+        except Exception:
+            return None
+
     async def get_default_model(
         self, capability: str, user_id: str
     ) -> tuple[str, str] | None:

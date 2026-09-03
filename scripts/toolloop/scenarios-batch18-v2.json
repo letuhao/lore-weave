@@ -1,0 +1,188 @@
+{
+ "_note": "Batch 18 re-run on the build that declares model_ref as a UUID and names its supplier. composition-generate is represented by the NAMED-CHAPTER arm, because the control proved the unnamed one measures chapter identity rather than this tool: it went 0/5 -> 5/5 purely on naming the chapter.",
+ "scenarios": [
+  {
+   "id": "composition-entity-override-edit",
+   "tool_under_test": "composition_entity_override_edit",
+   "expect_tool": "composition_entity_override_edit",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Override entity field — in this book Aldric Vane should be a cartographer, not a soldier.",
+   "prompt_source": "meta.synonyms['override entity field'] + ['add entity override'], verbatim, plus the entity's name so the target is unambiguous.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "rest": {
+      "domain": "glossary",
+      "method": "POST",
+      "path": "/v1/glossary/books/{book_id}/adopt",
+      "json": {
+       "genres": [
+        "universal"
+       ],
+       "kinds": [
+        "character"
+       ]
+      }
+     }
+    },
+    {
+     "tool": "glossary_propose_entities",
+     "args": {
+      "book_id": "{book_id}",
+      "items": [
+       {
+        "kind": "character",
+        "name": "Aldric Vane"
+       }
+      ]
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "1",
+     "why": "The entity must exist — the tool takes a target_entity_id and the model has to resolve the NAME to it, which is the step that has failed repeatedly in this loop."
+    },
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM entity_override WHERE project_id='{project_id}'",
+     "expect": "0",
+     "why": "ZERO overrides before, so any override is attributable to this turn — and, the card never being approved, the count must still be 0 afterwards."
+    }
+   ],
+   "falsifier": "REFUTED IF: an override lands with NO confirm card (Tier A), OR the model invents a target_entity_id rather than resolving 'Aldric Vane', OR the op chosen is not `add` when the entity has no override yet — its enum spans add|update|delete|restore, and `delete` on a request to ADD a field change would be the worst outcome. Store check: entity_override stays 0.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "OWED — a target_entity_id or override_id that does not exist must be refused.",
+    "idempotency": "OWED — deleting an already-deleted override must refuse, not report a second success. Checked deliberately: that is the exact shape of the arc_template archive defect found in batch 15.",
+    "tenancy": "OWED — project-scoped."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-glossary-build",
+   "tool_under_test": "composition_build_cast_and_graph",
+   "expect_tool": "composition_build_cast_and_graph",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Build the knowledge graph for this book — extract the cast from my story.",
+   "prompt_source": "meta.synonyms['build the knowledge graph'] + ['extract the cast from my story'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "0",
+     "why": "ZERO entities before. This tool runs a WHOLE PIPELINE (plan a worklist, build it, project a knowledge graph) and spends on every stage, so the card is never approved and the glossary must be untouched afterwards."
+    }
+   ],
+   "falsifier": "REFUTED IF: entities are created with NO confirm card, OR the op chosen is not `start` on a first request — its enum spans start|approve_plan|status|project_kg|approve_edges|cancel, and `approve_plan` or `approve_edges` would be approving a plan the author has never seen, which is the worst outcome for a tool whose whole design is a human checkpoint between stages — OR the model invents a run_id for a run that has not started. CONTROL: a fresh book has no story text beyond one seeded chapter, so a build with nothing to extract from is itself worth seeing.",
+   "ship_audit": {
+    "gate": "OWED — Tier A, multi-stage, and it spends at every stage.",
+    "absent_case": "OWED — op=status/approve_plan with a run_id that does not exist must be refused.",
+    "idempotency": "OWED — op=start twice must not launch two runs for the same book.",
+    "tenancy": "OWED — book-scoped."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-library-translate",
+   "tool_under_test": "composition_library_translate",
+   "expect_tool": "composition_library_translate",
+   "intent": "write",
+   "tier": "W",
+   "scope": "user",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Translate my motifs into Vietnamese — localize my library.",
+   "prompt_source": "meta.synonyms['translate my motifs'] + ['localize my library'], verbatim. The English synonyms are used deliberately: this tool also declares CJK and Vietnamese phrasings, and a non-space-delimited prompt would be testing the matcher (DQ-T32, and the CJK tokenizer note) rather than the tool.",
+   "needs_target": false,
+   "editor_context": false,
+   "approve": null,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif_translation",
+     "expect": "1429",
+     "why": "🔴 ACCOUNT-SCOPED, SO THERE IS NO THROWAWAY THAT BOUNDS THIS. The tool translates the caller's REAL motif library; not approving the card is the only cost control. The count is over the WHOLE table because that is the blast radius, and it is READ FROM THE STORE, not assumed: the account already holds 1429 motif translations across 240 motifs. My first draft wrote 0 — the same mistake batch 13 caught when I guessed 0 default-model rows and the account had 2. If this number drifts the seed assertion fails loudly, which is the mechanism working."
+    }
+   ],
+   "falsifier": "REFUTED IF: translations land with NO confirm card (Tier W and it spends per item), OR the model invents `ids` rather than listing the library first (composition_motif_book_list / composition_arc_template_list are the suppliers), OR target_language is not 'vi' when the user said Vietnamese, OR it passes force=true unasked — that would re-translate items that already have a translation, spending again for nothing. 🔴 AND `force` IS THE REAL RISK HERE, not the first translation: with 1429 translations already on 240 motifs, most items are ALREADY translated, so an unasked force=true would re-translate work that is done and bill the author twice for the same text. The honest outcome may well be 'they are already translated'.",
+   "ship_audit": {
+    "gate": "OWED — Tier W, per-item spend.",
+    "absent_case": "OWED — an id that is not the caller's library item must be refused, not silently skipped.",
+    "empty_case": "OWED — an account with no motifs must say so rather than mint a card for an empty list.",
+    "tenancy": "OWED — ACCOUNT-scoped: another owner's motif must not be translatable, and the cost lands on the caller."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-get-generation-job",
+   "tool_under_test": "composition_get_generation_job",
+   "expect_tool": "composition_get_generation_job",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Is the chapter done — what is the generation job status?",
+   "prompt_source": "meta.synonyms['is the chapter done'] + ['generation job'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM generation_job WHERE project_id='{project_id}'",
+     "expect": "0",
+     "why": "There is NO job, and job_id is REQUIRED with no ambient supplier. A job only exists after a CONFIRMED composition_generate, whose card this loop never approves because it spends — so this is a precondition chain by construction, and a refusal naming what is missing is the correct outcome."
+    }
+   ],
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model invents a job_id, OR the reply reports a generation status — 'still running', 'done' — for a book that has never generated anything. That last one is the D-ABSENT-ENTITY-READS-AS-UNUSED shape and the thing to watch: 'no job' must not become 'the chapter is not finished yet'.",
+   "ship_audit": {
+    "absent_case": "This scenario IS the absent case — a job_id that does not exist must be refused.",
+    "tenancy": "OWED — book-scoped, and job_id is a second identifier that must be checked against the project rather than trusted."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-generate-named-chapter",
+   "tool_under_test": "composition_generate",
+   "expect_tool": "composition_generate",
+   "intent": "write",
+   "tier": "W",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Write chapter — use the cowrite engine to draft the prose for \"Chapter I — The Ember Codex\".",
+   "prompt_source": "meta.synonyms['write chapter'] + ['generate prose'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM generation_job WHERE project_id='{project_id}'",
+     "expect": "0",
+     "why": "ZERO generation jobs before. This tool SPENDS: it runs the grounded cowrite engine and persists prose to the book draft. The card is never approved, so this count must still be 0 afterwards — that is the whole cost control."
+    }
+   ],
+   "falsifier": "REFUTED IF: prose is generated with NO confirm card (Tier W and it spends), OR the model INVENTS a model_source/model_ref — both are REQUIRED and neither is ambient, so the honest move is to ask or to read the account's models via settings_list_models, and silently picking a model commits the author's money to a choice they never made — OR the reply claims a chapter was written while the card is still pending.",
+   "ship_audit": {
+    "gate": "The card IS the audit — this is the most expensive per-call tool in the batch.",
+    "absent_case": "OWED — a chapter_id/outline_node_id that does not exist must be refused, and its description says the two are alternatives, so passing NEITHER must also be refused rather than defaulted.",
+    "tenancy": "OWED — book-scoped, and the spend lands on the caller."
+   },
+   "defects": [],
+   "_control_note": "CONTROL A/B for the 5/5 finding. In the first arm the model said 'I need to know which chapter you'd like me to work on' — while the book had exactly ONE chapter — and then proposed book_chapter_save_draft with prose it wrote itself. This arm names the chapter explicitly, so if chapter identity was the real blocker the tool should now be called. If it STILL proposes save_draft, the blocker is elsewhere and my required-model-args hypothesis stays unproven rather than becoming a fix."
+  }
+ ]
+}

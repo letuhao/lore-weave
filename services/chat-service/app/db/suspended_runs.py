@@ -50,6 +50,19 @@ class SuspendedRun:
     # turn suspends, and the resumed turn (which had no book_id) could not continue — measured
     # as S06 stalling at 2/5 (categories + cast land, connections/plan/chapters never do).
     book_id: str | None = None
+    # TOOL DEEP-DIVE (2026-08-13) — was this a STUDIO turn? Carried for the same reason
+    # `permission_mode` is: the resume continues under the mode the turn started with. The
+    # studio single-book override in `_inject_context_ids` is studio-scoped, and a resume that
+    # rebuilt context_ids without this flag silently disabled it on every resumed turn.
+    studio: bool = False
+    # TOOL DEEP-DIVE (2026-08-24) — the OTHER TWO context ids. The note above fixed `studio`
+    # and stopped; `_inject_context_ids` needs all three, because `_crosswired_ids` spots a
+    # mis-wired id by exact match against the turn's OTHER ids. With chapter_id absent there is
+    # nothing to match, so a chapter id sent as `book_id` goes out untouched and the book-scope
+    # check refuses it. Measured (c-gbuild5): every run resumed through an approval card, and on
+    # 4 of 4 failing calls the book_id EQUALLED that run's chapter_id.
+    chapter_id: str | None = None
+    project_id: str | None = None
 
 
 async def save_suspended_run(
@@ -70,6 +83,9 @@ async def save_suspended_run(
     permission_mode: str = "write",
     pinned_step_tools: list[str] | None = None,
     book_id: str | None = None,
+    studio: bool = False,
+    chapter_id: str | None = None,
+    project_id: str | None = None,
 ) -> None:
     await pool.execute(
         """
@@ -77,15 +93,16 @@ async def save_suspended_run(
           (run_id, session_id, owner_user_id, message_id, working,
            pending_tool_call, input_tokens, output_tokens, model_source,
            model_ref, parent_message_id, user_message_content, permission_mode,
-           pinned_step_tools, book_id)
-        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
+           pinned_step_tools, book_id, studio, chapter_id, project_id)
+        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,
+                $17,$18)
         """,
         run_id, session_id, owner_user_id, message_id,
         json.dumps(working), json.dumps(pending_tool_call),
         input_tokens, output_tokens, model_source, model_ref,
         parent_message_id, user_message_content, permission_mode,
         json.dumps(list(pinned_step_tools or [])),
-        book_id,
+        book_id, bool(studio), chapter_id, project_id,
     )
 
 
@@ -111,7 +128,8 @@ async def load_suspended_run(
         SELECT run_id, session_id, owner_user_id, message_id, working,
                pending_tool_call, input_tokens, output_tokens, model_source,
                model_ref, parent_message_id, user_message_content,
-               permission_mode, pinned_step_tools, book_id
+               permission_mode, pinned_step_tools, book_id, studio,
+               chapter_id, project_id
         FROM chat_suspended_runs
         WHERE run_id = $1 AND owner_user_id = $2 AND expires_at > now()
         """,
@@ -135,6 +153,9 @@ async def load_suspended_run(
         permission_mode=str(row["permission_mode"] or "write"),
         pinned_step_tools=_str_list(_parse_json(row["pinned_step_tools"])),
         book_id=str(row["book_id"]) if row["book_id"] else None,
+        studio=bool(row["studio"]),
+        chapter_id=str(row["chapter_id"]) if row["chapter_id"] else None,
+        project_id=str(row["project_id"]) if row["project_id"] else None,
     )
 
 
@@ -153,7 +174,8 @@ async def load_suspended_run_any(
         SELECT run_id, session_id, owner_user_id, message_id, working,
                pending_tool_call, input_tokens, output_tokens, model_source,
                model_ref, parent_message_id, user_message_content,
-               permission_mode, pinned_step_tools, book_id
+               permission_mode, pinned_step_tools, book_id, studio,
+               chapter_id, project_id
         FROM chat_suspended_runs
         WHERE run_id = $1 AND owner_user_id = $2
         """,
@@ -177,6 +199,9 @@ async def load_suspended_run_any(
         permission_mode=str(row["permission_mode"] or "write"),
         pinned_step_tools=_str_list(_parse_json(row["pinned_step_tools"])),
         book_id=str(row["book_id"]) if row["book_id"] else None,
+        studio=bool(row["studio"]),
+        chapter_id=str(row["chapter_id"]) if row["chapter_id"] else None,
+        project_id=str(row["project_id"]) if row["project_id"] else None,
     )
 
 
@@ -184,11 +209,44 @@ async def delete_suspended_run(pool: asyncpg.Pool, run_id: str) -> None:
     await pool.execute("DELETE FROM chat_suspended_runs WHERE run_id = $1", run_id)
 
 
-async def sweep_expired_runs(pool: asyncpg.Pool) -> int:
-    """Delete abandoned suspended runs (proposals the user never acted on).
-    Returns the number swept. Called periodically from the lifespan."""
+async def sweep_expired_runs(pool: asyncpg.Pool, *, retention_days: int) -> int:
+    """Reclaim abandoned suspended runs — **but never one whose turn is still unresolved.**
+
+    🔴 **THIS FUNCTION SAT HERE WITH ZERO CALLERS AND A DOCSTRING SAYING IT RAN PERIODICALLY.**
+    Silent exit #2. The docstring was the only evidence anyone had, and it was false, so the
+    `expires_at` sweep `migrate.py` promises never happened: measured 2026-08-09, **175 of 175**
+    suspended runs were past their 6-hour TTL, the oldest by 68 days.
+
+    Two clauses, and the second is the one that matters:
+
+    * **retention** — `expires_at` plus a window, not `expires_at` itself. A row becomes unresumable
+      the instant it expires, which is the moment its *evidence* is most needed, not least;
+    * 🔴 **the turn must already read as resolved.** `resolve_expired_suspends` moves a stuck
+      `awaiting_input` turn to `abandoned_by_user`, and the ONLY thing that justifies it is this
+      row's existence (`EXISTS (… r.expires_at <= now())`). Delete the run first and that turn keeps
+      advertising a success state forever, with the fact that would have repaired it gone. **The
+      hazard is an ordering, and the guard makes the ordering irrelevant** — no interleaving of the
+      resolver and the sweeper can destroy a record a reader still needs, so this is a property of
+      the statement rather than a convention two callers have to remember.
+
+    "Resolved" tests BOTH columns, per F-38: a row whose `outcome` moved while `finish_reason` stayed
+    at `awaiting_input` is self-contradicting, not resolved. Measured live, that is not hypothetical
+    — 33 rows are in exactly that state, and this guard is what preserves them (175 expired → 142
+    deletable → 33 held back).
+
+    A run with no `chat_messages` row at all IS deletable: there is no turn to repair, and 137 of the
+    175 are that shape. Returns the number swept.
+    """
+    if int(retention_days) < 0:
+        raise ValueError("retention_days must not be negative")
     status = await pool.execute(
-        "DELETE FROM chat_suspended_runs WHERE expires_at <= now()"
+        "DELETE FROM chat_suspended_runs r "
+        "WHERE r.expires_at <= now() - make_interval(days => $1::int) "
+        "  AND NOT EXISTS ("
+        "        SELECT 1 FROM chat_messages m "
+        "        WHERE m.message_id = r.message_id "
+        "          AND (m.outcome IS NULL OR m.finish_reason = 'awaiting_input'))",
+        int(retention_days),
     )
     try:
         return int(status.rsplit(" ", 1)[-1])

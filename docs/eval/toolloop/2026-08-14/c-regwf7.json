@@ -1,0 +1,3877 @@
+[
+  {
+    "text": "The following recipes are available on the studio surface:\n\n*   **Draft the next chapters for me** (`autonomous-drafting`): Automatically drafts subsequent chapters based on an existing story plan, pausing for your review along the way.\n*   **Turn the idea into a book plan** (`build-a-book`): Converts your world and cast into a structured story arc and chapter-by-chapter outline.\n*   **Check the story for contradictions** (`canon-check`): Scans your book for consistency errors regarding names, timelines, and established facts.\n*   **Draft this chapter** (`chapter-compose`): Writes the opening draft of a specific chapter based on its place in your story plan.\n*   **Clean up a book's suggested items** (`entity-triage`): Helps you organize and refine the list of suggested story bible items, allowing you to keep, discard, or merge them.\n*   **Set up a book's world categories** (`glossary-bootstrap`): Establishes the initial structure for your lore (such as characters, places, and systems) for your review.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379179016",
+        "toolCallName": "registry_list_workflows",
+        "parentMessageId": "23b8d247-9517-438e-bf29-c0a90f36e96d"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379179016",
+        "delta": "{\"surface\": \"studio\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379179016"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "23b8d247-9517-438e-bf29-c0a90f36e96d",
+        "toolCallId": "call_3336168379179016",
+        "content": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-drafting\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft the next chapters for me\"}, {\"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"slug\": \"build-a-book\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Turn the idea into a book plan\"}, {\"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"slug\": \"canon-check\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Check the story for contradictions\"}, {\"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"slug\": \"chapter-compose\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft this chapter\"}, {\"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"slug\": \"entity-triage\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Clean up a book's suggested items\"}, {\"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"slug\": \"glossary-bootstrap\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Set up a book's world categories\"}]}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "registry_list_workflows",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11193
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "registry_list_workflows",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      }
+    ],
+    "run_id": "8d5088ab-b51a-4309-bc1d-a4b71bff099b",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 226,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379179016": "{\"surface\": \"studio\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379179016",
+        "content": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-drafting\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft the next chapters for me\"}, {\"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"slug\": \"build-a-book\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Turn the idea into a book plan\"}, {\"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"slug\": \"canon-check\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Check the story for contradictions\"}, {\"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"slug\": \"chapter-compose\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft this chapter\"}, {\"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"slug\": \"entity-triage\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Clean up a book's suggested items\"}, {\"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"slug\": \"glossary-bootstrap\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Set up a book's world categories\"}]}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "registry_list_workflows"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "What workflows are available on the studio surface?",
+    "session_id": "01a03e56-96e0-713b-8216-3a531a12ffa7",
+    "scenario": "registry-list-workflows-by-surface",
+    "rep": 0,
+    "book_id": "01a03e56-6c6b-72c9-9125-6e4749f2dca0",
+    "project_id": "01a03e56-6de3-7182-88a8-05262d739b21",
+    "seed_ids": {
+      "01a03e56-6c6b-72c9-9125-6e4749f2dca0": "fixture book_id",
+      "01a03e56-6de3-7182-88a8-05262d739b21": "fixture project_id (composition_work)",
+      "01a03e56-6d2a-7fde-8713-fee94b5d5248": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.570746+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.570746+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.570746+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.570746+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.760879+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.754013+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.570746+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.570746+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.570746+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.570746+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.760879+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:50:46.754013+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The following recipes are available on the studio surface:\n\n*   **autonomous-drafting**: Draft the next chapters for me\n*   **build-a-book**: Turn the idea into a book plan\n*   **canon-check**: Check the story for contradictions\n*   **chapter-compose**: Draft this chapter\n*   **draw-a-map**: Draw a map of a world\n*   **entity-triage**: Clean up a book's suggested items\n*   **glossary-bootstrap**: Set up a book's world categories\n*   **kg-build**: Map how the cast connects\n*   **lore-so-far**: Answer using only what the reader has read so far\n*   **populate-from-notes**: Turn pasted notes into story bible entries\n*   **translation-pass**: Translate what is new or changed\n*   **book-building**: Turn a story idea into a real book foundation",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379179017",
+        "toolCallName": "workflow_list",
+        "parentMessageId": "dac216ef-76a0-4c9b-9b29-0e77329f734d"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379179017",
+        "delta": "{\"surface\": \"studio\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379179017"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "dac216ef-76a0-4c9b-9b29-0e77329f734d",
+        "toolCallId": "call_3336168379179017",
+        "content": "{\"ok\": true, \"result\": {\"count\": 12, \"workflows\": [{\"slug\": \"autonomous-drafting\", \"title\": \"Draft the next chapters for me\", \"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"build-a-book\", \"title\": \"Turn the idea into a book plan\", \"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"canon-check\", \"title\": \"Check the story for contradictions\", \"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"chapter-compose\", \"title\": \"Draft this chapter\", \"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"draw-a-map\", \"title\": \"Draw a map of a world\", \"description\": \"Make a map for a world \\u2014 create the map, then mark places on it (cities, regions) so the world can be seen laid out.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"entity-triage\", \"title\": \"Clean up a book's suggested items\", \"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"tier\": \"system\", \"surfaces\": []}, {\"slug\": \"glossary-bootstrap\", \"title\": \"Set up a book's world categories\", \"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"tier\": \"system\", \"surfaces\": []}, {\"slug\": \"kg-build\", \"title\": \"Map how the cast connects\", \"description\": \"Take a book that already has its cast in the glossary and build the connection map \\u2014 who relates to whom, what belongs where \\u2014 so relationships can be tracked and explored.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"lore-so-far\", \"title\": \"Answer using only what the reader has read so far\", \"description\": \"Answer a reader's question about the story using only what has been revealed up to where they are reading \\u2014 never spoiling later chapters.\", \"tier\": \"system\", \"surfaces\": [\"book\"]}, {\"slug\": \"populate-from-notes\", \"title\": \"Turn pasted notes into glossary entries\", \"description\": \"Take a chunk of notes the user pastes \\u2014 their characters, places, powers, terms \\u2014 and turn it into real, reviewable entries in the book's glossary.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"translation-pass\", \"title\": \"Translate what is new or changed\", \"description\": \"Look at what in the book is not yet translated (or has changed since it was), and bring the translation up to date.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"vision-to-book\", \"title\": \"Turn a story idea into a real book foundation\", \"description\": \"Take a story the user is describing and build its foundation \\u2014 the world's categories, the cast and key terms, how they connect, and a chapter-by-chapter plan \\u2014 then hand the actual writing to the focused drafting specialist.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}]}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "registry_list_workflows",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11193
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      }
+    ],
+    "run_id": "ec0dc8ad-e0b5-493f-a09b-b5618d5e97e0",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 8,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 184,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379179017": "{\"surface\": \"studio\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379179017",
+        "content": "{\"ok\": true, \"result\": {\"count\": 12, \"workflows\": [{\"slug\": \"autonomous-drafting\", \"title\": \"Draft the next chapters for me\", \"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"build-a-book\", \"title\": \"Turn the idea into a book plan\", \"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"canon-check\", \"title\": \"Check the story for contradictions\", \"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"chapter-compose\", \"title\": \"Draft this chapter\", \"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"draw-a-map\", \"title\": \"Draw a map of a world\", \"description\": \"Make a map for a world \\u2014 create the map, then mark places on it (cities, regions) so the world can be seen laid out.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"entity-triage\", \"title\": \"Clean up a book's suggested items\", \"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"tier\": \"system\", \"surfaces\": []}, {\"slug\": \"glossary-bootstrap\", \"title\": \"Set up a book's world categories\", \"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"tier\": \"system\", \"surfaces\": []}, {\"slug\": \"kg-build\", \"title\": \"Map how the cast connects\", \"description\": \"Take a book that already has its cast in the glossary and build the connection map \\u2014 who relates to whom, what belongs where \\u2014 so relationships can be tracked and explored.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"lore-so-far\", \"title\": \"Answer using only what the reader has read so far\", \"description\": \"Answer a reader's question about the story using only what has been revealed up to where they are reading \\u2014 never spoiling later chapters.\", \"tier\": \"system\", \"surfaces\": [\"book\"]}, {\"slug\": \"populate-from-notes\", \"title\": \"Turn pasted notes into glossary entries\", \"description\": \"Take a chunk of notes the user pastes \\u2014 their characters, places, powers, terms \\u2014 and turn it into real, reviewable entries in the book's glossary.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"translation-pass\", \"title\": \"Translate what is new or changed\", \"description\": \"Look at what in the book is not yet translated (or has changed since it was), and bring the translation up to date.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"vision-to-book\", \"title\": \"Turn a story idea into a real book foundation\", \"description\": \"Take a story the user is describing and build its foundation \\u2014 the world's categories, the cast and key terms, how they connect, and a chapter-by-chapter plan \\u2014 then hand the actual writing to the focused drafting specialist.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}]}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "workflow_list"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "What workflows are available on the studio surface?",
+    "session_id": "01a03e57-1253-7df1-9432-81feba9684dd",
+    "scenario": "registry-list-workflows-by-surface",
+    "rep": 1,
+    "book_id": "01a03e56-e82c-72c7-9aa4-164864afa544",
+    "project_id": "01a03e56-e9a1-7e40-8fbc-12fd0c287809",
+    "seed_ids": {
+      "01a03e56-e82c-72c7-9aa4-164864afa544": "fixture book_id",
+      "01a03e56-e9a1-7e40-8fbc-12fd0c287809": "fixture project_id (composition_work)",
+      "01a03e56-e8db-73c6-8491-b1ab0485432c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.234994+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.234994+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.234994+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.234994+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.440645+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.433251+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.234994+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.234994+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.234994+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.234994+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.440645+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:18.433251+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The following recipes are available on the studio surface:\n\n*   **Draft the next chapters for me** (`autonomous-drafting`): Automatically drafts chapters one by one, pausing for your review. Requires an existing story plan.\n*   **Turn the idea into a book plan** (`build-a-book`): Converts your world and cast into a structured story arc and chapter-by-chapter outline.\n*   **Check the story for contradictions** (`canon-check`): Scans your book for consistency errors regarding names, timelines, and established facts.\n*   **Draft this chapter** (`chapter-compose`): Writes the opening draft of a specific chapter based on its place in your plan.\n*   **Clean up a book's suggested items** (`entity-triage`): Helps you review, merge, or discard AI-suggested story bible items to keep your lore clean.\n*   **Set up a book's world categories** (`glossary-bootstrap`): Establishes the initial structure for tracking your world (characters, places, systems, etc.).",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379179019",
+        "toolCallName": "registry_list_workflows",
+        "parentMessageId": "f0d456a2-6e40-45c1-b66b-f878acde5357"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379179019",
+        "delta": "{\"surface\": \"studio\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379179019"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "f0d456a2-6e40-45c1-b66b-f878acde5357",
+        "toolCallId": "call_3336168379179019",
+        "content": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-drafting\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft the next chapters for me\"}, {\"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"slug\": \"build-a-book\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Turn the idea into a book plan\"}, {\"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"slug\": \"canon-check\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Check the story for contradictions\"}, {\"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"slug\": \"chapter-compose\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft this chapter\"}, {\"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"slug\": \"entity-triage\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Clean up a book's suggested items\"}, {\"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"slug\": \"glossary-bootstrap\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Set up a book's world categories\"}]}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "registry_list_workflows",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11193
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "registry_list_workflows",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      }
+    ],
+    "run_id": "0f66df24-8ce0-40d3-8ba4-9a20f8bba555",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 217,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379179019": "{\"surface\": \"studio\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379179019",
+        "content": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-drafting\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft the next chapters for me\"}, {\"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"slug\": \"build-a-book\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Turn the idea into a book plan\"}, {\"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"slug\": \"canon-check\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Check the story for contradictions\"}, {\"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"slug\": \"chapter-compose\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft this chapter\"}, {\"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"slug\": \"entity-triage\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Clean up a book's suggested items\"}, {\"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"slug\": \"glossary-bootstrap\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Set up a book's world categories\"}]}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "registry_list_workflows"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "What workflows are available on the studio surface?",
+    "session_id": "01a03e57-949d-77d5-bfc3-925c36864764",
+    "scenario": "registry-list-workflows-by-surface",
+    "rep": 2,
+    "book_id": "01a03e57-6ab1-746f-81f8-73b23827f671",
+    "project_id": "01a03e57-6c39-75f3-9860-cbd26739cce8",
+    "seed_ids": {
+      "01a03e57-6ab1-746f-81f8-73b23827f671": "fixture book_id",
+      "01a03e57-6c39-75f3-9860-cbd26739cce8": "fixture project_id (composition_work)",
+      "01a03e57-6b54-763a-8071-90d82575f331": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.636238+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.636238+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.636238+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.636238+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.870554+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.864677+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.636238+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.636238+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.636238+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.636238+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.870554+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:51:51.864677+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The following recipes are available on the studio surface:\n\n*   **Autonomous Drafting**: Draft the next chapters for me (Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review).\n*   **Build a Book**: Turn the idea into a book plan (Take a book that has its world and cast and turn it into a real plan).\n*   **Canon Check**: Check the story for contradictions (Check the book against consistency rules like names, timelines, and established facts).\n*   **Chapter Compose**: Draft this chapter (Take a chapter that has a place in the plan and write its opening draft).\n*   **Draw a Map**: Draw a map of a world (Create a map and mark places like cities or regions).\n*   **Element Triage**: Clean up a book's suggested items (Sort AI-suggested items to keep real ones and remove junk).\n*   **Story bible Bootstrap**: Set up a book's world categories (Set up the kinds of things a book tracks, like characters or places).\n*   **KG Build**: Map how the cast connects (Build a connection map of relationships between story bible elements).\n*   **Lore So Far**: Answer using only what the reader has read so far (Answer questions using only revealed information to avoid spoilers).\n*   **Populate from Notes**: Turn pasted notes into story bible entries (Convert chunks of notes into reviewable story bible entries).\n*   **Translation Pass**: Translate what is new or changed (Update translations for new or modified content).\n*   **Book-building**: Turn a story idea into a real book foundation (Build the world's categories, cast, terms, and a chapter-by-chapter plan).\n\nThe following recipes are available on the studio surface:\n\n*   **Autonomous Drafting**: Draft the next chapters for me\n*   **Build a Book**: Turn the idea into a book plan\n*   **Canon Check**: Check the story for contradictions\n*   **Chapter Compose**: Draft this chapter\n*   **Draw a Map**: Draw a map of a world\n*   **Element Triage**: Clean up a book's suggested items\n*   **Story bible Bootstrap**: Set up a book's world categories\n*   **KG Build**: Map how the cast connects\n*   **Lore So Far**: Answer using only what the reader has read so far\n*   **Populate from Notes**: Turn pasted notes into story bible entries\n*   **Translation Pass**: Translate what is new or changed\n*   **Book-building**: Turn a story idea into a real book foundation",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379179020",
+        "toolCallName": "workflow_list",
+        "parentMessageId": "36a30743-2033-4f30-ba87-d55525f6a8b7"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379179020",
+        "delta": "{\"surface\": \"studio\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379179020"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "36a30743-2033-4f30-ba87-d55525f6a8b7",
+        "toolCallId": "call_3336168379179020",
+        "content": "{\"ok\": true, \"result\": {\"count\": 12, \"workflows\": [{\"slug\": \"autonomous-drafting\", \"title\": \"Draft the next chapters for me\", \"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"build-a-book\", \"title\": \"Turn the idea into a book plan\", \"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"canon-check\", \"title\": \"Check the story for contradictions\", \"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"chapter-compose\", \"title\": \"Draft this chapter\", \"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"draw-a-map\", \"title\": \"Draw a map of a world\", \"description\": \"Make a map for a world \\u2014 create the map, then mark places on it (cities, regions) so the world can be seen laid out.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"entity-triage\", \"title\": \"Clean up a book's suggested items\", \"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"tier\": \"system\", \"surfaces\": []}, {\"slug\": \"glossary-bootstrap\", \"title\": \"Set up a book's world categories\", \"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"tier\": \"system\", \"surfaces\": []}, {\"slug\": \"kg-build\", \"title\": \"Map how the cast connects\", \"description\": \"Take a book that already has its cast in the glossary and build the connection map \\u2014 who relates to whom, what belongs where \\u2014 so relationships can be tracked and explored.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"lore-so-far\", \"title\": \"Answer using only what the reader has read so far\", \"description\": \"Answer a reader's question about the story using only what has been revealed up to where they are reading \\u2014 never spoiling later chapters.\", \"tier\": \"system\", \"surfaces\": [\"book\"]}, {\"slug\": \"populate-from-notes\", \"title\": \"Turn pasted notes into glossary entries\", \"description\": \"Take a chunk of notes the user pastes \\u2014 their characters, places, powers, terms \\u2014 and turn it into real, reviewable entries in the book's glossary.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"translation-pass\", \"title\": \"Translate what is new or changed\", \"description\": \"Look at what in the book is not yet translated (or has changed since it was), and bring the translation up to date.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"vision-to-book\", \"title\": \"Turn a story idea into a real book foundation\", \"description\": \"Take a story the user is describing and build its foundation \\u2014 the world's categories, the cast and key terms, how they connect, and a chapter-by-chapter plan \\u2014 then hand the actual writing to the focused drafting specialist.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}]}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "registry_list_workflows",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11193
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      }
+    ],
+    "run_id": "91e76ab0-3796-4bdd-bac6-a4cf92e961d9",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 8,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 501,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379179020": "{\"surface\": \"studio\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379179020",
+        "content": "{\"ok\": true, \"result\": {\"count\": 12, \"workflows\": [{\"slug\": \"autonomous-drafting\", \"title\": \"Draft the next chapters for me\", \"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"build-a-book\", \"title\": \"Turn the idea into a book plan\", \"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"canon-check\", \"title\": \"Check the story for contradictions\", \"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"chapter-compose\", \"title\": \"Draft this chapter\", \"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\", \"studio\"]}, {\"slug\": \"draw-a-map\", \"title\": \"Draw a map of a world\", \"description\": \"Make a map for a world \\u2014 create the map, then mark places on it (cities, regions) so the world can be seen laid out.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"entity-triage\", \"title\": \"Clean up a book's suggested items\", \"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"tier\": \"system\", \"surfaces\": []}, {\"slug\": \"glossary-bootstrap\", \"title\": \"Set up a book's world categories\", \"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"tier\": \"system\", \"surfaces\": []}, {\"slug\": \"kg-build\", \"title\": \"Map how the cast connects\", \"description\": \"Take a book that already has its cast in the glossary and build the connection map \\u2014 who relates to whom, what belongs where \\u2014 so relationships can be tracked and explored.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"lore-so-far\", \"title\": \"Answer using only what the reader has read so far\", \"description\": \"Answer a reader's question about the story using only what has been revealed up to where they are reading \\u2014 never spoiling later chapters.\", \"tier\": \"system\", \"surfaces\": [\"book\"]}, {\"slug\": \"populate-from-notes\", \"title\": \"Turn pasted notes into glossary entries\", \"description\": \"Take a chunk of notes the user pastes \\u2014 their characters, places, powers, terms \\u2014 and turn it into real, reviewable entries in the book's glossary.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"translation-pass\", \"title\": \"Translate what is new or changed\", \"description\": \"Look at what in the book is not yet translated (or has changed since it was), and bring the translation up to date.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}, {\"slug\": \"vision-to-book\", \"title\": \"Turn a story idea into a real book foundation\", \"description\": \"Take a story the user is describing and build its foundation \\u2014 the world's categories, the cast and key terms, how they connect, and a chapter-by-chapter plan \\u2014 then hand the actual writing to the focused drafting specialist.\", \"tier\": \"system\", \"surfaces\": [\"book\", \"editor\"]}]}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "workflow_list"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "What workflows are available on the studio surface?",
+    "session_id": "01a03e58-0d53-7973-ae70-d5e0441a1387",
+    "scenario": "registry-list-workflows-by-surface",
+    "rep": 3,
+    "book_id": "01a03e57-e388-7bbe-b886-f55f11e1b842",
+    "project_id": "01a03e57-e4fd-7cb1-ab63-63296fe6ce4f",
+    "seed_ids": {
+      "01a03e57-e388-7bbe-b886-f55f11e1b842": "fixture book_id",
+      "01a03e57-e4fd-7cb1-ab63-63296fe6ce4f": "fixture project_id (composition_work)",
+      "01a03e57-e432-7fe1-85bb-60129ac6a316": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.578891+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.578891+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.578891+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.578891+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.787738+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.780793+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.578891+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.578891+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.578891+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.578891+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.787738+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:22.780793+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The following recipes are available on the studio surface:\n\n*   **Draft the next chapters for me** (`autonomous-drafting`): Automatically drafts subsequent chapters based on an existing story plan, pausing for your review along the way.\n*   **Turn the idea into a book plan** (`build-a-book`): Transforms your world and cast into a structured story arc and chapter-by-chapter outline.\n*   **Check the story for contradictions** (`canon-check`): Scans your book against established rules, names, and timelines to find inconsistencies.\n*   **Draft this chapter** (`chapter-compose`): Writes the opening draft of a specific chapter based on its place in your story plan.\n*   **Clean up a book's suggested items** (`entity-triage`): Helps you organize and refine the list of suggested story bible items, removing duplicates or junk.\n*   **Set up a book's world categories** (`glossary-bootstrap`): Establishes the initial structure for your lore (characters, places, systems, etc.).",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379179022",
+        "toolCallName": "registry_list_workflows",
+        "parentMessageId": "ed516d0a-3fe2-46fb-a0e1-7de72662dc71"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379179022",
+        "delta": "{\"surface\": \"studio\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379179022"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "ed516d0a-3fe2-46fb-a0e1-7de72662dc71",
+        "toolCallId": "call_3336168379179022",
+        "content": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-drafting\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft the next chapters for me\"}, {\"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"slug\": \"build-a-book\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Turn the idea into a book plan\"}, {\"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"slug\": \"canon-check\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Check the story for contradictions\"}, {\"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"slug\": \"chapter-compose\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft this chapter\"}, {\"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"slug\": \"entity-triage\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Clean up a book's suggested items\"}, {\"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"slug\": \"glossary-bootstrap\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Set up a book's world categories\"}]}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "registry_list_workflows",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11193
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "registry_list_workflows",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "registry_list_workflows",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11193
+        }
+      }
+    ],
+    "run_id": "a808b3da-839f-47bb-9f1d-ee8f16b1ac14",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 215,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379179022": "{\"surface\": \"studio\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379179022",
+        "content": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-drafting\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft the next chapters for me\"}, {\"description\": \"Take a book that has its world and cast and turn it into a real plan \\u2014 the story arc and a chapter-by-chapter outline the user can build from.\", \"slug\": \"build-a-book\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Turn the idea into a book plan\"}, {\"description\": \"Check the book against the consistency rules it has recorded \\u2014 names, timelines, established facts \\u2014 and report what does not line up.\", \"slug\": \"canon-check\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Check the story for contradictions\"}, {\"description\": \"Take a chapter that has a place in the plan and write its opening draft, following what the plan says the chapter should cover.\", \"slug\": \"chapter-compose\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Draft this chapter\"}, {\"description\": \"Sort the AI-suggested items waiting for review \\u2014 keep the real ones, throw out the junk, combine duplicates \\u2014 until the pile is a clean, trustworthy list.\", \"slug\": \"entity-triage\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Clean up a book's suggested items\"}, {\"description\": \"Set up the kinds of things a book tracks (characters, places, systems, terms\\u2026) \\u2014 the starting structure for its lore, reviewed once before it is applied.\", \"slug\": \"glossary-bootstrap\", \"status\": \"published\", \"tier\": \"system\", \"title\": \"Set up a book's world categories\"}]}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "registry_list_workflows"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "registry_list_workflows",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "What workflows are available on the studio surface?",
+    "session_id": "01a03e58-965d-7a9c-976d-9e9a84f9d7a6",
+    "scenario": "registry-list-workflows-by-surface",
+    "rep": 4,
+    "book_id": "01a03e58-6c8e-713a-abe6-9ed0ba327a85",
+    "project_id": "01a03e58-6dfa-79b1-b128-9fa2c4ba6f0f",
+    "seed_ids": {
+      "01a03e58-6c8e-713a-abe6-9ed0ba327a85": "fixture book_id",
+      "01a03e58-6dfa-79b1-b128-9fa2c4ba6f0f": "fixture project_id (composition_work)",
+      "01a03e58-6d33-7e65-ab4b-52cd53bcf641": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.651779+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.651779+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.651779+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.651779+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.863984+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.849913+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.651779+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.651779+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.651779+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.651779+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.863984+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 13:52:57.849913+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  }
+]

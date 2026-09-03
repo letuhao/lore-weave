@@ -1,0 +1,152 @@
+{
+  "_note": "D-SILENT-TURN-NO-CARD-NO-PROSE's prompt-length control. Three arms, one variable. The ledger asked for exactly this and it had never been run.",
+  "scenarios": [
+    {
+      "id": "silent-turn-length-short",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Bind Emberfall Vein to the opening arc.",
+      "prompt_source": "batch27's phrasing, padded to the short arm. Length is the ONLY variable.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-vein-b27-{run_id}",
+            "name": "Emberfall Vein {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-vein-b27-{run_id}')",
+          "expect": "0",
+          "why": "ZERO bindings for THIS motif. SIXTEENTH ARM: 78 attempts, 1 clean run. The prompt is deliberately the SHORTEST yet — every previous arm used a longer sentence, and turn length is one of the few variables not yet varied."
+        }
+      ],
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run ending with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — re-run it, never read it as 0/5.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": [],
+      "control_why": "🔴 THE CONTROL THE LEDGER ASKED FOR, AND IT HAD NEVER BEEN RUN. D-SILENT-TURN-NO-CARD-NO-PROSE's root cause is a bare `<tool_call|>` delimiter arriving as the whole turn - 12 characters of 'reasoning', no content, finish_reason='stop'. Its `prompt_length_lead` says: composition_motif_bind_edit's SIXTEENTH arm was the first with ZERO errors after 78 attempts, and the only variable changed was PROMPT LENGTH; the motif name and wording had already been varied seven times without effect. It ends 'THIS IS A LEAD, NOT A PROOF, and n=1 arm ... it is cheap for the next attempt to test properly: hold the scenario fixed and vary only the prompt length.'\n\nThe earlier arms cannot settle it because they varied the VERB and the MOTIF NAME too (batch22 'Attach the pattern called Emberfall Thread...', batch23 'Bind the motif Emberfall Braid...', batch24 'Apply the motif Emberfall Coil...'). These three arms change NOTHING but length: same verb, same motif, same fixture, same expected call. The added text is padding that asks for no additional action, so a longer arm cannot fail by asking for more.\n\n    SHORT   39 chars - the known-clean batch27 phrasing, the baseline\n    MEDIUM  ~130 chars\n    LONG    ~290 chars\n\nPRE-REGISTERED READING, so the result cannot be re-interpreted afterwards: if the silent-turn / degenerate-output rate rises monotonically with length, the lead is supported and a fix has a target. If all three arms are clean, the lead is REFUTED and batch27's zero-error arm was luck - which is the likelier outcome at n=1 and must be recorded as plainly.",
+      "_prompt_chars": 39
+    },
+    {
+      "id": "silent-turn-length-medium",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Bind Emberfall Vein to the opening arc. It is the motif I want running through the start of the book, so please attach it there.",
+      "prompt_source": "batch27's phrasing, padded to the medium arm. Length is the ONLY variable.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-vein-b27-{run_id}",
+            "name": "Emberfall Vein {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-vein-b27-{run_id}')",
+          "expect": "0",
+          "why": "ZERO bindings for THIS motif. SIXTEENTH ARM: 78 attempts, 1 clean run. The prompt is deliberately the SHORTEST yet — every previous arm used a longer sentence, and turn length is one of the few variables not yet varied."
+        }
+      ],
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run ending with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — re-run it, never read it as 0/5.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": [],
+      "control_why": "🔴 THE CONTROL THE LEDGER ASKED FOR, AND IT HAD NEVER BEEN RUN. D-SILENT-TURN-NO-CARD-NO-PROSE's root cause is a bare `<tool_call|>` delimiter arriving as the whole turn - 12 characters of 'reasoning', no content, finish_reason='stop'. Its `prompt_length_lead` says: composition_motif_bind_edit's SIXTEENTH arm was the first with ZERO errors after 78 attempts, and the only variable changed was PROMPT LENGTH; the motif name and wording had already been varied seven times without effect. It ends 'THIS IS A LEAD, NOT A PROOF, and n=1 arm ... it is cheap for the next attempt to test properly: hold the scenario fixed and vary only the prompt length.'\n\nThe earlier arms cannot settle it because they varied the VERB and the MOTIF NAME too (batch22 'Attach the pattern called Emberfall Thread...', batch23 'Bind the motif Emberfall Braid...', batch24 'Apply the motif Emberfall Coil...'). These three arms change NOTHING but length: same verb, same motif, same fixture, same expected call. The added text is padding that asks for no additional action, so a longer arm cannot fail by asking for more.\n\n    SHORT   39 chars - the known-clean batch27 phrasing, the baseline\n    MEDIUM  ~130 chars\n    LONG    ~290 chars\n\nPRE-REGISTERED READING, so the result cannot be re-interpreted afterwards: if the silent-turn / degenerate-output rate rises monotonically with length, the lead is supported and a fix has a target. If all three arms are clean, the lead is REFUTED and batch27's zero-error arm was luck - which is the likelier outcome at n=1 and must be recorded as plainly.",
+      "_prompt_chars": 128
+    },
+    {
+      "id": "silent-turn-length-long",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Bind Emberfall Vein to the opening arc. It is the motif I want running through the start of the book, so please attach it there. I have been thinking about how the early chapters set the tone, and this thread is the one that should carry them, rather than anything introduced later on in the manuscript.",
+      "prompt_source": "batch27's phrasing, padded to the long arm. Length is the ONLY variable.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-vein-b27-{run_id}",
+            "name": "Emberfall Vein {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-vein-b27-{run_id}')",
+          "expect": "0",
+          "why": "ZERO bindings for THIS motif. SIXTEENTH ARM: 78 attempts, 1 clean run. The prompt is deliberately the SHORTEST yet — every previous arm used a longer sentence, and turn length is one of the few variables not yet varied."
+        }
+      ],
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run ending with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — re-run it, never read it as 0/5.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": [],
+      "control_why": "🔴 THE CONTROL THE LEDGER ASKED FOR, AND IT HAD NEVER BEEN RUN. D-SILENT-TURN-NO-CARD-NO-PROSE's root cause is a bare `<tool_call|>` delimiter arriving as the whole turn - 12 characters of 'reasoning', no content, finish_reason='stop'. Its `prompt_length_lead` says: composition_motif_bind_edit's SIXTEENTH arm was the first with ZERO errors after 78 attempts, and the only variable changed was PROMPT LENGTH; the motif name and wording had already been varied seven times without effect. It ends 'THIS IS A LEAD, NOT A PROOF, and n=1 arm ... it is cheap for the next attempt to test properly: hold the scenario fixed and vary only the prompt length.'\n\nThe earlier arms cannot settle it because they varied the VERB and the MOTIF NAME too (batch22 'Attach the pattern called Emberfall Thread...', batch23 'Bind the motif Emberfall Braid...', batch24 'Apply the motif Emberfall Coil...'). These three arms change NOTHING but length: same verb, same motif, same fixture, same expected call. The added text is padding that asks for no additional action, so a longer arm cannot fail by asking for more.\n\n    SHORT   39 chars - the known-clean batch27 phrasing, the baseline\n    MEDIUM  ~130 chars\n    LONG    ~290 chars\n\nPRE-REGISTERED READING, so the result cannot be re-interpreted afterwards: if the silent-turn / degenerate-output rate rises monotonically with length, the lead is supported and a fix has a target. If all three arms are clean, the lead is REFUTED and batch27's zero-error arm was luck - which is the likelier outcome at n=1 and must be recorded as plainly.",
+      "_prompt_chars": 303
+    }
+  ]
+}

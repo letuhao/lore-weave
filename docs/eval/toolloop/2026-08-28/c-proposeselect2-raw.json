@@ -1,0 +1,52 @@
+[
+  {
+    "scenario": "propose-edit-told-a-selection-exists",
+    "rep": 0,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: The seeded draft must exist before the turn, or the model would be rewriting nothing and any propose_edit call proves nothing about grounding.\n    expected '1', store says '0'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  },
+  {
+    "scenario": "propose-edit-told-a-selection-exists",
+    "rep": 1,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: The seeded draft must exist before the turn, or the model would be rewriting nothing and any propose_edit call proves nothing about grounding.\n    expected '1', store says '0'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  },
+  {
+    "scenario": "propose-edit-told-a-selection-exists",
+    "rep": 2,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: The seeded draft must exist before the turn, or the model would be rewriting nothing and any propose_edit call proves nothing about grounding.\n    expected '1', store says '0'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  },
+  {
+    "scenario": "propose-edit-told-a-selection-exists",
+    "rep": 3,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: The seeded draft must exist before the turn, or the model would be rewriting nothing and any propose_edit call proves nothing about grounding.\n    expected '1', store says '0'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  },
+  {
+    "scenario": "propose-edit-told-a-selection-exists",
+    "rep": 4,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: The seeded draft must exist before the turn, or the model would be rewriting nothing and any propose_edit call proves nothing about grounding.\n    expected '1', store says '0'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  }
+]

@@ -1,0 +1,35 @@
+[
+ {
+  "tool": "composition_authoring_run_manage",
+  "pre": [],
+  "args": {
+   "op": "create",
+   "plan_run_id": "54251849-04ae-49f7-82ce-d5808e18de0c",
+   "budget_usd": 1,
+   "pause_after_each_unit": true
+  },
+  "first": [
+   "refused",
+   "MCP composition_authoring_run_manage error: invalid arguments for composition_authoring_run_manage — `args.book_id`: Field required. Fix the argument and call the tool again."
+  ],
+  "second": [
+   "refused",
+   "MCP composition_authoring_run_manage error: invalid arguments for composition_authoring_run_manage — `args.book_id`: Field required. Fix the argument and call the tool again."
+  ],
+  "diff_first": {},
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing about idempotency.",
+  "first_had_effect": false,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [],
+   "book_id": "01a02d2f-7557-77d8-b466-e0b37176233d",
+   "title": "LOOP-THROWAWAY-idem-composition_authoring_run_manage-b8fb2055",
+   "tables": {
+    "composition(project)": "01a02d2f-76c1-7247-9e4b-5ed9b288bc4e"
+   }
+  }
+ }
+]

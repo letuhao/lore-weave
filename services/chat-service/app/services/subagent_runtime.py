@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from fnmatch import fnmatch
 
-from app.services.frontend_tools import is_browser_executed
+from app.services.browser_tools import is_browser_executed
 
 __all__ = [
     "RUN_SUBAGENT_NAME",

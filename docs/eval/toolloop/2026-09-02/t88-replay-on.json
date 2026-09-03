@@ -1,0 +1,341 @@
+[
+  {
+    "scenario": "arc-suggest-plural-request",
+    "rep": 0,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:5174/v1/chat/sessions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "error_population": "other",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.378267+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.378267+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.378267+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.378267+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.569759+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.563098+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1042,
+          "latest": "2026-09-01 14:19:36.088517+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.378267+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.378267+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.378267+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.378267+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.569759+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:11.563098+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1042,
+          "latest": "2026-09-01 14:19:36.088517+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "scenario": "arc-suggest-plural-request",
+    "rep": 1,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:5174/v1/chat/sessions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "error_population": "other",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:56.97953+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:56.97953+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:56.97953+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:56.97953+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:57.161534+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:57.155359+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1042,
+          "latest": "2026-09-01 14:19:36.088517+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:56.97953+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:56.97953+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:56.97953+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:56.97953+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:57.161534+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-09-02 13:36:57.155359+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1042,
+          "latest": "2026-09-01 14:19:36.088517+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "scenario": "arc-suggest-plural-request",
+    "rep": 2,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:5174/v1/chat/sessions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "error_population": "other",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.770735+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.770735+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.770735+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.770735+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.947168+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.941257+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1042,
+          "latest": "2026-09-01 14:19:36.088517+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.770735+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.770735+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.770735+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.770735+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.947168+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-09-02 13:37:44.941257+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1042,
+          "latest": "2026-09-01 14:19:36.088517+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  }
+]

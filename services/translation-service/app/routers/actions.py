@@ -257,6 +257,231 @@ def _bound_model(bound_estimate: dict) -> tuple[str | None, str | None]:
     return bound_estimate.get("model_source"), bound_estimate.get("model_ref")
 
 
+
+
+async def _execute_start_job(
+    db, payload: dict, book_id: UUID, user_id: UUID,
+    *, mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
+):
+    """translation.start_job's EFFECT, extracted 2026-09-03 (DQ-V7) so a durable ext-tasks
+    resolver can run it.
+
+    It was inline in `confirm_action`, which is the reason translation could not adopt the gate at
+    all: a resolver has no HTTP request to be inline in. Nothing about the effect changed — the
+    re-price check, the chapter-binding assertion and the create call are the branch verbatim.
+
+    `mcp_key_id` / `spend_cap_usd` default to None because they are PUBLIC-EDGE header values
+    (`X-Mcp-Key-Id`, `X-Mcp-Spend-Cap-Usd`). A durable task is driven by chat-service, which holds
+    no MCP key, so None is exactly what that path already passed.
+    """
+    p = payload
+    # Derived HERE rather than passed in: they come from the payload's own frozen estimate, so a
+    # resolver replaying the payload gets the SAME bound model and cost the proposal was priced
+    # against. Passing them would let a caller supply a different bound than the one signed.
+    bound_estimate = p.get("estimate") or {}
+    bound_cost = bound_estimate.get("cost_usd")
+    bound_model_source, bound_model_ref = _bound_model(bound_estimate)
+    chapter_ids = [UUID(c) for c in p.get("chapter_ids", [])]
+    target_language = p.get("target_language")
+    force_retranslate = bool(p.get("force_retranslate", False))
+
+    # Chapter→book binding: every requested chapter must belong to the bound book.
+    await _assert_chapters_under_book(book_id, chapter_ids)
+
+    # Accurate quote: re-price ONLY the chapters execution will actually spend on.
+    # Without force_retranslate, the create path's idempotency skip-gate drops any
+    # chapter that already has a fresh completed translation — quoting the FULL set
+    # would over-quote. force_retranslate re-does everything → full set.
+    to_do = chapter_ids if force_retranslate else await _start_job_todo(
+        db, chapter_ids, target_language, user_id, book_id,
+    )
+
+    # H14 — re-price the to-do scope against the MODEL BOUND in the token.
+    fresh = await estimate_job_cost(
+        db, owner_user_id=user_id, book_id=book_id,
+        chapter_ids=to_do, scope=SCOPE_CHAPTERS,
+        target_language=target_language,
+        bound_model_source=bound_model_source, bound_model_ref=bound_model_ref,
+    )
+    if reprice_exceeds_threshold(bound_cost, fresh.cost_usd):
+        return _reprice_refusal(bound_cost, fresh)
+
+    job = await _resolve_and_create_job(
+        db, book_id,
+        CreateJobPayload(
+            chapter_ids=chapter_ids,
+            target_language=target_language,
+            force_retranslate=force_retranslate,
+        ),
+        user_id,
+        mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+    )
+    return {
+        "status": "action_done",
+        "job_id": str(job.job_id),
+        "job_status": job.status,
+        "estimate": fresh.as_dict(),
+    }
+
+
+
+async def _execute_start_extraction(
+    db, payload: dict, book_id: UUID, user_id: UUID,
+    *, caller_grant_level: int, mcp_key_id: str | None = None,
+    spend_cap_usd: float | None = None,
+):
+    """translation.start_extraction's EFFECT, extracted 2026-09-03 (DQ-V7) so a durable ext-tasks resolver can run it.
+
+    Verbatim from the `confirm_action` branch — the re-price check and the binding assertions are
+    unchanged. The `bound_*` values derive from the payload's own frozen estimate so a replay is
+    priced against the model the proposal was signed with, never a caller-supplied one.
+    """
+    p = payload
+    bound_estimate = p.get("estimate") or {}
+    bound_cost = bound_estimate.get("cost_usd")
+    bound_model_source, bound_model_ref = _bound_model(bound_estimate)
+    # Glossary chapter-extraction (M3). The grant was re-authorized above; assert
+    # every requested chapter belongs to the bound book (a payload cannot retarget
+    # another book's chapters). No H14 re-price: the extraction estimate is a
+    # deterministic token-count projection over (chapter count × profile), not a
+    # model-priced quote, so confirm-time == mint-time — re-running the core
+    # re-computes the SAME estimate and stores it on the job row.
+    chapter_ids = [UUID(c) for c in p.get("chapter_ids", [])]
+    await _assert_chapters_under_book(book_id, chapter_ids)
+    # RE-Q11 (effort-auth) — RE-CLAMP the baked effort against the CURRENT grant.
+    # The mint clamped it too, but a grant downgrade inside the confirm TTL
+    # (Manage→Edit) must not let a token replay a now-too-high paid effort.
+    # Back-compat: a token minted before this field existed carries only the
+    # `thinking_enabled` bool → treat True as the medium alias.
+    requested_effort = p.get("reasoning_effort")
+    if requested_effort is None and p.get("thinking_enabled"):
+        requested_effort = "medium"
+    effort, _capped = clamp_effort_to_grant(requested_effort, caller_grant_level)
+    ext_payload = CreateExtractionJobPayload(
+        chapter_ids=chapter_ids,
+        extraction_profile=p.get("extraction_profile") or {},
+        model_source=p.get("model_source") or "platform_model",
+        model_ref=UUID(p["model_ref"]) if p.get("model_ref") else None,
+        max_entities_per_kind=int(p.get("max_entities_per_kind", 30)),
+        # D-RE-WORKER-GRADED-EFFORT: carry the GRADED effort through (not just the bool) so
+        # low/high reach the worker. The core re-clamps (idempotent here). thinking_enabled
+        # kept as the back-compat alias.
+        reasoning_effort=effort,
+        thinking_enabled=effort not in ("none", "off"),
+    )
+    result = await _create_extraction_job_core(
+        db, book_id, user_id, ext_payload,
+        mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+    )
+    return {
+        "status": "action_done",
+        "job_id": result["job_id"],
+        "job_status": result.get("status"),
+        "estimate": bound_estimate,
+    }
+
+
+
+
+async def _execute_retranslate_dirty(
+    db, payload: dict, book_id: UUID, user_id: UUID,
+    *, mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
+):
+    """translation.retranslate_dirty's EFFECT, extracted 2026-09-03 (DQ-V7) so a durable ext-tasks resolver can run it.
+
+    Verbatim from the `confirm_action` branch — the re-price check and the binding assertions are
+    unchanged. The `bound_*` values derive from the payload's own frozen estimate so a replay is
+    priced against the model the proposal was signed with, never a caller-supplied one.
+    """
+    p = payload
+    bound_estimate = p.get("estimate") or {}
+    bound_cost = bound_estimate.get("cost_usd")
+    bound_model_source, bound_model_ref = _bound_model(bound_estimate)
+    chapter_id = UUID(p["chapter_id"])
+    target_language = p["target_language"]
+
+    # Chapter→book binding (single-chapter scope).
+    await _assert_chapters_under_book(book_id, [chapter_id])
+
+    # scope=dirty already prices ONLY the needs-set (source-dirty ∪ glossary-stale)
+    # — the EXACT segments retranslate-dirty re-runs, so this quote is accurate.
+    fresh = await estimate_job_cost(
+        db, owner_user_id=user_id, book_id=book_id,
+        chapter_ids=[chapter_id], scope=SCOPE_DIRTY,
+        chapter_id=chapter_id, target_language=target_language,
+        bound_model_source=bound_model_source, bound_model_ref=bound_model_ref,
+    )
+    if reprice_exceeds_threshold(bound_cost, fresh.cost_usd):
+        return _reprice_refusal(bound_cost, fresh)
+
+    job = await _retranslate_dirty_core(
+        db, chapter_id, target_language, user_id,
+        mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+    )
+    return {
+        "status": "action_done",
+        "job_id": str(job.job_id),
+        "job_status": job.status,
+        "estimate": fresh.as_dict(),
+    }
+
+
+
+async def _execute_job_control(
+    db, payload: dict, book_id: UUID, user_id: UUID, descriptor: str,
+    *, mcp_key_id: str | None = None, spend_cap_usd: float | None = None,
+):
+    """translation.job_resume / job_retry EFFECT, extracted 2026-09-03 (DQ-V7).
+
+    🔴 `descriptor` IS A PARAMETER, NOT DERIVED. Resume and retry share one branch and differ only
+    by it — resume re-prices the job's still-`pending` chapters, retry re-prices the FULL stored
+    set. A resolver that guessed wrong would quote one and spend the other, so the value is passed
+    from the task's own descriptor rather than inferred from the payload.
+    """
+    p = payload
+    bound_estimate = p.get("estimate") or {}
+    bound_cost = bound_estimate.get("cost_usd")
+    bound_model_source, bound_model_ref = _bound_model(bound_estimate)
+    # resume/retry re-drive an EXISTING job's chapters → re-spend. H14: re-price
+    # the chapters that will ACTUALLY run and refuse if it drifted up.
+    #   - resume: only the job's still-'pending' chapters run (an accurate quote
+    #             needs the pending subset, NOT the full set).
+    #   - retry:  re-submits a FRESH job over the job's FULL stored chapter set
+    #             (force_retranslate) — so the full bound scope IS what runs.
+    job_id = UUID(p["job_id"])
+    bound_chapter_ids = [UUID(c) for c in (p.get("chapter_ids") or [])]
+    if descriptor == DESC_JOB_RESUME:
+        run_ids = await _resume_pending_scope(db, job_id)
+    else:
+        run_ids = bound_chapter_ids
+    if run_ids:
+        fresh = await estimate_job_cost(
+            db, owner_user_id=user_id, book_id=book_id,
+            chapter_ids=run_ids, scope=SCOPE_CHAPTERS,
+            bound_model_source=bound_model_source, bound_model_ref=bound_model_ref,
+        )
+        if reprice_exceeds_threshold(bound_cost, fresh.cost_usd):
+            return _reprice_refusal(bound_cost, fresh)
+    # Owner-scoped cores (re-verify the owner against the row). The user binding
+    # in the token (claims.user_id) is the verified owner.
+    if descriptor == DESC_JOB_RESUME:
+        # Resume re-drives the SAME job from its row (which already carries the
+        # original key/cap via RETURNING * → _job_message_from_row), bounded to the
+        # job's still-pending chapters — so it keeps the original attribution.
+        res = await _resume_job_core(db, job_id, claims.user_id)
+    else:
+        # Retry creates a FRESH job → the re-spend must carry the CONFIRMING caller's
+        # key + cap (else a public agent could retry a cap-failed job into an
+        # uncapped one — D-PMCP-WORKER-CARRIER /review-impl HIGH).
+        res = await _retry_job_core(
+            db, job_id, claims.user_id,
+            mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+        )
+    out = dict(res)
+    out["job_status"] = out.pop("status", None)
+    out["status"] = "action_done"
+    return out
+
 @router.post("/confirm")
 async def confirm_action(
     body: ConfirmRequest | None = None,
@@ -304,165 +529,38 @@ async def confirm_action(
     bound_model_source, bound_model_ref = _bound_model(bound_estimate)
 
     if claims.descriptor == DESC_START_JOB:
-        chapter_ids = [UUID(c) for c in p.get("chapter_ids", [])]
-        target_language = p.get("target_language")
-        force_retranslate = bool(p.get("force_retranslate", False))
-
-        # Chapter→book binding: every requested chapter must belong to the bound book.
-        await _assert_chapters_under_book(book_id, chapter_ids)
-
-        # Accurate quote: re-price ONLY the chapters execution will actually spend on.
-        # Without force_retranslate, the create path's idempotency skip-gate drops any
-        # chapter that already has a fresh completed translation — quoting the FULL set
-        # would over-quote. force_retranslate re-does everything → full set.
-        to_do = chapter_ids if force_retranslate else await _start_job_todo(
-            db, chapter_ids, target_language, user_id, book_id,
-        )
-
-        # H14 — re-price the to-do scope against the MODEL BOUND in the token.
-        fresh = await estimate_job_cost(
-            db, owner_user_id=user_id, book_id=book_id,
-            chapter_ids=to_do, scope=SCOPE_CHAPTERS,
-            target_language=target_language,
-            bound_model_source=bound_model_source, bound_model_ref=bound_model_ref,
-        )
-        if reprice_exceeds_threshold(bound_cost, fresh.cost_usd):
-            return _reprice_refusal(bound_cost, fresh)
-
-        job = await _resolve_and_create_job(
-            db, book_id,
-            CreateJobPayload(
-                chapter_ids=chapter_ids,
-                target_language=target_language,
-                force_retranslate=force_retranslate,
-            ),
-            user_id,
+        return await _execute_start_job(
+            db, p, book_id, user_id,
             mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
         )
-        return {
-            "status": "action_done",
-            "job_id": str(job.job_id),
-            "job_status": job.status,
-            "estimate": fresh.as_dict(),
-        }
 
     if claims.descriptor == DESC_RETRANSLATE_DIRTY:
-        chapter_id = UUID(p["chapter_id"])
-        target_language = p["target_language"]
-
-        # Chapter→book binding (single-chapter scope).
-        await _assert_chapters_under_book(book_id, [chapter_id])
-
-        # scope=dirty already prices ONLY the needs-set (source-dirty ∪ glossary-stale)
-        # — the EXACT segments retranslate-dirty re-runs, so this quote is accurate.
-        fresh = await estimate_job_cost(
-            db, owner_user_id=user_id, book_id=book_id,
-            chapter_ids=[chapter_id], scope=SCOPE_DIRTY,
-            chapter_id=chapter_id, target_language=target_language,
-            bound_model_source=bound_model_source, bound_model_ref=bound_model_ref,
-        )
-        if reprice_exceeds_threshold(bound_cost, fresh.cost_usd):
-            return _reprice_refusal(bound_cost, fresh)
-
-        job = await _retranslate_dirty_core(
-            db, chapter_id, target_language, user_id,
+        return await _execute_retranslate_dirty(
+            db, p, book_id, user_id,
             mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
         )
-        return {
-            "status": "action_done",
-            "job_id": str(job.job_id),
-            "job_status": job.status,
-            "estimate": fresh.as_dict(),
-        }
 
     if claims.descriptor in (DESC_JOB_RESUME, DESC_JOB_RETRY):
-        # resume/retry re-drive an EXISTING job's chapters → re-spend. H14: re-price
-        # the chapters that will ACTUALLY run and refuse if it drifted up.
-        #   - resume: only the job's still-'pending' chapters run (an accurate quote
-        #             needs the pending subset, NOT the full set).
-        #   - retry:  re-submits a FRESH job over the job's FULL stored chapter set
-        #             (force_retranslate) — so the full bound scope IS what runs.
-        job_id = UUID(p["job_id"])
-        bound_chapter_ids = [UUID(c) for c in (p.get("chapter_ids") or [])]
-        if claims.descriptor == DESC_JOB_RESUME:
-            run_ids = await _resume_pending_scope(db, job_id)
-        else:
-            run_ids = bound_chapter_ids
-        if run_ids:
-            fresh = await estimate_job_cost(
-                db, owner_user_id=user_id, book_id=book_id,
-                chapter_ids=run_ids, scope=SCOPE_CHAPTERS,
-                bound_model_source=bound_model_source, bound_model_ref=bound_model_ref,
-            )
-            if reprice_exceeds_threshold(bound_cost, fresh.cost_usd):
-                return _reprice_refusal(bound_cost, fresh)
-        # Owner-scoped cores (re-verify the owner against the row). The user binding
-        # in the token (claims.user_id) is the verified owner.
-        if claims.descriptor == DESC_JOB_RESUME:
-            # Resume re-drives the SAME job from its row (which already carries the
-            # original key/cap via RETURNING * → _job_message_from_row), bounded to the
-            # job's still-pending chapters — so it keeps the original attribution.
-            res = await _resume_job_core(db, job_id, claims.user_id)
-        else:
-            # Retry creates a FRESH job → the re-spend must carry the CONFIRMING caller's
-            # key + cap (else a public agent could retry a cap-failed job into an
-            # uncapped one — D-PMCP-WORKER-CARRIER /review-impl HIGH).
-            res = await _retry_job_core(
-                db, job_id, claims.user_id,
-                mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
-            )
-        out = dict(res)
-        out["job_status"] = out.pop("status", None)
-        out["status"] = "action_done"
-        return out
-
-    if claims.descriptor == DESC_START_EXTRACTION:
-        # Glossary chapter-extraction (M3). The grant was re-authorized above; assert
-        # every requested chapter belongs to the bound book (a payload cannot retarget
-        # another book's chapters). No H14 re-price: the extraction estimate is a
-        # deterministic token-count projection over (chapter count × profile), not a
-        # model-priced quote, so confirm-time == mint-time — re-running the core
-        # re-computes the SAME estimate and stores it on the job row.
-        chapter_ids = [UUID(c) for c in p.get("chapter_ids", [])]
-        await _assert_chapters_under_book(book_id, chapter_ids)
-        # RE-Q11 (effort-auth) — RE-CLAMP the baked effort against the CURRENT grant.
-        # The mint clamped it too, but a grant downgrade inside the confirm TTL
-        # (Manage→Edit) must not let a token replay a now-too-high paid effort.
-        # Back-compat: a token minted before this field existed carries only the
-        # `thinking_enabled` bool → treat True as the medium alias.
-        requested_effort = p.get("reasoning_effort")
-        if requested_effort is None and p.get("thinking_enabled"):
-            requested_effort = "medium"
-        effort, _capped = clamp_effort_to_grant(requested_effort, caller_grant_level)
-        ext_payload = CreateExtractionJobPayload(
-            chapter_ids=chapter_ids,
-            extraction_profile=p.get("extraction_profile") or {},
-            model_source=p.get("model_source") or "platform_model",
-            model_ref=UUID(p["model_ref"]) if p.get("model_ref") else None,
-            max_entities_per_kind=int(p.get("max_entities_per_kind", 30)),
-            # D-RE-WORKER-GRADED-EFFORT: carry the GRADED effort through (not just the bool) so
-            # low/high reach the worker. The core re-clamps (idempotent here). thinking_enabled
-            # kept as the back-compat alias.
-            reasoning_effort=effort,
-            thinking_enabled=effort not in ("none", "off"),
-        )
-        result = await _create_extraction_job_core(
-            db, book_id, claims.user_id, ext_payload,
+        return await _execute_job_control(
+            db, p, book_id, user_id, claims.descriptor,
             mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
         )
-        return {
-            "status": "action_done",
-            "job_id": result["job_id"],
-            "job_status": result.get("status"),
-            "estimate": bound_estimate,
-        }
 
+    if claims.descriptor == DESC_START_EXTRACTION:
+        return await _execute_start_extraction(
+            db, p, book_id, user_id,
+            caller_grant_level=caller_grant_level,
+            mcp_key_id=mcp_key_id, spend_cap_usd=spend_cap_usd,
+        )
+
+    # The handler's FALLTHROUGH. It was swept into _execute_start_extraction by an extraction
+    # that ran to end-of-function because that branch had no following sibling — caught by a
+    # NameError on `claims`, which an effect has no business seeing.
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail={"code": "TRANSL_CONFIRM_UNKNOWN_DESCRIPTOR",
                 "message": f"unsupported confirm descriptor {claims.descriptor!r}"},
     )
-
 
 async def _start_job_todo(
     db: asyncpg.Pool, chapter_ids: list[UUID], target_language: str | None,
@@ -527,3 +625,4 @@ def _reprice_refusal(bound_cost, fresh) -> dict:
             "estimate": fresh.as_dict(),
         },
     )
+

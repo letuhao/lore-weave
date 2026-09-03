@@ -226,6 +226,27 @@ func streamResponsesSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 			if msg == "" {
 				msg = ev.Response.Error.Message
 			}
+			// 🔴 A FAILURE CARRYING NO MESSAGE IS UNREPRESENTABLE — the tool-contract's own
+			// error_contract says so ("message: required on every failure"). Both sources are
+			// routinely empty on LM Studio's Responses stream, and Message is `omitempty`, so the
+			// frame serialized to exactly `{"event":"error","code":"LLM_UPSTREAM_ERROR"}`. That is
+			// what the operator saw at every layer: chat-service re-raised the bare code,
+			// provider-registry logged only its context preflight, worker-ai logged nothing.
+			// Measured 2026-08-12: three chat turns across three books died this way at 6% context
+			// use while a direct LM Studio probe answered normally, and the journey loop could not
+			// tell a model crash from a bad payload from a transport fault.
+			//
+			// So say what IS known. The event type, the response id and the upstream status are all
+			// in hand here and all three are actionable: the id is greppable in the provider's own
+			// logs, and the status distinguishes `failed` from a bare `error` frame. This invents
+			// nothing — it reports the fields the frame already carried and used to discard.
+			if msg == "" {
+				msg = fmt.Sprintf(
+					"upstream sent %q with no error message (response id %q, status %q) — "+
+						"the provider reported a failure without saying why",
+					ev.Type, ev.Response.ID, ev.Response.Status,
+				)
+			}
 			_ = emit(StreamChunk{Kind: StreamChunkError, Code: "LLM_UPSTREAM_ERROR", Message: msg})
 			return errStreamDone
 		default:

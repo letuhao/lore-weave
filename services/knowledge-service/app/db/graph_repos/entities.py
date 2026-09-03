@@ -61,6 +61,8 @@ __all__ = [
     "ENTITY_STATUSES",
     "ENTITY_SORT_KEYS",
     "AUTHORABLE_KINDS",
+    "KIND_ALIASES",
+    "canonical_kind",
     "AuthorableKind",
     "merge_entity",
     "upsert_glossary_anchor",
@@ -143,6 +145,57 @@ AuthorableKind = Literal[
     "item",
 ]
 AUTHORABLE_KINDS: tuple[str, ...] = get_args(AuthorableKind)
+
+#: 🔴 THE ORDINARY WORD, MAPPED TO THE CANONICAL ONE. Measured 2026-08-23 on kg_propose_edge at
+#: K=5: the model called kg_add_nodes with `kind="person"` for a human being — the plain English
+#: word — and every call was rejected. The nodes were never created, so the edge could never
+#: resolve, and the model retried FOUR times without recovering. Both of that run's two failures
+#: died here.
+#:
+#: The rejection message was already good ("Input should be 'character', 'location', ... (you sent
+#: 'person')"): it named the value and listed the alternatives, and the model still could not act
+#: on it. A rejection the caller cannot act on costs the turn however well it is worded.
+#:
+#: This TOLERATES AT THE EDGE AND STORES THE CANONICAL VALUE — the alias never reaches the graph,
+#: so there is no second vocabulary to reconcile later. Precision is total by construction: each
+#: alias maps to exactly one member of AUTHORABLE_KINDS, and the closed set itself is unchanged.
+#: Only `person` is measured; the rest are its obvious siblings, listed so the next ordinary word
+#: does not cost another batch. They live HERE, beside the canonical set, because one home for the
+#: vocabulary is the whole point of AUTHORABLE_KINDS.
+#:
+#: 🔴 `faction` IS DELIBERATELY ABSENT, and the suite is why. The first draft of this map included
+#: faction -> organization, and `test_kg_create_node_rejects_legacy_faction_kind` went red:
+#: "`faction` is the retired misnomer — the agent must not be able to mint it either". An alias map
+#: is a way to RESURRECT a retired term without noticing, because the alias never appears in the
+#: canonical set anyone reviews. Every entry here was then checked against the codebase for
+#: retired/legacy/misnomer status; `faction` was the only hit, and it is the reason this comment
+#: exists. A synonym is only obvious until it is one someone deliberately removed.
+KIND_ALIASES: dict[str, str] = {
+    "person": "character",
+    "people": "character",
+    "char": "character",
+    "place": "location",
+    "setting": "location",
+    "group": "organization",
+    "org": "organization",
+    "idea": "concept",
+    "theme": "concept",
+    "object": "item",
+    "thing": "item",
+    "artifact": "item",
+}
+
+
+def canonical_kind(raw: str) -> str:
+    """`raw` as a canonical AUTHORABLE_KIND, or `raw` unchanged when it is not an alias.
+
+    Case- and whitespace-insensitive. Returns the input untouched when it maps to nothing, so the
+    CALLER still decides what an unknown kind means — this normalises, it never validates.
+    """
+    if not isinstance(raw, str):
+        return raw
+    v = raw.strip().lower()
+    return KIND_ALIASES.get(v, raw.strip())
 
 
 def _node_to_entity(node: Any) -> Entity:

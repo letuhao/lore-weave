@@ -36,7 +36,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"status": {"proposed", "dismissed", "merged"},
 		}),
 		// LEGACY (catalog-unification 2026-07-22 Part B): superseded by glossary_curation_list.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_curation_list"),
 	}, s.toolListMergeCandidates)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -45,7 +45,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"relevance + notes. book_id + entity_id. " +
 			"NOTE: superseded by glossary_get_entity (include=chapter_links) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part B2): folded into glossary_get_entity.include.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_get_entity"),
 	}, s.toolListChapterLinks)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -54,7 +54,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"book_id + entity_id. Use to find a revision to restore. " +
 			"NOTE: superseded by glossary_get_entity (include=revisions) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part B2): folded into glossary_get_entity.include.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_get_entity"),
 	}, s.toolListEntityRevisions)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -68,7 +68,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"status": {"draft", "active", "inactive", "rejected", "all"},
 		}),
 		// LEGACY (catalog-unification 2026-07-22 Part B): superseded by glossary_curation_list.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_curation_list"),
 	}, s.toolListUnknownEntities)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -78,7 +78,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"attribute, or before adding evidence with glossary_create_evidence. " +
 			"NOTE: superseded by glossary_get_entity (include=evidence) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part B2): folded into glossary_get_entity.include.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_get_entity"),
 	}, s.toolGetEntityEvidence)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -93,7 +93,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"status": {"draft", "active", "inactive", "rejected", "all"},
 		}),
 		// LEGACY (catalog-unification 2026-07-22 Part B): superseded by glossary_curation_list.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_curation_list"),
 	}, s.toolListAISuggestions)
 }
 
@@ -211,7 +211,7 @@ func (s *Server) queryUnknownEntities(ctx context.Context, bookID uuid.UUID, sta
 const pipelineReadCap = 200
 
 type mergeCandToolIn struct {
-	BookID string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID string `json:"book_id" jsonschema:"the book (UUID)"`
 	Status string `json:"status,omitempty" jsonschema:"proposed (default) | dismissed | merged — omit this argument for the default; do not send an empty string"`
 }
 type mergeCandidatesOut struct {
@@ -243,8 +243,35 @@ func (s *Server) toolListMergeCandidates(ctx context.Context, _ *mcp.CallToolReq
 	return nil, mergeCandidatesOut{Candidates: cands, Truncated: truncated}, nil
 }
 
+// T10-D1 — `book_id` is NOT optional here, and `,omitempty` was advertising that it was.
+//
+// The repo states the pairing rule in bookToolAuthAmbient's own comment: "Use ONLY on a tool
+// tagged WithAmbientBook (its book_id schema must be optional)." An optional `book_id` is the
+// ADVERTISED half of the ambient contract — the model may omit it and the book is resolved from
+// the envelope's X-Book-Id. All three tools on this struct call the NON-ambient bookToolAuth and
+// carry no WithAmbientBook tag, so they promised the contract without implementing it.
+//
+// MEASURED 2026-08-13, same envelope, same omission, over the real wire with X-Book-Id set and
+// no book_id argument:
+//
+//	glossary_get_entity          (WithAmbientBook) -> ok, resolved from the envelope
+//	glossary_search              (WithAmbientBook) -> ok, resolved from the envelope
+//	glossary_list_chapter_links                    -> "book_id must be a UUID"
+//	glossary_list_entity_revisions                 -> "book_id must be a UUID"
+//	glossary_get_entity_evidence                   -> "book_id must be a UUID"
+//
+// The message is wrong twice over: inside a book studio the caller followed the schema, and it
+// sent no book_id at all rather than a malformed one. Marking the field required moves the
+// refusal to the schema validator, which names the missing property instead.
+//
+// DECLARED REQUIRED rather than made ambient ON PURPOSE. These three are legacy — folded into
+// glossary_get_entity.include, "kept for existing callers only" — and every one of the 264
+// recorded calls already passes book_id, so nothing that works today stops working. Making them
+// ambient would add a capability to tools slated for removal; whether the OTHER 37 non-ambient
+// glossary tools that declare book_id optional should be declared-required or made ambient is a
+// service-wide product decision, recorded as DQ-T4 rather than guessed at here.
 type bookEntityToolIn struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity (UUID)"`
 }
 type chapterLinksOut struct {
@@ -300,7 +327,7 @@ func (s *Server) toolListEntityRevisions(ctx context.Context, _ *mcp.CallToolReq
 }
 
 type bookOnlyToolIn struct {
-	BookID string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID string `json:"book_id" jsonschema:"the book (UUID)"`
 	// External MCP feedback (2026-07-08, "the inboxes never drain") — both list tools
 	// sharing this type used to return every entity regardless of status, so
 	// approving/rejecting a triage item never removed it from the NEXT call's

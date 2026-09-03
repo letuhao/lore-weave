@@ -358,6 +358,59 @@ async def test_k11_7_invalidate_fact_sets_valid_until(neo4j_driver, test_user):
 
 
 @pytest.mark.asyncio
+async def test_a_repeat_invalidate_does_not_move_when_the_fact_stopped_being_true(
+    neo4j_driver, test_user
+):
+    """🔴 THE DEFECT. A second forget re-stamped `valid_until`, rewriting history.
+
+    MEASURED 2026-08-23 through memory_forget against the OWNING store: repeating the call moved
+    valid_until 07:52:12.211Z -> 07:54:29.154Z on an ALREADY-invalidated fact, while both responses
+    answered {"invalidated": true}. `valid_until` is what the temporal reads key on, so the damage
+    is to the answer to "when was this true?" - and nothing in either response showed it.
+
+    The old Cypher was `SET f.valid_until = coalesce($valid_until, datetime())`, which cannot see
+    the existing value. Putting `f.valid_until` in the coalesce makes the FIRST stamp stick.
+    """
+    async with neo4j_driver.session() as session:
+        f = await merge_fact(
+            session, user_id=test_user, project_id="p-1", type="decision",
+            content="Aldric climbed the black stair", confidence=0.9,
+        )
+        first = await invalidate_fact(session, user_id=test_user, fact_id=f.id)
+        second = await invalidate_fact(session, user_id=test_user, fact_id=f.id)
+
+    assert first is not None and second is not None
+    assert first.valid_until is not None
+    assert second.valid_until == first.valid_until, (
+        "a repeat invalidate moved valid_until, so the record of WHEN the fact stopped being true "
+        "is rewritten by a caller that thought it was repeating a no-op"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_valid_until_still_wins(neo4j_driver, test_user):
+    """THE CONTROL for the coalesce ORDER. Preserving the first stamp must not silently ignore a
+    caller that passes a time deliberately - the parameter is in the signature, and dropping it
+    would trade one lie for another. No caller passes one today; all four call sites omit it."""
+    from datetime import datetime, timedelta, timezone
+
+    corrected = datetime.now(timezone.utc) - timedelta(days=3)
+    async with neo4j_driver.session() as session:
+        f = await merge_fact(
+            session, user_id=test_user, project_id="p-1", type="decision",
+            content="Corrected later", confidence=0.9,
+        )
+        await invalidate_fact(session, user_id=test_user, fact_id=f.id)
+        fixed = await invalidate_fact(
+            session, user_id=test_user, fact_id=f.id, valid_until=corrected,
+        )
+    assert fixed is not None and fixed.valid_until is not None
+    assert abs((fixed.valid_until - corrected).total_seconds()) < 2, (
+        "an explicit valid_until was ignored, so the idempotency fix took away a correction path"
+    )
+
+
+@pytest.mark.asyncio
 async def test_k11_7_invalidate_fact_returns_none_for_missing(
     neo4j_driver, test_user
 ):

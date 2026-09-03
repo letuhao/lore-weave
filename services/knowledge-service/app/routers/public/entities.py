@@ -969,7 +969,21 @@ async def project_entities_from_glossary(
                 projects_repo._pool, get_graph_store(session), owner, project_id)
         except Exception:  # pragma: no cover — advisory cache, never blocks the projection
             logger.warning("from-glossary: stat recount failed (project=%s)", project_id, exc_info=True)
-    return dataclasses.asdict(result)
+    # 🔴 EXPLICIT, NOT `dataclasses.asdict`. This body is a public REST contract with its own
+    # snapshot test, and asdict() meant that ANY field added to ProjectionResult silently changed
+    # it. That fired on 2026-08-23: `nodes` was added so the MCP tool could hand its successor the
+    # ids it requires (kg_propose_edge needs source_entity_id/target_entity_id and the projection
+    # returned only counts), and it would have appeared here too — up to 50 entity ids on an
+    # endpoint that never asked for them. Listing the fields keeps a fix for one surface from
+    # rewriting another.
+    return {
+        "created": result.created,
+        "existing": result.existing,
+        "seen": result.seen,
+        "skipped": result.skipped,
+        "truncated": result.truncated,
+        "conflicted": result.conflicted,
+    }
 
 
 # ── C10 (C10-gap-report) — GET /projects/{id}/gaps ───────────────────

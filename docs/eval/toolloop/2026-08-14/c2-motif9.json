@@ -1,0 +1,508 @@
+{
+  "batch": "c2-motif9",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_motif_link_edit",
+      "scenario": "composition-motif-link-edit",
+      "intent": "write",
+      "falsifier": "REFUTED IF: an edge lands with NO confirm card, OR the model invents a from_motif_id/to_motif_id rather than resolving the two names, OR `kind` is not `precedes` when the user said 'coming before' (its enum spans composed_of|precedes|variant_of, and variant_of would assert the two motifs are versions of each other, which is a different claim), OR the DIRECTION is reversed — Alpha precedes Beta, not the other way round, and a reversed edge is a wrong fact quietly stored.",
+      "answer_expect": null,
+      "falsifier_sha": "64065a3dac9c365e",
+      "ship_audit": {
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/c2-arc.json): called 4/5, left SUSPENDED on a Tier-A approval card on 2 of 5 runs, store unchanged.",
+        "absent_case": "EXERCISED by targeted probe (docs/eval/toolloop/2026-08-14/c2-ship-probe-opdispatch.txt), for the same op-dispatch reason: op=create with absent from/to motif ids is refused 'not found or not accessible'.",
+        "tenancy": "EXERCISED by targeted probe (docs/eval/toolloop/2026-08-14/c2-ship-probe-opdispatch.txt): foreign ids refuse IDENTICALLY."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02c1e-a9d7-7aea-8b7f-6972aac8037d",
+          "session_id": "01a02c1e-d73c-71d1-82fe-a02bea452b2c",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha Mosoriza as coming before Throwaway Loop Beta Mosoriza.",
+          "scenario_prompt": "Link motifs — mark Throwaway Loop Alpha {run_word} as coming before Throwaway Loop Beta {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_link_edit",
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.345722+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.345722+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.345722+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.345722+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.520541+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.513785+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.345722+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.345722+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.345722+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.345722+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.520541+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 00:56:42.513785+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm having trouble linking those motifs directly by name. I need to find their unique IDs first to complete the link. I'll search for them now.\n\nI'm having trouble linking those motifs directly by name. I need to find their unique IDs first to complete the link. I'll search for them now."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02c22-1b89-7ff3-9ef3-b2248a4dd214",
+          "session_id": "01a02c22-51b3-7415-af89-9ec3fa391709",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha Palekati as coming before Throwaway Loop Beta Palekati.",
+          "scenario_prompt": "Link motifs — mark Throwaway Loop Alpha {run_word} as coming before Throwaway Loop Beta {run_word}.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.078814+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.078814+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.078814+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.078814+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.280402+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.27427+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.078814+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.078814+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.078814+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.078814+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.280402+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 01:00:28.27427+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02c28-03da-7bdc-8352-5bcc76544cdd",
+          "session_id": "01a02c28-3a5b-7f45-9dc5-7fae4c3ae0cb",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha Marazevu as coming before Throwaway Loop Beta Marazevu.",
+          "scenario_prompt": "Link motifs — mark Throwaway Loop Alpha {run_word} as coming before Throwaway Loop Beta {run_word}.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.253048+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.253048+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.253048+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.253048+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.469243+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.459785+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.253048+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.253048+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.253048+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.253048+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.469243+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 01:06:55.459785+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02c2d-eb90-70bd-ad8b-bc747b0df379",
+          "session_id": "01a02c2e-220f-7548-8d72-0eb3cf0f45b6",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha Gasureta as coming before Throwaway Loop Beta Gasureta.",
+          "scenario_prompt": "Link motifs — mark Throwaway Loop Alpha {run_word} as coming before Throwaway Loop Beta {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_link_edit",
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.239289+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.239289+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.239289+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.239289+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.442921+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.43576+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.239289+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.239289+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.239289+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.239289+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.442921+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:22.43576+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02c2e-784c-76e1-99df-c6f72869e50f",
+          "session_id": "01a02c2e-afcb-750c-b88e-367c95a43839",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha Zeruvana as coming before Throwaway Loop Beta Zeruvana.",
+          "scenario_prompt": "Link motifs — mark Throwaway Loop Alpha {run_word} as coming before Throwaway Loop Beta {run_word}.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.263686+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.263686+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.263686+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.263686+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.461799+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.455735+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.263686+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.263686+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.263686+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.263686+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.461799+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 01:13:58.455735+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 2,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

@@ -1350,7 +1350,7 @@
 <div class="callout">
   <b>Registration is three counters that must move together.</b> <code>catalog.ts</code> (with a <b>mandatory</b> <code>category: 'storyBible'</code> — already in <code>CATEGORY_ORDER</code>, so
   X-2 does not block — and a non-empty <code>guideBodyKey</code>, which X-3 asserts) · the <code>panel_id</code> <b>enum + description prose</b> in
-  <code>chat-service/app/services/frontend_tools.py</code> · and the <b>regenerated</b> <code>contracts/frontend-tools.contract.json</code>
+  <code>chat-service/app/services/frontend_tools.py</code> · and the <b>regenerated</b> <code>contracts/browser-tools.contract.json</code>
   (<code>WRITE_FRONTEND_CONTRACT=1 pytest</code> — never hand-edited). <b>57 → 58 in lockstep across all three.</b> A count that moves in only two of three is precisely the drift the guards
   exist to catch. Plus <code>arcEffects.ts</code> (X-4): without it, every agent write to an arc or a template leaves this panel <b>stale</b>.
 </div>

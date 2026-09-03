@@ -1,0 +1,56 @@
+{
+ "_note": "memory_search re-run only — batch 15's first attempt died in provisioning.",
+ "scenarios": [
+  {
+   "id": "memory-search-v2",
+   "tool_under_test": "memory_search",
+   "expect_tool": "memory_search",
+   "intent": "read",
+   "tier": "R",
+   "scope": "project",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "What has been established about the Obsidian Trench so far?",
+   "prompt_source": "meta.synonyms['what has been established'], verbatim — the SAME prompt as batch 6, deliberately unchanged so this measures the tool and not a new phrasing.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "book_chapter_create",
+     "args": {
+      "book_id": "{book_id}",
+      "original_language": "en",
+      "title": "Chapter II — The Waterline",
+      "body": "The Obsidian Trench is only walkable during low tide. Aldric Vane had learned that the hard way, and the waterline still marked the stone where the sea had nearly taken him."
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_book",
+     "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+     "expect": "2",
+     "why": "The seeded chapter plus the fixture's own. The phrase 'only walkable during low tide' exists in the manuscript and is its ONLY source, so a reply carrying it read something and a reply denying the Trench exists is a FALSE ABSENCE over text the author can see."
+    }
+   ],
+   "answer_expect": {
+    "all_of": [
+     "low tide"
+    ],
+    "none_of": [
+     "hasn't been written",
+     "has not been written",
+     "couldn't find any mention",
+     "could not find any mention"
+    ],
+    "why": "THIS IS THE WITHDRAWAL, RE-ARMED. The batch-6 note claimed 'the answer carried the seeded chapter's fact'; once the answer bar could actually read all_of, 1 of 3 carried it and 2 of 3 said 'I couldn't find any mention of the Obsidian Trench ... it's possible it hasn't been written into the story yet'. The none_of needles are those exact sentences. The tool's own description promises lexical search 'so it finds an exact phrase even with nothing indexed yet', which is what makes a false absence a defect rather than a fixture gap."
+   },
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR any reply states the Trench is not in the manuscript while the seeded chapter contains it (D-DEGRADED-READ-REPORTED-AS-ABSENCE, the class story_search is BLOCKED on), OR a reply carries Trench details the chapter does not contain. K=5, because at K=3 the batch-6 distribution (1 good, 2 false) could land 3/3 good by luck and I would re-prove nothing.",
+   "ship_audit": {
+    "empty_case": "OWED — a project with no matching knowledge must say so, and 'nothing matched' must be distinguishable from 'nothing is indexed', which is the distinction that broke here.",
+    "tenancy": "OWED — project-scoped."
+   },
+   "defects": [],
+   "_seed_note": "FIXTURE CORRECTED after the first attempt failed 5/5 with PROVISION 400 on POST /v1/books/{book_id}/chapters. I had written the seed as a REST call with a `content` field; the working seed — the one batch 6 used for this same tool — is the `book_chapter_create` TOOL with `body` and `original_language`. The 0/5 called in that first run is therefore a SEED failure and says nothing about memory_search."
+  }
+ ]
+}

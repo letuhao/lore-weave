@@ -1,0 +1,64 @@
+{
+  "_note": "D-THE-AUTHORS-WORD-FOR-THE-LINTER-REACHES-NO-TOOL. The SAME scenario as plan-validate-on-an-existing-run — same seed, same expect_tool — with ONE word changed in the prompt: 'golden rules' becomes 'golden linter'. That is the whole difference, and before this fix it was the difference between reaching plan_validate and reaching NOTHING:\n\n    answerable_tools('run the golden rules on it')          -> {plan_validate}\n    answerable_tools('Run the golden linter on this plan.') -> set()\n\nThe tool's own description has said 'run the S1-S8 golden linter' since it shipped; R1 reads `synonyms`, which never carried the word.",
+  "_what_would_refute_the_fix": "plan_validate absent from advertised_tools on this prompt, or advertised and not called. Either means declaring the synonym did not put the author's word on the wire.",
+  "scenarios": [
+    {
+      "id": "the-authors-word-linter-reaches-the-linter",
+      "tool_under_test": "plan_validate",
+      "expect_tool": "plan_validate",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+      "prompt_source": "plan_validate's OWN declared synonyms, verbatim: 'validate plan' + 'golden rules'. 'already has' says the run EXISTS and names no id, because an author has none.",
+      "needs_target": false,
+      "approve": null,
+      "approve_why": "READ intent and a Tier-R tool under test. Approving a write on a turn that only asked to look would make the harness the thing that wrote — the standing rule from the tool-load arm.",
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I - The Emberfall\n### The Ember Codex\nAldric Vane climbs the black stair and finds the codex burning.\n### The Waterline\nThe Obsidian Trench is walkable only at low tide.\n\n## Arc II - The Reckoning\n### The Black Stair Again\nAldric returns to the keep with the codex.\n### The Last Tide\nThe trench closes for good and the keep is cut off.\n"
+          },
+          "why": "🔴 THE SEED IS THE WHOLE POINT: it creates the run in a turn the model never sees, so at prompt time the run EXISTS and the model did not make it. That is the case the row says is unaddressable, and it cannot be reproduced by letting the model propose its own spec — a run it just created is one it already holds the id for."
+        },
+        {
+          "tool": "plan_compile",
+          "args": {
+            "book_id": "{book_id}",
+            "run_id": "{step:0:run_id}",
+            "arc_id": "arc_1"
+          },
+          "why": "A proposed run is not a compiled one, and plan_validate lints a validated spec. arc_id is the SPEC's own id ('arc_1'), not a structure node's — the tool says so when you get it wrong."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_run WHERE book_id = '{book_id}'",
+          "expect": "1",
+          "why": "EXACTLY ONE plan run before the turn. One is what makes 'the plan this book already has' unambiguous, and it is also the control for the falsifier below: if the count is 2 afterwards, the model started a NEW run rather than reading the existing one, which is the defect this scenario exists to detect."
+        }
+      ],
+      "falsifier": "REFUTED IF: the model calls plan_propose_spec (starting a SECOND run to obtain a run_id — the row's stated failure), OR it invents a run_id, OR it passes the book_id in the run_id slot, OR it asks the AUTHOR for a run_id (a UUID no author has). Store check: loreweave_composition.plan_run stays at 1 row for this book.",
+      "ship_audit": {
+        "gate": "N/A — Tier R, no confirm card.",
+        "absent_case": "N/A here; plan_validate's absent-run refusal is not what this measures.",
+        "idempotency": "N/A — a read.",
+        "tenancy": "covered by the VIEW gate on the book."
+      },
+      "defects": [],
+      "_problem": "D-THE-WRITER-IS-SHIPPED-WITHOUT-THE-READER",
+      "answer_expect": {
+        "all_of": [
+          "plan"
+        ],
+        "why": "Deliberately weak on the TEXT. The assertion is the CALL: plan_validate reached with a run_id that came from a reader rather than from a new run. A reply that discusses the plan while no linter ran is exactly what the tool-call trace, not the prose, has to rule out."
+      },
+      "_first_attempt_2026_08_26": "🔴 ATTEMPT 1 MEASURED NOTHING AND IS RECORDED RATHER THAN OVERWRITTEN (docs/eval/toolloop/2026-08-14/c-existingrun1.json). Prompt was 'Run the golden linter on the plan this book already has — does it pass?' and plan_validate was advertised 0/5, called 0/5. My prompt_source claimed the tool's synonyms verbatim and that was FALSE: 'golden linter' is from the DESCRIPTION; the declared synonyms are 'validate plan', 'check spec', 'golden rules', and R1 answerability matches the SYNONYMS. So the turn never reached the tool under test and the emitter chain was never exercised — an instrument that measured nothing, not a result about the fix.\n\nA SEPARATE FINDING FELL OUT OF IT, worth its own row and not folded into this one: on 5/5 the model called composition_diagnostics and then reported 'The plan doesn't quite pass the linter yet. There are 3 warnings' — naming the linter as the thing that ran when plan_validate was never on the wire. The problems panel and the golden linter are different checks with different verdicts."
+    }
+  ]
+}

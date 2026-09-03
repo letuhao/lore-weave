@@ -1,0 +1,612 @@
+{
+  "batch": "c-tjc3",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "translation_job_control",
+      "scenario": "translation-job-control-domain-question",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the job is cancelled with NO confirm card (Tier W), OR the action chosen is `resume` or `retry` — both RE-SPEND money by the tool's own description and neither is what the author asked for — OR the model invents a job_id rather than reading one from turn 1. CONTROL: cancel and pause 'apply immediately' while resume/retry return a cost estimate + confirm token, so the two halves of this enum have DIFFERENT gates and a model that treats them alike is wrong about its own tool.",
+      "answer_expect": null,
+      "falsifier_sha": "57194994db03d789",
+      "ship_audit": {
+        "gate": "OWED — Tier W.",
+        "absent_case": "OWED — a job_id that does not exist must be refused.",
+        "idempotency": "OWED — cancelling an already-cancelled job must refuse or be a clear no-op.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a031ca-355e-72bd-9b43-e9f8b749968b",
+          "session_id": "01a031ca-6a87-718c-b0fc-83081a9b3cd9",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "Stop the translation for this book.",
+          "prior_turns": [
+            {
+              "prompt": "Stop the translation for this book.",
+              "called": [
+                "jobs_cancel"
+              ],
+              "text": ""
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_cancel",
+            "jobs_summary"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:10.819798+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:10.819798+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:10.819798+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:10.819798+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:11.022873+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:11.013834+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:11.175278+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:10.819798+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:10.819798+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:10.819798+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:10.819798+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:11.022873+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:11.013834+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:11.175278+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a031ca-c276-7ebf-9fb3-e16add47c778",
+          "session_id": "01a031ca-f7e6-75e2-bbbc-b87e5dce729f",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "Stop the translation for this book.",
+          "prior_turns": [
+            {
+              "prompt": "Stop the translation for this book.",
+              "called": [
+                "jobs_cancel"
+              ],
+              "text": ""
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_cancel",
+            "jobs_summary"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:46.935629+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:46.935629+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:46.935629+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:46.935629+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:47.135919+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:47.128755+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:47.297404+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:46.935629+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:46.935629+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:46.935629+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:46.935629+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:47.135919+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:47.128755+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:22:47.297404+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a031cb-52c8-7b5d-9add-16d1e45d1afb",
+          "session_id": "01a031cb-865f-703b-bee0-3040a22a22a7",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "Stop the translation for this book.",
+          "prior_turns": [
+            {
+              "prompt": "Stop the translation for this book.",
+              "called": [
+                "jobs_cancel"
+              ],
+              "text": ""
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_cancel",
+            "jobs_summary"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:23.894527+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:23.894527+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:23.894527+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:23.894527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:24.110629+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:24.103249+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:24.281378+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:23.894527+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:23.894527+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:23.894527+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:23.894527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:24.110629+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:24.103249+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:23:24.281378+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't find the specific translation job to cancel. Could you please provide the job ID, or let me know if you'd like me to list all your active jobs so you can identify it?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a031cb-e6c8-71a8-a11c-a13a8c4c66fe",
+          "session_id": "01a031cc-18d9-71c2-9c94-f7000812c1d0",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "Stop the translation for this book.",
+          "prior_turns": [
+            {
+              "prompt": "Stop the translation for this book.",
+              "called": [
+                "jobs_cancel"
+              ],
+              "text": "I'm sorry, but I can't cancel the translation because I don't have a specific job ID to target. I can only cancel a job if I have its unique ID.\n\nIf there is a translation job currently running, please let me know, and I will try to find its ID so I can stop it for you."
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_cancel",
+            "jobs_summary"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.774145+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.774145+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.774145+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.774145+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.98035+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.972139+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:02.131318+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.774145+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.774145+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.774145+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.774145+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.98035+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:01.972139+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:08.307185+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:24:02.131318+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:08.307185+00"
+              }
+            }
+          },
+          "answer": "I'm sorry, but I'm unable to cancel the job because I don't have the specific ID for it. I can see that there are 49 active jobs running, but I need the exact ID of the translation job you want to stop.\n\nIf you can provide the job ID, or if you'd like me to list the active jobs so you can identify it, please let me know."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a031cf-192c-71f8-b40b-eebc619f12ee",
+          "session_id": "01a031cf-49f6-7a21-86de-05eaa7220c3b",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "Stop the translation for this book.",
+          "prior_turns": [
+            {
+              "prompt": "Stop the translation for this book.",
+              "called": [
+                "jobs_cancel"
+              ],
+              "text": ""
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_cancel",
+            "jobs_summary"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.281321+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.281321+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.281321+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.281321+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.489039+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.479141+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.692801+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.281321+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.281321+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.281321+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.281321+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.489039+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.479141+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 03:27:31.692801+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 1,
+      "suspended_count": 3,
+      "blocked_reason": "STILL BLOCKED, and this arm REFUTES the fix it was built to test. K=5, zero errored runs: surfaced 5/5, called 0/5, suspended 3/5. Every run called jobs_cancel + jobs_summary; jobs_cancel then failed on 'missing required argument(s): [job_id]'.\n\nThe prompt was changed to this tool's own domain question, 'Stop the translation for this book.', on which R1 forces translation_job_control ALONE — jobs_cancel matches nothing, because it declares no translation vocabulary. The previous prompt front-loaded 'Cancel job', which made the tool match 'cancel job' (10) FIRST and tie jobs_cancel, discarding its own longer 'stop translation' (16).\n\n🔴 SO AN UNAMBIGUOUS ANSWERABLE SET DOES NOT DECIDE THE CHOICE. jobs_cancel stays advertised via its own domain and the model prefers it anyway. Third tool measured with this exact shape — see D-R1-FORCING-ADDS-THE-RIGHT-TOOL-AND-REMOVES-NO-WRONG-ONE.\n\n🔴 IT ALSO CORRECTS MY OWN EARLIER RECORD FOR THIS TOOL, which claimed jobs_cancel declares 'stop the translation', 'cancel it' and 'stop that one'. It declares none of them: ['cancel job', 'stop job', 'abort job', 'kill job', 'stop a running job', 'cancel my task']. The 16-character tie I recorded as DQ-T41's sharper second instance does not exist. The genuine tie is on 'Cancel that job.', where both tools declare the IDENTICAL string.",
+      "retraction_2026_08_24": "🔴 RETRACTED SAME DAY. The paragraph above claiming jobs_cancel does not declare 'stop the translation' was measured against a FROZEN catalogue snapshot. Live, jobs_cancel DOES declare it, both tools tie at 16 on this prompt, and R1 forces BOTH — so this arm never tested what it was built to test, and the original record of the tie was correct. The run data (called 0/5, jobs_cancel every run) stands; the framing does not. See D-I-MEASURED-FIVE-CYCLES-AGAINST-A-FROZEN-CATALOGUE."
+    }
+  ]
+}

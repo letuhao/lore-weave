@@ -136,7 +136,7 @@ func TestLivenessWarningsWarnOnlyOnUncheckedTools(t *testing.T) {
 func TestValidateWorkflowRejectsAProvenBrokenTool(t *testing.T) {
 	withLiveness(t, _fixture, func() {
 		in := &workflowInput{
-			Slug: "wf-broken", Description: "d", Surfaces: []string{"chat"},
+			Slug: "wf-broken", Description: "d", Surfaces: []string{"book"},
 			Steps: []workflowStepIn{{ID: "step-one", Tool: "broken_tool"}},
 		}
 		msg, ok := validateWorkflow(in)
@@ -151,9 +151,14 @@ func TestValidateWorkflowRejectsAProvenBrokenTool(t *testing.T) {
 
 func TestValidateWorkflowAdmitsUncheckedAndSelectFailingTools(t *testing.T) {
 	withLiveness(t, _fixture, func() {
-		for _, tool := range []string{"unchecked", "works_but_unpicked", "never_probed_at_all"} {
+		// `book_list` stands in for "never probed at all": it is a REAL tool (so the
+		// existence gate admits it) that the fixture manifest does not mention, which is
+		// exactly the condition this case is about — no liveness evidence either way. The
+		// former placeholder `never_probed_at_all` names no tool, and since DQ-T37 a
+		// workflow step naming a non-existent tool is rejected before liveness is consulted.
+		for _, tool := range []string{"unchecked", "works_but_unpicked", "book_list"} {
 			in := &workflowInput{
-				Slug: "wf-ok", Description: "d", Surfaces: []string{"chat"},
+				Slug: "wf-ok", Description: "d", Surfaces: []string{"book"},
 				Steps: []workflowStepIn{{ID: "step-one", Tool: tool}},
 			}
 			if _, ok := validateWorkflow(in); !ok {

@@ -1,0 +1,4102 @@
+[
+  {
+    "text": "\n\nNothing has been saved yet; confirm the card above to apply it.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_4355668083290154",
+        "toolCallName": "glossary_extract_entities_from_doc",
+        "parentMessageId": "8e674b0c-5d8f-4e69-aabe-1efe573deec6"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_4355668083290154",
+        "delta": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"book_id\": \"01a04f02-1c02-7afa-9880-8e0194b8335b\", \"source_ref\": \"last_user_message\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_4355668083290154"
+      }
+    ],
+    "surface": {
+      "phase": "ToolRunning",
+      "pinned_count": 0,
+      "hot_seed_count": 58,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "glossary",
+        "glossary_shaping",
+        "translation",
+        "jobs"
+      ],
+      "running_tool": "glossary_extract_entities_from_doc",
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 15
+        },
+        "jobs": {
+          "tools": 5
+        },
+        "knowledge": {
+          "tools": 11
+        },
+        "translation": {
+          "tools": 12
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 20349
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": "glossary_extract_entities_from_doc",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      }
+    ],
+    "run_id": "4ef7daa4-5b4a-4492-b1a5-73a2519edea1",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 5,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 1,
+      "TEXT_MESSAGE_END": 1,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_4355668083290154": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"book_id\": \"01a04f02-1c02-7afa-9880-8e0194b8335b\", \"source_ref\": \"last_user_message\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+    },
+    "approvals": [],
+    "pending": {
+      "runId": "62e0ff07-d85b-4286-8c28-2fe4d65bc69e",
+      "toolCallId": "call_4355668083290154",
+      "toolName": "glossary_extract_entities_from_doc"
+    },
+    "status": "suspended",
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "glossary_extract_entities_from_doc"
+      }
+    ],
+    "pending_approval": {
+      "run_id": "62e0ff07-d85b-4286-8c28-2fe4d65bc69e",
+      "tool_call_id": "call_4355668083290154",
+      "tool": "glossary_extract_entities_from_doc",
+      "kind": "tool_approval",
+      "tier": "R",
+      "proposed_tool": "glossary_extract_entities_from_doc"
+    },
+    "prior_turns": [],
+    "wire_passes": [
+      {
+        "turn": 2,
+        "pass": 1,
+        "names": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pass_ledger": {
+      "store": 1,
+      "wire_log": 1,
+      "gap": 0
+    },
+    "prompt": "Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.",
+    "session_id": "01a04f02-78f2-7ddd-84a5-1fca24a0f5dd",
+    "scenario": "extract-cannot-be-handed-a-model-authored-document",
+    "rep": 0,
+    "book_id": "01a04f02-1c02-7afa-9880-8e0194b8335b",
+    "project_id": "01a04f02-1d9e-7302-a335-ae53c0aae58d",
+    "seed_ids": {
+      "01a04f02-1c02-7afa-9880-8e0194b8335b": "fixture book_id",
+      "01a04f02-1d9e-7302-a335-ae53c0aae58d": "fixture project_id (composition_work)",
+      "01a04f02-1ca6-7130-b35a-551b9e343b77": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.605714+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.605714+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.605714+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.605714+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.86053+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.852856+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.605714+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.605714+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.605714+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.605714+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.86053+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:32:13.852856+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "\n\nNothing has been saved yet; confirm the card above to apply it.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_4355668083290155",
+        "toolCallName": "glossary_extract_entities_from_doc",
+        "parentMessageId": "ae182e90-15c1-46da-bfff-59bb668dcc3b"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_4355668083290155",
+        "delta": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"book_id\": \"01a04f02-e7da-79ba-8be4-c26b81da8f6b\", \"source_ref\": \"last_user_message\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_4355668083290155"
+      }
+    ],
+    "surface": {
+      "phase": "ToolRunning",
+      "pinned_count": 0,
+      "hot_seed_count": 58,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "glossary",
+        "glossary_shaping",
+        "translation",
+        "jobs"
+      ],
+      "running_tool": "glossary_extract_entities_from_doc",
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 15
+        },
+        "jobs": {
+          "tools": 5
+        },
+        "knowledge": {
+          "tools": 11
+        },
+        "translation": {
+          "tools": 12
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 20349
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": "glossary_extract_entities_from_doc",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      }
+    ],
+    "run_id": "9629d63a-91c8-4ff6-85d2-bc91ff134e33",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 5,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 1,
+      "TEXT_MESSAGE_END": 1,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_4355668083290155": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"book_id\": \"01a04f02-e7da-79ba-8be4-c26b81da8f6b\", \"source_ref\": \"last_user_message\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+    },
+    "approvals": [],
+    "pending": {
+      "runId": "24151f1f-e7fb-4b0a-9836-3bd6389f12b4",
+      "toolCallId": "call_4355668083290155",
+      "toolName": "glossary_extract_entities_from_doc"
+    },
+    "status": "suspended",
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "glossary_extract_entities_from_doc"
+      }
+    ],
+    "pending_approval": {
+      "run_id": "24151f1f-e7fb-4b0a-9836-3bd6389f12b4",
+      "tool_call_id": "call_4355668083290155",
+      "tool": "glossary_extract_entities_from_doc",
+      "kind": "tool_approval",
+      "tier": "R",
+      "proposed_tool": "glossary_extract_entities_from_doc"
+    },
+    "prior_turns": [],
+    "wire_passes": [
+      {
+        "turn": 2,
+        "pass": 1,
+        "names": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pass_ledger": {
+      "store": 1,
+      "wire_log": 1,
+      "gap": 0
+    },
+    "prompt": "Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.",
+    "session_id": "01a04f03-373c-7b93-8a83-fb151888da36",
+    "scenario": "extract-cannot-be-handed-a-model-authored-document",
+    "rep": 1,
+    "book_id": "01a04f02-e7da-79ba-8be4-c26b81da8f6b",
+    "project_id": "01a04f02-e953-7fce-9adb-8608b94d2372",
+    "seed_ids": {
+      "01a04f02-e7da-79ba-8be4-c26b81da8f6b": "fixture book_id",
+      "01a04f02-e953-7fce-9adb-8608b94d2372": "fixture project_id (composition_work)",
+      "01a04f02-e88a-7544-940c-1d454db43b10": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:05.801953+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:05.801953+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:05.801953+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:05.801953+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:06.009433+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:06.003518+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:05.801953+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:05.801953+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:05.801953+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:05.801953+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:06.009433+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:06.003518+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "\n\nNothing has been saved yet; confirm the card above to apply it.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_4355668083290156",
+        "toolCallName": "glossary_extract_entities_from_doc",
+        "parentMessageId": "948f2b6d-898a-4bab-9c47-4aa29dd11df1"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_4355668083290156",
+        "delta": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"book_id\": \"01a04f03-9d81-7e6f-97ad-99c09c80a513\", \"source_ref\": \"last_user_message\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_4355668083290156"
+      }
+    ],
+    "surface": {
+      "phase": "ToolRunning",
+      "pinned_count": 0,
+      "hot_seed_count": 58,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "glossary",
+        "glossary_shaping",
+        "translation",
+        "jobs"
+      ],
+      "running_tool": "glossary_extract_entities_from_doc",
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 15
+        },
+        "jobs": {
+          "tools": 5
+        },
+        "knowledge": {
+          "tools": 11
+        },
+        "translation": {
+          "tools": 12
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 20349
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": "glossary_extract_entities_from_doc",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      }
+    ],
+    "run_id": "416bb58d-dd52-4292-b8ff-8d94656a84da",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 5,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 1,
+      "TEXT_MESSAGE_END": 1,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_4355668083290156": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"book_id\": \"01a04f03-9d81-7e6f-97ad-99c09c80a513\", \"source_ref\": \"last_user_message\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+    },
+    "approvals": [],
+    "pending": {
+      "runId": "859e9a04-810d-4ae9-bbab-fee883bc9aa9",
+      "toolCallId": "call_4355668083290156",
+      "toolName": "glossary_extract_entities_from_doc"
+    },
+    "status": "suspended",
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "glossary_extract_entities_from_doc"
+      }
+    ],
+    "pending_approval": {
+      "run_id": "859e9a04-810d-4ae9-bbab-fee883bc9aa9",
+      "tool_call_id": "call_4355668083290156",
+      "tool": "glossary_extract_entities_from_doc",
+      "kind": "tool_approval",
+      "tier": "R",
+      "proposed_tool": "glossary_extract_entities_from_doc"
+    },
+    "prior_turns": [],
+    "wire_passes": [
+      {
+        "turn": 2,
+        "pass": 1,
+        "names": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pass_ledger": {
+      "store": 1,
+      "wire_log": 1,
+      "gap": 0
+    },
+    "prompt": "Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.",
+    "session_id": "01a04f03-ef5b-7127-8fa7-f9e117b4d75e",
+    "scenario": "extract-cannot-be-handed-a-model-authored-document",
+    "rep": 2,
+    "book_id": "01a04f03-9d81-7e6f-97ad-99c09c80a513",
+    "project_id": "01a04f03-9eff-75b5-9230-3ee792b55f8f",
+    "seed_ids": {
+      "01a04f03-9d81-7e6f-97ad-99c09c80a513": "fixture book_id",
+      "01a04f03-9eff-75b5-9230-3ee792b55f8f": "fixture project_id (composition_work)",
+      "01a04f03-9e37-7706-bc69-f5f6a1068ef9": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.311287+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.311287+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.311287+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.311287+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.516713+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.510691+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.311287+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.311287+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.311287+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.311287+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.516713+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:33:52.510691+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "\n\nNothing has been saved yet; confirm the card above to apply it.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_4355668083290157",
+        "toolCallName": "glossary_extract_entities_from_doc",
+        "parentMessageId": "7dc300d1-b649-4b65-824c-6c2f95d1fc47"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_4355668083290157",
+        "delta": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"source_ref\": \"last_user_message\", \"book_id\": \"01a04f04-5e38-7fd7-a38f-a9e8e9fc6c1d\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_4355668083290157"
+      }
+    ],
+    "surface": {
+      "phase": "ToolRunning",
+      "pinned_count": 0,
+      "hot_seed_count": 58,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "glossary",
+        "glossary_shaping",
+        "translation",
+        "jobs"
+      ],
+      "running_tool": "glossary_extract_entities_from_doc",
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 15
+        },
+        "jobs": {
+          "tools": 5
+        },
+        "knowledge": {
+          "tools": 11
+        },
+        "translation": {
+          "tools": 12
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 20349
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": "glossary_extract_entities_from_doc",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      }
+    ],
+    "run_id": "916a24a5-814d-4423-b62d-8348e0e32ee8",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 5,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 1,
+      "TEXT_MESSAGE_END": 1,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_4355668083290157": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"source_ref\": \"last_user_message\", \"book_id\": \"01a04f04-5e38-7fd7-a38f-a9e8e9fc6c1d\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+    },
+    "approvals": [],
+    "pending": {
+      "runId": "ac6fe5de-2c58-47ab-be77-74f6b1005638",
+      "toolCallId": "call_4355668083290157",
+      "toolName": "glossary_extract_entities_from_doc"
+    },
+    "status": "suspended",
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "glossary_extract_entities_from_doc"
+      }
+    ],
+    "pending_approval": {
+      "run_id": "ac6fe5de-2c58-47ab-be77-74f6b1005638",
+      "tool_call_id": "call_4355668083290157",
+      "tool": "glossary_extract_entities_from_doc",
+      "kind": "tool_approval",
+      "tier": "R",
+      "proposed_tool": "glossary_extract_entities_from_doc"
+    },
+    "prior_turns": [],
+    "wire_passes": [
+      {
+        "turn": 2,
+        "pass": 1,
+        "names": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pass_ledger": {
+      "store": 1,
+      "wire_log": 1,
+      "gap": 0
+    },
+    "prompt": "Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.",
+    "session_id": "01a04f04-b910-7f61-8a62-2cc7ac0d1af0",
+    "scenario": "extract-cannot-be-handed-a-model-authored-document",
+    "rep": 3,
+    "book_id": "01a04f04-5e38-7fd7-a38f-a9e8e9fc6c1d",
+    "project_id": "01a04f04-6036-7a22-886d-66f059d89423",
+    "seed_ids": {
+      "01a04f04-5e38-7fd7-a38f-a9e8e9fc6c1d": "fixture book_id",
+      "01a04f04-6036-7a22-886d-66f059d89423": "fixture project_id (composition_work)",
+      "01a04f04-5f16-7a48-9c78-040d01613bc8": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.686347+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.686347+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.686347+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.686347+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.98153+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.973221+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.686347+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.686347+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.686347+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.686347+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.98153+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:34:41.973221+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "\n\nNothing has been saved yet; confirm the card above to apply it.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_4355668083290158",
+        "toolCallName": "glossary_extract_entities_from_doc",
+        "parentMessageId": "256c6f72-6e32-45d6-bfe6-f1ecf9eb65ce"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_4355668083290158",
+        "delta": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"book_id\": \"01a04f05-1c96-7c0f-9167-3e873e4275e1\", \"source_ref\": \"last_user_message\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_4355668083290158"
+      }
+    ],
+    "surface": {
+      "phase": "ToolRunning",
+      "pinned_count": 0,
+      "hot_seed_count": 58,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "glossary",
+        "glossary_shaping",
+        "translation",
+        "jobs"
+      ],
+      "running_tool": "glossary_extract_entities_from_doc",
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 15
+        },
+        "jobs": {
+          "tools": 5
+        },
+        "knowledge": {
+          "tools": 11
+        },
+        "translation": {
+          "tools": 12
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 20349
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 58,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "glossary",
+          "glossary_shaping",
+          "translation",
+          "jobs"
+        ],
+        "running_tool": "glossary_extract_entities_from_doc",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 15
+          },
+          "jobs": {
+            "tools": 5
+          },
+          "knowledge": {
+            "tools": 11
+          },
+          "translation": {
+            "tools": 12
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 20349
+        }
+      }
+    ],
+    "run_id": "d55b3088-c301-4d12-baf8-62d66f82d735",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 5,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 1,
+      "TEXT_MESSAGE_END": 1,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_4355668083290158": "{\"kind\": \"tool_approval\", \"tool\": \"glossary_extract_entities_from_doc\", \"args\": {\"book_id\": \"01a04f05-1c96-7c0f-9167-3e873e4275e1\", \"source_ref\": \"last_user_message\", \"source_markdown\": \"Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.\"}, \"tier\": \"R\", \"spend\": true, \"approval_kinds\": [\"spend\"]}"
+    },
+    "approvals": [],
+    "pending": {
+      "runId": "d70ff4c7-acc9-4de2-ad0e-bd4075ec8cbb",
+      "toolCallId": "call_4355668083290158",
+      "toolName": "glossary_extract_entities_from_doc"
+    },
+    "status": "suspended",
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "glossary_extract_entities_from_doc"
+      }
+    ],
+    "pending_approval": {
+      "run_id": "d70ff4c7-acc9-4de2-ad0e-bd4075ec8cbb",
+      "tool_call_id": "call_4355668083290158",
+      "tool": "glossary_extract_entities_from_doc",
+      "kind": "tool_approval",
+      "tier": "R",
+      "proposed_tool": "glossary_extract_entities_from_doc"
+    },
+    "prior_turns": [],
+    "wire_passes": [
+      {
+        "turn": 2,
+        "pass": 1,
+        "names": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_apply",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_get_entity",
+          "glossary_list_system_standards",
+          "glossary_ontology_delete",
+          "glossary_ontology_upsert",
+          "glossary_plan",
+          "glossary_propose_batch",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "glossary_search",
+          "glossary_set_genres",
+          "jobs_cancel",
+          "jobs_get",
+          "jobs_list",
+          "jobs_pause",
+          "jobs_summary",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "memory_search",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "translation_coverage",
+          "translation_job_control",
+          "translation_job_status",
+          "translation_list_versions",
+          "translation_patch_block",
+          "translation_retranslate_dirty",
+          "translation_save_edited_version",
+          "translation_segment_status",
+          "translation_set_active_version",
+          "translation_start_extraction",
+          "translation_start_job",
+          "translation_update_settings",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pass_ledger": {
+      "store": 1,
+      "wire_log": 1,
+      "gap": 0
+    },
+    "prompt": "Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.",
+    "session_id": "01a04f05-6ec2-7684-9e10-defe80d40fcf",
+    "scenario": "extract-cannot-be-handed-a-model-authored-document",
+    "rep": 4,
+    "book_id": "01a04f05-1c96-7c0f-9167-3e873e4275e1",
+    "project_id": "01a04f05-1df6-78f7-9504-50d8a0d5ea23",
+    "seed_ids": {
+      "01a04f05-1c96-7c0f-9167-3e873e4275e1": "fixture book_id",
+      "01a04f05-1df6-78f7-9504-50d8a0d5ea23": "fixture project_id (composition_work)",
+      "01a04f05-1d33-7aa7-9336-6c3cf65ff426": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.355508+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.355508+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.355508+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.355508+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.556943+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.549144+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.355508+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.355508+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.355508+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.355508+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.556943+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-29 19:35:30.549144+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1036,
+          "latest": "2026-08-22 10:44:38.331458+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  }
+]

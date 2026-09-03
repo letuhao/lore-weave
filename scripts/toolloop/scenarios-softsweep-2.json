@@ -1,0 +1,88 @@
+{
+  "scenarios": [
+    {
+      "id": "softsweep-book-list",
+      "tool_under_test": "book_list",
+      "expect_tool": "book_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What books are in my library?",
+      "prompt_source": "meta.synonyms ['books', 'my library'] — both verbatim. Requires nothing, so nothing can block the call but surfacing.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF book_list is not ADVERTISED on 5/5. It has NO required arguments, so this is the cleanest possible surfacing test on the platform: if it is on the wire and the request says 'my library' verbatim, nothing stands between the model and the call. A miss here is a surfacing defect with no alternative explanation.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — a user with no books must list empty, not error.",
+        "tenancy": "user-scoped; lists only the caller's own."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-book-read",
+      "tool_under_test": "book_read",
+      "expect_tool": "book_read",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Read this book for me — show me the full detail, not just a listing.",
+      "prompt_source": "meta.synonyms ['read the book', 'show the book']. The 'not just a listing' clause is deliberate: book_list declares the SAME words for its own listing lane, and the description splits them as 'ls' vs 'cat'.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF book_read is not ADVERTISED on 5/5. 🔴 THE RIVAL IS DECLARED AND NAMED IN ADVANCE: book_list shares 'chapters'/'toc' and the two tools split on 'ls' vs 'cat'. Both being advertised is correct; book_list being CALLED is a defensible reading of the request and not a defect of this tool.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED.",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-composition-get-work",
+      "tool_under_test": "composition_get_work",
+      "expect_tool": "composition_get_work",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What's the authoring workspace for this book — its status and active template?",
+      "prompt_source": "meta.synonyms ['authoring context', \"the book's authoring workspace\"] plus the description's own 'status, active template'.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_get_work is not ADVERTISED on 5/5. It requires nothing, so surfacing is the only gate. 🔴 IT ALSO DECLARES 'resolve project id', which makes it a SUPPLIER for project_id — a tool the id census lists with 19 suppliers. If it is not surfaced on a request naming its own words, the supply side is weaker than the census suggests.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — a book with no Work must say so, not invent one.",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-catalog-list-public-books",
+      "tool_under_test": "catalog_list_public_books",
+      "expect_tool": "catalog_list_public_books",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Browse the public catalog — what novels can I discover there?",
+      "prompt_source": "meta.synonyms ['catalog', 'browse', 'discover novels', 'public books'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF catalog_list_public_books is not ADVERTISED on 5/5. 🔴 AN EMPTY RESULT IS THE EXPECTED AND CORRECT ANSWER, not a failure: DQ-T38's measurement (2026-09-02) established that not one of the 44 books marked public still exists, so the catalogue is right to list nothing. This scenario measures REACHABILITY only, and any reading of an empty list as a tool defect is refuted by that row.",
+      "ship_audit": {
+        "gate": "not owed — Tier R, public discovery.",
+        "empty_case": "PROVEN EMPTY TODAY, and correctly so — see DQ-T38.",
+        "tenancy": "owner-agnostic by design; exposes no private data."
+      },
+      "defects": []
+    }
+  ]
+}

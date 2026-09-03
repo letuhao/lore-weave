@@ -25,6 +25,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from typing import Literal
 
 import httpx
@@ -135,6 +136,61 @@ def _degraded() -> KnowledgeContext:
         recent_message_count=DEGRADED_RECENT_MESSAGE_COUNT,
         token_count=0,
     )
+
+
+def _nfc(value):
+    """U-1 · normalise declaration text to NFC **at the one door it enters through**.
+
+    **Why this is a correctness fix and not a tidiness one.** `estimate_tokens` weights per
+    CODEPOINT, and its Vietnamese band spans the combining-mark block `0x0300–0x036F`. So the same
+    grapheme costs **1.44× more in NFD than NFC**, measured on a real Vietnamese tool description.
+    That number is **both the sort key and the accumulator** in `budget_names_by_tokens`, which ends
+    in a hard `break` — so a declaration arriving decomposed sorts later and **is cut from the wire**.
+    Arm E's mechanism, reached through text encoding, and **no revision or budget value changes**.
+
+    **Measured before fixing, and the honest state is latent-not-live:** of the 315 frozen
+    declarations, **0 are non-NFC today** — our own tooling emits composed text — while **253 carry
+    non-ASCII at all.** So the internal catalogue is exposed and undamaged. The real subject is the
+    **per-user external-MCP overlay** (`u_`/`b_`/`s_`), which is arbitrary third-party text this
+    codebase does not author and cannot assume anything about.
+
+    **Here rather than in `estimate_tokens`, deliberately.** A normaliser called at every use site is
+    one somebody forgets at one of them, and the estimator is not the only consumer of this text —
+    the description is also embedded for semantic search, where NFD would produce a different vector
+    for the same words. One door, once, and every downstream reader may then assume NFC.
+    """
+    return unicodedata.normalize("NFC", value) if isinstance(value, str) else value
+
+
+#: Keys whose value is TEXT — read by the model, measured by the estimator, embedded for semantic
+#: search. Everything below one of these is normalised, at any depth.
+_TEXT_KEYS = frozenset({"description", "title", "summary"})
+
+
+def _nfc_text(obj, *, all_strings: bool = False):
+    """`_nfc`, but through a whole structure — because the door writes a STRUCTURE, not a string.
+
+    🔴 **THE FIRST VERSION OF U-1 NORMALISED ONE OF THE THREE FIELDS IT WRITES.** `_nfc` was applied
+    to the top-level `description` and nothing else, while `_tool_tokens` serialises the **entire**
+    tool definition — so the parameter schema and `_meta` reached the estimator raw. Measured by a
+    verifier on an overlay tool whose *schema* description arrived decomposed: **83 → 91 tokens**,
+    and against a competitor costing 87 under an 88-token budget the tool was **cut from the wire**.
+    Same tool, same words, no revision change. U-1's own mechanism, through the fields U-1 skipped.
+
+    **Only text, and only values.** Dict keys, tool names, `enum`, `const` and `pattern` are *wire
+    identifiers or machine grammar owned by a third-party MCP server* — normalising them would change
+    what we send back on a call, which trades a token defect for a broken tool. They are left exactly
+    as received, and the token consequence of that decision is closed at the other end instead:
+    `_tool_tokens` counts the composed form, so an identifier cannot inflate an estimate even though
+    its value is preserved verbatim.
+    """
+    if isinstance(obj, str):
+        return unicodedata.normalize("NFC", obj) if all_strings else obj
+    if isinstance(obj, dict):
+        return {k: _nfc_text(v, all_strings=all_strings or k in _TEXT_KEYS) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_nfc_text(v, all_strings=all_strings) for v in obj]
+    return obj
 
 
 _FASTMCP_ERR_PREFIX = re.compile(r"^Error executing tool [\w.-]+:\s*(?=\{)")
@@ -280,7 +336,12 @@ class KnowledgeClient:
         # "no such tool" from "provider temporarily unavailable". None until a
         # successful fetch; {} when the gateway sends no signal yet (clean seam
         # for S-GATEWAY — see get_catalog_meta()).
-        self._catalog_meta: dict | None = None
+        #
+        # 🔴 U-4 — KEYED BY USER, like `_tool_defs_cache` a few lines of code away. It
+        # was a single bare value on a process-lifetime singleton, so the last user to
+        # fetch a catalogue supplied the availability signal every other user's turn
+        # then read. The same function writes both; only one of them was keyed.
+        self._catalog_meta: dict[str, dict] = {}
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -576,6 +637,7 @@ class KnowledgeClient:
             logger.warning(
                 "get_tool_definitions called but the 'mcp' package is not installed"
             )
+            self._register_catalogue_outage(cache_key, "mcp package not installed")
             return []
 
         mcp_url = f"{self._tools_base_url}/mcp"
@@ -597,14 +659,20 @@ class KnowledgeClient:
                     listed = await mcp_session.list_tools()
         except Exception as exc:
             logger.warning("get_tool_definitions (mcp list-tools) failed: %s", exc)
+            self._register_catalogue_outage(cache_key, f"list-tools failed: {type(exc).__name__}")
             return []
 
         tools = []
         for t in listed.tools:
             fn: dict = {
                 "name": t.name,
-                "description": t.description or "",
-                "parameters": _normalize_tool_parameters(t.inputSchema),
+                # 🔴 U-1 — NFC AT THE DOOR. See `_nfc` below for why this is a correctness
+                # fix and not a tidiness one.
+                "description": _nfc(t.description or ""),
+                # U-1, the half the first version missed: the SCHEMA carries text too, and
+                # `_tool_tokens` serialises all of it. `_nfc_text` reaches every `description`/
+                # `title`/`summary` at any depth and leaves identifiers alone.
+                "parameters": _nfc_text(_normalize_tool_parameters(t.inputSchema)),
             }
             # MCP-fanout C-TOOL: preserve the per-tool `_meta` (tier / scope /
             # synonyms / undo_hint) so the consumer can drive tier-based
@@ -612,14 +680,18 @@ class KnowledgeClient:
             # provider — strip_tool_meta() removes it before the wire request.
             meta = getattr(t, "meta", None)
             if isinstance(meta, dict) and meta:
-                fn["_meta"] = dict(meta)
+                # U-1 — `_meta` is OUR channel (synonyms, undo_hint, tier), all of it prose the
+                # recall path matches against, so every string in it is normalised. Measured
+                # decomposed: 2.1× the tokens of the same tool.
+                fn["_meta"] = _nfc_text(dict(meta), all_strings=True)
             tools.append({"type": "function", "function": fn})
         # MCP-fanout H10: stash the gateway's catalog-level `_meta` (availability /
         # partial-catalog signal). The seam exists even when S-GATEWAY hasn't
         # populated it yet (then it's {} and find_tools degrades to "no such tool"
         # everywhere — never a false outage claim).
         cat_meta = getattr(listed, "meta", None)
-        self._catalog_meta = dict(cat_meta) if isinstance(cat_meta, dict) else {}
+        # U-4 — stored under the SAME key as the tool definitions on the next line.
+        self._catalog_meta[cache_key] = dict(cat_meta) if isinstance(cat_meta, dict) else {}
         self._tool_defs_cache[cache_key] = (time.monotonic() + _TOOL_CATALOG_TTL_S, tools)
         return tools
 
@@ -639,13 +711,37 @@ class KnowledgeClient:
         the turn degrades tool-free, same contract as the user path.
         """
         if not admin_token:
+            # 🔴 THE SIBLING NEITHER FIX REACHED. Round 8 fixed the transport failure, round 9 fixed
+            # `mcp not installed`, and this — the FIRST branch in the method — kept returning `[]`
+            # in silence through both. It is reachable in production, not theoretical: `admin_context`
+            # is a body field while `admin_token` is an optional header, so an admin turn can be
+            # admin-shaped with no token at all, and `stream_service` gates on `admin_context`
+            # alone. Driven with a control: no token ⇒ told=False, `withheld_tools=None`; with a
+            # token ⇒ told=True. **The catalogue is just as absent either way.**
+            self._register_catalogue_outage(
+                self._ADMIN_CATALOG_KEY, "no admin token presented")
             return []
-        if self._admin_tool_definitions is not None:
+        # 🔴 **THE SIXTH BRANCH THAT RETURNS `[]`, and it was the only one nobody had counted.**
+        # This cache is process-wide, has **no TTL and no invalidation**, and an *empty successful*
+        # fetch was stored in it — so one zero-tool answer from `/mcp/admin` pinned **every** admin
+        # turn for the life of the process, the transport was never re-dialled after recovery, and
+        # nothing registered. The five branches audited last round all announce their failure; this
+        # one succeeds once and then withholds the catalogue silently forever, which is a worse
+        # shape than any of them.
+        #
+        # An empty catalogue is not a cacheable answer here: `[]` and "we have not fetched yet" are
+        # the same state as far as a later turn is concerned, and treating them as different is what
+        # made the emptiness permanent.
+        if self._admin_tool_definitions:
             return self._admin_tool_definitions
         if streamablehttp_client is None or ClientSession is None:
             logger.warning(
                 "get_admin_tool_definitions called but the 'mcp' package is not installed"
             )
+            # The twin at the user path registers this one; this branch returned `[]` in silence.
+            # A missing dependency withholds the WHOLE catalogue exactly as a transport failure
+            # does — the cause differs, the narrowing does not.
+            self._register_catalogue_outage(self._ADMIN_CATALOG_KEY, "mcp package not installed")
             return []
 
         mcp_url = f"{self._tools_base_url}/mcp/admin"
@@ -668,6 +764,14 @@ class KnowledgeClient:
             # NOTE: log only the exception, never `headers` — `X-Admin-Token`
             # is a bearer credential and must not reach the logs (§6.7).
             logger.warning("get_admin_tool_definitions (mcp list-tools) failed: %s", exc)
+            # 🔴 U-2's SIBLING, and it was left un-fixed while its twin three methods up was
+            # repaired. This is the other method that returns `[]` on a catalogue failure, and
+            # returning `[]` with only a log line IS the counter-example that refuted P1 — the
+            # largest narrowing this system performs, recorded as a log line and treated as a
+            # feature. That an admin is the one holding the empty surface changes who is misled,
+            # not whether anyone is.
+            self._register_catalogue_outage(
+                self._ADMIN_CATALOG_KEY, f"list-tools failed: {type(exc).__name__}")
             return []
 
         tools = [
@@ -675,18 +779,70 @@ class KnowledgeClient:
                 "type": "function",
                 "function": {
                     "name": t.name,
-                    "description": t.description or "",
-                    "parameters": _normalize_tool_parameters(t.inputSchema),
+                    # 🔴 U-1's ADMIN SIBLING, and it composed NOTHING in the same round that fixed
+                    # and parametrised U-2's admin sibling three methods up. Measured: `stored NFC?
+                    # False`. Same estimator, same budget, same cut — the correction was applied
+                    # where the reviewer was looking and nowhere else, which is this run's most
+                    # repeated shape and it repeated inside the fix for it.
+                    "description": _nfc(t.description or ""),
+                    "parameters": _nfc_text(_normalize_tool_parameters(t.inputSchema)),
                 },
             }
             for t in listed.tools
         ]
+        # 🔴 **I WROTE `if not tools: register an outage` HERE AND IT WAS U-2's FOUNDING CONFUSION,
+        # RE-CREATED BY THE PERSON WHO WROTE THE TEST AGAINST IT.** A *successful* fetch returning
+        # zero tools is a legitimately EMPTY catalogue — an admin with no system-tier tools — not an
+        # unavailable one. Registering it made `catalogue_outage_registered()` true and the model was
+        # told its tools were unreachable when nothing had failed, which is the exact inversion
+        # `test_an_EMPTY_catalogue_is_not_an_outage` exists to reject. That test stayed **green**,
+        # because it drives the recorder and this defect is at the caller.
+        #
+        # The real finding it was reaching for is the CACHE, and that is fixed above: `[]` is no
+        # longer a cacheable answer, so an empty result is re-fetched instead of pinned forever. The
+        # emptiness is not the outage; the permanence was.
         self._admin_tool_definitions = tools
         return tools
 
-    def get_catalog_meta(self) -> dict:
+    #: The admin catalogue is cached process-wide (`_admin_tool_definitions`), not under a per-user
+    #: key, so it has no entry in `_tool_defs_cache` to compare against. A sentinel key keeps the
+    #: `count`-when-known rule honest: `stale` is always absent for it, so `count` is always ABSENT
+    #: rather than fabricated as 0.
+    _ADMIN_CATALOG_KEY = "\x00admin"
+
+    def _register_catalogue_outage(self, cache_key: str, reason: str) -> None:
+        """U-2 · a catalogue that fails to load is the LARGEST narrowing this system performs, and
+        it registered nothing — only a `logger.warning`. **P1 is falsifiable at n=1 and this was
+        the n.**
+
+        `count` is written **only when a previous fetch left something to compare against** — an
+        expired cache entry. On a cold failure nothing is known, not even the size, and `count: 0`
+        would claim *we know nothing was there*: a fabrication reached by a default, which is the
+        thing this record exists to stop.
+        """
+        stale = self._tool_defs_cache.get(cache_key)
+        # 🔴 The availability signal must not survive the outage it is about. `_catalog_meta` was
+        # written only on SUCCESS and never invalidated, so during an outage `find_tools` read this
+        # user's last "everything is fine" answer — the field exists precisely to tell "no such
+        # tool" from "that provider is temporarily down", and it was wrong at the only moment it
+        # mattered. Dropped rather than replaced with a guess: `{}` means *no signal*, which is
+        # true, and inventing an `unavailable_providers` list we did not receive would be the
+        # fabricated-by-default shape `count` is already guarded against.
+        self._catalog_meta.pop(cache_key, None)
+        try:
+            from app.services.instrument import record_catalogue_unavailable  # noqa: PLC0415
+
+            record_catalogue_unavailable(
+                stage="catalogue_unavailable",
+                reason=reason,
+                count=len(stale[1]) if stale else None,
+            )
+        except Exception:  # noqa: BLE001 — recording a narrowing must never break the turn
+            logger.debug("could not register the catalogue outage", exc_info=True)
+
+    def get_catalog_meta(self, user_id: str) -> dict:
         """MCP-fanout H10 — the gateway's catalog-level `_meta` from the last
-        successful list-tools, or ``{}`` if none was fetched / sent.
+        successful list-tools **for this user**, or ``{}`` if none was fetched.
 
         S-GATEWAY (C-GW) is expected to populate a per-provider availability map
         here, e.g. ``{"unavailable_providers": ["book"], "partial": true}``, so a
@@ -694,8 +850,20 @@ class KnowledgeClient:
         down" (→ the agent says "try again," never "I can't"). Until that lands
         this returns ``{}`` (a clean, non-lying default). TODO(S-GATEWAY): pin the
         exact key shape at COMPOSE A.
+
+        🔴 U-4 — ``user_id`` IS REQUIRED, AND IT IS NOT A STYLE CHOICE. This read a
+        bare instance attribute set by whichever turn last fetched a catalogue, on a
+        process-lifetime singleton, while the tool definitions written by the *same
+        function* were keyed by user. So one user's provider-outage signal was served
+        to another user's turn: the agent would tell person B that a provider was
+        down because person A's fetch had said so — or, worse, stay silent about an
+        outage B was actually experiencing because A's fetch had succeeded.
+
+        The parameter has **no default**. A default would let a caller silently read
+        the wrong user's availability while the call site still looked correct, which
+        is the failure this fix exists to remove rather than relocate.
         """
-        return self._catalog_meta or {}
+        return self._catalog_meta.get(user_id or "") or {}
 
     async def mcp_execute_tool(
         self,

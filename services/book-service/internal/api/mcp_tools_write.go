@@ -506,11 +506,28 @@ VALUES($1,$2,$3,$4,'text/plain',$5,$6,$7,'active',now(),now()) RETURNING id`,
 		return nil, chapterBulkCreateOut{}, errors.New("failed to commit chapters")
 	}
 	_ = s.recalcQuota(ctx, owner)
-	// Undo of a bulk create = trash each created chapter. The hint names the
-	// per-chapter reverse tool + the id list the consumer iterates. out.ChapterIDs
-	// are already string-rendered ids (the MCP output struct uses string UUIDs).
+	// Undo of a bulk create = trash each created chapter, which is N calls — and
+	// `undoResult`'s `args` is documented as the reverse tool's ARGUMENT TEMPLATE,
+	// i.e. replayable verbatim. It was emitting `chapter_ids` (a list) against
+	// `book_chapter_delete`, which requires `chapter_id` (singular). Replaying the
+	// hint verbatim returned `unexpected additional properties ["chapter_ids"]`, so
+	// the only multi-id undo in the service could not be replayed at all. Found on
+	// this tool's FIRST EVER invocation (TOOLV2 LOOP #122) — nothing had called it,
+	// so nothing had discovered it.
+	//
+	// `repeat_arg` makes the shape self-describing instead of silently wrong: `args`
+	// now carries only what IS a verbatim argument (book_id), and the caller is told
+	// to iterate `chapter_ids` into the named singular argument. Safe to change:
+	// `undo_hint` is explicitly NOT contractual (see the agent-runtime contract's
+	// `effect_and_undo` member — "a write's reversibility is a convention rather than
+	// a fact"), and a repo-wide search finds no consumer, including the frontend that
+	// one comment claims reads it.
 	ids := append([]string(nil), out.ChapterIDs...)
-	res := undoResult("book_chapter_delete", map[string]any{"book_id": bookID.String(), "chapter_ids": ids})
+	res := undoResult("book_chapter_delete", map[string]any{
+		"book_id":     bookID.String(),
+		"repeat_arg":  "chapter_id",
+		"chapter_ids": ids,
+	})
 	return res, out, nil
 }
 
@@ -649,7 +666,9 @@ func (s *Server) mcpRestoreRevision(ctx context.Context, caller, bookID, chID, r
 	if err := tx.QueryRow(ctx, `
 SELECT d.body,d.draft_format FROM chapter_drafts d JOIN chapters c ON c.id=d.chapter_id
 WHERE d.chapter_id=$1 AND c.book_id=$2`, chID, bookID).Scan(&currentBody, &currentFormat); err != nil {
-		return uuid.Nil, 0, errBookNotAccessible
+		// The join is on the CHAPTER and its draft; a miss means the chapter is not in this
+		// book, not that the book is unreachable.
+		return uuid.Nil, 0, errChapterNotInBook
 	}
 	var body json.RawMessage
 	var bodyFormat string
@@ -769,7 +788,8 @@ func (s *Server) toolChapterSaveDraft(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, saveDraftOut{}, err
 	}
-	if _, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit); err != nil {
+	owner, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit)
+	if err != nil {
 		return nil, saveDraftOut{}, mcpOwnershipError(err)
 	}
 	tx, terr := s.pool.Begin(ctx)
@@ -816,7 +836,16 @@ WHERE chapter_id=$1 RETURNING draft_version`, chID, jsonBody).Scan(&newVer); err
 	// first assistant save. The draft alone is sufficient: the chapter_blocks trigger projects
 	// chapter_drafts.body → chapter_blocks.text_content, which is what prose-state and the rail's
 	// book-state probe actually read.
-	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+2,updated_at=now() WHERE id=$1`, chID)
+	// 🔴 byte_size TOO, and it is not cosmetic: `recalcQuota` bills a user by
+	// SUM(chapters.byte_size), so a column this write leaves stale is prose the account never pays
+	// for. The sibling `book_chapter_create` in this same file already gets it right — it inserts
+	// `byte_size=int64(len(body))` and calls `s.recalcQuota` after commit — and the diary handler
+	// updates byte_size on every edit. Only the tool that REPLACES a chapter's prose skipped both.
+	//
+	// MEASURED 2026-08-13: 139 of the 299 chapters that hold prose carry byte_size=0. A chapter
+	// created empty and then written through this tool stays at 0 forever, and one created with a
+	// paragraph keeps that first paragraph's size no matter how much prose replaces it.
+	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+2,byte_size=$2,updated_at=now() WHERE id=$1`, chID, int64(len(in.Body)))
 	if err := insertOutboxEvent(ctx, tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
 		return nil, saveDraftOut{}, errors.New("failed to save draft")
 	}
@@ -826,6 +855,11 @@ WHERE chapter_id=$1 RETURNING draft_version`, chID, jsonBody).Scan(&newVer); err
 	res := undoResult("book_chapter_restore_revision", map[string]any{
 		"book_id": bookID.String(), "chapter_id": chID.String(), "revision_id": snapshotID.String(),
 	})
+	// Re-bill AFTER the commit, exactly as book_chapter_create does. Best-effort by the same
+	// precedent: a quota refresh that fails must not fail the author's save, and the next
+	// getStorageUsage recomputes from scratch anyway.
+	_ = s.ensureQuotaRow(ctx, owner)
+	_ = s.recalcQuota(ctx, owner)
 	return res, saveDraftOut{
 		ChapterID:        chID.String(),
 		ChapterTitle:     chTitle,

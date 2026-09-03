@@ -24,7 +24,7 @@ export const PREFIX_TO_SERVER: Record<string, string> = {
 
 // Mirror of chat-service frontend_tools.FRONTEND_TOOL_NAMES — browser-executed
 // tools group under "ui" regardless of prefix (glossary_confirm_action etc.).
-// Pinned by serverKey.test.ts against contracts/frontend-tools.contract.json
+// Pinned by serverKey.test.ts against contracts/browser-tools.contract.json
 // (the committed cross-language SoT) — a BE-side tool add/remove fails that
 // test instead of silently mis-grouping a chip.
 export const FRONTEND_TOOL_NAMES = new Set([
@@ -45,10 +45,20 @@ export const SERVER_KEY_UI = 'ui';
 export const SERVER_KEY_CHAT = 'chat';
 export const SERVER_KEY_OTHER = 'other';
 
+// DQ-V4 — synthesised suspends the BROWSER renders that are NOT contract tools.
+//
+// 🔴 DELIBERATELY OUTSIDE FRONTEND_TOOL_NAMES, which serverKey.test.ts pins byte-for-byte to
+// contracts/browser-tools.contract.json. `batch_confirm` is the Tier-A auto-apply cap: the
+// PLATFORM raises it, the model never calls it, and it has no arg schema — so it has no business
+// in a cross-language schema contract. Adding it there to make the grouping work would have put a
+// schema-less entry in the source of truth and broken the drift lock that exists to stop exactly
+// that. The pin caught it immediately, which is the pin working.
+const SYNTHESISED_BROWSER_SUSPENDS = new Set(['batch_confirm']);
+
 export function serverKeyForTool(name: string): string {
   if (!name) return SERVER_KEY_OTHER;
   if (name === 'find_tools') return SERVER_KEY_CHAT;
-  if (FRONTEND_TOOL_NAMES.has(name)) return SERVER_KEY_UI;
+  if (FRONTEND_TOOL_NAMES.has(name) || SYNTHESISED_BROWSER_SUSPENDS.has(name)) return SERVER_KEY_UI;
   const prefix = name.includes('_') ? name.split('_', 1)[0] : '';
   return PREFIX_TO_SERVER[prefix] ?? SERVER_KEY_OTHER;
 }

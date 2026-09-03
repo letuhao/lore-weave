@@ -154,6 +154,7 @@ class TriageGroupOut(BaseModel):
     count: int
     status: TriageStatus
     sample_payload: dict[str, Any] = Field(default_factory=dict)
+    sample_triage_id: str | None = None
     suggested_actions: list[str] = Field(default_factory=list)
 
 

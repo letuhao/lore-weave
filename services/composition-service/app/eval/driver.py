@@ -27,6 +27,8 @@ import time
 import urllib.request
 import uuid as _uuid
 from dataclasses import dataclass
+
+from loreweave_jobs import JobStatus
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -209,7 +211,13 @@ class LiveDriver:
             time.sleep(self.poll_interval_s)
             job = _req("GET", f"/v1/composition/jobs/{job_id}", self.token, timeout=60)
             last = job.get("status") or last
-            if last in ("completed", "failed", "cancelled"):
+            # 🔴 DERIVED, NOT RETYPED — DQ-T86 (c), owner ruling 2026-08-31. This read a
+            # hand-written ("completed", "failed", "cancelled"): a second copy of a set whose
+            # own definition in `loreweave_jobs.contract` is annotated "The single source of
+            # truth (no parallel set to drift)". Six places had drifted from it anyway. Here the
+            # silent failure is a HANG — a job that reached a new terminal status would never
+            # match, and this loop would poll it until job_timeout_s.
+            if JobStatus.is_terminal(last):
                 if last != "completed":
                     raise RuntimeError(f"job {job_id} ended {last}: {(job.get('result') or {})}")
                 return job.get("result") or {}

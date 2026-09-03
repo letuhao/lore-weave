@@ -1,0 +1,74 @@
+{
+  "_note": "P10-TOOL-LOAD, measured on ITS OWN QUESTION. The re-baseline carried the DQ-T3 scenario instead — 'Load the tool called glossary_book_sync_apply BY NAME' — which instructs the model to use tool_load and therefore says nothing about this problem. It got there through two bugs in build_rerun_set.py: the generator read its own output, and 'last file wins' is alphabetical, so scenarios-dqt3 beat scenarios-batch3.\n\nP10 asks the opposite: 'What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess' — whether the model reaches for the SCHEMA unprompted, or answers from a plausible neighbouring read. Its row says it answered 'I only require a Name' from glossary_book_ontology_read, 0/3 called.",
+  "scenarios": [
+    {
+      "id": "tool-load",
+      "tool_under_test": "tool_load",
+      "expect_tool": "tool_load",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+      "prompt_source": "description (gateway-local, declares no synonyms). Its own text: 'Load the exact input schema(s) for one or more tools ... so you can call them correctly.'",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply invents field names that are not in the tool's real schema — the whole point of tool_load is that the model stops guessing argument names, and five 'obvious' names were wrong in one session of mine.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). NOT APPLICABLE by design: it loads TOOL SCHEMAS, which are identical for every caller and contain no user data. Recorded as such rather than as a pass.",
+        "gate": "Tier R, gateway-local.",
+        "empty_case": "EXERCISED K=3 on a book with nothing in it: store unchanged 3/3, no errors. The tool was surfaced 3/3 and called 0/3 on BOTH fixtures — see D-TOOL-LOAD-NOT-USED-FOR-SCHEMA. Nothing was fabricated; the model described the fields from an ontology read instead of the schema."
+      },
+      "needs_prompt": true,
+      "editor_context": false,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "three seeded entities must exist"
+        }
+      ],
+      "answer_expect": null
+    }
+  ]
+}

@@ -1,0 +1,1066 @@
+{
+  "batch": "c-rail2",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "translation_update_settings",
+      "scenario": "translation-update-settings",
+      "intent": "write",
+      "falsifier": "REFUTED IF: settings are written with NO confirm card (Tier A), OR the model sends a `model_source`/`model_ref` the author never mentioned — three fields, one named — OR a target_language outside the declared enum. A run ending in a provider stream error is evidence about the TRANSPORT and a re-run condition, never about this tool.",
+      "answer_expect": null,
+      "falsifier_sha": "9418af2f0610a868",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "empty_case": "OWED — a call with no field to change must be refused.",
+        "absent_case": "EXERCISED by direct probe — another owner's book is refused 'not found or not accessible'.",
+        "idempotency": "OWED — setting the language it already has must be a clear no-op.",
+        "tenancy": "EXERCISED by direct probe — refused with the same wording an absent id gets."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a04214-85ca-761f-9aab-5efc8b3cf3e3",
+          "project_id": "01a04214-8709-72f0-aa12-cdc6535b6222",
+          "seed_ids": {
+            "01a04214-85ca-761f-9aab-5efc8b3cf3e3": "fixture book_id",
+            "01a04214-8709-72f0-aa12-cdc6535b6222": "fixture project_id (composition_work)",
+            "01a04214-865a-7c01-a170-a7ee2c039f3c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04214-d7f0-7bed-a38e-6044361e0cbe",
+          "prompt": "Set the target language for this book's translation to Vietnamese.",
+          "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_retranslate_dirty",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            }
+          ],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.506613+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.506613+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.506613+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.506613+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.686845+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.680101+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.506613+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.506613+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.506613+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.506613+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.686845+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 07:17:16.680101+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0421a-a511-76d8-ac52-2cbc516079b6",
+          "project_id": "01a0421a-a659-7323-bb26-91d6d8f3769b",
+          "seed_ids": {
+            "01a0421a-a511-76d8-ac52-2cbc516079b6": "fixture book_id",
+            "01a0421a-a659-7323-bb26-91d6d8f3769b": "fixture project_id (composition_work)",
+            "01a0421a-a5a3-71e9-82c7-867e9189127e": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a0421a-f428-73f4-b55c-51872d98e945",
+          "prompt": "Set the target language for this book's translation to Vietnamese.",
+          "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_retranslate_dirty",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            }
+          ],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.731016+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.731016+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.731016+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.731016+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.918486+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.912141+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.731016+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.731016+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.731016+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.731016+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.918486+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 07:23:57.912141+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a04220-c331-7fd8-a5cc-e723424d0763",
+          "project_id": "01a04220-c478-7b16-8787-db06ed67851c",
+          "seed_ids": {
+            "01a04220-c331-7fd8-a5cc-e723424d0763": "fixture book_id",
+            "01a04220-c478-7b16-8787-db06ed67851c": "fixture project_id (composition_work)",
+            "01a04220-c3c7-7fa2-a8bb-29bc5d10eba1": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04221-1499-7dbb-b330-2d590a700566",
+          "prompt": "Set the target language for this book's translation to Vietnamese.",
+          "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_retranslate_dirty",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            }
+          ],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.663803+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.663803+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.663803+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.663803+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.84621+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.839627+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.663803+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.663803+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.663803+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.663803+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.84621+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 07:30:38.839627+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a04226-dffb-7d1f-bbaf-c8ba746e71c9",
+          "project_id": "01a04226-e13a-7689-9219-478b91a4426f",
+          "seed_ids": {
+            "01a04226-dffb-7d1f-bbaf-c8ba746e71c9": "fixture book_id",
+            "01a04226-e13a-7689-9219-478b91a4426f": "fixture project_id (composition_work)",
+            "01a04226-e089-790f-802d-07d56e8b9eef": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04227-2d6e-7d70-b804-1d6d493bb375",
+          "prompt": "Set the target language for this book's translation to Vietnamese.",
+          "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_retranslate_dirty",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            }
+          ],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.241417+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.241417+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.241417+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.241417+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.423656+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.417392+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.241417+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.241417+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.241417+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.241417+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.423656+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 07:37:19.417392+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a0422d-0257-7743-acaa-075d1b7ccede",
+          "project_id": "01a0422d-0391-7d79-b267-7ee5b7937d6f",
+          "seed_ids": {
+            "01a0422d-0257-7743-acaa-075d1b7ccede": "fixture book_id",
+            "01a0422d-0391-7d79-b267-7ee5b7937d6f": "fixture project_id (composition_work)",
+            "01a0422d-02e9-708d-bd96-c360ecf852b3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a0422d-4e3b-754b-ab1b-b14dbdd3cf8b",
+          "prompt": "Set the target language for this book's translation to Vietnamese.",
+          "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_retranslate_dirty",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "translation_update_settings"
+              ]
+            }
+          ],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.256917+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.256917+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.256917+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.256917+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.432382+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.424757+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_book.chapter_blocks": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.256917+00"
+              },
+              "after": null
+            },
+            "loreweave_book.chapter_drafts": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.256917+00"
+              },
+              "after": null
+            },
+            "loreweave_book.chapter_raw_objects": {
+              "before": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "after": null
+            },
+            "loreweave_book.chapter_revisions": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.256917+00"
+              },
+              "after": null
+            },
+            "loreweave_book.chapters": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.256917+00"
+              },
+              "after": null
+            },
+            "loreweave_composition.composition_work": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.432382+00"
+              },
+              "after": null
+            },
+            "loreweave_knowledge.knowledge_projects": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-27 07:44:01.424757+00"
+              },
+              "after": null
+            }
+          },
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 1,
+      "suspended_count": 0
+    }
+  ]
+}

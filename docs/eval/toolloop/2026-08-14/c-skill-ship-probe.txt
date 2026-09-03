@@ -1,0 +1,18 @@
+registry_set_skill_enabled — SHIP boundary, 2026-08-23
+
+  absent   refused   skill not found: probe-00000000
+  tenancy  refused   skill not found: probe-11111111
+  empty    refused   skill not found:
+  oracle   ship_probe reports "DIFFERENT WORDING — the refusal distinguishes not-yours from
+           no-such-thing". 🔴 THAT IS A FALSE ALARM. The two messages are identical apart from
+           ECHOING THE CALLER'S OWN SLUG back. Echoing your own input is not an existence oracle;
+           the probe compares whole strings and cannot tell an echoed argument from a leaked fact.
+           Fourth limitation found in this instrument, after: op-dispatch tools it cannot reach,
+           zero-argument tools whose SUCCESS it calls a failure, and a truthful no-op it calls a
+           boundary that does not hold.
+
+  TENANCY IS NOT ACTUALLY TESTED HERE, and must not be recorded as if it were. This tool keys on a
+  SLUG, not a per-user id, so a "foreign UUID" is just another unknown slug. The real question is
+  whether one account can disable ANOTHER account's skill — which needs a second account, and the
+  answer matters because the tool's own contract says disabling a System skill "applies only to
+  this user; the shared skill is never changed".

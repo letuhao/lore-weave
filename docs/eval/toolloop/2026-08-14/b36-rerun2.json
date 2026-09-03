@@ -1,0 +1,1133 @@
+{
+ "batch": "b36-rerun2",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "translation_update_settings",
+   "scenario": "translation-update-settings",
+   "intent": "write",
+   "falsifier": "REFUTED IF: settings are written with NO confirm card (Tier A), OR the model sends a `model_source`/`model_ref` the author never mentioned — the tool writes exactly three fields and the author named one, so filling the other two silently picks the translation model — OR it sends a target_language outside the declared enum. CONTROL WORTH READING: the description says it does NOT set prompts and that there is no prompt argument, so a reply offering to set a translation prompt is describing a capability this tool does not have.",
+   "answer_expect": null,
+   "falsifier_sha": "c5fb9088111278ec",
+   "ship_audit": {
+    "tenancy": "EXERCISED by direct probe — another owner's book is refused 'not found or not accessible', the same wording an absent id gets, so it is no existence oracle.",
+    "gate": "EXERCISED where reached — a Tier-A/W card was raised with the store unchanged on the runs that called the tool; see blocked_reason for why there were too few.",
+    "absent_case": "EXERCISED by direct probe — refused 'not found or not accessible'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02607-90e6-7190-aa0a-0285c94068d7",
+     "session_id": "01a02607-b2e1-791c-b2ff-5d9d563e8b07",
+     "prompt": "Set the target language for this book's translation to Vietnamese.",
+     "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+     "prior_turns": [],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": "ReadTimeout: ",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:33:45.36692+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:33:45.618447+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:33:45.597696+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:33:45.36692+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:33:45.618447+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:33:45.597696+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a0260d-579f-7925-b32a-aa58441db1e2",
+     "session_id": "01a0260d-730a-7a98-a70a-c15975304a09",
+     "prompt": "Set the target language for this book's translation to Vietnamese.",
+     "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+     "prior_turns": [],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": "ReadTimeout: ",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:40:03.901052+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:40:04.104783+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:40:04.095247+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:40:03.901052+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:40:04.104783+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:40:04.095247+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02613-1777-7a25-841a-5efba81fab39",
+     "session_id": "01a02613-337e-7a98-a87d-b3478673fa2f",
+     "prompt": "Set the target language for this book's translation to Vietnamese.",
+     "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+     "prior_turns": [],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": "ReadTimeout: ",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:46:20.714573+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:46:20.933369+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:46:20.923208+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:46:20.714573+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:46:20.933369+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:46:20.923208+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02618-d87e-72a1-a70b-1d658bd00d9f",
+     "session_id": "01a02618-f432-789e-b99e-8b65144cfac5",
+     "prompt": "Set the target language for this book's translation to Vietnamese.",
+     "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+     "prior_turns": [],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "translation_update_settings"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:52:37.79128+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:52:37.998848+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:52:37.989121+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:52:37.79128+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:52:37.998848+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:52:37.989121+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, I'm having trouble updating the translation settings for this book. It seems I'm unable to set the target language to Vietnamese at the moment. \n\nIs there anything else I can help you with, or would you like me to try a different task?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a0261b-c3d0-746d-b945-5ce7762f5b0a",
+     "session_id": "01a0261b-dfdc-7cfe-a42c-a83855d26ae8",
+     "prompt": "Set the target language for this book's translation to Vietnamese.",
+     "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+     "prior_turns": [],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": "ReadTimeout: ",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:55:49.099249+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:55:49.300855+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:55:49.292257+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 20:55:49.099249+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 20:55:49.300855+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 20:55:49.292257+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 1,
+   "wrote_count": 0,
+   "suspended_count": 1,
+   "blocked_reason": "BLOCKED on a persistent TRANSPORT condition, not on the model and not on the tool.\n\nSURFACED 5/5 in two of three arms, but the turns keep erroring: 5 errors of 5, then 1 of 5, then 4 of 5 — 'upstream sent \"error\" with no error message'. Called 0/5, 1/5, 1/5. A transport failure is never a model result, so across 15 runs there is no clean K>=3 distribution to conclude from, and three arms is where re-rolling stops being sampling and starts being fishing.\n\nThe one run that did complete raised its Tier-A card with the store unchanged, so nothing suggests the tool is wrong — it is unmeasurable on this turn shape today."
+  },
+  {
+   "tool": "translation_job_control",
+   "scenario": "translation-job-control",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the job is cancelled with NO confirm card (Tier W), OR the action chosen is `resume` or `retry` — both RE-SPEND money by the tool's own description and neither is what the author asked for — OR the model invents a job_id rather than reading one from turn 1. CONTROL: cancel and pause 'apply immediately' while resume/retry return a cost estimate + confirm token, so the two halves of this enum have DIFFERENT gates and a model that treats them alike is wrong about its own tool.",
+   "answer_expect": null,
+   "falsifier_sha": "57194994db03d789",
+   "ship_audit": {
+    "tenancy": "EXERCISED by direct probe — another owner's book is refused 'not found or not accessible', the same wording an absent id gets, so it is no existence oracle.",
+    "gate": "EXERCISED where reached — a Tier-A/W card was raised with the store unchanged on the runs that called the tool; see blocked_reason for why there were too few.",
+    "absent_case": "EXERCISED by direct probe — refused 'not found or not accessible'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02621-898a-7946-8a13-a57f57d7f8b4",
+     "session_id": "01a02621-a680-78e4-9515-978fa0e702e8",
+     "prompt": "Cancel that job.",
+     "scenario_prompt": "What is the status of the translation job for this book?",
+     "prior_turns": [
+      {
+       "prompt": "What is the status of the translation job for this book?",
+       "called": [
+        "composition_package_tree",
+        "translation_coverage",
+        "translation_job_status",
+        "translation_retranslate_dirty",
+        "translation_start_job"
+       ],
+       "text": "There are currently no active translation jobs running for this book. \n\nLooking at the current coverage, the first chapter has not yet been translated. If you would like me to start the translation for that chapter, just let me know which language you'd like to use.\n\nI've started the translation for the first chapter; you can confirm the request in the card to begin the process.\n\nI've prepared a re-translation for the changed segment; you can confirm it in the card to update the chapter."
+      }
+     ],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "jobs_cancel"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:07.406579+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:07.627574+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:07.615589+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:07.406579+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:07.627574+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:07.615589+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02622-2775-75e2-9e90-da7901bbc379",
+     "session_id": "01a02622-44b3-7105-b203-e250a264e481",
+     "prompt": "Cancel that job.",
+     "scenario_prompt": "What is the status of the translation job for this book?",
+     "prior_turns": [
+      {
+       "prompt": "What is the status of the translation job for this book?",
+       "called": [
+        "composition_package_tree",
+        "translation_coverage",
+        "translation_job_status",
+        "translation_retranslate_dirty",
+        "translation_start_job"
+       ],
+       "text": "There are currently no active translation jobs running for this book. \n\nLooking at the book's coverage, the single existing chapter has not yet been translated. If you would like me to start the translation for this chapter, just let me know which language you'd like to use.\n\nI've prepared the translation for the first chapter; you can confirm it now to start the process.\n\nI've prepared a re-translation for the changed segment; you can confirm it now to update the chapter."
+      }
+     ],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:47.842656+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:48.067015+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:48.052048+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:47.842656+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:48.067015+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:02:48.052048+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot cancel those jobs because there are no active translation jobs currently running for this book. \n\nThe messages you saw were likely notifications that I have *prepared* translation tasks (meaning they are ready for your approval to start), but they haven't actually begun yet. \n\nIf you see a specific job in your list that you want me to stop, please let me know, or I can check your active background jobs for you."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02622-c523-7dc2-82c1-29303f39857e",
+     "session_id": "01a02622-e1b3-726e-840d-413e232b978c",
+     "prompt": "Cancel that job.",
+     "scenario_prompt": "What is the status of the translation job for this book?",
+     "prior_turns": [
+      {
+       "prompt": "What is the status of the translation job for this book?",
+       "called": [
+        "book_list",
+        "translation_coverage",
+        "translation_job_status",
+        "translation_retranslate_dirty",
+        "translation_start_job"
+       ],
+       "text": "Currently, there are no active translation jobs running for this book. \n\nLooking at the translation coverage, **Chapter I — The Ember Codex** is currently untranslated. If you would like me to start translating it, just let me know which language you'd like to use!\n\nI've started the translation for Chapter I — The Ember Codex; please confirm the request in the card to begin.\n\nI've prepared a re-translation for the changed parts of Chapter I; please confirm the request in the card to proceed."
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "translation_job_control"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:03:28.230622+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:03:28.429518+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:03:28.421396+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:03:28.230622+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:03:28.429518+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:03:28.421396+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't find an active translation job to cancel. It's possible the job has already finished or was never successfully started. \n\nIf you're seeing a notification for a job, please let me know, and I'll try to locate it again."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02623-65cf-7397-a3cd-f962d8e610d2",
+     "session_id": "01a02623-81ef-7142-9684-91b1d7f4aea7",
+     "prompt": "Cancel that job.",
+     "scenario_prompt": "What is the status of the translation job for this book?",
+     "prior_turns": [
+      {
+       "prompt": "What is the status of the translation job for this book?",
+       "called": [
+        "composition_package_tree",
+        "translation_coverage",
+        "translation_job_status",
+        "translation_retranslate_dirty",
+        "translation_start_job"
+       ],
+       "text": "Currently, there is no active translation job running for this book. \n\nLooking at the book's coverage, the single existing chapter has not yet been translated. If you would like me to start a translation for this chapter, just let me know which language you'd like to use!\n\nI've prepared the translation for your first chapter; you can confirm it now to start the process.\n\nI've prepared a re-translation for the changed segment; you can confirm it now to update the chapter."
+      }
+     ],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:09.332639+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:09.544123+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:09.535932+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:09.332639+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:09.544123+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:09.535932+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot cancel a translation job because there are no active translation jobs currently running for this book. \n\nIf you were referring to a specific job you saw in a previous message, please let me know the details, or if you'd like me to check the status of any other background tasks, I can do that for you."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02623-fb8a-7989-aa0a-b8d789bfa9a5",
+     "session_id": "01a02624-1a05-77b1-95fc-142ab275b68b",
+     "prompt": "Cancel that job.",
+     "scenario_prompt": "What is the status of the translation job for this book?",
+     "prior_turns": [
+      {
+       "prompt": "What is the status of the translation job for this book?",
+       "called": [
+        "book_list",
+        "translation_coverage",
+        "translation_job_status",
+        "translation_retranslate_dirty",
+        "translation_start_job"
+       ],
+       "text": "Currently, there are no active translation jobs running for this book. \n\nLooking at the translation coverage, Chapter I (\"The Ember Codex\") has not been translated yet. If you would like me to start the translation for this chapter, just let me know which language you'd like to see it in!\n\nI've started the translation for Chapter I; please confirm the request in the card to begin.\n\nI've prepared a re-translation for the changed segment in Chapter I; please confirm the request in the card to proceed."
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "translation_job_control"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:47.659888+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:47.867411+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:47.85742+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:47.659888+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:47.867411+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:04:47.85742+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't find an active translation job to cancel. It's possible the job has already finished, failed, or was never successfully started. \n\nIf you're seeing a notification or a card for a job, please let me know, and I'll try to address it specifically."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 2,
+   "wrote_count": 0,
+   "suspended_count": 1,
+   "blocked_reason": "BLOCKED — surfaced but rarely chosen. Across THREE arms: called 1/5, 0/5, 2/5 — 3 of 15 runs, with 0 transport errors in two of them, so this is a clean measurement of the model NOT picking it rather than a dirty arm. K>=3 as a distribution is the bar and 3-of-15 is not it.\n\nWorth recording about the runs that DID call it: the card raised was for the CANCEL the author asked for, not the `resume` or `retry` the same enum offers — and those two RE-SPEND money by the tool's own description. The half of the enum with a cost never came up."
+  },
+  {
+   "tool": "translation_patch_block",
+   "scenario": "translation-patch-block",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the patch lands with NO confirm card (Tier A), OR the model patches block_index 0 when the author said the SECOND paragraph — an off-by-one here silently rewrites the wrong line of a published translation — OR it rewrites the block with prose it authored rather than the sentence the author gave. NOTE the side effect its description declares: 'The first patch creates the human version from the base version and makes it active', so a single correction PUBLISHES a new human version, and a reply that presents it as a small local edit is understating what the card does.",
+   "answer_expect": null,
+   "falsifier_sha": "2bf2d16a50d739a4",
+   "ship_audit": {
+    "tenancy": "EXERCISED by direct probe — another owner's book is refused 'not found or not accessible', the same wording an absent id gets, so it is no existence oracle.",
+    "gate": "EXERCISED where reached — a Tier-A/W card was raised with the store unchanged on the runs that called the tool; see blocked_reason for why there were too few.",
+    "absent_case": "EXERCISED by direct probe — refused 'not found or not accessible'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02624-a61e-7301-995d-a314ffb9ef42",
+     "session_id": "01a02624-c54e-7f2e-9c73-10b02279786f",
+     "prompt": "Fix the second paragraph — it should read: Aldric Vane bước xuống bậc đá đen.",
+     "scenario_prompt": "List the Vietnamese translation versions for this chapter.",
+     "prior_turns": [
+      {
+       "prompt": "List the Vietnamese translation versions for this chapter.",
+       "called": [
+        "translation_list_versions"
+       ],
+       "text": "There is one Vietnamese translation version for this chapter:\n\n*   **Version 1**: Completed (not currently active)"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_read"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:05:31.353837+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:05:31.534832+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:05:31.525803+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:05:31.353837+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:05:31.534832+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:05:31.525803+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, but I can't find a second paragraph in this chapter to fix. The current text only contains one paragraph:\n\n\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"\n\nCould you please provide the full text you're working with, or let me know if I should be looking at a different chapter or a specific translation version?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02625-1dab-7763-bf7b-389c9be882d3",
+     "session_id": "01a02625-3c25-78b8-ba4d-cdd03e9cff41",
+     "prompt": "Fix the second paragraph — it should read: Aldric Vane bước xuống bậc đá đen.",
+     "scenario_prompt": "List the Vietnamese translation versions for this chapter.",
+     "prior_turns": [
+      {
+       "prompt": "List the Vietnamese translation versions for this chapter.",
+       "called": [
+        "translation_list_versions"
+       ],
+       "text": "There is one Vietnamese translation version for this chapter:\n\n*   **Version 1**: Completed (not currently active)"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_read"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:01.939642+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:02.176872+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:02.170204+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:01.939642+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:02.176872+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:02.170204+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, but I can't find a second paragraph in this chapter to fix. The current text only contains one sentence:\n\n\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"\n\nCould you please provide the full text you are looking at, or let me know if I should be looking at a different chapter or a specific translation version?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02625-93ea-767c-a1cb-fcd82b2e3a08",
+     "session_id": "01a02625-b406-7785-8dee-45ed27d1d1e9",
+     "prompt": "Fix the second paragraph — it should read: Aldric Vane bước xuống bậc đá đen.",
+     "scenario_prompt": "List the Vietnamese translation versions for this chapter.",
+     "prior_turns": [
+      {
+       "prompt": "List the Vietnamese translation versions for this chapter.",
+       "called": [
+        "translation_list_versions"
+       ],
+       "text": "There is one Vietnamese translation version for this chapter:\n\n*   **Version 1**: Completed (currently inactive)"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_read"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:32.233818+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:32.438944+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:32.429613+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:32.233818+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:32.438944+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:06:32.429613+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked the chapter, but it currently only contains one paragraph: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nSince there is no second paragraph to replace, I can't apply the fix yet. Would you like me to add the new sentence as a second paragraph, or is there another part of the text you'd like me to look at?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02626-0cd4-7922-939b-c8be330187fc",
+     "session_id": "01a02626-2b31-7705-811f-5513fcc7b7af",
+     "prompt": "Fix the second paragraph — it should read: Aldric Vane bước xuống bậc đá đen.",
+     "scenario_prompt": "List the Vietnamese translation versions for this chapter.",
+     "prior_turns": [
+      {
+       "prompt": "List the Vietnamese translation versions for this chapter.",
+       "called": [
+        "translation_list_versions"
+       ],
+       "text": "There is one Vietnamese translation version for this chapter:\n\n*   **Version 1**: Completed (not currently active)"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_read"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:03.173591+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:03.376129+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:03.367351+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:03.173591+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:03.376129+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:03.367351+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked the chapter, but it currently only contains one paragraph: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nSince there is no second paragraph to edit, could you please provide the full text you'd like me to use, or let me know if I should add the new sentence as a second paragraph?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02626-856b-778a-aeb5-6d5882e7de94",
+     "session_id": "01a02626-a104-7877-93b5-fa2877e714b5",
+     "prompt": "Fix the second paragraph — it should read: Aldric Vane bước xuống bậc đá đen.",
+     "scenario_prompt": "List the Vietnamese translation versions for this chapter.",
+     "prior_turns": [
+      {
+       "prompt": "List the Vietnamese translation versions for this chapter.",
+       "called": [
+        "translation_list_versions"
+       ],
+       "text": "There is one Vietnamese translation version for this chapter:\n\n*   **Version 1**: Completed (not currently active)"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_read"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:34.047181+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:34.263597+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:34.254168+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:34.047181+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:34.263597+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 21:07:34.254168+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked the current text of the chapter, but it currently only contains one paragraph: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nSince there isn't a second paragraph yet, could you please provide the full text you'd like me to use, or let me know if you'd like me to add that sentence as a new second paragraph?"
+    }
+   ],
+   "surfaced_count": 0,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED — SURFACED 0/5 across both arms, so the model was never shown it. Its sibling translation_save_edited_version surfaced 5/5 and was called 5/5 off the identical two-turn shape, the identical seeded chapter and the same batch — so this is not the fixture and not the id chain. D-LAZY-TAIL-UNUSED, the same mechanism as batches 31-35 (DQ-T36).\n\nThe fixture it never used was built for it: the base version was seeded translated_body_format='json' with TWO blocks, because this tool works on block/JSON only and a text body would have made it refuse legitimately, and the seed assertion counted the BLOCKS rather than the row because block_index is what the tool takes."
+  }
+ ]
+}

@@ -1,0 +1,144 @@
+{
+ "evaluated_prompts": 995,
+ "floor": 0.35,
+ "cap": 2,
+ "skills_total": 12,
+ "THE_TWO_RULED_FIGURES": {
+  "correct_domain_cleared_floor_but_missed_cap": 291,
+  "correct_domain_cleared_floor_but_missed_cap_rate": 0.292,
+  "turns_with_an_UNRELATED_skill_in_the_cap": 1284,
+  "unrelated_cap_slots_per_turn": 1.29,
+  "which_skills_take_slots_they_should_not": [
+   [
+    "translation",
+    361
+   ],
+   [
+    "plan_forge",
+    234
+   ],
+   [
+    "knowledge",
+    223
+   ],
+   [
+    "co_write",
+    113
+   ],
+   [
+    "admin",
+    106
+   ],
+   [
+    "book",
+    71
+   ],
+   [
+    "glossary_shaping",
+    67
+   ],
+   [
+    "universal",
+    29
+   ]
+  ]
+ },
+ "verdicts": {
+  "cleared the floor, MISSED THE CAP  (the cap owns this)": 291,
+  "correct domain IS injected": 645,
+  "did not even CLEAR the floor  (floor/embedding owns this)": 59
+ },
+ "floor_is_not_filtering": {
+  "skills_clearing_the_floor_median": 12,
+  "prompts_where_EVERY_skill_clears": 509,
+  "of_prompts": 995
+ },
+ "ranking_quality": {
+  "correct_domain_rank_median": 2,
+  "correct_domain_score_median": 0.4736,
+  "score_spread_median_top_minus_bottom": 0.1537,
+  "median_margin_to_the_cap_when_missed": 0.0266
+ },
+ "examples_of_the_cap_excluding_the_right_skill": [
+  {
+   "prompt": "'Gothic Atmosphere' isn't a thing in my world, it's just a mood \u2014 get ",
+   "needed": [
+    "glossary",
+    "knowledge"
+   ],
+   "rank": 3,
+   "score": 0.3993,
+   "cap_boundary": 0.4287,
+   "beaten_by": [
+    "glossary_shaping",
+    "admin"
+   ]
+  },
+  {
+   "prompt": "Actually run the tools: call composition_arc_suggest for this book's p",
+   "needed": [
+    "composition",
+    "glossary"
+   ],
+   "rank": 3,
+   "score": 0.5588,
+   "cap_boundary": 0.5826,
+   "beaten_by": [
+    "plan_forge",
+    "co_write"
+   ]
+  },
+  {
+   "prompt": "Actually, make it a bit darker.",
+   "needed": [
+    "book"
+   ],
+   "rank": 6,
+   "score": 0.4372,
+   "cap_boundary": 0.4789,
+   "beaten_by": [
+    "translation",
+    "co_write"
+   ]
+  },
+  {
+   "prompt": "Actually, please restore the book description to: 'Elara is a young ca",
+   "needed": [
+    "book"
+   ],
+   "rank": 3,
+   "score": 0.4866,
+   "cap_boundary": 0.4917,
+   "beaten_by": [
+    "glossary",
+    "knowledge"
+   ]
+  },
+  {
+   "prompt": "Actually, rename Doctor Renn to Doktor Renn and update his description",
+   "needed": [
+    "glossary"
+   ],
+   "rank": 3,
+   "score": 0.4652,
+   "cap_boundary": 0.5005,
+   "beaten_by": [
+    "translation",
+    "admin"
+   ]
+  },
+  {
+   "prompt": "Add a character named Bela Quist, a lighthouse keeper, to the story bi",
+   "needed": [
+    "glossary"
+   ],
+   "rank": 3,
+   "score": 0.4143,
+   "cap_boundary": 0.4282,
+   "beaten_by": [
+    "translation",
+    "knowledge"
+   ]
+  }
+ ]
+}

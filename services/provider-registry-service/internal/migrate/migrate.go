@@ -188,6 +188,14 @@ CREATE INDEX IF NOT EXISTS idx_llm_jobs_expires_at ON llm_jobs(expires_at)
 -- "migrate: ERROR: check constraint llm_jobs_operation_check ...
 -- is violated by some row (SQLSTATE 23514)" + provider-registry
 -- refuses to start. Memory anchor: cross-cutting enum sync.
+-- D-BILL-PROVIDER-KIND — usage_logs.provider_kind was EMPTY on 96.7% of rows
+-- (99,683 of 103,072; last populated 2026-07-21). The direct /record HTTP path
+-- carries it, but the jobs path — which became the dominant producer — never did:
+-- usage_outbox had no such column, so buildUsageFields could not emit it and
+-- usage-billing's parseUsageEvent had nothing to read. Spend could not be
+-- attributed to a provider at all. Derived at INSERT from the model row itself.
+ALTER TABLE usage_outbox ADD COLUMN IF NOT EXISTS provider_kind TEXT NOT NULL DEFAULT '';
+
 ALTER TABLE llm_jobs DROP CONSTRAINT IF EXISTS llm_jobs_operation_check;
 ALTER TABLE llm_jobs ADD CONSTRAINT llm_jobs_operation_check CHECK (operation IN (
   'chat','completion','embedding','stt','tts','image_gen',

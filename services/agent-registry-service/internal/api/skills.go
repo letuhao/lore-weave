@@ -97,6 +97,26 @@ func validateSkill(in *skillInput) (string, bool) {
 	if strings.TrimSpace(in.Description) == "" {
 		return "description is required", false
 	}
+
+	// An EMPTY body is not a skill. A skill IS its instructions: the description is the one-line
+	// menu entry and body_md is the thing the agent actually reads, so a skill proposed with no
+	// body would sit in the user's list looking real and contribute nothing when loaded.
+	//
+	// MEASURED 2026-08-22 (tool deep-dive batch 38) via registry_propose_skill:
+	//     body_md="" -> {"message": "Proposed skill 'loop-probe-empty'. Awaiting the user's
+	//                    approval in the UI"}   — accepted, and a proposal row was written.
+	//
+	// SAME INVARIANT AS D-EMPTY-TRANSLATION-SAVED-AS-A-VERSION, found one batch earlier: a tool
+	// that creates a durable, author-attributed artefact must refuse an EMPTY one. That fix
+	// claimed the class had been proved against every past incident; this tool was not in that
+	// list because it had not been probed, which is what a class check is worth when it is a
+	// snapshot rather than a sweep.
+	//
+	// Safe on the UPDATE path: toolUpdateSkill backfills the CURRENT body before validating, so
+	// omitting body_md to keep the existing one still reaches here non-empty.
+	if strings.TrimSpace(in.BodyMD) == "" {
+		return "body_md is required — a skill with no instructions would look real in the user's list and do nothing when loaded", false
+	}
 	if len(in.BodyMD) > maxSkillBodyBytes {
 		return "body exceeds 64 KB (prompt-only skills stay lean)", false
 	}

@@ -1,0 +1,155 @@
+[
+ {
+  "tool": "composition_motif_bind_edit",
+  "pre": [],
+  "args": {
+   "op": "bind",
+   "project_id": "01a02d13-1ad5-715b-b1b9-841c97ab2cd3",
+   "node_id": "01a02d13-1c4c-7052-a8da-4e5868949172",
+   "motif_id": "01a02d13-1b9b-7f81-a218-d70e6b0d1fa9"
+  },
+  "first": [
+   "ok",
+   {
+    "success": true,
+    "chapter_node_id": "01a02d13-1c4c-7052-a8da-4e5868949172",
+    "archived_scene_ids": [],
+    "new_scene_ids": [
+     "01a02d13-756c-7489-b9ba-418c88cbbcfb",
+     "01a02d13-7570-75b9-8a55-8ef7cb118d08"
+    ],
+    "orphaned_thread_ids": [],
+    "new_motif_id": "01a02d13-1b9b-7f81-a218-d70e6b0d1fa9",
+    "undo_token": {
+     "chapter_node_id": "01a02d13-1c4c-7052-a8da-4e5868949172",
+     "archived_scene_ids": [],
+     "new_scene_ids": [
+      "01a02d13-756c-7489-b9ba-418c88cbbcfb",
+      "01a02d13-7570-75b9-8a55-8ef7cb118d08"
+     ]
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_motif_unbind",
+      "args": {
+       "project_id": "01a02d13-1ad5-715b-b1b9-841c97ab2cd3",
+       "node_id": "01a02d13-1c4c-7052-a8da-4e5868949172",
+       "undo_token": {
+        "chapter_node_id": "01a02d13-1c4c-7052-a8da-4e5868949172",
+        "archived_scene_ids": [],
+        "new_scene_ids": [
+         "01a02d13-756c-7489-b9ba-418c88cbbcfb",
+         "01a02d13-7570-75b9-8a55-8ef7cb118d08"
+        ]
+       }
+      }
+     }
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "success": true,
+    "chapter_node_id": "01a02d13-1c4c-7052-a8da-4e5868949172",
+    "archived_scene_ids": [
+     "01a02d13-756c-7489-b9ba-418c88cbbcfb",
+     "01a02d13-7570-75b9-8a55-8ef7cb118d08"
+    ],
+    "new_scene_ids": [
+     "01a02d13-ca7e-7752-a578-0b81383facca",
+     "01a02d13-ca83-7c2c-9b07-e138b4252027"
+    ],
+    "orphaned_thread_ids": [],
+    "new_motif_id": "01a02d13-1b9b-7f81-a218-d70e6b0d1fa9",
+    "undo_token": {
+     "chapter_node_id": "01a02d13-1c4c-7052-a8da-4e5868949172",
+     "archived_scene_ids": [
+      "01a02d13-756c-7489-b9ba-418c88cbbcfb",
+      "01a02d13-7570-75b9-8a55-8ef7cb118d08"
+     ],
+     "new_scene_ids": [
+      "01a02d13-ca7e-7752-a578-0b81383facca",
+      "01a02d13-ca83-7c2c-9b07-e138b4252027"
+     ]
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_motif_unbind",
+      "args": {
+       "project_id": "01a02d13-1ad5-715b-b1b9-841c97ab2cd3",
+       "node_id": "01a02d13-1c4c-7052-a8da-4e5868949172",
+       "undo_token": {
+        "chapter_node_id": "01a02d13-1c4c-7052-a8da-4e5868949172",
+        "archived_scene_ids": [
+         "01a02d13-756c-7489-b9ba-418c88cbbcfb",
+         "01a02d13-7570-75b9-8a55-8ef7cb118d08"
+        ],
+        "new_scene_ids": [
+         "01a02d13-ca7e-7752-a578-0b81383facca",
+         "01a02d13-ca83-7c2c-9b07-e138b4252027"
+        ]
+       }
+      }
+     }
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_composition.motif_application": {
+    "before": null,
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-23 05:24:05.096902+00"
+    }
+   },
+   "loreweave_composition.outline_node": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-23 05:23:42.283595+00"
+    },
+    "after": {
+     "rows": 3,
+     "latest": "2026-08-23 05:24:05.096902+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_composition.motif_application": {
+    "before": {
+     "rows": 2,
+     "latest": "2026-08-23 05:24:05.096902+00"
+    },
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-23 05:24:26.872286+00"
+    }
+   },
+   "loreweave_composition.outline_node": {
+    "before": {
+     "rows": 3,
+     "latest": "2026-08-23 05:24:05.096902+00"
+    },
+    "after": {
+     "rows": 5,
+     "latest": "2026-08-23 05:24:26.872286+00"
+    }
+   }
+  },
+  "verdict": "⚠ INCONCLUSIVE — the second call GREW loreweave_composition.outline_node 3->5, and every one of those tables SOFT-ARCHIVES. Growth is what an archive-and-replace looks like from a row count. Settle it by counting ACTIVE rows only (the lifecycle column), not total: a correct tool leaves the same number of ACTIVE rows and more archived ones.",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [
+    "01a02d13-1b9b-7f81-a218-d70e6b0d1fa9"
+   ],
+   "book_id": "01a02d13-1934-7c19-bd63-61f2556359d4",
+   "title": "LOOP-THROWAWAY-idem-composition_motif_bind_edit-04766527",
+   "tables": {
+    "composition(project)": "01a02d13-1ad5-715b-b1b9-841c97ab2cd3"
+   }
+  }
+ }
+]

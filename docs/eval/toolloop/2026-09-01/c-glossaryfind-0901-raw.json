@@ -1,0 +1,52 @@
+[
+  {
+    "scenario": "glossary-search-finds-a-seeded-entity",
+    "rep": 0,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: 🔴 THE COLUMN IS THE DEFECT. glossary_search matches on cached_name; it was NULL for every entity created this way, because the deployed recalculate_entity_snapshot did not maintain it. Asserting it here means a REGRESSION of the migration fails the fixture rather than quietly producing a 'search found nothing' result that looks like a model problem.\n    expected 'true', store says 'false'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  },
+  {
+    "scenario": "glossary-search-finds-a-seeded-entity",
+    "rep": 1,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: 🔴 THE COLUMN IS THE DEFECT. glossary_search matches on cached_name; it was NULL for every entity created this way, because the deployed recalculate_entity_snapshot did not maintain it. Asserting it here means a REGRESSION of the migration fails the fixture rather than quietly producing a 'search found nothing' result that looks like a model problem.\n    expected 'true', store says 'false'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  },
+  {
+    "scenario": "glossary-search-finds-a-seeded-entity",
+    "rep": 2,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: 🔴 THE COLUMN IS THE DEFECT. glossary_search matches on cached_name; it was NULL for every entity created this way, because the deployed recalculate_entity_snapshot did not maintain it. Asserting it here means a REGRESSION of the migration fails the fixture rather than quietly producing a 'search found nothing' result that looks like a model problem.\n    expected 'true', store says 'false'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  },
+  {
+    "scenario": "glossary-search-finds-a-seeded-entity",
+    "rep": 3,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: 🔴 THE COLUMN IS THE DEFECT. glossary_search matches on cached_name; it was NULL for every entity created this way, because the deployed recalculate_entity_snapshot did not maintain it. Asserting it here means a REGRESSION of the migration fails the fixture rather than quietly producing a 'search found nothing' result that looks like a model problem.\n    expected 'true', store says 'false'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  },
+  {
+    "scenario": "glossary-search-finds-a-seeded-entity",
+    "rep": 4,
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "store_diff": {},
+    "error": "PROVISION ProvisionError: SEED ASSERTION FAILED: 🔴 THE COLUMN IS THE DEFECT. glossary_search matches on cached_name; it was NULL for every entity created this way, because the deployed recalculate_entity_snapshot did not maintain it. Asserting it here means a REGRESSION of the migration fails the fixture rather than quietly producing a 'search found nothing' result that looks like a model problem.\n    expected 'true', store says 'false'\n    The fixture is not in the state this scenario claims, so whatever it measures is not what it says it measures."
+  }
+]

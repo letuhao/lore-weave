@@ -1,0 +1,67 @@
+{
+  "_note": "The NODES-ALLOWED arm of kg-propose-edge. Third attempt at one question, and the two failures are recorded on DQ-T72 rather than discarded: c-kgedge-pending could not test approval at all (no approval), and c-kgedge-approved granted approval to kg_propose_edge, which the model never calls. This arm grants it to kg_add_nodes, the tool actually chosen, so the nodes can land and the follow-on becomes observable.",
+  "scenarios": [
+    {
+      "id": "kg-propose-edge-NODES-ALLOWED",
+      "tool_under_test": "kg_add_nodes",
+      "expect_tool": "kg_add_nodes",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+      "prompt_source": "_meta.synonyms['record that they know each other'] + ['link two characters'], grounded on the two seeded entities so the model has real names to resolve.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO named entities, because the hard step is resolving NAMES to entity ids. With one entity the model cannot get the pair wrong and the scenario proves nothing about resolution."
+        }
+      ],
+      "falsifier": "THE QUESTION: once the NODES are written, does the model go on to propose the EDGE the author asked for?\n\nSUPPLIER-THEN-ACT (not a selection defect) IF kg_propose_edge is called after kg_add_nodes succeeds — the model was fetching a precondition, exactly as jobs_cancel -> jobs_list does.\n\nA REAL SUBSTITUTION IF the nodes land and no edge is ever proposed: the author asked to record that two people know each other and got two nodes and silence.\n\n🔴 NEITHER READING IS AVAILABLE IF THE NODES DO NOT LAND. Check that first — two arms have already failed on that exact point, one because the scenario auto-approved and one because the approval named the wrong tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier A: the proposal must mint a review item, never a direct write.",
+        "absent_case": "OWED — an entity name that does not exist must be refused, not silently resolved to the nearest match.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_why_this_arm": "🔴 THE TOOL UNDER TEST IS DELIBERATELY THE ONE THE MODEL CHOOSES, NOT THE ONE THE PROMPT NEEDS — and that is the only difference from scenarios-c-blocked2.json. `--approvals allow-under-test` grants `allow` to exactly the batch's tools_under_test. With kg_propose_edge declared there, the approval landed on a tool the model never called, so all 5 runs of c-kgedge-approved still carded and nothing was written: the arm could not test what it was built to test. Naming kg_add_nodes here lets ITS write land, which is the precondition for the actual question."
+    }
+  ]
+}

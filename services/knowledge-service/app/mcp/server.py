@@ -47,7 +47,11 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 
-from loreweave_mcp import make_stateless_fastmcp, require_meta
+from loreweave_mcp import (
+    make_stateless_fastmcp,
+    require_meta,
+    validation_directive,
+)
 from pydantic import Field, ValidationError
 
 from app.clients.book_client import get_book_client
@@ -56,7 +60,7 @@ from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
 from app.db.neo4j import graph_session
-from app.db.graph_repos.entities import AuthorableKind, list_entities_filtered
+from app.db.graph_repos.entities import list_entities_filtered
 from app.db.graph_repos.facts import FactType
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
@@ -128,22 +132,16 @@ mcp_server = make_stateless_fastmcp("knowledge-memory")
 # absorb the shared copy later (kit is outside the W0 change surface).
 
 
-def _validation_directive(tool_name: str, exc: ValidationError) -> str:
-    """One line: every failing arg with pydantic's expectation + the sent shape."""
-    parts = []
-    errs = exc.errors(include_url=False)
-    for err in errs[:3]:
-        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
-        msg = err.get("msg", "invalid value")
-        sent = err.get("input")
-        parts.append(f"`{loc}`: {msg} (you sent a {type(sent).__name__})")
-    if len(errs) > 3:
-        parts.append(f"(+{len(errs) - 3} more)")
-    return (
-        f"invalid arguments for {tool_name} — "
-        + "; ".join(parts)
-        + ". Fix the argument and call the tool again."
-    )
+# W0 #4b — the one-line validation directive now lives in the kit as
+# `validation_directive`. It used to be a byte-identical copy in THIS file and in two sibling
+# services, and the copy was wrong in a way none of the three noticed: for a `missing` error
+# pydantic sets `input` to the PARENT object, so every rendering said "(you sent a dict)" about
+# a field that had never been sent. Measured across the corpus: 79 calls, 7 tools, 16 sessions,
+# args `{}` in 100% of them — the clause was false every single time it appeared.
+#
+# The comment that used to sit here said the kit "will absorb the shared copy later". Three
+# copies is how one of them drifts, so it absorbed it.
+_validation_directive = validation_directive
 
 
 def _install_validation_error_rewriter(server: FastMCP) -> None:
@@ -389,6 +387,25 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
     meta=require_meta(
         "R", "project",
         ambient_project=True,  # resolves project from X-Project-Id when omitted (already backend-resolved)
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called once in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a person types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3.
+        synonyms=[
+            "where is",
+            "where does",
+            "find in the text",
+            "search the prose",
+            "search my manuscript",
+            "which chapter mentions",
+            "where did i write",
+            "find the passage",
+            "find the scene where",
+            "search the book text",
+            "locate in the manuscript",
+        ],
         tool_name="story_search",
     ),
 )
@@ -434,13 +451,29 @@ async def story_search(
         "Search the project's stored knowledge for what is already known about a "
         "topic, character, place, or event before answering — the book's chapter "
         "text (lexical + semantic, so it finds an exact phrase even with nothing "
-        "indexed yet), past chat turns, and glossary entries. Returns the most "
-        "relevant snippets. (For locating/reading manuscript prose specifically, "
-        "`story_search` is the primary find tool.)"
+        "indexed yet), past chat turns, glossary entries, and the facts saved with "
+        "memory_remember. Returns the most relevant snippets. (For locating/reading "
+        "manuscript prose specifically, `story_search` is the primary find tool.)"
     ),
     meta=require_meta(
         "R", "project",
         ambient_project=True,  # resolves project from X-Project-Id when omitted (already backend-resolved)
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        synonyms=[
+            "what do i know about",
+            "what do we know about",
+            "what has been established",
+            "recall what",
+            "what is known about",
+            "check continuity",
+            "has this been established",
+            "look this up in my notes",
+        ],
         tool_name="memory_search",
     ),
 )
@@ -454,9 +487,9 @@ async def memory_search(
         f"max {SEARCH_LIMIT_MAX}).",
     ] = SEARCH_LIMIT_DEFAULT,
     source_type: Annotated[
-        Literal["chapter", "chat", "glossary"] | None,
-        "Optional — restrict to one source: 'chapter', 'chat', or "
-        "'glossary'. Omit to search all.",
+        Literal["chapter", "chat", "glossary", "fact"] | None,
+        "Optional — restrict to one source: 'chapter', 'chat', 'glossary', or "
+        "'fact' (what memory_remember saved). Omit to search all.",
     ] = None,
     detail: _DETAIL_ARG = "summary",  # K37 drain: OUT-2 small-shape default
     project_id: _PROJECT_ID_ARG = None,
@@ -479,6 +512,28 @@ async def memory_search(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        synonyms=[
+            # 🔴 "who is" WAS REMOVED HERE ON 2026-08-25 AND RESTORED THE SAME DAY. The tie with
+            # glossary_search is real, and it was broken the wrong way: this tool's own ledger
+            # note reads "CALLED 3/3 from 'Who is Mira Solene?' — its OWN declared phrase". The
+            # tie had already been MEASURED and this tool won it every time. Removing the phrase
+            # from the winner does not break the tie, it takes the winner off the wire — strictly
+            # worse than the tie it was fixing. glossary_search gives it up instead: it has seven
+            # other phrasings and no measured turn that depends on this one.
+            "who is",
+            "what do you know about",
+            "tell me about the character",
+            "remind me about",
+            "what do we know about this character",
+            "details on this character",
+            "refresh me on",
+        ],
         tool_name="memory_recall_entity",
     ),
 )
@@ -502,6 +557,21 @@ async def memory_recall_entity(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        synonyms=[
+            "what happened when",
+            "timeline of events",
+            "in what order did",
+            "chronology",
+            "sequence of events",
+            "what happened first",
+            "story timeline",
+        ],
         tool_name="memory_timeline",
     ),
 )
@@ -551,6 +621,21 @@ async def memory_timeline(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        synonyms=[
+            "remember that",
+            "remember this",
+            "note that",
+            "keep in mind",
+            "store this fact",
+            "save this detail",
+            "make a note that",
+        ],
         tool_name="memory_remember",
     ),
 )
@@ -576,10 +661,48 @@ async def memory_remember(
     description=(
         "Invalidate a previously stored fact by its id so it no longer "
         "appears in memory. Only use a fact_id you have seen in an earlier "
-        "tool result."
+        "tool result — memory_search returns one on every fact hit, which is "
+        "where to get it when the fact was stored in an earlier turn."
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        # 🔴 `"that was wrong"` REMOVED, 2026-08-28. The answerability matcher normalises a
+        # synonym through `_answer_norm`, which STRIPS ARTICLES AND DEMONSTRATIVES — so this
+        # phrase reached the matcher as the bare predicate `"was wrong"`, which is ordinary
+        # English rather than a request to delete anything. Measured live: it made this tool —
+        # tier A, and its whole job is invalidating a stored fact — answerable on
+        #
+        #     "I just fixed a few paragraphs in chapter 3 — some dialogue WAS WRONG.
+        #      Can you redo the translation for just those?"
+        #
+        # a request about translation, on which R1 answerability then forces the tool onto the
+        # wire "whatever the budget decided". The demonstrative was doing the work: "that was
+        # wrong" points at a fact the user was just shown, and without it the phrase points at
+        # anything.
+        #
+        # THE OTHER FOUR ARE KEPT AND ARE NOT THE SAME SHAPE. "forget that" -> "forget",
+        # "retract that" -> "retract" and "remove that fact" -> "remove fact" all survive the
+        # strip as VERBS that still ask for this operation; "no longer true" is untouched. Only
+        # this one degraded into a predicate that describes a situation rather than requests an
+        # action.
+        #
+        # Fixed in the DECLARATION rather than in the matcher, per the owner's DQ-T32 decision
+        # (keep the contiguous match, fix declarations). Measured before assuming a class: over
+        # 564 distinct live requests, ZERO write-tier synonyms match 5% or more of the corpus
+        # and the most promiscuous is `add a character` at 3%, which is correct. So this is one
+        # bad declaration, not a systemic over-stripping problem, and it does not warrant a gate.
+        synonyms=[
+            "forget that",
+            "no longer true",
+            "remove that fact",
+            "retract that",
+        ],
         tool_name="memory_forget",
     ),
 )
@@ -609,6 +732,16 @@ async def memory_forget(
     ),
     meta=require_meta(
         "A", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "set up the knowledge graph",
+            "start a knowledge project",
+            "create the knowledge project",
+            "enable the graph for this book",
+        ],
         tool_name="kg_project_create",
     ),
 )
@@ -645,6 +778,15 @@ async def kg_project_create(
     ),
     meta=require_meta(
         "R", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "my knowledge projects",
+            "list knowledge projects",
+            "which projects do i have",
+        ],
         tool_name="kg_project_list",
     ),
 )
@@ -671,10 +813,20 @@ async def kg_project_list(
         "the user to the UI. Pass a provider-registry user_model UUID for one of your "
         "own embedding models (find one with settings_list_models). The vector "
         "dimension is probed automatically. Free, reversible, owner-only. Then call "
-        "kg_run_benchmark, then kg_build (target=\"graph\")."
+        "kg_build (target=\"graph\") — that is the only step it gates. kg_run_benchmark is "
+        "OPTIONAL: it rates this model's retrieval quality, it does not unblock the build."
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "set the embedding model",
+            "configure embeddings",
+            "choose an embedding model",
+        ],
         tool_name="kg_project_set_embedding_model",
     ),
 )
@@ -716,6 +868,27 @@ async def kg_project_set_embedding_model(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "show the graph",
+            "knowledge graph",
+            "how are they connected",
+            "relationships between",
+            "who knows who",
+            "connections in this story",
+            "entity relationships",
+            # Added 2026-08-14 (batch 12). "how are they connected" missed "How are the CHARACTERS
+            # in this story connected" — the pronoun is the only difference, and answerability
+            # matches a synonym as a CONTIGUOUS phrase. Declare the shapes a person types.
+            "how are the characters connected",
+            "how are these connected",
+            "show me the relationships",
+            "who is connected to who",
+            "connected to each other",
+        ],
         tool_name="kg_graph_query",
     ),
 )
@@ -872,6 +1045,20 @@ async def kg_multi_query(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "relationship over time",
+            "how did their relationship change",
+            "timeline of a relationship",
+            "history between two characters",
+            "relationships change",
+            "change over time",
+            "how did the relationship evolve",
+            "relationship history",
+        ],
         tool_name="kg_entity_edge_timeline",
     ),
 )
@@ -905,6 +1092,18 @@ async def kg_entity_edge_timeline(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "graph schema",
+            "what edge types exist",
+            "what relationships can i use",
+            "kinds of relationships",
+            "relationships can i record",
+            "show the schema",
+        ],
         tool_name="kg_schema_read",
     ),
 )
@@ -926,6 +1125,15 @@ async def kg_schema_read(
     ),
     meta=require_meta(
         "R", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "graph templates",
+            "available graph schemas",
+            "what templates can i adopt",
+        ],
         tool_name="kg_list_templates",
     ),
 )
@@ -963,6 +1171,17 @@ async def kg_list_templates(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "graph template updates",
+            "is my schema out of date",
+            "schema out of date",
+            "upstream template updates",
+            "upstream schema changes",
+        ],
         tool_name="kg_sync_available",
     ),
 )
@@ -983,6 +1202,15 @@ async def kg_sync_available(
     ),
     meta=require_meta(
         "R", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "my saved views",
+            "list graph views",
+            "what lenses do i have",
+        ],
         tool_name="kg_view_read",
     ),
 )
@@ -1004,6 +1232,17 @@ async def kg_view_read(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "graph triage",
+            "what did not match the schema",
+            "unmatched graph items",
+            "graph review queue",
+            "items needing triage",
+        ],
         tool_name="kg_triage_list",
     ),
 )
@@ -1037,6 +1276,16 @@ async def kg_triage_list(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "record a fact",
+            "note a story fact",
+            "add a narrative fact",
+            "remember this happened",
+        ],
         tool_name="kg_propose_fact",
     ),
 )
@@ -1067,14 +1316,68 @@ async def kg_propose_fact(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "add a relationship",
+            "link two characters",
+            "connect these entities",
+            "they are related",
+            "record that they know each other",
+            "know each other",
+        ],
         tool_name="kg_propose_edge",
     ),
 )
 async def kg_propose_edge(
     ctx: MCPContext,
-    source_entity_id: Annotated[str, "The id of the relationship's source entity."],
-    target_entity_id: Annotated[str, "The id of the relationship's target entity."],
+    # D-ENTITY-ID-MEANS-TWO-DIFFERENT-IDS-IN-ADJACENT-TOOLS — a GLOSSARY entity id and a graph
+    # :Entity NODE id are different objects with the same shape and the same name. These
+    # arguments require the NODE id (existing_entity_node_ids matches on Entity.id, and
+    # KG_ENDPOINT_NOT_NODE rejects anything else up front), and "the id of the source entity"
+    # invites the other one.
+    #
+    # 🔴 THE CITATION BELOW IS UNVERIFIABLE, checked 2026-09-02. There is no c-kgedge3 file on
+    # disk and no 2026-08-26 batch directory, and KG_ENDPOINT_NOT_NODE appears in ZERO recorded
+    # results. The measurement may have been real and its file not kept — that is NOT the same as
+    # the claim being false — but nobody can re-check it, and three other comments in this
+    # service cite the same missing batch. What IS re-checkable: over 53 recorded
+    # kg_propose_edge calls, 36 (68%) passed NEITHER endpoint id and 0 were wrong-family. The
+    # id-family guidance below stays, because it is cheap and still correct; it is simply not the
+    # dominant failure. See scripts/toolloop/wave1_fabrication_baseline.py.
+    #
+    # Measured 2026-08-26, batch c-kgedge3: on 3 of 3 edge calls the
+    # model passed the GLOSSARY entity ids — matched exactly against the run's own seed_ids —
+    # well-formed UUIDs naming real objects of the wrong family. Say which family, and say
+    # where one comes from; a caller holding the wrong id has no other way to find out.
     edge_type: Annotated[str, "The relationship edge-type code (see kg_schema_read)."],
+    # DQ-T76 (f) WAVE 1 — NAME IN / HANDLE THROUGH. The NAME is now the declared way in and the
+    # id is legacy-but-accepted. Names are listed FIRST because argument order is part of what a
+    # model reads.
+    source_name: Annotated[
+        str | None,
+        "The NAME of the relationship's source entity — the ordinary way to say it, e.g. "
+        "\"Aldric Vane\". The server resolves it to the graph node. If the name matches more "
+        "than one entity the call is REFUSED with the candidates, so nothing is guessed.",
+    ] = None,
+    target_name: Annotated[
+        str | None,
+        "The NAME of the relationship's target entity. Same resolution as source_name.",
+    ] = None,
+    source_entity_id: Annotated[
+        str | None,
+        "LEGACY, still accepted: the graph NODE id of the source — NOT a glossary entity id. "
+        "Prefer source_name. If you pass both, the ID wins and the result says so in "
+        "`resolved_by`. Node ids come from kg_add_nodes or kg_graph_query.",
+    ] = None,
+    target_entity_id: Annotated[
+        str | None,
+        "LEGACY, still accepted: the graph NODE id of the target — NOT a glossary entity "
+        "id. Prefer target_name, which cannot be the wrong id family at all. Same source as "
+        "source_entity_id.",
+    ] = None,
     source_kind: Annotated[
         str | None, "Optional — the source entity's node kind, for validation."
     ] = None,
@@ -1094,11 +1397,13 @@ async def kg_propose_edge(
     ] = None,
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
-    args: dict[str, Any] = {
-        "source_entity_id": source_entity_id,
-        "target_entity_id": target_entity_id,
-        "edge_type": edge_type,
-    }
+    args: dict[str, Any] = {"edge_type": edge_type}
+    # Only send what was actually given: the args model requires each endpoint as an id OR a
+    # name, and forwarding a None would look like a supplied-but-empty value.
+    for k, v in (("source_entity_id", source_entity_id), ("target_entity_id", target_entity_id),
+                 ("source_name", source_name), ("target_name", target_name)):
+        if v is not None:
+            args[k] = v
     if project_id is not None:
         args["project_id"] = project_id
     if source_kind is not None:
@@ -1121,10 +1426,24 @@ async def kg_propose_edge(
         "create ONE node (needs name + kind) — use this BEFORE kg_propose_edge when a "
         "relationship's endpoint isn't in the graph yet; 'from_glossary' = project the book's "
         "recorded glossary entities into the graph as nodes (optional entity_ids; omit for the "
-        "whole active glossary). Both are idempotent (re-running adds no duplicates)."
+        "whole active glossary). Both are idempotent (re-running adds no duplicates) — but "
+        "both WRITE: a re-run bumps the touched nodes' versions, so a PATCH holding an "
+        "If-Match taken before the call will 412."
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "add to the graph",
+            "add a node",
+            "add nodes to the knowledge graph",
+            "as a character",
+            "put this entity in the graph",
+            "add characters to the knowledge graph",
+        ],
         tool_name="kg_add_nodes",
     ),
 )
@@ -1132,17 +1451,48 @@ async def kg_add_nodes(
     ctx: MCPContext,
     mode: Annotated[
         Literal["manual", "from_glossary"],
-        "manual = create one node (name+kind); from_glossary = project the book's glossary "
-        "entities into the graph.",
+        # D-A-TWO-ENDPOINT-EDGE-NEEDS-N-SEQUENTIAL-CONFIRM-CARDS — the old wording was
+        # "manual = create one node (name+kind); from_glossary = project the book's glossary
+        # entities into the graph." It states neither CARDINALITY nor COST, so a model asked to
+        # record a relationship between two characters matched "create one node" to its task and
+        # repeated it: measured 5/5 manual and 0/5 from_glossary, with 4/5 turns ending suspended
+        # holding a single node id before kg_propose_edge was ever reached. On two of those runs
+        # it called tool_load to RE-READ this description first and still chose manual — it read
+        # the words and the words did not carry the fact.
+        #
+        # Both modes are Tier A, so each CALL costs one confirm card. That is the whole
+        # asymmetry: manual is one node per card, from_glossary is many per card. State the two
+        # facts and nothing else — this loop has measured twice that telling the model HOW to
+        # choose makes it choose worse (see D-WORKFLOW-LIST-DESCRIBES-A-PAYLOAD, where the
+        # self-filter invitation was reverted).
+        "manual = create ONE node from a name+kind — one confirm card per node, so N nodes "
+        "cost N calls and N approvals. from_glossary = create nodes for MANY glossary entities "
+        "the book already has, in a SINGLE call behind ONE confirm card (optionally narrowed by "
+        "entity_ids). If you need several nodes and they are already glossary entities, "
+        "from_glossary reaches them all in one call.",
     ],
     name: Annotated[str | None, "mode=manual: the entity's name."] = None,
     kind: Annotated[
-        AuthorableKind | None, "mode=manual: the entity kind (closed set)."
+        str | None,
+        # 🔴 str, NOT AuthorableKind. A Literal here is validated by the tool layer BEFORE any
+        # code runs, so `kind='person'` was rejected with "Input should be 'character', ... (you
+        # sent 'person')" and the alias map that exists to fold it never saw the value. The
+        # normaliser was written, wired into KgCreateNodeArgs, and unreachable from THIS tool —
+        # the one the model actually calls. Same trade kg_create_node already made: the closed
+        # set moves from the TYPE into the description (guidance) and the validator (enforcement).
+        "mode=manual: the entity kind — one of: character, location, organization, concept, "
+        "item. Ordinary synonyms are accepted and folded to these (person → character, "
+        "place → location, group → organization, thing → item).",
     ] = None,
     entity_ids: Annotated[
         list[str] | None,
-        "mode=from_glossary: optional specific glossary entity ids; omit for the whole "
-        "active glossary.",
+        # It said "optional specific glossary entity ids" and never that they are UUIDs, nor
+        # where one comes from — so a NAME is the obvious thing to pass, and the model passed
+        # two (measured, batch c-kgedge3). Omitting is the easier and usually correct route,
+        # so say that first.
+        "mode=from_glossary: OMIT this to project the book's whole active glossary — that is "
+        "the usual call. Supply it only to narrow to specific entities, as glossary entity "
+        "UUIDs from glossary_search (not names).",
     ] = None,
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
@@ -1199,8 +1549,11 @@ async def kg_project_entities_to_nodes(
         "Manually create ONE knowledge-graph entity node (a character, location, "
         "organization, item, …). Use this BEFORE kg_propose_edge when a relationship's "
         "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
-        "parked and later fails. Idempotent: the same name+kind returns the existing "
-        "node. Returns the entity_id to use as an edge endpoint."
+        "parked and later fails. Idempotent in RESULT — the same name+kind returns the "
+        "existing node and never creates a duplicate — but it is a WRITE, not a no-op: "
+        "re-running bumps that node's version, so a PATCH holding an If-Match taken "
+        "before the call will 412. Do not call it defensively on a node you already "
+        "have. Returns the entity_id to use as an edge endpoint."
     ),
     # LEGACY (catalog-unification 2026-07-22): superseded by kg_add_nodes (mode=manual).
     meta=require_meta("A", "project", visibility="legacy", tool_name="kg_create_node"),
@@ -1209,8 +1562,12 @@ async def kg_create_node(
     ctx: MCPContext,
     name: Annotated[str, "the entity's name"],
     kind: Annotated[
-        AuthorableKind,
-        "the entity kind (closed set)",
+        str,
+        # Same reason as kg_add_nodes: a Literal here is validated before any code runs, so
+        # KgCreateNodeArgs' fold — which was written FOR this tool — could never see an alias
+        # either. The map has been unreachable from every MCP call since it was added.
+        "the entity kind — one of: character, location, organization, concept, item. Ordinary "
+        "synonyms are accepted and folded to these (person → character, place → location).",
     ],
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:
@@ -1227,11 +1584,23 @@ async def kg_create_node(
     description=(
         "Create, replace, or delete one of YOUR saved views (a named lens of edge-type + "
         "node-kind codes) for the current project. Owner-scoped (only ever your own view). "
-        "op=upsert creates/replaces it (needs code + name; optional description/edge_type_codes/"
-        "node_kind_codes); op=delete removes it (needs code; reversible — recreate with upsert)."
+        "op=upsert creates/replaces it WHOLE (needs code + name; description/edge_type_codes/"
+        "node_kind_codes are optional to SUPPLY but not preserved — anything you omit is "
+        "CLEARED, so send the full lens every time, not just the part you are changing); "
+        "op=delete removes it (needs code; reversible — recreate with upsert)."
     ),
     meta=require_meta(
         "A", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "save a graph view",
+            "create a lens",
+            "edit a saved view",
+            "delete a view",
+        ],
         tool_name="kg_view_edit",
     ),
 )
@@ -1271,7 +1640,10 @@ async def kg_view_edit(
     description=(
         "Create or replace one of the caller's saved views (a named lens of "
         "edge-type + node-kind codes) for the current project. Owner-scoped: "
-        "only ever touches your own view."
+        "only ever touches your own view. It replaces the view WHOLE: anything you omit "
+        "is CLEARED, not left alone, so send the full lens every time. Beware that an "
+        "emptied code list means ALL — clearing them by accident widens the view to "
+        "everything rather than narrowing it to nothing."
     ),
     # LEGACY (catalog-unification 2026-07-22): superseded by kg_view_edit (op=upsert).
     meta=require_meta(
@@ -1334,12 +1706,30 @@ async def kg_view_delete(
     description=(
         "Resolve a triage signature group with a low-impact, reversible "
         "action: map, re_target, drop_edge, close_previous, or dismiss. "
-        "Schema-changing actions (add to vocab/schema, widen, promote to "
-        "glossary) are NOT available here — those need explicit human "
-        "confirmation via the review surface."
+        "Schema-changing actions (add_to_vocab, add_to_schema, widen_target_kinds, "
+        "set_multi_active) ARE available to you — on kg_triage_schema_write, which "
+        "confirm-gates them. Only promote_to_glossary_kind and demote_to_attribute are "
+        "human-only: they are cross-service glossary writes the user initiates. kg_triage_list's "
+        "suggested_actions names actions from all three triage tools, so match the action to "
+        "the tool that accepts it."
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "resolve triage",
+            "map this triage item",
+            "drop this edge",
+            "fix the triage",
+            "drop the proposed edge",
+            "drop the proposed",
+            "reject the proposal",
+            "dismiss the proposal",
+            "the proposal is wrong",
+        ],
         tool_name="kg_triage_resolve",
     ),
 )
@@ -1382,6 +1772,21 @@ async def kg_triage_resolve(
     ),
     meta=require_meta(
         "W", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "add an edge type",
+            "change the graph schema",
+            "adopt a graph template",
+            "deprecate an edge type",
+            "new relationship type",
+            "adopt an ontology template",
+            "ontology template",
+            "adopt the ontology",
+            "graph ontology",
+        ],
         tool_name="kg_ontology_propose",
     ),
 )
@@ -1554,6 +1959,19 @@ async def kg_sync_apply(
     ),
     meta=require_meta(
         "W", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "place this edge",
+            "accept the proposed edge",
+            "put the edge in the graph",
+            "place the proposed edge",
+            "place the edge",
+            "approve the edge",
+            "into the graph",
+        ],
         tool_name="kg_triage_place_edge",
     ),
 )
@@ -1583,6 +2001,19 @@ async def kg_triage_place_edge(
     ),
     meta=require_meta(
         "W", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "add to the vocabulary",
+            "add this value to the schema",
+            "resolve triage by changing the schema",
+            "add an edge type in triage",
+            "add an edge type to the schema",
+            "so that proposal fits",
+            "widen the schema",
+        ],
         tool_name="kg_triage_schema_write",
     ),
 )
@@ -1637,12 +2068,28 @@ async def kg_triage_schema_write(
         "'graph' = extract the KG from the book's chapters (needs llm_model); 'wiki' = "
         "generate wiki articles for the book's entities (needs model_ref; omit entity_ids "
         "for all). target=graph requires an embedding model configured — if missing, call "
-        "kg_project_set_embedding_model then kg_run_benchmark first. Pick models from "
+        "kg_project_set_embedding_model (kg_run_benchmark is optional: it rates the model's "
+        "retrieval, it does not gate the build). Pick models from "
         "settings_list_models."
     ),
     meta=require_meta(
         "W", "project",
         async_job=True,
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        # 2026-08-25 — "build the knowledge graph" REMOVED: composition_build_cast_and_graph
+        # declared the identical string. An exact duplicate is an unbreakable tie, and the
+        # scenario that named this phrase measured the tie rather than either tool. This
+        # one reads the book's CHAPTERS, so its phrasing says so.
+        synonyms=[
+            "build the knowledge graph from my chapters",
+            "build the graph from the book",
+            "generate the wiki",
+            "rebuild the graph",
+            "extract the graph from my book",
+        ],
         tool_name="kg_build",
     ),
 )
@@ -1710,7 +2157,8 @@ async def kg_build(
         "returns a confirm_token + summary; a human confirms on the review surface (which "
         "shows the estimated cost) and the job starts then. Requires the project to have "
         "an embedding model configured — if it does not, call kg_project_set_embedding_model "
-        "then kg_run_benchmark first, rather than sending the user to the UI. Pick "
+        "rather than sending the user to the UI (kg_run_benchmark is an optional quality "
+        "check, not a precondition). Pick "
         "the extraction llm_model from settings_list_models."
     ),
     # LEGACY (catalog-unification 2026-07-22): superseded by kg_build (target=graph). Kept
@@ -1812,14 +2260,26 @@ async def kg_build_wiki(
 @mcp_server.tool(
     name="kg_run_benchmark",
     description=(
-        "Run the required embedding-quality benchmark for the current project's embedding "
-        "model. Build-KG (kg_build target=\"graph\") is BLOCKED until this passes — call this when a "
+        "Measure how well the current project's EMBEDDING MODEL retrieves — a quality "
+        "diagnostic, NOT a precondition: kg_build target=\"graph\" runs whether or not this has "
+        "passed. Use it to answer 'is this embedding model any good for this project?' before "
+        "spending on a build, or when a "
         "build preview warns the benchmark is not passing, instead of sending the user to "
         "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
-        "sandbox. Returns passed + gate_failures; a pass enables Build-KG for this model."
+        "sandbox. Returns passed + gate_failures."
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "benchmark the embedding model",
+            "how good is retrieval",
+            "test the embeddings",
+            "retrieval quality",
+        ],
         tool_name="kg_run_benchmark",
     ),
 )

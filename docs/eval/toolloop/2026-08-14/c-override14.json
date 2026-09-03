@@ -1,0 +1,892 @@
+{
+  "batch": "c-override14",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_entity_override_edit",
+      "scenario": "composition-entity-override-edit-on-a-derivative",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the BOOK-level glossary entity changes (glossary_entities / entity_revisions move) - that is the sibling's write and the prompt explicitly forbids it - OR an override lands with no confirm card (Tier A).\n\nCONTROL: the override's own table is loreweave_composition.entity_override, keyed on work_id. A run that moves THAT and leaves the glossary alone is the tool doing its job; a run that moves the glossary is the sibling winning, which is the thing being measured.",
+      "answer_expect": null,
+      "falsifier_sha": "15d28e16076183ef",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a target_entity_id or override_id that does not exist must be refused.",
+        "idempotency": "OWED — deleting an already-deleted override must refuse, not report a second success. Checked deliberately: that is the exact shape of the arc_template archive defect found in batch 15.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a03199-635d-7675-a908-924612a0aaf2",
+          "session_id": "01a03199-968d-7fe3-9b37-5b440784e3dd",
+          "prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "scenario_prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_entity_override_edit",
+            "glossary_search"
+          ],
+          "error": "resume ReadTimeout: ",
+          "approvals": [
+            {
+              "tool": "composition_entity_override_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.348641+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.348641+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.348641+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.348641+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:28:52.162574+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:52.162574+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:28:51.712699+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.712699+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:28:51.712699+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.850992+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:28:52.157544+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.348641+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.348641+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.348641+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.348641+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:28:52.162574+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:52.162574+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:28:51.712699+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.712699+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:28:51.712699+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:28:51.850992+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:28:52.157544+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 1,
+                "latest": "2026-08-24 02:29:04.402018+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 02:29:04.402018+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0319c-a816-74f7-b6db-6b1fd6143f93",
+          "session_id": "01a0319c-dea8-7f8e-9a7c-7c00e2a1f603",
+          "prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "scenario_prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_entity_override_edit",
+            "glossary_get_entity",
+            "glossary_search"
+          ],
+          "error": "resume ReadTimeout: ",
+          "approvals": [
+            {
+              "tool": "composition_entity_override_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.575087+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.575087+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.575087+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.575087+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:32:26.296575+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:26.296575+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:32:25.854611+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.854611+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:32:25.854611+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.962896+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:32:26.283149+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.575087+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.575087+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.575087+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.575087+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:32:26.296575+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:26.296575+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:32:25.854611+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.854611+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:32:25.854611+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:25.962896+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:32:26.283149+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:39.433058+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 02:32:39.433058+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0319f-f771-7bc2-b71d-88537290a3c2",
+          "session_id": "01a031a0-294e-7caf-99cc-26530df0b590",
+          "prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "scenario_prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_entity_override_edit",
+            "glossary_get_entity",
+            "glossary_search"
+          ],
+          "error": "resume ReadTimeout: ",
+          "approvals": [
+            {
+              "tool": "composition_entity_override_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.483004+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.483004+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.483004+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.483004+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:36:03.11108+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:03.11108+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:36:02.737105+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.737105+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:36:02.737105+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.833328+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:36:03.097625+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.483004+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.483004+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.483004+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.483004+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:36:03.11108+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:03.11108+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:36:02.737105+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.737105+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:36:02.737105+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:02.833328+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:36:03.097625+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:15.149791+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 02:36:15.149791+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a031a3-3df0-7d04-9f38-55f44ed60c26",
+          "session_id": "01a031a3-70cf-79dd-9599-53b1636f6033",
+          "prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "scenario_prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_entity_override_edit",
+            "glossary_get_entity",
+            "glossary_search"
+          ],
+          "error": "resume ReadTimeout: ",
+          "approvals": [
+            {
+              "tool": "composition_entity_override_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.112836+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.112836+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.112836+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.112836+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:39:37.780994+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.780994+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:39:37.36423+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.36423+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:39:37.36423+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.476679+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:39:37.776023+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.112836+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.112836+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.112836+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.112836+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:39:37.780994+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.780994+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:39:37.36423+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.36423+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:39:37.36423+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:37.476679+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:39:37.776023+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:50.055105+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 02:39:50.055105+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a031a6-8425-7114-b6f1-05c715e9ca30",
+          "session_id": "01a031a6-b7b6-7af8-84db-4c6d2da50e18",
+          "prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "scenario_prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_entity_override_edit",
+            "glossary_get_entity",
+            "glossary_search"
+          ],
+          "error": "resume ReadTimeout: ",
+          "approvals": [
+            {
+              "tool": "composition_entity_override_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.68963+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.68963+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.68963+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.68963+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:43:12.453868+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:12.453868+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:43:11.972283+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.972283+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:43:11.972283+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:12.089438+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:43:12.448172+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.68963+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.68963+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.68963+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.68963+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 02:43:12.453868+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:12.453868+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 02:43:11.972283+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:11.972283+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 02:43:11.972283+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:12.089438+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 02:43:12.448172+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:24.814369+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 02:43:24.814369+00"
+              }
+            }
+          },
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 5,
+      "suspended_count": 0
+    }
+  ]
+}

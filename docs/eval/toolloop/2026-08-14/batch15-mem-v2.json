@@ -1,0 +1,352 @@
+{
+ "batch": "batch15-mem-v2",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "memory_search",
+   "scenario": "memory-search-v2",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR any reply states the Trench is not in the manuscript while the seeded chapter contains it (D-DEGRADED-READ-REPORTED-AS-ABSENCE, the class story_search is BLOCKED on), OR a reply carries Trench details the chapter does not contain. K=5, because at K=3 the batch-6 distribution (1 good, 2 false) could land 3/3 good by luck and I would re-prove nothing.",
+   "answer_expect": {
+    "all_of": [
+     "low tide"
+    ],
+    "none_of": [
+     "hasn't been written",
+     "has not been written",
+     "couldn't find any mention",
+     "could not find any mention"
+    ],
+    "why": "THIS IS THE WITHDRAWAL, RE-ARMED. The batch-6 note claimed 'the answer carried the seeded chapter's fact'; once the answer bar could actually read all_of, 1 of 3 carried it and 2 of 3 said 'I couldn't find any mention of the Obsidian Trench ... it's possible it hasn't been written into the story yet'. The none_of needles are those exact sentences. The tool's own description promises lexical search 'so it finds an exact phrase even with nothing indexed yet', which is what makes a false absence a defect rather than a fixture gap."
+   },
+   "falsifier_sha": "97c89d181070104a",
+   "ship_audit": {
+    "empty_case": "EXERCISED and it now makes the distinction that broke this tool. A real project with a genuinely absent phrase ('zeppelin cartography guild') returns hits=0 with note='no stored knowledge matched this query — note the semantic index is not built for this project yet, so this search covered the manuscript text only'. Before the fix the same empty result said 'this project has no indexed memory yet', which asserts an indexing state as the REASON and is what the model relayed to the author as 'it hasn't been established in the story yet'. 'I found nothing' and 'nothing is indexed' are now two different sentences.",
+    "tenancy": "EXERCISED — a project_id this account does not own is refused with 'project not found'. Anti-oracle: the same message a deleted project gives, so the refusal does not confirm the row exists."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02200-1dbe-7a2a-93c4-fd9bfc045f70",
+     "session_id": "01a02200-3b73-709a-a8cc-b77c890331e5",
+     "prompt": "What has been established about the Obsidian Trench so far?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "memory_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:47:08.584128+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:08.469984+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:08.462774+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:47:08.584128+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:08.469984+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:08.462774+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Based on the manuscript, the only established detail about the **Obsidian Trench** is that it is **only walkable during low tide**. \n\nThe text notes that Aldric Vane learned this fact \"the hard way,\" implying it is a dangerous or treacherous location. No other specific details regarding its geography, contents, or significance have been recorded in the chapters so far."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02200-76db-7a39-9e6f-b0b595aafd1d",
+     "session_id": "01a02200-9036-7c12-8d2a-5119a0982a68",
+     "prompt": "What has been established about the Obsidian Trench so far?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "memory_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:47:31.440984+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:31.307058+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:31.296499+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:47:31.440984+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:31.307058+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:31.296499+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Based on the manuscript, the only established detail about the **Obsidian Trench** is that it is **only walkable during low tide**. \n\nThe text notes that Aldric Vane learned this fact \"the hard way.\""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02200-c735-7c7e-b1eb-f58d05b3f84a",
+     "session_id": "01a02200-e332-7808-9e14-5a4d978ce3b2",
+     "prompt": "What has been established about the Obsidian Trench so far?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "memory_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:47:51.961501+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:51.839757+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:51.83158+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:47:51.961501+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:51.839757+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:47:51.83158+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Based on the manuscript, the only established detail about the **Obsidian Trench** is that it is **only walkable during low tide**. \n\nThe text notes that Aldric Vane learned this fact \"the hard way,\" implying it is a dangerous or treacherous location. No other specific details regarding its geography, contents, or significance have been recorded in the story so far."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02201-1551-7793-98bd-70a5a36eae15",
+     "session_id": "01a02201-2f3c-7909-94b1-d6b8c0f8a71b",
+     "prompt": "What has been established about the Obsidian Trench so far?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "memory_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:48:11.941304+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:48:11.824337+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:48:11.815769+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:48:11.941304+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:48:11.824337+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:48:11.815769+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Based on the manuscript, the only established detail about the **Obsidian Trench** is that it is **only walkable during low tide**. \n\nThe text mentions that Aldric Vane learned this fact \"the hard way,\" implying it is a dangerous or treacherous location. No other specific details regarding its geography, contents, or significance have been recorded in the chapters or story bible so far."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02201-63d9-7815-9170-b561230ba34b",
+     "session_id": "01a02201-7a63-7274-bd0b-97b576186a72",
+     "prompt": "What has been established about the Obsidian Trench so far?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "memory_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:48:32.046918+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:48:31.929058+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:48:31.922447+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 01:48:32.046918+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 01:48:31.929058+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 01:48:31.922447+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Based on the manuscript, the only established detail about the **Obsidian Trench** is that it is **only walkable during low tide**. \n\nThe text mentions that Aldric Vane learned this fact \"the hard way,\" implying it is a dangerous or treacherous location. No other specific details regarding its geography, inhabitants, or purpose have been recorded in the story so far."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  }
+ ]
+}

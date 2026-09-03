@@ -1,0 +1,12 @@
+
+composition_reference_update   required=['project_id', 'reference_id']
+  absent   refused    MCP composition_reference_update error: Error executing tool composition_reference_update: not found or not accessible
+  tenancy  refused    MCP composition_reference_update error: Error executing tool composition_reference_update: not found or not accessible
+  empty    refused    MCP composition_reference_update error: Error executing tool composition_reference_update: project_id must be a UUID — received ''. Compare it against the id you meant to send; a repeated or dropped group is the usual ca
+  oracle   identical
+
+world_map_add_marker   required=['map_id', 'label', 'x', 'y']
+  absent   refused    MCP world_map_add_marker error: map not found — check the map_id (call world_map_list for valid ids)
+  tenancy  refused    MCP world_map_add_marker error: map not found — check the map_id (call world_map_list for valid ids)
+  empty    refused    MCP world_map_add_marker error: map_id must be a UUID
+  oracle   identical

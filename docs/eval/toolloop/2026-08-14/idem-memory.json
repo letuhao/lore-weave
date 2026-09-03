@@ -1,0 +1,38 @@
+[
+ {
+  "tool": "memory_forget",
+  "pre": [],
+  "args": {
+   "fact_id": "62f812ce2be7d453e0fc65c318b7b0a0"
+  },
+  "first": [
+   "ok",
+   {
+    "invalidated": true,
+    "fact_id": "62f812ce2be7d453e0fc65c318b7b0a0"
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "invalidated": true,
+    "fact_id": "62f812ce2be7d453e0fc65c318b7b0a0"
+   }
+  ],
+  "diff_first": {},
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing about idempotency.",
+  "first_had_effect": false,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [],
+   "book_id": "01a02d9a-7301-7910-b34a-71b73de7dd4b",
+   "title": "LOOP-THROWAWAY-idem-memory_forget-df9dd217",
+   "tables": {
+    "composition(project)": "01a02d9a-77ff-7120-a66e-e792e3f627b1"
+   }
+  }
+ }
+]

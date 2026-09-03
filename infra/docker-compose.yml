@@ -1213,15 +1213,49 @@ services:
       # oneshot-deadvertise (2026-07-25) — how a completed one-shot create (kg_project_create
       # once its project exists) is kept off the agent surface: off|existence|session|per_turn.
       # MEASURED winner = session (57→1 attempts, ~5x fewer tokens; see config.py).
+      # DQ-T90 arm (e). Defaults TRUE so the shipped path is unchanged; set to 0/false to run a
+      # turn with the Intent→Skill Router's preload OFF (base/pinned skills + the L1 index, and
+      # the model pulls a body with `load_skill`). A lever with no way to reach the container is
+      # not a lever — the A/B needs to flip it WITHOUT a rebuild, so the two arms differ by this
+      # and nothing else.
+      SKILL_ROUTER_PRELOAD: "${SKILL_ROUTER_PRELOAD:-true}"
+      # DQ-T90 arms (b) and (a). Both default to the shipped behaviour so the CONTROL is
+      # unchanged; each arm is one env var so the three runs differ by one thing at a time.
+      SKILL_CONTRASTIVE_DESC: "${SKILL_CONTRASTIVE_DESC:-true}"
+      # DQ-T88 (a) — replay prior turns' tool RESULTS into the turn, bounded (2 kB/result,
+      # 16 kB/turn, ids preserved through the trim). DEFAULT FALSE: the owner's correction
+      # is that results are not stored BECAUSE they are large, so the bound makes replay
+      # affordable without making it right. Adopt only on an A/B, the way
+      # SKILL_CONTRASTIVE_DESC above was adopted.
+      #
+      # 🔴 IT IS HERE SO THE ARM CAN BE SET ON THE REAL SERVICE. A previous attempt used
+      # `docker compose run --service-ports`, which puts the container on the network but
+      # does NOT take over the compose service name the gateway routes to — so that batch
+      # measured the STOPPED service and produced 3 errors and zero replay log lines.
+      REPLAY_PRIOR_TOOL_RESULTS: "${REPLAY_PRIOR_TOOL_RESULTS:-false}"
+      ROUTER_MAX_ADDITIONS: "${ROUTER_MAX_ADDITIONS:-0}"
       ONESHOT_DEADVERTISE_MODE: "${ONESHOT_DEADVERTISE_MODE:-session}"
       RAIL_ACTION_GATE_MODE: "${RAIL_ACTION_GATE_MODE:-done_suppress}"
       T5_INTENT_GATE_ENABLED: "${T5_INTENT_GATE_ENABLED:-false}"
+      # CP-2.7 / CP-3 — which runtime serves a turn. `false` is the LEGACY arm, which is this
+      # effort's CONTROL GROUP (spec §7): with it off the advertise chokepoint returns before it
+      # reads anything new, and every row is byte-identical to before the arm existed.
+      #
+      # 🔴 It had no compose entry at all until 2026-08-09, which means the new arm had **no
+      # deployment path** — the flag existed in `config.py` and nothing could set it. A switch
+      # nobody can reach is the same shape as a function nobody calls.
+      AGENTRUNTIME_ARM: "${AGENTRUNTIME_ARM:-false}"
       # Context Budget Law T4 (story_state Core Memory Block) + T6/D13a (reversible
       # dup-read collapse). Default OFF; flip on (with T5) for the compaction A/B —
       # T4's degraded-safety-net only fires when T5 gates grounding to empty, D13a only
       # fires on a compaction pass. See docs/eval/context-budget/.
       STORY_STATE_BLOCK_ENABLED: "${STORY_STATE_BLOCK_ENABLED:-false}"
       COMPACT_COLLAPSE_DUPLICATES_ENABLED: "${COMPACT_COLLAPSE_DUPLICATES_ENABLED:-false}"
+      # DQ-T56 — the whole-turn ceiling, in seconds. The default matches app/config.py; it is
+      # surfaced here so an operator can widen it (a deployment whose model legitimately thinks
+      # longer than 15 minutes) or disable it with 0, without a rebuild. NOT the idle-read cap:
+      # LLM_STREAM_IDLE_READ_TIMEOUT_S stays 0 deliberately and is a different mechanism.
+      LLM_TURN_CEILING_S: "${LLM_TURN_CEILING_S:-900}"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085

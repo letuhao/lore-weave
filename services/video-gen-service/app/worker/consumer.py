@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from loreweave_jobs import BaseTerminalConsumer
+from loreweave_jobs import BaseTerminalConsumer, JobStatus
 from loreweave_llm import Client
 from loreweave_llm.models import VideoGenResult
 
@@ -97,7 +97,12 @@ async def complete_job(
     row = await repo.get_by_provider_job_id(pjid)
     if row is None:
         return "not_ours"  # another service's job on the shared stream
-    if row.status in ("completed", "failed", "cancelled"):
+    # 🔴 DERIVED, NOT RETYPED — DQ-T86 (c), owner ruling 2026-08-31. This read a hand-written
+    # ("completed", "failed", "cancelled"): a second copy of a set whose own definition in
+    # `loreweave_jobs.contract` is annotated "The single source of truth (no parallel set to
+    # drift)". Six places had drifted from it anyway. The failure mode is SILENT — add one
+    # member to JobStatus and every copy goes on believing the old vocabulary.
+    if JobStatus.is_terminal(row.status):
         return "already_terminal"  # idempotent — a redelivery / sweep race
 
     await repo.mark_running(row.id)

@@ -1,0 +1,66 @@
+{
+ "_note": "DQ-T45 / D-A-TIER-R-TOOL-WRITES-TO-THE-STORE — the LIVE proof. plan_validate is declared Tier R and used to stamp status='validated', which authoring_run_service accepts as approval for a cost-bearing drafting run. The row itself records that NO plan_validate run exists in the raw corpus — its 10 instances came from a sweep over batch summaries — so this scenario puts the tool on the wire for the first time and reads the plan_run's status afterwards. The seed builds a plan deterministically through mode='rules', so no LLM tokens construct the fixture and the linter has real arcs and events to pass.",
+ "scenarios": [
+  {
+   "id": "a-linter-pass-must-not-approve-the-plan",
+   "tool_under_test": "plan_validate",
+   "expect_tool": "plan_validate",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Validate my plan for this book and tell me which golden rules pass.",
+   "prompt_source": "The tool's own declared synonyms — 'validate plan', 'check spec', 'golden rules'.\n\n🔴 THE FIRST WORDING LOST 5 OF 5 RUNS TO ONE HYPHEN, AND THAT IS RECORDED HERE RATHER THAN QUIETLY EDITED AWAY. It read 'Run the GOLDEN-RULES validation on my plan', and plan_validate surfaced 0/5 and was called 0/5 — so the turn never reached the tool and the measurement was vacuous. Checked against the DEPLOYED matcher rather than guessed:\n\n    'Run the golden-rules validation on my plan for this book'  -> answerable: {book_steering_list}      plan_validate NO\n    'Run the golden rules validation on my plan for this book'  -> answerable: {plan_validate, ...}      plan_validate YES\n\n`_answer_norm` strips articles but does NOT normalise hyphens, so the ordinary compound an author would write loses the tool. That is a platform defect in its own right (filed separately); here it is named so nobody reads this prompt change as a bar being softened. The BAR is unchanged — the linter must not advance the run — and a prompt that cannot reach the tool cannot test it.",
+   "needs_target": false,
+   "approve": "as-is",
+   "editor_context": false,
+   "seed": [
+    {
+     "tool": "plan_propose_spec",
+     "args": {
+      "book_id": "{book_id}",
+      "mode": "rules",
+      "source_markdown": "# Emberfall\n\n## Arc I — The Ember Codex\n### Chapter 1 — The Black Stair\nAldric Vane climbs the black stair and finds the codex still warm.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide, and the tide is turning.\n\n## Arc II — The Turning Tide\n### Chapter 3 — Low Water\nVane crosses the trench and the codex begins to read him back.\n### Chapter 4 — The Ember Answers\nThe city answers in a language Vane wrote as a child.\n"
+     }
+    },
+    {
+     "wait": {
+      "db": "loreweave_composition",
+      "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='compiled'",
+      "expect": "1",
+      "timeout": 180,
+      "poll": 3,
+      "why": "🔴 THE SEED'S ASYNC HALF, AND TWO THINGS WERE WRONG WITH MY FIRST VERSION. (1) plan_propose_spec declares `async_job=True` — the call ENQUEUES and the row is written by the worker afterwards — and with no wait at all the seed assertion read a store that had not caught up, losing 5 of 5 repeats in provisioning. (2) It then waited for `proposed`, on a ledger note saying \"mode='rules' lands the run at 'proposed'\". RE-DERIVED AGAINST THE STORE: it lands at `compiled`, carrying document, graph, link_report, package and spec — rules-mode runs the whole pipeline. The note was a lead, not a fact, and it was quoted from a batch that had itself corrected this same field once already."
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='compiled'",
+     "expect": "1",
+     "why": "The fixture's ACTUAL starting status, re-derived rather than assumed. Recorded so the falsifier below can compare against something the store really said."
+    },
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM plan_run p WHERE p.book_id='{book_id}' AND EXISTS (SELECT 1 FROM plan_artifact a WHERE a.run_id=p.id AND a.kind='spec')",
+     "expect": "1",
+     "why": "`validate()` reads the spec artifact; without it the tool raises 'no spec to validate' and the turn never reaches the branch under test. Two arcs with two events each are seeded so the HARD rules — spec_has_arc and spec_has_events, the only two that gate — genuinely PASS. The old code stamped a status ONLY on a pass, so a plan that fails the linter would prove nothing here."
+    }
+   ],
+   "falsifier": "REFUTED IF the plan_run's status CHANGES at all — specifically to `validated`, which is what the removed line wrote. PASSES IF the run is still `compiled` afterwards AND a validation_report artifact records passed=true: the verdict was reached and recorded, and it authorised nothing.\n\n🔴 STARTING FROM `compiled` MAKES THIS BAR SHARPER, NOT WEAKER, AND THAT IS AN ACCIDENT OF THE FIXTURE WORTH KEEPING. `update_run(status='validated')` was UNCONDITIONAL on the run's current status, so on the old code this call would have moved a COMPILED plan BACKWARDS to `validated` — a visible, wrong transition rather than a no-op. So 'still compiled' is a genuine discrimination between the two builds.\n\nA run whose report says passed=false must be read as NEITHER: the old code only ever stamped on a pass.",
+   "answer_expect": {
+    "why": "None. The measurement is the plan_run's status and the validation_report artifact in loreweave_composition, read after the turn — not the reply text."
+   },
+   "ship_audit": {
+    "gate": "N/A — Tier R, and the whole point of the fix is that it stays a read.",
+    "absent_case": "OWED — a book with no plan run must be refused, not silently validated.",
+    "idempotency": "OWED — validating twice must not change the run either time.",
+    "tenancy": "Throwaway fixture book per repeat, torn down by the harness."
+   },
+   "defects": [
+    "D-A-TIER-R-TOOL-WRITES-TO-THE-STORE"
+   ]
+  }
+ ]
+}

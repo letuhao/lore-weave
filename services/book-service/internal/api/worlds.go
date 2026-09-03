@@ -184,7 +184,16 @@ WHERE w.id=$1 AND w.owner_user_id=$2
 // projection stays a single self-contained SELECT list.
 const worldSelectSQL = `
 SELECT w.id, w.owner_user_id, w.name, w.description, w.created_at, w.updated_at,
-  COALESCE((SELECT COUNT(*) FROM books b WHERE b.world_id=w.id AND b.is_bible=false AND b.lifecycle_state!='purge_pending'),0) AS book_count,
+  -- #309: 'active', not != 'purge_pending'. book_count is a bare integer with no lifecycle
+  -- qualifier, and on the agent surface it is the ONLY membership signal there is — world_get
+  -- returns no member list and book_list has no world filter. Counting trashed books made it
+  -- contradict every other definition of "a book you have": book_list's access filter and the
+  -- 200-book limit counter are both lifecycle_state='active', and chapter_count further down
+  -- this same feature is 'active' too. Measured: a world whose only member was a trashed book
+  -- reported book_count 1 while no listing surface would ever show that book. The list
+  -- endpoints keep != 'purge_pending' deliberately — they return b.lifecycle_state per row, so
+  -- a consumer there can tell a trashed member apart. A count cannot.
+  COALESCE((SELECT COUNT(*) FROM books b WHERE b.world_id=w.id AND b.is_bible=false AND b.lifecycle_state='active'),0) AS book_count,
   (SELECT bb.id FROM books bb WHERE bb.world_id=w.id AND bb.is_bible=true ORDER BY bb.created_at ASC LIMIT 1) AS bible_book_id,
   (SELECT c.id FROM chapters c
      WHERE c.book_id=(SELECT bb.id FROM books bb WHERE bb.world_id=w.id AND bb.is_bible=true ORDER BY bb.created_at ASC LIMIT 1)
@@ -298,9 +307,17 @@ func (s *Server) listWorlds(w http.ResponseWriter, r *http.Request) {
 		var createdAt, updatedAt *time.Time
 		var bookCount int
 		var bibleBookID, bibleChapterID *uuid.UUID
-		if err := rows.Scan(&id, &owner, &name, &desc, &createdAt, &updatedAt, &bookCount, &bibleBookID, &bibleChapterID); err == nil {
-			items = append(items, worldResponse(id, owner, name, desc, bookCount, bibleBookID, bibleChapterID, createdAt, updatedAt))
+		// #312: a scan error fails the request. A short list rendered as the user's complete
+		// set of worlds is worse than an error they can retry.
+		if err := rows.Scan(&id, &owner, &name, &desc, &createdAt, &updatedAt, &bookCount, &bibleBookID, &bibleChapterID); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list worlds")
+			return
 		}
+		items = append(items, worldResponse(id, owner, name, desc, bookCount, bibleBookID, bibleChapterID, createdAt, updatedAt))
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list worlds")
+		return
 	}
 	var total int
 	_ = s.pool.QueryRow(ctx, countSQL, countArgs...).Scan(&total)
@@ -543,7 +560,13 @@ LIMIT $2 OFFSET $3
 		var desc *string
 		var createdAt, updatedAt *time.Time
 		var chapterCount int
-		if err := rows.Scan(&id, &owner, &title, &desc, &state, &createdAt, &updatedAt, &chapterCount); err == nil {
+		// #312: same reasoning as listWorlds — a dropped member book reads as a world that
+		// does not contain it.
+		if err := rows.Scan(&id, &owner, &title, &desc, &state, &createdAt, &updatedAt, &chapterCount); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list world books")
+			return
+		}
+		{
 			items = append(items, map[string]any{
 				"book_id":         id,
 				"owner_user_id":   owner,
@@ -556,6 +579,10 @@ LIMIT $2 OFFSET $3
 				"updated_at":      updatedAt,
 			})
 		}
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list world books")
+		return
 	}
 	var total int
 	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM books WHERE world_id=$1 AND is_bible=false AND lifecycle_state!='purge_pending'`, worldID).Scan(&total)
@@ -609,7 +636,11 @@ ORDER BY b.created_at DESC
 	for rows.Next() {
 		var id, owner uuid.UUID
 		var title, state string
-		if err := rows.Scan(&id, &owner, &title, &state); err == nil {
+		if err := rows.Scan(&id, &owner, &title, &state); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list world books")
+			return
+		}
+		{
 			items = append(items, map[string]any{
 				"book_id":         id,
 				"owner_user_id":   owner,
@@ -618,6 +649,10 @@ ORDER BY b.created_at DESC
 				"world_id":        worldID,
 			})
 		}
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list world books")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }

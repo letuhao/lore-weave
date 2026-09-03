@@ -1,0 +1,62 @@
+{
+  "_note": "D-BOOK-SYNC-HAS-NOTHING-TO-APPLY-AND-A-DIVERGENCE-CANNOT-BE-SEEDED-SAFELY. The row concluded a divergence could only come from changing SHARED system standards and refused to do it. That premise is wrong: sync compares the SOURCE's live hash against the BOOK's frozen source_hash, so perturbing the source the book adopted is enough — and a RUN-UNIQUE user-tier standard is adopted by exactly one throwaway book, so nothing else can see it.",
+  "scenarios": [
+    {
+      "id": "book-sync-apply-with-a-real-divergence",
+      "tool_under_test": "glossary_book_sync_apply",
+      "expect_tool": "glossary_book_sync_apply",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is my story bible out of date? Apply the standard updates if there are any.",
+      "prompt_source": "glossary_book_sync_available's declared synonym 'is my story bible out of date' + glossary_book_sync_apply's 'apply the standard updates', both verbatim. The turn has to DISCOVER the diff before it can apply it, which is the journey.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "approve_why": "Tier W, and the target is the run's OWN throwaway book. The write under test IS the apply; leaving it unapproved would measure whether the model reaches the card, not whether the tool works. The user-tier standard is run-unique and deleted in teardown.",
+      "seed": [
+        {
+          "tool": "glossary_user_create",
+          "args": {"level": "kind", "code": "loopkind{run_id}", "name": "Loop Kind {run_word}"},
+          "why": "🔴 RUN-UNIQUE, AND THAT IS THE SAFETY ARGUMENT. Patching an EXISTING user standard would diverge every other book of this account that adopted it — including the dogfood book. A standard created for this run is adopted by exactly one throwaway book, so the divergence cannot be seen by anything else."
+        },
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {"genres": ["universal"], "kinds": ["loopkind{run_id}"]}
+          },
+          "why": "Adopting FREEZES the source's content_hash onto the book's row as `source_hash`. That frozen copy is what sync later compares against, so the adopt is what makes a divergence possible at all."
+        },
+        {
+          "tool": "glossary_user_patch",
+          "args": {"level": "kind", "code": "loopkind{run_id}", "name": "Loop Kind {run_word} RENAMED"},
+          "why": "🔴 THE DIVERGENCE, THROUGH THE PRODUCT'S OWN PATH. An author edits their own standard; the book that adopted it is now behind. book_sync_handler.go states the rule: an update is available iff the source resolves live AND its hash differs from the book's frozen source_hash. Renaming the source changes its content_hash — no shared state is touched, and no SQL is needed."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM book_kinds WHERE book_id='{book_id}' AND code='loopkind{run_id}'",
+          "expect": "1",
+          "why": "The book must have ADOPTED the kind, or there is nothing holding a frozen hash and sync has nothing to compare — the scenario would then measure an empty diff again, which is exactly the trap the row fell into."
+        }
+      ],
+      "falsifier": "REFUTED IF: glossary_book_sync_available reports no updates (the divergence did not seed, so the run measures nothing and must not read as a pass), OR the model reports the book is up to date, OR the apply lands with NO confirm card (Tier W), OR the model invents an item id rather than passing one sync_available returned.",
+      "ship_audit": {
+        "gate": "OWED — Tier W; the apply overwrites adopted book rows.",
+        "absent_case": "an item id that does not exist must be refused — not covered here.",
+        "idempotency": "applying the same item twice must be a no-op — not covered here.",
+        "tenancy": "book-scoped; the read needs VIEW and the apply needs Manage."
+      },
+      "defects": [],
+      "_problem": "D-BOOK-SYNC-HAS-NOTHING-TO-APPLY-AND-A-DIVERGENCE-CANNOT-BE-SEEDED-SAFELY",
+      "_teardown_note": "The run-unique user kind is NOT removed by Throwaway.teardown (it purges models, arc templates, motifs and worlds). It is left behind deliberately rather than silently: a user-tier kind nothing adopts is inert, and deleting it from the scenario would need a teardown hook the harness does not have. Recorded so the residue is known, not discovered.",
+      "answer_expect": {
+        "all_of": ["update"],
+        "why": "Weak on the TEXT on purpose. The assertion is the trace: sync_available must return a non-empty diff and the apply must carry an id it returned. A reply discussing updates while the diff was empty is precisely the false pass this scenario exists to prevent."
+      }
+    }
+  ]
+}

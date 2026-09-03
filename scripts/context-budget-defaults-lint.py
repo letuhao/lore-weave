@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import ast
 import os
+import pathlib
+import re
 import subprocess
 import sys
 
@@ -53,6 +55,40 @@ LIMIT_CEIL = 25
 # 150-edge graph — my earlier "graph justifies a conscious 60" was disproven by that data; 60
 # was still 14.7 KB, over warn). A NEW list tool must comply or earn an explicit reason here.
 ALLOW: dict[str, str] = {
+    # ── DQ-T52 SEED, 2026-08-30 ────────────────────────────────────────────────────────
+    # The owner: "TRIGGER ON LIST SHAPE, seed today's offenders as a flip-pending ALLOW,
+    # and EXTEND TO THE GO REGISTRATIONS — the same pattern K37 used for its 14 offenders."
+    # BUILD NOTE (theirs): "the allow-list may only SHRINK. That is this loop's standing
+    # rule and it is what stops a seeded baseline from becoming a place to hide new
+    # violations." Enforced by scripts/test_the_out2_allow_list_only_shrinks.py, which
+    # fails on any key that is not in the recorded baseline.
+    #
+    # These are DEBT, not exemptions. Each is a list-shaped tool with no small-shape
+    # selector at all — the case the old trigger EXEMPTED by skipping it. They are seeded
+    # so the widened lint can go green on today's tree and RED on the next new one.
+    "agent-registry-service::registry_list_skills": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "agent-registry-service::registry_list_workflows": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_arc_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_arc_template_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_authoring_run_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_list_canon_rules": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_list_derivatives": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_motif_link_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_motif_search": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_reference_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_curation_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_ai_suggestions": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_chapter_links": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_entity_revisions": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_merge_candidates": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_system_standards": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_unknown_entities": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_search": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_web_search": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "knowledge-service::kg_list_templates": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "knowledge-service::kg_project_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+
+    # ── historical K37 notes, kept ──
     # (empty — no conscious exceptions remain; every detail-selector LIST tool defaults to
     # summary + a bounded, signalled limit ≤25.)
     # kg_entity_edge_timeline: DRAINED (K37) — a FLAT temporal chain, so limit 500→25 (≤ ceiling)
@@ -70,6 +106,102 @@ ALLOW: dict[str, str] = {
     # true total and reports `truncated` — a bounded default page, never a silent drop. Removed
     # from ALLOW → lint-enforced.
 }
+
+
+#: DQ-T52, owner 2026-08-28: "TRIGGER ON LIST SHAPE, seed today's offenders as a flip-pending
+#: ALLOW, and EXTEND TO THE GO REGISTRATIONS."
+#:
+#: 🔴 THE OLD TRIGGER EXEMPTED A TOOL FOR BEING **MORE** NON-COMPLIANT. It fired only when a
+#: tool already had BOTH `detail` and `limit`, so a list tool that never implemented either fell
+#: through a `continue` and was never looked at. Measured: of 41 list-shaped tools the lint
+#: inspected 8 — recall 20% — while docs/standards/mcp-tool-io.md cited it as the coverage that
+#: "blocks NEW violations".
+#:
+#: WHY A NAME PATTERN IS ACCEPTABLE **HERE** and nowhere near the runtime. This repo deleted a
+#: name classifier (CP-4.d) for inferring a tool's read/write LANE from fragments of its
+#: identifier — that decision gated real actions and got them wrong. This is a LINT: its failure
+#: mode is a FLAG a human reads, its false positives are recorded in ALLOW with a reason, and
+#: nothing it decides reaches a user. The cost of a wrong guess is a review, not a wrong write.
+_LIST_SHAPED = re.compile(r"(?:^|_)(?:list|search)(?:$|_)")
+
+
+def is_list_shaped(tool_name: str) -> bool:
+    """Does this tool's NAME declare it returns many rows? (lint heuristic — see above.)"""
+    return bool(_LIST_SHAPED.search(tool_name or ""))
+
+
+#: A Go MCP registration: `Name: "glossary_list_unknown_entities"`. The Go services register
+#: tools with a struct literal, so the name is a plain string field.
+_GO_TOOL_NAME = re.compile(r'Name:\s*"([a-z][a-z0-9_]+)"')
+#: A json tag on a Go input-struct field: `Detail string \`json:"detail,omitempty"\``
+_GO_JSON_FIELD = re.compile(r'json:"([a-z_]+)')
+
+
+def scan_go_file(path: str) -> tuple[list[str], list[str]]:
+    """OUT-2 over a Go MCP registration file. Returns `(problems, subjects)`.
+
+    🔴 SUBJECTS ARE RETURNED, MERGE 2026-09-03, AND THE MERGE IS WHY. The shrink arm in
+    `check` calls an ALLOW row dead when no scanned tool bears its name. Its subject list was
+    built from the PYTHON scan only, and the other branch brought nine ALLOW rows for
+    GO services — so on the merged tree every one of them read as an exemption that exempts
+    nothing, and the honest-looking fix was to delete nine live exemptions. Neither branch
+    had this defect; combining them produced it. A shrink arm blind to half the catalogue
+    does not shrink it, it corrupts it.
+
+    THE GO HALF IS THE POINT, and the owner said so: "a lint that only reads Python misses most
+    of this catalogue (of 316 live tools the majority are registered in Go), so a Python-only
+    version would report a clean bill of health over a minority of the population." Measured: 32
+    Go files register MCP tools and NONE was ever inspected.
+
+    Deliberately regex and not a Go parser. The question asked is narrow — does a list-shaped
+    registration declare `detail` and `limit` anywhere in the file? — and a parser for a second
+    language is a large dependency for a lint whose whole job is to notice an omission. The
+    coarseness is stated rather than hidden: this checks PRESENCE per file, so it cannot tell
+    which struct a tag belongs to, and it is why every Go finding is seeded as reviewable DEBT
+    rather than asserted as a violation.
+    """
+    try:
+        src = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [], []
+    fields = set(_GO_JSON_FIELD.findall(src))
+    svc = _service_of(path)
+    out: list[str] = []
+    seen: list[str] = []
+    for name in sorted(set(_GO_TOOL_NAME.findall(src))):
+        if not is_list_shaped(name):
+            continue
+        key = f"{svc}::{name}"
+        seen.append(key)          # a SUBJECT whether or not it is exempt
+        if key in ALLOW:
+            continue
+        if "detail" not in fields or "limit" not in fields:
+            missing = [f for f in ("detail", "limit") if f not in fields]
+            out.append(
+                f"  {key}: list-shaped and its file declares no {'/'.join(missing)} — OUT-2 asks "
+                f"a list tool to default to the SMALL shape, and a tool with no selector cannot. "
+                f"{path}"
+            )
+    return out, seen
+
+
+def iter_go_files() -> list[str]:
+    """Go files that register MCP tools. Located by CONTENT (a `Name: \"tool_name\"` literal
+    beside an mcp registration) rather than by directory, because the Go services do not share
+    the Python `/mcp/` convention — glossary keeps them in `internal/api/`."""
+    found = []
+    for root, _dirs, names in os.walk(os.path.join(REPO_ROOT, "services")):
+        for n in names:
+            if not n.endswith(".go") or n.endswith("_test.go"):
+                continue
+            fp = os.path.join(root, n)
+            try:
+                head = pathlib.Path(fp).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if "RegisterTool" in head or "mcpsdk.Tool{" in head:
+                found.append(fp)
+    return found
 
 
 def _service_of(path: str) -> str:
@@ -253,6 +385,25 @@ def scan_file(path: str, allow: dict[str, str] | None = None,
             continue
         params = {a.arg for a in fn.args.args + fn.args.kwonlyargs}
         if "detail" not in params or "limit" not in params:
+            # DQ-T52 — a list-shaped tool that lacks the machinery is the case the old trigger
+            # EXEMPTED. It is now flagged, not skipped: `continue` here is what let a tool be
+            # excused for being more non-compliant, not less.
+            if is_list_shaped(fn.name):
+                # 🔴 RECORD THE SUBJECT BEFORE THE EXEMPTION, MERGE 2026-09-03. The ALLOW check
+                # used to gate this whole branch, so an EXEMPTED tool was never counted as a
+                # subject — and the shrink arm below, which calls a row dead when no scanned
+                # tool bears its name, then declared every such exemption dead. Three live
+                # FLIP-PENDING rows read as deletable on the merged tree. The bug was latent on
+                # this branch (no row here named a selectorless tool) and the other branch's
+                # rows exposed it; `scan_go_file` carried the identical defect.
+                subjects.append(f"{svc}::{fn.name}")
+                if f"{svc}::{fn.name}" not in ALLOW:
+                    missing = [f for f in ("detail", "limit") if f not in params]
+                    problems.append(
+                        f"  {svc}::{fn.name}: list-shaped and declares no {'/'.join(missing)} — "
+                        f"OUT-2 asks a list tool to default to the SMALL shape, and a tool with "
+                        f"no selector cannot. {path}:{fn.lineno}"
+                    )
             continue
         defaults = _default_map(fn)
         _check_pair(f"{svc}::{fn.name}", defaults.get("detail"), defaults.get("limit"), fn.lineno)
@@ -303,6 +454,16 @@ def iter_files(staged: bool, services_root: str | None = None) -> list[str]:
     return files
 
 
+def _staged_paths() -> list[str]:
+    """Absolute paths of the staged files — the Go half's `--staged` arm needs them, and
+    `iter_files` cannot answer it because it only ever yields MCP Python files."""
+    out = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+        cwd=REPO_ROOT, capture_output=True, text=True,
+    ).stdout.split()
+    return [os.path.join(REPO_ROOT, f) for f in out]
+
+
 def check(staged: bool = False, services_root: str | None = None,
           allow: dict[str, str] | None = None, limit_ceil: int | None = None) -> int:
     """The REAL checker, parameterised so `--self-test` can drive it over a
@@ -319,6 +480,27 @@ def check(staged: bool = False, services_root: str | None = None,
         problems.extend(p)
         subjects.extend(s)
         unnecessary.extend(u)
+
+    # ── DQ-T52, THE GO HALF. MERGE 2026-09-03 — PORTED INTO `check`, NOT LEFT BESIDE IT.
+    #
+    # This arrived on the other branch inside its own `main()`, and this branch had already
+    # replaced that entry point with `check()` + `self_test()`. Resolving the conflict either
+    # way alone was wrong: taking theirs gives the file TWO `main()` definitions, the second
+    # silently shadowing the first; taking ours leaves `scan_go_file` and `iter_go_files`
+    # DEFINED AND NEVER CALLED — the Go registrations stop being scanned and nothing says so.
+    # PR #219 shipped exactly that hybrid in `knowledge-http-surface-gate.py`, where the gate
+    # "reported a clean scan of nothing" and the suite stayed green.
+    #
+    # `services_root` is the self-test's synthetic tree; the Go scan is repo-wide and has no
+    # synthetic equivalent, so it is skipped there rather than made to scan the real repo from
+    # inside a fixture.
+    if services_root is None:
+        go_files = (iter_go_files() if not staged
+                    else [f for f in _staged_paths() if f.endswith(".go")])
+        for gf in go_files:
+            gp, gs = scan_go_file(gf)
+            problems.extend(gp)
+            subjects.extend(gs)   # so the shrink arm can see a Go exemption's tool
 
     # ── REACH FLOORS (GT-F3). Only on a full scan: a staged run over a commit
     # touching no MCP file legitimately sees nothing.

@@ -1,0 +1,45 @@
+{
+  "_note": "DOES THE PIPELINE TOOL FINISH WHAT IT TOOK? DQ-T64's returned correction says composition_build_cast_and_graph's op=start returns a worklist and stops, and that in 0 of 70 recorded sessions did anything call op=approve_plan. Separately, restoring composition-glossary-build-with-an-ontology showed the SAME prompt that used to create 2 entities via glossary_propose_entities now routes 5/5 to this pipeline tool and creates NOTHING — carded, store unchanged.\n\nThat leaves one question deciding between the two readings of that result: a REGRESSION (the author gets nothing) or a DELIBERATE TIGHTENING (nothing is written until the card is approved, which is the correct order). The difference is whether approving the card FINISHES THE JOB.\n\nTHIS IS A SEPARATE ARM ON PURPOSE. scenarios-c-gbuild-restored.json keeps `glossary_propose_entities` as its tool_under_test because that is what the ORIGINAL recording called; editing it to match what the model does today would be tuning a scenario to fit an observation. This file asks the new question in its own name, with the same prompt, so the two are comparable and neither is bent.\n\nRUN IT WITH: --approvals allow-under-test (owner decision 2026-08-22, throwaway fixtures only). Without that flag the turn stops at the card and this arm measures exactly what the restored one already did.",
+  "scenarios": [
+    {
+      "id": "composition-build-cast-and-graph-approved",
+      "tool_under_test": "composition_build_cast_and_graph",
+      "expect_tool": "composition_build_cast_and_graph",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+      "prompt_source": "IDENTICAL to scenarios-c-gbuild-restored.json, which took it verbatim from the 2026-08 recording. Same words on purpose: the only difference between the two arms is that this one carries the approval, so any difference in outcome is the approval and not the prompt.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": { "genres": ["universal"], "kinds": ["character", "place"] }
+          },
+          "why": "Identical seed to the restored arm, for the same reason: the book must hold the kinds before a cast can be proposed, and no cast is seeded because extraction is the thing being measured."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "The cast must not exist beforehand. If it did, an approved run could look like it finished without the pipeline having produced anything — which is precisely the question this arm exists to answer."
+        }
+      ],
+      "falsifier": "REFUTED IF: the approved turn still leaves glossary_entities unchanged — that is the REGRESSION reading, and it would mean the pipeline tool takes a turn its parts used to complete and then delivers nothing even when permitted to write.\n\nCONFIRMED-AS-TIGHTENING IF: the approved turn creates the cast (2 entities, matching what glossary_propose_entities produced on the same prompt on 2026-08-23). That would mean today's empty store is correct ordering — no write before approval — rather than a loss.\n\n🔴 A THIRD OUTCOME IS POSSIBLE AND MUST NOT BE READ AS EITHER: the pipeline may card AGAIN for a later op (its own correction records op=start returning a worklist and stopping). A turn that advances one step and stops is neither a clean finish nor a dead end, and it should be recorded as what it is.",
+      "ship_audit": {
+        "gate": "EXERCISED — this arm approves deliberately, under the throwaway-fixture rule.",
+        "empty_case": "OWED.",
+        "idempotency": "OWED.",
+        "tenancy": "OWED."
+      },
+      "defects": []
+    }
+  ]
+}

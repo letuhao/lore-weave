@@ -42,6 +42,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import ValidationError
 
 from loreweave_mcp import (
+    validation_directive,
     ForbidExtra,
     ToolContext,
     apply_response_contract,
@@ -61,6 +62,8 @@ from ..effective_settings import resolve_effective_settings
 from ..languages import TRANSLATION_TARGET_CODES, is_translation_target, normalize_language
 from ..mcp.estimate import SCOPE_CHAPTERS, SCOPE_DIRTY, estimate_job_cost
 from ..routers.actions import (
+    DESC_JOB_RESUME,
+    DESC_JOB_RETRY,
     DESC_RETRANSLATE_DIRTY,
     DESC_START_EXTRACTION,
     DESC_START_JOB,
@@ -87,6 +90,104 @@ __all__ = ["mcp_server", "build_mcp_app"]
 mcp_server = make_stateless_fastmcp("translation")
 
 
+# ── The durable ext-tasks human gate (DQ-V7, 2026-09-03) ─────────────────────────────────────
+#
+# translation was the LAST service minting bare confirm_tokens with no gate at all. It could not
+# adopt one for two reasons, both now removed: the store existed only as three copied
+# implementations in other services (promoted to `loreweave_mcp.pg_task_store` by VS), and the
+# confirm EFFECTS were inline in the HTTP handler where no resolver could reach them (extracted
+# to `_execute_*` in routers/actions.py).
+#
+# 🔴 WHY THIS ONE IS GATEABLE WHEN 17 OTHER SITES ARE NOT. Every exempted site's confirm route is
+# a consumed-token replay ledger — composition's, knowledge's (jti), provider-registry's (token
+# hash) — and a durable resolver holds no token, so it cannot claim one. translation has NO such
+# ledger: verified by an exhaustive search for single-use / consume / token-hash / replay across
+# the service, reading every hit rather than truncating (a truncated grep is exactly how I first
+# mis-classified provider-registry as ledger-free).
+from loreweave_mcp.pg_task_store import PgTaskStore  # noqa: E402
+from loreweave_mcp.tasks_wire import gate_or_confirm, register_task_endpoints  # noqa: E402
+
+
+async def _resolve_start_job(owner_user_id: str, payload: dict, _inputs: dict):
+    """translation.start_job ACCEPT effect.
+
+    RE-AUTHORIZES the book grant first, like the confirm route does and unlike the Work-scoped
+    resolvers elsewhere: a durable task can sit pending for its whole TTL, so a grant revoked in
+    that window must deny rather than spend money on a translation.
+    """
+    from fastapi import HTTPException
+
+    from ..routers.actions import _execute_start_job, _reauthorize_book
+
+    book_id = UUID(str(payload["book_id"]))
+    caller = UUID(str(owner_user_id))
+    try:
+        await _reauthorize_book(book_id, caller)
+    except HTTPException:
+        raise
+    return await _execute_start_job(get_pool(), payload, book_id, caller)
+
+
+async def _resolve_retranslate_dirty(owner_user_id: str, payload: dict, _inputs: dict):
+    """translation.retranslate_dirty ACCEPT effect — re-authorizes the book grant first."""
+    from ..routers.actions import _execute_retranslate_dirty, _reauthorize_book
+
+    book_id = UUID(str(payload["book_id"]))
+    caller = UUID(str(owner_user_id))
+    await _reauthorize_book(book_id, caller)
+    return await _execute_retranslate_dirty(get_pool(), payload, book_id, caller)
+
+
+async def _resolve_start_extraction(owner_user_id: str, payload: dict, _inputs: dict):
+    """translation.start_extraction ACCEPT effect.
+
+    🔴 THE GRANT LEVEL IS RE-DERIVED, NOT DEFAULTED. `_execute_start_extraction` takes
+    `caller_grant_level` as a REQUIRED keyword because it clamps extraction effort to the grant; a
+    default would turn a revoked-grant accept into an unclamped run rather than a refusal. The
+    resolver gets it from the same `_reauthorize_book` the confirm route calls.
+    """
+    from ..routers.actions import _execute_start_extraction, _reauthorize_book
+
+    book_id = UUID(str(payload["book_id"]))
+    caller = UUID(str(owner_user_id))
+    level = await _reauthorize_book(book_id, caller)
+    return await _execute_start_extraction(
+        get_pool(), payload, book_id, caller, caller_grant_level=level)
+
+
+def _job_control_resolver(descriptor: str):
+    """One resolver per job-control descriptor, CLOSED OVER the descriptor.
+
+    🔴 TWO ENTRIES, NOT ONE SHARED FUNCTION READING THE PAYLOAD. resume and retry differ only by
+    descriptor — resume re-prices the job's still-`pending` chapters, retry re-prices the FULL
+    stored set — and the payload does not carry which. A single resolver would have to guess, and
+    guessing wrong quotes one scope and spends the other. The registry key IS the discriminator,
+    so it is the honest source.
+    """
+    async def _resolve(owner_user_id: str, payload: dict, _inputs: dict):
+        from ..routers.actions import _execute_job_control, _reauthorize_book
+
+        book_id = UUID(str(payload["book_id"]))
+        caller = UUID(str(owner_user_id))
+        await _reauthorize_book(book_id, caller)
+        return await _execute_job_control(get_pool(), payload, book_id, caller, descriptor)
+
+    return _resolve
+
+
+_task_store = PgTaskStore(get_pool, {
+    DESC_START_JOB: _resolve_start_job,
+    DESC_RETRANSLATE_DIRTY: _resolve_retranslate_dirty,
+    DESC_START_EXTRACTION: _resolve_start_extraction,
+    DESC_JOB_RESUME: _job_control_resolver(DESC_JOB_RESUME),
+    DESC_JOB_RETRY: _job_control_resolver(DESC_JOB_RETRY),
+})
+register_task_endpoints(
+    mcp_server, _task_store, tool_prefix="translation",
+    internal_token=settings.internal_service_token,
+)
+
+
 # ── W0 #4b — model-directed validation errors ─────────────────────────────────
 # FastMCP surfaces a pydantic arg-validation failure as the RAW multi-line dump
 # (with the errors.pydantic.dev URL) — noise a model cannot act on. Intercept at
@@ -95,22 +196,16 @@ mcp_server = make_stateless_fastmcp("translation")
 # copy later (kit is outside the W0 change surface).
 
 
-def _validation_directive(tool_name: str, exc: ValidationError) -> str:
-    """One line: every failing arg with pydantic's expectation + the sent shape."""
-    parts = []
-    errs = exc.errors(include_url=False)
-    for err in errs[:3]:
-        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
-        msg = err.get("msg", "invalid value")
-        sent = err.get("input")
-        parts.append(f"`{loc}`: {msg} (you sent a {type(sent).__name__})")
-    if len(errs) > 3:
-        parts.append(f"(+{len(errs) - 3} more)")
-    return (
-        f"invalid arguments for {tool_name} — "
-        + "; ".join(parts)
-        + ". Fix the argument and call the tool again."
-    )
+# W0 #4b — the one-line validation directive now lives in the kit as
+# `validation_directive`. It used to be a byte-identical copy in THIS file and in two sibling
+# services, and the copy was wrong in a way none of the three noticed: for a `missing` error
+# pydantic sets `input` to the PARENT object, so every rendering said "(you sent a dict)" about
+# a field that had never been sent. Measured across the corpus: 79 calls, 7 tools, 16 sessions,
+# args `{}` in 100% of them — the clause was false every single time it appeared.
+#
+# The comment that used to sit here said the kit "will absorb the shared copy later". Three
+# copies is how one of them drifts, so it absorbed it.
+_validation_directive = validation_directive
 
 
 def _install_validation_error_rewriter(server) -> None:
@@ -191,7 +286,12 @@ def _ctx(ctx: MCPContext) -> ToolContext:
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["coverage", "translation progress", "how much translated",
+        # "translation progress" -> "translation coverage": that phrase means a running
+        # job to a reader; this is the per-chapter x language matrix of what EXISTS.
+        synonyms=["coverage", "translation coverage", "how much translated",
+                  # DQ-T32: fix the declaration, not the matcher. "how much translated" is
+                  # not contiguous in "how much of this book HAS BEEN TRANSLATED so far".
+                  "has been translated",
                   "translation matrix", "languages translated"],
         tool_name="translation_coverage",
     ),
@@ -323,7 +423,8 @@ _JOB_STATUS_CHAPTER_REF_FIELDS = ("chapter_id", "status", "version_num")
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["translation job", "job status", "is my translation done",
+        # "job status" -> "translation job status": jobs_get owns the unqualified phrase.
+        synonyms=["translation job", "translation job status", "is my translation done",
                   "translation progress"],
         tool_name="translation_job_status",
     ),
@@ -401,7 +502,9 @@ async def translation_job_status(
         undo_hint={"tool": "translation_set_active_version",
                    "args": {"note": "set the previously-active version id back"}},
         synonyms=["set active", "publish version", "activate translation",
-                  "make this the active version"],
+                  "make this the active version", "make version",
+                  "the active one", "which version readers see",
+                  "readers see"],
         tool_name="translation_set_active_version",
     ),
 )
@@ -473,13 +576,22 @@ async def translation_set_active_version(
     name="translation_save_edited_version",
     description=(
         "Save a human-edited translation as a NEW version (authored_by='human'), "
-        "linked to the LLM version it was edited from. Auto-applies; reversible by "
-        "setting the prior active version back. Book-scoped (edit)."
+        "linked to the LLM version it was edited from. It saves without a confirm step, "
+        "but it does NOT make the new version active: readers keep seeing the version it "
+        "was edited from until you call translation_set_active_version with the returned "
+        "version_id. Book-scoped (edit)."
     ),
     meta=require_meta(
         "A", "book",
+        # The old hint said "re-activate the version edited from". Measured: saving does
+        # NOT change the active version (only set_active_version and patch_block do), so
+        # that hint described undoing something that never happened — following it would
+        # re-activate the version that was already active. The real follow-up is the
+        # opposite: the saved version is inert until someone activates it.
         undo_hint={"tool": "translation_set_active_version",
-                   "args": {"note": "re-activate the version edited from"}},
+                   "args": {"note": "saving did not change the active version; use this "
+                                    "to switch to the new version_id, or to switch back "
+                                    "if you already did"}},
         synonyms=["save edit", "save my translation", "human edit",
                   "save edited version"],
         tool_name="translation_save_edited_version",
@@ -494,6 +606,23 @@ async def translation_save_edited_version(
     translated_body: Annotated[str, "The edited translation text."],
 ) -> dict:
     tc = _ctx(ctx)
+    # An EMPTY edit is not an edit. Measured 2026-08-22 (tool deep-dive batch 36) against the
+    # live service: translated_body="" and "   " were both accepted and each minted a real
+    # version (version_num 2 and 3) returning success:true. The row is written authored_by
+    # ='human', so it sits in the chapter's version list looking like a human edit and
+    # translation_set_active_version can later publish it to readers.
+    #
+    # 🔴 THE CHECK IS HERE, NOT ONLY ON THE MODEL. SaveEditedTranslationRequest's docstring has
+    # always said "one of translated_body / translated_body_json must be present" and now
+    # enforces it — but THIS tool never builds that model: it writes the INSERT directly, so a
+    # validator on the request object guarded the REST route and left the MCP path wide open.
+    # Verified the hard way: the model fix was deployed and md5-confirmed in the container, and
+    # an empty body still saved. Guard the call site, not the helper.
+    if not (translated_body or "").strip():
+        return {"success": False,
+                "error": "translated_body must not be empty — saving an empty human edit "
+                         "would create a version that looks like a translation and contains "
+                         "nothing"}
     await _require_edit(tc, _uuid(book_id))
     db = get_pool()
     src = await db.fetchrow(
@@ -553,7 +682,9 @@ async def translation_save_edited_version(
         undo_hint={"tool": "translation_patch_block",
                    "args": {"note": "re-patch the block with the prior text"}},
         synonyms=["fix block", "correct block", "patch translation",
-                  "correct one translated paragraph"],
+                  "correct one translated paragraph", "fix the paragraph",
+                  "fix the second paragraph", "correct the paragraph",
+                  "it should read"],
         tool_name="translation_patch_block",
     ),
 )
@@ -657,16 +788,19 @@ async def translation_patch_block(
 @mcp_server.tool(
     name="translation_update_settings",
     description=(
-        "Update a book's translation settings (target language, model, prompts, etc.). "
-        "Only the fields you pass are changed; omitted fields keep their value. "
-        "Auto-applies; reversible by setting the prior values back. Book-scoped (edit)."
+        "Update a book's translation settings: target_language, model_source and "
+        "model_ref — those three, and nothing else. It does NOT set prompts; there is no "
+        "prompt argument, and a prompt passed here is ignored without error. Only the "
+        "fields you pass are changed; omitted fields keep their value. Auto-applies; "
+        "reversible by setting the prior values back. Book-scoped (edit)."
     ),
     meta=require_meta(
         "A", "book",
         undo_hint={"tool": "translation_update_settings",
                    "args": {"note": "set the prior settings values back"}},
         synonyms=["update settings", "change model", "set target language",
-                  "translation settings", "configure translation"],
+                  "translation settings", "configure translation",
+                  "translation model", "my default one", "change the target language"],
         tool_name="translation_update_settings",
     ),
 )
@@ -777,11 +911,26 @@ async def translation_start_job(
         "force_retranslate": force_retranslate,
         "estimate": est.as_dict(),
     }
-    token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, bid,
-        DESC_START_JOB, payload, _CONFIRM_TTL_S,
+    def _confirm_fallback():
+        token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, bid,
+            DESC_START_JOB, payload, _CONFIRM_TTL_S,
+        )
+        return _confirm_envelope(token, DESC_START_JOB, payload["title"], est)
+
+    # Capability-gated: a durable task for a tasks-capable client, else today's confirm_token card
+    # BYTE-UNCHANGED — the fallback above is the previous return verbatim, so the public MCP edge
+    # and external agents see no difference. GATE-2's fallback stays permanent.
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=DESC_START_JOB,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": payload["title"], "descriptor": DESC_START_JOB,
+                        "domain": "translation", "book_id": str(bid),
+                        "estimate": est.as_dict()},
+        confirm_fallback=_confirm_fallback,
     )
-    return _confirm_envelope(token, DESC_START_JOB, payload["title"], est)
 
 
 @mcp_server.tool(
@@ -815,6 +964,23 @@ async def translation_retranslate_dirty(
         chapter_ids=[cid], scope=SCOPE_DIRTY, chapter_id=cid,
         target_language=target_language,
     )
+    # 🔴 THE SAME INVARIANT AS D-EXTRACTION-CONFIRMS-A-NO-OP, IN THIS SERVICE'S OTHER TOOL, AND
+    # FOUND BY PROBING THE SIBLING AFTER FIXING THE FIRST. Measured 2026-08-14 on a chapter with
+    # NO translation at all: this minted a confirm_token whose own title read "Re-translate 0
+    # changed segment(s)". The author is asked to approve — and pay for — a re-translation of
+    # nothing, on a chapter that was never translated in the first place.
+    #
+    # A confirm gate exists to obtain consent for WORK. Zero segments is not work. Refused on the
+    # ESTIMATE rather than on "is there a translation", because the estimate is what the card
+    # would have charged for and it covers both shapes: never translated, and translated with
+    # nothing changed since.
+    if not est.segment_count:
+        raise ToolError(
+            "there are no changed segments to re-translate for this chapter and language — "
+            "either it has never been translated, or nothing has changed since it was. "
+            "Nothing was proposed and nothing was charged. "
+            "Use translation_segment_status to see the per-segment state, or "
+            "translation_start_job to translate it for the first time.")
     payload = {
         "action": "retranslate_dirty",
         "title": f"Re-translate {est.segment_count} changed segment(s)",
@@ -823,11 +989,23 @@ async def translation_retranslate_dirty(
         "target_language": target_language,
         "estimate": est.as_dict(),
     }
-    token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, bid,
-        DESC_RETRANSLATE_DIRTY, payload, _CONFIRM_TTL_S,
+    def _confirm_fallback():
+        token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, bid,
+            DESC_RETRANSLATE_DIRTY, payload, _CONFIRM_TTL_S,
+        )
+        return _confirm_envelope(token, DESC_RETRANSLATE_DIRTY, payload["title"], est)
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=DESC_RETRANSLATE_DIRTY,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": payload["title"], "descriptor": DESC_RETRANSLATE_DIRTY,
+                        "domain": "translation", "book_id": str(bid),
+                        "estimate": est.as_dict()},
+        confirm_fallback=_confirm_fallback,
     )
-    return _confirm_envelope(token, DESC_RETRANSLATE_DIRTY, payload["title"], est)
 
 
 @mcp_server.tool(
@@ -882,6 +1060,17 @@ async def translation_start_extraction(
     caller_level = await _grant_resolver(bid, tc.user_id)
     effort, _capped = clamp_effort_to_grant(requested_effort, caller_level)
     cids = [_uuid(c) for c in chapter_ids]
+    # 🔴 A CONFIRM CARD MUST REPRESENT WORK. Measured 2026-08-14 on a book whose chapters had
+    # been removed: `chapter_ids=[]` minted a confirm_token whose own estimate read
+    # chapters_count 0, llm_calls 0, estimated_total_tokens 0 — a card asking the author to
+    # approve an extraction that would do nothing, and spend the one gate they get on a no-op.
+    # The sibling batch tool already refuses the equivalent ("ops must not be empty — pass the
+    # operations to batch"); this is that rule, applied to the input this tool actually needs.
+    # Named here rather than left to the worker, which would plan 0 batches and report success.
+    if not cids:
+        raise ToolError(
+            "chapter_ids must not be empty — name the chapters to extract from. Nothing was "
+            "proposed and nothing was charged. Use book_list_chapters to pick them.")
     profile = extraction_profile or {}
     # Estimate for the confirm card — a deterministic token projection over
     # (chapter count × the profile's kinds/attrs). The confirm effect re-runs the
@@ -899,6 +1088,24 @@ async def translation_start_extraction(
             for k in kinds_metadata
             if k.get("auto_selected", True) and k.get("attributes")
         }
+    # 🔴 THE SAME INVARIANT, ONE LAYER DEEPER — AND THE FIRST GUARD DID NOT REACH IT.
+    # With chapters present but NO kinds adopted, `kinds_metadata` is empty, the default profile
+    # above builds to {}, and the estimate comes back chapters_count 1 / batches_per_chapter 0 /
+    # llm_calls 0 — a card for a run that will extract nothing. Measured on a fresh throwaway
+    # immediately after fixing the empty-chapter_ids case, which is why it is fixed here rather
+    # than filed: the first guard was the instance, this is the rule.
+    #
+    # The handler already knows this shape — the comment above the default-profile block says
+    # "without this the worker plans 0 batches -> 0 entities" — and then proceeds anyway when the
+    # book has nothing to build a profile FROM. Naming the real cause is what makes it actionable:
+    # the book needs an ontology before entities can be extracted into it.
+    if not profile:
+        raise ToolError(
+            "this book has no glossary kinds adopted yet, so an extraction would find nowhere "
+            "to put anything and would return no entities. "
+            "Nothing was proposed and nothing was charged. "
+            "Adopt standards first — glossary_list_system_standards to see them, "
+            "glossary_adopt_standards to adopt.")
     # #36 — real per-chapter sizes (best-effort) so the windowing planner isn't blind to
     # chapter length (the flat 8000 placeholder undercounted LLM calls on large chapters).
     from ..book_client import build_chapters_meta
@@ -930,18 +1137,29 @@ async def translation_start_extraction(
         "thinking_enabled": effort not in ("none", "off"),
         "estimate": estimate,
     }
-    token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, bid,
-        DESC_START_EXTRACTION, payload, _CONFIRM_TTL_S,
+    def _confirm_fallback():
+        token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, bid,
+            DESC_START_EXTRACTION, payload, _CONFIRM_TTL_S,
+        )
+        return {
+            "needs_confirm": True,
+            "confirm_token": token,
+            "descriptor": DESC_START_EXTRACTION,
+            "domain": "translation",
+            "title": payload["title"],
+            "estimate": estimate,
+        }
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=DESC_START_EXTRACTION,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": payload["title"], "descriptor": DESC_START_EXTRACTION,
+                        "domain": "translation", "book_id": str(bid), "estimate": estimate},
+        confirm_fallback=_confirm_fallback,
     )
-    return {
-        "needs_confirm": True,
-        "confirm_token": token,
-        "descriptor": DESC_START_EXTRACTION,
-        "domain": "translation",
-        "title": payload["title"],
-        "estimate": estimate,
-    }
 
 
 # ── job_control — A (cancel/pause) / W (resume/retry) ─────────────────────────
@@ -959,8 +1177,39 @@ _JOB_CONTROL_TIER = {"cancel": "A", "pause": "A", "resume": "W", "retry": "W"}
     ),
     meta=require_meta(
         "W", "book",  # declared W (the strictest path); cancel/pause execute as A inline.
-        synonyms=["cancel job", "pause job", "resume job", "retry job",
-                  "stop translation", "restart translation"],
+        # "cancel job"/"pause job"/"resume job"/"retry job" all belonged to the generic
+        # jobs_* tools too. Qualified here: this one controls a TRANSLATION job.
+        # 🔴 THE TWO COLLIDING PHRASES CAME OFF THIS SIDE, AND THE MEASUREMENT DECIDED
+        # WHICH SIDE. DQ-T41 (owner 2026-08-27) rules a synonym collision a CATALOGUE defect, and
+        # "pause the translation"/"stop translation" collided with jobs_pause/jobs_cancel. The
+        # obvious fix — take the domain phrase off the GENERIC tool — was tried on 2026-08-25 and
+        # measured a regression, and jobs-service records the A/B beside its own declaration:
+        #
+        #     original wording          surfaced 5/5   jobs_pause called 5/5
+        #     after the de-dup          surfaced 2/5   jobs_pause called 0/5
+        #
+        # with translation_job_control taking 0/5 in BOTH arms. Removing the phrase from the tool
+        # that was answering left nobody holding the request. A measured tie is broken by taking
+        # the phrase off the LOSER.
+        #
+        # So this tool keeps every way of asking that names the JOB it controls, and gives up the
+        # two bare phrasings the generic tools demonstrably win. It loses no reachability it was
+        # exercising: it was never called on either arm.
+        synonyms=["cancel this translation job", "pause this translation job",
+                  "resume the translation", "retry the translation",
+                  "stop this translation job", "restart translation",
+                  # DQ-T41 (owner, 2026-08-27): a collision is fixed in the CATALOGUE,
+                  # not arbitrated at request time. Measured 2026-09-03: "Stop the
+                  # translation for this book." was answerable by jobs_cancel ALONE --
+                  # the GENERIC jobs tool, which declares "stop the translation" while
+                  # this domain tool did not. Removing the borrowed phrase from
+                  # jobs_cancel was measured first and is WORSE: the sentence then
+                  # reaches nobody, and jobs_cancel loses its own turn ("Stop the
+                  # translation one."). So the domain tool claims the domain sentence,
+                  # scoped so it does not collide: normalised "stop translation book"
+                  # against jobs_cancel's "stop translation". Both are now reachable on
+                  # it, which is arm (a) -- the request reaches the tool built for it.
+                  "stop the translation for this book"],
         tool_name="translation_job_control",
     ),
 )
@@ -1015,15 +1264,34 @@ async def translation_job_control(
         "book_id": str(row["book_id"]),
         "job_id": job_id,
         "control_action": action,
+        # book_id rides the payload because a RESOLVER has no request to read it from, and it
+        # re-authorizes the grant before spending. The confirm route gets it from the token's
+        # resource binding; a durable task gets it from here.
+        "book_id": str(row["book_id"]),
         # The job's chapter scope, bound so the confirm route can re-price (H14).
         "chapter_ids": [str(c) for c in (row["chapter_ids"] or [])],
         "estimate": est.as_dict(),
     }
-    token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, row["book_id"],
-        f"translation.job_{action}", payload, _CONFIRM_TTL_S,
+    _desc = f"translation.job_{action}"
+
+    def _confirm_fallback():
+        token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, row["book_id"],
+            _desc, payload, _CONFIRM_TTL_S,
+        )
+        return _confirm_envelope(token, _desc, payload["title"], est)
+
+    # Only resume/retry reach here — cancel/pause are Tier-A and never mint a token at all.
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_desc,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": payload["title"], "descriptor": _desc,
+                        "domain": "translation", "book_id": str(row["book_id"]),
+                        "estimate": est.as_dict()},
+        confirm_fallback=_confirm_fallback,
     )
-    return _confirm_envelope(token, f"translation.job_{action}", payload["title"], est)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

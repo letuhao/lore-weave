@@ -285,6 +285,60 @@ async def test_kg_build_target_graph_without_llm_model_is_tool_error():
 
 
 @pytest.mark.asyncio
+async def test_a_refusal_never_claims_to_be_the_ONLY_precondition():
+    """🔴 MEASURED LIVE 2026-08-12, journey `kg-build` (project 019ff497-e068…).
+
+    `target=graph` has TWO gates: `llm_model` here, and the project's embedding model inside
+    `_handle_kg_build_graph`. The model discovered them one call at a time — call 1 refused for
+    `llm_model`; call 2 supplied it and was refused for the embedding model with *"That is the ONLY
+    precondition"*, a sentence denying the gate the SAME call had just failed. It then retried the
+    identical arguments and told the author "I've started building the connection map" over a build
+    that never started.
+
+    The clause meant only that `kg_run_benchmark` is advisory. It must say that and claim no
+    exclusivity it does not have.
+    """
+    ctx = _mk_ctx(embedding_model=None)
+    res = await execute_tool(ctx, "kg_build_graph", {"llm_model": "gpt-x"})
+    assert not res.success
+    assert "ONLY" not in res.error, (
+        "the refusal claims to be the only precondition while llm_model gates the same call"
+    )
+    assert "does NOT gate this build" in res.error, (
+        "the advisory-benchmark clarification the exclusivity claim was standing in for is gone"
+    )
+
+
+@pytest.mark.asyncio
+async def test_BOTH_unmet_preconditions_are_named_in_ONE_refusal():
+    """One call, one complete answer — not a gate discovered per round trip.
+
+    With neither `llm_model` nor an embedding model configured, the refusal must name both, so a
+    caller can satisfy them together instead of learning the second only after fixing the first.
+    """
+    ctx = _mk_ctx(embedding_model=None)
+    res = await execute_tool(ctx, "kg_build", {"target": "graph"})
+    assert not res.success
+    assert "llm_model" in res.error
+    assert "kg_project_set_embedding_model" in res.error, (
+        "the second gate is still only discoverable by making another call"
+    )
+    assert "2 precondition(s)" in res.error
+
+
+@pytest.mark.asyncio
+async def test_a_SATISFIED_precondition_is_not_reported_as_unmet():
+    """The control. With the embedding model configured, only the genuinely missing gate is named —
+    listing a satisfied one would be the same dishonesty pointed the other way."""
+    ctx = _mk_ctx(embedding_model="emb-model-1")
+    res = await execute_tool(ctx, "kg_build", {"target": "graph"})
+    assert not res.success
+    assert "llm_model" in res.error
+    assert "kg_project_set_embedding_model" not in res.error
+    assert "1 precondition(s)" in res.error
+
+
+@pytest.mark.asyncio
 async def test_kg_build_target_wiki_without_model_ref_is_tool_error():
     ctx = _mk_ctx()
     res = await execute_tool(ctx, "kg_build", {"target": "wiki"})

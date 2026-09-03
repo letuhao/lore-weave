@@ -1,0 +1,117 @@
+[
+ {
+  "tool": "translation_patch_block",
+  "pre": [],
+  "args": {
+   "book_id": "01a029e5-723b-78f0-bb8e-2ed6f03612fb",
+   "chapter_id": "01a029e5-72dc-7c7f-80d8-790ab5f050df",
+   "target_language": "vi",
+   "base_version_id": "01a029e5-7854-74a2-86b8-52856ea5f794",
+   "block_index": 1,
+   "block": {
+    "type": "paragraph",
+    "content": [
+     {
+      "type": "text",
+      "text": "Aldric Vane buoc xuong bac da den."
+     }
+    ]
+   }
+  },
+  "first": [
+   "ok",
+   {
+    "success": true,
+    "version_id": "01a029e5-ab43-7b59-a9b2-bcdd34a3a8e0",
+    "block_index": 1,
+    "_meta": {
+     "undo_hint": {
+      "tool": "translation_patch_block",
+      "args": {
+       "book_id": "01a029e5-723b-78f0-bb8e-2ed6f03612fb",
+       "chapter_id": "01a029e5-72dc-7c7f-80d8-790ab5f050df",
+       "base_version_id": "01a029e5-ab43-7b59-a9b2-bcdd34a3a8e0",
+       "target_language": "vi",
+       "block_index": 1,
+       "block": {
+        "text": "Aldric Vane đi xuống cầu thang.",
+        "type": "paragraph"
+       }
+      }
+     }
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "success": true,
+    "version_id": "01a029e5-ab43-7b59-a9b2-bcdd34a3a8e0",
+    "block_index": 1,
+    "_meta": {
+     "undo_hint": {
+      "tool": "translation_patch_block",
+      "args": {
+       "book_id": "01a029e5-723b-78f0-bb8e-2ed6f03612fb",
+       "chapter_id": "01a029e5-72dc-7c7f-80d8-790ab5f050df",
+       "base_version_id": "01a029e5-ab43-7b59-a9b2-bcdd34a3a8e0",
+       "target_language": "vi",
+       "block_index": 1,
+       "block": {
+        "type": "paragraph",
+        "content": [
+         {
+          "text": "Aldric Vane buoc xuong bac da den.",
+          "type": "text"
+         }
+        ]
+       }
+      }
+     }
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_translation.active_chapter_translation_versions": {
+    "before": null,
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 14:35:12.576167+00"
+    }
+   },
+   "loreweave_translation.chapter_translations": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-22 14:34:59.528309+00"
+    },
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-22 14:35:12.576167+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_translation.chapter_translations": {
+    "before": {
+     "rows": 2,
+     "latest": "2026-08-22 14:35:12.576167+00"
+    },
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-22 14:35:25.490765+00"
+    }
+   }
+  },
+  "verdict": "IDEMPOTENT IN EFFECT — no row was added or removed by the second call; it re-wrote the same row in place (updated_at moved). Worth recording, not a defect.",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "book_id": "01a029e5-723b-78f0-bb8e-2ed6f03612fb",
+   "title": "LOOP-THROWAWAY-idem-translation_patch_block-5bbf2bcd",
+   "tables": {
+    "composition(project)": "01a029e5-7399-7892-8780-4e3911e0b14e"
+   }
+  }
+ }
+]

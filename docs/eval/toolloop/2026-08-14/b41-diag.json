@@ -1,0 +1,92 @@
+{
+  "batch": "batch",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "translation_update_settings",
+      "scenario": "translation-update-settings",
+      "intent": "write",
+      "falsifier": "REFUTED IF: settings are written with NO confirm card (Tier A), OR the model sends a `model_source`/`model_ref` the author never mentioned — three fields, one named — OR a target_language outside the declared enum. A run ending in a provider stream error is evidence about the TRANSPORT and a re-run condition, never about this tool.",
+      "answer_expect": null,
+      "falsifier_sha": "9418af2f0610a868",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "empty_case": "OWED — a call with no field to change must be refused.",
+        "absent_case": "EXERCISED by direct probe — another owner's book is refused 'not found or not accessible'.",
+        "idempotency": "OWED — setting the language it already has must be a clear no-op.",
+        "tenancy": "EXERCISED by direct probe — refused with the same wording an absent id gets."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a026f5-3f5a-7a6c-bd17-333774ea9495",
+          "session_id": "01a026f5-5b69-77b7-8d76-b48955c6ca73",
+          "prompt": "Set the target language for this book's translation to Vietnamese.",
+          "scenario_prompt": "Set the target language for this book's translation to Vietnamese.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 00:53:22.049891+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 00:53:22.254327+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 00:53:22.245002+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 370,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 00:53:22.049891+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 00:53:22.254327+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 00:53:22.245002+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 370,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 1,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

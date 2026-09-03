@@ -1344,12 +1344,17 @@ async def recreate_relation(
 # ── invalidate_relation ───────────────────────────────────────────────
 
 
+# 🔴 `r.valid_until` FIRST — the same fix as _INVALIDATE_FACT_CYPHER, and this one had a route
+# claiming the property in prose: PATCH .../relations "User marks a relation wrong -> soft-invalidate
+# (set valid_until). ... Idempotent." It was not. Repeating the call moved the moment the relation
+# stopped holding, while answering the same both times. facts.py's docstring says it has "same
+# idempotency semantics as invalidate_relation" — true before this change, and both were wrong.
 _INVALIDATE_RELATION_CYPHER = """
 MATCH (subj:Entity)-[r:RELATES_TO {id: $relation_id}]->(obj:Entity)
 WHERE r.user_id = $user_id
   AND subj.user_id = $user_id
   AND obj.user_id = $user_id
-SET r.valid_until = coalesce($valid_until, {NOW}),
+SET r.valid_until = coalesce($valid_until, r.valid_until, {NOW}),
     r.updated_at = {NOW}
 RETURN properties(r) AS rel,
        properties(subj) AS subj,

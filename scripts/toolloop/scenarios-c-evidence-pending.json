@@ -1,0 +1,75 @@
+{
+  "_note": "The LEFT-PENDING arm of glossary-create-evidence-attrvalue. Copied verbatim from scenarios-c-evidence2.json except for `approve`, so the only difference is whether the card is answered. It exists because the auto-approving arm produced 0 carded runs of 5 and therefore could not answer DQ-T73's question about what a PENDING card says.\n\nNot a DQ-T50 split: both arms name the same tool and test the same selection; they differ only in whether the human gate is passed.",
+  "scenarios": [
+    {
+      "id": "glossary-create-evidence-attrvalue-LEFT-PENDING",
+      "tool_under_test": "glossary_create_evidence",
+      "expect_tool": "glossary_create_evidence",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Back up Aldric Vane's role with a passage from the chapter — cite where it says he climbed the black stair.",
+      "prompt_source": "_meta.synonyms['back this up with a passage'] + ['cite where this is stated'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane",
+                "attributes": {
+                  "occupation": "cartographer"
+                }
+              }
+            ]
+          },
+          "why": "🔴 THE ATTRIBUTE VALUE IS THE POINT. glossary_create_evidence REQUIRES attr_value_id — 'the attribute value the evidence supports (must belong to the entity)' — and the seed created an entity with NO attribute values, so there was nothing to attach evidence to and the tool was unreachable. Measured 0/5 twice.\n\n'occupation' is a real character attribute (7,852 books carry it), and attributes are written by propose_entities only AT CREATION — a re-call for an existing name+kind does NOT merge them on, which is why an earlier probe reported attributes_skipped: ['occupation'] against an entity that already existed."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist. NOTE the deeper precondition this scenario is really testing: evidence attaches to an ATTRIBUTE VALUE (attr_value_id), not to the entity, so the model must first find or create an attribute value. If it cannot, that is a PRECONDITION-CHAIN finding like kg_propose_edge's, not a defect in this tool."
+        },
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM entity_attribute_values v JOIN glossary_entities e ON e.entity_id=v.entity_id JOIN book_attributes a ON a.attr_id=v.attr_def_id WHERE e.book_id='{book_id}' AND a.code='occupation'",
+          "expect": "1",
+          "why": "The OCCUPATION value must exist by name. A bare count over the entity's values passes on 'name', which propose_entities writes for every entity — so it would be green on exactly the empty state that made this tool unreachable."
+        }
+      ],
+      "falsifier": "REFUTED IF the turn suspends with a card and the store has NOT moved — that would mean the write-before-card behaviour this scenario carried 26 times is no longer current, and DQ-T73's 36.3% is history rather than today.\n\nCONFIRMED IF the card is pending AND the store already moved: the behaviour persists and the question is live.\n\n🔴 A THIRD OUTCOME IS LIKELY AND IS NOT AN ANSWER: the tool may not be called at all (the sibling arm called it 2 of 5). A run that never reaches glossary_create_evidence measures selection, not carding order, and must be excluded rather than counted as clean.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an attr_value_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION",
+      "approve_why": "🔴 DELIBERATELY NOT APPROVED, and that is the whole difference from the arm it is copied from. DQ-T73 asks what a CARD says about a write that already landed, so the card has to still be sitting there. The sibling arm declares approve='approved_once', which answers the card automatically — measured 2026-08-30, it produced 0 carded runs of 5, and an auto-approving arm cannot answer a question about pending cards. That is the standing rule 'a scenario that auto-approves never suspends', met in practice."
+    }
+  ]
+}

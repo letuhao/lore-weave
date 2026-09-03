@@ -1,0 +1,610 @@
+{
+  "batch": "c-marker",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "world_map_add_marker",
+      "scenario": "world-map-add-marker",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the tool reports a marker placed while the map gains none, OR the marker's x/y fall outside the map's coordinate space, OR a Tier-A write lands with no confirm card. CONTROL: the model must find map_id itself (world_map_list) — a turn that never lists is a DISCOVERY failure, not a failure of this tool.",
+      "answer_expect": null,
+      "falsifier_sha": "c335bf64fb23074c",
+      "ship_audit": {
+        "absent_case": "EXERCISED by direct probe (2026-08-23): an absent map_id is refused AND the refusal names its supplier — 'map not found — check the map_id (call world_map_list for valid ids)'.",
+        "empty_case": "EXERCISED: an empty map_id is refused by NAME — 'map_id must be a UUID'.",
+        "tenancy": "EXERCISED against a genuinely FOREIGN map — another user's, found in loreweave_book (three other owners hold maps) — and refused with the message IDENTICAL to the absent case: 'map not found — check the map_id (call world_map_list for valid ids)'. The map lookup is tenant-scoped and is no existence oracle.\n\nPROBED ON THE READ PATH (world_map_get), NOT THE WRITE, and the reason is the whole point: the test that proves this boundary is the test that VIOLATES it if the guard fails, and a failed guard here would have written a marker into another person's map. world_map_add_marker returns that same 'map not found' message from the same lookup, so the guard under test is the same one — stated as the inference it is rather than dressed up as a direct write probe.\n\nWhat is NOT claimed: that add_marker's own write path re-checks ownership independently of the lookup. Proving that safely needs a second account whose data it is acceptable to touch.",
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/c-marker.json): Tier A. A world_map_add_marker confirm card was raised on 1 of 5 runs and the owning world/map store moved on 0 of 5 — the card was never approved and no marker was written without it. The only other movement is loreweave_knowledge.extraction_pending, which the gate already classifies as unattributable queue bookkeeping."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02d45-a73a-777b-ae9d-284c81ab5920",
+          "session_id": "01a02d45-e944-7f31-88dd-f74303a626eb",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:54.843506+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:54.843506+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:54.843506+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:54.843506+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:55.03757+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:55.026715+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:55.166725+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:55.35477+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:54.843506+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:54.843506+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:54.843506+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:54.843506+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:55.03757+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:55.026715+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:55.166725+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:18:55.35477+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't find a map named \"Ashfall\" in your world list. To place that pin, I first need to find the correct ID for your Ashfall map. \n\nCould you tell me the name of the world this map belongs to? Once I have that, I'll find the map ID and add the \"Hollow Keep\" pin for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02d46-9d7c-7fb9-9d99-9f14e005136d",
+          "session_id": "01a02d46-e47e-7a8a-b8d3-c79bff4e1222",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:57.877325+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:57.877325+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:57.877325+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:57.877325+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:58.10763+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:58.090102+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:58.221331+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:58.413384+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:57.877325+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:57.877325+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:57.877325+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:57.877325+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:58.10763+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:58.090102+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:58.221331+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:19:58.413384+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02d47-40f1-774d-b467-232de092075d",
+          "session_id": "01a02d47-8fae-7520-98d3-077704917ce8",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.735498+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.735498+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.735498+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.735498+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.970336+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.955481+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:40.106421+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:40.29072+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.735498+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.735498+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.735498+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.735498+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.970336+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:39.955481+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:40.106421+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:20:40.29072+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't find a map named \"Ashfall\" in your world list. To place that pin, I first need to find the correct ID for your Ashfall map. \n\nCould you tell me the name of the world this map belongs to? Once I have the world, I can find the map and place the \"Hollow Keep\" pin for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02d48-0863-720f-a690-eb0592067a23",
+          "session_id": "01a02d48-4b2a-7122-89e1-ded25d534b68",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.760268+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.760268+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.760268+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.760268+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.962879+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.954155+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:31.070723+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:31.226998+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.760268+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.760268+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.760268+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.760268+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.962879+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:30.954155+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:03.936744+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:31.070723+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:21:31.226998+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:03.936744+00"
+              }
+            }
+          },
+          "answer": "I couldn't find a map named \"Ashfall\" in your world list. To place that pin, I first need to find the correct ID for your Ashfall map. \n\nCould you tell me the name of the world this map belongs to? Once I have the world name, I can find the map ID and place the \"Hollow Keep\" pin for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02d48-b40d-7228-b1b6-5028f9220cfa",
+          "session_id": "01a02d48-f503-7c2d-aeea-33b75478b973",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.706036+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.706036+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.706036+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.706036+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.913374+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.903985+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:15.024085+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:15.180715+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.706036+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.706036+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.706036+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.706036+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.913374+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:14.903985+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:15.024085+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-23 06:22:15.180715+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't find a map named \"Ashfall\" in your world list. To place the pin, I first need to find the correct ID for your Ashfall map. \n\nCould you please tell me the name of the world this map belongs to? Once I have that, I'll find the map ID and place the \"Hollow Keep\" pin for you."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 1,
+      "suspended_count": 1,
+      "proven_note_2026_08_23": "PROVEN on the tool's own behaviour. Its recorded block — 'the declaration names only the middle link' — was measured before its own fix landed and was replaced today by a measured cause: the model reaches for world_map_list and every call goes out with EMPTY ARGUMENTS until the breaker stops the turn (the upstream LM Studio parser defect, and 28 of 30 runs of this scenario hit it).\n\nThat is a finding about the CHAIN and the model, not this tool. world_map_add_marker itself is called 5/5 with zero errors, refuses an absent or empty map_id by name, names its own supplier in the refusal, raises its Tier-A card, and writes nothing without approval. See D-BLANK-ARGS-CONCENTRATES-WHERE-NO-AMBIENT-ID-EXISTS for the chain half, which stays open."
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "_note": "DQ-T44 (owner 2026-08-28): 'a `deleted=true` (soft-deleted) FILTER on each family's EXISTING list/search tool. No new tools.' Built for the glossary-entity family and run on the SAME scenario, verbatim, that produced this row's live confirmation.\n\nTHE BEFORE MEASUREMENT is on the row: 5 of 5 runs the model searched the glossary, the chapter text and project memory, found nothing — because a deleted row was invisible to all of them — and answered 'Since I can't see her in the trash (the recycle bin) without an ID, I'll need you to provide her element ID.' Correct, and the tool unreachable because of it.",
+  "_what_would_refute_the_fix": "glossary_search never called with deleted=true, OR called and the deleted entity still not returned, OR returned without its entity_id. Any of those means the filter does not put the id where the restore can reach it. The RESTORE itself being asked-about rather than called is a DIFFERENT row's defect (D-THE-MODEL-ASKS-INSTEAD-OF-RAISING-THE-CARD-IT-HAS) and is not counted as refuting this one — the same separation the canon-rule and structure-template arms of this row already recorded.",
+  "scenarios": [
+    {
+      "id": "glossary-entity-restore",
+      "tool_under_test": "glossary_entity_restore",
+      "expect_tool": "glossary_entity_restore",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+      "prompt_source": "meta.synonyms['undo entity delete'] + ['restore entity'], verbatim, plus the entity's name.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              }
+            ]
+          }
+        },
+        {
+          "sql": {
+            "db": "loreweave_glossary",
+            "statement": "UPDATE glossary_entities SET deleted_at = now() WHERE book_id='{book_id}' AND cached_name='Mira Solene'",
+            "why": "Soft-DELETE the seeded entity so there is something in the recycle bin to restore. Done in SQL rather than through glossary_entity_delete because that tool is Tier W and confirm-gated — driving it through a card would make this seed depend on the very approval flow the loop never approves. SELECT-verified by the assertion below."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND deleted_at IS NOT NULL",
+          "expect": "1",
+          "why": "EXACTLY ONE entity in the recycle bin, so there is a real thing to restore and the model must resolve its NAME to an entity_id — a deleted row it cannot see in a normal listing, which is the interesting part."
+        }
+      ],
+      "falsifier": "🔴 REFUTED IF NO CONFIRM CARD MINTS — and this is the measurement, not an assumption. The tool is declared tier=A, which means a card, but its own description says 'Direct — no confirmation needed, since restoring only reverses a prior delete'. Those cannot both be true. A card means the description is stale; no card means the tier declaration is wrong and a Tier-A tool is auto-applying. Either is a finding. ALSO REFUTED IF: the model invents an entity_id, or the reply claims the restore happened while a card is pending.",
+      "ship_audit": {
+        "gate": "OWED — and the answer is the point of this scenario; see the falsifier.",
+        "absent_case": "OWED — an entity_id that does not exist must be refused.",
+        "idempotency": "OWED — restoring an entity that is not deleted must be a clear no-op or refusal, not a silent success.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

@@ -67,6 +67,10 @@ from app.ontology.confirm import (
 from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import graph_session
 from app.db.graph_repos.graph_views import (
+    _GRAPH_READ_CYPHER,
+    _ISOLATED_NODES_CYPHER,
+    _NODE_TOTAL_CYPHER,
+    _TIMELINE_CYPHER,
     read_entity_edge_timeline,
     read_project_graph_edges,
 )
@@ -188,10 +192,17 @@ TIMELINE_INSTANCE_REF_FIELDS = ("target_id", "target_label", "valid_from", "vali
 # (small + ACTIONABLE — OUT-1 keeps what the caller acts on to resolve); DROP only the
 # heavy `sample_payload` blob. (K37 first dropped suggested_actions too, which forced a
 # second detail=full call just to resolve — a pre-merge integration test caught it.)
-TRIAGE_GROUP_REF_FIELDS = ("signature", "item_type", "count", "status", "suggested_actions")
+TRIAGE_GROUP_REF_FIELDS = (
+    "signature", "item_type", "count", "status", "suggested_actions",
+    # An id is a reference, not a body: §6b exists to hand back cheap ids the agent can act
+    # on. kg_triage_place_edge needs this one, and `summary` is the DEFAULT detail, so
+    # dropping it here would leave the tool as unreachable as it was before it was emitted.
+    "sample_triage_id",
+)
 
 
-def _project_graph(out: dict, detail: str, *, node_ref, edge_ref, truncated: bool = False) -> dict:
+def _project_graph(out: dict, detail: str, *, node_ref, edge_ref, truncated: bool = False,
+                   nodes_total: int | None = None) -> dict:
     """Apply the L1/L2 field projection to a graph result's `nodes` + `edges` lists
     in place and stamp coverage `meta`. `detail` is the per-item FIELD lever, so summary
     projects fields but never silently drops rows — meta reports both totals.
@@ -210,7 +221,11 @@ def _project_graph(out: dict, detail: str, *, node_ref, edge_ref, truncated: boo
     out["edges"] = edges_p
     out["meta"] = {
         "detail": detail,
-        "nodes_total": nmeta["total"],
+        # `nodes_total` is the partition's TRUE size when the caller counted it, and only falls
+        # back to the slice's own length when it did not. The fallback is what shipped, and it
+        # made an empty slice report an empty PROJECT — see the isolated-node note in the
+        # kg_graph_query handler.
+        "nodes_total": nmeta["total"] if nodes_total is None else nodes_total,
         "nodes_returned": nmeta["returned"],
         "edges_total": emeta["total"],
         "edges_returned": emeta["returned"],
@@ -344,13 +359,57 @@ class KgProposeEdgeArgs(ProjectScopedArgs):
 
     model_config = ConfigDict(extra="forbid")
 
-    source_entity_id: str = Field(min_length=1, max_length=200)
-    target_entity_id: str = Field(min_length=1, max_length=200)
+    # DQ-T76 (f) WAVE 1 — name in / handle through. The two ids stay ACCEPTED and become
+    # OPTIONAL; a caller may instead pass the entity's NAME and the handler resolves it.
+    #
+    # 🔴 THIS IS WAVE 1 BECAUSE IT IS WHERE THE MEASUREMENT POINTS. `source_entity_id` is the
+    # single argument on the platform with a genuinely unreachable supplier -- a supplier was
+    # advertised on 4 of the 46 calls that passed it (9%) -- and both of these arguments have
+    # ZERO observed suppliers in the recorded corpus. The plan's Wave 3 (run_id, project_id,
+    # world_id, all ~100% supplied) is explicitly NOT in scope.
+    #
+    # 🔴 AND THE FAILURE IS MEASURED -- BUT NOT THE ONE THIS COMMENT FIRST CLAIMED. It said
+    # "batch c-kgedge3, 2026-08-26 -- on 3 of 3 edge calls the model passed the GLOSSARY entity
+    # ids". That was taken from this tool's own older source comment and is UNVERIFIABLE: there
+    # is no c-kgedge3 file on disk and no 2026-08-26 batch directory at all. The measurement may
+    # have been real and its file not kept -- that is not the same as it being false -- but
+    # nobody can re-check it, and KG_ENDPOINT_NOT_NODE (the refusal a wrong-family id triggers)
+    # appears in ZERO recorded results.
+    #
+    # THE DOMINANT FAILURE IS OMISSION, over all 53 distinct kg_propose_edge calls recorded:
+    #     passed at least one endpoint id     17   (32%)
+    #     passed NEITHER                      36   (68%)   <- this
+    #     wrong-family (KG_ENDPOINT_NOT_NODE)  0
+    # The model does not pass the WRONG id; it passes NO id, because it has no reachable way to
+    # get one -- which is exactly the ground the owner's (f) ruling rests on. A NAME is something
+    # it demonstrably has: the request that triggers this tool is "record that Aldric and Mira
+    # know each other". Re-derive with scripts/toolloop/wave1_fabrication_baseline.py.
+    source_entity_id: str | None = Field(default=None, min_length=1, max_length=200)
+    target_entity_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_name: str | None = Field(default=None, min_length=1, max_length=200)
+    target_name: str | None = Field(default=None, min_length=1, max_length=200)
     edge_type: str = Field(min_length=1, max_length=_CODE_MAX)
     source_kind: str | None = Field(default=None, max_length=_CODE_MAX)
     target_kind: str | None = Field(default=None, max_length=_CODE_MAX)
     valid_from: int | None = Field(default=None, ge=0)
     valid_to: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_endpoints_are_expressed(self) -> "KgProposeEdgeArgs":
+        """Each endpoint must arrive as an id OR a name — never as neither.
+
+        🔴 MAKING THE IDS OPTIONAL WITHOUT THIS WOULD BE A REGRESSION, not a migration: a call
+        omitting both would have parked an edge with no endpoints instead of being refused at
+        mint. The plan's backward-compatibility rule is "accept BOTH forms", not "accept none".
+        """
+        for side in ("source", "target"):
+            if not getattr(self, f"{side}_entity_id") and not getattr(self, f"{side}_name"):
+                raise ValueError(
+                    f"{side} endpoint is missing: pass {side}_entity_id (a graph NODE id from "
+                    f"kg_add_nodes) or {side}_name (the entity's name, which the server "
+                    f"resolves)"
+                )
+        return self
 
     @model_validator(mode="after")
     def _validate_temporal_window(self) -> "KgProposeEdgeArgs":
@@ -581,7 +640,8 @@ class KgCreateNodeArgs(ProjectScopedArgs):
         min_length=1, max_length=100,
         description=(
             "the entity kind — one of: character, location, organization, "
-            "concept, item"
+            "concept, item. Ordinary synonyms are accepted and folded to these "
+            "(person → character, place → location, group → organization)."
         ),
     )
 
@@ -591,9 +651,13 @@ class KgCreateNodeArgs(ProjectScopedArgs):
         # only mint the same closed set the human REST create accepts. ONE home
         # for the set: graph_repos.entities.AUTHORABLE_KINDS (imported lazily to
         # keep the tools layer free of an eager data-layer import at class-def).
-        from app.db.graph_repos.entities import AUTHORABLE_KINDS
+        from app.db.graph_repos.entities import AUTHORABLE_KINDS, canonical_kind
 
-        if self.kind.strip() not in AUTHORABLE_KINDS:
+        # TOLERATE AT THE EDGE, STORE THE CANONICAL VALUE. `kind="person"` was rejected on every
+        # call in a measured K=5 run and took both of that batch's failures with it; the alias is
+        # folded to `character` HERE so nothing downstream ever sees a second vocabulary.
+        self.kind = canonical_kind(self.kind)
+        if self.kind not in AUTHORABLE_KINDS:
             raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
         return self
 
@@ -621,9 +685,16 @@ class KgAddNodesArgs(ProjectScopedArgs):
         if self.mode == "manual":
             if not self.name or not self.kind:
                 raise ValueError("mode=manual requires name and kind")
-            from app.db.graph_repos.entities import AUTHORABLE_KINDS
-            if self.kind.strip() not in AUTHORABLE_KINDS:
-                raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
+            from app.db.graph_repos.entities import AUTHORABLE_KINDS, canonical_kind
+            # TOLERATE AT THE EDGE, STORE THE CANONICAL VALUE — the same rule kg_create_node
+            # applies, and it was missing HERE, on the unified tool the model actually calls.
+            self.kind = canonical_kind(self.kind)
+            if self.kind not in AUTHORABLE_KINDS:
+                raise ValueError(
+                    f"kind must be one of {sorted(AUTHORABLE_KINDS)} — you sent "
+                    f"{self.kind!r}. Ordinary synonyms are folded automatically "
+                    "(person → character, place → location); this one matched none of them."
+                )
         return self
 
 
@@ -962,13 +1033,43 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "edge type is temporal you MUST supply valid_from (the chapter "
         "ordinal it began); otherwise the proposal is rejected.",
         {
+            # DQ-T76 (f) WAVE 1 — the NAME is the declared way in; the id is legacy-but-accepted.
+            # 🔴 THIS IS THE THIRD PLACE THIS TOOL'S SHAPE IS DECLARED (arg model, MCP signature,
+            # and here) and a test exists precisely because they drift:
+            # test_schema_properties_match_arg_model_fields caught this one the moment the arg
+            # model gained the names. Names FIRST, because argument order is part of what a
+            # model reads.
+            "source_name": {
+                "type": "string",
+                "description": (
+                    "The NAME of the relationship's source entity, e.g. \"Aldric Vane\" — the "
+                    "ordinary way to say it. The server resolves it to the graph node. If the "
+                    "name matches more than one entity the call is REFUSED with the candidates, "
+                    "so nothing is guessed."
+                ),
+            },
+            "target_name": {
+                "type": "string",
+                "description": (
+                    "The NAME of the relationship's target entity. Same resolution as "
+                    "source_name."
+                ),
+            },
             "source_entity_id": {
                 "type": "string",
-                "description": "The id of the relationship's source entity.",
+                "description": (
+                    "LEGACY, still accepted: the graph NODE id of the source — NOT a glossary "
+                    "entity id. Prefer source_name. If you pass both, the ID wins and the "
+                    "result says so in `resolved_by`."
+                ),
             },
             "target_entity_id": {
                 "type": "string",
-                "description": "The id of the relationship's target entity.",
+                "description": (
+                    "LEGACY, still accepted: the graph NODE id of the target — NOT a "
+                    "glossary entity id. Same source as source_entity_id. Prefer target_name, "
+                    "which cannot be the wrong id family at all."
+                ),
             },
             "edge_type": {
                 "type": "string",
@@ -997,7 +1098,9 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
             "project_id": _PROJECT_ID_PROP,
         },
-        ["source_entity_id", "target_entity_id", "edge_type"],
+        # Only edge_type stays REQUIRED: each endpoint may arrive as an id OR a name, and the
+        # arg model's validator refuses a call that supplies neither.
+        ["edge_type"],
     ),
     # UNIFIED node creation (catalog-unification 2026-07-22): mode supersedes kg_create_node
     # + kg_project_entities_to_nodes (which stay for existing callers).
@@ -1023,8 +1126,12 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
             "kind": {
                 "type": "string",
-                "enum": ["character", "location", "organization", "concept", "item"],
-                "description": "mode=manual: the entity kind (closed set).",
+                # 🔴 NO `enum` HERE ANY MORE, and that is the fix rather than an omission. A
+                # closed enum is validated by the tool layer BEFORE any code runs, so the alias
+                # map that folds `person` -> `character` could never see the value. The closed set
+                # moves into the DESCRIPTION (guidance) and the validator (enforcement); this
+                # schema must mirror the MCP signature, which a guard checks.
+                "description": "mode=manual: the entity kind — one of: character, location, organization, concept, item. Ordinary synonyms are accepted and folded to these (person → character, place → location, group → organization, thing → item).",
             },
             "entity_ids": {
                 "type": "array",
@@ -1063,8 +1170,11 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "Manually create ONE knowledge-graph entity node (a character, location, "
         "organization, item, …). Use this BEFORE kg_propose_edge when a relationship's "
         "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
-        "parked and later fails. Idempotent: the same name+kind returns the existing "
-        "node. Returns the entity_id to use as an edge endpoint.",
+        "parked and later fails. Idempotent in RESULT — the same name+kind returns the "
+        "existing node and never creates a duplicate — but it is a WRITE, not a no-op: "
+        "re-running bumps that node's version, so a PATCH holding an If-Match taken "
+        "before the call will 412. Do not call it defensively on a node you already "
+        "have. Returns the entity_id to use as an edge endpoint.",
         {
             "name": {
                 "type": "string",
@@ -1074,8 +1184,8 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
             "kind": {
                 "type": "string",
-                "enum": ["character", "location", "organization", "concept", "item"],
-                "description": "the entity kind (closed set)",
+                # Same reason as kg_add_nodes above — see that note.
+                "description": "the entity kind — one of: character, location, organization, concept, item. Ordinary synonyms are accepted and folded to these (person → character, place → location, group → organization, thing → item).",
             },
             "project_id": _PROJECT_ID_PROP,
         },
@@ -1087,8 +1197,10 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "kg_view_edit",
         "Create, replace, or delete one of YOUR saved views (a named lens of edge-type + "
         "node-kind codes) for the current project. Owner-scoped (only ever your own view). "
-        "op=upsert creates/replaces it (needs code + name; optional description/edge_type_codes/"
-        "node_kind_codes); op=delete removes it (needs code; reversible — recreate with upsert).",
+        "op=upsert creates/replaces it WHOLE (needs code + name; description/edge_type_codes/"
+        "node_kind_codes are optional to SUPPLY but not preserved — anything you omit is "
+        "CLEARED, so send the full lens every time, not just the part you are changing); "
+        "op=delete removes it (needs code; reversible — recreate with upsert).",
         {
             "op": {
                 "type": "string",
@@ -1128,7 +1240,10 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "kg_view_upsert",
         "Create or replace one of the caller's saved views (a named lens of "
         "edge-type + node-kind codes) for the current project. Owner-scoped: "
-        "only ever touches your own view.",
+        "only ever touches your own view. It replaces the view WHOLE: anything you omit "
+        "is CLEARED, not left alone, so send the full lens every time. Beware that an "
+        "emptied code list means ALL — clearing them by accident widens the view to "
+        "everything rather than narrowing it to nothing.",
         {
             "code": {
                 "type": "string",
@@ -1174,9 +1289,13 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "Resolve a triage signature group with a low-impact, reversible "
         "action: map (alias to a known code), re_target (fix an endpoint), "
         "drop_edge (discard), close_previous (close an open instance), or "
-        "dismiss. Schema-changing actions (add to vocab/schema, widen, "
-        "promote to glossary) are NOT available here — those need explicit "
-        "human confirmation via the review surface.",
+        "dismiss. "
+        "Schema-changing actions (add_to_vocab, add_to_schema, widen_target_kinds, "
+        "set_multi_active) ARE available to you — on kg_triage_schema_write, which "
+        "confirm-gates them. Only promote_to_glossary_kind and demote_to_attribute are "
+        "human-only: they are cross-service glossary writes the user initiates. kg_triage_list's "
+        "suggested_actions names actions from all three triage tools, so match the action to "
+        "the tool that accepts it.",
         {
             "signature": {
                 "type": "string",
@@ -1544,8 +1663,40 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
             limit=args.limit + 1,
         )
 
+        # ── D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ ───────────────────────────────────
+        # The Cypher above walks EDGES, so a node with no active relation cannot appear — and
+        # kg_add_nodes answers "node ready" for exactly such a node, because placing an edge
+        # needs an approved card. This read then reported `nodes: [], nodes_total: 0` on a
+        # project whose store held entities: a FALSE ZERO from the tool whose declared job is
+        # "read a knowledge graph as nodes + edges".
+        #
+        # Measured on this instance: 4,887 of 5,351 entities (91%) are isolated, and 440 of 455
+        # projects have no edges at all — so for almost every project this read was answering
+        # "nothing" about a populated store. The per-project isolated count is p50 2 / p90 7 /
+        # p99 41, with ONE outlier at 3,172, which is why the rows are capped and the TOTAL is
+        # counted separately rather than inferred from what came back.
+        iso_result = await run_read(
+            session, _ISOLATED_NODES_CYPHER,
+            user_id=str(owner), project_id=project_str, limit=args.limit + 1,
+        )
+        iso_records = [r["node"] for r in await _records(iso_result)]
+        total_result = await run_read(
+            session, _NODE_TOTAL_CYPHER, user_id=str(owner), project_id=project_str,
+        )
+        # 🔴 NOT `_records`, AND THE UNIT TESTS COULD NOT HAVE TOLD ME. That helper drains a
+        # result as `{k: dict(rec[k])}` — it assumes every value is a MAPPING, because every
+        # other caller returns node/relationship properties. A scalar `count(e)` makes it raise
+        # `'int' object is not iterable`, which is exactly what the live probe hit after a green
+        # suite: every unit test here monkeypatches `_records`, so no test touches the real
+        # driver shape. `.single()` is the convention for a scalar (see facts.py's
+        # invalidate_facts_for_day).
+        total_record = await total_result.single()
+        nodes_total = int(total_record["total"]) if total_record is not None else 0
+
     edges_truncated = len(records) > args.limit
     records = records[: args.limit]  # drop the sentinel over-fetch row
+    iso_truncated = len(iso_records) > args.limit
+    iso_records = iso_records[: args.limit]
 
     deprecated = await _deprecated_edge_codes(ctx.graph_schemas_repo, project_str)
     slice_ = build_graph_slice(
@@ -1554,6 +1705,7 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
         as_of_chapter=args.as_of_chapter,
         deprecated_edge_codes=deprecated,
         view_code=args.view,
+        isolated=iso_records,
     )
     out = slice_.model_dump(mode="json")
     # L1/L2 reference-first (§6b): project node/edge fields per `detail` (summary =
@@ -1561,7 +1713,11 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
     return _project_graph(
         out, args.detail,
         node_ref=GRAPH_NODE_REF_FIELDS, edge_ref=GRAPH_EDGE_REF_FIELDS,
-        truncated=edges_truncated,
+        truncated=edges_truncated or iso_truncated,
+        # The TRUE size of the partition, counted rather than inferred from what came back.
+        # `nodes_total` was len(nodes-in-the-slice), so a capped read reported its own slice as
+        # the whole set — and an EMPTY slice reported the project as empty. K25's rule.
+        nodes_total=nodes_total,
     )
 
 
@@ -1613,6 +1769,20 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
             "partitions_read": 0,
             "partitions_unreadable": unreadable,
             "note": note + ".",
+            # #307: the SAME omission #251 fixed on kg_multi_query, in the same file,
+            # left behind because that fix touched only the handler under test. Both
+            # early returns must carry the key set their populated path returns, or
+            # `result["meta"]["truncated"]` is a KeyError exactly when nothing was
+            # readable. Zeros are the honest answer for an empty rollup.
+            "node_cap_hit": False,
+            "meta": {
+                "detail": args.detail,
+                "nodes_total": 0,
+                "nodes_returned": 0,
+                "edges_total": 0,
+                "edges_returned": 0,
+                "truncated": False,
+            },
         }
 
     async with graph_session() as session:
@@ -1700,6 +1870,20 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
             "partitions_read": 0,
             "partitions_unreadable": unreadable,
             "note": note + ".",
+            # The `detail` contract says "Result `meta` reports total/returned/truncated",
+            # and this early return used to omit it — so the ONE response shape a caller
+            # gets differed by outcome, and `result["meta"]["truncated"]` raised KeyError
+            # exactly when every partition was unreadable. Zeros are the honest answer here,
+            # not an absent key. `node_cap_hit` likewise: nothing was capped.
+            "node_cap_hit": False,
+            "meta": {
+                "detail": args.detail,
+                "nodes_total": 0,
+                "nodes_returned": 0,
+                "edges_total": 0,
+                "edges_returned": 0,
+                "truncated": False,
+            },
         }
 
     async with graph_session() as session:
@@ -1826,14 +2010,35 @@ async def _handle_kg_sync_available(ctx: "ToolContext", args: KgSyncAvailableArg
     await _resolve_project_owner(ctx, GrantLevel.VIEW)
     schema_id = await _active_project_schema_id(ctx, str(ctx.project_id))
     if schema_id is None:
-        # Project never adopted a template → nothing to sync against.
-        return {"has_updates": False, "adopted": False, "changes": []}
+        # Project never adopted a template → nothing to sync against. Same KEY SET as the
+        # adopted branch, with nulls: the REST /sync/available route already answers this case
+        # with all five fields nulled, and `adopted: false` is the signal not to proceed. A
+        # branch that drops keys makes `result["base_source_hash"]` a KeyError on one path and a
+        # value on the other — the shape defect #251 fixed on kg_multi_query, and it matters more
+        # here because #256 just made base_source_hash the field agents are told to read.
+        return {
+            "adopted": False,
+            "has_updates": False,
+            "source_ref": None,
+            "changes": [],
+            "base_source_hash": None,
+            "project_source_hash": None,
+        }
     diff = await ctx.ontology_mutations_repo.sync_diff(schema_id)
     return {
         "adopted": True,
         "has_updates": bool(diff.get("has_updates")),
         "source_ref": diff.get("source_ref"),
         "changes": diff.get("changes", []),
+        # kg_sync_apply REQUIRES base_source_hash and its description says to get it "from
+        # kg_sync_available" — but this projection used to drop it, so the agent-native chain
+        # could not be completed at all: the only producer named did not emit the value the
+        # consumer demands. `sync_diff` returns it as `source_hash_current` (the upstream's
+        # recomputed content_hash, which sync_apply compares against to detect drift) and the
+        # REST route already forwards it. Emitted under the CONSUMER's name so an agent passes
+        # it straight through instead of having to guess which of two hashes is meant.
+        "base_source_hash": diff.get("source_hash_current"),
+        "project_source_hash": diff.get("project_source_hash"),
     }
 
 
@@ -1863,6 +2068,10 @@ async def _handle_kg_triage_list(ctx: "ToolContext", args: KgTriageListArgs) -> 
             "count": g.count,
             "status": g.status,
             "sample_payload": g.sample_payload,
+            # kg_triage_place_edge requires a triage_id and its description (and its refusal,
+            # "use kg_triage_list to find one") names THIS tool as the source. A grouped view
+            # has no single id, so it emits the sample's — the item whose payload is shown.
+            "sample_triage_id": g.sample_triage_id,
             "suggested_actions": g.suggested_actions,
         }
         for g in groups
@@ -1964,18 +2173,76 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
     # the glossary entities into the graph first (kg_project_entities_to_nodes).
     # This READS Neo4j (INV-K1 is about not WRITING it — the write stays human-
     # gated), the one stateful check worth a round-trip to avoid the dead-end.
-    endpoint_ids = [args.source_entity_id, args.target_entity_id]
+    # ── DQ-T76 (f) WAVE 1 — NAME IN / HANDLE THROUGH ────────────────────────────────────
+    # Resolve any endpoint given by NAME to its graph node id, here, where a Neo4j READ is
+    # already sanctioned (the precheck below does one; INV-K1 is about not WRITING).
+    #
+    # THE RULES ARE THE PLAN'S, and each answers a failure it names:
+    #   ID WINS when both arrive. An id is unambiguous and a name is not, so preferring the
+    #   name would make a precise caller LESS precise.
+    #   SAY WHICH WON. The plan's own warning: "an accept-both tool that silently prefers one
+    #   is how a migration becomes a defect." The result carries `resolved_by`.
+    #   AMBIGUITY REFUSES WITH THE CANDIDATES and never picks. Two entities called "Aldric"
+    #   is not a case where one of them is probably right -- guessing here writes a
+    #   relationship between the wrong characters into a human's review inbox.
+    from app.db.graph_repos.entities import find_entities_by_name
+
+    resolved_by: dict[str, str] = {}
+    endpoint_ids: list[str] = []
+    async with graph_session() as session:
+        for side in ("source", "target"):
+            given_id = getattr(args, f"{side}_entity_id")
+            given_name = getattr(args, f"{side}_name")
+            if given_id:
+                resolved_by[side] = "id"
+                endpoint_ids.append(given_id)
+                continue
+            matches = await find_entities_by_name(
+                session, user_id=str(owner), project_id=project_str, name=given_name,
+            )
+            if not matches:
+                raise ToolExecutionError(
+                    f"no entity named '{given_name}' in this project — check the spelling, or "
+                    f"pass {side}_entity_id (a graph NODE id from kg_add_nodes).",
+                    code="KG_ENDPOINT_NAME_NOT_FOUND",
+                    detail={"side": side, "name": given_name},
+                )
+            if len(matches) > 1:
+                cands = [{"entity_id": str(m.id), "name": m.name} for m in matches[:10]]
+                raise ToolExecutionError(
+                    f"'{given_name}' matches {len(matches)} entities — say which one by passing "
+                    f"{side}_entity_id. Candidates: "
+                    + ", ".join(f"{c['name']} ({c['entity_id']})" for c in cands),
+                    code="KG_ENDPOINT_NAME_AMBIGUOUS",
+                    detail={"side": side, "name": given_name, "candidates": cands},
+                )
+            resolved_by[side] = "name"
+            endpoint_ids.append(str(matches[0].id))
+
+    args.source_entity_id, args.target_entity_id = endpoint_ids[0], endpoint_ids[1]
     async with graph_session() as session:
         present = await existing_entity_node_ids(
             session, user_id=str(owner), ids=endpoint_ids,
         )
     missing = [eid for eid in endpoint_ids if eid not in present]
     if missing:
+        # 🔴 THIS REFUSAL NAMED A TOOL THE TURN CANNOT SEE. It said "project the glossary
+        # entities into the graph first (kg_project_entities_to_nodes)" — and that tool is
+        # `visibility: legacy`, which since 2026-08-25 means DROPPED from every turn catalogue
+        # unconditionally ("a legacy tool is a DEAD tool", drop_superseded_tools). Measured
+        # 2026-08-26 over batch c-kgedge3: withheld on 5 of 5 runs, recorded at stages
+        # `superseded` AND `domain_not_selected`. So the platform's own remedy for this exact
+        # failure instructed the model to call something that was provably not on its wire —
+        # and naming a tool is also what ARMS it, so an unreachable name arms nothing.
+        #
+        # Name the live replacement, and say which id family the caller is holding: the whole
+        # reason to be here is that a glossary entity id was passed where a node id is needed.
         raise ToolExecutionError(
-            "edge endpoint(s) are not yet graph nodes: "
+            "edge endpoint(s) are not graph nodes: "
             + ", ".join(missing)
-            + " — project the glossary entities into the graph first "
-            "(kg_project_entities_to_nodes), then propose the edge",
+            + " — these look like glossary entity ids, and an edge needs GRAPH NODE ids. "
+            "Call kg_add_nodes with mode=from_glossary to turn the book's glossary entities "
+            "into nodes (one call, one confirmation), then use the node ids it returns.",
             code="KG_ENDPOINT_NOT_NODE",
             detail={"missing": missing},
         )
@@ -1995,6 +2262,13 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
         "item_type": parked.item_type,
         "signature": parked.signature,
         "on_schema": issue is None,
+        # DQ-T76 (f) Wave 1 — WHICH FORM WON, per endpoint. The plan's own warning is that "an
+        # accept-both tool that silently prefers one is how a migration becomes a defect", so a
+        # caller who passed a name can see the id it became, and a caller who passed both can
+        # see that the id took precedence rather than discovering it later.
+        "resolved_by": resolved_by,
+        "source_entity_id": args.source_entity_id,
+        "target_entity_id": args.target_entity_id,
     }
 
 
@@ -2053,14 +2327,55 @@ async def _handle_kg_project_entities_to_nodes(
                 ctx.project_id,
                 exc_info=True,
             )
+    # 🔴 A CALL THAT MATCHED NOTHING REPORTED SUCCESS. Measured 2026-08-26, batch c-kgedge3:
+    # the model called this with entity_ids=["Mira Solene", "Aldric Vane"] — NAMES, where the
+    # argument takes glossary entity UUIDs — and got back
+    #     ok: true, nodes: [], entities_seen: 0, nodes_created: 0
+    # with the activity strip recording "Did kg_add_nodes". Its next move assumed two nodes
+    # existed. `entities_seen: 0` is the tool's own evidence that the argument matched nothing,
+    # sitting in the payload with nothing acting on it.
+    #
+    # NARROW ON PURPOSE — only when the caller NAMED ids. Omitting entity_ids means "the whole
+    # active glossary", and a book whose glossary is genuinely empty is a legitimate no-op, not
+    # an error; that is also the path measured WORKING in c-kgedge4 (entities_seen 2, both nodes
+    # created, 5/5), so refusing on a bare zero would have broken the one route that succeeds.
+    if entity_ids and res.seen == 0:
+        raise ToolExecutionError(
+            f"none of the {len(entity_ids)} entity_ids matched a glossary entity in this "
+            "book, so nothing was projected and the graph is unchanged. `entity_ids` takes "
+            "glossary entity UUIDs, not names — get them from glossary_search, or omit the "
+            "argument entirely to project the book's whole active glossary."
+        )
     out: dict = {
         "nodes_created": res.created,
         "nodes_existing": res.existing,
         "entities_seen": res.seen,
         "skipped": res.skipped,
+        # 🔴 THE IDS THE NEXT STEP NEEDS. This tool is the documented prerequisite of
+        # `kg_propose_edge`, which REQUIRES source_entity_id and target_entity_id. Returning only
+        # counts left the caller with "nodes_created: 2" and no way to name either node: measured
+        # 2026-08-23 at K=5, the model invented a UUID and passed it for BOTH endpoints. A supplier
+        # that cannot supply its successor's required arguments is not a chain.
+        "nodes": [dict(n) for n in res.nodes],
     }
+    if res.nodes_truncated:
+        out["nodes_truncated"] = True
     # Never report a PARTIAL projection as a complete one.
     notes: list[str] = []
+    # The zero-match case refuses above; the PARTIAL match is the same defect in miniature —
+    # naming five ids and matching three returns a cheerful success that never mentions the two
+    # that do not exist, and the caller's next step assumes all five are nodes.
+    if entity_ids and 0 < res.seen < len(entity_ids):
+        notes.append(
+            f"only {res.seen} of the {len(entity_ids)} entity_ids matched a glossary entity in "
+            "this book — the rest were not projected and are NOT nodes. `nodes` lists exactly "
+            "what exists now"
+        )
+    if res.nodes_truncated:
+        notes.append(
+            f"more than {len(out['nodes'])} nodes were projected; `nodes` lists the first of "
+            "them — name the entity_ids you need explicitly to get the rest"
+        )
     if res.truncated:
         out["truncated"] = True
         notes.append(
@@ -2200,8 +2515,28 @@ async def _handle_kg_schema_edit(ctx: "ToolContext", args: KgSchemaEditArgs) -> 
     current = await ctx.graph_schemas_repo.active_project_schema(project_str)
     if current is None:
         raise ToolExecutionError(
-            "this project has no adopted ontology to edit — adopt a project schema "
-            "first (the System template is read-only and admin-managed)"
+            # F6 (Track D liveness): an agent cannot open a dialog, so a precondition
+            # refusal must name the TOOLS that clear it, in order — the same discipline
+            # kg_build's "call kg_project_set_embedding_model first" follows.
+            #
+            # #260 CORRECTION: #252 wrote "this same tool with op='adopt_template'" here.
+            # That is true only via kg_ontology_propose. This raise is SHARED by
+            # _handle_kg_schema_edit and _handle_kg_triage_schema_write, and neither the
+            # legacy kg_schema_edit nor kg_triage_schema_write has an `op` parameter at
+            # all — so two of the three callers were told to pass an argument that does
+            # not exist. Name the TOOLS instead of "this tool": a shared message must be
+            # true from every caller, and only one of the three was ever tested.
+            #
+            # 2026-08-26: kg_adopt_template is visibility=legacy, and since 2026-08-25
+            # every legacy tool is dropped from the turn catalogue unconditionally — so
+            # the FIRST tool this refusal named could never be called. kg_ontology_propose
+            # is the live one and was already here as the parenthetical alternative; it is
+            # now the instruction.
+            "this project has no adopted ontology to edit — call kg_list_templates to "
+            "pick one, then kg_ontology_propose with op='adopt_template' and its "
+            "source_schema_id, then retry this edit (the "
+            "System template is read-only and admin-managed, so it cannot be edited in "
+            "place)"
         )
 
     label = args.label.strip() or args.code  # add needs a label; default to the code
@@ -2414,14 +2749,69 @@ async def _handle_kg_triage_schema_write(
     schema_id + schema_version so confirm rejects on drift (optimistic concurrency)."""
     from app.tools.executor import ToolExecutionError
 
-    await _resolve_project_owner(ctx, GrantLevel.MANAGE)
+    owner = await _resolve_project_owner(ctx, GrantLevel.MANAGE)
     project_str = str(ctx.project_id)
 
     current = await ctx.graph_schemas_repo.active_project_schema(project_str)
     if current is None:
         raise ToolExecutionError(
-            "this project has no adopted ontology to edit — adopt a project schema "
-            "first (the System template is read-only and admin-managed)"
+            # F6 (Track D liveness): an agent cannot open a dialog, so a precondition
+            # refusal must name the TOOLS that clear it, in order — the same discipline
+            # kg_build's "call kg_project_set_embedding_model first" follows.
+            #
+            # #260 CORRECTION: #252 wrote "this same tool with op='adopt_template'" here.
+            # That is true only via kg_ontology_propose. This raise is SHARED by
+            # _handle_kg_schema_edit and _handle_kg_triage_schema_write, and neither the
+            # legacy kg_schema_edit nor kg_triage_schema_write has an `op` parameter at
+            # all — so two of the three callers were told to pass an argument that does
+            # not exist. Name the TOOLS instead of "this tool": a shared message must be
+            # true from every caller, and only one of the three was ever tested.
+            #
+            # 2026-08-26: kg_adopt_template is visibility=legacy, and since 2026-08-25
+            # every legacy tool is dropped from the turn catalogue unconditionally — so
+            # the FIRST tool this refusal named could never be called. kg_ontology_propose
+            # is the live one and was already here as the parenthetical alternative; it is
+            # now the instruction.
+            "this project has no adopted ontology to edit — call kg_list_templates to "
+            "pick one, then kg_ontology_propose with op='adopt_template' and its "
+            "source_schema_id, then retry this edit (the "
+            "System template is read-only and admin-managed, so it cannot be edited in "
+            "place)"
+        )
+
+    # The SIGNATURE is the authority for this mutation: it is the claim that a real
+    # proposal needed this ontology change. Nothing validated it, so an invented
+    # signature minted a token and the confirm APPLIED the schema change - measured
+    # 2026-08-23 and again 2026-08-26 on the deployed build:
+    #     signature='no-such-signature-000', action=add_to_schema
+    #       -> {"applied": true, "schema_version": 2, "stamped": 0, "resolved": 0}
+    # `resolved: 0` was the tell - the effect knew it had closed no triage group and
+    # mutated the ontology anyway. Only an EMPTY signature was ever refused, and that
+    # is a min_length validator, not a check that the group exists.
+    #
+    # The check itself already existed one function away: _handle_kg_triage_resolve
+    # confirms the group before resolving it. The tool that merely closes triage items
+    # validated its signature; the tool that rewrites the project ontology did not.
+    # Same repo call, same scoping, same wording - deliberately not a new predicate.
+    #
+    # PENDING is the right status HERE (and only here): this path mints a token and
+    # never touches the items, so they are still pending at confirm. The REST resolve
+    # route reaches the shared effect with its rows ALREADY resolved, which is why the
+    # guard belongs at this mint and NOT in apply_triage_schema_write - a `resolved`
+    # count of 0 is legitimate there and refusing on it would break that caller.
+    if ctx.triage_repo is None:
+        raise ToolExecutionError(
+            "cannot verify the triage signature right now - not applying an ontology "
+            "change on an unverified one; retry shortly"
+        )
+    pending = await ctx.triage_repo.list_pending_for_signature(
+        user_id=owner, project_id=project_str, signature=args.signature
+    )
+    if not pending:
+        raise ToolExecutionError(
+            f"no pending triage items for signature '{args.signature}' - nothing to "
+            "resolve, so the ontology is unchanged. Call kg_triage_list to see the "
+            "signatures that are actually open for this project."
         )
 
     token = mint_action_token(

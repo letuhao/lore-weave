@@ -1,0 +1,89 @@
+{
+  "_fixture": {
+    "book_id": "01a034f0-61cb-7d49-be2e-240f2c99f5ca"
+  },
+  "adopt": {
+    "status": 200,
+    "asked_kinds": [
+      "character",
+      "location",
+      "item",
+      "organization",
+      "terminology",
+      "power_system"
+    ]
+  },
+  "schema_size": {
+    "character": 13,
+    "location": 7,
+    "item": 6,
+    "organization": 7,
+    "terminology": 4,
+    "power_system": 7
+  },
+  "extract": {
+    "verdict": "SUCCEEDED",
+    "candidates": 8
+  },
+  "per_kind": {
+    "character": {
+      "entities": 2,
+      "names": [
+        "Aldric Vane",
+        "Mira Solene"
+      ],
+      "schema_fields_per_entity": 13,
+      "fields_filled_total": 2,
+      "fields_asked_total": 26,
+      "fill_rate": 0.077,
+      "chars_per_filled_field": 70.5
+    },
+    "item": {
+      "entities": 1,
+      "names": [
+        "Ashen Sigil"
+      ],
+      "schema_fields_per_entity": 6,
+      "fields_filled_total": 3,
+      "fields_asked_total": 6,
+      "fill_rate": 0.5,
+      "chars_per_filled_field": 32.3
+    },
+    "location": {
+      "entities": 2,
+      "names": [
+        "Hollow Keep",
+        "Obsidian Trench"
+      ],
+      "schema_fields_per_entity": 7,
+      "fields_filled_total": 2,
+      "fields_asked_total": 14,
+      "fill_rate": 0.143,
+      "chars_per_filled_field": 15.0
+    },
+    "organization": {
+      "entities": 1,
+      "names": [
+        "Wardens of the Pale"
+      ],
+      "schema_fields_per_entity": 7,
+      "fields_filled_total": 2,
+      "fields_asked_total": 7,
+      "fill_rate": 0.286,
+      "chars_per_filled_field": 32.0
+    },
+    "terminology": {
+      "entities": 2,
+      "names": [
+        "stillwater binding",
+        "drowned"
+      ],
+      "schema_fields_per_entity": 4,
+      "fields_filled_total": 5,
+      "fields_asked_total": 8,
+      "fill_rate": 0.625,
+      "chars_per_filled_field": 52.4
+    }
+  },
+  "torn_down": true
+}

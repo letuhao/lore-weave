@@ -1,5 +1,6 @@
 # AGENTS.md — LoreWeave Development Guide
 
+
 > **This is the canonical development guide for LoreWeave — for humans and for AI coding agents alike.**
 > It is tool-neutral. `CLAUDE.md` at the repo root is a pointer to this file, and any other
 > assistant-specific entry point (`.cursor/rules`, `.github/copilot-instructions.md`, …) should point
@@ -128,7 +129,7 @@ features/<name>/
 
 ### Frontend-Tool Contract (agent→GUI tools — LOCKED)
 
-Full standard: [`docs/standards/mcp-tool-io.md`](docs/standards/mcp-tool-io.md) (inputs IN-1..8 + outputs OUT-1..6). Essentials: a frontend tool (`ui_open_studio_panel`, `propose_edit`, `confirm_action`, …) spans **2 services / 2 languages** joined only by the LLM — BE schema `chat-service/app/services/frontend_tools.py` ↔ FE resolver `frontend/src/features/**`. So a drift/free-string/silent-no-op passes unit tests yet kills the live loop (shipped once: `panel_id` had no enum → gemma sent `panel:"editor"` → silent no-op → hallucinated success). Rules: **closed-set arg ⇒ `enum`** (register in `CLOSED_SET_ARGS`); **resolver never silently no-ops** (return `result.error`); **one name for one concept**; **machine-checked both sides** via `contracts/frontend-tools.contract.json` (change a schema → `WRITE_FRONTEND_CONTRACT=1 pytest` + update the resolver, or a test reds); **verify by EFFECT** (live browser smoke, not raw-stream).
+Full standard: [`docs/standards/mcp-tool-io.md`](docs/standards/mcp-tool-io.md) (inputs IN-1..8 + outputs OUT-1..6). Essentials: a **browser-executed** tool — one the BROWSER performs the effect of, because it has no server executor — is exactly four: `propose_edit`, `confirm_action`, `glossary_confirm_action`, `glossary_propose_entity_edit`, plus the de-advertised `ui_*` family (`BROWSER_EXECUTED_NAMES`, `chat-service/app/services/browser_tools.py`). ⚠ **chat-service no longer intercepts or declares ANY of them** — architecture v1 was retired 2026-09-03 and `frontend_tools.py` is deleted. They are ai-gateway DIRECTIVE tools (`src/mcp/confirm-tools.ts`, `propose-edit-tool.ts`, `ui-tools.ts`); chat-service only SUSPENDS on the directive they return (`task_detect.py`). It still spans **2 services / 2 languages** joined only by the LLM — TS schema in ai-gateway ↔ FE resolver `frontend/src/features/**`. ⚠ **`propose_edit` (P2.2) and the seven `ui_*` tools (P3.2) moved to ai-gateway on 2026-07-20** (`src/mcp/propose-edit-tool.ts`, `src/mcp/ui-tools.ts`); chat-service no longer intercepts them, and `ui_*` has not been advertised to any model since 2026-07-25. There is no longer a chat-service copy to edit by mistake: the fallback was deleted with v1. Those two also carry a **third** source: ai-gateway's committed mirror (`ui-tools.ts` `STUDIO_PANEL_IDS`), drift-tested by `test/ui-tools.spec.ts`, because the image cannot read the repo-root contract at runtime. So a drift/free-string/silent-no-op passes unit tests yet kills the live loop (shipped once: `panel_id` had no enum → gemma sent `panel:"editor"` → silent no-op → hallucinated success). Rules: **closed-set arg ⇒ `enum`** (register in `CLOSED_SET_ARGS`); **resolver never silently no-ops** (return `result.error`); **one name for one concept**; **machine-checked both sides** via `contracts/browser-tools.contract.json`, which stays the SoT (change a schema → edit the contract JSON **by hand** + the ai-gateway TS + the FE resolver, or a spec reds; `WRITE_FRONTEND_CONTRACT=1` is CLOSED — it regenerated from `frontend_tools.py`, which no longer exists); **verify by EFFECT** (live browser smoke, not raw-stream).
 
 ### Data Persistence Rules
 - **Server is the source of truth** — all user data in Postgres, all files in S3/MinIO
@@ -281,6 +282,27 @@ A commit is a **task checkpoint, not a session boundary**. Once code is committe
   chooses to run one — loses nothing. Self-managed compaction produced the opposite of its purpose:
   it interrupted the human with a budget they had not asked to see, and it truncated real work at a
   boundary chosen by the agent rather than by the task.
+
+**CONTEXT EXHAUSTION IS NOT A STOP CONDITION — COMPACT AND CONTINUE.** This is the rule above, closed
+against the loophole an agent will otherwise find in it. Running low on context is a reason to
+`/compact`, never a reason to end the turn, hand back, or summarise. Specifically, while work remains:
+
+- **Never** end a turn citing context, session length, elapsed time, token spend, or "this has run a
+  long time". None of those are finish lines, and a final report is still a stop.
+- **Never** decline the next unit of work on the grounds that you "might not finish it". Compaction
+  carries the thread; a durable progress file carries the evidence. Judge whether the work is
+  *sound*, not whether it fits in the window you have left.
+- The one honest exception is a **hard, external** blocker — a service that will not start, a
+  credential you do not have, a decision only the human can make. Record it and continue with
+  whatever is not blocked by it.
+
+🔴 **MEASURED 2026-08-13.** In a tool-hardening run under `/goal`, the agent stopped three times: once
+to deliver a progress report, once with a tool left mid-cycle, and once because it judged its
+remaining context too small to finish a fix "soundly". All three were violations — the goal forbade
+each explicitly — and the third was self-inflicted reasoning, not a real limit: auto-compaction was
+available, and the run's own ledger and derivation scripts were committed precisely so any cycle
+could resume. **When the work is made resumable, compaction is safe by construction; the caution is
+already paid for. Spend it.**
 
 The legitimate stop points are the workflow's own PO checkpoints (CLARIFY end, POST-REVIEW) and the user explicitly saying they're done — nothing else.
 
@@ -708,6 +730,44 @@ Modules are implemented in order. Each module has a full doc set in `docs/03_pla
 Read only the docs for the module you're actively working on.
 
 ---
+
+## Deprecated tools are DEAD — spend no effort on them (adopted 2026-08-31)
+
+A tool marked `visibility: legacy` is **kept as a record, not as a reserve.** Since
+2026-08-25 the superseded gate drops **every** legacy tool from the wire — *with or without*
+a declared replacement — so no legacy tool reaches a model on any turn. Measured 2026-09-03 by
+running `drop_superseded_tools` over the live catalogue: **every legacy tool in, every one
+dropped, none kept.** (Counts are deliberately not written here — this line has now gone stale
+twice, most recently when a 118th legacy tool arrived the same day. Derive them:
+`python scripts/v1_retire/runstate.py`.) (The catalogue TOTAL is deliberately not written here. It read 316 for most of
+2026-09-03 and was stale by the afternoon of the same day, when v1's retirement re-homed the
+three KIND-C tools to ai-gateway and they began federating. Derive it:
+`python scripts/v1_retire/runstate.py`.) The only re-admission path is an explicit per-session user pin
+(`pinned_legacy_tools`, CAT-4 Part D) — a user choice, never the model's.
+
+> This sentence read "117 legacy tools, **116** withheld" until 2026-09-03. The number appeared
+> nowhere else in the repo and encoded no exception; the rule and its own measurement simply
+> disagreed by one, which invites a reader to hunt a phantom leak or to conclude the gate is
+> partial and reopen the narrow-rule argument this section exists to close.
+
+**Therefore:**
+
+- A legacy tool is **out of scope for every fix**. Do not repair its schema, its description,
+  its metadata or its refusals. Nothing a model sees changes.
+- A legacy tool is **out of scope for every count**. Re-derive any catalogue census, coverage
+  score or denominator over **live** tools only — a rate whose denominator includes dead
+  tools is measuring a population no user can reach.
+- If a legacy tool looks like it needs work, the real question is whether its **live
+  successor** has the gap. Fix it there.
+
+The one exception is *deleting* dead weight, which is cheap and shrinks the catalogue. Adding
+metadata to it is not.
+
+> Worked example: a proposal to make `superseded_by` mandatory across every legacy tool and
+> backfill the 31 gaps was **withdrawn** on this rule. The label gates nothing — the gate
+> already drops labelled and unlabelled alike — so the whole task would have changed nothing
+> any user or model could observe.
+
 
 ## Project Constants
 ```

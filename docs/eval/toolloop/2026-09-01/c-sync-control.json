@@ -1,0 +1,4401 @@
+{
+  "batch": "c-sync-control",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "world_map_list",
+      "scenario": "world-map-list",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports no maps for a world that has two, OR it names a map from a DIFFERENT world (the nonce makes that visible). 🔴 DIAGNOSTIC, NOT A PASS/FAIL: if the model cannot find the world at all, check whether it called world_list and whether the seeded world was beyond the default limit=20 of 200+ worlds. A tool failing because its only supplier cannot page to the answer is a platform defect, not a model defect, and the two must not be recorded as the same thing.",
+      "answer_expect": {
+        "all_of": [
+          "Ashen Coast"
+        ],
+        "none_of": [
+          "no maps",
+          "doesn't have any maps",
+          "could not find"
+        ],
+        "why": "Both maps exist. A 'no maps' answer over a world holding two is the false-absence shape, and here it would most likely come from world_list paging rather than from world_map_list itself — which is exactly why the falsifier asks which call failed."
+      },
+      "falsifier_sha": "c7cdbd8aa329a4de",
+      "ship_audit": {
+        "empty_case": "OWED — a world with no maps must read as 'no maps yet', distinguishable from 'no such world'.",
+        "absent_case": "OWED — a world_id that does not exist, or belongs to another owner, must be refused.",
+        "tenancy": "OWED — ACCOUNT-scoped: another owner's world must not list."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a05a56-9b54-7546-87c4-c8e7941c6b30",
+          "project_id": "01a05a56-9c8f-7200-83ac-b630bbb9f8e7",
+          "seed_ids": {
+            "01a05a56-9b54-7546-87c4-c8e7941c6b30": "fixture book_id",
+            "01a05a56-9c8f-7200-83ac-b630bbb9f8e7": "fixture project_id (composition_work)",
+            "01a05a56-9be6-78eb-be35-b23bfd3fa5ea": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a56-9cff-7cfc-aea3-1882dcc80c6a": "fixture world_id",
+            "01a05a56-9d09-78fe-9255-a690e2083f87": "seed[0] world_create.world.bible_book_id",
+            "01a05a56-9d0b-762d-b35a-c34b35d5f69b": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a56-9dac-7959-be1f-321e727547b3": "seed[1] world_map_create.map.map_id",
+            "01a05a56-9e50-7389-8a13-198477c62f96": "seed[2] world_map_create.map.map_id"
+          },
+          "session_id": "01a05a56-e999-70bb-9218-79f92d00764a",
+          "prompt": "List the maps in my world called Emberfall Reach Ririkive.",
+          "scenario_prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a56-9"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a05a56-9e50-7389-8a13-198477c62f96\", \"name\": \"The Obsidian Trench Ririkive\", \"version\": 1, \"world_id\": \"01a05a56-9cff-7cfc-aea3-1882dcc80c6a\"}, {\"image_object_key\": null, \"map_id\": \"01a05a56-9dac-7959-be1f-321e727547b3\", \"name\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.582412+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.582412+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.582412+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.582412+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.757172+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.750057+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.863529+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:20:21.200172+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.582412+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.582412+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.582412+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.582412+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.757172+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.750057+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:20:20.863529+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:20:21.200172+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "There are 2 maps in the world **Emberfall Reach Ririkive**:\n\n1. **The Obsidian Trench Ririkive** (Version 1)\n2. **The Ashen Coast Ririkive** (Version 1)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a05a57-85ba-7560-8405-3073595eb124",
+          "project_id": "01a05a57-86fd-720e-bd66-4055a66d6e90",
+          "seed_ids": {
+            "01a05a57-85ba-7560-8405-3073595eb124": "fixture book_id",
+            "01a05a57-86fd-720e-bd66-4055a66d6e90": "fixture project_id (composition_work)",
+            "01a05a57-8652-7dc8-8f25-3d975db42625": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a57-876e-7b6b-a4ce-c32b6be5d60a": "fixture world_id",
+            "01a05a57-876f-703e-bdcf-6ce3a9e341c5": "seed[0] world_create.world.bible_book_id",
+            "01a05a57-876f-7eb1-97e2-cba2def9b0f5": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a57-87fc-7d4c-a773-fa5017c4bbf2": "seed[1] world_map_create.map.map_id",
+            "01a05a57-888d-74bd-b3b5-8545803d4d72": "seed[2] world_map_create.map.map_id"
+          },
+          "session_id": "01a05a57-d34c-769f-a008-0d634965c4c6",
+          "prompt": "List the maps in my world called Emberfall Reach Sekurira.",
+          "scenario_prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a57-8"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a05a57-888d-74bd-b3b5-8545803d4d72\", \"name\": \"The Obsidian Trench Sekurira\", \"version\": 1, \"world_id\": \"01a05a57-876e-7b6b-a4ce-c32b6be5d60a\"}, {\"image_object_key\": null, \"map_id\": \"01a05a57-87fc-7d4c-a773-fa5017c4bbf2\", \"name\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.594708+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.594708+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.594708+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.594708+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.772793+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.764622+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.878392+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:21:21.165255+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.594708+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.594708+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.594708+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.594708+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.772793+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.764622+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:21:20.878392+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:21:21.165255+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "There are 2 maps in the world **Emberfall Reach Sekurira**:\n\n1. **The Obsidian Trench Sekurira** (Version 1)\n2. **The Ashen Coast Sekurira** (Version 1)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a05a58-6d93-74e4-abf6-72e0473e9661",
+          "project_id": "01a05a58-6ec1-72a9-865b-a3694c25ead1",
+          "seed_ids": {
+            "01a05a58-6d93-74e4-abf6-72e0473e9661": "fixture book_id",
+            "01a05a58-6ec1-72a9-865b-a3694c25ead1": "fixture project_id (composition_work)",
+            "01a05a58-6e1f-7366-bfa0-36351fa0f3bf": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a58-6f49-7d2f-addd-0fa5c27aab5c": "fixture world_id",
+            "01a05a58-6f49-7f87-8382-8d68748c5cc0": "seed[0] world_create.world.bible_book_id",
+            "01a05a58-6f4a-7777-8acf-beee62e200fa": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a58-6fe6-71dc-a999-61b23a546e96": "seed[1] world_map_create.map.map_id",
+            "01a05a58-7078-7ce8-a0b7-b18139155e26": "seed[2] world_map_create.map.map_id"
+          },
+          "session_id": "01a05a58-bb40-7498-8440-0bd4a1497249",
+          "prompt": "List the maps in my world called Emberfall Reach Motanimo.",
+          "scenario_prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a58-6"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a05a58-7078-7ce8-a0b7-b18139155e26\", \"name\": \"The Obsidian Trench Motanimo\", \"version\": 1, \"world_id\": \"01a05a58-6f49-7d2f-addd-0fa5c27aab5c\"}, {\"image_object_key\": null, \"map_id\": \"01a05a58-6fe6-71dc-a999-61b23a546e96\", \"name\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:19.935079+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:19.935079+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:19.935079+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:19.935079+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:20.102147+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:20.096713+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:20.233733+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:22:20.536767+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:19.935079+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:19.935079+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:19.935079+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:19.935079+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:20.102147+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:20.096713+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:22:20.233733+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:22:20.536767+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "There are 2 maps in the world **Emberfall Reach Motanimo**:\n\n1. **The Obsidian Trench Motanimo** (Version 1)\n2. **The Ashen Coast Motanimo** (Version 1)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05a59-557f-71c2-a0a4-24619cfaf2a9",
+          "project_id": "01a05a59-56a8-7622-8279-15becffc3e58",
+          "seed_ids": {
+            "01a05a59-557f-71c2-a0a4-24619cfaf2a9": "fixture book_id",
+            "01a05a59-56a8-7622-8279-15becffc3e58": "fixture project_id (composition_work)",
+            "01a05a59-560b-7b91-b00f-8761166f46bf": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a59-5733-70a0-bc72-11177b3bd3ce": "fixture world_id",
+            "01a05a59-5733-7326-93af-7e297ece8177": "seed[0] world_create.world.bible_book_id",
+            "01a05a59-5733-7a2f-865f-1716c2c69946": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a59-57cc-79da-99af-f3dafcb44b26": "seed[1] world_map_create.map.map_id",
+            "01a05a59-5861-75b0-9e01-8befbd065295": "seed[2] world_map_create.map.map_id"
+          },
+          "session_id": "01a05a59-979f-72d9-a6dd-2a53c8a5e06c",
+          "prompt": "List the maps in my world called Emberfall Reach Varetuzu.",
+          "scenario_prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a59-5"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a05a59-5861-75b0-9e01-8befbd065295\", \"name\": \"The Obsidian Trench Varetuzu\", \"version\": 1, \"world_id\": \"01a05a59-5733-70a0-bc72-11177b3bd3ce\"}, {\"image_object_key\": null, \"map_id\": \"01a05a59-57cc-79da-99af-f3dafcb44b26\", \"name\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.307555+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.307555+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.307555+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.307555+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.469191+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.463857+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.602922+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:23:19.905314+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.307555+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.307555+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.307555+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.307555+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.469191+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.463857+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:23:19.602922+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:23:19.905314+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "There are 2 maps in the world **Emberfall Reach Varetuzu**:\n\n1. **The Obsidian Trench Varetuzu**\n2. **The Ashen Coast Varetuzu**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05a5a-3be5-7061-a01d-bb4557319bf5",
+          "project_id": "01a05a5a-3d2c-7086-a293-7a1ac0ed427d",
+          "seed_ids": {
+            "01a05a5a-3be5-7061-a01d-bb4557319bf5": "fixture book_id",
+            "01a05a5a-3d2c-7086-a293-7a1ac0ed427d": "fixture project_id (composition_work)",
+            "01a05a5a-3c7d-7754-ac44-88fa1eb4abf1": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a5a-3dbe-7ab4-9589-7023029da37f": "fixture world_id",
+            "01a05a5a-3dbe-7d22-b908-5b4c59c44fb8": "seed[0] world_create.world.bible_book_id",
+            "01a05a5a-3dbf-74c6-ad79-ddb90ebab82f": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a5a-3e4c-7e13-afa9-ceaf797d380a": "seed[1] world_map_create.map.map_id",
+            "01a05a5a-3edc-79f5-a710-bc91634465bd": "seed[2] world_map_create.map.map_id"
+          },
+          "session_id": "01a05a5a-7e37-7992-aa28-919305ea0d86",
+          "prompt": "List the maps in my world called Emberfall Reach Niriseta.",
+          "scenario_prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a5a-3"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a05a5a-3edc-79f5-a710-bc91634465bd\", \"name\": \"The Obsidian Trench Niriseta\", \"version\": 1, \"world_id\": \"01a05a5a-3dbe-7ab4-9589-7023029da37f\"}, {\"image_object_key\": null, \"map_id\": \"01a05a5a-3e4c-7e13-afa9-ceaf797d380a\", \"name\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.301203+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.301203+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.301203+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.301203+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.481491+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.475122+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.622583+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:24:18.908575+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.301203+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.301203+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.301203+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.301203+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.481491+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.475122+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:24:18.622583+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:24:18.908575+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "There are 2 maps in the world **Emberfall Reach Niriseta**:\n\n1. **The Obsidian Trench Niriseta** (Version 1)\n2. **The Ashen Coast Niriseta** (Version 1)"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "world_get",
+      "scenario": "world-get",
+      "intent": "read",
+      "falsifier": "🔴 THIS IS THE SUPPLIER TEST OF THE BATCH. REFUTED IF: a read-intent turn changes the store, OR the model INVENTS a world_id rather than resolving the name, OR it reports the world absent when the store says otherwise. If it reports absence, the diagnostic is whether world_list was called and with what limit/offset: an account with 200+ worlds and a supplier that defaults to 20 means 'I cannot find it' can be the honest limit of the tools provided, in which case the defect is the SUPPLIER's paging and not the model's reasoning. Record which, do not average them.",
+      "answer_expect": {
+        "all_of": [
+          "Emberfall Reach"
+        ],
+        "none_of": [
+          "could not find",
+          "couldn't find",
+          "no such world",
+          "does not exist"
+        ],
+        "why": "The world exists and was named verbatim by the author. Reporting it missing is either a paging failure in world_list or the model giving up — and the store proves which claim is false."
+      },
+      "falsifier_sha": "ec225ec3cb56560e",
+      "ship_audit": {
+        "absent_case": "OWED — a world_id that does not exist must be refused.",
+        "tenancy": "OWED — ACCOUNT-scoped: another owner's world must be refused, not returned.",
+        "empty_case": "OWED — a world with no books and no maps must still read as a real world."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a05a5b-18cf-7dc0-932f-e6d7e2472baf",
+          "project_id": "01a05a5b-19f9-72de-be94-9ec6964b4791",
+          "seed_ids": {
+            "01a05a5b-18cf-7dc0-932f-e6d7e2472baf": "fixture book_id",
+            "01a05a5b-19f9-72de-be94-9ec6964b4791": "fixture project_id (composition_work)",
+            "01a05a5b-195a-7c3c-9943-fa6d028128e7": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a5b-1a87-76a8-9beb-72b471ac4356": "fixture world_id",
+            "01a05a5b-1a87-78e3-910e-293e8f054da3": "seed[0] world_create.world.bible_book_id",
+            "01a05a5b-1a88-70bc-899b-c35047cecbbe": "seed[0] world_create.world.bible_chapter_id"
+          },
+          "session_id": "01a05a5b-6686-76c6-87a5-9384e3091ec8",
+          "prompt": "Show me the world called Emberfall Reach Gavuruni.",
+          "scenario_prompt": "Show me the world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_get",
+            "world_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 all 30 worlds returned. Do NOT call again for this listing.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 0, \"returned\": 30, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a5b-1a87-78e3-910e-293e8f054da3\", \"bible_chap"
+            },
+            {
+              "tool": "world_get",
+              "result_head": "{\"ok\": true, \"result\": {\"world\": {\"bible_book_id\": \"01a05a5b-1a87-78e3-910e-293e8f054da3\", \"bible_chapter_id\": \"01a05a5b-1a88-70bc-899b-c35047cecbbe\", \"book_count\": 0, \"description\": \"A drowned coast of ash and low tides.\", \"name\": \"Emberfall Reach Gavuruni\", \"world_id\": \"01a05a5b-1a87-76a8-9beb-72b"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:14.842619+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:14.842619+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:14.842619+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:14.842619+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:15.006182+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:15.000397+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:15.143307+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:14.842619+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:14.842619+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:14.842619+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:14.842619+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:15.006182+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:15.000397+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:25:15.143307+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The world **Emberfall Reach Gavuruni** is described as:\n> \"A drowned coast of ash and low tides.\""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a05a5c-04ee-704a-9e01-7e7237decd31",
+          "project_id": "01a05a5c-0623-7852-96ba-789cdc2dafcf",
+          "seed_ids": {
+            "01a05a5c-04ee-704a-9e01-7e7237decd31": "fixture book_id",
+            "01a05a5c-0623-7852-96ba-789cdc2dafcf": "fixture project_id (composition_work)",
+            "01a05a5c-057c-775c-b3f0-40735e841953": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a5c-06b8-7768-8103-1914abd42e75": "fixture world_id",
+            "01a05a5c-06b8-79a5-8ccf-5751d77423e2": "seed[0] world_create.world.bible_book_id",
+            "01a05a5c-06b9-729a-91ca-baee164b6c8f": "seed[0] world_create.world.bible_chapter_id"
+          },
+          "session_id": "01a05a5c-5288-73fd-953c-6915e26f6e16",
+          "prompt": "Show me the world called Emberfall Reach Pilogase.",
+          "scenario_prompt": "Show me the world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_get",
+            "world_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 all 30 worlds returned. Do NOT call again for this listing.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 0, \"returned\": 30, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a5c-06b8-79a5-8ccf-5751d77423e2\", \"bible_chap"
+            },
+            {
+              "tool": "world_get",
+              "result_head": "{\"ok\": true, \"result\": {\"world\": {\"bible_book_id\": \"01a05a5c-06b8-79a5-8ccf-5751d77423e2\", \"bible_chapter_id\": \"01a05a5c-06b9-729a-91ca-baee164b6c8f\", \"book_count\": 0, \"description\": \"A drowned coast of ash and low tides.\", \"name\": \"Emberfall Reach Pilogase\", \"world_id\": \"01a05a5c-06b8-7768-8103-191"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.292319+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.292319+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.292319+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.292319+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.464339+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.458702+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.608378+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.292319+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.292319+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.292319+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.292319+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.464339+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.458702+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:26:15.608378+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "**Emberfall Reach Pilogase**\n*A drowned coast of ash and low tides.*"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a05a5c-f245-7c3d-822a-ffb459171cd4",
+          "project_id": "01a05a5c-f36e-7039-82dd-514431041e79",
+          "seed_ids": {
+            "01a05a5c-f245-7c3d-822a-ffb459171cd4": "fixture book_id",
+            "01a05a5c-f36e-7039-82dd-514431041e79": "fixture project_id (composition_work)",
+            "01a05a5c-f2ce-74f6-afe1-94588ddad90c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a5c-f3fe-77b8-bae5-cbfddc77c4a8": "fixture world_id",
+            "01a05a5c-f3fe-7a0a-903a-55f707c588e1": "seed[0] world_create.world.bible_book_id",
+            "01a05a5c-f3ff-7166-903e-e5485f8e9cd5": "seed[0] world_create.world.bible_chapter_id"
+          },
+          "session_id": "01a05a5d-3f50-774c-a87d-ab925aab0eab",
+          "prompt": "Show me the world called Emberfall Reach Lutivisa.",
+          "scenario_prompt": "Show me the world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_get",
+            "world_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 all 30 worlds returned. Do NOT call again for this listing.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 0, \"returned\": 30, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a5c-f3fe-7a0a-903a-55f707c588e1\", \"bible_chap"
+            },
+            {
+              "tool": "world_get",
+              "result_head": "{\"ok\": true, \"result\": {\"world\": {\"bible_book_id\": \"01a05a5c-f3fe-7a0a-903a-55f707c588e1\", \"bible_chapter_id\": \"01a05a5c-f3ff-7166-903e-e5485f8e9cd5\", \"book_count\": 0, \"description\": \"A drowned coast of ash and low tides.\", \"name\": \"Emberfall Reach Lutivisa\", \"world_id\": \"01a05a5c-f3fe-77b8-bae5-cbf"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.046195+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.046195+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.046195+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.046195+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.211103+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.205496+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.350386+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.046195+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.046195+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.046195+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.046195+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.211103+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.205496+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:27:16.350386+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The world **Emberfall Reach Lutivisa** is described as:\n> \"A drowned coast of ash and low tides.\""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05a5d-e04c-7a87-98b3-d82a0872f874",
+          "project_id": "01a05a5d-e182-7cf1-9262-b6c11a480aa5",
+          "seed_ids": {
+            "01a05a5d-e04c-7a87-98b3-d82a0872f874": "fixture book_id",
+            "01a05a5d-e182-7cf1-9262-b6c11a480aa5": "fixture project_id (composition_work)",
+            "01a05a5d-e0db-7788-a47a-f56ec4bfaf16": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a5d-e20f-745c-8306-b4d397098fd2": "fixture world_id",
+            "01a05a5d-e20f-76e5-b381-85b6fd666963": "seed[0] world_create.world.bible_book_id",
+            "01a05a5d-e20f-7e8b-99a4-e305c743e6bc": "seed[0] world_create.world.bible_chapter_id"
+          },
+          "session_id": "01a05a5e-22bd-7124-93a0-b0ff5aaba395",
+          "prompt": "Show me the world called Emberfall Reach Razomutu.",
+          "scenario_prompt": "Show me the world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_get",
+            "world_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 all 30 worlds returned. Do NOT call again for this listing.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 0, \"returned\": 30, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a5d-e20f-76e5-b381-85b6fd666963\", \"bible_chap"
+            },
+            {
+              "tool": "world_get",
+              "result_head": "{\"ok\": true, \"result\": {\"world\": {\"bible_book_id\": \"01a05a5d-e20f-76e5-b381-85b6fd666963\", \"bible_chapter_id\": \"01a05a5d-e20f-7e8b-99a4-e305c743e6bc\", \"book_count\": 0, \"description\": \"A drowned coast of ash and low tides.\", \"name\": \"Emberfall Reach Razomutu\", \"world_id\": \"01a05a5d-e20f-745c-8306-b4d"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:16.987304+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:16.987304+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:16.987304+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:16.987304+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:17.159696+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:17.154269+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:17.295135+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:16.987304+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:16.987304+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:16.987304+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:16.987304+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:17.159696+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:17.154269+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:28:17.295135+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The world **Emberfall Reach Razomutu** is described as:\n> \"A drowned coast of ash and low tides.\""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05a5e-cfa2-7d0d-b7cb-47732b878693",
+          "project_id": "01a05a5e-d0ca-756f-be8c-e08ec4a8716d",
+          "seed_ids": {
+            "01a05a5e-cfa2-7d0d-b7cb-47732b878693": "fixture book_id",
+            "01a05a5e-d0ca-756f-be8c-e08ec4a8716d": "fixture project_id (composition_work)",
+            "01a05a5e-d02d-7b72-82d3-a0f473928dda": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a5e-d155-7c4e-961b-9c92e19a7c70": "fixture world_id",
+            "01a05a5e-d155-7e7c-8cf4-55d451c9bf94": "seed[0] world_create.world.bible_book_id",
+            "01a05a5e-d156-75ba-8688-f9028f6fba67": "seed[0] world_create.world.bible_chapter_id"
+          },
+          "session_id": "01a05a5f-1136-7053-abbd-d42311ba8f50",
+          "prompt": "Show me the world called Emberfall Reach Zaronako.",
+          "scenario_prompt": "Show me the world called Emberfall Reach {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_get",
+            "world_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 all 30 worlds returned. Do NOT call again for this listing.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 0, \"returned\": 30, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a5e-d155-7e7c-8cf4-55d451c9bf94\", \"bible_chap"
+            },
+            {
+              "tool": "world_get",
+              "result_head": "{\"ok\": true, \"result\": {\"world\": {\"bible_book_id\": \"01a05a5e-d155-7e7c-8cf4-55d451c9bf94\", \"bible_chapter_id\": \"01a05a5e-d156-75ba-8688-f9028f6fba67\", \"book_count\": 0, \"description\": \"A drowned coast of ash and low tides.\", \"name\": \"Emberfall Reach Zaronako\", \"world_id\": \"01a05a5e-d155-7c4e-961b-9c9"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "call": "world_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "world_get",
+                "world_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.253629+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.253629+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.253629+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.253629+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.414823+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.409806+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.549666+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.253629+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.253629+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.253629+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.253629+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.414823+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.409806+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:29:18.549666+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The world **Emberfall Reach Zaronako** is described as:\n> \"A drowned coast of ash and low tides.\""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "world_map_delete",
+      "scenario": "world-map-delete",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the map is deleted with NO confirm card (Tier A), OR the model targets 'The Ashen Coast' rather than the map the author named, OR it invents a map_id rather than resolving the NAME, OR the reply describes the deletion as removing only the map without saying its markers and regions go with it — an author told the mild version could approve a cascade they did not intend, which is the shape book_chapter_set_kg_exclude had in batch 27.",
+      "answer_expect": null,
+      "falsifier_sha": "9a743becd033e684",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and it cascades to markers and regions.",
+        "absent_case": "OWED — a map_id that does not exist must be refused.",
+        "idempotency": "OWED — deleting an already-deleted map must refuse or be a clear no-op, not report a second success.",
+        "tenancy": "OWED — ACCOUNT-scoped: another owner's map must not be deletable."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a05a5f-bd42-7080-bfe4-902bef6e09d1",
+          "project_id": "01a05a5f-be6d-7703-b97a-117cb049b3b2",
+          "seed_ids": {
+            "01a05a5f-bd42-7080-bfe4-902bef6e09d1": "fixture book_id",
+            "01a05a5f-be6d-7703-b97a-117cb049b3b2": "fixture project_id (composition_work)",
+            "01a05a5f-bdd1-7bcc-adfd-fe221f486f22": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a5f-befe-7558-8879-8b6f730cf095": "fixture world_id",
+            "01a05a5f-befe-7840-8820-b287b5c3b3f8": "seed[0] world_create.world.bible_book_id",
+            "01a05a5f-beff-7163-9479-f7a472b55a1a": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a5f-bf8d-7ed5-aa28-6dccdd6bd2e6": "seed[1] world_map_create.map.map_id",
+            "01a05a5f-c016-705a-ac97-f201e2fe3449": "seed[2] world_map_create.map.map_id",
+            "01a05a5f-c09e-7f33-8d14-f5e5b3b8f9bc": "seed[3] world_map_add_marker.marker_id"
+          },
+          "session_id": "01a05a60-0394-7c83-9a76-c5e771fe4a3b",
+          "prompt": "Delete the map called The Obsidian Trench Porivemi.",
+          "scenario_prompt": "Delete the map called The Obsidian Trench {run_word}.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "world_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_delete",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a5f-b"
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 the final 10 of 30 worlds. Do NOT call again.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 20, \"returned\": 10, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": null, \"bible_chapter_id\": null, \"book_count\": 0, \"description\": "
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a5f-b"
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a5f-b"
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 the final 10 of 30 worlds. Do NOT call again.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 20, \"returned\": 10, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": null, \"bible_chapter_id\": null, \"book_count\": 0, \"description\": "
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.089616+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.089616+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.089616+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.089616+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.250714+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.244913+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.390206+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:30:19.669991+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.806906+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.089616+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.089616+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.089616+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.089616+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.250714+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.244913+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.390206+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:30:19.669991+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:30:19.806906+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't find a map called \"The Obsidian Trench Porivemi.\" I see a world named \"Emberfall Reach Porivemi,\" but no maps are listed under it.\n\nCould you double-check the name or tell me which world it belongs to?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a05a60-bccd-7daf-a08e-5e322496b739",
+          "project_id": "01a05a60-be0f-73a5-bb0e-a5d3dff05632",
+          "seed_ids": {
+            "01a05a60-bccd-7daf-a08e-5e322496b739": "fixture book_id",
+            "01a05a60-be0f-73a5-bb0e-a5d3dff05632": "fixture project_id (composition_work)",
+            "01a05a60-bd68-7d89-8fd8-0cf31ca348e0": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a60-be75-7eab-8981-9446f2d98c85": "fixture world_id",
+            "01a05a60-be76-70e1-bd0e-ba86b9a29027": "seed[0] world_create.world.bible_book_id",
+            "01a05a60-be76-7891-8262-4d9d69ed87b9": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a60-bf0b-7868-abb0-01e4fa88bf63": "seed[1] world_map_create.map.map_id",
+            "01a05a60-bf96-7b69-9dac-a53e3c0bde34": "seed[2] world_map_create.map.map_id",
+            "01a05a60-c02b-7459-89be-f61d8fc4a1a3": "seed[3] world_map_add_marker.marker_id"
+          },
+          "session_id": "01a05a61-01b8-7182-a97b-5409067e1053",
+          "prompt": "Delete the map called The Obsidian Trench Zeseliko.",
+          "scenario_prompt": "Delete the map called The Obsidian Trench {run_word}.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "world_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_delete",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a60-b"
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 the final 10 of 30 worlds. Do NOT call again.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 20, \"returned\": 10, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": null, \"bible_chapter_id\": null, \"book_count\": 0, \"description\": "
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a60-b"
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a60-b"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.520723+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.520723+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.520723+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.520723+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.69303+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.686604+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.789799+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:31:25.078679+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:25.227209+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.520723+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.520723+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.520723+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.520723+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.69303+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.686604+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:24.789799+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:31:25.078679+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:31:25.227209+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't find a map named \"The Obsidian Trench Zeseliko\" in your worlds. I see a world called **Emberfall Reach Zeseliko**, but no maps are listed under it.\n\nIf the map is inside a specific world, please let me know the name of that world, and I'll look for it there."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a05a61-b448-710f-b01c-962e72d98b2e",
+          "project_id": "01a05a61-b577-7ef1-b9d9-3958acc231fc",
+          "seed_ids": {
+            "01a05a61-b448-710f-b01c-962e72d98b2e": "fixture book_id",
+            "01a05a61-b577-7ef1-b9d9-3958acc231fc": "fixture project_id (composition_work)",
+            "01a05a61-b4d9-7288-9b8e-4d49db993c20": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a61-b607-726c-bd50-796e44c3f007": "fixture world_id",
+            "01a05a61-b607-7443-a0bd-fbe7fc00ce46": "seed[0] world_create.world.bible_book_id",
+            "01a05a61-b607-7895-89e1-7addb19ebf0a": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a61-b693-70d1-a274-6797f53786d5": "seed[1] world_map_create.map.map_id",
+            "01a05a61-b71b-7921-b79b-c3df2da9a50e": "seed[2] world_map_create.map.map_id",
+            "01a05a61-b7ac-790c-b821-0b5bd0e5a856": "seed[3] world_map_add_marker.marker_id"
+          },
+          "session_id": "01a05a61-f906-7afa-9b77-7e990f5693ef",
+          "prompt": "Delete the map called The Obsidian Trench Matukepa.",
+          "scenario_prompt": "Delete the map called The Obsidian Trench {run_word}.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "world_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_delete",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a61-b"
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 the final 10 of 30 worlds. Do NOT call again.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 20, \"returned\": 10, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": null, \"bible_chapter_id\": null, \"book_count\": 0, \"description\": "
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a61-b"
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a61-b"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:27.865037+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:27.865037+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:27.865037+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:27.865037+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:28.030324+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:28.022955+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:28.167083+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:32:28.44355+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:28.588537+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:27.865037+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:27.865037+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:27.865037+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:27.865037+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:28.030324+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:28.022955+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:28.167083+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:32:28.44355+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:32:28.588537+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't find a map with the exact name \"The Obsidian Trench Matukepa\". I did find a world named **Emberfall Reach Matukepa**.\n\nWould you like me to delete that world, or is there another name I should look for?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05a62-b317-75a4-ae18-02887934bd5d",
+          "project_id": "01a05a62-b452-794e-b3a4-a22a72e93713",
+          "seed_ids": {
+            "01a05a62-b317-75a4-ae18-02887934bd5d": "fixture book_id",
+            "01a05a62-b452-794e-b3a4-a22a72e93713": "fixture project_id (composition_work)",
+            "01a05a62-b3ac-77d1-98c6-f4c90f247c67": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a62-b4e7-7f9a-a434-3d4383774575": "fixture world_id",
+            "01a05a62-b4e8-7479-a450-d7f24f435278": "seed[0] world_create.world.bible_book_id",
+            "01a05a62-b4e8-7e24-8390-ea72ae5c002a": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a62-b57e-7bb2-9163-6920ed442f3e": "seed[1] world_map_create.map.map_id",
+            "01a05a62-b618-73b8-a95a-32245dbdd86f": "seed[2] world_map_create.map.map_id",
+            "01a05a62-b6b3-7d43-88eb-3200b2bcb9e9": "seed[3] world_map_add_marker.marker_id"
+          },
+          "session_id": "01a05a62-f890-785b-839c-9a2836f9b3b6",
+          "prompt": "Delete the map called The Obsidian Trench Zetagapu.",
+          "scenario_prompt": "Delete the map called The Obsidian Trench {run_word}.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "world_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_delete",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a62-b"
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 the final 10 of 30 worlds. Do NOT call again.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 20, \"returned\": 10, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": null, \"bible_chapter_id\": null, \"book_count\": 0, \"description\": "
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a62-b"
+            },
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a62-b"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            },
+            {
+              "pass_size": 61,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.100333+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.100333+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.100333+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.100333+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.272194+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.266105+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.41573+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:33:33.720214+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.875775+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.100333+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.100333+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.100333+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.100333+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.272194+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.266105+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.41573+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:33:33.720214+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:33:33.875775+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't find a map called \"The Obsidian Trench Zetagapu\" in your worlds. I did find a world named **Emberfall Reach Zetagapu**, but no maps are listed under it.\n\nWould you like me to search for maps in a specific world, or is there another name I should look for?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05a63-a0ee-70d4-8591-c6d8aede8281",
+          "project_id": "01a05a63-a661-70b7-91c8-6eae26ef3d79",
+          "seed_ids": {
+            "01a05a63-a0ee-70d4-8591-c6d8aede8281": "fixture book_id",
+            "01a05a63-a661-70b7-91c8-6eae26ef3d79": "fixture project_id (composition_work)",
+            "01a05a63-a182-7198-9eaf-9baf0f7f8064": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a63-ad3f-7f97-b568-9311c4c365b2": "fixture world_id",
+            "01a05a63-ad40-71a4-981f-7cecf66415e7": "seed[0] world_create.world.bible_book_id",
+            "01a05a63-ad40-7603-a253-ec4c96957c23": "seed[0] world_create.world.bible_chapter_id",
+            "01a05a63-addf-76e8-b15d-645f50c2b82d": "seed[1] world_map_create.map.map_id",
+            "01a05a63-ae6b-7387-a674-edde370db521": "seed[2] world_map_create.map.map_id",
+            "01a05a63-aef7-7995-bca0-0e5fad130557": "seed[3] world_map_add_marker.marker_id"
+          },
+          "session_id": "01a05a63-f0f9-78fc-b5b4-0a2f18a34c01",
+          "prompt": "Delete the map called The Obsidian Trench Kemanano.",
+          "scenario_prompt": "Delete the map called The Obsidian Trench {run_word}.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_delete",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_delete",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"complete \\u2014 all 30 worlds returned. Do NOT call again for this listing.\", \"page\": {\"has_more\": false, \"is_complete\": true, \"offset\": 0, \"returned\": 30, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a05a63-ad40-71a4-981f-7cecf66415e7\", \"bible_chap"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a05a63-ae6b-7387-a674-edde370db521\", \"name\": \"The Obsidian Trench Kemanano\", \"version\": 1, \"world_id\": \"01a05a63-ad3f-7f97-b568-9311c4c365b2\"}, {\"image_object_key\": null, \"map_id\": \"01a05a63-addf-76e8-b15d-645f50c2b82d\", \"name\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 57,
+              "of_the_called": [
+                "world_list",
+                "world_map_delete",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_delete"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:33.986005+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:33.986005+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:33.986005+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:33.986005+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:35.239231+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:35.232549+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:36.991867+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:34:37.2912+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:37.431565+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:33.986005+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:33.986005+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:33.986005+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:33.986005+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:35.239231+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:35.232549+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:36.991867+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 2,
+                "latest": "2026-09-01 00:34:37.2912+00"
+              },
+              "loreweave_book.map_markers": {
+                "rows": 1,
+                "latest": "2026-09-01 00:34:37.431565+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 1,
+      "wrote_count": 0,
+      "suspended_count": 1
+    }
+  ]
+}

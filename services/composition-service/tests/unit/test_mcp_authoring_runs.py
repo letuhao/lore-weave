@@ -18,7 +18,7 @@ from __future__ import annotations
 import uuid
 from contextlib import asynccontextmanager
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -90,8 +90,17 @@ async def _patched(*, grant_level=2, svc=None):
     stub = svc if svc is not None else AsyncMock()
     if svc is None:
         stub.get = AsyncMock(return_value=_run())  # own run in BOOK
+    # op=create now verifies the PLAN run exists on this book BEFORE minting a token (it used
+    # to mint for any id and fail only after the author approved — see
+    # test_authoring_run_create_refuses_an_absent_plan_run). The default here is a plan run that
+    # EXISTS, so these tests keep asserting what they were written to assert; the absent case
+    # has its own file rather than being folded in as a default.
+    _plan_repo = MagicMock()
+    _plan_repo.return_value.get_for_book = AsyncMock(return_value=object())
     with patch.object(srv, "_ctx", side_effect=lambda ctx: ctx), \
          patch.object(srv, "_grant_resolver", return_value=_resolve), \
+         patch.object(srv, "get_pool", MagicMock()), \
+         patch("app.db.repositories.plan_runs.PlanRunsRepo", _plan_repo), \
          patch.object(srv, "get_authoring_run_service", new=AsyncMock(return_value=stub)):
         yield srv, stub
 

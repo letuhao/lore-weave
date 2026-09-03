@@ -1,0 +1,117 @@
+{
+  "_note": "More repeats for the two tools short of CLEAN runs. link_list has 2 clean and needs K>=3; motif_search has 0 clean despite being called 5/5 in both arms — every run dies on the upstream no-message error. bind_edit is NOT here: 0 clean in 33 attempts across five arms, which is a finding in itself rather than something more repeats will fix.",
+  "scenarios": [
+    {
+      "id": "composition-motif-search",
+      "tool_under_test": "composition_motif_search",
+      "expect_tool": "composition_motif_search",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+      "prompt_source": "meta.synonyms['trope'] + ['motif'], verbatim, plus the motif's own name — this scenario exists to test NAME search specifically.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-reversal-b20-{run_id}",
+            "name": "Emberfall Reversal {run_id} {run_word}",
+            "kind": "trope"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif WHERE status='active' AND code='emberfall-reversal-b20-{run_id}'",
+          "expect": "1",
+          "why": "EXACTLY ONE motif with this name, and the name is unique across the whole library — so an exact-name hit is unambiguous. This is the scenario that proves the `q` declaration shipped on 2026-08-21: before it, the model invented {\"name\": [...]} and got 'Extra fields not permitted' on 10 of 10 runs across two scenarios, and the retry loop ended in a stream error.\n\n🔴 status='active' ADDED 2026-08-23 by the lifecycle-predicate gate. The tool reads active rows only (get_by_codes filters status='active'), so without this the assertion could pass over rows the tool is structurally unable to see — which is exactly what happened to composition_motif_link_edit for fifteen runs. Verified NOT to change the seeded value: all 84 system motifs are active today, so this tightens the assertion without moving its number."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Emberfall Reversal"
+        ],
+        "why": "The seeded motif is the only one by that name; naming it back is the minimum evidence the library was searched rather than described."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model calls the tool with an invented argument such as `name` rather than the declared `q` (that is the exact defect fixed on 2026-08-21 — a regression here is a NEW instance), OR the reply reports motifs the library does not contain. NOTE `q` RANKS rather than filters, so a long result list is CORRECT behaviour; what matters is that the exact match is named.",
+      "ship_audit": {
+        "empty_case": "OWED — a query matching nothing must say so rather than return the library.",
+        "tenancy": "OWED — scope=mine must return only the caller's motifs; the 84 system rows are a separate scope."
+      },
+      "defects": [],
+      "_fixture_fix": "ACCOUNT-SCOPED SEED MADE PER-RUN UNIQUE. A motif code is unique PER OWNER, so a fixed code creates the row on rep 0 and fails every rep after it — measured here as 'seed step 0 returned no id' on 4 of 5 runs, which then read as 0/5 called. The new `{run_id}` placeholder (provision.py) suffixes the code with the run's nonce. The display NAME is deliberately left stable so the prompt can still name the motif in plain prose, and no two scenarios in this batch share a name."
+    },
+    {
+      "id": "composition-motif-link-list",
+      "tool_under_test": "composition_motif_link_list",
+      "expect_tool": "composition_motif_link_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+      "prompt_source": "meta.synonyms['what follows this motif'] + ['related motifs'], verbatim.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-ascent-b20-{run_id}",
+            "name": "Emberfall Ascent {run_id} {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-descent-b20-{run_id}",
+            "name": "Emberfall Descent {run_id} {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_motif_link_edit",
+          "args": {
+            "op": "create",
+            "from_motif_id": "{step:0:id}",
+            "to_motif_id": "{step:1:id}",
+            "kind": "precedes"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_link WHERE from_motif_id=(SELECT id FROM motif WHERE code='emberfall-ascent-b20-{run_id}')",
+          "expect": "1",
+          "why": "ONE outgoing edge, seeded directly so the read has something real to return. The model must resolve the motif's NAME to its id first — composition_motif_search is the supplier, and its `q` argument now says so outright. SCOPED to the seeded code, not to the account's ~63 links, because that total moves during a batch."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Emberfall Descent"
+        ],
+        "why": "The seeded edge points at exactly one neighbour; naming it is the minimum evidence the graph was read. The tool's description promises each neighbour's code + name, so the name is available without a second call."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes links the seeded motif does not have, OR it names the wrong direction — the edge is Ascent PRECEDES Descent, and reporting the reverse is a wrong fact read back to the author. CONTROL: the model must resolve a NAME to a motif_id; if it asks the author for the id instead, that is OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID again and a PRECONDITION finding, not a tool defect.",
+      "ship_audit": {
+        "empty_case": "OWED — a motif with no links must be reported as unlinked, not as missing.",
+        "absent_case": "OWED — a motif_id that does not exist must be refused.",
+        "tenancy": "OWED — ACCOUNT-scoped; another owner's motif must not be traversable."
+      },
+      "defects": [],
+      "_fixture_fix": "ACCOUNT-SCOPED SEED MADE PER-RUN UNIQUE. A motif code is unique PER OWNER, so a fixed code creates the row on rep 0 and fails every rep after it — measured here as 'seed step 0 returned no id' on 4 of 5 runs, which then read as 0/5 called. The new `{run_id}` placeholder (provision.py) suffixes the code with the run's nonce. The display NAME is deliberately left stable so the prompt can still name the motif in plain prose, and no two scenarios in this batch share a name."
+    }
+  ],
+  "_fixture_note": "SEED NAMES CARRY THE NONCE TOO. The {run_id} suffix on the CODE stopped the per-owner uniqueness collision, but every run still seeded the same display NAME — so identically-named motifs piled up in the account's real library and composition_motif_search honestly reported '9 entries', then 14, 15, 17, 19 for the same name across runs. The tool was right; the fixture was polluting. 54 leftover motifs were archived afterwards through composition_motif_edit op=archive (the platform's own path, no DML). The PROMPT still names the human-readable stem, so an exact-name hit still sorts first via `q`."
+}

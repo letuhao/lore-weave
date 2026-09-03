@@ -1,0 +1,33 @@
+{
+ "_note": "one-turn provider health smoke.",
+ "scenarios": [
+  {
+   "id": "composition-list-derivatives",
+   "tool_under_test": "composition_list_derivatives",
+   "expect_tool": "composition_list_derivatives",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "List what-if branches for this book — show branches.",
+   "prompt_source": "meta.synonyms['list what-if branches'] + ['show branches'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM composition_work WHERE source_work_id='{project_id}'",
+     "expect": "0",
+     "why": "ZERO derivatives. This is the EMPTY case by construction, and it is the shape that caught composition_conformance_status in batch 11: the honest answer is that only the canonical Work exists, and describing what a divergence WOULD hold is the failure. Note the tool's own description says it returns 'the canonical Work + every branch', so a correct reply names ONE Work, not none."
+    }
+   ],
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports branches a book with none can have, OR it says there is NOTHING at all — the canonical Work is always in the list, so 'no results' would contradict the tool's own contract. This is the D-ABSENT-ENTITY-READS-AS-UNUSED distinction in a third shape: 'no branches yet' must not become 'no book'.",
+   "ship_audit": {
+    "empty_case": "This scenario IS the empty case — a book with no derivatives must still report its canonical Work.",
+    "tenancy": "OWED — book-scoped via any Work's project_id; another account's project must be refused."
+   },
+   "defects": []
+  }
+ ]
+}

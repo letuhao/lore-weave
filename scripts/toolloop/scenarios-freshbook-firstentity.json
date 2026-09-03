@@ -1,0 +1,35 @@
+{
+  "_note": "D-A-FRESH-BOOK-CANNOT-GET-ITS-FIRST-GLOSSARY-ENTITY-THROUGH-CHAT — the reproduction the row was filed without. The chain is recorded in the glossary_propose_entities TOOL note, measured live on book 019ffa27, but it never had a defect row and so was never re-run.\n\nTHE FIXTURE IS DELIBERATELY UNSEEDED. Every other glossary scenario in this repo seeds `adopt` over REST first, precisely because chat cannot reach it — which is corroboration for the defect and also why no existing scenario can see it. This one seeds NOTHING, which is the whole point: a brand-new book is exactly the condition.\n\nWHAT A PASS AND A FAIL LOOK LIKE ARE BOTH INFORMATIVE. If the turn creates the entity, the wall is gone and the row is withdrawn. If it is refused, the row is reproduced — and the interesting half is WHICH tools the turn withheld, because the recorded chain is that the refusal's own remedy was withheld in the same turn.",
+  "scenarios": [
+    {
+      "id": "fresh-book-asks-for-its-first-character",
+      "tool_under_test": "glossary_propose_entities",
+      "expect_tool": "glossary_propose_entities",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Add a character named Aldric Vane to this book's glossary.",
+      "prompt_source": "The plainest possible statement of the recorded chain's first step: a new book, an author asking for one character. The tool note's measured failure mode is 'character is not in this book's vocabulary. This book has: (none yet).'",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "A fresh book, and nothing seeded — this asserts the fixture really is the empty condition the defect needs rather than a book that quietly inherited an ontology."
+        }
+      ],
+      "falsifier": "REPRODUCED IF: the turn does not create an entity on this book AND the refusal is about the kind not being in the book's vocabulary.\n\nWITHDRAWN IF: the entity is created. That would mean some path now reaches the ontology from chat and the row is wrong.\n\n🔴 THE HALF THAT MATTERS FOR THE FIX is not the refusal but the WITHHELD SET: the recorded chain is that the refusal named glossary_adopt_standards while that same turn withheld it at stage=intent_gate. A run where the remedy was ADVERTISED and simply not called is a different finding (selection, not reach) and must not be read as this defect.",
+      "ship_audit": {
+        "gate": "EXERCISED — approve is set so a card cannot be mistaken for the wall.",
+        "empty_case": "THIS IS the empty case.",
+        "idempotency": "N/A — nothing is expected to be created.",
+        "tenancy": "OWED."
+      },
+      "defects": []
+    }
+  ]
+}

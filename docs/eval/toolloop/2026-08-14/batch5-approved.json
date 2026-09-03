@@ -1,0 +1,576 @@
+{
+  "batch": "batch5-approved",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "plan_compile",
+      "scenario": "plan-compile-v2-approved",
+      "intent": "write",
+      "falsifier": "REFUTED IF: plan_compile is not called on any run (the withdrawn v1 outcome), OR it is called with a run_id/arc_id the operator supplied rather than one the model read from the store, OR it reports a compiled package while plan_artifact gained no row. CONTROL: the seed creates the run, so a turn that cannot find it is a DISCOVERY failure (the model must reach composition_package_tree for runs.recent[].id) and not a failure of plan_compile itself — record which.",
+      "answer_expect": null,
+      "falsifier_sha": "16d5e7dab8074f03",
+      "ship_audit": {
+        "empty_case": "OWED — a book with no proposed spec must refuse clearly, naming what is missing, not compile an empty package.",
+        "gate": "OWED — Tier A: the confirm/approval path must be exercised, not assumed.",
+        "tenancy": "OWED — book-scoped; another account's book must be refused."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a01f95-0d2f-71eb-b501-adb892b27771",
+          "session_id": "01a01f95-2a7c-7499-8a09-c9e7988de534",
+          "prompt": "Compile the plan I already proposed for this book into a planning package.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_package_tree",
+            "plan_compile"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "plan_compile",
+              "outcome": true,
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.228761+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.442738+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.595623+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.594771+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.433179+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.228761+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.442738+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.595623+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.594771+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:30:57.433179+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book, and it looks like the plan I'm trying to compile hasn't been finalized yet. \n\nWhile there is a plan currently being processed in the background (a \"pending\" run), it hasn't finished generating the structured arcs needed to build the actual chapter and scene framework.\n\nI'll keep an eye on that background process. Once it's finished and the plan is officially \"proposed,\" I'll be able to compile it into a full planning package for you. Would you like me to check the status of that process for you now?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a01f95-8003-7592-a9ac-463520e0dc02",
+          "session_id": "01a01f95-9d85-7df0-b5bb-a2077cfea56b",
+          "prompt": "Compile the plan I already proposed for this book into a planning package.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_package_tree",
+            "plan_compile"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "plan_compile",
+              "outcome": true,
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:26.67299+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:26.937746+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:27.166707+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:27.173952+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:26.918737+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:26.67299+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:26.937746+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:27.166707+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:27.173952+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:26.918737+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book, and it looks like I can't compile the plan just yet.\n\nWhile there is a plan currently being processed in the background, the system reports that there isn't a finalized \"spec\" (the structured story structure) available to compile into a planning package. \n\nI'll keep an eye on that background job. Once the plan is fully processed and the structure is ready, I'll be able to run the compilation and start building out your chapters and scenes."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a01f95-ef92-7b10-ab25-bf56cc449a19",
+          "session_id": "01a01f96-0a99-7804-b8b1-a797955d4182",
+          "prompt": "Compile the plan I already proposed for this book into a planning package.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree",
+            "plan_compile"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "plan_compile",
+              "outcome": true,
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.209568+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.452558+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.629208+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.638736+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.443529+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.209568+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.452558+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.629208+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.638736+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:31:55.443529+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book, and it looks like I can't compile the plan just yet.\n\nWhile there is a planning run currently in progress (status: `pending`), the system doesn't see any approved story arcs or a finalized structure to work with. A plan can only be compiled once the proposed structure has been officially approved and turned into actual chapters and scenes.\n\nIt looks like the planning process is still working in the background. Once that run finishes and we've finalized the arcs, I'll be able to compile everything into a full planning package for you."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "memory_remember",
+      "scenario": "memory-remember-v2-approved",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the tool reports `remembered: true` while no Fact node appears in Neo4j, OR the Fact is stored with project_id NULL. THE COUNT CANNOT SETTLE THIS: merge_fact merges by content, so a re-remember is idempotent and a node count cannot separate 'merged into an existing node' from 'wrote nothing'. The property to check is the PROJECT on the node — the exact reading that produced D-MEMORY-FACT-STORED-UNSCOPED, where the fact was genuinely stored and genuinely unscoped.",
+      "answer_expect": null,
+      "falsifier_sha": "552ab2d09637cfa5",
+      "ship_audit": {
+        "idempotency": "OWED — remembering the same sentence twice must merge, not duplicate.",
+        "gate": "OWED — Tier A; memory_remember_confirm is a per-project setting and both settings must be exercised.",
+        "tenancy": "OWED — project-scoped; proven for the memory family on 2026-08-14 via knowledge_projects, re-check for the WRITE path."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a01f96-66c7-7d81-8772-5f1d65ee19f7",
+          "session_id": "01a01f96-8253-7252-a9c3-061c9d114c62",
+          "prompt": "Remember that the Obsidian Trench is only navigable at low tide.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "memory_remember"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "memory_remember",
+              "outcome": true,
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:25.710596+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:25.922794+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:25.914748+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:25.710596+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:25.922794+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:25.914748+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 348,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 1,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "neo4j.Fact.project": {
+              "before": {
+                "rows": 0,
+                "latest": "-"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "neo4j.Fact.total": {
+              "before": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "after": {
+                "rows": 348,
+                "latest": "-"
+              }
+            }
+          },
+          "answer": "I've noted that. The Obsidian Trench is only navigable at low tide."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a01f96-c87d-7b55-92ab-b3aa8ae6494e",
+          "session_id": "01a01f96-e37d-736a-8304-d6b0d1ce01f9",
+          "prompt": "Remember that the Obsidian Trench is only navigable at low tide.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "memory_remember"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "memory_remember",
+              "outcome": true,
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:50.763519+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:50.968358+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:50.959542+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 348,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:50.763519+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:50.968358+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:32:50.959542+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 349,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 1,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "neo4j.Fact.project": {
+              "before": {
+                "rows": 0,
+                "latest": "-"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "neo4j.Fact.total": {
+              "before": {
+                "rows": 348,
+                "latest": "-"
+              },
+              "after": {
+                "rows": 349,
+                "latest": "-"
+              }
+            }
+          },
+          "answer": "I've noted that. The Obsidian Trench is only navigable at low tide."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a01f97-2132-7ddb-9ff8-2e04dc3b3f27",
+          "session_id": "01a01f97-3bc5-74a9-acd6-5e9d2252b792",
+          "prompt": "Remember that the Obsidian Trench is only navigable at low tide.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "memory_remember"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "memory_remember",
+              "outcome": true,
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:33:13.458185+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:33:13.710706+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:33:13.693749+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 349,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:33:13.458185+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:33:13.710706+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:33:13.693749+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 350,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 1,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "neo4j.Fact.project": {
+              "before": {
+                "rows": 0,
+                "latest": "-"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "neo4j.Fact.total": {
+              "before": {
+                "rows": 349,
+                "latest": "-"
+              },
+              "after": {
+                "rows": 350,
+                "latest": "-"
+              }
+            }
+          },
+          "answer": "I've noted that. The Obsidian Trench is only navigable at low tide."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 3,
+      "suspended_count": 0
+    }
+  ]
+}

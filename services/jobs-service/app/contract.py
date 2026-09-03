@@ -56,6 +56,22 @@ _RETRYABLE_KINDS: frozenset[str] = frozenset(
     {"translation", "extraction", "video_gen", "enrichment_job"}
 )
 
+# 🔴 `_VIEW_ONLY_KINDS` IS GONE, MERGE 2026-09-03, AND THE PREMISE IS WHY. It held exactly one
+# kind — `book_import`, on the grounds that "book-service has no control endpoint; a running
+# import can't be stopped" (D-JOBS-BOOK-IMPORT-UNWIRED). That was true when it was measured and
+# is not true now: the epub-import v2 work gave book-service a recovery path, and this module's
+# own docstring below already documents `book_import` → resume from failed/cancelled "because
+# Book Service retains the source". The set had no other member, so keeping it would leave a
+# branch that can never be taken — a mechanism that fires never, which is worse than no
+# mechanism because it reads like cover. If a genuinely uncontrollable kind appears, it comes
+# back with that kind in it.
+
+#: What the projection writes on a row whose owning service no longer has the job (the
+#: absence pass — owner ruling 2026-08-31, DQ-T65). It lives HERE, beside the caps, because
+#: this is the module that decides what may be OFFERED on such a row; `projection.store`
+#: imports it rather than keeping a second copy of the string.
+OWNER_LOST_DETAIL = "owner_no_longer_has_row"
+
 # SECONDARY kinds now control-wired in the unified plane (D-JOBS-SECONDARY-KIND-CONTROL) —
 # the owning service's control endpoint dispatches BY KIND to the right job table. Caps match
 # each producer's NATIVE control exactly (offering more would 404/409 downstream):
@@ -72,7 +88,8 @@ def _is_multi_unit(kind: str) -> bool:
 
 
 def derive_control_caps(
-    status: "JobStatus | str", kind: str, *, retryable: bool | None = None
+    status: "JobStatus | str", kind: str, *, retryable: bool | None = None,
+    detail_status: str | None = None,
 ) -> list[ControlCap]:
     """Return the control actions valid for a job in its CURRENT status.
 
@@ -90,6 +107,14 @@ def derive_control_caps(
     path is reconstructable, the inline/streamed path is not — same `kind` for both).
     None (most callers / most kinds) ⇒ kind-based decision only.
     """
+    # 🔴 A ROW WHOSE OWNER LOST IT CAN BE OFFERED NOTHING, and finding out why cost a live
+    # check. The absence pass marks such a row `failed`, which removed the broken `cancel`
+    # this whole line of work is about — and handed 6 of the 28 a broken RETRY instead, because
+    # `extraction` and `enrichment_job` are in _RETRYABLE_KINDS and a retry would 404 against
+    # the service that no longer has the row. Replacing a surface does not carry its
+    # guarantees; the guarantee here is that every offered cap can actually be honoured.
+    if detail_status == OWNER_LOST_DETAIL:
+        return []
     s = status if isinstance(status, JobStatus) else JobStatus(status)
     if kind == "book_import":
         return [ControlCap.RESUME] if s in (JobStatus.FAILED, JobStatus.CANCELLED) else []

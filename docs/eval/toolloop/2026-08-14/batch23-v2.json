@@ -1,0 +1,847 @@
+{
+ "batch": "batch23-v2",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "plan_interpret_feedback",
+   "scenario": "plan-interpret-feedback",
+   "intent": "write",
+   "falsifier": "REFUTED IF: an interpretation is written with NO confirm card (Tier A), OR the model invents a run_id, OR the interpretation's focus points at Arc I when the author said the SECOND arc drags — a feedback tool that mis-targets is worse than one that refuses, because the author's note is then applied to the wrong part of their book.",
+   "answer_expect": null,
+   "falsifier_sha": "771701a433519048",
+   "ship_audit": {
+    "gate": "EXERCISED — Tier A, card raised 5/5 with 0 errors and the plan_run unchanged without approval.",
+    "absent_case": "EXERCISED — an absent run_id is refused 'not found or not accessible'.",
+    "empty_case": "EXERCISED and it is the honest answer a feedback tool most needs. Given a blank user_message it returns {intent: 'clarify', confidence: 0.4, focus_paths: [], draft_revision: null} — it declines to manufacture a revision out of nothing, and it says how confident it is. A confident draft_revision from an empty note would be a change written into the author's plan that no one asked for.",
+    "tenancy": "EXERCISED — a foreign book is refused."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a023fd-a300-7df8-96b7-517c505ea250",
+     "session_id": "01a023fd-bb95-7510-bab4-5859b1298f6f",
+     "prompt": "Understand my note about the plan — the second arc drags, give the Drowned Court more weight.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_interpret_feedback"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:03:40.190816+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:03:40.369241+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:03:40.545809+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:03:40.552778+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:03:40.545809+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:03:40.362671+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:03:40.190816+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:03:40.369241+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:03:40.545809+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:03:40.552778+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:03:40.545809+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:03:40.362671+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a023fe-173c-7472-ac96-a881b5801cfd",
+     "session_id": "01a023fe-2f4c-79e1-83cc-7fe091b8edb2",
+     "prompt": "Understand my note about the plan — the second arc drags, give the Drowned Court more weight.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_interpret_feedback"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:09.939785+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:10.127496+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:10.276663+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:10.283059+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:10.276663+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:10.120914+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:09.939785+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:10.127496+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:10.276663+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:10.283059+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:10.276663+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:10.120914+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a023fe-62cd-7c94-9ec0-653362fb7805",
+     "session_id": "01a023fe-7cf1-71ab-a0d8-6ff82caef9a0",
+     "prompt": "Understand my note about the plan — the second arc drags, give the Drowned Court more weight.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_interpret_feedback"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:29.283965+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:29.492767+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:29.681272+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:29.690608+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:29.681272+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:29.482488+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:29.283965+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:29.492767+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:29.681272+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:29.690608+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:29.681272+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:29.482488+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a023fe-ad85-7d22-a483-8f39f6e40fc3",
+     "session_id": "01a023fe-c68a-702a-8d21-a43880f1b9e1",
+     "prompt": "Understand my note about the plan — the second arc drags, give the Drowned Court more weight.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_interpret_feedback"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:48.420772+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:48.600393+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:48.757957+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:48.764954+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:48.757957+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:48.594035+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:48.420772+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:48.600393+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:48.757957+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:48.764954+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:04:48.757957+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:04:48.594035+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a023fe-f73e-7392-b8df-2d7038f0aaf4",
+     "session_id": "01a023ff-1242-7b8f-a1fd-d87abe4ede02",
+     "prompt": "Understand my note about the plan — the second arc drags, give the Drowned Court more weight.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_interpret_feedback"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:07.285286+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:07.480514+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:05:07.64765+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:07.656534+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:05:07.64765+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:07.474308+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:07.285286+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:07.480514+00"
+       },
+       "loreweave_composition.outline_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:05:07.64765+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:07.656534+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 2,
+        "latest": "2026-08-21 11:05:07.64765+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:07.474308+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 5
+  },
+  {
+   "tool": "composition_motif_bind_edit",
+   "scenario": "composition-motif-bind-edit",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run that ends with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — a MODEL-output defect to be re-run, never read as 0/5.",
+   "answer_expect": null,
+   "falsifier_sha": "0c5001b2eb06c701",
+   "ship_audit": {
+    "gate": "See blocked_reason.",
+    "absent_case": "EXERCISED by direct probe.",
+    "empty_case": "NOT REACHED.",
+    "idempotency": "NOT REACHED.",
+    "tenancy": "EXERCISED by direct probe."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a023ff-450b-776f-91f7-a16933188b78",
+     "session_id": "01a023ff-6016-779c-bddb-7fd14c8b5824",
+     "prompt": "Bind the motif Emberfall Braid to the first arc of this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:27.219976+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:27.409724+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:27.704044+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:27.402727+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:27.219976+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:27.409724+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:27.704044+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:05:27.402727+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I found several versions of the \"Emberfall Braid\" motif. To make sure I bind the correct one, could you please tell me which one you're referring to?\n\n*   **Emberfall Braid 23d5f832**\n*   **Emberfall Braid 9fb5b744**\n*   **Emberfall Braid bb56f88d**\n*   **Emberfall Braid bb653d9d**\n*   **Emberfall Braid d4d2dff2**\n*   **Emberfall Braid ff391c91**\n\nOnce you let me know, I'll bind it to **Arc I — The Emberfall**."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a023ff-d5d0-7be2-8e09-ced32502b03f",
+     "session_id": "01a023ff-ef42-7e04-9f92-a08fc245297c",
+     "prompt": "Bind the motif Emberfall Braid to the first arc of this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:04.26254+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:04.456755+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:04.730557+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:04.449764+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:04.26254+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:04.456755+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:04.730557+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:04.449764+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02400-2564-72f2-997c-01edd8882c91",
+     "session_id": "01a02400-3ffa-7a53-8961-79e9d84ebefd",
+     "prompt": "Bind the motif Emberfall Braid to the first arc of this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:24.642764+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:24.835028+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:25.117893+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:24.827424+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:24.642764+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:24.835028+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:25.117893+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:24.827424+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02400-9d44-73f5-9455-ed1a920fea05",
+     "session_id": "01a02400-b7b0-7543-bfe3-d5776df01bd8",
+     "prompt": "Bind the motif Emberfall Braid to the first arc of this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:55.324111+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:55.515068+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:55.789551+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:55.507009+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:55.324111+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:55.515068+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:55.789551+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:06:55.507009+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02401-1743-7593-bee3-dfe43e6ce058",
+     "session_id": "01a02401-3020-75ed-9a9d-06adf07bb503",
+     "prompt": "Bind the motif Emberfall Braid to the first arc of this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:07:26.552168+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:07:26.750548+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:07:27.056852+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:07:26.743024+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 11:07:26.552168+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 11:07:26.750548+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 11:07:27.056852+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 11:07:26.743024+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "ELEVENTH ARM, 0 clean runs (4 of 5 lost to the degenerate `<tool_call|>` output). Not concluded."
+  }
+ ]
+}

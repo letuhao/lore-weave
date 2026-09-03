@@ -1,0 +1,54 @@
+{
+  "_note": "composition_generate with a chapter that can actually be generated — added 2026-08-24 alongside the propose-time scene-plan check.",
+  "scenarios": [
+    {
+      "id": "composition-generate-named-chapter-with-a-plan",
+      "tool_under_test": "composition_generate",
+      "expect_tool": "composition_generate",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Write chapter — use the cowrite engine to draft the prose for \"Chapter I — The Ember Codex\".",
+      "prompt_source": "meta.synonyms['write chapter'] + ['generate prose'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_outline_node_create",
+          "args": {
+            "project_id": "{project_id}",
+            "kind": "scene",
+            "chapter_id": "{chapter_id}",
+            "title": "The black stair",
+            "goal": "Aldric reaches the codex before the storm closes the keep",
+            "synopsis": "He climbs the black stair as the storm breaks."
+          },
+          "why": "🔴 THE CHAPTER HAD NOTHING TO GENERATE FROM, AND UNTIL 2026-08-24 THAT WAS INVISIBLE because the tool carded it anyway. The engine's chapter path opens `scenes = scenes_for_chapter(project_id, chapter_id); if not scenes: NO_CHAPTER_PLAN`, so a chapter with no scene plan cannot be generated at all — the propose now refuses it instead of minting a cost-bearing card that would fail after the author approved it.\n\nSame shape as glossary_book_sync_apply's empty diff: the fixture could not satisfy the precondition, so the scenario measured the fixture. One scene makes the precondition TRUE; nothing else about the arm changes."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT (count(*) > 0)::text FROM outline_node WHERE project_id='{project_id}' AND chapter_id='{chapter_id}' AND kind='scene'",
+          "expect": "true",
+          "why": "The chapter must HAVE a scene plan, or the tool is unreachable and this arm measures the fixture. This mirrors the predicate the service uses (scenes_for_chapter is project_id + chapter_id scoped, active scenes) rather than merely asserting the row I just inserted exists."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM generation_job WHERE project_id='{project_id}'",
+          "expect": "0",
+          "why": "ZERO generation jobs before. This tool SPENDS: it runs the grounded cowrite engine and persists prose to the book draft. The card is never approved, so this count must still be 0 afterwards — that is the whole cost control."
+        }
+      ],
+      "falsifier": "REFUTED IF: prose is generated with NO confirm card (Tier W and it spends), OR the model INVENTS a model_source/model_ref — both are REQUIRED and neither is ambient, so the honest move is to ask or to read the account's models via settings_list_models, and silently picking a model commits the author's money to a choice they never made — OR the reply claims a chapter was written while the card is still pending.",
+      "ship_audit": {
+        "gate": "The card IS the audit — this is the most expensive per-call tool in the batch.",
+        "absent_case": "OWED — a chapter_id/outline_node_id that does not exist must be refused, and its description says the two are alternatives, so passing NEITHER must also be refused rather than defaulted.",
+        "tenancy": "OWED — book-scoped, and the spend lands on the caller."
+      },
+      "defects": [],
+      "_control_note": "Successor to composition-generate-named-chapter, which named the chapter but left it WITHOUT a scene plan. That arm measured 4/5 called and every call minted a card for a chapter the engine would have refused — approve-then-fail, invisible because nobody approved. Both arms stay on file: the earlier one is what exposed the missing propose-time check."
+    }
+  ]
+}

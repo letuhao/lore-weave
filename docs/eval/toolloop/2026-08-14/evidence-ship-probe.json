@@ -1,0 +1,32 @@
+{
+  "_fixture": {
+    "a_entity": "01a02f80-7432-7344-86c6-c09db83b1993",
+    "a_attr_value": "01a02f80-7433-764b-bc04-7de565d45f67",
+    "b_entity": "01a02f80-7854-756a-b288-a84f6b72f520",
+    "b_attr_value": "01a02f80-7854-7f16-8963-28d9ed16d81e"
+  },
+  "absent": {
+    "verdict": "refused",
+    "detail": "MCP glossary_create_evidence error: attr_value_id does not belong to this entity",
+    "asked": "an attr_value_id that does not exist"
+  },
+  "tenancy": {
+    "verdict": "refused",
+    "detail": "MCP glossary_create_evidence error: attr_value_id does not belong to this entity",
+    "asked": "an attr_value_id belonging to the OTHER book's entity"
+  },
+  "oracle": {
+    "identical": true,
+    "why": "separating 'not yours' from 'no such thing' is an existence oracle"
+  },
+  "empty": {
+    "verdict": "refused",
+    "detail": "MCP glossary_create_evidence error: attr_value_id must be a UUID",
+    "asked": "the required attr_value_id present but blank"
+  },
+  "mismatch": {
+    "verdict": "refused",
+    "detail": "MCP glossary_create_evidence error: entity not found in this book",
+    "asked": "a REAL attr_value_id paired with the WRONG entity_id — the tool's description says the value must belong to the entity"
+  }
+}

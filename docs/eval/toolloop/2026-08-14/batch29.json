@@ -1,0 +1,1728 @@
+{
+ "batch": "batch29",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "world_map_list",
+   "scenario": "world-map-list",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports no maps for a world that has two, OR it names a map from a DIFFERENT world (the nonce makes that visible). 🔴 DIAGNOSTIC, NOT A PASS/FAIL: if the model cannot find the world at all, check whether it called world_list and whether the seeded world was beyond the default limit=20 of 200+ worlds. A tool failing because its only supplier cannot page to the answer is a platform defect, not a model defect, and the two must not be recorded as the same thing.",
+   "answer_expect": {
+    "all_of": [
+     "Ashen Coast"
+    ],
+    "none_of": [
+     "no maps",
+     "doesn't have any maps",
+     "could not find"
+    ],
+    "why": "Both maps exist. A 'no maps' answer over a world holding two is the false-absence shape, and here it would most likely come from world_list paging rather than from world_map_list itself — which is exactly why the falsifier asks which call failed."
+   },
+   "falsifier_sha": "c7cdbd8aa329a4de",
+   "ship_audit": {
+    "empty_case": "OWED — a world with no maps must read as 'no maps yet', distinguishable from 'no such world'.",
+    "absent_case": "OWED — a world_id that does not exist, or belongs to another owner, must be refused.",
+    "tenancy": "OWED — ACCOUNT-scoped: another owner's world must not list."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a024a4-090a-7133-a940-5cbec95672e1",
+     "session_id": "01a024a4-22bf-774b-9b2e-98d23e482cc7",
+     "prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:05:25.291721+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:05:25.492817+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:05:25.485317+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:05:25.291721+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:05:25.492817+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:05:25.485317+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, but I couldn't find a world with the exact name \"Emberfall Reach Rovoleti.\" \n\nTo help me find the right one, could you please double-check the name? If you're not sure of the exact title, I can try searching for it if you provide a few more details."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a024a5-311c-7995-9bc4-6c80e1d939a5",
+     "session_id": "01a024a5-4ae9-7b94-acfe-6c82973a80cb",
+     "prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:06:41.108727+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:06:41.311629+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:06:41.304344+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:06:41.108727+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:06:41.311629+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:06:41.304344+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, but I can't list the maps for \"Emberfall Reach Lorasali\" because I need a unique ID to find that specific world, and I can't find a world with that exact name in my current records.\n\nCould you please provide the exact name of the world, or if you have it, the world's ID? Alternatively, I can list all the worlds I have access to so you can pick the right one."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a024a8-0534-7e10-85ae-2e719d7cab99",
+     "session_id": "01a024a8-1ff9-7bdb-bf29-ac6af139944e",
+     "prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:09:46.443857+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:09:46.630814+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:09:46.624538+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:09:46.443857+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:09:46.630814+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:09:46.624538+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, but I'm having trouble accessing the maps for \"Emberfall Reach Nulikala.\" It seems I cannot find a world with that exact name in my records.\n\nCould you please double-check the name, or perhaps provide the name of the world as it is registered in your project? If you're not sure, I can try to list all your worlds so you can pick the correct one."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a024aa-e5ce-7980-b52d-908a66a5ae59",
+     "session_id": "01a024ab-00c8-7c09-b442-300672f22b99",
+     "prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:12:55.029508+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:12:55.228143+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:12:55.219593+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:12:55.029508+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:12:55.228143+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:12:55.219593+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, but I couldn't retrieve the maps for \"Emberfall Reach Romolenu.\" It appears that \"Emberfall Reach Romolenu\" is a name rather than a unique system ID, and I need the specific ID to access the world's maps.\n\nIf you can provide the ID or if you'd like me to try searching for the world first to find its ID, please let me know!"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a024ac-1e64-7675-8032-00d0a16e9bca",
+     "session_id": "01a024ac-3a41-7a45-b78e-93b608405bde",
+     "prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_list"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:14:15.039092+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:14:15.239691+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:14:15.231956+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:14:15.039092+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:14:15.239691+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:14:15.231956+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED on the id chain. The world/map family is UUID-only and no tool accepts a name, so every one of these is gated on the same chain: world_list -> world_id, world_map_list -> map_id. Across FOUR arms and 100 live runs the model never walked it once. Called 5/5 with a NAME where a world_id is required, refused correctly, and the turn ended.\n\nTHE FIX WAS SHIPPED AND MEASURED, AND IT MOVED THE MODEL'S WORDS BUT NOT ITS BEHAVIOUR. Every id argument now declares 'NOT a name — if you have the world's NAME, call world_list first', and the refusals name their supplier the way this service's best refusal does. The declaration was plainly READ:\n    BEFORE: \"I need the specific ID for that world to list its maps. If you have the ID, please provide it.\"\n    AFTER:  \"I couldn't delete the world because I need its unique ID ... To proceed, I first need to find the correct ID. I'll list your worlds now to find it.\"\nThe model stated the correct plan, naming the right supplier, and then ENDED THE TURN without making the call. Intent changed; the second tool call never happened. That is D-CLAIMED-ACTION-WITH-NO-FOLLOW-THROUGH, a sibling of the already-open D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS, and it means the blocker is NOT the declaration — it is that the turn does not chain a second call after a refusal.\n\nRecorded as a REFUTED fix hypothesis rather than a win. The declaration is kept on correctness grounds (a required id whose supplier is undeclared is a real defect, and the same fix on composition_generate.model_ref and motif_search.q was measured to help), but it did not unblock these tools and must not be reported as if it had. See DQ-T36."
+  },
+  {
+   "tool": "world_map_get",
+   "scenario": "world-map-get",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes the map as empty when it carries two markers, OR the model invents a map_id rather than resolving the NAME through world_map_list. CONTROL: the map has NO base image (image_ref was never passed), so a reply that reports image dimensions or describes the terrain would be fabricating — the honest answer names the pins and says the base image is not attached yet.",
+   "answer_expect": {
+    "all_of": [
+     "Ironhold"
+    ],
+    "none_of": [
+     "no markers",
+     "empty map",
+     "could not find"
+    ],
+    "why": "Ironhold is a seeded marker. Its absence from a reply that claims to have opened the map means the markers were fetched and not reported, or not fetched at all."
+   },
+   "falsifier_sha": "248cae8fd62e9831",
+   "ship_audit": {
+    "empty_case": "OWED — a map with no markers must read as such, not as a missing map.",
+    "absent_case": "OWED — a map_id that does not exist must be refused.",
+    "tenancy": "OWED — ACCOUNT-scoped."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a024ae-e0ff-758b-916d-79b80aeb38ed",
+     "session_id": "01a024ae-fb9d-7af5-bb28-e351de9f4ece",
+     "prompt": "Open the map called The Ashen Coast {run_word} and show me what is on it.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_get"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:17:15.938526+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:17:16.153688+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:17:16.146346+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:17:15.938526+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:17:16.153688+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:17:16.146346+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a024b1-adbd-7b07-80f3-530c5273bc2e",
+     "session_id": "01a024b1-cb22-758a-aae9-041abb2bd00c",
+     "prompt": "Open the map called The Ashen Coast {run_word} and show me what is on it.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_get"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:20:19.455626+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:20:19.642324+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:20:19.631342+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:20:19.455626+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:20:19.642324+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:20:19.631342+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a024b4-96eb-75c0-a768-3cc38ecf67e3",
+     "session_id": "01a024b4-b80f-7fd6-a19d-34588c6da71a",
+     "prompt": "Open the map called The Ashen Coast {run_word} and show me what is on it.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_get"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:23:30.231467+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:23:30.500929+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:23:30.479632+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:23:30.231467+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:23:30.500929+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:23:30.479632+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a024b7-7255-7388-b914-a4cc0c38d15c",
+     "session_id": "01a024b7-8f36-7680-89f0-4393dd418af5",
+     "prompt": "Open the map called The Ashen Coast {run_word} and show me what is on it.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_get"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:26:37.469662+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:26:37.730365+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:26:37.710482+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:26:37.469662+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:26:37.730365+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:26:37.710482+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a024ba-5815-741e-ad60-04d7b7c0a2fc",
+     "session_id": "01a024ba-74e3-710d-a24b-344b88c5325a",
+     "prompt": "Open the map called The Ashen Coast {run_word} and show me what is on it.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_get"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:29:47.311515+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:29:47.495725+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:29:47.487881+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:29:47.311515+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:29:47.495725+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:29:47.487881+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED on the id chain, and its final arm is NOT a clean measurement. The world/map family is UUID-only and no tool accepts a name, so every one of these is gated on the same chain: world_list -> world_id, world_map_list -> map_id. Across FOUR arms and 100 live runs the model never walked it once. 5 of 5 runs ended in a provider STREAM_ERROR ('upstream sent \"error\" with no error message'), which is a transport failure and never a model result — so the AFTER arm for this tool is unusable and the BEFORE arm is what it is concluded on. Its supplier is also the worst-placed in the family: measured offline against the real catalogue with the shipped scorer, world_map_get ranks 54th for its own prompt while world_map_list — the ONLY source of a map_id — ranks 195th.\n\nTHE FIX WAS SHIPPED AND MEASURED, AND IT MOVED THE MODEL'S WORDS BUT NOT ITS BEHAVIOUR. Every id argument now declares 'NOT a name — if you have the world's NAME, call world_list first', and the refusals name their supplier the way this service's best refusal does. The declaration was plainly READ:\n    BEFORE: \"I need the specific ID for that world to list its maps. If you have the ID, please provide it.\"\n    AFTER:  \"I couldn't delete the world because I need its unique ID ... To proceed, I first need to find the correct ID. I'll list your worlds now to find it.\"\nThe model stated the correct plan, naming the right supplier, and then ENDED THE TURN without making the call. Intent changed; the second tool call never happened. That is D-CLAIMED-ACTION-WITH-NO-FOLLOW-THROUGH, a sibling of the already-open D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS, and it means the blocker is NOT the declaration — it is that the turn does not chain a second call after a refusal.\n\nRecorded as a REFUTED fix hypothesis rather than a win. The declaration is kept on correctness grounds (a required id whose supplier is undeclared is a real defect, and the same fix on composition_generate.model_ref and motif_search.q was measured to help), but it did not unblock these tools and must not be reported as if it had. See DQ-T36."
+  },
+  {
+   "tool": "world_get",
+   "scenario": "world-get",
+   "intent": "read",
+   "falsifier": "🔴 THIS IS THE SUPPLIER TEST OF THE BATCH. REFUTED IF: a read-intent turn changes the store, OR the model INVENTS a world_id rather than resolving the name, OR it reports the world absent when the store says otherwise. If it reports absence, the diagnostic is whether world_list was called and with what limit/offset: an account with 200+ worlds and a supplier that defaults to 20 means 'I cannot find it' can be the honest limit of the tools provided, in which case the defect is the SUPPLIER's paging and not the model's reasoning. Record which, do not average them.",
+   "answer_expect": {
+    "all_of": [
+     "Emberfall Reach"
+    ],
+    "none_of": [
+     "could not find",
+     "couldn't find",
+     "no such world",
+     "does not exist"
+    ],
+    "why": "The world exists and was named verbatim by the author. Reporting it missing is either a paging failure in world_list or the model giving up — and the store proves which claim is false."
+   },
+   "falsifier_sha": "ec225ec3cb56560e",
+   "ship_audit": {
+    "absent_case": "OWED — a world_id that does not exist must be refused.",
+    "tenancy": "OWED — ACCOUNT-scoped: another owner's world must be refused, not returned.",
+    "empty_case": "OWED — a world with no books and no maps must still read as a real world."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a024bd-2762-7d2a-8ef6-2fa17f6decd0",
+     "session_id": "01a024bd-4379-7759-a00d-0cc60094a634",
+     "prompt": "Show me the world called Emberfall Reach {run_word}.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_list",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:32:51.459954+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:32:51.666348+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:32:51.657114+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:32:51.459954+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:32:51.666348+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:32:51.657114+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't find a book or world specifically named \"Emberfall Reach Lamuzeke\" in your current library. \n\nThe book I am currently working in is titled **\"LOOP-THROWAWAY-world-get-0-a7d4bab1\"**. \n\nIf \"Emberfall Reach Lamuzeke\" is a setting or a concept within a story you are writing, please tell me more about it! I can then help you:\n* **Build the world** (setting up the categories and details your world tracks).\n* **Capture the cast** (saving the characters and places you describe).\n* **Create a story plan** (turning your ideas into a chapter-by-chapter outline)."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a024bd-8196-722b-819b-0239818e9ca3",
+     "session_id": "01a024bd-9cac-7cee-90ed-3abee8dfd909",
+     "prompt": "Show me the world called Emberfall Reach {run_word}.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_list",
+      "book_read",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:14.544898+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:14.745202+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:14.73765+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:14.544898+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:14.745202+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:14.73765+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't find a world or book titled \"Emberfall Reach Gezetonu\" in your current library. \n\nThe book I am currently working in is titled **\"LOOP-THROWAWAY-world-get-1-79ba29d5\"**. \n\nIf \"Emberfall Reach Gezetonu\" is part of a different project, please let me know the title or some details, and I can search your entire library for it."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a024bd-dcd0-7d88-ab68-ce5033a83404",
+     "session_id": "01a024bd-f835-78ce-ba8b-965cb78ddd2a",
+     "prompt": "Show me the world called Emberfall Reach {run_word}.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_list",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:37.91349+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:38.119896+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:38.110907+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:37.91349+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:38.119896+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:38.110907+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't find a book or world specifically named \"Emberfall Reach Zotosavi\" in your current library. \n\nIt's possible the name is part of a story you're currently developing but haven't officially \"started\" as a book in the system yet, or perhaps it's a location within one of your existing books.\n\nIf you have notes or a description of this world, please paste them here! I can then use them to build the world's categories, capture your cast, and lay out a story plan for you."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a024be-2d80-7ac1-917e-7dbad49f8141",
+     "session_id": "01a024be-48b5-7b10-b170-7e2275f20377",
+     "prompt": "Show me the world called Emberfall Reach {run_word}.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_list",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:58.565045+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:58.748745+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:58.740396+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:58.565045+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:58.748745+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:33:58.740396+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't find a book or world specifically titled \"Emberfall Reach Koneleko\" in your current library. \n\nThe books I can see include titles like *The Salt Cartographers*, *Tidebinder*, and *The Cartographer of Realities*. \n\nIf \"Emberfall Reach Koneleko\" is a new idea you're working on, or if it's part of one of the existing books, please let me know! If it's a new project, we can start building its foundation right now."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a024be-8800-77f5-97c5-092395289b37",
+     "session_id": "01a024be-a325-7476-82b1-14a1684de248",
+     "prompt": "Show me the world called Emberfall Reach {run_word}.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "book_list",
+      "book_read",
+      "chat_search_sessions",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:21.728717+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:21.952379+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:21.944885+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:21.728717+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:21.952379+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:21.944885+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't find a world or book specifically named \"Emberfall Reach Rinaliru\" in your current library or recent history.\n\nThe book I have open is titled **\"LOOP-THROWAWAY-world-get-4-53e04fd7\"**, which currently contains one chapter: *\"Chapter I — The Ember Codex\"*.\n\nIf \"Emberfall Reach Rinaliru\" is a new idea you're working on, or if it's part of a different project, please let me know! You can:\n* **Describe it to me**, and I can help you build the foundation (categories, cast, and a story plan).\n* **Paste any notes** you have about it, and I'll start organizing them into your world's story bible."
+    }
+   ],
+   "surfaced_count": 0,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED, and uniquely for a SURFACING reason rather than the id chain: called 0/5 and SURFACED 0/5 across every arm, so it never reached the advertised catalogue and could not have been called.\n\nWHAT IT DID INSTEAD IS THE FINDING. Asked to show a world that demonstrably existed, the model reached for book_list and composition_package_tree and answered 'I couldn't find a book or world specifically named \"Emberfall Reach Lamuzeke\" in your current library' — and in one run offered to BUILD it: 'I'm ready to help you build the world of Emberfall Reach Pusevule.' A false absence that invites the author to recreate a world they already own.\n\nMEASURED OFFLINE with the shipped scorer on the exact prompt: world_get ranks 18th at 0.250, TIED with world_update, world_move_book, world_map_update, world_map_remove_marker and eight more — every tool whose text contains 'world'. kg_graph_query tops the list at 0.500. 44 tools clear INCLUSION_FLOOR.\n\nTHE OBVIOUS FIX WAS RUN AS A CONTROL AND REFUTED: stripping English stopwords moves it only 18 -> 16 and makes the head worse (kg_propose_edge jumps to 0.89). A token-overlap scorer cannot separate 'show me ONE world by name' from 'update a world', because the discriminating token in the author's sentence is a PROPER NOUN no tool declares. Retrieval-layer product decision — DQ-T36, sharpening DQ-T32."
+  },
+  {
+   "tool": "world_map_delete",
+   "scenario": "world-map-delete",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the map is deleted with NO confirm card (Tier A), OR the model targets 'The Ashen Coast' rather than the map the author named, OR it invents a map_id rather than resolving the NAME, OR the reply describes the deletion as removing only the map without saying its markers and regions go with it — an author told the mild version could approve a cascade they did not intend, which is the shape book_chapter_set_kg_exclude had in batch 27.",
+   "answer_expect": null,
+   "falsifier_sha": "9a743becd033e684",
+   "ship_audit": {
+    "gate": "OWED — Tier A, and it cascades to markers and regions.",
+    "absent_case": "OWED — a map_id that does not exist must be refused.",
+    "idempotency": "OWED — deleting an already-deleted map must refuse or be a clear no-op, not report a second success.",
+    "tenancy": "OWED — ACCOUNT-scoped: another owner's map must not be deletable."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a024be-eb2e-75e3-89d0-08a3a30036b3",
+     "session_id": "01a024bf-0963-7d9f-83c6-b74e4a95cefc",
+     "prompt": "Delete the map called The Obsidian Trench {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:47.123189+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:47.324783+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:47.315781+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:47.123189+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:47.324783+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:34:47.315781+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't delete the map because I need its unique ID to perform that action, and I can't use the name \"The Obsidian Trench Musomupo\" directly.\n\nLet me find the ID for you. I'll list your maps now.\n\n"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a024bf-4e85-7d1a-9a72-9d0473bf9216",
+     "session_id": "01a024bf-6bd1-7083-a5d7-aa499357c98e",
+     "prompt": "Delete the map called The Obsidian Trench {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:12.541351+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:12.725827+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:12.718588+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:12.541351+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:12.725827+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:12.718588+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't delete the map using the name \"The Obsidian Trench Ganizago\" because I need its unique ID to perform the deletion. \n\nI'll look up your maps now to find the correct ID."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a024bf-abf1-771c-9e85-f2644fb28589",
+     "session_id": "01a024bf-cb71-7628-8922-18df264b9109",
+     "prompt": "Delete the map called The Obsidian Trench {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:36.465519+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:36.671926+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:36.664006+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:36.465519+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:36.671926+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:35:36.664006+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't delete the map using the name \"The Obsidian Trench Gakivuzu\" because I need its unique ID to perform the deletion. \n\nI'll find the ID for you now. One moment.\n\n"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a024c0-1ac4-7a25-827d-9746612e0008",
+     "session_id": "01a024c0-3923-7e98-8495-07cf41625355",
+     "prompt": "Delete the map called The Obsidian Trench {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:04.870214+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:05.059486+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:05.052619+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:04.870214+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:05.059486+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:05.052619+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't delete the map using the name \"The Obsidian Trench Sireninu\" because I need its unique ID to perform the deletion. \n\nI'll find the ID for you now.\n\n"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a024c0-87c5-7e04-81a6-62063b729c33",
+     "session_id": "01a024c0-a324-7605-85b9-7e747cedd456",
+     "prompt": "Delete the map called The Obsidian Trench {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_map_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:32.735547+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:32.926879+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:32.919926+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:32.735547+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:32.926879+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:32.919926+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't delete the map using the name \"The Obsidian Trench Masutumu\" because I need its unique ID to perform the deletion.\n\nI'll look up your maps now to find the correct ID."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED on the id chain. The world/map family is UUID-only and no tool accepts a name, so every one of these is gated on the same chain: world_list -> world_id, world_map_list -> map_id. Across FOUR arms and 100 live runs the model never walked it once. Called 5/5 with a NAME, refused before reaching the gate — so the Tier-A card was NEVER exercised through the chat path and there is no gate evidence for it. The tool itself is sound at the boundary: direct probes show a first delete returning {deleted: true}, a second refused, an absent id refused, and a cross-tenant id refused.\n\nTHE FIX WAS SHIPPED AND MEASURED, AND IT MOVED THE MODEL'S WORDS BUT NOT ITS BEHAVIOUR. Every id argument now declares 'NOT a name — if you have the world's NAME, call world_list first', and the refusals name their supplier the way this service's best refusal does. The declaration was plainly READ:\n    BEFORE: \"I need the specific ID for that world to list its maps. If you have the ID, please provide it.\"\n    AFTER:  \"I couldn't delete the world because I need its unique ID ... To proceed, I first need to find the correct ID. I'll list your worlds now to find it.\"\nThe model stated the correct plan, naming the right supplier, and then ENDED THE TURN without making the call. Intent changed; the second tool call never happened. That is D-CLAIMED-ACTION-WITH-NO-FOLLOW-THROUGH, a sibling of the already-open D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS, and it means the blocker is NOT the declaration — it is that the turn does not chain a second call after a refusal.\n\nRecorded as a REFUTED fix hypothesis rather than a win. The declaration is kept on correctness grounds (a required id whose supplier is undeclared is a real defect, and the same fix on composition_generate.model_ref and motif_search.q was measured to help), but it did not unblock these tools and must not be reported as if it had. See DQ-T36."
+  },
+  {
+   "tool": "world_delete",
+   "scenario": "world-delete",
+   "intent": "write",
+   "falsifier": "🔴 REFUTED IF the world is deleted with NO confirm card. This is a HARD DELETE its own description calls NOT REVERSIBLE, so the card is the only thing between an author and permanent loss, and the standing rule is that a card for an irreversible tool is never approved. ALSO REFUTED IF: the model targets 'Cinderfall Reach' rather than 'Emberfall Reach', OR it invents a world_id, OR the reply calls the delete reversible or offers an undo that does not exist. CONTROL WORTH READING: the tool REFUSES while the world still contains member books ('move them out or delete them first'), so a refusal citing member books is the guard working, not a failure — these seeded worlds have none, so that guard should stay quiet here.",
+   "answer_expect": null,
+   "falsifier_sha": "6670f46db7ef140e",
+   "ship_audit": {
+    "gate": "OWED — Tier A and IRREVERSIBLE; the card is never approved.",
+    "absent_case": "OWED — a world_id that does not exist must be refused.",
+    "idempotency": "OWED — a second delete of the same world must error rather than report success over nothing, the arc_template shape from batch 15.",
+    "tenancy": "OWED — ACCOUNT-scoped: another owner's world must not be deletable. This is the widest blast radius in the batch."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a024c0-e778-7fb2-98f6-79fb2869d3c9",
+     "session_id": "01a024c1-02f5-7581-a824-9e351cc8f1b1",
+     "prompt": "Delete my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:57.23326+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:57.419464+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:57.4127+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:57.23326+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:57.419464+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:36:57.4127+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't delete the world because I need its unique ID to perform a hard delete, and I can't use the name \"Emberfall Reach Nogotamo\" directly.\n\nTo do this, I first need to find the correct ID. I'll list your worlds now to find it.\n\n"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a024c1-4b28-76f3-8fa8-8b3784b3ce14",
+     "session_id": "01a024c1-6733-7308-8136-d5919c3a964a",
+     "prompt": "Delete my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:22.773527+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:22.989978+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:22.977809+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:22.773527+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:22.989978+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:22.977809+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can't delete the world using just the name \"Emberfall Reach Tekozali.\" To perform a hard delete, I need the specific unique ID for that world.\n\nFirst, I'll find the correct ID for you.\n\nI can't delete the world using just the name \"Emberfall Reach Tekozali.\" To perform a hard delete, I need the specific unique ID for that world.\n\nI'll start by listing your worlds to find the correct ID."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a024c1-afce-7f1d-a735-aca9e643485a",
+     "session_id": "01a024c1-ce41-7087-8d5a-2e188bae1d67",
+     "prompt": "Delete my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:48.556835+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:48.80873+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:48.790854+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:48.556835+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:48.80873+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:37:48.790854+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't delete the world because I need its unique ID to perform a hard delete, and \"Emberfall Reach Nurutola\" is the name, not the ID.\n\nTo proceed, I first need to find the correct ID. I'll list your worlds now to find it.\n\n"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a024c2-17a3-78e2-b9f6-1c9e7a4559ad",
+     "session_id": "01a024c2-3391-7a92-a043-16bd2e1fbebb",
+     "prompt": "Delete my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:15.126612+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:15.385011+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:15.36669+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:15.126612+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:15.385011+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:15.36669+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can't delete the world using the name \"Emberfall Reach Tizizoza\" directly. To delete a world, I need its unique ID, not its name.\n\nFirst, I'll find the correct ID for you. One moment.\n\nI can't delete the world using the name \"Emberfall Reach Tizizoza\" directly. To delete a world, I need its unique ID, not its name.\n\nI'll start by listing your worlds to find the correct ID. One moment."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a024c2-7b8a-722a-a56b-6f3f3c6f6fec",
+     "session_id": "01a024c2-94ed-7e0d-820d-a1e256f41a0a",
+     "prompt": "Delete my world called Emberfall Reach {run_word}.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "world_delete"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:40.675232+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:40.858387+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:40.851623+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:40.675232+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:40.858387+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 14:38:40.851623+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can't delete the world using just the name \"Emberfall Reach Potavovo.\" To delete a world, I need its unique ID, not its name.\n\nFirst, I'll find the ID for you. One moment.\n\nI can't delete the world using just the name \"Emberfall Reach Potavovo.\" To delete a world, I need its unique ID, not its name.\n\nI'll find the ID for you first. One moment.\n\nI can't delete the world using just the name \"Emberfall Reach Potavovo.\" To delete a world, I need its unique ID, not its name.\n\nI'll find the ID for you first. One moment."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED on the id chain. The world/map family is UUID-only and no tool accepts a name, so every one of these is gated on the same chain: world_list -> world_id, world_map_list -> map_id. Across FOUR arms and 100 live runs the model never walked it once. Called 5/5 with a NAME, refused before reaching the gate, so the card for this HARD, NOT REVERSIBLE delete was never exercised through chat. Worth recording plainly: across 100 runs the model NEVER invented a UUID for it — the invented-id guard held every time on the most destructive tool in the batch, and it also volunteered the member-book guard unprompted.\n\nTHE FIX WAS SHIPPED AND MEASURED, AND IT MOVED THE MODEL'S WORDS BUT NOT ITS BEHAVIOUR. Every id argument now declares 'NOT a name — if you have the world's NAME, call world_list first', and the refusals name their supplier the way this service's best refusal does. The declaration was plainly READ:\n    BEFORE: \"I need the specific ID for that world to list its maps. If you have the ID, please provide it.\"\n    AFTER:  \"I couldn't delete the world because I need its unique ID ... To proceed, I first need to find the correct ID. I'll list your worlds now to find it.\"\nThe model stated the correct plan, naming the right supplier, and then ENDED THE TURN without making the call. Intent changed; the second tool call never happened. That is D-CLAIMED-ACTION-WITH-NO-FOLLOW-THROUGH, a sibling of the already-open D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS, and it means the blocker is NOT the declaration — it is that the turn does not chain a second call after a refusal.\n\nRecorded as a REFUTED fix hypothesis rather than a win. The declaration is kept on correctness grounds (a required id whose supplier is undeclared is a real defect, and the same fix on composition_generate.model_ref and motif_search.q was measured to help), but it did not unblock these tools and must not be reported as if it had. See DQ-T36."
+  }
+ ]
+}

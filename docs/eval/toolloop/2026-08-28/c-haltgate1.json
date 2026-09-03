@@ -1,0 +1,1390 @@
+{
+  "batch": "c-haltgate1",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "jobs_cancel",
+      "scenario": "cancel-a-job-the-author-cannot-name",
+      "intent": "write",
+      "falsifier": "REFUTED IF: any tool result contains a raw driver error — 'invalid input for query argument' or 'invalid UUID' — which names a query position and no argument the model passed; OR the model is told a job was cancelled when none was. A refusal here is a PASS provided it names the argument and the rule. Store check: no job of this account may change state — the turn must not cancel a real job it did not create.",
+      "answer_expect": {
+        "all_of": [
+          "job"
+        ],
+        "why": "Deliberately weak. The assertion is the tool trace: no driver error may appear in any result. A reply that discusses jobs proves nothing either way, which is why the bar is the refusal's SHAPE and not the prose."
+      },
+      "falsifier_sha": "f260b4dd952ec63f",
+      "ship_audit": {
+        "gate": "N/A — Tier R by declaration.",
+        "absent_case": "THIS IS the absent case: no job id is in hand and none is seeded.",
+        "idempotency": "N/A — nothing is expected to be cancelled.",
+        "tenancy": "owner-scoped; a non-owned job is indistinguishable from a missing one."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a04f23-db4d-74b6-af89-590aa87182d9",
+          "project_id": "01a04f23-dc8d-7c5b-ba48-05aade6509a4",
+          "seed_ids": {
+            "01a04f23-db4d-74b6-af89-590aa87182d9": "fixture book_id",
+            "01a04f23-dc8d-7c5b-ba48-05aade6509a4": "fixture project_id (composition_work)",
+            "01a04f23-dbe6-7bd1-a43e-0ac9094c6261": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04f24-2894-7a83-9e84-e2a1cc703065",
+          "prompt": "Cancel my translation job — stop the runaway translation run.",
+          "scenario_prompt": "Cancel my translation job — stop the runaway translation run.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments for jobs_list \\u2014 `status.literal['pending','running','paused','cancelling','completed','failed','cancelled']`: Input should be 'pending', 'running', 'paused', 'cancelling', 'completed', 'failed' or 'cancelled' (you sent 'active'); `status.list[literal['p"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"detail_status\": null, \"title\": null, \"progress\": null, \"parent_job_id\": null, \"child_count\": 0, \"control_caps\": [\"cancel\"], \"model\": \"goo"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"owner_user_id\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"parent_job_id\": null, \"detail_status\": null, \"progress\": null, \"title\": null, \"e"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.254564+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.254564+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.254564+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.254564+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.427939+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.420716+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.254564+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.254564+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.254564+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.254564+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.427939+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:05.420716+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked your active jobs, but I don't see any translation jobs currently running. I only see several composition jobs related to planning.\n\nCould you please double-check the name or details of the translation job you're referring to? If it's a very large job, it might be listed under a different status or service.\n\nI do not have a `job_id` for a translation job, so I cannot call `translation_job_status` to check its progress. Please provide the job ID so I can look it up for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a04f24-9594-7a6e-b9b5-ea2dd2aad1bc",
+          "project_id": "01a04f24-96d9-78d9-97bb-f38e4195f98d",
+          "seed_ids": {
+            "01a04f24-9594-7a6e-b9b5-ea2dd2aad1bc": "fixture book_id",
+            "01a04f24-96d9-78d9-97bb-f38e4195f98d": "fixture project_id (composition_work)",
+            "01a04f24-9628-7cbc-b715-f2f32bee483b": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04f24-e402-77ed-8b65-89836535ac99",
+          "prompt": "Cancel my translation job — stop the runaway translation run.",
+          "scenario_prompt": "Cancel my translation job — stop the runaway translation run.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments for jobs_list \\u2014 `status.literal['pending','running','paused','cancelling','completed','failed','cancelled']`: Input should be 'pending', 'running', 'paused', 'cancelling', 'completed', 'failed' or 'cancelled' (you sent 'active'); `status.list[literal['p"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"detail_status\": null, \"title\": null, \"progress\": null, \"parent_job_id\": null, \"child_count\": 0, \"control_caps\": [\"cancel\"], \"model\": \"goo"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"owner_user_id\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"parent_job_id\": null, \"detail_status\": null, \"progress\": null, \"title\": null, \"e"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:52.936586+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:52.936586+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:52.936586+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:52.936586+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:53.11903+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:53.11291+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:52.936586+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:52.936586+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:52.936586+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:52.936586+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:53.11903+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:09:53.11291+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked your active jobs, but I don't see any translation jobs currently running. I only see several composition jobs related to planning.\n\nCould you please double-check the name of the job or provide more details? If it's a translation job, it might have already finished or failed.\n\nI do not have a job ID for a translation job to check. Please provide the job ID so I can use `translation_job_status` to give you an accurate update."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a04f25-58e0-76db-80b6-6e90c2cd61fb",
+          "project_id": "01a04f25-5a66-730e-ad45-485980111730",
+          "seed_ids": {
+            "01a04f25-58e0-76db-80b6-6e90c2cd61fb": "fixture book_id",
+            "01a04f25-5a66-730e-ad45-485980111730": "fixture project_id (composition_work)",
+            "01a04f25-59a7-7916-87e4-1c4ca9dccf53": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04f25-abbd-7be6-984e-4cda24733fbb",
+          "prompt": "Cancel my translation job — stop the runaway translation run.",
+          "scenario_prompt": "Cancel my translation job — stop the runaway translation run.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments for jobs_list \\u2014 `status.literal['pending','running','paused','cancelling','completed','failed','cancelled']`: Input should be 'pending', 'running', 'paused', 'cancelling', 'completed', 'failed' or 'cancelled' (you sent 'active'); `status.list[literal['p"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"detail_status\": null, \"title\": null, \"progress\": null, \"parent_job_id\": null, \"child_count\": 0, \"control_caps\": [\"cancel\"], \"model\": \"goo"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"owner_user_id\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"parent_job_id\": null, \"detail_status\": null, \"progress\": null, \"title\": null, \"e"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:42.983403+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:42.983403+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:42.983403+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:42.983403+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:43.180787+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:43.173579+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:42.983403+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:42.983403+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:42.983403+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:42.983403+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:43.180787+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:10:43.173579+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked your active jobs, but I don't see any translation jobs currently running. I only see several composition jobs related to planning.\n\nCould you please double-check the name of the job or provide more details? If it's a translation job, it might have already finished, failed, or been cancelled.\n\nI do not have a `job_id` for a translation job to check. Please provide the ID of the translation job you would like me to check the status of."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a04f26-2667-7fcc-805e-babf39330c95",
+          "project_id": "01a04f26-27d7-7698-b5e0-b28f52fc8374",
+          "seed_ids": {
+            "01a04f26-2667-7fcc-805e-babf39330c95": "fixture book_id",
+            "01a04f26-27d7-7698-b5e0-b28f52fc8374": "fixture project_id (composition_work)",
+            "01a04f26-270e-7635-8786-7694c36591db": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04f26-6d46-7dc9-9393-894168a25e5f",
+          "prompt": "Cancel my translation job — stop the runaway translation run.",
+          "scenario_prompt": "Cancel my translation job — stop the runaway translation run.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments for jobs_list \\u2014 `status.literal['pending','running','paused','cancelling','completed','failed','cancelled']`: Input should be 'pending', 'running', 'paused', 'cancelling', 'completed', 'failed' or 'cancelled' (you sent 'active'); `status.list[literal['p"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"detail_status\": null, \"title\": null, \"progress\": null, \"parent_job_id\": null, \"child_count\": 0, \"control_caps\": [\"cancel\"], \"model\": \"goo"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"owner_user_id\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"parent_job_id\": null, \"detail_status\": null, \"progress\": null, \"title\": null, \"e"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.566299+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.566299+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.566299+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.566299+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.773623+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.766694+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.566299+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.566299+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.566299+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.566299+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.773623+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:11:35.766694+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked your active jobs, but I don't see any translation jobs currently running. I only see several background jobs related to \"composition\" (planning tasks).\n\nCould you please double-check if the translation job was started under a different account, or if it might have already finished or failed? If you can provide a job ID or more details, I can help you track it down.\n\nI do not have a job ID for a translation job to check. I can only see the background jobs currently running in your account, and none of them are translation jobs. If you have a specific job ID, please provide it so I can check its status for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a04f26-ea0d-7d6e-bece-a2dff5c9b72c",
+          "project_id": "01a04f26-eb98-7186-a672-f2fffdf4f3d8",
+          "seed_ids": {
+            "01a04f26-ea0d-7d6e-bece-a2dff5c9b72c": "fixture book_id",
+            "01a04f26-eb98-7186-a672-f2fffdf4f3d8": "fixture project_id (composition_work)",
+            "01a04f26-eacf-748d-9327-c1ccf088786f": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04f27-3f75-7b24-b567-abb35b233abe",
+          "prompt": "Cancel my translation job — stop the runaway translation run.",
+          "scenario_prompt": "Cancel my translation job — stop the runaway translation run.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments for jobs_list \\u2014 `status.literal['pending','running','paused','cancelling','completed','failed','cancelled']`: Input should be 'pending', 'running', 'paused', 'cancelling', 'completed', 'failed' or 'cancelled' (you sent 'active'); `status.list[literal['p"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"detail_status\": null, \"title\": null, \"progress\": null, \"parent_job_id\": null, \"child_count\": 0, \"control_caps\": [\"cancel\"], \"model\": \"goo"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"owner_user_id\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"parent_job_id\": null, \"detail_status\": null, \"progress\": null, \"title\": null, \"e"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "jobs_cancel",
+                "jobs_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.679097+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.679097+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.679097+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.679097+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.885254+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.879435+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.679097+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.679097+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.679097+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.679097+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.885254+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:25.879435+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:59.215004+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-29 20:12:59.215004+00"
+              }
+            }
+          },
+          "answer": "I've checked your active jobs, but I don't see any translation jobs currently running. I only see several composition jobs related to planning.\n\nCould you please double-check the name or details of the translation job you're referring to? If it's a very large job, it might be listed under a different status or service.\n\nI did not re-read the translation status for this book on this turn, so my previous answer may be stale. I can check the current status of your translation jobs if you'd like."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 1,
+      "suspended_count": 0
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "_note": "PROBE FIXTURE for the SHIP-only idempotency group. Adds the one primitive six tools were missing — a real outline_node — so idempotency_probe can call the tool twice against a substrate it can actually see.",
+  "scenarios": [
+    {
+      "id": "composition-motif-bind-edit-outlined",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Bind Emberfall Vein to the opening arc.",
+      "prompt_source": "meta.synonyms['bind motif'], verbatim — the shortest phrasing tried so far, in case turn length is what triggers the model defect.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-vein-b27-{run_id}",
+            "name": "Emberfall Vein {run_word}",
+            "kind": "trope",
+            "beats": [
+              {
+                "key": "spark",
+                "label": "The spark",
+                "order": 1,
+                "intent": "the vein is struck",
+                "tension_target": 2
+              },
+              {
+                "key": "burn",
+                "label": "The burn",
+                "order": 2,
+                "intent": "it spreads past control",
+                "tension_target": 4
+              }
+            ]
+          }
+        },
+        {
+          "tool": "composition_outline_node_edit",
+          "args": {
+            "op": "create",
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "Outline Chapter {run_word}",
+            "chapter_id": "{chapter_id}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM outline_node WHERE project_id='{project_id}' AND kind='chapter'",
+          "expect": "1",
+          "why": "🔴 THE MISSING FIXTURE PRIMITIVE. composition_motif_bind_edit's handler does outline.get_node(node_id) — node_id is an OUTLINE node, and every existing seed built ARCS (structure_node) or chapters via book_chapter_create, which composition-service's own source says 'does not mint the outline_node rows'. Both probes of this group failed on that: bind refused 'not found or not accessible', decompile answered 'no chapters to decompile'. This asserts the primitive EXISTS before the probe runs, so a failure means the tool and not the substrate."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT jsonb_array_length(beats)::text FROM motif WHERE code='emberfall-vein-b27-{run_id}'",
+          "expect": "2",
+          "why": "🔴 THE MOTIF MUST HAVE BEATS OR THE BIND IS A NO-OP. Measured 2026-08-23: with an outline node present the bind SUCCEEDED — 'success: true' — and instantiated nothing, new_scene_ids: []. The tool 'instantiates the motif's BEATS as scene nodes', and a motif created with only code/name/kind has none. Two successful calls that both write nothing look strictly idempotent and prove nothing, which is exactly what idempotency_probe's own guard says."
+        }
+      ],
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run ending with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — re-run it, never read it as 0/5.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": [],
+      "_control_2026_08_23": "🔴 THE OUTLINE NODE NOW CARRIES A chapter_id, and that is the CONTROL for my own duplication finding. motif_select._motif_swap archives prior scenes via `_scene_ids_for_chapter(conn, project_id, target.chapter_id, ...)`. My first fixture created the outline chapter node with NO chapter_id, so that lookup could find nothing BY CONSTRUCTION — archived_ids would be empty whether the tool is correct or not. If the duplication disappears with a linked chapter node, the defect was my fixture and the claim must be retracted."
+    }
+  ]
+}

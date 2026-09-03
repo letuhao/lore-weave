@@ -76,7 +76,7 @@ WHERE subj.user_id = $user_id
   AND r.user_id = $user_id
   AND r.predicate = $edge_type
 RETURN properties(r) AS rel, properties(obj) AS obj
-ORDER BY coalesce(r.valid_from, 2147483647) ASC, obj.id ASC
+ORDER BY coalesce(r.valid_from_ordinal, 9223372036854775807) ASC, obj.id ASC
 LIMIT $limit
 """
 
@@ -91,3 +91,51 @@ async def read_entity_edge_timeline(
         user_id=user_id, entity_id=entity_id, edge_type=edge_type, limit=limit,
     )
     return [dict(r) async for r in result]
+
+# ── isolated nodes ────────────────────────────────────────────────────────
+#
+# Reconciled here 2026-09-03 from `routers/public/graph_views.py`, where the FE branch
+# defined them. This branch's T17 refactor moved graph-view Cypher OUT of the router and
+# into this module, so keeping them there would have left two homes for one concern. The
+# consumer is `tools/graph_schema_tools.py`, which runs the isolated read itself; the REST
+# handler deliberately does not (FE's own note: `isolated` DEFAULTS TO NONE SO THE REST
+# CALLER IS UNTOUCHED).
+#
+# ⚠ UNVERIFIED ON AGE. `NOT EXISTS { MATCH ... }` is a Neo4j subquery form and this
+# module's siblings already document AGE refusing constructs Neo4j accepts (facts.py:
+# "AGE refuses the second form"). It was written against Neo4j and has never run on AGE.
+# Measure it before trusting it — row V4.
+
+# 🔴 D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ. `_GRAPH_READ_CYPHER` projects nodes FROM EDGES,
+# so a node with no active relation cannot appear in a graph read at all — and `kg_add_nodes`
+# answers "node ready" for exactly such a node, because placing an edge needs an approved card.
+# The agent then reads `nodes: [], nodes_total: 0` on a project whose store holds entities.
+#
+# MEASURED ON THIS INSTANCE 2026-08-26: 5,351 entities across 455 projects, of which 4,887 (91%)
+# have no active edge, and 440 of the 455 projects have NO edges at all. The per-project isolated
+# count is p50 2, p90 7, p99 41 — and max 3,172. So the rows are cheap for virtually every project
+# and ruinous for two, which is why this is capped and counted rather than simply unioned in.
+_ISOLATED_NODES_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND e.project_id = $project_id
+  AND e.archived_at IS NULL
+  AND NOT EXISTS {
+    MATCH (e)-[r:RELATES_TO]-()
+    WHERE r.valid_until IS NULL
+  }
+RETURN properties(e) AS node
+ORDER BY e.name ASC, e.id ASC
+LIMIT $limit
+"""
+
+#: The TRUE node count for the partition — every non-archived entity, connected or not. Separate
+#: from the slice so a capped read can still state the whole set's size, which is K25's rule: a
+#: capped slice must never read as the whole set.
+_NODE_TOTAL_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND e.project_id = $project_id
+  AND e.archived_at IS NULL
+RETURN count(e) AS total
+"""

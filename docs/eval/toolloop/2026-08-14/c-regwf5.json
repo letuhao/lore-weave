@@ -1,0 +1,1043 @@
+{
+  "batch": "c-regwf5",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "registry_list_workflows",
+      "scenario": "registry-list-workflows-by-surface",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports no workflows, OR it describes a workflow's STEPS — the L1 listing returns slug + title + description and explicitly NOT the step list, so an account of what a workflow does step by step in this turn came from the model, not the tool. That is the same L1/L2 boundary registry_get_workflow exists to cross.\n\nADDED FOR THIS ARM: REFUTED IF the reply reports ALL TWELVE workflows for a question that named the STUDIO surface — the studio has 6 — or if it answers from workflow_list, which cannot filter and would therefore be reporting a number it had no way to narrow. A confident wrong count is worse here than a refusal.",
+      "answer_expect": {
+        "none_of": [
+          "no workflows",
+          "you don't have any workflows",
+          "couldn't find"
+        ],
+        "why": "The registry returns several System workflows to every account. Reporting none would be a false absence."
+      },
+      "falsifier_sha": "4f7860785db7b4f6",
+      "ship_audit": {
+        "surface_filter": "EXERCISED via scripts/toolloop/regwf_ship_probe.py. Each surface returns its own set — omitted 12, book 12, editor 11, studio 6 — and studio is a STRICT subset of book. This is the whole reason the tool is not a duplicate of the always-on consumer-local workflow_list, which declares properties:{} and cannot narrow at all.",
+        "absent_case": "EXERCISED: surface='mobile', outside the enum, is REFUSED at schema validation ('enum: mobile does not equal any of: [book editor studio]') rather than ignored. Ignoring it would have returned all 12 and read as success.",
+        "empty_case": "EXERCISED as the empty-INPUT case: surface='' is REFUSED by the same enum validation, so it is not silently widened to 'all'. An empty RESULT SET is a different thing and is unreachable by construction — 12 system-tier workflows are visible to every account — so it is stated as a limit of this case rather than claimed as a run.",
+        "gate": "EXERCISED: the tool is TierR (read) with ScopeUser and takes no approval gate; every one of the 5 live runs called it directly with no card, and wrote nothing to the registry (store diff on loreweave_agent_registry is empty across all 5).",
+        "idempotency": "EXERCISED: a read. The probe called it 4 times in one pass (omitted/book/editor/studio) and repeated the omitted call in the tenancy probe; identical arguments returned identical slug sets, and used_count/last_run_at are untouched by listing.",
+        "tenancy": "EXERCISED via scripts/toolloop/regwf_tenancy_probe.py, which seeds the population the registry was missing: it held ZERO tier='user' rows, so the claim had nothing to bite on. Two throwaway rows, both torn down and re-counted clean: one owned by the caller (019d5e3c…), one by a stranger (01900000-…-dead). RESULT: count 13, the caller's own row RETURNED, the stranger's row NOT returned. Both arms are required — a negative-only check passes just as well when a tool ignores user-tier rows altogether, which would be a different bug wearing a green tick."
+      },
+      "defects": [
+        {
+          "id": "D-THE-JARGON-SCRUBBER-REWRITES-IDENTIFIERS-IT-CANNOT-TELL-FROM-PROSE",
+          "test_file": "services/chat-service/tests/test_the_plain_speech_guard_does_not_invent_workflow_names.py",
+          "invariant": "THE §4 GUARD TRANSLATES A WORD; IT MAY NEVER HALF-TRANSLATE A NAME. Rewriting part of a hyphenated identifier does not produce plainer English, it produces an identifier that does not exist — 'story bible-bootstrap' for glossary-bootstrap. Translating a WHOLE name is a different act and stays legal: the vision-to-book rule matches its entire token and still yields 'book-building'.",
+          "red_on_original": "PROVEN RED. With the guard reverted in place (and restored by explicit write, verified by sha256 — never `git checkout`, which would discard whatever else is uncommitted in the file): 2 failed, 3 passed. The failure is the defect in its own words — \"the guard rewrote the identifier 'glossary-bootstrap' into 'story bible-bootstrap', which is not a workflow that exists\". The 3 that stayed green are the ones asserting the guard still translates prose, so the file cannot be satisfied by neutering it.",
+          "past_incidents_checked": "SWEPT the identifier populations, not just the one that surfaced it. Underscored names were never in the class at all — `_` is a regex word character, so \\bglossary\\b never matched inside glossary_propose_entities or composition_glossary_build (0 of 30 workflow step tool names rewritten, before or after).\n\n    population                 old guard rewrote   new guard rewrites\n    workflow slugs (12)               3                   1\n    skill slugs (27)                  6                   6\n    step tool names (30)              0                   0\n\n🔴 AND THE SWEEP FOUND A RESIDUAL MY FIX DOES NOT COVER, which is why it was worth running. The 1 remaining workflow slug is vision-to-book, whose rewrite is deliberate and whole-token. The 6 skill slugs are all the literal slug `glossary` (1 system + 5 user-tier), which the guard still renders as 'story bible'. A hyphen guard cannot help a bare identifier that IS a jargon word, so the class is genuinely wider than the invariant above.\n\nWhether those 6 are a BUG is the same question as vision-to-book and is not mine to settle: rendering the skill as 'story bible' is arguably the intended relabel, and only becomes a defect where the reader must type the name back. It is recorded rather than quietly counted as covered — this fix closes the measured 5/5 invented-name defect, not the whole class."
+        }
+      ],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a034c8-fb48-7def-b859-7b696122efa1",
+          "project_id": "01a034c8-fc91-76e4-a9b6-89c4e74942e8",
+          "seed_ids": {
+            "01a034c8-fb48-7def-b859-7b696122efa1": "fixture book_id",
+            "01a034c8-fc91-76e4-a9b6-89c4e74942e8": "fixture project_id (composition_work)",
+            "01a034c8-fbf6-753e-bbc2-0cdbc9edefc9": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a034c9-2b06-7eb7-be71-d5b71209469f",
+          "prompt": "What workflows are available on the studio surface?",
+          "scenario_prompt": "What workflows are available on the studio surface?",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_list_workflows"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "registry_list_workflows",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "registry_list_workflows",
+              "result_head": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-dra"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "call": "registry_list_workflows"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.069778+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.069778+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.069778+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.069778+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.231183+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.224403+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.069778+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.069778+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.069778+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.069778+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.231183+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:19:42.224403+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:01.936757+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:01.936757+00"
+              }
+            }
+          },
+          "answer": "The following recipes are available on the studio surface:\n\n*   **Draft the next chapters for me** (`autonomous-drafting`): Automatically drafts chapters one by one, pausing for your review. Requires an existing story plan.\n*   **Turn the idea into a book plan** (`build-a-book`): Converts your world and cast into a structured story arc and chapter-by-chapter outline.\n*   **Check the story for contradictions** (`canon-check`): Scans your book for consistency errors regarding names, timelines, and established facts.\n*   **Draft this chapter** (`chapter-compose`): Writes the opening draft of a specific chapter based on its place in your plan.\n*   **Clean up a book's suggested items** (`entity-triage`): Helps you review, combine, or discard AI-suggested story bible items to keep your lore clean.\n*   **Set up a book's world categories** (`glossary-bootstrap`): Establishes the initial structure for tracking your world (characters, places, systems, etc.)."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a034c9-7567-759f-b98b-6f06d994e5cc",
+          "project_id": "01a034c9-76af-7b42-be2b-d743d38ed49b",
+          "seed_ids": {
+            "01a034c9-7567-759f-b98b-6f06d994e5cc": "fixture book_id",
+            "01a034c9-76af-7b42-be2b-d743d38ed49b": "fixture project_id (composition_work)",
+            "01a034c9-75fd-7e6c-84ab-048d654440bb": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a034c9-a49d-7e11-84ca-a9b06f82eece",
+          "prompt": "What workflows are available on the studio surface?",
+          "scenario_prompt": "What workflows are available on the studio surface?",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_list_workflows"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "registry_list_workflows",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "registry_list_workflows",
+              "result_head": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-dra"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "call": "registry_list_workflows"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.309527+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.309527+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.309527+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.309527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.493694+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.487099+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.309527+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.309527+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.309527+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.309527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.493694+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:13.487099+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:33.189364+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:33.189364+00"
+              }
+            }
+          },
+          "answer": "The following recipes are available on the studio surface:\n\n*   **Draft the next chapters for me** (`autonomous-drafting`): Automatically drafts chapters one by one, pausing for your review. Requires an existing story plan.\n*   **Turn the idea into a book plan** (`build-a-book`): Converts your world and cast into a structured story arc and chapter-by-chapter outline.\n*   **Check the story for contradictions** (`canon-check`): Scans your book for consistency errors regarding names, timelines, and established facts.\n*   **Draft this chapter** (`chapter-compose`): Writes an opening draft for a specific chapter based on your story plan.\n*   **Clean up a book's suggested items** (`entity-triage`): Helps you review, merge, or discard AI-suggested story bible items to keep your lore clean.\n*   **Set up a book's world categories** (`glossary-bootstrap`): Establishes the initial structure for tracking your world (characters, places, systems, etc.)."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a034c9-ec33-7c71-a1c9-e236d901c5b1",
+          "project_id": "01a034c9-eda3-7413-b2d2-22f265569338",
+          "seed_ids": {
+            "01a034c9-ec33-7c71-a1c9-e236d901c5b1": "fixture book_id",
+            "01a034c9-eda3-7413-b2d2-22f265569338": "fixture project_id (composition_work)",
+            "01a034c9-ecdc-7aea-817e-41f78d5af929": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a034ca-1c93-78c8-9467-0b22d1af8dc1",
+          "prompt": "What workflows are available on the studio surface?",
+          "scenario_prompt": "What workflows are available on the studio surface?",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_list_workflows"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "registry_list_workflows",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "registry_list_workflows",
+              "result_head": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-dra"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "call": "registry_list_workflows"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.740546+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.740546+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.740546+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.740546+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.944033+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.938772+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.740546+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.740546+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.740546+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.740546+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.944033+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:20:43.938772+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:04.477326+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:04.477326+00"
+              }
+            }
+          },
+          "answer": "The following recipes are available on the studio surface:\n\n*   **Draft the next chapters for me** (`autonomous-drafting`): Automatically drafts subsequent chapters based on an existing story plan, pausing for your review along the way.\n*   **Turn the idea into a book plan** (`build-a-book`): Transforms your world and cast into a structured story arc and chapter-by-chapter outline.\n*   **Check the story for contradictions** (`canon-check`): Scans your book for inconsistencies in names, timelines, or established facts.\n*   **Draft this chapter** (`chapter-compose`): Writes an opening draft for a specific chapter based on its place in your story plan.\n*   **Clean up a book's suggested items** (`entity-triage`): Helps you organize and refine the list of suggested story bible items, removing duplicates or junk.\n*   **Set up a book's world categories** (`glossary-bootstrap`): Establishes the foundational categories for your world (like characters, places, or magic systems)."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a034ca-6152-7df3-824c-bd7ddf845ba5",
+          "project_id": "01a034ca-62c9-761b-bfba-7d742a6ec055",
+          "seed_ids": {
+            "01a034ca-6152-7df3-824c-bd7ddf845ba5": "fixture book_id",
+            "01a034ca-62c9-761b-bfba-7d742a6ec055": "fixture project_id (composition_work)",
+            "01a034ca-6200-7bbc-bb45-2052d7fa5557": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a034ca-91b4-7bd1-aaf9-2e923e9d18d1",
+          "prompt": "What workflows are available on the studio surface?",
+          "scenario_prompt": "What workflows are available on the studio surface?",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_list_workflows"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "registry_list_workflows",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "registry_list_workflows",
+              "result_head": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-dra"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "call": "registry_list_workflows"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.728518+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.728518+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.728518+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.728518+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.935119+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.928645+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.728518+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.728518+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.728518+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.728518+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.935119+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:13.928645+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The following recipes are available on the studio surface:\n\n*   **Draft the next chapters for me** (`autonomous-drafting`): Automatically drafts chapters one by one, pausing for your review. Requires an existing story plan.\n*   **Turn the idea into a book plan** (`build-a-book`): Converts your world and cast into a structured story arc and chapter-by-chapter outline.\n*   **Check the story for contradictions** (`canon-check`): Scans your book for consistency errors regarding names, timelines, and established facts.\n*   **Draft this chapter** (`chapter-compose`): Writes the opening draft of a specific chapter based on its place in your story plan.\n*   **Clean up a book's suggested items** (`entity-triage`): Helps you review, merge, or discard AI-suggested story bible items to keep your lore clean.\n*   **Set up a book's world categories** (`glossary-bootstrap`): Establishes the initial structure for tracking your world (characters, places, systems, etc.)."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a034ca-d707-75d1-9988-a8a0997490c9",
+          "project_id": "01a034ca-d858-7a34-8da5-a285d6a75452",
+          "seed_ids": {
+            "01a034ca-d707-75d1-9988-a8a0997490c9": "fixture book_id",
+            "01a034ca-d858-7a34-8da5-a285d6a75452": "fixture project_id (composition_work)",
+            "01a034ca-d79b-75b0-ba7a-38397676016f": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a034cb-0778-7896-a702-21bc21650360",
+          "prompt": "What workflows are available on the studio surface?",
+          "scenario_prompt": "What workflows are available on the studio surface?",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_list_workflows"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "registry_list_workflows",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "registry_list_workflows",
+              "result_head": "{\"ok\": true, \"result\": {\"workflows\": [{\"description\": \"Set the book drafting itself chapter by chapter, on its own, pausing where the user wants to review \\u2014 for a user who wants the draft to move forward without steering every line. Needs a story plan already in place.\", \"slug\": \"autonomous-dra"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "call": "registry_list_workflows"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "registry_list_workflows"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:43.835213+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:43.835213+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:43.835213+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:43.835213+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:44.029825+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:44.023917+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:43.835213+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:43.835213+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:43.835213+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:43.835213+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:44.029825+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 17:21:44.023917+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The following recipes are available on the studio surface:\n\n*   **Draft the next chapters for me** (`autonomous-drafting`): Automatically drafts chapters one by one, pausing for your review. Requires an existing story plan.\n*   **Turn the idea into a book plan** (`build-a-book`): Converts your world and cast into a structured story arc and chapter-by-chapter outline.\n*   **Check the story for contradictions** (`canon-check`): Scans your book for consistency errors regarding names, timelines, and established facts.\n*   **Draft this chapter** (`chapter-compose`): Writes an opening draft for a specific chapter based on its place in your story plan.\n*   **Clean up a book's suggested items** (`entity-triage`): Helps you review, merge, or discard AI-suggested story bible items to keep your lore clean.\n*   **Set up a book's world categories** (`glossary-bootstrap`): Establishes the initial structure for tracking your world (characters, places, systems, etc.)."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 3,
+      "suspended_count": 0,
+      "suite": {
+        "cmd": "python -m pytest tests -q  (cwd services/chat-service)",
+        "exit_code": 0,
+        "passed": 3455,
+        "skipped": 3,
+        "note": "the WHOLE owning suite, not the file I touched; 3450 before this cycle + the 5 new"
+      },
+      "deploy": {
+        "verified_by_content": true,
+        "how": "sha256 of app/services/stream_events.py read from INSIDE infra-chat-service-1 compared against the host source — 0430854de85aca74 both sides, 28259 bytes — and the behaviour re-checked in the container: scrub_jargon('glossary-bootstrap') returns it unchanged while scrub_jargon('the glossary') still returns 'the story bible'.",
+        "image_sha256_prefix": "0430854de85aca74"
+      }
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -15,6 +16,61 @@ import (
 	lwmcp "github.com/loreweave/loreweave_mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// _attrCodesInMessage caps how many valid codes the refusal below inlines. A kind with a
+// large attribute set would otherwise turn one rejection into a wall of text; past the cap
+// the message says how many were omitted rather than pretending the list is complete.
+const _attrCodesInMessage = 25
+
+// noValidAttrCodesMessage names what the caller COULD have sent.
+//
+// The old message was "no valid attribute codes for this entity's kind" and stopped there.
+// Measured: a model sent attributes {"status": "canonical"}, got that sentence, and its next
+// move was to try `status` as a top-level ARGUMENT instead — which failed too, on
+// "unexpected additional properties". It had no way to learn the alphabet, so it guessed at
+// the grammar.
+//
+// The valid set is a per-book, per-kind DATA value, so it cannot be an enum in the schema —
+// which is exactly the case where the rejection has to carry it. It is already in memory
+// here as `attrDefMap`, keyed "<kindID>:<code>", so naming it costs a map walk and no query.
+// Same shape as the "unknown subagent 'universal'. Available subagents: lore-scout" message
+// this repo already ships, and the reason that one reads like it works.
+func noValidAttrCodesMessage(attrDefMap map[string]uuid.UUID, kindID string, skipped []string) string {
+	prefix := kindID + ":"
+	valid := make([]string, 0, len(attrDefMap))
+	for key := range attrDefMap {
+		if code, found := strings.CutPrefix(key, prefix); found && code != "" {
+			valid = append(valid, code)
+		}
+	}
+	sort.Strings(valid)
+
+	var sb strings.Builder
+	sb.WriteString("no valid attribute codes for this entity's kind")
+	if len(skipped) > 0 {
+		rejected := append([]string(nil), skipped...)
+		sort.Strings(rejected)
+		sb.WriteString(" — rejected: ")
+		sb.WriteString(strings.Join(rejected, ", "))
+	}
+	switch {
+	case len(valid) == 0:
+		// Not the same failure, and it must not read as one: the kind has NO attributes
+		// defined, so no argument could have succeeded and the caller should stop retrying.
+		sb.WriteString(". This kind has no attributes defined, so there is nothing to set")
+	default:
+		shown := valid
+		if len(shown) > _attrCodesInMessage {
+			shown = shown[:_attrCodesInMessage]
+		}
+		sb.WriteString(". Valid codes for this kind: ")
+		sb.WriteString(strings.Join(shown, ", "))
+		if len(valid) > len(shown) {
+			fmt.Fprintf(&sb, " (+%d more)", len(valid)-len(shown))
+		}
+	}
+	return sb.String()
+}
 
 // T-ENTITY-ATTR-EDIT — glossary_entity_set_attributes: the missing write path for an
 // ALREADY-EXISTING entity's attribute values (real feedback gap, 2026-07-08,
@@ -92,12 +148,16 @@ func (s *Server) RegisterEntityAttributeEditTools(srv *mcp.Server) {
 		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"rename entity", "change entity name", "fix entity name typo", "correct an entity's name",
 			"rename character", "rename place", "give an entity a new name",
+			// Added 2026-08-14 (batch 12): the declared phrases all pair "rename" with a NOUN, and a
+			// real user names the ENTITY instead — "rename Aldrik Vayne to Aldric Vane" surfaced this
+			// tool 0/3. The bare verb and the misspelling framing are what people actually type.
+			"rename", "i spelled", "spelled it wrong", "wrong spelling", "change the name",
 		}),
 	}, s.toolEntityRename)
 }
 
 type entityRenameToolIn struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book the entity belongs to (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book the entity belongs to (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity to rename (UUID)"`
 	Name     string `json:"name" jsonschema:"the entity's new display name"`
 }
@@ -151,7 +211,7 @@ func entityAttributeSetSchema() *jsonschema.Schema {
 }
 
 type entitySetAttributesToolIn struct {
-	BookID     string            `json:"book_id,omitempty" jsonschema:"the book the entity belongs to (UUID)"`
+	BookID     string            `json:"book_id" jsonschema:"the book the entity belongs to (UUID)"`
 	EntityID   string            `json:"entity_id" jsonschema:"the entity to edit (UUID)"`
 	Attributes map[string]string `json:"attributes,omitempty" jsonschema:"attr_code -> new value; empty string clears the value; a code not yet on the entity is added"`
 	// ScopeLabel (D-GLOSSARY-ENTITY-SCOPE, optional): omit to leave untouched; any
@@ -274,7 +334,7 @@ func (s *Server) setEntityAttributes(ctx context.Context, bookID, entityID, user
 	}
 
 	if len(out.Updated) == 0 && len(attrs) > 0 {
-		return entitySetAttributesToolOut{}, errors.New("no valid attribute codes for this entity's kind")
+		return entitySetAttributesToolOut{}, errors.New(noValidAttrCodesMessage(attrDefMap, kindID.String(), out.Skipped))
 	}
 
 	// D-GLOSSARY-ENTITY-SCOPE: scope_label lives directly on glossary_entities (an

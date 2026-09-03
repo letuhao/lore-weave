@@ -1,0 +1,39 @@
+{
+  "_note": "registry_set_skill_enabled, re-measured from scenarios-b41-skill.json — the ORIGINAL, which had the CORRECT seed assertion all along.\n\n🔴 THE GENERATOR PICKED A REGRESSED COPY. b41-skill scopes the assertion to tier='system'; later copies in batch38/39/40 count EVERY row with slug='glossary' and expect 1, while the store holds 6 — one system skill and five USER-TIER copies created 2026-07-02, which is how per-user overrides work. Alphabetically scenarios-batch40 beats scenarios-b41-skill, so 'last file wins' chose the broken assertion over the fixed one and all 5 runs died in provisioning. Second time that tie-break has decided a measurement; all copies are now scoped.",
+  "scenarios": [
+    {
+      "id": "registry-set-skill-enabled",
+      "tool_under_test": "registry_set_skill_enabled",
+      "expect_tool": "registry_set_skill_enabled",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What skills do I have available?",
+      "follow_ups": [
+        "Turn off the glossary skill for me."
+      ],
+      "prompt_source": "Unchanged across three arms — both previous ones lost 5 of 5 runs to transport errors, so it has never been measured. Nothing implicates the prompt.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_agent_registry",
+          "query": "SELECT count(*)::text FROM skills WHERE slug='glossary' AND tier='system'",
+          "expect": "1",
+          "why": "🔴 SCOPED TO tier='system', AND THAT SCOPING IS THE WHOLE STORY OF THIS TOOL'S THREE LOST ARMS. The assertion used to count `slug='glossary'` account-wide and expect 1. The registry holds SIX rows with that slug — one System-tier plus FIVE user-tier overrides created on 2026-07-02 by other accounts, body 'override', seven weeks before this loop touched it. So the seed failed every time.\n\nI recorded those three arms as '5 of 5 lost to transport errors' in three commits and in the handoff. They were never transport: the run's error field says 'PROVISION ProvisionError: SEED ASSERTION FAILED' and the report column only says 'err 5'. Reading the column instead of the error is how a fixture bug wore a provider's clothes for three batches.\n\nThe row the scenario is actually about is the SYSTEM one — disabling it 'applies only to this user; the shared skill is never changed' — so that is what the assertion pins, and the card is never approved so it must be untouched afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: the toggle lands with NO confirm card (Tier A), OR the model sends enabled=true when the author said turn it OFF — a bare boolean, so an inverted value silently does the opposite while the card still reads 'set skill enabled' — OR it targets a different slug. CONTROL: disabling a System skill is PER-USER only, so a reply saying it is off 'for everyone', or warning the author they are changing a shared skill, is wrong about the blast radius in the direction that would scare them off a safe action.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "EXERCISED by direct probe (batch 38) — an unknown slug is refused BY NAME: 'skill not found: no-such-skill-xyz'.",
+        "idempotency": "OWED — disabling an already-disabled skill must be a clear no-op.",
+        "tenancy": "OWED — scope=USER: the per-user toggle must not touch another account or the shared row."
+      },
+      "defects": []
+    }
+  ]
+}

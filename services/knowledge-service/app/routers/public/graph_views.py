@@ -181,10 +181,16 @@ def _slugify(name: str) -> str:
 def _coerce_ordinal(value: Any) -> int | None:
     """Coerce a Neo4j temporal-ordinal property to an int (or None).
 
-    `valid_from`/`valid_to` are chapter ordinals stored as ints. A legacy
-    edge may still carry a datetime in `valid_until` (the pre-ontology
-    timestamp model) — that is NOT an ordinal, so we coerce only int-like
-    values and treat anything non-int as None (invariant / open)."""
+    `valid_from_ordinal`/`valid_to_ordinal` are chapter ordinals stored as
+    ints. A legacy edge may still carry a datetime in `valid_until` (the
+    pre-ontology timestamp model) — that is NOT an ordinal, so we coerce only
+    int-like values and treat anything non-int as None (invariant / open).
+
+    NOTE (#249-adjacent, measured 2026-08-11): the bare `valid_from` property is
+    a wall-clock datetime on every one of the 1142 RELATES_TO edges in this
+    instance — zero are int-like. Passing it here returns None unconditionally,
+    which is exactly the bug this function's callers used to have. Feed it the
+    `*_ordinal` properties, never the bare ones."""
     if value is None:
         return None
     if isinstance(value, bool):  # bool is an int subclass — exclude it
@@ -212,14 +218,25 @@ def build_graph_slice(
     as_of_chapter: int | None,
     deprecated_edge_codes: list[str],
     view_code: str | None,
+    isolated: list[dict[str, Any]] | None = None,
 ) -> GraphSlice:
     """Pure assembly of a `GraphSlice` from raw `{rel, subj, obj}` records.
 
     Applies BOTH filters: the view lens (edge-type + node-kind allow-sets;
-    empty facet = identity) and the temporal as-of predicate. A node only
-    appears if it is the endpoint of at least one surviving edge AND passes
-    the node-kind facet. Extracted from the handler so the filter logic is
-    unit-testable without a live Neo4j.
+    empty facet = identity) and the temporal as-of predicate. A node appears
+    if it is the endpoint of at least one surviving edge — or if it is passed
+    in `isolated` — AND passes the node-kind facet. Extracted from the handler
+    so the filter logic is unit-testable without a live Neo4j.
+
+    🔴 `isolated` DEFAULTS TO NONE SO THE REST CALLER IS UNTOUCHED, and that is a decision about
+    two consumers with genuinely different needs rather than laziness. This function serves the
+    FE's graph VIEW and the agent's graph READ. A picture of 3,172 unconnected dots is not a
+    useful drawing; an agent told `nodes_total: 0` about a project that holds 3,172 entities has
+    been told something FALSE. The MCP handler passes them; the router does not.
+
+    Isolated nodes still pass the node-kind facet — a lens that excludes a kind must exclude it
+    however the node was reached — and are deduped against edge endpoints, so a node that IS
+    connected can never arrive twice.
     """
     scope = build_view_scope(view)
     edges: list[GraphEdge] = []
@@ -255,6 +272,13 @@ def build_graph_slice(
         on = _node_dict(obj)
         nodes.setdefault(sn.id, sn)
         nodes.setdefault(on.id, on)
+    for props in isolated or []:
+        if not scope.allows_node_kind(str(props.get("kind", ""))):
+            continue
+        n = _node_dict(props)
+        # `setdefault`, not assignment: an edge endpoint already placed above wins, and a node
+        # that turned out to be connected must never appear twice.
+        nodes.setdefault(n.id, n)
     warnings = deprecated_edge_warnings(view, deprecated_edge_codes)
     return GraphSlice(
         as_of_chapter=as_of_chapter,
@@ -281,8 +305,13 @@ def build_timeline(
             TimelineInstance(
                 target_id=str(obj.get("id", "")),
                 target_label=obj.get("name"),
-                valid_from=_coerce_ordinal(rel.get("valid_from")),
-                valid_to=_coerce_ordinal(rel.get("valid_to")),
+                # F3's ordinal model (see neo4j_repos/temporal.py): the NARRATIVE interval
+                # lives in `valid_from_ordinal` / `valid_to_ordinal` (null ⇒ open). The bare
+                # `valid_from` is a wall-clock datetime and `valid_to` is not a property at
+                # all — reading those coerced every instance to None, which is why a timeline
+                # of 13 closed and 1 open instances rendered as 14 undated open ones.
+                valid_from=_coerce_ordinal(rel.get("valid_from_ordinal")),
+                valid_to=_coerce_ordinal(rel.get("valid_to_ordinal")),
                 evidence_chapter_id=rel.get("source_chapter"),
                 schema_version=_coerce_ordinal(rel.get("schema_version")),
                 target_glossary_entity_id=obj.get("glossary_entity_id"),

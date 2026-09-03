@@ -1,0 +1,22 @@
+TARGETED SHIP BOUNDARY — the two OP-DISPATCH tools ship_probe.py could not reach (2026-08-22)
+
+ship_probe builds its cases from a tool's REQUIRED arguments. These two declare only `op`, so its
+absent/tenancy/empty cases all landed on the op-dispatch refusal and never touched the id under
+test — it reported "refused" three times each without exercising the boundary. Re-probed by hand
+with a concrete op plus the id.
+
+composition_arc_template_edit  (op=archive, arc_id)
+  absent   refused   not found or not accessible
+  tenancy  refused   not found or not accessible
+  empty    refused   op=archive requires arc_id — NOT a name. Call composition_arc_template_list ...
+  oracle   IDENTICAL (absent == tenancy: no existence oracle)
+
+composition_motif_link_edit  (op=create, from_motif_id/to_motif_id/kind)
+  absent   refused   not found or not accessible
+  tenancy  refused   not found or not accessible
+  empty    refused   op=create requires from_motif_id, to_motif_id, and kind
+  oracle   IDENTICAL
+
+The `empty` line for composition_arc_template_edit also confirms the widened service refusal from
+065954af0 is live in the deployed image: it now NAMES composition_arc_template_list, which is what
+the chat-service dispatch arming keys off.

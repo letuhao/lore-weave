@@ -102,6 +102,15 @@ export const EMBEDDING_CAPABILITY = 'embedding' as const;
 // capability flag — so the picker LISTS the user's chat models but SAVES under 'planner'.
 export const PLANNER_CAPABILITY = 'planner' as const;
 export const CHAT_CAPABILITY = 'chat' as const;
+// `composer` is the model that WRITES PROSE (DQ-T89 (b), owner ruling 2026-09-02). Same shape
+// as `planner`: a ROLE, so the picker LISTS chat models but SAVES under 'composer'.
+//
+// It exists rather than reusing `chat` because composition_generate resolves its model from the
+// Work, and 0 of 664 Works carried one — so on ~98% of books the tool refused, the model
+// retried, and the turn wrote prose through book_chapter_save_draft instead. Falling back to
+// the CHAT default was the cheap fix and was not taken: picking a model for conversation is not
+// consent to spend it on the most expensive call on the platform.
+export const COMPOSER_CAPABILITY = 'composer' as const;
 
 // Per-user DEFAULT model per capability (rerank/embedding). The default is the
 // user's own BYOK user_model, resolved server-side by provider-registry — it

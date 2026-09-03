@@ -234,6 +234,41 @@ class LLMClient:
             return None
 
 
+    async def resolve_default_model(self, user_id: str, capability: str) -> str | None:
+        """The user's ACCOUNT-tier default for a capability, or None.
+
+        DQ-T89 (b), owner ruling 2026-09-02. `GET /internal/default-models/{capability}` is
+        already shipped and already used by chat-service and knowledge-service; this is
+        composition-service catching up rather than a new endpoint.
+
+        🔴 NEVER RAISES, AND THE None MATTERS. An unreachable provider-registry and a user who
+        has simply not set a composer both return None, and the CALLER must then refuse rather
+        than guess — because the thing being resolved decides whose model gets SPENT. A fallback
+        that silently substituted a different model on a transport error would spend the
+        author's money on a choice they never made, which is exactly what naming the `composer`
+        capability exists to prevent.
+        """
+        url = f"{settings.llm_gateway_internal_url}/internal/default-models/{capability}"
+        try:
+            resp = await self._http.get(
+                url, params={"user_id": user_id},
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("resolve_default_model(%s) unreachable: %s", capability, exc)
+            return None
+        if resp.status_code != 200:
+            # 404 is the ordinary "not set" answer, not an error worth shouting about.
+            if resp.status_code != 404:
+                logger.warning("resolve_default_model(%s) → %d", capability, resp.status_code)
+            return None
+        try:
+            return resp.json().get("user_model_id") or None
+        except (ValueError, AttributeError) as exc:
+            logger.warning("resolve_default_model(%s) bad JSON: %s", capability, exc)
+            return None
+
+
 def get_llm_client() -> LLMClient:
     """Lazy per-worker singleton. Multi-tenant: SDK `user_id=None` at
     construction; each `submit_and_wait` passes `user_id` per call."""

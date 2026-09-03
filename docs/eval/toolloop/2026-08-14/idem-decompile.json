@@ -1,0 +1,48 @@
+[
+ {
+  "tool": "composition_decompile_arcs",
+  "pre": [],
+  "args": {
+   "book_id": "01a02cfa-66c7-7a3d-af98-ec75e01fd521"
+  },
+  "first": [
+   "ok",
+   {
+    "outcome": "no_op",
+    "descriptor": "composition.decompile",
+    "domain": "composition",
+    "arcs": 0,
+    "chapters_assigned": 0,
+    "reason": "no chapters to decompile",
+    "guidance": "This book has no chapter rows in the spec outline, so there is nothing to group into arcs and no confirmation is needed. An IMPORTED book gets those rows from the import pipeline; a book whose chapters were created directly does not have them yet."
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "outcome": "no_op",
+    "descriptor": "composition.decompile",
+    "domain": "composition",
+    "arcs": 0,
+    "chapters_assigned": 0,
+    "reason": "no chapters to decompile",
+    "guidance": "This book has no chapter rows in the spec outline, so there is nothing to group into arcs and no confirmation is needed. An IMPORTED book gets those rows from the import pipeline; a book whose chapters were created directly does not have them yet."
+   }
+  ],
+  "diff_first": {},
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing about idempotency.",
+  "first_had_effect": false,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [],
+   "book_id": "01a02cfa-66c7-7a3d-af98-ec75e01fd521",
+   "title": "LOOP-THROWAWAY-idem-composition_decompile_arcs-87471931",
+   "tables": {
+    "composition(project)": "01a02cfa-6912-7085-8da3-92f480566ebd"
+   }
+  }
+ }
+]

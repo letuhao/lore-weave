@@ -1,0 +1,163 @@
+{
+  "_note": "Confirm-mint sites that legitimately do NOT open a durable task. Spec D4 reads 'opens a task OR cites a GATE-2 exemption' — this file is where the citing happens, so the generator can tell a reasoned exemption from unfinished work. Without it D4 counted every ungated site as a defect and could never pass: an instrument whose success condition is unreachable, the same shape as the anti-vacuity guards in the plan's X2.",
+  "_classes": {
+    "a": "the execute path needs the confirm TOKEN itself — a consumed-token replay ledger, or a usage-billing reserve keyed on the token jti. A durable resolver has no access to it.",
+    "b": "a dual-mode tool whose non-confirm branch has a typed output",
+    "c": "System-tier admin confirm",
+    "d": "no server executor to gate — the confirm opens the UI, or the write is a browser-side PATCH"
+  },
+  "_source": "docs/standards/mcp-tool-io.md GATE-2. A row here is a claim that one of those four classes applies — quote the code that makes it true, or gate the site instead.",
+  "_how_class_a_was_verified": "Not from the comment alone. For each site the executor's SIGNATURE in services/composition-service/app/routers/actions.py was read: a `token=token` parameter means the effect needs the confirm token and a durable resolver cannot run it. That check ADDED composition_library_translate (which the comment does not name) and EXCLUDED plan_bootstrap_apply (whose executor takes only payload + envelope_user, so it is genuinely gateable).",
+  "exemptions": [
+    {
+      "file": "services/composition-service/app/mcp/server.py",
+      "tool": "composition_decompile_arcs",
+      "class": "a",
+      "reason": "ledger-guarded KIND-C confirm: `_execute_*` requires the confirm token as the consumed-token replay ledger key.",
+      "cited_at": "services/composition-service/app/mcp/server.py:347-355 — 'NOT registered here — the ledger-guarded KIND-C confirms (decompile, motif_adopt, motif_mine, arc_import, conformance_run)'",
+      "symbol": "composition_decompile_arcs"
+    },
+    {
+      "file": "services/composition-service/app/mcp/server.py",
+      "tool": "composition_motif_adopt",
+      "class": "a",
+      "reason": "ledger-guarded KIND-C confirm; usage-billing reserve keyed on the token jti via `_billing_job_id(token)`.",
+      "cited_at": "services/composition-service/app/mcp/server.py:347-355",
+      "symbol": "composition_motif_adopt"
+    },
+    {
+      "file": "services/composition-service/app/mcp/server.py",
+      "tool": "composition_motif_mine",
+      "class": "a",
+      "reason": "ledger-guarded KIND-C confirm; usage-billing reserve keyed on the token jti.",
+      "cited_at": "services/composition-service/app/mcp/server.py:347-355",
+      "symbol": "composition_motif_mine"
+    },
+    {
+      "file": "services/composition-service/app/mcp/server.py",
+      "tool": "composition_arc_import_analyze",
+      "class": "a",
+      "reason": "ledger-guarded KIND-C confirm; usage-billing reserve keyed on the token jti.",
+      "cited_at": "services/composition-service/app/mcp/server.py:347-355",
+      "symbol": "composition_arc_import_analyze"
+    },
+    {
+      "file": "services/composition-service/app/mcp/server.py",
+      "tool": "composition_conformance_run",
+      "class": "a",
+      "reason": "ledger-guarded KIND-C confirm; usage-billing reserve keyed on the token jti.",
+      "cited_at": "services/composition-service/app/mcp/server.py:347-355",
+      "symbol": "composition_conformance_run"
+    },
+    {
+      "file": "services/composition-service/app/mcp/server.py",
+      "tool": "composition_library_translate",
+      "class": "a",
+      "reason": "priced KIND-C confirm whose executor REQUIRES the token. NOT named in the server.py:347-355 comment — found by reading the executor signature.",
+      "cited_at": "services/composition-service/app/routers/actions.py:428 — `return await _execute_library_translate(payload, envelope_user, token=token, claims=claims)`",
+      "symbol": "composition_library_translate"
+    },
+    {
+      "file": "services/book-service/internal/api/mcp_actions.go",
+      "tool": "mintBookActionCard (helper — priced callers only)",
+      "class": "d",
+      "reason": "This mint is the confirm_fallback closure for the GATED callers (mcp_actions.go:336, :378 pass its card into GateOrConfirm). Its two remaining callers are the PRICED tools (set_cover at :549, media/audio via proposeChapterAction at :283) whose confirm has no server executor. Counted ungated only because the census pairs mint-to-gate within +/-30 lines and this mint is factored into a helper.",
+      "cited_at": "services/book-service/internal/api/mcp_actions.go:286-290 — 'Priced tools (set_cover/media/audio) keep the plain mint path — their \"confirm\" only opens the UI, nothing to gate.'",
+      "symbol": "mintBookActionCard"
+    },
+    {
+      "file": "services/book-service/internal/api/mcp_actions.go",
+      "tool": "book_update_details (mintBookMetaCard)",
+      "class": "d",
+      "reason": "the client-side C1 record-edit diff card: the FE renders old->new rows and PATCHes from the browser. GATE-2 names this class explicitly.",
+      "cited_at": "docs/standards/mcp-tool-io.md GATE-2, and services/book-service/internal/api/mcp_tools_write.go:234 (its only caller)",
+      "symbol": "mintBookMetaCard"
+    },
+    {
+      "file": "services/knowledge-service/app/mcp/admin_server.py",
+      "symbol": "kg_admin_propose_template",
+      "tool": "kg_admin_propose_template",
+      "class": "c",
+      "reason": "System-tier admin confirm. The claims carry `admin_sub=claims.sub` and the surface is admin-only; GATE-2 names System-tier admin confirms as a class in their own right.",
+      "cited_at": "services/knowledge-service/app/mcp/admin_server.py:154-168 — mint_action_token(..., admin_sub=claims.sub, ...)"
+    },
+    {
+      "file": "services/knowledge-service/app/tools/build_tools.py",
+      "symbol": "_handle_kg_build_graph",
+      "tool": "kg_build / kg_build_graph",
+      "class": "a",
+      "reason": "the confirm route is a consumed-token replay ledger keyed on the token's jti. A durable resolver has no token, therefore no jti, therefore cannot claim it — the single-use guarantee would be lost, and 'already confirmed — propose again' could never be answered. This is GATE-2 class (a) exactly.",
+      "cited_at": "services/knowledge-service/app/routers/public/kg_actions.py:397-404 — `claimed = await tokens.consume(jti=claims.jti, descriptor=..., exp=...)`, with the comment 'Single-use: claim the jti now. Fail-closed — a failed effect does NOT release it.' The claim runs BEFORE any descriptor branch, so it covers every knowledge confirm."
+    },
+    {
+      "file": "services/knowledge-service/app/tools/build_tools.py",
+      "symbol": "_handle_kg_build_wiki",
+      "tool": "kg_build / kg_build_wiki",
+      "class": "a",
+      "reason": "the confirm route is a consumed-token replay ledger keyed on the token's jti. A durable resolver has no token, therefore no jti, therefore cannot claim it — the single-use guarantee would be lost, and 'already confirmed — propose again' could never be answered. This is GATE-2 class (a) exactly.",
+      "cited_at": "services/knowledge-service/app/routers/public/kg_actions.py:397-404 — `claimed = await tokens.consume(jti=claims.jti, descriptor=..., exp=...)`, with the comment 'Single-use: claim the jti now. Fail-closed — a failed effect does NOT release it.' The claim runs BEFORE any descriptor branch, so it covers every knowledge confirm."
+    },
+    {
+      "file": "services/knowledge-service/app/tools/graph_schema_tools.py",
+      "symbol": "_handle_kg_schema_edit",
+      "tool": "kg_ontology_propose (op=schema_edit)",
+      "class": "a",
+      "reason": "the confirm route is a consumed-token replay ledger keyed on the token's jti. A durable resolver has no token, therefore no jti, therefore cannot claim it — the single-use guarantee would be lost, and 'already confirmed — propose again' could never be answered. This is GATE-2 class (a) exactly.",
+      "cited_at": "services/knowledge-service/app/routers/public/kg_actions.py:397-404 — `claimed = await tokens.consume(jti=claims.jti, descriptor=..., exp=...)`, with the comment 'Single-use: claim the jti now. Fail-closed — a failed effect does NOT release it.' The claim runs BEFORE any descriptor branch, so it covers every knowledge confirm."
+    },
+    {
+      "file": "services/knowledge-service/app/tools/graph_schema_tools.py",
+      "symbol": "_handle_kg_adopt_template",
+      "tool": "kg_ontology_propose (op=adopt_template)",
+      "class": "a",
+      "reason": "the confirm route is a consumed-token replay ledger keyed on the token's jti. A durable resolver has no token, therefore no jti, therefore cannot claim it — the single-use guarantee would be lost, and 'already confirmed — propose again' could never be answered. This is GATE-2 class (a) exactly.",
+      "cited_at": "services/knowledge-service/app/routers/public/kg_actions.py:397-404 — `claimed = await tokens.consume(jti=claims.jti, descriptor=..., exp=...)`, with the comment 'Single-use: claim the jti now. Fail-closed — a failed effect does NOT release it.' The claim runs BEFORE any descriptor branch, so it covers every knowledge confirm."
+    },
+    {
+      "file": "services/knowledge-service/app/tools/graph_schema_tools.py",
+      "symbol": "_handle_kg_sync_apply",
+      "tool": "kg_ontology_propose (op=sync_apply)",
+      "class": "a",
+      "reason": "the confirm route is a consumed-token replay ledger keyed on the token's jti. A durable resolver has no token, therefore no jti, therefore cannot claim it — the single-use guarantee would be lost, and 'already confirmed — propose again' could never be answered. This is GATE-2 class (a) exactly.",
+      "cited_at": "services/knowledge-service/app/routers/public/kg_actions.py:397-404 — `claimed = await tokens.consume(jti=claims.jti, descriptor=..., exp=...)`, with the comment 'Single-use: claim the jti now. Fail-closed — a failed effect does NOT release it.' The claim runs BEFORE any descriptor branch, so it covers every knowledge confirm."
+    },
+    {
+      "file": "services/knowledge-service/app/tools/graph_schema_tools.py",
+      "symbol": "_handle_kg_triage_place_edge",
+      "tool": "kg_triage_place_edge",
+      "class": "a",
+      "reason": "the confirm route is a consumed-token replay ledger keyed on the token's jti. A durable resolver has no token, therefore no jti, therefore cannot claim it — the single-use guarantee would be lost, and 'already confirmed — propose again' could never be answered. This is GATE-2 class (a) exactly.",
+      "cited_at": "services/knowledge-service/app/routers/public/kg_actions.py:397-404 — `claimed = await tokens.consume(jti=claims.jti, descriptor=..., exp=...)`, with the comment 'Single-use: claim the jti now. Fail-closed — a failed effect does NOT release it.' The claim runs BEFORE any descriptor branch, so it covers every knowledge confirm."
+    },
+    {
+      "file": "services/knowledge-service/app/tools/graph_schema_tools.py",
+      "symbol": "_handle_kg_triage_schema_write",
+      "tool": "kg_triage_schema_write",
+      "class": "a",
+      "reason": "the confirm route is a consumed-token replay ledger keyed on the token's jti. A durable resolver has no token, therefore no jti, therefore cannot claim it — the single-use guarantee would be lost, and 'already confirmed — propose again' could never be answered. This is GATE-2 class (a) exactly.",
+      "cited_at": "services/knowledge-service/app/routers/public/kg_actions.py:397-404 — `claimed = await tokens.consume(jti=claims.jti, descriptor=..., exp=...)`, with the comment 'Single-use: claim the jti now. Fail-closed — a failed effect does NOT release it.' The claim runs BEFORE any descriptor branch, so it covers every knowledge confirm."
+    },
+    {
+      "file": "services/provider-registry-service/internal/api/mcp_server.go",
+      "symbol": "toolModelDelete",
+      "tool": "settings_model_delete",
+      "class": "a",
+      "reason": "the confirm route is a consumed-token replay ledger keyed on the token HASH rather than a jti — same mechanism, different key. A durable resolver never sees the raw token, so it cannot compute the hash, cannot claim it, and 'already confirmed — propose again' becomes unanswerable. GATE-2 class (a).",
+      "cited_at": "services/provider-registry-service/internal/api/settings_actions.go:120-128 — `claimed, err := s.consumeSettingsToken(r.Context(), tokenHash(rawToken), claims.Descriptor, ...)` under the comment 'Single-use: claim the token hash now (BEFORE the effect). A replay -> 0 rows.'"
+    }
+  ],
+  "_open_work_2026_09_03": {
+    "note": "Ungated AND unexempted. Prose only — the generator does not read this block; a site becomes exempt by someone quoting the code, never by appearing in a list.",
+    "done": [
+      "plan_bootstrap_apply — GATED 2026-09-03. `_resolve_bootstrap_apply` registered in _task_store; the tool now returns gate_or_confirm(...) with the previous return verbatim as confirm_fallback, so a non-tasks client sees a byte-unchanged card. The resolver RE-AUTHORIZES the book grant, which its Work-scoped siblings do not: a durable task can sit pending, so a grant revoked between propose and accept must deny. Pinned by tests/unit/test_bootstrap_apply_is_task_gated_and_reauthorizes.py (5 tests, both denial guards proven RED by deleting the authorize_book call)."
+    ],
+    "blocked_on_an_sdk_promotion": [
+      "services/translation-service/app/mcp/server.py  translation_start_job, translation_retranslate_dirty, translation_start_extraction, translation_job_control",
+      "services/provider-registry-service/internal/api/mcp_server.go  toolModelDelete (settings_model_delete) — a real server executor deletes the model at confirm time, so no GATE-2 class applies"
+    ],
+    "the_blocker": "THE TASK STORE IS COPY-PASTED THREE TIMES AND IS IN NO SDK: services/book-service/internal/api/mcp_gate_task_store.go, services/glossary-service/internal/api/mcp_gate_task_store.go, services/composition-service/app/mcp/pg_task_store.py. Neither sdks/go/loreweave_mcp nor sdks/python/loreweave_mcp has one. SDK-First says '>=2 users => SDK, never copy-paste' — it is already at three. Gating translation (Python) or provider-registry (Go) means promoting the store into BOTH kits and re-pointing three working services. That price was not visible when DQ-V2 was ruled 'adopt'; it is an OWNER decision, recorded in the BUILD plan's V1 section."
+  },
+  "_keying": "Keyed on file + enclosing SYMBOL, never file:line. The first version used file:line and emptied itself the moment a resolver was inserted above the sites: six cited exemptions stopped matching and the census read 11 remaining / 2 exempt instead of 6 / 8. A symbol survives edits above it and deliberately does NOT survive a rename — a renamed tool should have to re-justify its exemption.",
+  "_the_legacy_trap_2026_09_03": "I ALMOST EXEMPTED FIVE LIVE CODE PATHS AS 'LEGACY'. The census reports the enclosing SYMBOL, and five knowledge-service handlers carry legacy tool names: _handle_kg_build_graph, _handle_kg_build_wiki, _handle_kg_schema_edit, _handle_kg_adopt_template, _handle_kg_sync_apply. Their TOOLS are visibility:legacy and withheld from the model. Their HANDLERS are not: build_tools.py:273/284 route the LIVE kg_build into the two build cores, and graph_schema_tools.py:564-578 dispatch the LIVE kg_ontology_propose by `op` into the other three. A tool being legacy says nothing about whether its handler is dead. Excluding them would have made D4 pass over the minting path of two live tools. The census counting HANDLERS rather than tool names is what made this visible.",
+  "_a_grep_that_hid_its_own_answer_2026_09_03": "I FIRST RECORDED provider-registry AS HAVING NO LEDGER, AND THE CAUSE WAS THE COMMAND, NOT THE CODE. The check was `grep -iE 'jti|consume|single' ... | head -6`. `consume` also matches `consumer` — RabbitMQ consumers, event consumers — and six of those appear before `consumeSettingsToken` in file order. The true positive existed and was pushed off the end by its own pattern's false positives. A `head -N` over a pattern that matches a common substring does not sample the matches; it samples the FILE ORDER. Re-checked translation the same way afterwards with no truncation and read every hit — that one is genuinely ledger-free."
+}

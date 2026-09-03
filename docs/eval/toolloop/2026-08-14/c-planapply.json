@@ -1,0 +1,593 @@
+{
+  "batch": "c-planapply",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "plan_bootstrap_apply",
+      "scenario": "plan-bootstrap-apply",
+      "intent": "write",
+      "falsifier": "REFUTED IF: chapters are created with NO confirm card (Tier A — this materialises real book content), OR the model invents a proposal_id, OR the reply claims chapters were created while the card is still pending. Store check: loreweave_book.chapters stays at 1.",
+      "answer_expect": null,
+      "falsifier_sha": "1d7f42435e774912",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and it creates real chapters.",
+        "absent_case": "OWED — a proposal_id that does not exist must be refused.",
+        "idempotency": "OWED — applying the same proposal twice must not create the chapters twice.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02f58-c0ac-7e0b-8f88-0d6050756b1f",
+          "session_id": "01a02f58-eee3-75b5-a8b6-29cd831f26e7",
+          "prompt": "Create the chapters — make the plan real for this book.",
+          "scenario_prompt": "Create the chapters — make the plan real for this book.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree",
+            "plan_bootstrap_propose"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "plan_bootstrap_propose",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:00.947378+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:00.947378+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:00.947378+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:00.947378+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:01.148125+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:01.274602+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:01.140081+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:00.947378+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:00.947378+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:00.947378+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:00.947378+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:01.148125+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:01.274602+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:01.140081+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book. It looks like we have a story plan in the \"proposed\" stage, but it hasn't been compiled into a real structure yet. \n\nTo turn your plan into actual chapters that we can start writing, I first need to **compile** the plan. Once that's done, I can \"materialize\" it—which means creating the actual chapter files in your book so the drafting specialist can begin writing.\n\nWould you like me to proceed with compiling your current plan into a formal chapter structure?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02f59-56a2-7ed0-bbf3-c4bca23fb81c",
+          "session_id": "01a02f59-9159-792e-8c4b-606940a35468",
+          "prompt": "Create the chapters — make the plan real for this book.",
+          "scenario_prompt": "Create the chapters — make the plan real for this book.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree",
+            "plan_bootstrap_propose"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "plan_bootstrap_propose",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.348505+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.348505+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.348505+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.348505+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.566519+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.724636+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.559199+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.348505+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.348505+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.348505+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.348505+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.566519+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.724636+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:59:39.559199+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book. It looks like we have a story plan that has been proposed, but it hasn't been \"compiled\" into a real structure yet. \n\nIn order to create the actual chapters and make the plan real, I first need to turn that proposed plan into a formal structure (the \"compiled package\"). Once that's done, I can then generate the chapters for you to start writing.\n\nSince the plan is currently in a \"proposed\" state, would you like me to proceed with compiling it into a chapter-by-chapter structure?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02f59-eee1-7a1d-a6c9-bef68ead7e73",
+          "session_id": "01a02f5a-28cf-72b8-b060-f1b5c349b027",
+          "prompt": "Create the chapters — make the plan real for this book.",
+          "scenario_prompt": "Create the chapters — make the plan real for this book.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree",
+            "plan_bootstrap_propose"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "plan_bootstrap_propose",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.329314+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.329314+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.329314+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.329314+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.548126+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.703248+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.541381+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.329314+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.329314+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.329314+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.329314+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.548126+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.703248+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 16:00:18.541381+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can't create the chapters just yet because the story plan hasn't been finalized into a structure. \n\nRight now, there is a proposed plan waiting in the system, but it hasn't been \"compiled\" into the actual chapter and scene structure that I can turn into writing.\n\nTo move forward, we first need to take that plan and turn it into a real outline. Once the outline is ready, I can then \"materialize\" it into the chapters you're looking for.\n\nWould you like me to go ahead and compile that plan into a chapter-by-chapter outline for you to review?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02f5a-92d5-7209-98b2-236bdc8127c5",
+          "session_id": "01a02f5a-db98-700d-9de5-9123b527d587",
+          "prompt": "Create the chapters — make the plan real for this book.",
+          "scenario_prompt": "Create the chapters — make the plan real for this book.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree",
+            "plan_bootstrap_propose"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "plan_bootstrap_propose",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.351032+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.351032+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.351032+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.351032+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.576831+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.758883+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.560522+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.351032+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.351032+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.351032+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.351032+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.576831+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.758883+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:00.560522+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book. It looks like we have a story plan that has been proposed, but it hasn't been \"compiled\" into a real structure yet. \n\nIn order to create the actual chapters and make the plan real, I first need to turn that proposed plan into a formal outline. Once the outline is ready, I can then \"bootstrap\" it—which is the step that actually generates the chapter files for you to write in.\n\nSince the plan is currently in a \"proposed\" state, I can't jump straight to creating chapters. Would you like me to try and compile the existing plan into a chapter-by-chapter outline now?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02f5b-5e2e-7196-beea-05fa00decfaa",
+          "session_id": "01a02f5b-8f56-7d92-ba5d-a85c0d75dad9",
+          "prompt": "Create the chapters — make the plan real for this book.",
+          "scenario_prompt": "Create the chapters — make the plan real for this book.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree",
+            "plan_bootstrap_propose"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "plan_bootstrap_propose",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.330686+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.330686+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.330686+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.330686+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.519816+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.64576+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.5138+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.330686+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.330686+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.330686+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.330686+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.519816+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.64576+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 16:01:52.5138+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 393,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've looked into the current state of your book. \n\nIt looks like we have a story plan in the \"proposed\" stage, but it hasn't been compiled into a formal structure (arcs and chapters) yet. Because the plan hasn't been finalized and \"materialized\" into the book's structure, I can't create the chapters just yet.\n\nTo get us there, we need to:\n1. **Finalize the plan**: I'll need to take that proposed plan and compile it into a real chapter-by-chapter structure.\n2. **Create the chapters**: Once the structure is set, I can then \"bootstrap\" the actual chapter files so you can start writing in them.\n\n**Would you like me to go ahead and compile that proposed plan into a real chapter structure for you?**"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

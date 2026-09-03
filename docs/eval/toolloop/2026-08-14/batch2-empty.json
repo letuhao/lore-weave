@@ -1,0 +1,1071 @@
+{
+  "batch": "batch2-empty",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_outline_node_edit",
+      "scenario": "composition-outline-node-edit-empty",
+      "intent": "write",
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "answer_expect": null,
+      "falsifier_sha": "2c5baf4dcef18191",
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with op=update, the real project_id/node_id and the correct expected_version: refused 'not found or not accessible', and the node's title was re-read UNCHANGED ('Mine').",
+        "gate": "Tier A — approval card required before any write."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff36-cdaa-78ef-8aa4-e23185f2cfc3",
+          "session_id": "019fff36-d9ec-7a57-861f-9464af97fa35",
+          "prompt": "Rename the chapter called The Ember Codex in my outline to The Ember Codex Opens.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_chapter_update_meta",
+            "book_list",
+            "composition_list_outline",
+            "composition_outline_node_edit",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "book_chapter_update_meta",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.726165+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.986037+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.960523+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:29.060513+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.986037+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.960523+00"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_book.chapters": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.726165+00"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:29.060513+00"
+              }
+            }
+          },
+          "answer": "I've renamed the chapter to **Chapter I — The Ember Codex Opens**."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff3a-2d3e-7503-aad1-d346c62f364b",
+          "session_id": "019fff3a-3c61-7728-ab5a-5708b3513874",
+          "prompt": "Rename the chapter called The Ember Codex in my outline to The Ember Codex Opens.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_update_details",
+            "composition_list_outline",
+            "composition_outline_node_edit",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "book_chapter_update_meta",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:50.75635+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:50.961618+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:50.95345+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:50.75635+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:50.961618+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:50.95345+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've attempted to rename the chapter, but I'm encountering a technical error with the outline system. I'll try to update the chapter title directly through the book's metadata instead.\n\nOne moment.\n\nThe change is ready for you to confirm."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff3c-473a-7d9d-a82a-fd7693596579",
+          "session_id": "019fff3c-52c6-7ee4-adfa-245e2b85466b",
+          "prompt": "Rename the chapter called The Ember Codex in my outline to The Ember Codex Opens.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "composition_list_outline",
+            "composition_outline_node_edit",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:08.473109+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:08.667697+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:08.659768+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:08.473109+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:08.667697+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:08.659768+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've attempted to rename the chapter, but I'm encountering a technical error in the outline system. It appears there is a mismatch between the chapter's ID and the outline node's ID, which is preventing the update from being applied.\n\nI'll need to investigate the outline structure further to resolve this. One moment."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 1,
+      "suspended_count": 0
+    },
+    {
+      "tool": "glossary_ontology_upsert",
+      "scenario": "glossary-ontology-upsert-empty",
+      "intent": "write",
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "answer_expect": null,
+      "falsifier_sha": "2c5baf4dcef18191",
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with a schema-valid item (level=kind, name, code): refused 'book not accessible', and book_kinds was re-read with 0 rows for code='hijack'.",
+        "gate": "Tier A — writes immediately once approved, per its own description."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff36-cdac-7338-8248-54f30feea094",
+          "session_id": "019fff36-d9da-7745-865e-aa2ac514d262",
+          "prompt": "I want to start tracking the factions in this world. Add Factions as a new category alongside characters and items.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_task_provide_input"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_adopt_standards",
+              "outcome": "approved_once",
+              "kind": "frontend_tool"
+            },
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.723007+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:10.006597+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.981387+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.723007+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:10.006597+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 07:40:40.182402+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:40.182402+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 07:40:40.182402+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.981387+00"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_glossary.book_active_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_attributes": {
+              "before": null,
+              "after": {
+                "rows": 29,
+                "latest": "2026-08-14 07:40:40.182402+00"
+              }
+            },
+            "loreweave_glossary.book_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:40.182402+00"
+              }
+            },
+            "loreweave_glossary.book_kind_genres": {
+              "before": null,
+              "after": {
+                "rows": 4,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_kinds": {
+              "before": null,
+              "after": {
+                "rows": 4,
+                "latest": "2026-08-14 07:40:40.182402+00"
+              }
+            }
+          },
+          "answer": "I've prepared the categories for your world. I've added **Organization** (which covers factions, sects, and clans) alongside **Character** and **Item**.\n\nPlease confirm to apply these to your book.\n\n**New categories to add:**\n*   **Organization** (Type: guild, house, cult, government, army, etc.)\n\nI've updated the structure to include **Organization** (for your factions), alongside **Character** and **Item**.\n\n**New categories to add:**\n*   **Organization** (Type: guild, house, cult, government, army, etc.)\n\nPlease confirm to apply these to your book.I've prepared the categories for your world. I've added **Organization** (which covers factions, sects, and clans) alongside **Character** and **Item**.\n\nPlease confirm to apply these to your book.\n\n**New categories to add:**\n* **Organization** (Type: guild, house, cult, government, army, etc.)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff38-4554-73f0-9e72-08216b883169",
+          "session_id": "019fff38-5bef-73bd-ab56-8a4350594ef9",
+          "prompt": "I want to start tracking the factions in this world. Add Factions as a new category alongside characters and items.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_task_provide_input"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_adopt_standards",
+              "outcome": "approved_once",
+              "kind": "frontend_tool"
+            },
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:45.860516+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:46.09306+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:46.077443+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:45.860516+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:46.09306+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 07:42:32.248392+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 07:42:32.248392+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 07:42:32.248392+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:46.077443+00"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_glossary.book_active_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_attributes": {
+              "before": null,
+              "after": {
+                "rows": 29,
+                "latest": "2026-08-14 07:42:32.248392+00"
+              }
+            },
+            "loreweave_glossary.book_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-14 07:42:32.248392+00"
+              }
+            },
+            "loreweave_glossary.book_kind_genres": {
+              "before": null,
+              "after": {
+                "rows": 4,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_kinds": {
+              "before": null,
+              "after": {
+                "rows": 4,
+                "latest": "2026-08-14 07:42:32.248392+00"
+              }
+            }
+          },
+          "answer": "I've updated your world's tracking to include **Organizations** (which covers your factions) alongside **Characters** and **Items**.\n\nI've also set up the following details for your factions:\n*   **Type**: (e.g., guild, house, cult, government, army)\n*   **Leader**: Who heads the group.\n*   **Headquarters**: Their primary base or seat of power.\n*   **Members**: Notable people or the general makeup of the group.\n*   **Description**: Their purpose and role in your story.\n\nWould you like to start by adding your first faction, or should we move on to something else?\n\nI've confirmed the structure for your world. Everything is set up so that we can now start capturing your cast and the factions you've mentioned.\n\nWhenever you're ready, you can just paste your notes, a story summary, or even a rough description of your characters and groups, and I'll organize them into the system for you.I've updated your world's tracking to include **Organizations** (which covers your factions) alongside **Characters** and **Items**.\n\nI've also set up the following details for your factions:\n*   **Type**: (e.g., guild, house, cult, government, army)\n*   **Leader**: Who heads the group.\n*   **Headquarters**: Their primary base or seat of power.\n*   **Members**: Notable people or the general makeup of the group.\n*   **Description**: Their purpose and role in your story.\n\nWhenever you're ready, you can just paste your notes, a story summary, or even a rough description of your characters and groups, and I'll organize them into the system for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff3a-3beb-79a4-855b-ce7a08d87a42",
+          "session_id": "019fff3a-48e9-7d50-ab0f-e408b77333de",
+          "prompt": "I want to start tracking the factions in this world. Add Factions as a new category alongside characters and items.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_task_provide_input"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_adopt_standards",
+              "outcome": "approved_once",
+              "kind": "frontend_tool"
+            },
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:54.524281+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:54.732101+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:54.723112+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:54.524281+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:54.732101+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 07:44:15.713358+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 07:44:15.713358+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 07:44:15.713358+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:54.723112+00"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_glossary.book_active_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_attributes": {
+              "before": null,
+              "after": {
+                "rows": 29,
+                "latest": "2026-08-14 07:44:15.713358+00"
+              }
+            },
+            "loreweave_glossary.book_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-14 07:44:15.713358+00"
+              }
+            },
+            "loreweave_glossary.book_kind_genres": {
+              "before": null,
+              "after": {
+                "rows": 4,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_kinds": {
+              "before": null,
+              "after": {
+                "rows": 4,
+                "latest": "2026-08-14 07:44:15.713358+00"
+              }
+            }
+          },
+          "answer": "I've updated the things your world tracks. I've added **Organization** (which covers factions, sects, clans, etc.) alongside **Character** and **Item**.\n\nWhat's the first faction you'd like to add to the list?\n\nI've prepared the structure for your factions. For any **Organization** (factions, sects, etc.) you add, I can now track:\n\n*   **Name** and **Aliases**\n*   **Type** (e.g., guild, clan, army)\n*   **Leader**\n*   **Headquarters**\n*   **Members**\n*   **Description**\n\nWhenever you're ready, just tell me about a faction, and I'll get it added to your world.I've prepared the structure for your factions. For any **Organization** (factions, sects, etc.) you add, I can now track:\n\n*   **Name** and **Aliases**\n*   **Type** (e.g., guild, clan, army)\n*   **Leader**\n*   **Headquarters**\n*   **Members**\n*   **Description**\n\nWhenever you're ready, just tell me about a faction, and I'll get it added to your world."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 0,
+      "wrote_count": 3,
+      "suspended_count": 0
+    },
+    {
+      "tool": "plan_compile",
+      "scenario": "plan-compile-empty",
+      "intent": "write",
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "answer_expect": null,
+      "falsifier_sha": "2c5baf4dcef18191",
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'not found or not accessible' against another user's book.",
+        "gate": "Tier A."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff36-cdac-72b8-833d-a16c01c91fb7",
+          "session_id": "019fff36-d9f0-7dc9-af64-e61c13aa2df1",
+          "prompt": "Turn the plan I've got for this book into a proper planning package.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.729566+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:10.01235+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.999566+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.729566+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:10.01235+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:09.999566+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book. It looks like we have a manuscript started, but there isn't a formal story plan (spec) or any structured arcs in place yet.\n\nTo turn your plan into a proper planning package, I'll need you to **paste the plan or story idea you have right here in the chat.**\n\nOnce you provide it, I will:\n1.  **Propose a formal story spec** (the high-level structure).\n2.  **Suggest the specific story arcs** (the emotional or narrative beats).\n3.  **Lay out a chapter-by-chapter outline** so you can start writing with a clear roadmap.\n\n**Please paste your plan below.**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff37-8da9-7286-aa18-f7a3484e6afb",
+          "session_id": "019fff37-9985-723b-bf02-424519f84845",
+          "prompt": "Turn the plan I've got for this book into a proper planning package.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:58.86128+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:59.107679+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:59.090531+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:58.86128+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:59.107679+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:40:59.090531+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book. It looks like we have one chapter written, but there isn't a formal story plan (spec) or any structured arcs in place yet.\n\nTo turn your plan into a proper planning package, I'll need you to **share the plan with me**. You can paste your notes, an outline, or a summary of the story right here in the chat.\n\nOnce you provide that, I will:\n1.  **Propose a formal story spec** (the high-level structure of your book).\n2.  **Suggest the specific story arcs** (the emotional or narrative beats) that fit your idea.\n3.  **Lay out a chapter-by-chapter outline** so you have a roadmap to follow.\n\n**Please paste your story plan or notes below to get started.**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff38-0c19-7b8a-802c-a935e48913c8",
+          "session_id": "019fff38-166c-7126-9b37-af162b3eaf74",
+          "prompt": "Turn the plan I've got for this book into a proper planning package.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:31.19013+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:31.377658+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:31.370569+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:31.19013+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:31.377658+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:41:31.370569+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book, and it looks like there isn't a structured plan (spec) or any story arcs recorded in the system yet.\n\nTo turn your ideas into a proper planning package, I need to see the plan you're referring to. Please **paste the plan or your story notes here**.\n\nOnce you provide that, I will:\n1.  **Propose a formal story plan** (the structure of your arcs and beats).\n2.  **Suggest the story arcs** that fit your premise.\n3.  **Lay out a chapter-by-chapter outline** so you can start writing."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "glossary_list_system_standards",
+      "scenario": "glossary-list-system-standards-empty",
+      "intent": "read",
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "answer_expect": null,
+      "falsifier_sha": "2c5baf4dcef18191",
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. NO BOOK BOUNDARY BY DESIGN: scope=none, it lists the SYSTEM standards catalogue, which is identical for every user and carries no per-user data. Recorded as not-applicable rather than as a pass — there is nothing here to leak, and calling that a tenancy pass would be a category error.",
+        "gate": "Tier R."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff39-4031-711b-9d88-999a021587aa",
+          "session_id": "019fff39-4fd5-7248-9788-20225d63a309",
+          "prompt": "What kinds of things can I track in a story bible here — what categories does the system offer out of the box?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:42:50.058381+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:42:32.369867+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:42:32.362906+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:42:50.058381+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:42:32.369867+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:42:32.362906+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "In this system, your story bible (the story bible) is organized into \"kinds\" of things. These categories come with pre-defined details (like a character's age, a location's climate, or an item's rarity) to help you maintain consistency.\n\nHere are the primary categories available out of the box, grouped by how they function in a story:\n\n### **The Core Cast & World**\n*   **Characters:** Individual people, gods, or named beings.\n*   **Species / Race:** Kinds of living beings, including divine mounts or beasts.\n*   **Locations:** Places one can travel to (mountains, cities, palaces, etc.).\n*   **Organizations:** Groups of people acting together (sects, dynasties, armies, clans).\n*   **Items / Props:** Physical objects like weapons, talismans, or garments.\n\n### **Systems & Lore**\n*   **Power Systems (Tier Ladders):** The graded schemes of power (e.g., cultivation ranks or magic tiers).\n*   **Techniques / Arts:** Specific spells, martial moves, or magical methods that someone performs.\n*   **Terminology:** Abstract concepts, doctrines, or titles (e.g., \"The Great Mandate\").\n*   **Social Settings:** Social structures, customs, laws, or economic systems.\n\n### **Narrative & Plot Elements**\n*   **Events:** Significant happenings, such as battles, betrayals, or prophecies.\n*   **Plot Arcs:** Multi-chapter storylines with a clear beginning and end.\n*   **Relationships:** The ties between two parties (e.g., master/disciple, marriage, or feuds).\n*   **Tropes:** Recurring narrative devices or conventions used in your storytelling.\n\n### **How to use them**\nYou don't have to use all of these. When you're ready to start building, I can \"adopt\" a specific set of these categories for your book. This sets up the \"rules\" for your world—for example, if you are writing a Xianxia novel, we would adopt categories like *Sects*, *Cultivation Ranks*, and *Techniques* so the system knows exactly what details to track for them.\n\n**Would you like to start by describing your story idea, or do you a"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff3a-4acd-7bf4-ba7a-a47a42fbdf32",
+          "session_id": "019fff3a-5799-77b8-9154-9c252c94964f",
+          "prompt": "What kinds of things can I track in a story bible here — what categories does the system offer out of the box?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:58.315322+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:58.585796+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:58.578575+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:58.315322+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:58.585796+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:43:58.578575+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You can track a wide variety of elements in your story bible, ranging from the physical inhabitants of your world to the abstract rules that govern it. \n\nThe system offers several \"out of the box\" categories (called **Kinds**) that come with pre-defined details. Here are the primary ones:\n\n### **The Core Cast & World**\n*   **Characters:** Individual people, gods, or named beings.\n*   **Species / Race:** Kinds of living beings, including divine mounts or beasts.\n*   **Locations:** Places you can travel to, like cities, mountains, or palaces.\n*   **Items / Props:** Physical objects like weapons, talismans, or garments.\n*   **Organizations:** Groups of people acting together, such as sects, armies, or clans.\n\n### **Magic, Power & Lore**\n*   **Power Systems:** The graded ladders of power (e.g., cultivation ranks or magic tiers).\n*   **Techniques / Arts:** Specific spells, martial moves, or magical methods.\n*   **Terminology:** Abstract concepts, doctrines, or titles (e.g., \"The Great Dao\" or \"The High Council\").\n*   **Social Settings:** The structures of your world, such as caste systems, laws, or economies.\n\n### **Narrative & Plot**\n*   **Events:** Significant happenings, like battles, betrayals, or prophecies.\n*   **Relationships:** The ties between characters, such as master/disciple, marriage, or feuds.\n*   **Plot Arcs:** Multi-chapter storylines with a clear beginning and end.\n*   **Tropes:** Recurring narrative devices used in your storytelling.\n\n### **How it works**\nWhen you start a new book, you don't have to define these from scratch. You can simply tell me which of these categories fit your story, and I will \"adopt\" them for your book. This automatically sets up the specific details (details) that belong to those categories—for example, a **Character** might have details for \"Age\" or \"Motivation,\" while an **Item** might have \"Weight\" or \"Rarity.\"\n\n**Would you like to start building your world by selecting which of these categories you want to use?**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff3b-4770-7e2c-9bb2-517769a0c1ed",
+          "session_id": "019fff3b-5336-7079-a5c4-6da5b28cdafe",
+          "prompt": "What kinds of things can I track in a story bible here — what categories does the system offer out of the box?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:03.032453+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:03.221644+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:03.212202+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:03.032453+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:03.221644+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:03.212202+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You can track a wide variety of elements in your story bible. The system provides several \"out of the box\" categories (called **Kinds**) that come with pre-defined details to help you organize your world-building and characters.\n\nHere are the primary categories available:\n\n### **The Core Cast & World**\n*   **Characters:** Individual people, gods, or named beings.\n*   **Species / Race:** Kinds of living beings, including divine mounts or beasts.\n*   **Locations:** Places one can travel to (mountains, cities, palaces, etc.).\n*   **Items / Props:** Physical objects like weapons, talismans, or garments.\n*   **Organizations:** Groups of people acting together, such as sects, clans, or armies.\n\n### **Magic, Power & Lore**\n*   **Power Systems:** The graded ladders of power (e.g., cultivation ranks or magic tiers).\n*   **Techniques / Arts:** Specific spells, martial moves, or magical methods.\n*   **Terminology:** Abstract concepts, doctrines, or titles (e.g., \"The Great Dao\" or \"The High Council\").\n*   **Social Settings:** Social structures, customs, laws, or economic systems.\n\n### **Narrative & Plot**\n*   **Events:** Significant happenings like battles, betrayals, or prophecies.\n*   **Plot Arcs:** Multi-chapter storylines with a clear beginning and end.\n*   **Relationships:** The ties between characters (e.g., master/disciple, marriage, or feuds).\n*   **Tropes:** Recurring narrative devices used in your storytelling.\n\n### **How it works**\nWhen you start a new book, you don't have to define these from scratch. You can simply tell me which of these categories fit your story, and I will \"adopt\" them for your book. This automatically sets up the specific details (details) that belong to each category—for example, a **Character** might track \"Age\" and \"Motivation,\" while a **Location** might track \"Climate\" and \"Terrain.\"\n\n**Would you like to start building your story foundation by selecting which of these categories your world needs?**"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 3
+    },
+    {
+      "tool": "glossary_extract_entities_from_doc",
+      "scenario": "glossary-extract-entities-from-doc-empty",
+      "intent": "read",
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "answer_expect": null,
+      "falsifier_sha": "2c5baf4dcef18191",
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'book not accessible' against another user's book.",
+        "gate": "Tier R — its own description states it WRITES NOTHING; the falsifier checks that."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff3b-9732-7366-9c5c-6d14ceb69bca",
+          "session_id": "019fff3b-a726-7ac3-8226-801879e46f5d",
+          "prompt": "Here are my notes — turn them into glossary entries please:\nKessa Duhrin is a salt-cartographer from the drowned city of Ilmarch. She carries the Tidewrit, a chart that redraws itself. Her rival is Warden Sabel.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:23.444108+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:23.62786+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:23.62009+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:23.444108+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:23.62786+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:45:23.62009+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff3c-3fb9-71f0-950e-73ba22624805",
+          "session_id": "019fff3c-4b2b-7cf9-9193-86cf35d2334f",
+          "prompt": "Here are my notes — turn them into glossary entries please:\nKessa Duhrin is a salt-cartographer from the drowned city of Ilmarch. She carries the Tidewrit, a chart that redraws itself. Her rival is Warden Sabel.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_list_system_standards",
+            "glossary_propose_entities"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:06.569856+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:06.80374+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:06.79539+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:06.569856+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:06.80374+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:06.79539+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff3c-d57c-7389-91d8-863c3d57ced1",
+          "session_id": "019fff3c-e089-7adf-a85e-e234b04dda3b",
+          "prompt": "Here are my notes — turn them into glossary entries please:\nKessa Duhrin is a salt-cartographer from the drowned city of Ilmarch. She carries the Tidewrit, a chart that redraws itself. Her rival is Warden Sabel.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:44.910853+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:45.126812+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:45.118848+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:44.910853+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:45.126812+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 07:46:45.118848+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 2,
+      "wrote_count": 0,
+      "suspended_count": 3
+    }
+  ]
+}

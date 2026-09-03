@@ -35,6 +35,11 @@ type selectForContextRequest struct {
 	// Language (S6, optional): augment each entity's aliases with its per-language
 	// alias SET (source ∪ target, deduped). Omitted → source aliases only.
 	Language string `json:"language"`
+	// Deleted (DQ-T44, owner 2026-08-28): "a `deleted=true` (soft-deleted) FILTER on each
+	// family's EXISTING list/search tool. No new tools." False (the default) is the ordinary
+	// search and is byte-for-byte what it always was; true returns ONLY soft-deleted entities,
+	// so glossary_entity_restore can be handed the id it needs.
+	Deleted bool `json:"deleted"`
 }
 
 // composePerLanguageAliases augments each item's CachedAliases with the per-language
@@ -323,7 +328,7 @@ func (s *Server) selectGlossaryForContext(ctx context.Context, bookID uuid.UUID,
 		return selectForContextResponse{Entities: selected, TotalTokensEstimate: tokensUsed}
 	}
 
-	if err := s.queryPinnedTier(ctx, bookID, excludedList, pinnedCap, add); err != nil {
+	if err := s.queryPinnedTier(ctx, bookID, excludedList, pinnedCap, req.Deleted, add); err != nil {
 		return selectForContextResponse{}, fmt.Errorf("pinned query failed: %w", err)
 	}
 	if budgetExhausted() {
@@ -332,13 +337,13 @@ func (s *Server) selectGlossaryForContext(ctx context.Context, bookID uuid.UUID,
 
 	hadQuery := req.Query != ""
 	if hadQuery {
-		if err := s.queryExactTier(ctx, bookID, excludedList, req.Query, remaining(), add); err != nil {
+		if err := s.queryExactTier(ctx, bookID, excludedList, req.Query, remaining(), req.Deleted, add); err != nil {
 			return selectForContextResponse{}, fmt.Errorf("exact query failed: %w", err)
 		}
 		if budgetExhausted() {
 			return result(), nil
 		}
-		if err := s.queryFTSTier(ctx, bookID, excludedList, req.Query, remaining(), add); err != nil {
+		if err := s.queryFTSTier(ctx, bookID, excludedList, req.Query, remaining(), req.Deleted, add); err != nil {
 			return selectForContextResponse{}, fmt.Errorf("fts query failed: %w", err)
 		}
 		if budgetExhausted() {
@@ -349,7 +354,7 @@ func (s *Server) selectGlossaryForContext(ctx context.Context, bookID uuid.UUID,
 	// Tier 3 recent fallback: only when no query was given (general snapshot) or
 	// a query produced zero results (avoid an empty context).
 	if !hadQuery || len(selected) == 0 {
-		if err := s.queryRecentTier(ctx, bookID, excludedList, remaining(), add); err != nil {
+		if err := s.queryRecentTier(ctx, bookID, excludedList, remaining(), req.Deleted, add); err != nil {
 			return selectForContextResponse{}, fmt.Errorf("recent query failed: %w", err)
 		}
 	}
@@ -387,20 +392,40 @@ func (s *Server) scanContextRow(rows pgx.Rows, extraRank *float64) (glossaryEnti
 	return row, nil
 }
 
+// deletedClause is the ONE place the soft-delete predicate is written.
+//
+// DQ-T44 (owner 2026-08-28) asked for a `deleted=true` filter on the EXISTING search tool so
+// glossary_entity_restore can be reached: "each needs its list tool to accept the filter AND its
+// query to stop excluding soft-deleted rows, which is the half that is easy to miss." Both
+// halves are here, in one string, because FOUR tiers share the predicate and a fix applied to
+// three of them would look exactly like a fix applied to all four.
+//
+// MEASURED, and it is why the row calls this an unreachable undo: asked to restore a
+// soft-deleted entity BY NAME, the model searched the glossary, the chapter text and project
+// memory, found nothing on 5 of 5 runs, and said so — "Since I can't see her in the trash (the
+// recycle bin) without an ID, I'll need you to provide her element ID." That is the correct
+// answer to a surface that cannot show it.
+func deletedClause(deleted bool) string {
+	if deleted {
+		return "e.deleted_at IS NOT NULL"
+	}
+	return "e.deleted_at IS NULL"
+}
+
 func (s *Server) queryPinnedTier(
 	ctx context.Context, bookID uuid.UUID, exclude []uuid.UUID, limit int,
-	add func(glossaryEntityForContext, string, float64) bool,
+	deleted bool, add func(glossaryEntityForContext, string, float64) bool,
 ) error {
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM glossary_entities e
 		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
-		  AND e.deleted_at IS NULL
+		  AND %s
 		  AND e.is_pinned_for_context = true
 		  AND NOT (e.entity_id = ANY($2::uuid[]))
 		ORDER BY e.updated_at DESC
-		LIMIT $3`, selectCols)
+		LIMIT $3`, selectCols, deletedClause(deleted))
 	rows, err := s.pool.Query(ctx, query, bookID, exclude, limit)
 	if err != nil {
 		return err
@@ -420,7 +445,7 @@ func (s *Server) queryPinnedTier(
 
 func (s *Server) queryExactTier(
 	ctx context.Context, bookID uuid.UUID, exclude []uuid.UUID, q string, limit int,
-	add func(glossaryEntityForContext, string, float64) bool,
+	deleted bool, add func(glossaryEntityForContext, string, float64) bool,
 ) error {
 	if limit <= 0 {
 		return nil
@@ -430,7 +455,7 @@ func (s *Server) queryExactTier(
 		FROM glossary_entities e
 		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
-		  AND e.deleted_at IS NULL
+		  AND %s
 		  AND NOT (e.entity_id = ANY($2::uuid[]))
 		  AND (
 		    lower(e.cached_name) = lower($3)
@@ -440,7 +465,7 @@ func (s *Server) queryExactTier(
 		    )
 		  )
 		ORDER BY e.updated_at DESC
-		LIMIT $4`, selectCols)
+		LIMIT $4`, selectCols, deletedClause(deleted))
 	rows, err := s.pool.Query(ctx, query, bookID, exclude, q, limit)
 	if err != nil {
 		return err
@@ -460,7 +485,7 @@ func (s *Server) queryExactTier(
 
 func (s *Server) queryFTSTier(
 	ctx context.Context, bookID uuid.UUID, exclude []uuid.UUID, q string, limit int,
-	add func(glossaryEntityForContext, string, float64) bool,
+	deleted bool, add func(glossaryEntityForContext, string, float64) bool,
 ) error {
 	if limit <= 0 {
 		return nil
@@ -483,11 +508,11 @@ func (s *Server) queryFTSTier(
 		FROM glossary_entities e
 		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
-		  AND e.deleted_at IS NULL
+		  AND %s
 		  AND NOT (e.entity_id = ANY($2::uuid[]))
 		  AND e.search_vector @@ plainto_tsquery('simple', $3)
 		ORDER BY rank DESC
-		LIMIT $4`, selectCols)
+		LIMIT $4`, selectCols, deletedClause(deleted))
 	rows, err := s.pool.Query(ctx, query, bookID, exclude, q, limit)
 	if err != nil {
 		return err
@@ -508,7 +533,7 @@ func (s *Server) queryFTSTier(
 
 func (s *Server) queryRecentTier(
 	ctx context.Context, bookID uuid.UUID, exclude []uuid.UUID, limit int,
-	add func(glossaryEntityForContext, string, float64) bool,
+	deleted bool, add func(glossaryEntityForContext, string, float64) bool,
 ) error {
 	if limit <= 0 {
 		return nil
@@ -518,10 +543,10 @@ func (s *Server) queryRecentTier(
 		FROM glossary_entities e
 		JOIN book_kinds ek ON ek.book_kind_id = e.kind_id
 		WHERE e.book_id = $1
-		  AND e.deleted_at IS NULL
+		  AND %s
 		  AND NOT (e.entity_id = ANY($2::uuid[]))
 		ORDER BY e.updated_at DESC
-		LIMIT $3`, selectCols)
+		LIMIT $3`, selectCols, deletedClause(deleted))
 	rows, err := s.pool.Query(ctx, query, bookID, exclude, limit)
 	if err != nil {
 		return err

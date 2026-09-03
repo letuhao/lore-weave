@@ -90,6 +90,20 @@ def test_coerce_is_a_noop_for_wellformed_and_multi_element():
     assert a == {"book_id": "b1", "project_id": ["x", "y"]}
 
 
+def test_coerces_model_ref_which_was_MISSING_from_the_enumeration():
+    """🔴 MEASURED 2026-08-11: `translation_start_extraction` was called 3 times with
+    `model_ref: ["019ebb72-…"]` — a 1-element list holding a real model UUID — and rejected for
+    the type, exactly as `project_id=["…"]` was before that arg joined the set.
+
+    `_SCALAR_ID_ARGS` is an ENUMERATION, so a missing member is an oversight rather than a
+    decision. `model_ref` is a scalar UUID reference with no legitimately-array form, which is the
+    test `entity_ids` and `items` fail and are therefore correctly excluded."""
+    a = {"model_ref": ["019ebb72-27a2-72f3-a42d-d2d0e0ded179"], "chapter_ids": ["c1", "c2"]}
+    _coerce_listed_scalar_ids(a)
+    assert a["model_ref"] == "019ebb72-27a2-72f3-a42d-d2d0e0ded179"
+    assert a["chapter_ids"] == ["c1", "c2"], "a legitimately-plural arg is still never touched"
+
+
 def test_coerce_only_touches_known_scalar_id_args():
     # a non-id arg that happens to be a 1-elem list is left alone (not in the closed set)
     a = {"items": [{"kind": "character"}]}

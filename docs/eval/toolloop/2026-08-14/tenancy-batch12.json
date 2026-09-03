@@ -1,0 +1,51 @@
+[
+  {
+    "tool": "glossary_create_chapter_link",
+    "args": {
+      "book_id": "a80bf9cc-2925-418c-a4b0-3f566aa51b01",
+      "entity_id": "b8659e9d-f469-4a2c-ab29-e5d8c75bd731",
+      "chapter_id": "7312b080-a278-4e68-ba9c-68816da725a5"
+    },
+    "verdict": "refused",
+    "response": "MCP glossary_create_chapter_link error: book not accessible"
+  },
+  {
+    "tool": "glossary_create_evidence",
+    "args": {
+      "book_id": "a80bf9cc-2925-418c-a4b0-3f566aa51b01",
+      "entity_id": "8b6dd54f-2d2a-4e4b-bb4e-a0f2ef7decdd",
+      "attr_value_id": "82bc21e3-27ed-48e0-944c-92cba04ce1f5",
+      "original_text": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP glossary_create_evidence error: book not accessible"
+  },
+  {
+    "tool": "glossary_entity_rename",
+    "args": {
+      "book_id": "a80bf9cc-2925-418c-a4b0-3f566aa51b01",
+      "entity_id": "64ff208e-68db-48ad-98c1-02873e3d991d",
+      "name": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP glossary_entity_rename error: book not accessible"
+  },
+  {
+    "tool": "glossary_propose_translation",
+    "args": {
+      "book_id": "a80bf9cc-2925-418c-a4b0-3f566aa51b01",
+      "language_code": "x",
+      "items": []
+    },
+    "verdict": "refused",
+    "response": "MCP glossary_propose_translation error: book not accessible"
+  },
+  {
+    "tool": "kg_graph_query",
+    "args": {
+      "project_id": "39867026-e71e-40bb-9a79-d8cd3b8090f2"
+    },
+    "verdict": "refused",
+    "response": "MCP kg_graph_query error: Error executing tool kg_graph_query: {\"message\": \"project not found\"}"
+  }
+]

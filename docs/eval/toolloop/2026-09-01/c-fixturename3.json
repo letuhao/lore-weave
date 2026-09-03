@@ -1,0 +1,1307 @@
+{
+  "batch": "c-fixturename3",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_derivative_edit",
+      "scenario": "composition-derivative-edit-seeded",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the model invents a project_id for a derivative that does not exist, OR the reply claims a divergence spec was updated or a derivative archived when there is none, OR it picks `archive` on a prompt whose primary verb is update — the prompt deliberately names both so the CHOICE is observable, and archiving something the author only asked to update would be acting beyond the request.",
+      "answer_expect": null,
+      "falsifier_sha": "cfda12ac40c9b3f7",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "This scenario IS the absent case — no derivative exists.",
+        "tenancy": "OWED — another account's derivative must not be editable or archivable."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a05a8d-87ed-767b-805d-f4f07e6d952e",
+          "project_id": "01a05a8d-893a-79b8-aa39-9ca8c54096b2",
+          "seed_ids": {
+            "01a05a8d-87ed-767b-805d-f4f07e6d952e": "fixture book_id",
+            "01a05a8d-893a-79b8-aa39-9ca8c54096b2": "fixture project_id (composition_work)",
+            "01a05a8d-8882-74c0-b757-ea0ee15c0d9d": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a8d-8a80-7908-93a9-f3793f5e5e8b": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MjIwLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4ZC04N2VkLTc2N2ItODA1ZC1mNGYwN2U2ZDk1MmUiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFZvbG9rb2tpIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4ZC04OTNhLTc5YjgtYWEzOS05Y2E4YzU0MDk2YjIiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4ZC04N2VkLTc2N2ItODA1ZC1mNGYwN2U2ZDk1MmUiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.bLWUoVbBBhko9YeJUG1vdwTqudELGIVZpFA9_KMtglo.project_id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MjIwLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4ZC04N2VkLTc2N2ItODA1ZC1mNGYwN2U2ZDk1MmUiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFZvbG9rb2tpIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4ZC04OTNhLTc5YjgtYWEzOS05Y2E4YzU0MDk2YjIiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4ZC04N2VkLTc2N2ItODA1ZC1mNGYwN2U2ZDk1MmUiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.bLWUoVbBBhko9YeJUG1vdwTqudELGIVZpFA9_KMtglo.derivative.created_by",
+            "01a05a8d-8a85-7318-a7f4-5656479b2389": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MjIwLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4ZC04N2VkLTc2N2ItODA1ZC1mNGYwN2U2ZDk1MmUiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFZvbG9rb2tpIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4ZC04OTNhLTc5YjgtYWEzOS05Y2E4YzU0MDk2YjIiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4ZC04N2VkLTc2N2ItODA1ZC1mNGYwN2U2ZDk1MmUiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.bLWUoVbBBhko9YeJUG1vdwTqudELGIVZpFA9_KMtglo.derivative.id",
+            "01a05a8d-8941-7276-a91d-0a9dbab66555": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MjIwLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4ZC04N2VkLTc2N2ItODA1ZC1mNGYwN2U2ZDk1MmUiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFZvbG9rb2tpIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4ZC04OTNhLTc5YjgtYWEzOS05Y2E4YzU0MDk2YjIiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4ZC04N2VkLTc2N2ItODA1ZC1mNGYwN2U2ZDk1MmUiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.bLWUoVbBBhko9YeJUG1vdwTqudELGIVZpFA9_KMtglo.derivative.source_work_id"
+          },
+          "session_id": "01a05a8d-d5ba-70f2-adb8-b2e9eb0eaba2",
+          "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "scenario_prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_get_derivative_context",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_derivative_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_get_derivative_context",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_get_derivative_context: not found or not accessible\"}"
+            },
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_package_tree: not found or not accessible\"}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_get_derivative_context"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.098127+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.098127+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.098127+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.098127+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:20:20.612678+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.612678+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:20:20.608398+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.098127+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.098127+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.098127+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.098127+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:20:20.612678+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:20:20.612678+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:20:20.608398+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:06.750108+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:06.750108+00"
+              }
+            }
+          },
+          "answer": "I'm ready to help you update your derivative's divergence spec or archive it if it's stale.\n\nHowever, I don't have the `project_id` for your derivative. Could you please provide the ID for the derivative you're referring to? Once I have that, I can check its status and proceed.\n\n2 actions in this turn did not run: composition_get_derivative_context — Error executing tool composition_get_derivative_context: not found or not accessible; composition_package_tree — Error executing tool composition_package_tree: not found or not accessible"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a05a8e-7b7e-7781-aa03-1310f3016b8a",
+          "project_id": "01a05a8e-7cb5-77e4-962f-feb4ab95853e",
+          "seed_ids": {
+            "01a05a8e-7b7e-7781-aa03-1310f3016b8a": "fixture book_id",
+            "01a05a8e-7cb5-77e4-962f-feb4ab95853e": "fixture project_id (composition_work)",
+            "01a05a8e-7c09-7c1f-9f63-ae0417d99b2c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a8e-7d93-705a-9316-85788e7e9516": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MjgyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4ZS03YjdlLTc3ODEtYWEwMy0xMzEwZjMwMTZiOGEiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIEthc2VtdW5pIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4ZS03Y2I1LTc3ZTQtOTYyZi1mZWI0YWI5NTg1M2UiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4ZS03YjdlLTc3ODEtYWEwMy0xMzEwZjMwMTZiOGEiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.9MVrI9q2iGkyxIMecF0dz36GK41p39IqT4AXPMzMZj8.project_id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MjgyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4ZS03YjdlLTc3ODEtYWEwMy0xMzEwZjMwMTZiOGEiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIEthc2VtdW5pIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4ZS03Y2I1LTc3ZTQtOTYyZi1mZWI0YWI5NTg1M2UiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4ZS03YjdlLTc3ODEtYWEwMy0xMzEwZjMwMTZiOGEiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.9MVrI9q2iGkyxIMecF0dz36GK41p39IqT4AXPMzMZj8.derivative.created_by",
+            "01a05a8e-7da0-7458-a809-75752f8f3e55": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MjgyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4ZS03YjdlLTc3ODEtYWEwMy0xMzEwZjMwMTZiOGEiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIEthc2VtdW5pIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4ZS03Y2I1LTc3ZTQtOTYyZi1mZWI0YWI5NTg1M2UiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4ZS03YjdlLTc3ODEtYWEwMy0xMzEwZjMwMTZiOGEiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.9MVrI9q2iGkyxIMecF0dz36GK41p39IqT4AXPMzMZj8.derivative.id",
+            "01a05a8e-7cbb-79b8-a3cb-023244d511a6": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MjgyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4ZS03YjdlLTc3ODEtYWEwMy0xMzEwZjMwMTZiOGEiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIEthc2VtdW5pIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4ZS03Y2I1LTc3ZTQtOTYyZi1mZWI0YWI5NTg1M2UiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4ZS03YjdlLTc3ODEtYWEwMy0xMzEwZjMwMTZiOGEiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.9MVrI9q2iGkyxIMecF0dz36GK41p39IqT4AXPMzMZj8.derivative.source_work_id"
+          },
+          "session_id": "01a05a8e-c84e-7844-9fc6-55f024323966",
+          "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "scenario_prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_get_derivative_context"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_derivative_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_get_derivative_context",
+              "result_head": "{\"ok\": true, \"result\": {\"is_derivative\": false}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "call": "composition_get_derivative_context"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.441628+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.441628+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.441628+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.441628+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:21:22.847758+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.847758+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:21:22.834812+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.441628+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.441628+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.441628+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.441628+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:21:22.847758+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:21:22.847758+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:21:22.834812+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can't update or archive the divergence spec because the project you're referring to (`LOOP-THROWAWAY-composition-derivative-edit-seeded-1-6f806688`) is not a derivative; it's the canonical work.\n\nA derivative is a \"what-if\" version of your book (like a version with a different POV or a different set of canon rules). If you have a derivative you'd like to work on, please let me know its name or ID, or tell me which story change you'd like to explore so I can create one for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a05a8f-65f9-70d9-9505-4d2e4ff7633d",
+          "project_id": "01a05a8f-6754-7650-a7db-dd6be125012a",
+          "seed_ids": {
+            "01a05a8f-65f9-70d9-9505-4d2e4ff7633d": "fixture book_id",
+            "01a05a8f-6754-7650-a7db-dd6be125012a": "fixture project_id (composition_work)",
+            "01a05a8f-669a-713f-804f-7f469bc116b2": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a8f-6832-7f91-a590-53d7169301dc": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MzQyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4Zi02NWY5LTcwZDktOTUwNS00ZDJlNGZmNzYzM2QiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIEtpa2ltdXJ1IiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4Zi02NzU0LTc2NTAtYTdkYi1kZDZiZTEyNTAxMmEiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4Zi02NWY5LTcwZDktOTUwNS00ZDJlNGZmNzYzM2QiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.R_uzdB6etcZMIzIg7uq_nTFTDkM-k18tBe6vZ8mGW3M.project_id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MzQyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4Zi02NWY5LTcwZDktOTUwNS00ZDJlNGZmNzYzM2QiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIEtpa2ltdXJ1IiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4Zi02NzU0LTc2NTAtYTdkYi1kZDZiZTEyNTAxMmEiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4Zi02NWY5LTcwZDktOTUwNS00ZDJlNGZmNzYzM2QiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.R_uzdB6etcZMIzIg7uq_nTFTDkM-k18tBe6vZ8mGW3M.derivative.created_by",
+            "01a05a8f-683f-7604-b188-a50177d75190": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MzQyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4Zi02NWY5LTcwZDktOTUwNS00ZDJlNGZmNzYzM2QiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIEtpa2ltdXJ1IiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4Zi02NzU0LTc2NTAtYTdkYi1kZDZiZTEyNTAxMmEiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4Zi02NWY5LTcwZDktOTUwNS00ZDJlNGZmNzYzM2QiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.R_uzdB6etcZMIzIg7uq_nTFTDkM-k18tBe6vZ8mGW3M.derivative.id",
+            "01a05a8f-675a-7746-9c9b-8dff701d0391": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2MzQyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE4Zi02NWY5LTcwZDktOTUwNS00ZDJlNGZmNzYzM2QiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIEtpa2ltdXJ1IiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE4Zi02NzU0LTc2NTAtYTdkYi1kZDZiZTEyNTAxMmEiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE4Zi02NWY5LTcwZDktOTUwNS00ZDJlNGZmNzYzM2QiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.R_uzdB6etcZMIzIg7uq_nTFTDkM-k18tBe6vZ8mGW3M.derivative.source_work_id"
+          },
+          "session_id": "01a05a8f-b2d2-73c1-b8aa-862178ee7276",
+          "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "scenario_prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_get_derivative_context"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_derivative_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_get_derivative_context",
+              "result_head": "{\"ok\": true, \"result\": {\"is_derivative\": false}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "call": "composition_get_derivative_context"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.489879+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.489879+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.489879+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.489879+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:22:22.911157+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.911157+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:22:22.898847+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.489879+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.489879+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.489879+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.489879+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:22:22.911157+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:22:22.911157+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:22:22.898847+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I cannot update or archive the divergence spec because the project you've provided is not a derivative (it is the canonical work). \n\nIf you intended to work on a specific derivative, please provide its project ID. If you want to create a new derivative first, let me know!"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05a90-5206-75fd-a50e-aadf30763fea",
+          "project_id": "01a05a90-5364-7ef5-bbe5-9767c35d66ce",
+          "seed_ids": {
+            "01a05a90-5206-75fd-a50e-aadf30763fea": "fixture book_id",
+            "01a05a90-5364-7ef5-bbe5-9767c35d66ce": "fixture project_id (composition_work)",
+            "01a05a90-5293-7b7e-936f-053e0e94cf4e": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a90-543e-7ad7-abb3-11a84bcb82c8": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2NDAzLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE5MC01MjA2LTc1ZmQtYTUwZS1hYWRmMzA3NjNmZWEiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFRlcnVwaXphIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE5MC01MzY0LTdlZjUtYmJlNS05NzY3YzM1ZDY2Y2UiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE5MC01MjA2LTc1ZmQtYTUwZS1hYWRmMzA3NjNmZWEiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.e1bPJoYebqB1pEGgLPZyVT7y_9shc8C0Xzt0jOXTi0Q.project_id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2NDAzLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE5MC01MjA2LTc1ZmQtYTUwZS1hYWRmMzA3NjNmZWEiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFRlcnVwaXphIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE5MC01MzY0LTdlZjUtYmJlNS05NzY3YzM1ZDY2Y2UiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE5MC01MjA2LTc1ZmQtYTUwZS1hYWRmMzA3NjNmZWEiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.e1bPJoYebqB1pEGgLPZyVT7y_9shc8C0Xzt0jOXTi0Q.derivative.created_by",
+            "01a05a90-5442-7cc4-b8b4-48483327bd5b": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2NDAzLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE5MC01MjA2LTc1ZmQtYTUwZS1hYWRmMzA3NjNmZWEiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFRlcnVwaXphIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE5MC01MzY0LTdlZjUtYmJlNS05NzY3YzM1ZDY2Y2UiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE5MC01MjA2LTc1ZmQtYTUwZS1hYWRmMzA3NjNmZWEiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.e1bPJoYebqB1pEGgLPZyVT7y_9shc8C0Xzt0jOXTi0Q.derivative.id",
+            "01a05a90-5372-768b-9279-1ca0573988cd": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2NDAzLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE5MC01MjA2LTc1ZmQtYTUwZS1hYWRmMzA3NjNmZWEiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFRlcnVwaXphIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE5MC01MzY0LTdlZjUtYmJlNS05NzY3YzM1ZDY2Y2UiLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE5MC01MjA2LTc1ZmQtYTUwZS1hYWRmMzA3NjNmZWEiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.e1bPJoYebqB1pEGgLPZyVT7y_9shc8C0Xzt0jOXTi0Q.derivative.source_work_id"
+          },
+          "session_id": "01a05a90-930b-7637-822e-379ca15820a4",
+          "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "scenario_prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_get_derivative_context"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_derivative_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_get_derivative_context",
+              "result_head": "{\"ok\": true, \"result\": {\"is_derivative\": false}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "call": "composition_get_derivative_context"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:22.899557+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:22.899557+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:22.899557+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:22.899557+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:23:23.330614+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:23.330614+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:23:23.326643+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:22.899557+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:22.899557+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:22.899557+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:22.899557+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:23:23.330614+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:23:23.330614+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:23:23.326643+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can't update or archive the divergence spec because the project you've linked is not a derivative (it's the canonical work). \n\nIf you intended to work on a specific derivative, please let me know its ID, or if you'd like me to create a new one first."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05a91-39e3-75ca-b527-a175438d4129",
+          "project_id": "01a05a91-3b16-7a0a-a5e3-ec79113f16e7",
+          "seed_ids": {
+            "01a05a91-39e3-75ca-b527-a175438d4129": "fixture book_id",
+            "01a05a91-3b16-7a0a-a5e3-ec79113f16e7": "fixture project_id (composition_work)",
+            "01a05a91-3a71-71e4-aa21-75c3533921b0": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05a91-3c04-736d-89ea-daf37f27d974": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2NDYyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE5MS0zOWUzLTc1Y2EtYjUyNy1hMTc1NDM4ZDQxMjkiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFp1bGVzYXBvIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE5MS0zYjE2LTdhMGEtYTVlMy1lYzc5MTEzZjE2ZTciLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE5MS0zOWUzLTc1Y2EtYjUyNy1hMTc1NDM4ZDQxMjkiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.3ydQAxrFuExmuLlh1XDF5DpGZUFBN76czrV6qCOMXFU.project_id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2NDYyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE5MS0zOWUzLTc1Y2EtYjUyNy1hMTc1NDM4ZDQxMjkiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFp1bGVzYXBvIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE5MS0zYjE2LTdhMGEtYTVlMy1lYzc5MTEzZjE2ZTciLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE5MS0zOWUzLTc1Y2EtYjUyNy1hMTc1NDM4ZDQxMjkiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.3ydQAxrFuExmuLlh1XDF5DpGZUFBN76czrV6qCOMXFU.derivative.created_by",
+            "01a05a91-3c10-7d79-b518-37d6ddaa88fd": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2NDYyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE5MS0zOWUzLTc1Y2EtYjUyNy1hMTc1NDM4ZDQxMjkiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFp1bGVzYXBvIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE5MS0zYjE2LTdhMGEtYTVlMy1lYzc5MTEzZjE2ZTciLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE5MS0zOWUzLTc1Y2EtYjUyNy1hMTc1NDM4ZDQxMjkiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.3ydQAxrFuExmuLlh1XDF5DpGZUFBN76czrV6qCOMXFU.derivative.id",
+            "01a05a91-3b1b-7641-8222-e012da94263c": "seed[1] /v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uZGVyaXZlIiwiZXhwIjoxNzg4MjI2NDYyLCJwIjp7ImJvb2tfaWQiOiIwMWEwNWE5MS0zOWUzLTc1Y2EtYjUyNy1hMTc1NDM4ZDQxMjkiLCJicmFuY2hfcG9pbnQiOm51bGwsImNhbm9uX3J1bGUiOltdLCJlbnRpdHlfb3ZlcnJpZGVzIjpbXSwibmFtZSI6IlRocm93YXdheSBEaXZlcmdlbmNlIFp1bGVzYXBvIiwicG92X2FuY2hvciI6bnVsbCwic291cmNlX3Byb2plY3RfaWQiOiIwMWEwNWE5MS0zYjE2LTdhMGEtYTVlMy1lYzc5MTEzZjE2ZTciLCJ0YXhvbm9teSI6ImF1In0sInIiOiIwMWEwNWE5MS0zOWUzLTc1Y2EtYjUyNy1hMTc1NDM4ZDQxMjkiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.3ydQAxrFuExmuLlh1XDF5DpGZUFBN76czrV6qCOMXFU.derivative.source_work_id"
+          },
+          "session_id": "01a05a91-7b86-79ab-bb8b-bb06d3c4a5d2",
+          "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "scenario_prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_get_derivative_context"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_derivative_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_get_derivative_context",
+              "result_head": "{\"ok\": true, \"result\": {\"is_derivative\": false}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "call": "composition_get_derivative_context"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_derivative_edit",
+                "composition_get_derivative_context"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.256922+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.256922+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.256922+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.256922+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:24:22.672645+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.672645+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:24:22.660181+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.256922+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.256922+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.256922+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.256922+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-09-01 01:24:22.672645+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-09-01 01:24:22.672645+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-09-01 01:24:22.660181+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1037,
+                "latest": "2026-08-31 11:47:45.256255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can help you update or archive a derivative, but I couldn't find an active \"what-if\" derivative for this project (the current work is the canonical version).\n\nIf you have a specific derivative project ID you'd like me to work on, please let me know. Otherwise, if you were looking to change the current story's direction, we can start by creating a new derivative or by editing the main story's details."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 1,
+      "suspended_count": 0
+    }
+  ]
+}

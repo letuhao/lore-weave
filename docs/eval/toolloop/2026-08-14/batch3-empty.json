@@ -1,0 +1,663 @@
+{
+  "batch": "batch3-empty",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "tool_load",
+      "scenario": "tool-load-empty",
+      "intent": "read",
+      "falsifier": "ABSENT CASE — a book with one chapter and nothing else. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors rather than saying plainly there is nothing.",
+      "answer_expect": null,
+      "falsifier_sha": "69b56806a20d5c31",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). NOT APPLICABLE by design: it loads TOOL SCHEMAS, which are identical for every caller and contain no user data. Recorded as such rather than as a pass.",
+        "gate": "Tier R, gateway-local."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff59-6974-740a-93dc-eb0615c63615",
+          "session_id": "019fff59-7613-7801-bd7e-ab9987bdf7c5",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:57.878713+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.169292+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.156876+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:57.878713+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.169292+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.156876+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To add a new character to your story bible, you don't need to provide a formal form or a specific list of data points. You can simply **tell me about them in plain language**—as if you were describing them to a friend or writing a rough note.\n\nI will then extract the details and propose them as a structured entry for your review.\n\n### What you can provide:\n*   **The Basics:** Name, age, gender, or species.\n*   **Appearance:** Physical traits, clothing style, or distinguishing marks.\n*   **Personality:** Their temperament, core motivations, fears, or flaws.\n*   **Background:** Where they came from, their history, or significant life events.\n*   **Abilities:** Special skills, magical powers, or combat styles.\n*   **Relationships:** Who they love, who they hate, or who they serve.\n\n### How it works:\n1.  **You describe them:** You can paste a paragraph of prose, a bulleted list, or even just a messy brain-dump of ideas.\n2.  **I extract the details:** I'll map your description to the \"Character\" category in your bible.\n3.  **You review and approve:** I will present a \"draft\" of the character entry. You can then tell me to \"add more detail about their eyes\" or \"make them more aggressive,\" and I will update the draft. Once you're happy, you'll click **Apply** to make them official.\n\n**Example of what you can send me:**\n> \"There's a rogue named Kaelen. He's a human with silver hair and a scar across his nose. He's incredibly cynical and motivated by debt, but he has a soft spot for orphans. He uses a curved dagger called 'Shadow's Edge' and is a former member of the Nightshade Syndicate.\"\n\n**Ready to start? Just tell me about your character.**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff5a-2675-7d4c-8283-7308619a6891",
+          "session_id": "019fff5a-30bf-7af2-bb5f-1920a0f19ae5",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:46.157849+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:46.344494+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:46.337903+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:46.157849+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:46.344494+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:46.337903+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To add a new character to your story bible, I don't need a formal form or a specific template. You can simply tell me about them in plain language—like you're describing a person to a friend—and I will extract the details into the system.\n\nHowever, to make the entry as complete as possible, here is what the system is looking for:\n\n### 1. The Essentials (Required)\n*   **Name:** The character's name (or a placeholder if you haven't decided).\n*   **Nature of Being:** I need to know if they are a person, a god, an immortal, or a named being.\n\n### 2. The Details (Highly Recommended)\nThe more of these you provide in your description, the better the \"profile\" will be:\n*   **Description:** A summary of who they are, their personality, or their role in the story.\n*   **Aliases/Titles:** Any nicknames, honorifics, or titles they go by (e.g., \"The Crimson Blade\" or \"Elder of the Southern Peak\").\n*   **Physical Traits:** Appearance, age, or distinctive features.\n*   **Key Details:** Anything specific to your world, such as their cultivation level, their faction/sect, their primary weapon, or their magical abilities.\n\n### How to do it:\nYou have two ways to give this to me:\n\n*   **The \"Quick Drop\":** Just type something like: *\"Add a new character named Kaelen. He's a rogue swordsman from the Shadow Sect, known as the Silent Gale. He's tall, has a scar over his left eye, and uses a jade-encrusted dagger.\"*\n*   **The \"Deep Dive\":** If you have a long page of notes or a character sheet, just paste the whole thing. I will scan it, extract the relevant details, and present them to you for approval.\n\n**Once you give me the info, I will show you a draft of the character profile. You just have to say \"go ahead\" or \"apply\" to make it official in your story bible.**\n\nI've prepared the foundation for your story's world. I have set up the categories that will track everything from your characters and locations to their unique techniques and social structures.\n\nThis means we are now ready to"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff5b-543d-7e81-b4c6-c9a05f3df8f4",
+          "session_id": "019fff5b-5f0f-77e8-b8da-3aaa3c6d2c71",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:03.438684+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:03.634804+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:03.625969+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:03.438684+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:03.634804+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:03.625969+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To add a new character to your story bible, I don't need a formal form or a specific template. I just need you to tell me about them in your own words.\n\nYou can simply **paste a description, a scene, or even just a few notes** where the character appears. \n\n### How I process it:\n1.  **Extraction:** I will read your text and look for anyone who fits the definition of a **Character** (an individual person, god, or named being who acts, speaks, or is addressed).\n2.  **Drafting:** I will extract their name and any details I can find (like their role, appearance, or personality) and present them to you as **draft suggestions**.\n3.  **Review:** You will see a list of these \"candidates\" in your review inbox. You can then approve them to make them official parts of your world.\n\n### What you can provide:\n*   **A character profile:** \"Elara is a rogue with silver hair and a penchant for stealing from the local magistrate.\"\n*   **A snippet of prose:** \"Kaelen stepped into the light, his eyes glowing with the blue fire of the Frost Realm.\"\n*   **A messy list of notes:** \"The Captain: grumpy, old, has a scar on his left cheek, hates tea.\"\n\n**Note:** I won't add them to the \"official\" bible immediately. I will always show you a draft first so you can confirm or correct the details.\n\nI've prepared the framework for your story's world. I have set up the categories that will track everything from your characters and locations to their unique techniques and social structures.\n\nThis means as you tell me more about your story, I'll be able to automatically organize your cast, the places they visit, and the items they use into a structured database.\n\nWhenever you're ready, just start sharing your ideas, notes, or prose, and I'll begin pulling out the details for you to review.\n\nI've prepared the framework for your story's world. I have set up the categories that will track everything from your characters and locations to their unique techniques and social structures.\n\nThis means as you "
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 1
+    },
+    {
+      "tool": "kg_project_list",
+      "scenario": "kg-project-list-empty",
+      "intent": "read",
+      "falsifier": "ABSENT CASE — a book with one chapter and nothing else. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors rather than saying plainly there is nothing.",
+      "answer_expect": null,
+      "falsifier_sha": "69b56806a20d5c31",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). scope=user, so the boundary is the CALLER, not a book. Called as claude-test2: returned only that account's own projects and did NOT include the harness user's project id.",
+        "gate": "Tier R."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff59-6973-71a4-a598-f722c22ee581",
+          "session_id": "019fff59-7607-7faf-9a64-529b3ea64b8c",
+          "prompt": "Which knowledge projects do I have?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_project_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:57.882527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.162106+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.137552+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:57.882527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.162106+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.137552+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several knowledge projects, including several volumes of \"The Salt Cartographers\" and some research/test projects. Here are the ones I found:\n\n**Books**\n*   **The Salt Cartographers** (Volumes I through VI)\n*   **CP-5 TRAFFIC THROWAWAY (5.7/5.10 live)** (Multiple versions/iterations)\n*   **Fengshen KG (QC-3b corpus)**\n*   **Story Connection map**\n\n**General Research**\n*   **ZZ Throwaway personal research**\n\nThere are also several \"Throwaway\" and \"Probe\" projects used for testing. Let me know if you'd like to dive into a specific one!"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff59-f65c-7bc3-9a3d-e7f8bd666d9f",
+          "session_id": "019fff5a-0160-73e9-b0af-28492f7ae232",
+          "prompt": "Which knowledge projects do I have?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_project_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:33.853224+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:34.054197+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:34.043688+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:33.853224+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:34.054197+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:34.043688+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several knowledge projects, including several volumes of \"The Salt Cartographers\" and some research/test projects. Here are the ones I found:\n\n**Books**\n*   **The Salt Cartographers** (Volumes I through VI)\n*   **CP-5 TRAFFIC THROWAWAY** (Multiple versions/iterations)\n*   **Fengshen KG (QC-3b corpus)**\n*   **Story Connection map**\n*   Several test/probe projects (e.g., \"LOOP-THROWAWAY\", \"TOOLV2 LOOP probe\")\n\n**General Research**\n*   **ZZ Throwaway personal research**\n\nWould you like to work on one of these specifically?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff5a-434a-719e-bdaf-832d3bd07871",
+          "session_id": "019fff5a-4e23-7688-88a9-77e47677ca17",
+          "prompt": "Which knowledge projects do I have?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_project_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:53.564583+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:53.7666+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:53.759213+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:53.564583+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:53.7666+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:53.759213+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several knowledge projects, including several volumes of \"The Salt Cartographers\" and some research/test projects. Here are the ones I found:\n\n**Books**\n*   **The Salt Cartographers** (Volumes I through VI)\n*   **CP-5 TRAFFIC THROWAWAY (5.7/5.10 live)** (Multiple versions/variants)\n*   **Fengshen KG (QC-3b corpus)**\n*   **Story Connection map**\n*   Several \"LOOP-THROWAWAY\" and \"probe\" projects used for testing.\n\n**General Research**\n*   **ZZ Throwaway personal research**\n\nWould you like to work on one of these specifically?"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "kg_schema_read",
+      "scenario": "kg-schema-read-empty",
+      "intent": "read",
+      "falsifier": "ABSENT CASE — a book with one chapter and nothing else. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors rather than saying plainly there is nothing.",
+      "answer_expect": null,
+      "falsifier_sha": "69b56806a20d5c31",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). Project-scoped. Called as claude-test2 against the harness user's project: refused 'project not found'.",
+        "gate": "Tier R."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff59-6977-7b06-b066-4ac1c8a76e5a",
+          "session_id": "019fff59-7600-75b3-9603-f02c1298c36c",
+          "prompt": "What kinds of relationships can I record between characters in this book?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_list_system_standards",
+            "kg_schema_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:57.887566+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.16066+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.134227+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:57.887566+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.16066+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:17:58.134227+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To help organize your story, I can track several different types of elements, including characters, locations, items, and organizations.\n\nRegarding your question about relationships: I can record the ties between characters (such as master and disciple, sworn brothers, or marriage) and even track how they connect to other things, like a character's relationship to a specific organization or a piece of history.\n\nTo get started, I'll need to set up the categories for your world. Once we've chosen the ones that fit your story, I can begin capturing your cast and the key terms you've described."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff5a-1066-7199-9a72-2cd73df326e7",
+          "session_id": "019fff5a-1b9b-7f11-ab80-b6e2564aaa62",
+          "prompt": "What kinds of relationships can I record between characters in this book?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_schema_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:40.527761+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:40.737885+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:40.729933+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:40.527761+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:40.737885+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:18:40.729933+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff5a-b672-7b17-9b2f-65c5e09d6159",
+          "session_id": "019fff5a-c14f-7a4c-82a3-af1f115dfa7e",
+          "prompt": "What kinds of relationships can I record between characters in this book?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_list_system_standards",
+            "kg_project_list",
+            "kg_schema_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:23.025064+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:23.219443+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:23.212428+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:23.025064+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:23.219443+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:23.212428+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To record relationships between characters, I use a **Connection map**. This allows us to track not just who people are, but how they are connected, how those connections change over time, and how they influence the story.\n\nCurrently, because we haven't established a formal project for this book yet, I don't have a specific list of pre-defined relationship types (like \"sibling\" or \"enemy\") active. However, once we start building your story's foundation, I can record several types of connections:\n\n### 1. Social & Personal Relationships\nWe can define how characters relate to one another, such as:\n*   **Family:** Parent, child, sibling, spouse, etc.\n*   **Social Standing:** Mentor/student, king/subject, master/servant.\n*   **Affiliations:** Allies, rivals, enemies, or members of the same faction/guild.\n*   **Emotional Bonds:** Friends, lovers, or even complex connections like \"unrequited love\" or \"bitter rivals.\"\n\n### 2. Temporal Relationships (The \"Timeline\" of Connections)\nThis is one of the most powerful features. I can record **when** a relationship starts and **when** it ends. For example:\n*   Character A and Character B were **allies** from Chapter 1 to Chapter 10.\n*   In Chapter 11, they became **enemies**.\n*   This allows me to answer questions like, *\"Who was Character A's best friend during the Siege of the Iron Gate?\"*\n\n### 3. Narrative Facts & Decisions\nBeyond simple labels, I can record specific **decisions** or **milestones** that define a relationship.\n*   *Example:* \"Character A decided to betray Character B in the forest.\"\n*   *Example:* \"Character C swore an oath of loyalty to Character D.\"\n\n### How we get started:\nTo make this work, we first need to **set up your world's categories** (the \"kinds\" of things your world tracks) and then **create a Knowledge Project**. Once that's done, every time you mention a connection between characters, I can propose it as a \"fact\" or a \"relationship\" for you to approve, which then builds your permanent story map.\n\n"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 3
+    },
+    {
+      "tool": "composition_list_outline",
+      "scenario": "composition-list-outline-empty",
+      "intent": "read",
+      "falsifier": "ABSENT CASE — a book with one chapter and nothing else. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors rather than saying plainly there is nothing.",
+      "answer_expect": null,
+      "falsifier_sha": "69b56806a20d5c31",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). Project-scoped. Called as claude-test2 against the harness user's project: refused 'not found or not accessible', and the seeded node titled 'My Secret Chapter' was not disclosed.",
+        "gate": "Tier R."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff5a-ba71-7e02-a9c1-28c9aa45d979",
+          "session_id": "019fff5a-c5fd-785f-a989-810de5b5b80f",
+          "prompt": "Show me the outline I've planned for this book — what chapters and scenes are in it?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:24.04369+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:24.28253+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:24.265458+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:24.04369+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:24.28253+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:24.265458+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "It looks like you haven't laid out a formal story plan or outline for this book yet. \n\nCurrently, the book contains **one chapter** of writing, but there are no arcs, chapters, or scenes defined in the planning system.\n\nIf you have an idea for the story, I can help you build the foundation. We can start by:\n1.  **Setting up the world's categories** (the types of characters, places, and systems your story will track).\n2.  **Capturing your cast** and key terms.\n3.  **Creating a story plan** with arcs and a chapter-by-chapter outline.\n\nWould you like to start by telling me a bit about your story idea?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff5b-44da-79a5-883a-3d1af14dd66a",
+          "session_id": "019fff5b-5030-78e4-bf52-72cc0a463cd8",
+          "prompt": "Show me the outline I've planned for this book — what chapters and scenes are in it?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:59.496849+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:59.717342+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:59.708278+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:59.496849+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:59.717342+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:19:59.708278+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "It looks like you haven't laid out a formal story plan or outline for this book yet. \n\nCurrently, the book contains **one chapter** of writing, but there are no arcs, chapters, or scenes defined in the planning structure.\n\nIf you have an idea for the story, I can help you build the foundation. We can start by:\n1.  **Setting up the world's categories** (the types of characters, places, and systems your story will track).\n2.  **Capturing your cast** and key terms.\n3.  **Creating a chapter-by-chapter plan** that we can then turn into actual scenes.\n\nWould you like to start by telling me a bit about your story idea?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff5b-c46e-7408-89a0-72a7a4ca26fb",
+          "session_id": "019fff5b-d05d-7916-9b15-e843d603911b",
+          "prompt": "Show me the outline I've planned for this book — what chapters and scenes are in it?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:32.162919+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:32.39446+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:32.381016+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:32.162919+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:32.39446+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:20:32.381016+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "It looks like you haven't laid out a formal story plan or outline for this book yet. \n\nCurrently, the book contains **one chapter** of writing, but there are no arcs, chapters, or scenes defined in the planning structure.\n\nIf you have an idea for the story, I can help you build the foundation. We can start by:\n1.  **Setting up the world's categories** (the types of characters, places, and systems your story will track).\n2.  **Capturing your cast** and key terms.\n3.  **Creating a story plan** with arcs and a chapter-by-chapter outline.\n\nWould you like to start by telling me a bit about your story idea?"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

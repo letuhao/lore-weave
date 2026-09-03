@@ -83,10 +83,71 @@ async def _audio_cleanup_loop():
             logger.warning("audio cleanup failed", exc_info=True)
 
 
+async def _suspended_run_maintenance_loop():
+    """CP-3.6 · silent exit #2 — *`needs-human` never answered* — gets an owner that keeps running.
+
+    🔴 **Both halves were boot-only or callerless, and that is the whole defect.**
+    `resolve_expired_suspends` ran exactly once per process start, so a turn whose confirm card
+    expired eight hours into a fourteen-hour uptime went on advertising `awaiting_input` — a SUCCESS
+    label — until somebody happened to restart the service. `sweep_expired_runs` had **zero
+    callers** while its docstring claimed it ran periodically, so nothing ever reclaimed the rows:
+    175 of 175 were past TTL, the oldest by 68 days.
+
+    **Resolve, then sweep, and the order is not load-bearing.** The sweeper refuses to delete a run
+    whose turn still reads unresolved, so an interleaving cannot destroy the evidence the resolver
+    needs. Running them adjacent is for legibility; the safety is in the statement.
+
+    Best-effort by construction, like `_audio_cleanup_loop`: this must never take the service down,
+    and it reports what it did — a maintenance task that runs silently is indistinguishable from one
+    with no callers, which is the state this function exists to end.
+    """
+    from app.db.pool import get_pool
+    from app.db.suspended_runs import sweep_expired_runs
+    from app.services.instrument import resolve_expired_suspends
+    interval = max(60, settings.suspended_run_maintenance_interval_seconds)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            pool = get_pool()
+            resolved = await resolve_expired_suspends(pool)
+            swept = await sweep_expired_runs(
+                pool, retention_days=settings.suspended_run_retention_days
+            )
+            if resolved or swept:
+                logger.info(
+                    "suspended-run maintenance: resolved %d turn(s) stuck at awaiting_input, "
+                    "reclaimed %d expired run(s) past %d-day retention",
+                    resolved, swept, settings.suspended_run_retention_days,
+                )
+        except Exception:
+            logger.warning("suspended-run maintenance failed", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # CP-2.7 / M4 — **the agent-runtime membrane refuses to boot on an incomplete contract**
+    # (ARCHITECTURE §3). This is the FIRST production importer of `app.agentruntime`, and the
+    # reason it exists at all: M4's clause is "the registration entry point refuses to boot", and
+    # for eleven rounds there was no boot to refuse because nothing imported the package.
+    #
+    # Deliberately BEFORE the pool: a manifest that cannot be served is a deploy-time fact, and
+    # discovering it after connecting to Postgres only makes the failure slower to read. An ABSENT
+    # manifest is a legitimate empty state (`declarations: []`) and does not raise — that is
+    # today's state and the membrane is supposed to start empty.
+    from app.agentruntime.boot import boot
+    boot()
     pool = await create_pool(settings.database_url)
     await run_migrations(pool)
+    # P3 — the kill path. A process that died mid-turn could not record its outcome; the process
+    # that starts can. Bounded by age so a live turn is never stamped. Best-effort by construction:
+    # it must never block startup, and it reports its counts because a reconciler that runs
+    # silently is indistinguishable from one with no callers.
+    from app.services.instrument import reconcile_crashed_turns
+    await reconcile_crashed_turns(pool)
+    # And the turns stuck at `awaiting_input` whose suspended run has expired — input can never
+    # arrive, so a success label on them is a lie the column tells about itself.
+    from app.services.instrument import resolve_expired_suspends
+    await resolve_expired_suspends(pool)
     try:
         await ensure_bucket()
     except Exception:
@@ -113,7 +174,12 @@ async def lifespan(app: FastAPI):
     init_subagents_client()
     # Start background cleanup task
     cleanup_task = asyncio.create_task(_audio_cleanup_loop())
+    # CP-3.6 — and the one that keeps `awaiting_input` from outliving its own window. The boot-time
+    # calls above drain the backlog once; this is what makes them a periodic guarantee rather than a
+    # restart artefact.
+    suspend_task = asyncio.create_task(_suspended_run_maintenance_loop())
     yield
+    suspend_task.cancel()
     cleanup_task.cancel()
     await close_knowledge_client()
     await close_book_steering_client()

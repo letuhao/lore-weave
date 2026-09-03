@@ -1,0 +1,515 @@
+{
+  "batch": "c-adopt3",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_motif_adopt",
+      "scenario": "composition-motif-adopt-named",
+      "intent": "write",
+      "falsifier": "REFUTED IF: a clone lands with NO confirm card (Tier W — its own description says adopting 'crosses the tenancy boundary and counts against your library quota', which is why it is human-confirmed), OR the model invents a motif_id rather than listing the built-ins first, OR it passes retag_genres the author never mentioned — retagging is optional and silently re-genre-ing an adopted motif changes what it will match later.",
+      "answer_expect": null,
+      "falsifier_sha": "bfe5bb854d24eb76",
+      "ship_audit": {
+        "gate": "The card IS the audit — this is a cross-tenancy copy against a quota.",
+        "absent_case": "OWED — a motif_id that is neither public nor the caller's must be refused.",
+        "tenancy": "OWED — 🔴 THIS TOOL CROSSES THE BOUNDARY BY DESIGN, so the check is the inverse of every other one in this batch: adopting a PUBLIC motif must be allowed, and adopting another USER's private motif must not."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02e5e-9455-72a6-ba67-db5849441f02",
+          "session_id": "01a02e5e-ccd4-7780-897c-791defb6315d",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.579175+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.579175+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.579175+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.579175+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.75584+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.749024+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.579175+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.579175+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.579175+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.579175+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.75584+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:25:45.749024+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02e5f-12c4-7343-bb6d-b8c243563ce5",
+          "session_id": "01a02e5f-4fb8-7412-b49a-896c9fa1e186",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:17.969527+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:17.969527+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:17.969527+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:17.969527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:18.176384+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:18.167059+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:17.969527+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:17.969527+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:17.969527+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:17.969527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:18.176384+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:26:18.167059+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the 'Face-Slap Reversal' motif for your library; please confirm the adoption in the card to finish the process."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02e60-097d-7875-aaf0-f54c1c43d31a",
+          "session_id": "01a02e60-3c46-7533-bff4-e6b891846d57",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.145068+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.145068+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.145068+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.145068+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.35525+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.347845+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.145068+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.145068+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.145068+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.145068+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.35525+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:27:21.347845+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02e60-accb-72a5-95d1-a7e14372af5a",
+          "session_id": "01a02e60-e8f0-7f61-b1e0-a1f4fd23081e",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.171995+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.171995+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.171995+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.171995+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.41745+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.401617+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.171995+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.171995+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.171995+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.171995+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.41745+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:03.401617+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02e61-66d7-7d1b-a4fb-c71d4754300c",
+          "session_id": "01a02e61-9140-76b7-840e-db9a55037d9f",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.569454+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.569454+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.569454+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.569454+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.803707+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.788745+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.569454+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.569454+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.569454+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.569454+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.803707+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 11:28:50.788745+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the 'Face-Slap Reversal' motif for your library; please confirm the adoption in the card to finish."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 2,
+      "wrote_count": 0,
+      "suspended_count": 0,
+      "blocked_reason": "REACHED AND CORRECT; BLOCKED ON THE composition_motif_search TRANSPORT STALL, and on a confirm token nothing confirms.\n\nTHE OLD REASON IS REFUTED. p4-confirm blocked this tool as 'an unanswerable prompt, and the model is right' — the prompt named no target. This scenario names the built-in trope 'Face-Slap Reversal' verbatim from the tool's own declared synonyms, and the model found it and adopted it: 2/5 runs ran composition_motif_search -> composition_motif_adopt with {motif_id: 92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f, target: 'user', book_id: <the run's book>} and got back ok:true with a well-formed confirm_token. Nothing about the tool or the prompt is the blocker.\n\n(1) LIVE clean fails 3/5: every failing run died with 'upstream sent \"error\" with no error message' immediately after composition_motif_search — the population already filed as D-THE-STALL-CONCENTRATES-ON-COMPOSITION-MOTIF-SEARCH. This tool cannot clear until that does, because search is its only supplier of the motif_id.\n\n(2) DATA cannot move: motif_adopt is two-phase and returns a confirm_token, so the store is CORRECTLY unchanged until something confirms it. The model's own closing line was 'please confirm the adoption in the card'. WHETHER A CARD REACHED THE FE IS UNVERIFIED HERE — the harness keeps CUSTOM event counts only, not their payloads, so this evidence cannot distinguish 'a card was emitted and nobody clicked it' from 'no card was emitted'. Recorded as unverified rather than as a missing-card defect; a scenario that confirms via the composition '?token=' convention would settle both.\n\nNote the store line reads 'unchanged' for a second reason too: adopted motifs are owner-scoped (motif.owner_user_id), and store_snapshot discovers book_id-carrying tables, so it is structurally blind to this tool's write. Verified directly against loreweave_composition.motif — no rows, consistent with the unconfirmed token."
+    }
+  ]
+}

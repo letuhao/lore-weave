@@ -1,0 +1,4159 @@
+[
+  {
+    "text": "The following registered models have the `tool_calling` capability:\n\n*   **Gemma-4 26B-A4B QAT (200K)**\n*   **gemma-26b**\n*   **GPT-4o mini (OpenAI)**\n*   **Qwen3.6 35B-A3B (120K)**\n*   **Nemotron-3 Nano (260K, Q3_K_L)**",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379178908",
+        "toolCallName": "settings_list_models",
+        "parentMessageId": "bc7f8bda-510c-479e-8df7-1e7f599a5d44"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379178908",
+        "delta": "{\"detail\": \"full\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379178908"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "bc7f8bda-510c-479e-8df7-1e7f599a5d44",
+        "toolCallId": "call_3336168379178908",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 2.5, \"output_per_mtok\": 10}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o\", \"sort_order\": 7, \"tags\": [], \"updated_at\": \"2026-07-09T07:18:03.568389Z\", \"user_model_id\": \"019eadbe-8027-77f2-af80-35e71c71cba5\"}, {\"alias\": \"Gemma-4 26B FD4-067\", \"capability_flags\": {\"_capability\": \"chat\", \"chat\": true}, \"context_length\": 120000, \"created_at\": \"2026-06-09T10:23:05.748573Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b\", \"sort_order\": 8, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"51ea9fd7-4a25-4801-af67-d88c2d161dac\"}, {\"alias\": \"Qwen3.5 9B critic\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-04T17:52:42.588513Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 9, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e93c4-185c-7cc1-9977-3660a643ce9d\"}, {\"alias\": \"Qwen3.5 9B (tooltest)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T15:16:43.961855Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 10, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e88e8-9339-7f95-8814-f3c462a25205\"}, {\"alias\": \"Qwen3 Coder 30B (C6 tools)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T13:47:39.452013Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3-coder-30b\", \"sort_order\": 11, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e8897-063c-76be-b9ce-8707aa00b988\"}, {\"alias\": \"bge-m3 (local)\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-05-31T19:09:33.168891Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 12, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7f71-0271-722f-9c9c-3f049c0b26f4\"}, {\"alias\": \"Kokoro (local)\", \"capability_flags\": {\"tts\": true}, \"context_length\": null, \"created_at\": \"2026-05-31T15:25:33.312551Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019e7ea3-0599-7a00-ad22-c8aa5c1250cd\", \"provider_kind\": \"openai\", \"provider_model_name\": \"kokoro-v1.0\", \"sort_order\": 13, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7ea3-ef00-7cca-91e1-ce5914b07744\"}, {\"alias\": \"Qwen3 35B (E2E)\", \"capability_flags\": {\"_capability\": \"chat\"}, \"context_length\": 120000, \"created_at\": \"2026-04-26T00:37:51.927684Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": 14, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019dc738-a6b7-7bff-b953-b47868ae7db0\"}, {\"alias\": \"GPT-4o mini (OpenAI)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 128000, \"created_at\": \"2026-07-21T08:34:21.210301Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0.15, \"output_per_mtok\": 0.6, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o-mini\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T08:34:21.210301Z\", \"user_model_id\": \"019f83cf-cb9b-7c0d-9a2c-16223218f7a9\"}, {\"alias\": \"Qwen3.6 35B-A3B (120K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 120000, \"created_at\": \"2026-07-21T07:12:19.581605Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T07:12:19.581605Z\", \"user_model_id\": \"019f8384-b27e-76b4-bf4c-ba5ea0b46973\"}, {\"alias\": \"Nemotron-3 Nano (260K, Q3_K_L)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 260000, \"created_at\": \"2026-07-21T07:04:39.14497Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"nvidia/nemotron-3-nano\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-08-11T23:36:28.29141Z\", \"user_model_id\": \"019f837d-abe9-7bb0-9698-80329c9a24af\"}], \"note\": \"These are the models REGISTERED in this account, not what a provider currently offers. A model retired upstream still appears here, and one the provider newly offers is absent until registered. If the user asked what their provider actually offers, or what they COULD register, this list cannot answer it \\u2014 call settings_provider_inventory.\", \"page\": {\"has_more\": false, \"returned\": 18, \"total\": 18}}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "settings_list_models",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11292
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "settings_list_models",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      }
+    ],
+    "run_id": "c7616006-24c1-4693-a223-6c2aa4d85156",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 91,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379178908": "{\"detail\": \"full\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379178908",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": tru"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "settings_list_models"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Which of my registered models can do tool calling?",
+    "session_id": "01a03dbd-d2c9-7daa-bd01-1ca4b22b7858",
+    "scenario": "what-models-do-i-have",
+    "rep": 0,
+    "book_id": "01a03dbd-9cde-777a-82ae-d1bb3dc135a3",
+    "project_id": "01a03dbd-9e18-7327-b42d-86bd4f1e54ec",
+    "seed_ids": {
+      "01a03dbd-9cde-777a-82ae-d1bb3dc135a3": "fixture book_id",
+      "01a03dbd-9e18-7327-b42d-86bd4f1e54ec": "fixture project_id (composition_work)",
+      "01a03dbd-9d6b-7af7-b6c3-64a14c80c4b5": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:51.915566+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:51.915566+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:51.915566+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:51.915566+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:52.09472+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:52.08666+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:51.915566+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:51.915566+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:51.915566+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:51.915566+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:52.09472+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:03:52.08666+00"
+        },
+        "loreweave_knowledge.extraction_pending": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:12.480347+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {
+      "loreweave_knowledge.extraction_pending": {
+        "before": null,
+        "after": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:12.480347+00"
+        }
+      }
+    }
+  },
+  {
+    "text": "The following registered models have the `tool_calling` capability:\n\n*   **Gemma-4 26B-A4B QAT (200K)**\n*   **gemma-26b**\n*   **GPT-4o mini (OpenAI)**\n*   **Qwen3.6 35B-A3B (120K)**\n*   **Nemotron-3 Nano (260K, Q3_K_L)**",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379178909",
+        "toolCallName": "settings_list_models",
+        "parentMessageId": "c014e286-c1c9-4135-b755-d296b11c44af"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379178909",
+        "delta": "{\"detail\": \"full\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379178909"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "c014e286-c1c9-4135-b755-d296b11c44af",
+        "toolCallId": "call_3336168379178909",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 2.5, \"output_per_mtok\": 10}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o\", \"sort_order\": 7, \"tags\": [], \"updated_at\": \"2026-07-09T07:18:03.568389Z\", \"user_model_id\": \"019eadbe-8027-77f2-af80-35e71c71cba5\"}, {\"alias\": \"Gemma-4 26B FD4-067\", \"capability_flags\": {\"_capability\": \"chat\", \"chat\": true}, \"context_length\": 120000, \"created_at\": \"2026-06-09T10:23:05.748573Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b\", \"sort_order\": 8, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"51ea9fd7-4a25-4801-af67-d88c2d161dac\"}, {\"alias\": \"Qwen3.5 9B critic\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-04T17:52:42.588513Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 9, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e93c4-185c-7cc1-9977-3660a643ce9d\"}, {\"alias\": \"Qwen3.5 9B (tooltest)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T15:16:43.961855Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 10, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e88e8-9339-7f95-8814-f3c462a25205\"}, {\"alias\": \"Qwen3 Coder 30B (C6 tools)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T13:47:39.452013Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3-coder-30b\", \"sort_order\": 11, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e8897-063c-76be-b9ce-8707aa00b988\"}, {\"alias\": \"bge-m3 (local)\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-05-31T19:09:33.168891Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 12, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7f71-0271-722f-9c9c-3f049c0b26f4\"}, {\"alias\": \"Kokoro (local)\", \"capability_flags\": {\"tts\": true}, \"context_length\": null, \"created_at\": \"2026-05-31T15:25:33.312551Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019e7ea3-0599-7a00-ad22-c8aa5c1250cd\", \"provider_kind\": \"openai\", \"provider_model_name\": \"kokoro-v1.0\", \"sort_order\": 13, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7ea3-ef00-7cca-91e1-ce5914b07744\"}, {\"alias\": \"Qwen3 35B (E2E)\", \"capability_flags\": {\"_capability\": \"chat\"}, \"context_length\": 120000, \"created_at\": \"2026-04-26T00:37:51.927684Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": 14, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019dc738-a6b7-7bff-b953-b47868ae7db0\"}, {\"alias\": \"GPT-4o mini (OpenAI)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 128000, \"created_at\": \"2026-07-21T08:34:21.210301Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0.15, \"output_per_mtok\": 0.6, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o-mini\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T08:34:21.210301Z\", \"user_model_id\": \"019f83cf-cb9b-7c0d-9a2c-16223218f7a9\"}, {\"alias\": \"Qwen3.6 35B-A3B (120K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 120000, \"created_at\": \"2026-07-21T07:12:19.581605Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T07:12:19.581605Z\", \"user_model_id\": \"019f8384-b27e-76b4-bf4c-ba5ea0b46973\"}, {\"alias\": \"Nemotron-3 Nano (260K, Q3_K_L)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 260000, \"created_at\": \"2026-07-21T07:04:39.14497Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"nvidia/nemotron-3-nano\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-08-11T23:36:28.29141Z\", \"user_model_id\": \"019f837d-abe9-7bb0-9698-80329c9a24af\"}], \"note\": \"These are the models REGISTERED in this account, not what a provider currently offers. A model retired upstream still appears here, and one the provider newly offers is absent until registered. If the user asked what their provider actually offers, or what they COULD register, this list cannot answer it \\u2014 call settings_provider_inventory.\", \"page\": {\"has_more\": false, \"returned\": 18, \"total\": 18}}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "settings_list_models",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11292
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "settings_list_models",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      }
+    ],
+    "run_id": "7e468897-a853-4c44-9129-8fc3a0af0bb7",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 91,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379178909": "{\"detail\": \"full\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379178909",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": tru"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "settings_list_models"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Which of my registered models can do tool calling?",
+    "session_id": "01a03dbe-3a48-70b7-9ecc-e2067e278241",
+    "scenario": "what-models-do-i-have",
+    "rep": 1,
+    "book_id": "01a03dbe-12d1-7be6-9dd0-e48c6ae6a244",
+    "project_id": "01a03dbe-140b-7374-ab62-6f30c5a762d7",
+    "seed_ids": {
+      "01a03dbe-12d1-7be6-9dd0-e48c6ae6a244": "fixture book_id",
+      "01a03dbe-140b-7374-ab62-6f30c5a762d7": "fixture project_id (composition_work)",
+      "01a03dbe-1364-7753-b087-39d962f60197": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.116332+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.116332+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.116332+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.116332+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.288371+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.282786+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.116332+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.116332+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.116332+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.116332+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.288371+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:22.282786+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The following registered models have the `tool_calling` capability:\n\n*   **Gemma-4 26B-A4B QAT (200K)**\n*   **gemma-26b**\n*   **GPT-4o mini (OpenAI)**\n*   **Qwen3.6 35B-A3B (120K)**\n*   **Nemotron-3 Nano (260K, Q3_K_L)**",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379178910",
+        "toolCallName": "settings_list_models",
+        "parentMessageId": "61eb08fc-a118-420d-b7ea-d40662d01806"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379178910",
+        "delta": "{\"detail\": \"full\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379178910"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "61eb08fc-a118-420d-b7ea-d40662d01806",
+        "toolCallId": "call_3336168379178910",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 2.5, \"output_per_mtok\": 10}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o\", \"sort_order\": 7, \"tags\": [], \"updated_at\": \"2026-07-09T07:18:03.568389Z\", \"user_model_id\": \"019eadbe-8027-77f2-af80-35e71c71cba5\"}, {\"alias\": \"Gemma-4 26B FD4-067\", \"capability_flags\": {\"_capability\": \"chat\", \"chat\": true}, \"context_length\": 120000, \"created_at\": \"2026-06-09T10:23:05.748573Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b\", \"sort_order\": 8, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"51ea9fd7-4a25-4801-af67-d88c2d161dac\"}, {\"alias\": \"Qwen3.5 9B critic\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-04T17:52:42.588513Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 9, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e93c4-185c-7cc1-9977-3660a643ce9d\"}, {\"alias\": \"Qwen3.5 9B (tooltest)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T15:16:43.961855Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 10, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e88e8-9339-7f95-8814-f3c462a25205\"}, {\"alias\": \"Qwen3 Coder 30B (C6 tools)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T13:47:39.452013Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3-coder-30b\", \"sort_order\": 11, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e8897-063c-76be-b9ce-8707aa00b988\"}, {\"alias\": \"bge-m3 (local)\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-05-31T19:09:33.168891Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 12, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7f71-0271-722f-9c9c-3f049c0b26f4\"}, {\"alias\": \"Kokoro (local)\", \"capability_flags\": {\"tts\": true}, \"context_length\": null, \"created_at\": \"2026-05-31T15:25:33.312551Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019e7ea3-0599-7a00-ad22-c8aa5c1250cd\", \"provider_kind\": \"openai\", \"provider_model_name\": \"kokoro-v1.0\", \"sort_order\": 13, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7ea3-ef00-7cca-91e1-ce5914b07744\"}, {\"alias\": \"Qwen3 35B (E2E)\", \"capability_flags\": {\"_capability\": \"chat\"}, \"context_length\": 120000, \"created_at\": \"2026-04-26T00:37:51.927684Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": 14, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019dc738-a6b7-7bff-b953-b47868ae7db0\"}, {\"alias\": \"GPT-4o mini (OpenAI)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 128000, \"created_at\": \"2026-07-21T08:34:21.210301Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0.15, \"output_per_mtok\": 0.6, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o-mini\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T08:34:21.210301Z\", \"user_model_id\": \"019f83cf-cb9b-7c0d-9a2c-16223218f7a9\"}, {\"alias\": \"Qwen3.6 35B-A3B (120K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 120000, \"created_at\": \"2026-07-21T07:12:19.581605Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T07:12:19.581605Z\", \"user_model_id\": \"019f8384-b27e-76b4-bf4c-ba5ea0b46973\"}, {\"alias\": \"Nemotron-3 Nano (260K, Q3_K_L)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 260000, \"created_at\": \"2026-07-21T07:04:39.14497Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"nvidia/nemotron-3-nano\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-08-11T23:36:28.29141Z\", \"user_model_id\": \"019f837d-abe9-7bb0-9698-80329c9a24af\"}], \"note\": \"These are the models REGISTERED in this account, not what a provider currently offers. A model retired upstream still appears here, and one the provider newly offers is absent until registered. If the user asked what their provider actually offers, or what they COULD register, this list cannot answer it \\u2014 call settings_provider_inventory.\", \"page\": {\"has_more\": false, \"returned\": 18, \"total\": 18}}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "settings_list_models",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11292
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "settings_list_models",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      }
+    ],
+    "run_id": "f86cc561-5c04-4839-be94-76b49c6971b8",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 91,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379178910": "{\"detail\": \"full\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379178910",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": tru"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "settings_list_models"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Which of my registered models can do tool calling?",
+    "session_id": "01a03dbe-ae17-73b8-9f0c-a68dd48459a4",
+    "scenario": "what-models-do-i-have",
+    "rep": 2,
+    "book_id": "01a03dbe-86af-7683-bb5b-31f2c2a522a4",
+    "project_id": "01a03dbe-8802-7890-ab30-fc20463e1171",
+    "seed_ids": {
+      "01a03dbe-86af-7683-bb5b-31f2c2a522a4": "fixture book_id",
+      "01a03dbe-8802-7890-ab30-fc20463e1171": "fixture project_id (composition_work)",
+      "01a03dbe-8748-7d13-913b-5876ee8a61a3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.784707+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.784707+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.784707+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.784707+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.97677+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.969849+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.784707+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.784707+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.784707+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.784707+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.97677+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:04:51.969849+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The following registered models have tool calling capabilities:\n\n*   **Gemma-4 26B-A4B QAT (200K)**\n*   **gemma-26b**\n*   **GPT-4o mini (OpenAI)**\n*   **Qwen3.6 35B-A3B (120K)**\n*   **Nemotron-3 Nano (260K, Q3_K_L)**",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379178911",
+        "toolCallName": "settings_list_models",
+        "parentMessageId": "5f0cf9ef-470d-440e-8e2c-934ddbadee8a"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379178911",
+        "delta": "{\"detail\": \"full\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379178911"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "5f0cf9ef-470d-440e-8e2c-934ddbadee8a",
+        "toolCallId": "call_3336168379178911",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 2.5, \"output_per_mtok\": 10}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o\", \"sort_order\": 7, \"tags\": [], \"updated_at\": \"2026-07-09T07:18:03.568389Z\", \"user_model_id\": \"019eadbe-8027-77f2-af80-35e71c71cba5\"}, {\"alias\": \"Gemma-4 26B FD4-067\", \"capability_flags\": {\"_capability\": \"chat\", \"chat\": true}, \"context_length\": 120000, \"created_at\": \"2026-06-09T10:23:05.748573Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b\", \"sort_order\": 8, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"51ea9fd7-4a25-4801-af67-d88c2d161dac\"}, {\"alias\": \"Qwen3.5 9B critic\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-04T17:52:42.588513Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 9, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e93c4-185c-7cc1-9977-3660a643ce9d\"}, {\"alias\": \"Qwen3.5 9B (tooltest)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T15:16:43.961855Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 10, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e88e8-9339-7f95-8814-f3c462a25205\"}, {\"alias\": \"Qwen3 Coder 30B (C6 tools)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T13:47:39.452013Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3-coder-30b\", \"sort_order\": 11, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e8897-063c-76be-b9ce-8707aa00b988\"}, {\"alias\": \"bge-m3 (local)\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-05-31T19:09:33.168891Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 12, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7f71-0271-722f-9c9c-3f049c0b26f4\"}, {\"alias\": \"Kokoro (local)\", \"capability_flags\": {\"tts\": true}, \"context_length\": null, \"created_at\": \"2026-05-31T15:25:33.312551Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019e7ea3-0599-7a00-ad22-c8aa5c1250cd\", \"provider_kind\": \"openai\", \"provider_model_name\": \"kokoro-v1.0\", \"sort_order\": 13, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7ea3-ef00-7cca-91e1-ce5914b07744\"}, {\"alias\": \"Qwen3 35B (E2E)\", \"capability_flags\": {\"_capability\": \"chat\"}, \"context_length\": 120000, \"created_at\": \"2026-04-26T00:37:51.927684Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": 14, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019dc738-a6b7-7bff-b953-b47868ae7db0\"}, {\"alias\": \"GPT-4o mini (OpenAI)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 128000, \"created_at\": \"2026-07-21T08:34:21.210301Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0.15, \"output_per_mtok\": 0.6, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o-mini\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T08:34:21.210301Z\", \"user_model_id\": \"019f83cf-cb9b-7c0d-9a2c-16223218f7a9\"}, {\"alias\": \"Qwen3.6 35B-A3B (120K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 120000, \"created_at\": \"2026-07-21T07:12:19.581605Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T07:12:19.581605Z\", \"user_model_id\": \"019f8384-b27e-76b4-bf4c-ba5ea0b46973\"}, {\"alias\": \"Nemotron-3 Nano (260K, Q3_K_L)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 260000, \"created_at\": \"2026-07-21T07:04:39.14497Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"nvidia/nemotron-3-nano\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-08-11T23:36:28.29141Z\", \"user_model_id\": \"019f837d-abe9-7bb0-9698-80329c9a24af\"}], \"note\": \"These are the models REGISTERED in this account, not what a provider currently offers. A model retired upstream still appears here, and one the provider newly offers is absent until registered. If the user asked what their provider actually offers, or what they COULD register, this list cannot answer it \\u2014 call settings_provider_inventory.\", \"page\": {\"has_more\": false, \"returned\": 18, \"total\": 18}}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "settings_list_models",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11292
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "settings_list_models",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      }
+    ],
+    "run_id": "415c6b35-767e-4d28-a1d0-f26a88bc8fc3",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 87,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379178911": "{\"detail\": \"full\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379178911",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": tru"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "settings_list_models"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Which of my registered models can do tool calling?",
+    "session_id": "01a03dbf-22b5-75e9-b935-2d43b8bec917",
+    "scenario": "what-models-do-i-have",
+    "rep": 3,
+    "book_id": "01a03dbe-fa2a-7bf5-a212-006f2b35954f",
+    "project_id": "01a03dbe-fb86-72ff-aa57-565c324e3113",
+    "seed_ids": {
+      "01a03dbe-fa2a-7bf5-a212-006f2b35954f": "fixture book_id",
+      "01a03dbe-fb86-72ff-aa57-565c324e3113": "fixture project_id (composition_work)",
+      "01a03dbe-fab9-7b24-9ad2-e0dd3eefbf7c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.337558+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.337558+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.337558+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.337558+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.555368+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.541547+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.337558+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.337558+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.337558+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.337558+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.555368+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:21.541547+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The following registered models have the `tool_calling` capability:\n\n*   **Gemma-4 26B-A4B QAT (200K)**\n*   **gemma-26b**\n*   **GPT-4o mini (OpenAI)**\n*   **Qwen3.6 35B-A3B (120K)**\n*   **Nemotron-3 Nano (260K, Q3_K_L)**",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379178912",
+        "toolCallName": "settings_list_models",
+        "parentMessageId": "23ed9b1f-b77b-4637-a55a-bf3163676c11"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379178912",
+        "delta": "{\"detail\": \"full\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379178912"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "23ed9b1f-b77b-4637-a55a-bf3163676c11",
+        "toolCallId": "call_3336168379178912",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 2.5, \"output_per_mtok\": 10}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o\", \"sort_order\": 7, \"tags\": [], \"updated_at\": \"2026-07-09T07:18:03.568389Z\", \"user_model_id\": \"019eadbe-8027-77f2-af80-35e71c71cba5\"}, {\"alias\": \"Gemma-4 26B FD4-067\", \"capability_flags\": {\"_capability\": \"chat\", \"chat\": true}, \"context_length\": 120000, \"created_at\": \"2026-06-09T10:23:05.748573Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b\", \"sort_order\": 8, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"51ea9fd7-4a25-4801-af67-d88c2d161dac\"}, {\"alias\": \"Qwen3.5 9B critic\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-04T17:52:42.588513Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 9, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e93c4-185c-7cc1-9977-3660a643ce9d\"}, {\"alias\": \"Qwen3.5 9B (tooltest)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T15:16:43.961855Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.5-9b\", \"sort_order\": 10, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e88e8-9339-7f95-8814-f3c462a25205\"}, {\"alias\": \"Qwen3 Coder 30B (C6 tools)\", \"capability_flags\": null, \"context_length\": 32768, \"created_at\": \"2026-06-02T13:47:39.452013Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3-coder-30b\", \"sort_order\": 11, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e8897-063c-76be-b9ce-8707aa00b988\"}, {\"alias\": \"bge-m3 (local)\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-05-31T19:09:33.168891Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 12, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7f71-0271-722f-9c9c-3f049c0b26f4\"}, {\"alias\": \"Kokoro (local)\", \"capability_flags\": {\"tts\": true}, \"context_length\": null, \"created_at\": \"2026-05-31T15:25:33.312551Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019e7ea3-0599-7a00-ad22-c8aa5c1250cd\", \"provider_kind\": \"openai\", \"provider_model_name\": \"kokoro-v1.0\", \"sort_order\": 13, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019e7ea3-ef00-7cca-91e1-ce5914b07744\"}, {\"alias\": \"Qwen3 35B (E2E)\", \"capability_flags\": {\"_capability\": \"chat\"}, \"context_length\": 120000, \"created_at\": \"2026-04-26T00:37:51.927684Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": 14, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019dc738-a6b7-7bff-b953-b47868ae7db0\"}, {\"alias\": \"GPT-4o mini (OpenAI)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 128000, \"created_at\": \"2026-07-21T08:34:21.210301Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0.15, \"output_per_mtok\": 0.6, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eadbe-801e-7df0-a5b7-448ad0a8f3a6\", \"provider_kind\": \"openai\", \"provider_model_name\": \"gpt-4o-mini\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T08:34:21.210301Z\", \"user_model_id\": \"019f83cf-cb9b-7c0d-9a2c-16223218f7a9\"}, {\"alias\": \"Qwen3.6 35B-A3B (120K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 120000, \"created_at\": \"2026-07-21T07:12:19.581605Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen/qwen3.6-35b-a3b\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-07-21T07:12:19.581605Z\", \"user_model_id\": \"019f8384-b27e-76b4-bf4c-ba5ea0b46973\"}, {\"alias\": \"Nemotron-3 Nano (260K, Q3_K_L)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 260000, \"created_at\": \"2026-07-21T07:04:39.14497Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"nvidia/nemotron-3-nano\", \"sort_order\": null, \"tags\": [], \"updated_at\": \"2026-08-11T23:36:28.29141Z\", \"user_model_id\": \"019f837d-abe9-7bb0-9698-80329c9a24af\"}], \"note\": \"These are the models REGISTERED in this account, not what a provider currently offers. A model retired upstream still appears here, and one the provider newly offers is absent until registered. If the user asked what their provider actually offers, or what they COULD register, this list cannot answer it \\u2014 call settings_provider_inventory.\", \"page\": {\"has_more\": false, \"returned\": 18, \"total\": 18}}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "settings_list_models",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 8
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11292
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "settings_list_models",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "settings_list_models",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 8
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11292
+        }
+      }
+    ],
+    "run_id": "992d13ab-d3ec-44f1-8cd6-107490f6144d",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 91,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379178912": "{\"detail\": \"full\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379178912",
+        "content": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_per_mtok\": 15, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 0, \"tags\": [], \"updated_at\": \"2026-07-03T15:13:09.865167Z\", \"user_model_id\": \"019ebb72-27a2-72f3-a42d-d2d0e0ded179\"}, {\"alias\": \"Qwen2.5 7B Instruct (fast, non-reasoning)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 32768, \"created_at\": \"2026-06-11T10:01:00.081105Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019dc738-53b1-75ea-b5d5-6aca0eed3cd8\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"qwen2.5-7b-instruct\", \"sort_order\": 1, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb620-bfb1-78ce-ad72-a360c604cfc1\"}, {\"alias\": \"gemma-26b\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 40000, \"created_at\": \"2026-06-21T16:34:26.403485Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"sort_order\": 2, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8be3-78fb-86c0-3b1eda7e0457\"}, {\"alias\": null, \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T11:26:46.189895Z\", \"is_active\": true, \"is_favorite\": true, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019ee9ee-53c6-7a1e-9c02-b2db3185a7d4\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 3, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019ee9ee-ddae-788b-b957-97f6d63fe178\"}, {\"alias\": \"bge-m3\", \"capability_flags\": {\"embedding\": true}, \"context_length\": 8192, \"created_at\": \"2026-06-21T16:34:26.431303Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0, \"per_image\": 0, \"per_kchar\": 0, \"per_second\": 0}, \"provider_credential_id\": \"019eeb08-3727-7777-a7dd-856f7fbe42d0\", \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"text-embedding-bge-m3\", \"sort_order\": 4, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-8bff-75cb-8e86-700efd4033b5\"}, {\"alias\": \"searxng\", \"capability_flags\": {\"web_search\": true}, \"context_length\": null, \"created_at\": \"2026-06-21T16:34:04.953174Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {}, \"provider_credential_id\": \"019eeb08-3743-7e67-832b-92617ad3cb09\", \"provider_kind\": \"web_search\", \"provider_model_name\": \"searxng-default\", \"sort_order\": 5, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eeb08-3819-742b-93fd-2517f53f08c8\"}, {\"alias\": \"Local bge-reranker-v2-m3\", \"capability_flags\": {\"rerank\": true}, \"context_length\": null, \"created_at\": \"2026-06-11T07:50:59.62475Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 0, \"output_per_mtok\": 0}, \"provider_credential_id\": \"019eb5a9-b8fb-7048-ab68-0a316e901126\", \"provider_kind\": \"rerank_local\", \"provider_model_name\": \"bge-reranker-v2-m3\", \"sort_order\": 6, \"tags\": [], \"updated_at\": \"2026-07-03T15:10:42.80339Z\", \"user_model_id\": \"019eb5a9-b928-7d03-9403-c6582d143da5\"}, {\"alias\": \"gpt-4o (probe)\", \"capability_flags\": {\"chat\": true}, \"context_length\": 128000, \"created_at\": \"2026-06-09T18:56:43.559437Z\", \"is_active\": tru"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "settings_list_models"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "settings_list_models",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Which of my registered models can do tool calling?",
+    "session_id": "01a03dbf-96ed-726e-a2d5-ef2328d30fd2",
+    "scenario": "what-models-do-i-have",
+    "rep": 4,
+    "book_id": "01a03dbf-6ef1-76df-92b3-b799694f46c4",
+    "project_id": "01a03dbf-702a-7c76-b4da-d7c1b6b8270d",
+    "seed_ids": {
+      "01a03dbf-6ef1-76df-92b3-b799694f46c4": "fixture book_id",
+      "01a03dbf-702a-7c76-b4da-d7c1b6b8270d": "fixture project_id (composition_work)",
+      "01a03dbf-6f86-7990-8ec6-a144fd5f44dd": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.238483+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.238483+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.238483+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.238483+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.407565+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.402224+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.238483+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.238483+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.238483+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.238483+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.407565+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 11:05:51.402224+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 445,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  }
+]

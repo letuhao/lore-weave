@@ -1,0 +1,80 @@
+[
+ {
+  "tool": "composition_derivative_edit",
+  "pre": [
+   {
+    "tool": "composition_get_derivative_context"
+   }
+  ],
+  "args": {
+   "op": "update_spec",
+   "project_id": "01a02de2-da93-717d-84c4-d1524fd1e07f",
+   "taxonomy": "au"
+  },
+  "first": [
+   "ok",
+   {
+    "success": true,
+    "spec": {
+     "id": "01a02de2-da98-7110-a300-7f37a9370b81",
+     "created_by": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
+     "project_id": "01a02de2-da93-717d-84c4-d1524fd1e07f",
+     "work_id": "01a02de2-da97-7947-a70f-92c8b8c0f1be",
+     "taxonomy": "au",
+     "pov_anchor": null,
+     "canon_rule": [],
+     "created_at": "2026-08-23T09:10:36.951333Z"
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_divergence_spec_update",
+      "args": {
+       "project_id": "01a02de2-da93-717d-84c4-d1524fd1e07f",
+       "taxonomy": "au"
+      }
+     }
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "success": true,
+    "spec": {
+     "id": "01a02de2-da98-7110-a300-7f37a9370b81",
+     "created_by": "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c",
+     "project_id": "01a02de2-da93-717d-84c4-d1524fd1e07f",
+     "work_id": "01a02de2-da97-7947-a70f-92c8b8c0f1be",
+     "taxonomy": "au",
+     "pov_anchor": null,
+     "canon_rule": [],
+     "created_at": "2026-08-23T09:10:36.951333Z"
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_divergence_spec_update",
+      "args": {
+       "project_id": "01a02de2-da93-717d-84c4-d1524fd1e07f",
+       "taxonomy": "au"
+      }
+     }
+    }
+   }
+  ],
+  "diff_first": {},
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing about idempotency.",
+  "first_had_effect": false,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [],
+   "book_id": "01a02de2-cc60-792a-90f9-b838f97992df",
+   "title": "LOOP-THROWAWAY-idem-composition_derivative_edit-bc9efa3b",
+   "tables": {
+    "composition(project)": "01a02de2-da93-717d-84c4-d1524fd1e07f"
+   }
+  }
+ }
+]

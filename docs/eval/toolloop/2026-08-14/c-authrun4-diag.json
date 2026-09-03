@@ -1,0 +1,314 @@
+{
+  "batch": "c-authrun4-diag",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_authoring_run_manage",
+      "scenario": "composition-authoring-run-manage-with-a-plan",
+      "intent": "write",
+      "falsifier": "REFUTED IF: a run is created or started with NO confirm card (Tier W and it spends), OR the op chosen is not create/start when the user said start — its enum spans create|start|resume|gate|revert_all and revert_all on a create request would be the worst outcome reachable here — OR the model invents a plan_run_id (op=create REQUIRES one and this fresh book has no plan run, so inventing it is the D-DECLARED-UUID class), OR it invents a budget_usd the author never named, which is a number with money attached. CONTROL: the fixture has no plan_run, so the honest outcome may well be a refusal naming what is missing, and that is a PRECONDITION finding rather than a tool defect. Store check: authoring_runs stays 0.",
+      "answer_expect": null,
+      "falsifier_sha": "9c8e873f1acf275e",
+      "ship_audit": {
+        "gate": "OWED — Tier W, cost-bearing, and the confirm-token IS the audit for this tool.",
+        "absent_case": "OWED — a plan_run_id or run_id that does not exist must be refused.",
+        "idempotency": "OWED — op=start on an already-started run must not start a second one.",
+        "tenancy": "OWED — book-scoped; another account's book must not be drivable, and spend is the consequence."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a03219-0f1e-7029-8738-36a3191e599b",
+          "project_id": "01a03219-10a0-7e35-914b-0962c76cae83",
+          "seed_ids": {
+            "01a03219-0f1e-7029-8738-36a3191e599b": "fixture book_id",
+            "01a03219-10a0-7e35-914b-0962c76cae83": "fixture project_id (composition_work)",
+            "01a03219-0fc5-7cbf-a133-40a08cd7f469": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a03219-1143-7a03-a8ed-abd295333a27": "seed[0] plan_propose_spec.run_id",
+            "01a03219-1148-76b1-ada9-b76dff9a9786": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a03219-1150-774f-a5e5-11147532b2fb": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a03219-1188-7531-9d52-c7e917cf0446": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a03219-117c-778d-91e7-dc410fbeced0": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a03219-114c-7e42-a055-34574fff2499": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a03219-10a9-7434-a2f0-8ccc5a4fe370": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a03219-49c8-7e07-9e82-155f97d2dbb2",
+          "prompt": "Start an authoring run for this book — begin autopilot. Budget it at 5 dollars and pause after each unit so I can review.",
+          "scenario_prompt": "Start an authoring run for this book — begin autopilot. Budget it at 5 dollars and pause after each unit so I can review.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_authoring_run_manage",
+            "composition_package_tree",
+            "composition_task_provide_input"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_authoring_run_manage",
+              "outcome": "approved_once",
+              "kind": "frontend_tool"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.373452+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.373452+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.373452+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.373452+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.600984+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-24 04:48:18.817739+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.994343+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-24 04:48:18.817739+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.591739+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.373452+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.373452+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.373452+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.373452+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.600984+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-24 04:48:18.817739+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.994343+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-24 04:48:18.817739+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:18.591739+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I tried to set up the authoring run for you, but I ran into an error. It looks like I couldn't access the book's current structure to link the run to the existing plan.\n\nTo get this started, I need to make sure we have a valid plan to work from. Could you please confirm which plan or chapter you'd like me to begin drafting from? Once I have that, I'll try setting up the $5 budget with the pause-on-review setting again."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a03219-a175-73c8-a15d-cbd214491abd",
+          "project_id": "01a03219-a2d4-7299-9765-6de810ed9b09",
+          "seed_ids": {
+            "01a03219-a175-73c8-a15d-cbd214491abd": "fixture book_id",
+            "01a03219-a2d4-7299-9765-6de810ed9b09": "fixture project_id (composition_work)",
+            "01a03219-a210-7aa5-b995-77b001111e7f": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a03219-a35a-7645-a916-05d6cc6990b9": "seed[0] plan_propose_spec.run_id",
+            "01a03219-a35d-77fd-b4ba-4b0b39303eed": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a03219-a364-7200-992f-3876ed8be6f2": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a03219-a385-744f-9c30-c408a41bd63b": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a03219-a37d-7246-be0d-29e3ed69a28c": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a03219-a360-7d2c-bc6c-64f8ac25b071": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a03219-a2da-744f-bba9-45d719fffcda": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a03219-da28-75a2-9f1b-9be9c4f0b76d",
+          "prompt": "Start an authoring run for this book — begin autopilot. Budget it at 5 dollars and pause after each unit so I can review.",
+          "scenario_prompt": "Start an authoring run for this book — begin autopilot. Budget it at 5 dollars and pause after each unit so I can review.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_authoring_run_manage",
+            "composition_package_tree",
+            "composition_task_provide_input"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_authoring_run_manage",
+              "outcome": "approved_once",
+              "kind": "frontend_tool"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:55.824523+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:55.824523+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:55.824523+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:55.824523+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:56.026215+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-24 04:48:56.193165+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:56.333043+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-24 04:48:56.193165+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:56.019486+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:55.824523+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:55.824523+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:55.824523+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:55.824523+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:56.026215+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-24 04:48:56.193165+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:56.333043+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-24 04:48:56.193165+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 04:48:56.019486+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm sorry, I ran into an error while trying to set up the authoring run. It looks like I couldn't access the book's current structure to link the run to a plan.\n\nTo start an autopilot run, I need to know which story plan to follow. Since I couldn't find the book's details, could you please confirm the title or let me know if there's a specific plan you'd like me to use? Once I have that, I'll try setting up the $5 budget with the pause-on-review setting again."
+        }
+      ],
+      "surfaced_count": 2,
+      "called_count": 2,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

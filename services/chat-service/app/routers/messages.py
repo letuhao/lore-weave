@@ -10,6 +10,7 @@ from app.client.auth_client import resolve_local_date
 from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
 from app.config import settings
+from app.db.message_sequence import next_sequence_num
 from app.deps import get_current_user, get_db
 from app.models import (
     ChatMessage,
@@ -472,13 +473,10 @@ async def send_message(
                         str(session_id),
                     )
 
-            seq = await conn.fetchval(
-                """
-                SELECT COALESCE(MAX(sequence_num), 0) + 1
-                FROM chat_messages WHERE session_id=$1 AND branch_id=0
-                """,
-                str(session_id),
-            )
+            # D-AN-ABORTED-TURNS-DETACHED-WRITE-RACES-THE-RETRYS-SEQUENCE — allocated under a
+            # per-session advisory lock held to COMMIT, so this number and the INSERT below are
+            # one indivisible step. This is the site that 500s when a user aborts and re-asks.
+            seq = await next_sequence_num(conn, session_id)
             await conn.execute(
                 """
                 INSERT INTO chat_messages

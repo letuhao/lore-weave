@@ -1,0 +1,1267 @@
+{
+  "batch": "c-emitter1",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "world_map_add_marker",
+      "scenario": "world-map-add-marker",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the tool reports a marker placed while the map gains none, OR the marker's x/y fall outside the map's coordinate space, OR a Tier-A write lands with no confirm card. CONTROL: the model must find map_id itself (world_map_list) — a turn that never lists is a DISCOVERY failure, not a failure of this tool.",
+      "answer_expect": null,
+      "falsifier_sha": "c335bf64fb23074c",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a map_id that does not exist must be refused.",
+        "tenancy": "OWED — another account's map must be refused."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0397f-cb68-76c0-9c0f-23a47e9602b2",
+          "project_id": "01a0397f-ccbc-713c-a031-ef37d1cd3848",
+          "seed_ids": {
+            "01a0397f-cb68-76c0-9c0f-23a47e9602b2": "fixture book_id",
+            "01a0397f-ccbc-713c-a031-ef37d1cd3848": "fixture project_id (composition_work)",
+            "01a0397f-cc0e-7fb1-8137-6c2949566e66": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a0397f-cd2a-7f7b-83e6-392e38936c86": "fixture world_id",
+            "01a0397f-cd2c-73f7-9199-ab2b1ac6f7c9": "seed[0] world_create.world.bible_book_id",
+            "01a0397f-cd2d-75f8-833a-f4d70f9bb27a": "seed[0] world_create.world.bible_chapter_id",
+            "01a0397f-cdbe-741d-a965-0e02dbf8a100": "seed[1] world_map_create.map.map_id"
+          },
+          "session_id": "01a03980-0046-7f0a-87e5-5fe8a422ffb5",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a0397f-c"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a0397f-cdbe-741d-a965-0e02dbf8a100\", \"name\": \"Ashfall\", \"version\": 1, \"world_id\": \"01a0397f-cd2a-7f7b-83e6-392e38936c86\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_add_marker"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.758483+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.758483+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.758483+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.758483+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.940339+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.929971+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:52.042588+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:52.190228+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.758483+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.758483+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.758483+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.758483+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.940339+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:51.929971+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:52.042588+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:17:52.190228+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a03980-55c6-70d1-b496-871ae80cfe0e",
+          "project_id": "01a03980-571d-7a48-b600-02f3195e502a",
+          "seed_ids": {
+            "01a03980-55c6-70d1-b496-871ae80cfe0e": "fixture book_id",
+            "01a03980-571d-7a48-b600-02f3195e502a": "fixture project_id (composition_work)",
+            "01a03980-5669-7b6b-9a22-0cc2074ebafc": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a03980-578c-7e06-9e7d-cd39013a2ba2": "fixture world_id",
+            "01a03980-578d-7526-902d-e26191179434": "seed[0] world_create.world.bible_book_id",
+            "01a03980-578e-7ef2-bfba-29cf7b538072": "seed[0] world_create.world.bible_chapter_id",
+            "01a03980-5827-7e41-af21-e385489317f7": "seed[1] world_map_create.map.map_id"
+          },
+          "session_id": "01a03980-8727-7bb0-91cd-5f45f8f5a0f9",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a03980-5"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a03980-5827-7e41-af21-e385489317f7\", \"name\": \"Ashfall\", \"version\": 1, \"world_id\": \"01a03980-578c-7e06-9e7d-cd39013a2ba2\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_add_marker"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.177351+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.177351+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.177351+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.177351+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.364034+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.356977+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.468643+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.623842+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.177351+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.177351+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.177351+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.177351+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.364034+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.356977+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.468643+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:18:27.623842+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a03980-d96c-700f-a491-412ef890b15d",
+          "project_id": "01a03980-daaf-7ed9-8c09-e2398801edc5",
+          "seed_ids": {
+            "01a03980-d96c-700f-a491-412ef890b15d": "fixture book_id",
+            "01a03980-daaf-7ed9-8c09-e2398801edc5": "fixture project_id (composition_work)",
+            "01a03980-d9fc-7048-b1a9-4569ed9b2dc5": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a03980-db1b-7002-a8a0-b3e66dca951d": "fixture world_id",
+            "01a03980-db1b-724b-ab56-cb4d029417f2": "seed[0] world_create.world.bible_book_id",
+            "01a03980-db1b-79c7-9d09-8df33c754863": "seed[0] world_create.world.bible_chapter_id",
+            "01a03980-dba6-77cf-99fd-b9377696965c": "seed[1] world_map_create.map.map_id"
+          },
+          "session_id": "01a03981-0633-7667-b392-71087bb7e6df",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a03980-d"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a03980-dba6-77cf-99fd-b9377696965c\", \"name\": \"Ashfall\", \"version\": 1, \"world_id\": \"01a03980-db1b-7002-a8a0-b3e66dca951d\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_add_marker"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:00.859876+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:00.859876+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:00.859876+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:00.859876+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:01.044913+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:01.039382+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:01.146903+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:01.28644+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:00.859876+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:00.859876+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:00.859876+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:00.859876+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:01.044913+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:01.039382+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:01.146903+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:01.28644+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a03981-5a19-7296-928b-1b9199dda264",
+          "project_id": "01a03981-5b9e-7534-8933-7324347f49c5",
+          "seed_ids": {
+            "01a03981-5a19-7296-928b-1b9199dda264": "fixture book_id",
+            "01a03981-5b9e-7534-8933-7324347f49c5": "fixture project_id (composition_work)",
+            "01a03981-5ac0-7de6-a022-33d4edad9d70": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a03981-5c26-7b58-8cdd-049ab0f78ba2": "fixture world_id",
+            "01a03981-5c27-7179-b160-8e213802533b": "seed[0] world_create.world.bible_book_id",
+            "01a03981-5c27-7c36-ae9c-2db2343ec42e": "seed[0] world_create.world.bible_chapter_id",
+            "01a03981-5cba-79a1-b522-1a2a518e7c01": "seed[1] world_map_create.map.map_id"
+          },
+          "session_id": "01a03981-85bf-7d75-8a35-e9c83eaaf444",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a03981-5"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a03981-5cba-79a1-b522-1a2a518e7c01\", \"name\": \"Ashfall\", \"version\": 1, \"world_id\": \"01a03981-5c26-7b58-8cdd-049ab0f78ba2\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_add_marker"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:33.824653+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:33.824653+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:33.824653+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:33.824653+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:34.052599+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:34.045416+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:34.182583+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:34.33054+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:33.824653+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:33.824653+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:33.824653+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:33.824653+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:34.052599+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:34.045416+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:34.182583+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:19:34.33054+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a03981-d60e-7a7c-96e6-a09a5434b219",
+          "project_id": "01a03981-d76c-71ac-8ff2-4984281d5480",
+          "seed_ids": {
+            "01a03981-d60e-7a7c-96e6-a09a5434b219": "fixture book_id",
+            "01a03981-d76c-71ac-8ff2-4984281d5480": "fixture project_id (composition_work)",
+            "01a03981-d6a8-7014-b80e-e1e5b3b2f8ee": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a03981-d7f8-716b-835c-0d93e1caae57": "fixture world_id",
+            "01a03981-d7f8-767a-b271-484f02a48ba0": "seed[0] world_create.world.bible_book_id",
+            "01a03981-d7f9-71a3-abe4-ede752ac6eb0": "seed[0] world_create.world.bible_chapter_id",
+            "01a03981-d899-7750-b4d7-1a010e7d8b1f": "seed[1] world_map_create.map.map_id"
+          },
+          "session_id": "01a03982-037d-71a7-b66d-0ef860ce2c5b",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load",
+            "world_list",
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "calls": [
+            {
+              "tool": "world_list",
+              "result_head": "{\"ok\": true, \"result\": {\"guidance\": \"20 of 30 worlds so far. Call `world_list offset=20` ONLY if you still need more; otherwise stop.\", \"page\": {\"has_more\": true, \"is_complete\": false, \"next_offset\": 20, \"offset\": 0, \"returned\": 20, \"total\": 30}, \"total\": 30, \"worlds\": [{\"bible_book_id\": \"01a03981-d"
+            },
+            {
+              "tool": "world_map_list",
+              "result_head": "{\"ok\": true, \"result\": {\"maps\": [{\"image_object_key\": null, \"map_id\": \"01a03981-d899-7750-b4d7-1a010e7d8b1f\", \"name\": \"Ashfall\", \"version\": 1, \"world_id\": \"01a03981-d7f8-716b-835c-0d93e1caae57\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "world_list",
+                "world_map_add_marker",
+                "world_map_list"
+              ]
+            },
+            {
+              "call": "world_map_add_marker"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.543766+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.543766+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.543766+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.543766+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.747166+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.739315+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.879843+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:06.041418+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.543766+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.543766+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.543766+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.543766+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.747166+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.739315+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:05.879843+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-25 15:20:06.041418+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 5
+    }
+  ]
+}

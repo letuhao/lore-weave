@@ -101,7 +101,9 @@ class SceneLinksRepo:
             )
         return _row_to_link(row)
 
-    async def list_by_project(self, project_id: UUID) -> list[SceneLink]:
+    async def list_by_project(
+        self, project_id: UUID, *, include_archived: bool = False,
+    ) -> list[SceneLink]:
         """Live edges only — and "live" includes the ENDPOINTS.
 
         `archive_node` cascades over the outline subtree and deliberately does not touch
@@ -111,14 +113,32 @@ class SceneLinksRepo:
         rather than cascading the archive keeps the pair SYMMETRIC for free — restore the scene
         and its edges come back, with no `archived_by_cascade` bookkeeping to get wrong, and
         with an edge the author deleted themselves staying deleted.
+
+        `include_archived` — owner ruling 2026-08-31 (DQ-T44 (a)):
+        composition_scene_link_edit ships a `restore` op and NOTHING lists what is restorable, so
+        the only way to hold the id is to have written it down before deleting. Measured live:
+        the model correctly answers "I can't see it in the trash without an ID".
+
+        🔴 THE FLAG ANSWERS THE ENDPOINT QUESTION IT WOULD OTHERWISE RAISE, which is why this is
+        one argument and not a design. The row that owns this defect warned that a recycle-bin
+        listing must decide whether to show an edge whose endpoint is archived — and the ONLY
+        caller that passes True is `composition_list_outline`, where the SAME flag is already
+        being passed to `list_tree`. The archived endpoints are therefore in the tree beside the
+        edge: the symmetry the docstring above is built on holds in both directions, and the
+        `deadbeef…` failure it describes cannot come back through this door.
+
+        Default False, so the two callers that do not pass it — the packer lens and the outline
+        router — keep the live-only view they were written against.
         """
-        query = f"""
-        SELECT {_SELECT_COLS_SL} FROM scene_link sl
-        WHERE sl.project_id = $1 AND NOT sl.is_archived
+        archived_clause = "" if include_archived else """
+          AND NOT sl.is_archived
           AND EXISTS (SELECT 1 FROM outline_node f
                       WHERE f.id = sl.from_node_id AND NOT f.is_archived)
           AND EXISTS (SELECT 1 FROM outline_node t
-                      WHERE t.id = sl.to_node_id AND NOT t.is_archived)
+                      WHERE t.id = sl.to_node_id AND NOT t.is_archived)"""
+        query = f"""
+        SELECT {_SELECT_COLS_SL} FROM scene_link sl
+        WHERE sl.project_id = $1{archived_clause}
         ORDER BY sl.created_at, sl.id
         """
         async with self._pool.acquire() as c:

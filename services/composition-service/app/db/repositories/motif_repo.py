@@ -198,6 +198,34 @@ async def _query_vector(q: str) -> list[float] | None:
         return None
 
 
+async def owns_motif(pool, caller_id, motif_id) -> bool:
+    """Does `caller_id` own this motif? Used ONLY to turn an opaque refusal into an actionable
+    one, never to decide access.
+
+    🔴 WHY THIS DOES NOT WEAKEN H13, which is the same argument
+    `EndpointsOwnedNotShared` already makes for create_link: the uniform refusal exists so a
+    message is not an existence oracle for objects the caller does not own. This is consulted only
+    AFTER a book-scoped lookup has failed, and it can only ever say "yes" about a row the caller
+    OWNS and whose id it already holds. A "no" changes nothing — the uniform refusal still stands.
+    """
+    async with pool.acquire() as c:
+        row = await c.fetchrow(
+            "SELECT 1 FROM motif WHERE id = $1 AND owner_user_id = $2", motif_id, caller_id,
+        )
+    return row is not None
+
+
+class EndpointsOwnedNotShared(LookupError):
+    """`create_link` was called WITH `book_id` over two motifs the caller owns.
+
+    A LookupError subclass on purpose: every existing `except LookupError` keeps catching
+    it unchanged, and a caller that wants to say something more useful can catch this
+    first. See D-AN-OPTIONAL-ARG-SWITCHES-THE-MODE-AND-THE-REFUSAL-HIDES-IT — this is the
+    one miss with an obvious remedy (drop `book_id`), and naming it leaks nothing, because
+    the caller owns both endpoints and already holds their ids.
+    """
+
+
 class MotifRepo:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
@@ -418,6 +446,28 @@ class MotifRepo:
                     return s is not None and s[0] and s[1] == book_id
 
                 if not _in_book(from_motif_id) or not _in_book(to_motif_id):
+                    # D-AN-OPTIONAL-ARG-SWITCHES-THE-MODE-AND-THE-REFUSAL-HIDES-IT — separate the
+                    # RECOVERABLE miss from the rest. `book_id` silently selects between two
+                    # endpoint rules, and a caller who passed it over TWO MOTIFS IT OWNS has made
+                    # the one mistake that has an obvious remedy: drop book_id. Measured
+                    # 2026-08-24 (batch c-motiflink5): the model resolved both real ids, passed the
+                    # ambient book_id, and was told "not found or not accessible" about motifs it
+                    # had just listed — with no path back to the working call.
+                    #
+                    # This does NOT weaken H13. The uniform message exists so a refusal is not an
+                    # existence oracle for objects the caller does not own; here it owns both and
+                    # already holds their ids, so naming the remedy discloses nothing new. Every
+                    # other miss still raises the plain LookupError the tool maps to H13.
+                    owners = await c.fetch(
+                        "SELECT id, owner_user_id FROM motif WHERE id = ANY($1)",
+                        [from_motif_id, to_motif_id],
+                    )
+                    owned = {r["id"]: r["owner_user_id"] for r in owners}
+                    if (owned.get(from_motif_id) == caller_id
+                            and owned.get(to_motif_id) == caller_id):
+                        raise EndpointsOwnedNotShared(
+                            "both endpoints are motifs you own and are not shared into this book"
+                        )
                     raise LookupError("both endpoints must be shared motifs in this book")
             else:
                 owners = await c.fetch(

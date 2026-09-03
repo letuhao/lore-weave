@@ -39,7 +39,11 @@ func (s *Server) RegisterPipelineTranslateTools(srv *mcp.Server) {
 			"glossary_search / glossary_list_* first to get entity_ids.",
 		// Despite the "propose" name, this writes a draft translation DIRECTLY (confidence=
 		// 'draft', never clobbers verified) — no confirm_token — so it is Tier A, not W.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"translate the entity names", "names in another language", "localise the glossary", "vietnamese names for these characters"}),
 	}, s.toolProposeTranslation)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -51,7 +55,11 @@ func (s *Server) RegisterPipelineTranslateTools(srv *mcp.Server) {
 			"per language); NEVER overwrites a human-'verified' alias set (reported as skipped). Use this " +
 			"so an entity is findable by its name in each language. Returns per-entity results.",
 		// Direct draft write (confidence='draft', never clobbers verified), no confirm_token ⇒ Tier A.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"add an alias", "another name for this character", "alternate names", "also known as"}),
 	}, s.toolProposeAliases)
 }
 
@@ -61,7 +69,7 @@ type translateItem struct {
 }
 
 type proposeTranslationToolIn struct {
-	BookID       string          `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID       string          `json:"book_id" jsonschema:"the book (UUID)"`
 	LanguageCode string          `json:"language_code" jsonschema:"target language (BCP-47, e.g. en | vi)"`
 	Items        []translateItem `json:"items" jsonschema:"the entities + their translated names"`
 }
@@ -174,7 +182,7 @@ type aliasItem struct {
 }
 
 type proposeAliasesToolIn struct {
-	BookID       string      `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID       string      `json:"book_id" jsonschema:"the book (UUID)"`
 	LanguageCode string      `json:"language_code" jsonschema:"target language (BCP-47, e.g. en | vi)"`
 	Items        []aliasItem `json:"items" jsonschema:"the entities + their alias sets in this language"`
 }

@@ -23,7 +23,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
+
+from loreweave_jobs import JobStatus as _SdkJobStatus
 from uuid import UUID
 
 from pydantic import BaseModel, Field, StringConstraints
@@ -40,6 +42,28 @@ LinkKind = Literal["setup_payoff", "custom"]
 RuleScope = Literal["world", "entity", "reveal_gate"]
 JobMode = Literal["cowrite", "auto"]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
+
+# 🔴 A Literal CANNOT BE DERIVED, SO IT IS GUARDED — DQ-T86 (c), owner ruling 2026-08-31. This
+# was one of the six hard-coded copies of the job-status vocabulary; the others now read the
+# SDK at runtime, but a `Literal` must be spelled out for the type checker, so the copy stays
+# and only its DRIFT can be prevented.
+#
+# THE GUARD IS SUBSET, NOT EQUALITY, AND THAT IS DELIBERATE. This vocabulary is already a
+# strict subset: the SDK carries `paused` and `cancelling` and composition uses neither — its
+# only `paused` is on `authoring_runs`, an unrelated vocabulary. A service supporting FEWER
+# statuses is legitimate; a service inventing one the SDK has never heard of is the drift that
+# breaks the projection, because the shared upsert decides terminality from the SDK set.
+#
+# So: extra members here are an error, missing ones are not.
+_SDK_JOB_STATUSES = frozenset(s.value for s in _SdkJobStatus)
+_UNKNOWN_TO_SDK = frozenset(get_args(JobStatus)) - _SDK_JOB_STATUSES
+if _UNKNOWN_TO_SDK:
+    raise RuntimeError(
+        "composition JobStatus carries value(s) the shared contract does not define "
+        f"(DQ-T86): {sorted(_UNKNOWN_TO_SDK)}. Add them to loreweave_jobs.JobStatus or "
+        "remove them here — the job projection decides terminality from the SDK set, so a "
+        "status it does not know is neither live nor terminal to it."
+    )
 # T3.4 — the addressable grounding item types (those with stable source ids)
 # + the per-scene steering action. T3.6 added 'reference' (id = reference_source.id).
 GroundingItemType = Literal["present", "canon", "lore", "reference"]

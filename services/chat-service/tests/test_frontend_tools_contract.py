@@ -11,7 +11,7 @@ no-op'd, the model hallucinated success. Fixed f1f9e9966.)
 
 This test is the BE half of the guard. It:
   1. Snapshots every advertised frontend-tool schema into a committed,
-     cross-language contract JSON (`contracts/frontend-tools.contract.json`) that
+     cross-language contract JSON (`contracts/browser-tools.contract.json`) that
      the FE guard reads — so a schema change that isn't mirrored to the FE
      resolver turns a test red instead of a runtime hallucination.
   2. Enforces the CONVENTIONS (CLAUDE.md → Frontend-tool contract):
@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.frontend_tools import (
+from tests._v1_tool_fixtures import (
     FRONTEND_TOOL_NAMES,
     GLOSSARY_CONFIRM_ACTION_TOOL,
     GLOSSARY_PROPOSE_EDIT_TOOL,
@@ -78,7 +78,7 @@ CLOSED_SET_ARGS: dict[str, list[str]] = {
 }
 
 _CONTRACT_PATH = (
-    Path(__file__).resolve().parents[3] / "contracts" / "frontend-tools.contract.json"
+    Path(__file__).resolve().parents[3] / "contracts" / "browser-tools.contract.json"
 )
 
 
@@ -114,9 +114,23 @@ def _build_contract() -> dict:
 
 class TestFrontendToolContract:
     def test_every_advertised_name_has_exactly_one_schema(self):
-        # No orphan names (a name the loop suspends on but has no schema) and no
-        # orphan schemas (a def never actually advertised).
-        assert set(FRONTEND_TOOL_NAMES) == set(ALL_FRONTEND_TOOLS)
+        # 🔴 V7 — THE TWO SIDES NOW MEAN DIFFERENT THINGS, so equality is the wrong relation.
+        # `FRONTEND_TOOL_NAMES` is what chat-service INTERCEPTS and is empty; `ALL_FRONTEND_TOOLS`
+        # is the residue of schema dicts still sitting in the module. Asserting they are equal
+        # would go quietly true the moment BOTH are empty — the vacuity shape this file has
+        # already been bitten by (an empty parametrize collects zero tests and reports nothing).
+        #
+        # The invariant that still matters: nothing may be intercepted that has no schema here,
+        # and every name the CONTRACT lists must be served by somebody. The second half is
+        # checked against ai-gateway by TestResidualAdvertisedDescriptionsMatchAiGateway.
+        assert set(FRONTEND_TOOL_NAMES) <= set(ALL_FRONTEND_TOOLS), (
+            "chat-service intercepts a tool it holds no schema for — the orphan-name case")
+        assert not FRONTEND_TOOL_NAMES, (
+            f"chat-service is intercepting again: {sorted(FRONTEND_TOOL_NAMES)}")
+        # And the contract still lists every tool, wherever it is now served from.
+        on_disk = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
+        assert len(on_disk) >= 11, (
+            f"the contract shrank to {len(on_disk)} — a tool lost its cross-language SoT")
 
     @pytest.mark.parametrize("name", sorted(ALL_FRONTEND_TOOLS))
     def test_schema_is_wire_standard(self, name):
@@ -150,14 +164,39 @@ class TestFrontendToolContract:
         # slice (subset-match) and MERGE on regen — never drop the ui_* entries.
         built = _build_contract()
         assert _CONTRACT_PATH.exists(), (
-            "contracts/frontend-tools.contract.json missing — generate with "
+            "contracts/browser-tools.contract.json missing — generate with "
             "WRITE_FRONTEND_CONTRACT=1 pytest tests/test_frontend_tools_contract.py"
         )
         on_disk = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
         if os.environ.get("WRITE_FRONTEND_CONTRACT") == "1":
-            merged = {**on_disk, **built}  # chat-service slice over the existing (ui_*-preserving) JSON
-            _CONTRACT_PATH.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            pytest.skip("regenerated contracts/frontend-tools.contract.json (merged chat-service slice)")
+            # 🔴 THIS WRITE PATH IS CLOSED, AND CLOSING IT IS THE POINT.
+            #
+            # It used to regenerate the contract from the LIVE schemas in
+            # `app/services/frontend_tools.py`. That module was deleted on 2026-09-03 (v1
+            # retirement) and these tests now read frozen copies in `tests/_v1_tool_fixtures.py`.
+            # A generator whose input is a FROZEN COPY does not record the source of truth — it
+            # overwrites it. The sequence that made this dangerous is one an author would
+            # reasonably follow, because three guidance docs described it:
+            #
+            #   1. change confirm_action's schema in ai-gateway (`src/mcp/confirm-tools.ts`)
+            #   2. update contracts/browser-tools.contract.json, the SoT ai-gateway reads
+            #   3. run `WRITE_FRONTEND_CONTRACT=1 pytest` as the docs instructed
+            #   -> step 3 silently rewrites step 2 back to the frozen v1 shape, and the only
+            #      test that would catch it lives in the other service.
+            #
+            # The ASSERTIONS below stay: they are a frozen-record drift guard, and a red here
+            # means someone changed a KIND-C schema and must retire the frozen copy deliberately.
+            # ai-gateway owns the live half and asserts it against this same JSON
+            # (confirm-tools.spec.ts "drift vs the contract SoT", ui-tools.spec.ts,
+            # propose-edit-tool.spec.ts).
+            raise AssertionError(
+                "WRITE_FRONTEND_CONTRACT is CLOSED in chat-service. This generator's input is a "
+                "frozen copy (tests/_v1_tool_fixtures.py), not a live schema, so writing from it "
+                "would overwrite contracts/browser-tools.contract.json with retired v1 shapes. "
+                "The schemas live in services/ai-gateway/src/mcp/ (confirm-tools.ts, ui-tools.ts, "
+                "propose-edit-tool.ts); edit the contract JSON directly and let ai-gateway's specs "
+                "prove the TS matches it."
+            )
         for name, schema in built.items():
             assert name in on_disk, f"{name} missing from the committed contract — regenerate"
             assert on_disk[name] == schema, (
@@ -197,7 +236,7 @@ class TestResidualAdvertisedDefsMatchContract:
     def test_advertised_copy_matches_committed_contract(self, name):
         on_disk = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
         assert name in on_disk, (
-            f"{name} missing from contracts/frontend-tools.contract.json — it is "
+            f"{name} missing from contracts/browser-tools.contract.json — it is "
             "ai-gateway-owned; regenerate the ai-gateway slice"
         )
         assert _normalize(_RESIDUAL_ADVERTISED[name]) == on_disk[name], (

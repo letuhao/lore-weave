@@ -1,0 +1,359 @@
+{
+ "batch": "batch",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "translation_update_settings",
+   "scenario": "translation-update-settings-norail",
+   "intent": "write",
+   "falsifier": "REFUTED IF: settings are written with NO confirm card (Tier A), OR the model sends a `model_source`/`model_ref` the author never mentioned — three fields, one named — OR a target_language outside the declared enum. A run ending in a provider stream error is evidence about the TRANSPORT and a re-run condition, never about this tool.",
+   "answer_expect": null,
+   "falsifier_sha": "9418af2f0610a868",
+   "ship_audit": {
+    "gate": "NOT REACHED — the tool was never called on a completing turn. On the rail-pinned phrasing the turn never emits an assistant message at all.",
+    "absent_case": "EXERCISED by direct probe — another owner's book is refused 'not found or not accessible'.",
+    "empty_case": "OWED — a call with no field to change was never exercised through the tool.",
+    "idempotency": "OWED.",
+    "tenancy": "EXERCISED by direct probe — refused with the same wording an absent id gets, so it is no existence oracle."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a026fe-8b03-75a1-9790-93951a1e8d7b",
+     "session_id": "01a026fe-a6a7-7387-8cbf-463e45a8c967",
+     "prompt": "Change this book's translation model to my default one.",
+     "scenario_prompt": "Change this book's translation model to my default one.",
+     "prior_turns": [],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "tool_list",
+      "tool_load"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:31.238555+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:31.449605+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:31.441213+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:31.238555+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:31.449605+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:31.441213+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked your settings, but I don't see a specific \"translation model\" listed in your defaults—I can only see defaults for **rerank** and **embedding**.\n\nTo help you with this, could you clarify:\n1. Are you referring to a specific AI model you've registered (like an OpenAI or Anthropic model) that you want to use for translations?\n2. Or are you looking to change the **language** the book is being translated into?\n\nIf you have a specific model in mind, let me know its name or provider, and I'll see if I can apply it."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a026fe-eb94-7e69-95a9-c3950fdb614d",
+     "session_id": "01a026ff-07d5-71ed-ba6a-393d52f63bac",
+     "prompt": "Change this book's translation model to my default one.",
+     "scenario_prompt": "Change this book's translation model to my default one.",
+     "prior_turns": [],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "tool_list",
+      "tool_load"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:55.957423+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:56.181442+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:56.172914+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:55.957423+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:56.181442+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:03:56.172914+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked your settings, but I don't see a specific \"translation model\" listed in your defaults—I can only see defaults for **rerank** and **embedding**.\n\nTo help you with this, could you clarify:\n1. Are you referring to a specific AI model you've registered (like an OpenAI or Anthropic model) that you want to use for translations?\n2. Or are you looking to change the **target language** for the book's translation?\n\nIf you have a specific model in mind, let me know its name or provider, and I'll see if I can apply it."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a026ff-4d71-7b34-b2c9-17f43c1b1068",
+     "session_id": "01a026ff-6a3d-7687-b609-17e10a513118",
+     "prompt": "Change this book's translation model to my default one.",
+     "scenario_prompt": "Change this book's translation model to my default one.",
+     "prior_turns": [],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "tool_list",
+      "tool_load"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:21.030449+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:21.263982+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:21.255057+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:21.030449+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:21.263982+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:21.255057+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked your settings, but I don't see a specific \"translation model\" listed in your defaults—I can only see defaults for **rerank** and **embedding**.\n\nTo help you with this, could you clarify:\n1. Are you referring to a specific AI model you've registered (like an OpenAI or Anthropic model) that you want to use for translations?\n2. Or are you looking to change the default model for a different capability?\n\nIf you have a specific model in mind, let me know its name or provider, and I'll check if it's available to be set."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a026ff-af58-71b6-96f6-22938ebd6f70",
+     "session_id": "01a026ff-ca0b-76af-81ae-38c4f54914bc",
+     "prompt": "Change this book's translation model to my default one.",
+     "scenario_prompt": "Change this book's translation model to my default one.",
+     "prior_turns": [],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:46.064708+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:46.254934+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:46.24806+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:46.064708+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:46.254934+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:04:46.24806+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked the book's settings, but I don't have a tool to change the translation model directly from here. \n\nYou can update your default AI provider and model in your **Settings**. Once you've updated your default there, any new translation jobs you start will automatically use your new preferred model."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02700-05d4-76bb-8b95-af14e4018761",
+     "session_id": "01a02700-20ec-714b-837b-6342f58d123b",
+     "prompt": "Change this book's translation model to my default one.",
+     "scenario_prompt": "Change this book's translation model to my default one.",
+     "prior_turns": [],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "tool_list",
+      "tool_load"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:05:08.225593+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:05:08.444728+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:05:08.437502+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:05:08.225593+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:05:08.444728+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:05:08.437502+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked your settings, but I don't see a specific \"translation model\" listed in your defaults—I can only see defaults for **rerank** and **embedding**.\n\nTo help you with this, could you clarify:\n1. Are you referring to a specific AI model you've registered (like an OpenAI or Anthropic model) that you want to use for translations?\n2. Or are you looking to change the **language** the book is being translated into?\n\nIf you have a specific model in mind, let me know its name or provider, and I'll see if I can apply it."
+    }
+   ],
+   "surfaced_count": 0,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED — and after SEVEN arms of calling it 'transport errors', the cause is now diagnosed and it was never the transport.\n\nWHAT SEVEN ARMS LOOKED LIKE: surfaced 5/5 every time, and 5, 1, 4, 4, 5, 5 then 4 of 5 runs ending in \"upstream sent 'error' with no error message (response id '', status '')\". I recorded that as a provider fault and as a tool that 'cannot be measured on this turn shape'. That was a description of the symptom, not a diagnosis, and it was wrong about the cause.\n\nWHAT THE SERVER LOG SAYS, for this exact prompt:\n    intent pinned workflow(s) ['translation-pass'] from the user's request\n    rail translation-pass: 0/3 steps done, next=translation_coverage\n    rail vision-to-book: 0/9 steps done, next=glossary_list_system_standards\n    interrupt-persist detached ... (write continues after cancel)\n    CP-0.4 orphaned turn: no assistant row, outcome 'abandoned_by_user' stamped\n\nThe request PINS A RAIL. The server drives the rail's steps and the turn NEVER EMITS AN ASSISTANT MESSAGE — no assistant row is ever written. The client waits until its budget runs out and reports whatever it has, which is an empty upstream error.\n\n🔴 THE TIMEOUT WAS NOT THE CAUSE EITHER, WHICH IS WHY THE CONTROL MATTERED. The harness's turn budget was a hard-coded 180s, so the obvious story was 'a rail is slow and the client gives up'. Raising it to 900s changed the error from STREAM_ERROR to ReadTimeout and nothing else: the turn still never completed. Slowness would have been fixed by more time. This is not slowness.\n\nTHE CONTROL THAT PROVED IT. Same tool, same fixture, same batch machinery — the ONLY change is phrasing that does not pin the rail, and still from this tool's own declared synonyms ('change model' / 'update settings' instead of 'set target language ... translation'):\n    'Set the target language for this book's translation to Vietnamese.'  -> turn never completes\n    'Change this book's translation model to my default one.'            -> 5/5 CLEAN, 0 errors\nA rail-pinned turn hangs; the same request phrased past the rail completes normally.\n\nNAMING IT: D-RAIL-PINNED-TURN-NEVER-COMPLETES. It is worth an owner's attention beyond this tool, because the words that pin the rail are ordinary ones an author would use — and the failure is not a visible error to them, it is a chat turn that simply never answers.\n\nTHE TOOL ITSELF remains unproven: it was never called on a clean turn, so there is no evidence about it. That is what `blocked` means here, and it is concluded from the CLEAN control arm (0 errors) rather than from any of the seven dirty ones."
+  }
+ ]
+}

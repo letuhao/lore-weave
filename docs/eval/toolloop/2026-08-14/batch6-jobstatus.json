@@ -1,0 +1,227 @@
+{
+ "batch": "batch6-jobstatus",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "translation_job_status",
+   "scenario": "translation-job-status",
+   "intent": "read",
+   "falsifier": "REFUTED IF: the reply states a job status without translation_job_status being called on the turn — jobs_list carries a summary, and answering from it while claiming the job's detail is the registry-vs-live shape already filed as D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY. CONTROL: the tool REQUIRES job_id, which the model must obtain from a listing, so a correct turn is a two-call chain.",
+   "answer_expect": null,
+   "falsifier_sha": "10e3b2aa57c85549",
+   "ship_audit": {
+    "absent_case": "EXERCISED — a well-formed but nonexistent job_id returns 'not found or not accessible', one string for both 'no such job' and 'not yours', so the refusal cannot be used to enumerate another account's jobs.",
+    "tenancy": "COVERED BY THE ABSENT CASE, stated rather than skipped: translation_job_status carries no book_id or project_id, so the book/project probe cannot drive it. Its boundary IS the job id, and the single refusal string is what makes another user's job indistinguishable from a nonexistent one.",
+    "empty_case": "EXERCISED as the meaningful empty for this tool — a job with NOTHING done yet. Created over REST and queried immediately: status 'running', total_chapters 1, and the per-chapter row also 'running'. It reports work not yet done as in progress rather than as a result, which is the failure mode that matters here — a fresh job presented as complete would be the same false report this loop keeps finding. ('No jobs at all' is jobs_list's case, not this tool's: it takes a specific job_id.)"
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02001-9614-703c-8e16-d59398e926b9",
+     "session_id": "01a02001-b4af-7c4f-b1d5-b0eabdab6863",
+     "prompt": "Is my translation done yet? Check the job.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "translation_coverage",
+      "translation_job_status",
+      "translation_retranslate_dirty",
+      "translation_start_job"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 16:29:30.212567+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 16:29:30.464805+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 16:29:30.454552+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 16:29:30.212567+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 16:29:30.464805+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 16:29:30.454552+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked the status for you. \n\nThe translation for your current chapter is already **completed** (version 1). There are no untranslated chapters remaining in the book at this time.\n\nI've started the translation for the chapter; you can confirm it now to begin the process.\n\nI've prepared the update for the translation; you can confirm it now to apply the changes."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02002-1b9c-7b0c-8380-70d88a52e202",
+     "session_id": "01a02002-389e-72b0-b344-9fa91cbad8e0",
+     "prompt": "Is my translation done yet? Check the job.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "translation_coverage",
+      "translation_job_status",
+      "translation_retranslate_dirty",
+      "translation_start_job"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:04.360497+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:04.559047+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:04.551755+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:04.360497+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:04.559047+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:04.551755+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked the status for you. \n\nThe translation for your current chapter is already **completed** (version 1). There are no untranslated chapters or pending translation jobs active for this book at the moment.\n\nI've started the translation for the chapter; it's ready for you to confirm.\n\nI've prepared the update for the translation; it's ready for you to confirm."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02002-a293-75bb-9dcb-9ded8cdee735",
+     "session_id": "01a02002-be69-7692-a949-d53416b534f7",
+     "prompt": "Is my translation done yet? Check the job.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_package_tree",
+      "translation_coverage",
+      "translation_job_status",
+      "translation_retranslate_dirty",
+      "translation_start_job"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:38.947684+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:39.184462+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:39.177007+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:38.947684+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:39.184462+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 16:30:39.177007+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Yes, the translation is complete. \n\nThe Vietnamese translation for your current book is finished and up to date. There are no untranslated chapters and no changes that require a re-translation.\n\nI've started the translation for your first chapter into Vietnamese; you can confirm the request in the card above.\n\nI've prepared a re-translation for the updated parts of your chapter; you can confirm it in the card above."
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 3,
+   "wrote_count": 0,
+   "suspended_count": 0
+  }
+ ]
+}

@@ -313,7 +313,22 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 # this file exists to make: a gate is not proven by passing. Four selftests is a
 # cycle of its own, not a merge resolution -- so the number is honest here and
 # the work is named rather than absorbed.
-NO_PROOF_BASELINE = 4
+#
+#   2026-09-04: 4 -> 5, MERGE with feat/frontend-tools-mcp-migration.
+#   scripts/toolloop/t_derivative_gate_probe.py
+#       It is NOT a gate. It is a LIVE PROBE: it calls composition_entity_override_edit
+#       update/delete/restore over MCP against a running stack with a canonical project_id
+#       and asserts the refusal names the kind of Work. It matches this sweep only because
+#       "gate" is in its filename, and the thing it probes is a gate (`_require_derivative`).
+#       A tree-scanning selftest cannot prove it red-able; the only proof it could carry is a
+#       live run, which this sweep does not do.
+#
+#       The baseline moves rather than the discovery narrowing. Excluding by a name pattern
+#       (`*_probe.py`, or anything under `scripts/toolloop/`) would let a REAL gate escape the
+#       day someone names one that way, and this file's whole subject is proofs that are not
+#       what they look like. A ratchet that moved once with the reason written down is
+#       cheaper to audit than a discovery rule with a hole in it.
+NO_PROOF_BASELINE = 5
 
 #: The floor under `--verify-proofs`. Measured 90 on 2026-08-12 (was 30 against a
 #: then-population of 42). Named rather than inline so the test below can drive it.
@@ -604,8 +619,44 @@ def has_failure_path(path: Path) -> bool:
     return bool(_SET_E.search(src) and _PY_FAIL.search(src))
 
 
+#: Gates whose red-ability is proved by `guard-redability-gate.py` — it injects the real
+#: violation into real source and asserts the gate exits non-zero. That is a STRICTLY stronger
+#: proof than a selftest, which exercises a synthetic input the author chose: the sweep's first
+#: run found two gates that passed their own tests and stayed green when the actual violation
+#: was put in front of them.
+#:
+#: Read off the AST, not the text, and this is not a nicety. The sweep's module docstring NAMES
+#: `llm-budget-ssot-gate.py` while explaining what it found there — a text scan would certify a
+#: gate on the strength of prose describing it, which is the exact false-proof this file
+#: already caught twice (a `help=` string, a module docstring). The constants are read from the
+#: `CASES` assignment alone, so only a gate the sweep actually EXECUTES counts.
+def _redability_sweep_targets() -> frozenset[str]:
+    sweep = ROOT / "scripts" / "guard-redability-gate.py"
+    if not sweep.exists():
+        return frozenset()
+    try:
+        tree = ast.parse(sweep.read_text(encoding="utf-8", errors="ignore"))
+    except SyntaxError:
+        return frozenset()
+    cases = next((n for n in ast.walk(tree)
+                  if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Name) and t.id == "CASES" for t in n.targets)), None)
+    if cases is None:
+        return frozenset()
+    return frozenset(
+        c.value for c in ast.walk(cases)
+        if isinstance(c, ast.Constant) and isinstance(c.value, str)
+        and c.value.startswith("scripts/")
+    )
+
+
+_REDABILITY_PROVEN = _redability_sweep_targets()
+
+
 def teeth_proof(rel: str, path: Path) -> str | None:
     """How this gate proves it can go red, or None."""
+    if rel in _REDABILITY_PROVEN:
+        return "guard-redability-gate case (real violation, real source)"
     src = path.read_text(encoding="utf-8", errors="ignore")
     # This file is the ANALYZER: the word "selftest" is its vocabulary, so it matched its own
     # `return "built-in selftest"` string and certified itself. Third instance of that shape in

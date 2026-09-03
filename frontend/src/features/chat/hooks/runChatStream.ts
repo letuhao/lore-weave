@@ -48,7 +48,15 @@ export type ChatStreamArgs = {
   // W4 — granular effort from the input-bar dropdown. Sent as `reasoning_effort`
   // on the message POST (chat-service maps it to the model's reasoning knob).
   reasoningEffort?: ReasoningEffortLevel;
-  editorContext?: { book_id: string; chapter_id: string };
+  editorContext?: {
+    book_id: string;
+    chapter_id: string;
+    // D-PROPOSE-EDIT-ACTS-ON-EDITOR-STATE-THE-TURN-CANNOT-SEE — a live snapshot taken at send
+    // time, additive: older callers simply omit these and the server falls back to today's
+    // behaviour.
+    has_selection?: boolean;
+    selected_text?: string;
+  };
   // #09 Lane A — presence tells chat-service to advertise the studio dock-nav frontend tools.
   studioContext?: { book_id?: string; project_id?: string; active_chapter_id?: string; active_panel_ids?: string[]; context_revision?: number };
   composeMode?: boolean;

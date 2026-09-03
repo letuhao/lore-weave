@@ -25,7 +25,24 @@ import json
 import sys
 from dataclasses import dataclass
 
-from app.services.frontend_tools import _studio_panel_tool
+# V7 (2026-09-03) — the fixture moved HERE with `frontend_tools.py`'s deletion. ai-gateway owns
+# the live `ui_open_studio_panel` def (src/mcp/ui-tools.ts); this snapshot exists only to measure
+# the token cost of two `panel_id` description variants, which is a HARNESS question.
+#
+# ⚠ It is a SNAPSHOT and will not follow the live tool. That is acceptable here and nowhere else:
+# `ui_*` has been de-advertised since 2026-07-25, so this eval measures a shape no model is
+# offered. Re-extract from the contract if the A/B is ever re-run for a live tool.
+def _studio_panel_tool(*, compact: bool) -> dict:
+    import copy
+    import json as _json
+    import pathlib as _pathlib
+    _fx = _json.loads(
+        (_pathlib.Path(__file__).parent / "_studio_panel_fixture.json").read_text(encoding="utf-8"))
+    if not compact:
+        return _fx["tool"]
+    td = copy.deepcopy(_fx["tool"])
+    td["function"]["parameters"]["properties"]["panel_id"]["description"] = _fx["compact_desc"]
+    return td
 from app.services.skill_registry import (
     LOAD_SKILL_TOOL,
     load_skill_result,

@@ -73,12 +73,12 @@ func (c *Client) submitJob(ctx context.Context, body map[string]any, userIDOverr
 
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return nil, newErrorFromCode("LLM_DECODE_ERROR", "submit body marshal failed: "+err.Error(), 0)
+		return nil, newTransportError("LLM_DECODE_ERROR", "submit body marshal failed: "+err.Error(), 0, err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"?"+params.Encode(), bytes.NewReader(bodyBytes))
 	if err != nil {
-		return nil, newErrorFromCode("LLM_HTTP_ERROR", "submit_job request build: "+err.Error(), 0)
+		return nil, newTransportError("LLM_HTTP_ERROR", "submit_job request build: "+err.Error(), 0, err)
 	}
 	for k, v := range headers {
 		req.Header[k] = v
@@ -88,7 +88,7 @@ func (c *Client) submitJob(ctx context.Context, body map[string]any, userIDOverr
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, newErrorFromCode("LLM_HTTP_ERROR", "submit_job transport failure: "+err.Error(), 0)
+		return nil, newTransportError("LLM_HTTP_ERROR", "submit_job transport failure: "+err.Error(), 0, err)
 	}
 	defer resp.Body.Close()
 
@@ -98,7 +98,7 @@ func (c *Client) submitJob(ctx context.Context, body map[string]any, userIDOverr
 
 	var out submitJobResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, newErrorFromCode("LLM_DECODE_ERROR", "submit_job response decode: "+err.Error(), resp.StatusCode)
+		return nil, newTransportError("LLM_DECODE_ERROR", "submit_job response decode: "+err.Error(), resp.StatusCode, err)
 	}
 	return &out, nil
 }
@@ -112,7 +112,7 @@ func (c *Client) getJob(ctx context.Context, jobID, userIDOverride string) (*job
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+params.Encode(), nil)
 	if err != nil {
-		return nil, newErrorFromCode("LLM_HTTP_ERROR", "get_job request build: "+err.Error(), 0)
+		return nil, newTransportError("LLM_HTTP_ERROR", "get_job request build: "+err.Error(), 0, err)
 	}
 	for k, v := range headers {
 		req.Header[k] = v
@@ -121,7 +121,7 @@ func (c *Client) getJob(ctx context.Context, jobID, userIDOverride string) (*job
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, newErrorFromCode("LLM_HTTP_ERROR", "get_job transport failure: "+err.Error(), 0)
+		return nil, newTransportError("LLM_HTTP_ERROR", "get_job transport failure: "+err.Error(), 0, err)
 	}
 	defer resp.Body.Close()
 
@@ -134,7 +134,7 @@ func (c *Client) getJob(ctx context.Context, jobID, userIDOverride string) (*job
 
 	var out job
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, newErrorFromCode("LLM_DECODE_ERROR", "get_job response decode: "+err.Error(), resp.StatusCode)
+		return nil, newTransportError("LLM_DECODE_ERROR", "get_job response decode: "+err.Error(), resp.StatusCode, err)
 	}
 	return &out, nil
 }
@@ -150,7 +150,7 @@ func (c *Client) cancelJob(ctx context.Context, jobID, userIDOverride string) er
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint+"?"+params.Encode(), nil)
 	if err != nil {
-		return newErrorFromCode("LLM_HTTP_ERROR", "cancel_job request build: "+err.Error(), 0)
+		return newTransportError("LLM_HTTP_ERROR", "cancel_job request build: "+err.Error(), 0, err)
 	}
 	for k, v := range headers {
 		req.Header[k] = v
@@ -158,7 +158,7 @@ func (c *Client) cancelJob(ctx context.Context, jobID, userIDOverride string) er
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return newErrorFromCode("LLM_HTTP_ERROR", "cancel_job transport failure: "+err.Error(), 0)
+		return newTransportError("LLM_HTTP_ERROR", "cancel_job transport failure: "+err.Error(), 0, err)
 	}
 	defer resp.Body.Close()
 

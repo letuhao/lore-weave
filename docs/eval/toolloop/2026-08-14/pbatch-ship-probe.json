@@ -1,0 +1,17 @@
+{
+  "empty": {
+    "verdict": "refused",
+    "detail": "MCP glossary_propose_batch error: ops must not be empty — pass the operations to batch",
+    "asked": "ops present but EMPTY"
+  },
+  "absent_book": {
+    "verdict": "refused",
+    "detail": "MCP glossary_propose_batch error: book not accessible",
+    "asked": "a book that does not exist"
+  },
+  "gate": {
+    "verdict": "SUCCEEDED",
+    "detail": "{\"authority\": \"grant\", \"confirm_token\": \"eyJqdGkiOiJkZTg5NzNiYi01OTUzLTQzOGItYTFiYy1mM2YwZTM3N2U0YjUiLCJhdXRoIjoiZ3JhbnQiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIiwiYiI6IjAxYTAzMDA3LWI",
+    "asked": "a real batch — does it MINT a confirm token rather than applying?"
+  }
+}

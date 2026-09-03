@@ -1,0 +1,138 @@
+{
+  "_note": "The three settings_model_* tools with a fixture that REGISTERS ITS OWN MODEL. They were excluded from the approved arm because they seeded nothing, so their target was the account's REAL registered models — a pre-existing object, which the owner's 2026-08-22 rule excludes by name. A fixture that creates its own target brings them inside the rule.\n\nThe teardown was PROVEN BEFORE this file existed: settings_model_delete does not delete, it mints a confirm_token, so Throwaway._purge_models redeems it and a build/teardown cycle was run end-to-end with the account verified clean afterwards. A fixture that creates an account-scoped object it cannot remove is the 35-world leak one store over.",
+  "scenarios": [
+    {
+      "id": "settings-model-set-active",
+      "tool_under_test": "settings_model_set_active",
+      "expect_tool": "settings_model_set_active",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my registered AI models.",
+      "follow_ups": [
+        "Deactivate the last one — I am not using it."
+      ],
+      "prompt_source": "Turn 1 is settings_list_models' own purpose; the MEASURED turn is settings_model_set_active's synonyms ['deactivate model'] + ['disable model'], verbatim.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "settings_model_register",
+          "args": {
+            "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+            "provider_model_name": "loop-throwaway-probe",
+            "alias": "LOOP-THROWAWAY-model-{run_word}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. 🔴 THE CARD IS NEVER APPROVED AND THAT MATTERS MORE HERE THAN ANYWHERE ELSE IN THE BATCH: the account's models include the one this loop uses as its own consumer (model_ref 019ebb72…). Deactivating the wrong row would hide the model every future batch runs on."
+        }
+      ],
+      "falsifier": "REFUTED IF: a model is deactivated with NO confirm card (Tier A), OR the model reaches for `settings_model_set_favorite` instead (the mirror of the previous scenario's failure), OR it sends value=true when the author said DEACTIVATE — the argument is a bare boolean with no default, so an inverted value silently does the opposite and the card's title still reads 'set active'. Also REFUTED IF it targets a model other than the one the author pointed at.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a user_model_id that does not exist must be refused.",
+        "idempotency": "OWED — deactivating an already-inactive model must be a clear no-op.",
+        "tenancy": "OWED — scope=USER."
+      },
+      "defects": [],
+      "_rerun_of": "batch35"
+    },
+    {
+      "id": "settings-model-set-favorite",
+      "tool_under_test": "settings_model_set_favorite",
+      "expect_tool": "settings_model_set_favorite",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my registered AI models.",
+      "follow_ups": [
+        "Mark the first one as a favourite."
+      ],
+      "prompt_source": "Turn 1 is settings_list_models' own purpose; the MEASURED turn is settings_model_set_favorite's synonyms ['mark model as favorite'] + ['favorite'], verbatim. Two turns because user_model_id is REQUIRED and settings_list_models is its only supplier.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "settings_model_register",
+          "args": {
+            "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+            "provider_model_name": "loop-throwaway-probe",
+            "alias": "LOOP-THROWAWAY-model-{run_word}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. The account already has registered models (settings_list_models returns real rows — the loop's own model_ref is one of them), so turn 1 has something to list and the id is the model's to obtain, not mine to type."
+        }
+      ],
+      "falsifier": "REFUTED IF: a model is favourited with NO confirm card (Tier A), OR the model reaches for `settings_model_set_active` instead — the two tools have IDENTICAL shapes (user_model_id + a boolean) and adjacent synonyms, and deactivating a model HIDES IT FROM EVERY PICKER rather than pinning it, which is the opposite of what was asked and far more disruptive — OR it invents a user_model_id rather than reusing one from turn 1. CONTROL: `value` is a boolean, so a model that sends value=false while saying it favourited the model has un-favourited it.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a user_model_id that does not exist must be refused.",
+        "idempotency": "OWED — favouriting an already-favourite model must be a clear no-op.",
+        "tenancy": "OWED — scope=USER: another account's model must not be favouritable."
+      },
+      "defects": [],
+      "_rerun_of": "batch35"
+    },
+    {
+      "id": "settings-model-update",
+      "tool_under_test": "settings_model_update",
+      "expect_tool": "settings_model_update",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my registered AI models.",
+      "follow_ups": [
+        "Rename the first one to Drafting Model."
+      ],
+      "prompt_source": "Turn 1 is settings_list_models' own purpose; the MEASURED turn is settings_model_update's synonyms ['rename model'] + ['edit model'], verbatim, plus the new alias so the CONTENT is the author's.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "settings_model_register",
+          "args": {
+            "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+            "provider_model_name": "loop-throwaway-probe",
+            "alias": "LOOP-THROWAWAY-model-{run_word}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. This tool writes alias, context_length, capability_flags and notes, and says 'Only provided fields change' — so a rename is the right ask to expose the other three."
+        }
+      ],
+      "falsifier": "REFUTED IF: the model row changes with NO confirm card (Tier A), OR the card carries a `context_length`, `capability_flags` or `notes` the author never mentioned. context_length is the dangerous one: it governs how much the model is fed, so a guessed number silently changes every future generation's budget while the card says 'rename'. VERIFY FROM THE CARD ITSELF with card_args.py rather than inferring from a store that was never written.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a user_model_id that does not exist must be refused.",
+        "empty_case": "OWED — a call with no editable field must be refused.",
+        "idempotency": "OWED — renaming to the current alias must be a clear no-op.",
+        "tenancy": "OWED — scope=USER."
+      },
+      "defects": [],
+      "_rerun_of": "batch35"
+    }
+  ]
+}

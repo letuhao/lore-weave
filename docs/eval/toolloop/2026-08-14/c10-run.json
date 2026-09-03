@@ -1,0 +1,818 @@
+{
+  "batch": "c10-run",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "tool_load",
+      "scenario": "tool-load",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply invents field names that are not in the tool's real schema — the whole point of tool_load is that the model stops guessing argument names, and five 'obvious' names were wrong in one session of mine.",
+      "answer_expect": null,
+      "falsifier_sha": "7b597d0e585b97db",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). NOT APPLICABLE by design: it loads TOOL SCHEMAS, which are identical for every caller and contain no user data. Recorded as such rather than as a pass.",
+        "gate": "Tier R, gateway-local.",
+        "empty_case": "EXERCISED K=3 on a book with nothing in it: store unchanged 3/3, no errors. The tool was surfaced 3/3 and called 0/3 on BOTH fixtures — see D-TOOL-LOAD-NOT-USED-FOR-SCHEMA. Nothing was fabricated; the model described the fields from an ontology read instead of the schema."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02ba9-d680-729c-ab9b-512f3094a8eb",
+          "session_id": "01a02baa-0e69-771f-ab99-591d32fc6350",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "scenario_prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "kg_project_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.07474+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.07474+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.07474+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.07474+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.272901+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:49:06.377618+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.377618+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:49:06.377618+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:49:06.51869+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.263224+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.07474+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.07474+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.07474+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.07474+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.272901+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:49:06.377618+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.377618+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:49:06.377618+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:49:06.51869+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:06.263224+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 3,
+                "latest": "2026-08-22 22:49:20.352101+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 3,
+                "latest": "2026-08-22 22:49:20.352101+00"
+              }
+            }
+          },
+          "answer": "To add a new character to your story bible, I need two things from you:\n\n1.  **The Character's Name**: This is required to identify them.\n2.  **A Description**: You can provide this in any way that's easiest for you—a rough paragraph, a list of traits, or even just a messy brain-dump of notes.\n\n**How I handle it:**\nI will take your description and map it to the specific \"Character\" details used in your world (such as their physical appearance, personality, background, or motivations). \n\n**The Process:**\n*   **You provide the info:** Just tell me about the character.\n*   **I propose the entry:** I won't just add it silently. I will create a \"draft\" entry in your review inbox.\n*   **You approve:** You'll see a card with the structured details I've extracted. Once you click **Apply**, they are officially part of your story bible.\n\n**Pro-tip:** If you have a whole list of characters or a chapter where new people are introduced, you can just paste the whole text, and I'll extract them all at once for your review."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02baa-6dfe-75b5-bf1f-7b6e25e859ff",
+          "session_id": "01a02baa-9dab-7e17-852f-ad87c693578a",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "scenario_prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "kg_project_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:44.856482+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:44.856482+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:44.856482+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:44.856482+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:45.049679+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:49:45.093239+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:45.093239+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:49:45.093239+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:49:45.249334+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:45.040817+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:44.856482+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:44.856482+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:44.856482+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:44.856482+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:45.049679+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:49:45.093239+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:45.093239+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:49:45.093239+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:49:45.249334+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:49:45.040817+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 3,
+                "latest": "2026-08-22 22:49:57.000064+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 3,
+                "latest": "2026-08-22 22:49:57.000064+00"
+              }
+            }
+          },
+          "answer": "To add a new character to your story bible, I need two things from you:\n\n1.  **The Character's Name**: This is required to create the entry.\n2.  **A Description**: You can provide this in any way that's easiest for you—a rough paragraph, a list of traits, or even just a messy brain-dump of notes.\n\n**How I handle it:**\nI won't just save a name. I will use your description to automatically extract and map details into the specific \"Character\" details required by your story's system (such as their physical appearance, personality, or background). \n\n**The Process:**\n*   **You provide:** The name and whatever details you have.\n*   **I do:** I'll extract the details and present them to you as a **draft proposal**.\n*   **You decide:** You'll see a card with the structured information. You can then **Approve** it to make it official, **Edit** it if I missed something, or **Reject** it.\n\n**Pro-tip:** If you have a whole list of characters or a long scene where new people are introduced, you can just paste the whole text. I'll scan it, find all the new characters, and prepare them all for your review at once."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02baa-f6e9-7c6a-9d3d-828af37d5662",
+          "session_id": "01a02bab-2695-7668-bfcf-b50e298acb28",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "scenario_prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "kg_project_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:19.911221+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:19.911221+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:19.911221+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:19.911221+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:20.103639+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:50:20.150055+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:20.150055+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:50:20.150055+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:50:20.299008+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:20.09569+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:19.911221+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:19.911221+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:19.911221+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:19.911221+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:20.103639+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:50:20.150055+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:20.150055+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:50:20.150055+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:50:20.299008+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:20.09569+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 3,
+                "latest": "2026-08-22 22:50:32.052336+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 3,
+                "latest": "2026-08-22 22:50:32.052336+00"
+              }
+            }
+          },
+          "answer": "To add a new character to your story bible, I need two things from you:\n\n1.  **The Character's Name**: This is required to create the entry.\n2.  **A Description**: You can provide this in any way that's easiest for you—a rough paragraph, a list of traits, or even just a messy brain-dump of notes.\n\n**How I handle it:**\nI won't just save a name. I will use your description to automatically extract and map the character's specific details (like their appearance, personality, or history) into the structured details required for the \"Character\" category in your world.\n\n**Example of what you can send me:**\n> *\"Add a character named Kaelen. He's a disgraced knight with a scarred face and a heavy sense of regret. He carries a broken silver sword and is secretly searching for his lost sister, Elara.\"*\n\nOnce you send that, I'll prepare a draft of the character entry for you to review and approve."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02bab-7ed6-7bfa-bf51-ce4337dc86f7",
+          "session_id": "01a02bab-b1e9-7edd-9822-af00ddbdcdd4",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "scenario_prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "kg_project_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.724861+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.724861+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.724861+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.724861+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.948214+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:50:55.005476+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:55.005476+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:50:55.005476+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:50:55.145547+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.938967+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.724861+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.724861+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.724861+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.724861+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.948214+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:50:55.005476+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:55.005476+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:50:55.005476+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:50:55.145547+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:50:54.938967+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 3,
+                "latest": "2026-08-22 22:51:07.714729+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 3,
+                "latest": "2026-08-22 22:51:07.714729+00"
+              }
+            }
+          },
+          "answer": "To add a new character to your story bible, I need two things from you:\n\n1.  **The Character's Name**: This is required to create the entry.\n2.  **A Description**: You can provide this in any way you like—a rough paragraph, a list of traits, or even just a messy brain-dump of notes. \n\n**How I handle it:**\nI won't just save a name. I will use the description you provide to automatically extract and map the character's specific details (like their appearance, personality, or history) into the structured details required for the \"Character\" category in your world.\n\n**Example of what you can send me:**\n> *\"Add a character named Kaelen. He's a disgraced knight with a scarred face and a heavy sense of regret. He carries a broken silver sword and is secretly searching for his lost sister.\"*\n\n**What I will do next:**\nOnce you give me the name and description, I will present a **draft proposal** for your review. You'll see a summary of the character and their details, and you can then click **\"Apply\"** to officially add them to your story bible."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02bac-0bf3-7ffb-a14a-5930de0aa0ca",
+          "session_id": "01a02bac-3e5c-7652-b30a-106c5f1d1e4f",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "scenario_prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "kg_project_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:30.822282+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:30.822282+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:30.822282+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:30.822282+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:31.031743+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:51:31.076506+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:31.076506+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:51:31.076506+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:51:31.214257+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:31.024709+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:30.822282+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:30.822282+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:30.822282+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:30.822282+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:31.031743+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-22 22:51:31.076506+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:31.076506+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-22 22:51:31.076506+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-22 22:51:31.214257+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:51:31.024709+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 3,
+                "latest": "2026-08-22 22:51:43.665027+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 3,
+                "latest": "2026-08-22 22:51:43.665027+00"
+              }
+            }
+          },
+          "answer": "To add a new character to your story bible, I need two things from you:\n\n1.  **The Character's Name**: This is required to identify them.\n2.  **A Description**: You can provide this in any way that's easiest for you—a prose paragraph, a list of traits, or even just a messy brain dump of notes.\n\n**How I handle it:**\nI won't just save a name. I will use your description to automatically extract and map the character's specific details (like their appearance, personality, or history) into the structured details required for the `character` kind in your world.\n\n**Example of what you can send me:**\n> \"Add a character named Kaelen. He's a rogueish swordsman with a scar over his left eye. He's incredibly loyal to his sect but has a cynical view of the gods. He carries a broken jade pendant that he treats like a treasure.\"\n\nOnce you send that, I'll prepare a draft of the character entry for you to review and approve."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 5,
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED, and P10's statement is CONFIRMED on its own question — which the re-baseline had not asked. Measured K=5 on scenarios-batch3's prompt ('What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess'): SURFACED 5/5, CALLED 0/5, ZERO errors. On every run the model called glossary_list_system_standards and kg_project_create and answered 'To add a new character to your story bible, I need two things from you: 1. The Character's Name...' — plausible, and NOT sourced from the contract this tool exists to expose. That is P10's invariant verbatim: when the author asks what a tool REQUIRES, the answer must come from the contract, not from a plausible neighbouring read.\n\n🔴 THE RE-BASELINE MEASURED THE WRONG QUESTION AND REPORTED 5/5 CALLED. It carried DQ-T3's scenario — 'Load the tool called glossary_book_sync_apply BY NAME' — which instructs the model to use tool_load, so it could not have said anything about this problem. Two bugs in build_rerun_set.py put it there: the generator read its own output, and 'last file wins' is alphabetical, so scenarios-dqt3 beat scenarios-batch3. Both are fixed; the alphabetical tie-break is documented rather than replaced, because choosing between two genuine scenarios is a judgement, not a sort order.\n\nIts `defects` list held the bare string 'DQ-T3'. A deferred question is not a defect with a test and a RED proof — it belongs in the ledger's deferred_questions, where DQ-T3 already is — so the entry is removed rather than dressed up to satisfy the CODE bar."
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+ "_note": "DOES THE MODEL TRAVERSE THE PROTOCOL ONCE THE DESCRIPTION STOPS PROMISING ONE CALL? D-A-PIPELINE-TOOL-COMPETES-WITH-ITS-OWN-PARTS, owner ruling 2026-08-31 (DQ-T64 (a)): fix the description first.\n\nTHE BASELINE THIS MEASURES AGAINST is derived from the chat store, not from a batch: across 93 recorded sessions, 96 calls to composition_build_cast_and_graph, op=approve_plan has been called ZERO times. Every recorded call is `start` (78) or a confirm card (18). The tool's protocol needs FIVE calls and TWO human gates, and only its first op has ever run.\n\nWHY IT IS TWO TURNS AND NOT ONE. op=start returns a worklist plus `next`: 'Show the user this worklist; call op=approve_plan when they approve.' The tool ITSELF ends the turn — a model that stops there is obeying it. So a single-turn scenario cannot reach approve_plan no matter what the description says, and measuring one would be measuring the protocol rather than the fix.\n\n🔴 A ZERO ON THE SECOND TURN IS NOT AUTOMATICALLY THIS ROW'S DEFECT. D-R1-IS-KEYED-ON-THIS-TURN-SO-A-CONFIRMATION-TURN-LOSES-THE-TOOL is a separate OPEN row: R1 answerability reads only the current turn's text, so 'Yes, go ahead' can leave the tool off the wire entirely. The falsifier below therefore distinguishes 'the tool was ON THE WIRE and the model did not call it' (this row) from 'the tool was absent' (that row), and the runner's own surface column is what tells them apart.",
+ "scenarios": [
+  {
+   "id": "t64-the-worklist-is-approved-does-the-build-follow",
+   "tool_under_test": "composition_build_cast_and_graph",
+   "expect_tool": "composition_build_cast_and_graph",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+   "prompt_source": "🔴 THE MEASURED TURN IS THE FOLLOW-UP, NOT `prompt`. This scenario declares follow_ups, so the turn under test is the LAST one: \"Yes, that worklist is right — go ahead and build them.\" That sentence is the right one because it is the APPROVAL the protocol's own `next` field asks for — op=start returns 'Show the user this worklist; call op=approve_plan when they agree', so the measured turn has to be the moment they agree. It is a bare approval on purpose: anything more specific would name the op for the model and measure the prompt instead of the protocol.\n\n`prompt` IS SETUP and no bar reads it. Its own provenance, kept because the row's measurement history rests on it: VERBATIM from the 2026-08 recording, via scenarios-c-gbuild-restored.json. Kept word for word because this row's whole measurement history is on this prompt — an identical prompt routing differently before and after 2026-08-24 is one of the row's own findings, and re-wording it would break the comparison.",
+   "follow_ups": [
+    "Yes, that worklist is right — go ahead and build them."
+   ],
+   "needs_target": false,
+   "approve": "approved_once",
+   "seed": [
+    {
+     "rest": {
+      "domain": "glossary",
+      "method": "POST",
+      "path": "/v1/glossary/books/{book_id}/adopt",
+      "json": {
+       "genres": [
+        "universal"
+       ],
+       "kinds": [
+        "character",
+        "place"
+       ]
+      }
+     },
+     "why": "The book must hold the kinds before a cast can be filed. Identical to the restored arm, so the only difference between this scenario and that one is the follow-up turn."
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "0",
+     "why": "No cast beforehand. The protocol's own promise is that op=approve_plan is what creates it, so a pre-existing cast would let a run look finished without the second op ever running — which is precisely the confusion this row exists to end."
+    }
+   ],
+   "falsifier": "THE MEASUREMENT IS `op` ON THE RECORDED CALLS, not the reply text. Read _args across both turns:\n\nCONFIRMS THE FIX REACHED THE BEHAVIOUR IF: op=approve_plan (or any op past `start`) appears at all — that has never happened in 93 recorded sessions.\n\nREFUTED IF: the second turn had the tool ON THE WIRE and still called nothing past `start`. That is the model reading a corrected description and still not continuing, which is this row's defect surviving its ruled remedy.\n\n🔴 NOT REFUTED, AND MUST NOT BE COUNTED AS EITHER, IF: the tool is ABSENT from the second turn's surface. That is D-R1-IS-KEYED-ON-THIS-TURN-SO-A-CONFIRMATION-TURN-LOSES-THE-TOOL — a separate open row whose ruled fix (DQ-T68 (a), a narrow lookback) is not built. A run that never had the tool cannot have declined to use it, and the runner reports this case in its own words: 'on the wire in an EARLIER turn only'.",
+   "ship_audit": {
+    "gate": "EXERCISED — approved_once, under the throwaway-fixture rule, so the turn can proceed past the card to the protocol itself.",
+    "empty_case": "OWED — a story with no extractable cast must refuse clearly rather than return an empty worklist.",
+    "idempotency": "OWED — approving the same worklist twice must not build the cast twice.",
+    "tenancy": "OWED — another owner's book must be refused with the uniform not-accessible answer."
+   },
+   "defects": []
+  }
+ ]
+}

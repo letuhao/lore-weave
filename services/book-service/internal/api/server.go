@@ -3048,7 +3048,12 @@ SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,octet_leng
 FROM chapter_revisions rv
 JOIN chapters c ON c.id=rv.chapter_id
 WHERE rv.chapter_id=$1 AND c.book_id=$2
-ORDER BY rv.created_at DESC
+-- , rv.id DESC because book_chapter_save_draft writes TWO revisions in ONE transaction
+-- (the 'before assistant save' snapshot and the new body), and now() is the TRANSACTION
+-- timestamp, so both rows carry the SAME created_at. Untied, 'newest first' returned the
+-- PRE-SAVE snapshot ahead of the body that replaced it. uuidv7 ids are insert-ordered, so
+-- id DESC is the true write order. kg_index.go already ordered this way.
+ORDER BY rv.created_at DESC, rv.id DESC
 LIMIT $3 OFFSET $4
 `, chID, bookID, limit, offset)
 	if err != nil {

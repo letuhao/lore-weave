@@ -1,0 +1,1739 @@
+{
+  "batch": "c-bindarc2",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_motif_bind_edit",
+      "scenario": "an-arc-request-reaches-the-tool-and-is-refused-naming-chapters",
+      "intent": "write",
+      "falsifier": "REFUTED IF: composition_motif_bind_edit is not on the wire (the arc phrasing still reaches nothing), OR it is called and the refusal does not NAME CHAPTERS, OR the tool binds the motif to the arc anyway — the owner declined teaching it that semantic. A Tier-A card raised on a CHAPTER the model picked itself is NOT a refutation; the ruling asks for the request to reach the tool, not for the bind to fail.",
+      "answer_expect": null,
+      "falsifier_sha": "a392bc5cf0d1dd4f",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a05134-da04-749a-909c-80c48b304f7f",
+          "project_id": "01a05134-db5e-7bc1-8c67-8bd6bd9b9c28",
+          "seed_ids": {
+            "01a05134-da04-749a-909c-80c48b304f7f": "fixture book_id",
+            "01a05134-db5e-7bc1-8c67-8bd6bd9b9c28": "fixture project_id (composition_work)",
+            "01a05134-daa0-7caf-898b-087696dc05ab": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05134-dbd3-7002-a5cd-904e303debf9": "seed[0] composition_motif_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+            "01a05134-dc83-7e14-a79a-49fc8d6a1f83": "seed[1] composition_arc_create.id"
+          },
+          "session_id": "01a05135-28ee-7ce1-90c4-92dd7496a9f6",
+          "prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "scenario_prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_get_work",
+            "composition_list_outline",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"01a02432-92b8-77fe-8d45-a42bcd59f2d1\", \"code\": \"emberfall-seam-b26-dc34e2f9\", \"name\": \"Emberfall Seam dc34e2f9\", \"kind\": \"trope\", \"summary\": \"\", \"genre_tags\": [], \"visibility\": \"private\", \"status\": \"active\", \"version\": 1}, {\"id\": \"01a02432-44f1-7f90-ba6d-5f"
+            },
+            {
+              "tool": "composition_get_work",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_get_work: not found or not accessible\"}"
+            },
+            {
+              "tool": "composition_list_outline",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [], \"scene_links\": [], \"detail\": \"summary\", \"total\": 0, \"returned\": 0, \"truncated\": 0}}"
+            },
+            {
+              "tool": "composition_get_work",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_get_work: not found or not accessible\"}"
+            },
+            {
+              "tool": "composition_list_outline",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [], \"scene_links\": [], \"detail\": \"summary\", \"total\": 0, \"returned\": 0, \"truncated\": 0}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_get_work"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_list_outline"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_get_work"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_list_outline"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.472499+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.472499+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.472499+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.472499+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.668498+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.955597+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.661627+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.472499+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.472499+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.472499+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.472499+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.668498+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.955597+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:46:53.661627+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've searched for the \"Emberfall Seam\" motif, but I found several versions of it in your library. To make sure I attach the correct one, could you tell me which one you're referring to?\n\nAlso, I couldn't find an existing outline for this book to attach it to. Once we've identified the right motif and you've created an opening arc (chapter or scene), I'll be able to bind it for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a05135-a647-75a5-9786-1e14d9e3fdbd",
+          "project_id": "01a05135-a7af-757a-b541-ba502d8a6407",
+          "seed_ids": {
+            "01a05135-a647-75a5-9786-1e14d9e3fdbd": "fixture book_id",
+            "01a05135-a7af-757a-b541-ba502d8a6407": "fixture project_id (composition_work)",
+            "01a05135-a6ea-7221-9794-245f98dae4df": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05135-a839-7989-bed9-c2383bc77ece": "seed[0] composition_motif_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+            "01a05135-a90c-773d-9aca-e936fb4f3ffe": "seed[1] composition_arc_create.id"
+          },
+          "session_id": "01a05135-ecbd-751f-9dee-e8fac3df66a5",
+          "prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "scenario_prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"01a02432-92b8-77fe-8d45-a42bcd59f2d1\", \"code\": \"emberfall-seam-b26-dc34e2f9\", \"name\": \"Emberfall Seam dc34e2f9\", \"kind\": \"trope\", \"summary\": \"\", \"genre_tags\": [], \"visibility\": \"private\", \"status\": \"active\", \"version\": 1}, {\"id\": \"01a02432-44f1-7f90-ba6d-5f"
+            },
+            {
+              "tool": "composition_list_outline",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [], \"scene_links\": [], \"detail\": \"summary\", \"total\": 0, \"returned\": 0, \"truncated\": 0}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_list_outline"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.770013+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.770013+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.770013+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.770013+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.973192+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:46.316022+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.966795+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.770013+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.770013+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.770013+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.770013+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.973192+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:46.316022+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:47:45.966795+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've searched for the \"Emberfall Seam\" motif, but I found several different versions of it in your library. To make sure I attach the correct one, could you tell me which one you mean?\n\nAlso, I checked your book's outline, but it's currently empty. I'll need an opening arc (a chapter or scene node) to be created before I can bind a motif to it. \n\nOnce you've identified the motif and we have an arc in place, I can complete this for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a05136-5d60-78ac-bfd8-9ca6af2db3a3",
+          "project_id": "01a05136-5ec7-70cc-9a7f-2692ef4bf485",
+          "seed_ids": {
+            "01a05136-5d60-78ac-bfd8-9ca6af2db3a3": "fixture book_id",
+            "01a05136-5ec7-70cc-9a7f-2692ef4bf485": "fixture project_id (composition_work)",
+            "01a05136-5e08-7eb1-84bc-c4f444132fe2": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05136-5f4c-7eea-84f7-0b3bcb3a1c88": "seed[0] composition_motif_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+            "01a05136-600b-72ab-8378-0318e857336a": "seed[1] composition_arc_create.id"
+          },
+          "session_id": "01a05136-af02-7f3a-aacd-27b25f72d96f",
+          "prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "scenario_prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_get_work",
+            "composition_list_outline",
+            "composition_motif_search",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"01a02432-92b8-77fe-8d45-a42bcd59f2d1\", \"code\": \"emberfall-seam-b26-dc34e2f9\", \"name\": \"Emberfall Seam dc34e2f9\", \"kind\": \"trope\", \"summary\": \"\", \"genre_tags\": [], \"visibility\": \"private\", \"status\": \"active\", \"version\": 1}, {\"id\": \"01a02432-44f1-7f90-ba6d-5f"
+            },
+            {
+              "tool": "composition_get_work",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_get_work: not found or not accessible\"}"
+            },
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a05136-5d60-78ac-bfd8-9ca6af2db3a3\", \"work\": {\"project_id\": \"01a05136-5ec7-70cc-9a7f-2692ef4bf485\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 1, \"arcs\": [\"arc \\\"Arc I \\u2014 The Emberfall\\\" \\u00b7 outline\"], \"arcs_capped\": false}, \"manuscript\": {\"chapter_count\""
+            },
+            {
+              "tool": "composition_list_outline",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [], \"scene_links\": [], \"detail\": \"summary\", \"total\": 0, \"returned\": 0, \"truncated\": 0}}"
+            },
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"01a05136-5f4c-7eea-84f7-0b3bcb3a1c88\", \"code\": \"emberfall-seam-b26-0a79daaa\", \"name\": \"Emberfall Seam 0a79daaa Zagevupa\", \"kind\": \"trope\", \"summary\": \"\", \"genre_tags\": [], \"visibility\": \"private\", \"status\": \"active\", \"version\": 1}, {\"id\": \"01a02432-92b8-77f"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_get_work"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_list_outline"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.648741+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.648741+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.648741+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.648741+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.844222+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:33.163088+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.838568+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.648741+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.648741+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.648741+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.648741+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.844222+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:33.163088+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:48:32.838568+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've searched for the \"Emberfall Seam\" motif and found several versions. The one that matches your request is:\n\n**Emberfall Seam 0a79daaa Zagevupa** (ID: `01a05136-5f4c-7eea-84f7-0b3bcb3a1c88`)\n\nHowever, I cannot attach it to the opening arc because the outline for your book is currently empty. I can see that \"Arc I — The Emberfall\" is listed in your story plan, but there are no chapters or scenes defined in the outline yet.\n\nTo attach a motif, we first need to build the outline (chapters and scenes) for that arc. Would you like me to help you start building the outline for **Arc I — The Emberfall**?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05137-2c03-7e29-a2ff-7682c298c91e",
+          "project_id": "01a05137-2d64-7af4-bb76-697538b9a73d",
+          "seed_ids": {
+            "01a05137-2c03-7e29-a2ff-7682c298c91e": "fixture book_id",
+            "01a05137-2d64-7af4-bb76-697538b9a73d": "fixture project_id (composition_work)",
+            "01a05137-2ca1-7f8a-9dd7-889b292d4d02": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05137-2dfb-761f-8b49-4c8da43d3cc0": "seed[0] composition_motif_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+            "01a05137-2ecc-7748-8895-f64945afb18f": "seed[1] composition_arc_create.id"
+          },
+          "session_id": "01a05137-723a-7a8a-a1e0-e2edff2b16a5",
+          "prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "scenario_prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_get_work",
+            "composition_list_outline",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"01a02432-92b8-77fe-8d45-a42bcd59f2d1\", \"code\": \"emberfall-seam-b26-dc34e2f9\", \"name\": \"Emberfall Seam dc34e2f9\", \"kind\": \"trope\", \"summary\": \"\", \"genre_tags\": [], \"visibility\": \"private\", \"status\": \"active\", \"version\": 1}, {\"id\": \"01a02432-44f1-7f90-ba6d-5f"
+            },
+            {
+              "tool": "composition_get_work",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_get_work: not found or not accessible\"}"
+            },
+            {
+              "tool": "composition_list_outline",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [], \"scene_links\": [], \"detail\": \"summary\", \"total\": 0, \"returned\": 0, \"truncated\": 0}}"
+            },
+            {
+              "tool": "composition_get_work",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_get_work: not found or not accessible\"}"
+            },
+            {
+              "tool": "composition_list_outline",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [], \"scene_links\": [], \"detail\": \"summary\", \"total\": 0, \"returned\": 0, \"truncated\": 0}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_get_work"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_list_outline"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_get_work"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_list_outline"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.537818+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.537818+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.537818+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.537818+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.739856+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:26.092364+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.731807+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.537818+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.537818+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.537818+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.537818+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.739856+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:26.092364+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:49:25.731807+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've searched for the \"Emberfall Seam\" motif, and I found several versions, including one titled **\"Emberfall Seam 7ca29682 Metusove\"**.\n\nHowever, I cannot attach it to the opening arc because the book's outline is currently empty. To bind a motif to an arc, the arc must first exist as a node in the outline.\n\nWould you like me to create the opening arc first, or do you have a specific chapter/scene in mind that we should start with?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05137-eea9-728c-945a-991e2f14f3f9",
+          "project_id": "01a05137-f012-73cc-a9a8-a18e3b57eee2",
+          "seed_ids": {
+            "01a05137-eea9-728c-945a-991e2f14f3f9": "fixture book_id",
+            "01a05137-f012-73cc-a9a8-a18e3b57eee2": "fixture project_id (composition_work)",
+            "01a05137-ef5d-7a80-8b80-79423dbb6aeb": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05137-f0c3-790c-956f-61b797ba6c8c": "seed[0] composition_motif_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+            "01a05137-f174-7942-aa8c-ad6053e77395": "seed[1] composition_arc_create.id"
+          },
+          "session_id": "01a05138-3f5d-76e7-9cd5-3ef4d047341d",
+          "prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "scenario_prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_get_work",
+            "composition_list_outline",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"01a02432-92b8-77fe-8d45-a42bcd59f2d1\", \"code\": \"emberfall-seam-b26-dc34e2f9\", \"name\": \"Emberfall Seam dc34e2f9\", \"kind\": \"trope\", \"summary\": \"\", \"genre_tags\": [], \"visibility\": \"private\", \"status\": \"active\", \"version\": 1}, {\"id\": \"01a02432-44f1-7f90-ba6d-5f"
+            },
+            {
+              "tool": "composition_list_outline",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_list_outline: not found or not accessible\"}"
+            },
+            {
+              "tool": "composition_get_work",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_get_work: not found or not accessible\"}"
+            },
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"01a02432-92b8-77fe-8d45-a42bcd59f2d1\", \"code\": \"emberfall-seam-b26-dc34e2f9\", \"name\": \"Emberfall Seam dc34e2f9\", \"kind\": \"trope\", \"summary\": \"\", \"genre_tags\": [], \"visibility\": \"private\", \"status\": \"active\", \"version\": 1}, {\"id\": \"01a02432-44f1-7f90-ba6d-5f"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_list_outline"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_get_work"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_get_work",
+                "composition_list_outline",
+                "composition_motif_bind_edit",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.389527+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.389527+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.389527+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.389527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.575102+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.924522+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.569804+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.389527+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.389527+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.389527+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.389527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.575102+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.924522+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:50:15.569804+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found several motifs related to \"Emberfall Seam,\" but I need to know which specific one you'd like to use, as there are multiple versions (e.g., `939aaaa3 Nogupavu`, `dc34e2f9`, etc.).\n\nAdditionally, I couldn't access the outline for the book directly to identify the \"opening arc.\" Could you please:\n1. **Confirm which \"Emberfall Seam\" motif** you want to use (or provide the name/code).\n2. **Specify the opening arc** (e.g., by its title or chapter number) so I can attach it correctly."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

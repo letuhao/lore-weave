@@ -1,0 +1,41 @@
+[
+  {
+    "tool": "composition_create_work",
+    "args": {
+      "book_id": "cea5a1a2-a148-4c19-b331-499fcf94b0bc"
+    },
+    "verdict": "refused",
+    "response": "MCP composition_create_work error: Error executing tool composition_create_work: not found or not accessible"
+  },
+  {
+    "tool": "glossary_deep_research",
+    "args": {
+      "book_id": "cea5a1a2-a148-4c19-b331-499fcf94b0bc",
+      "entity_id": "x",
+      "query": "x"
+    },
+    "verdict": "UNPROBED (validation)",
+    "why": "died in argument validation, so the tenancy check never ran \u2014 fix the args from the schema and probe again",
+    "response": "MCP glossary_deep_research error: entity_id must be a UUID"
+  },
+  {
+    "tool": "jobs_summary",
+    "verdict": "n/a",
+    "why": "declares no book_id, project_id, map_id or world_id \u2014 no tenancy argument"
+  },
+  {
+    "tool": "plan_run_pass",
+    "args": {
+      "book_id": "cea5a1a2-a148-4c19-b331-499fcf94b0bc",
+      "run_id": "x",
+      "pass_id": "motifs"
+    },
+    "verdict": "refused",
+    "response": "MCP plan_run_pass error: Error executing tool plan_run_pass: not found or not accessible"
+  },
+  {
+    "tool": "propose_edit",
+    "verdict": "n/a",
+    "why": "declares no book_id, project_id, map_id or world_id \u2014 no tenancy argument"
+  }
+]

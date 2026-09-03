@@ -1,0 +1,42 @@
+{
+  "_note": "composition_reference_update, now that a READER for reference_id exists.\n\nD-A-REQUIRED-ID-NO-TOOL-CAN-SUPPLY: reference_id was required by exactly one tool and mentioned by NO tool in the catalogue, so the tool was unsatisfiable by construction and no declaration could fix it — the reader had to be BUILT. composition_reference_list ships in this cycle and is declared as the emitter.\n\nWHY A NEW FILE RATHER THAN AN EDIT TO scenarios-c-ref3.json. That scenario's falsifier is written for the broken world — 'the model invents a reference_id (there are none to find, so any id is fabricated)' — and with a reader present that premise is false. It is left exactly as it is. (Noted while reading it: that parenthetical already contradicted its own seed, which inserts one reference.)\n\nTHE SEED IS COPIED VERBATIM, so the two scenarios differ only in what is asked of the result.",
+  "scenarios": [
+    {
+      "id": "composition-reference-update-via-the-list",
+      "tool_under_test": "composition_reference_update",
+      "expect_tool": "composition_reference_update",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please fix reference title for 'Tidal Almanac {run_word}' — it should read 'Tidal Almanac, Revised'.",
+      "prompt_source": "Verbatim from scenarios-c-ref3.json, which took it from meta.synonyms['fix reference title'] + ['update reference metadata']. Unchanged on purpose: the question is whether the PLATFORM moved, so the prompt must not.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_composition",
+            "statement": "INSERT INTO reference_source (id, created_by, project_id, book_id, title, author, source_url, content, embedding_model, created_at) VALUES (gen_random_uuid(), '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', (SELECT project_id FROM composition_work WHERE book_id='{book_id}' LIMIT 1), '{book_id}', 'Tidal Almanac {run_word}', 'M. Solene', 'https://example.invalid/tidal', 'Notes on the Obsidian Trench tides.', 'none', now())",
+            "why": "A reference to EDIT. Copied verbatim from scenarios-c-ref3.json. reference_source still has no MCP create path — this cycle built the READER, not a writer — so the seed inserts directly, the way translation's fixture does."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM reference_source WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The reference must exist before the prompt can name it."
+        }
+      ],
+      "falsifier": "REFUTED IF: the model passes a reference_id that is NOT the seeded row's id — with a reader present, a wrong id is now a fabrication rather than a forced guess; OR it reports the title as changed while the card is still unclicked (approve is null, so the store MUST be unchanged and any claim of success is a narrated write); OR it reaches the confirm card without ever calling composition_reference_list, which would mean it got the id from somewhere this scenario cannot account for. CONTROL: the tool being REFUSED once for reference_id before the model lists is expected and is not a failure — that refusal is what names the reader.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "covered by scenarios-c-ref3.json, which runs the same prompt against a shelf the model cannot read.",
+        "tenancy": "OWED — book-scoped via project_id."
+      },
+      "defects": []
+    }
+  ]
+}

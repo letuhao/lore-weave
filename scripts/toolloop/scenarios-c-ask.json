@@ -1,0 +1,302 @@
+{
+  "_note": "🔴 A NEW QUESTION FOR SEVEN ROWS, AND IT IS LABELLED ONE. Measured 2026-08-23: these tools' recorded prompts ask a READ question about a tool that WRITES — 'What background jobs do I have running?' for jobs_CANCEL, 'What do I know about X?' for memory_FORGET. The model answers the question asked and never calls the write tool, because nobody asked it to, so the rows do not measure the tool they name.\n\nThese prompts ask for the tool's ACTUAL ACTION, in a user's words, containing a declared synonym contiguously (the matcher needs that — proven by a controlled A/B on composition_reference_update). Seeds and falsifiers carry over UNEDITED.\n\nThis does NOT inherit the old rows' conclusions and does not overwrite them: a different question gets a different answer, and both stay on file.\n\nWHAT WOULD REFUTE IT: still called 0/5 when the prompt plainly asks for the action. Then the block is not the prompt.",
+  "scenarios": [
+    {
+      "id": "jobs-cancel-asked",
+      "tool_under_test": "jobs_cancel",
+      "expect_tool": "jobs_cancel",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Cancel job — stop the background job that's still running on this book.",
+      "follow_ups": [
+        "Stop the translation one."
+      ],
+      "prompt_source": "Turn 1 is jobs_list's own purpose; the MEASURED turn is jobs_cancel's synonyms ['stop job'] + ['stop a running job'], verbatim. Two turns because service AND job_id are both required and jobs_list is their only supplier.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'pending', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+            "why": "A PENDING translation job on the throwaway book. Seeded in SQL because the only tool that starts one is translation_start_job, which SPENDS, and a cost-bearing card is never approved. ONE row in ONE statement — batch 36's multi-row seed gave two rows the same created_at and collided with the startup migration's ROW_NUMBER renumber, taking the service into a restart loop."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}' AND status='pending'",
+          "expect": "1",
+          "why": "EXACTLY ONE pending job — the SELECT that proves the SQL seed did what it claims. `pending` is what makes a cancel meaningful; a terminal job would make any answer look right. The card is never approved, so the status must still be 'pending' afterwards, and 'cancelled' would mean the cancel landed unapproved."
+        }
+      ],
+      "falsifier": "REFUTED IF: the job is cancelled with NO confirm card, OR the model invents a job_id rather than reading one from turn 1, OR it passes the wrong `service` — the tool takes service + job_id as a PAIR, so a right id under the wrong service either misses or, worse, reaches a different service's job with a colliding id. CONTROL FROM THE DESCRIPTION: cancel is 'free and reversible-by-restart — no spend, no confirm', so a reply warning the author that cancelling will cost them, or that the work cannot be recovered, is wrong about its own tool in the direction that would stop a safe action.",
+      "ship_audit": {
+        "gate": "OWED — Tier A; the description says no confirm, so what the card actually does is the thing to record.",
+        "absent_case": "OWED — a job_id that does not exist must be refused.",
+        "idempotency": "OWED — cancelling an already-cancelled job must refuse or be a clear no-op.",
+        "tenancy": "OWED — the description says the CALLER'S OWN jobs; another account's job_id must be refused."
+      },
+      "defects": [],
+      "_rerun_of": "batch39",
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION",
+      "_original_prompt": "What background jobs do I have running?"
+    },
+    {
+      "id": "jobs-pause-asked",
+      "tool_under_test": "jobs_pause",
+      "expect_tool": "jobs_pause",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Pause job — hold the background job that's running on this book for now.",
+      "follow_ups": [
+        "Pause the translation one for now."
+      ],
+      "prompt_source": "Turn 1 is jobs_list's own purpose; the MEASURED turn is jobs_pause's synonyms ['pause job'] + ['pause a running job'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'pending', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+            "why": "The same single-statement pending job. PAUSE and CANCEL are near-neighbours with adjacent synonyms, which is exactly why each of these two scenarios names the other as its wrong-tool failure."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}' AND status='pending'",
+          "expect": "1",
+          "why": "ONE pending job. The card is never approved, so it must still be 'pending' — neither 'paused' nor 'cancelled'."
+        }
+      ],
+      "falsifier": "REFUTED IF: the job is paused with NO confirm card, OR the model reaches for `jobs_cancel` instead — cancel is terminal and pause is not, so cancelling a job the author asked to hold destroys work they meant to resume, and the two tools' synonym sets sit right beside each other — OR it invents a job_id. CONTROL: pause 'stops dispatching new units + drains in-flight; resume later from the GUI', so a reply promising to resume it automatically, or offering a resume tool, is describing something this tool does not provide.",
+      "ship_audit": {
+        "gate": "OWED — Tier A; the description says no confirm.",
+        "absent_case": "OWED — a job_id that does not exist must be refused.",
+        "idempotency": "OWED — pausing an already-paused job must be a clear no-op.",
+        "tenancy": "OWED — the CALLER'S OWN jobs only."
+      },
+      "defects": [],
+      "_rerun_of": "batch39",
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION",
+      "_original_prompt": "What background jobs do I have running?"
+    },
+    {
+      "id": "memory-forget-asked",
+      "tool_under_test": "memory_forget",
+      "expect_tool": "memory_forget",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "That was wrong — forget that the Obsidian Trench is walkable at low tide.",
+      "follow_ups": [
+        "That is wrong — forget that fact."
+      ],
+      "prompt_source": "Turn 1 is memory_search's synonym ('what do i know about'); the MEASURED turn is memory_forget's synonyms ['that was wrong'] + ['forget that'], verbatim. Two turns because the tool's own description says 'Only use a fact_id you have seen in an earlier tool result' — it names its supplier and this walks it.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "memory_remember",
+          "args": {
+            "project_id": "{project_id}",
+            "fact_type": "statement",
+            "fact_text": "The Obsidian Trench is walkable at high tide."
+          }
+        },
+        {
+          "tool": "memory_remember",
+          "args": {
+            "project_id": "{project_id}",
+            "fact_type": "statement",
+            "fact_text": "Aldric Vane keeps a brass compass."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "TWO facts are stored and only ONE is about the Obsidian Trench, so invalidating the wrong one is visible. The facts live in NEO4J — the harness snapshots neo4j.Fact.total and neo4j.Fact.project around every run, which is where the DATA bar for this scenario actually comes from; the card is never approved, so both must survive."
+        }
+      ],
+      "falsifier": "REFUTED IF: a fact is invalidated with NO confirm card (Tier A), OR the model targets the brass-compass fact rather than the one the author called wrong, OR it invents a fact_id rather than reusing one from turn 1's result — its description is explicit that only a seen fact_id may be used, so an invented one is the tool's own rule being broken. CONTROL: the seeded fact contradicts the fixture's chapter, which says the trench is walkable at LOW tide. So the author's 'that is wrong' is justified by the manuscript, and a model that argues the fact is correct is disagreeing with the book.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a fact_id that does not exist must be refused.",
+        "idempotency": "OWED — forgetting an already-invalidated fact must refuse or be a clear no-op.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P7-FALSE-ABSENCE",
+      "_original_prompt": "What do I know about the Obsidian Trench?"
+    },
+    {
+      "id": "kg-triage-schema-write-asked",
+      "tool_under_test": "kg_triage_schema_write",
+      "expect_tool": "kg_triage_schema_write",
+      "intent": "write",
+      "tier": "W",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+      "follow_ups": [
+        "Add the allied_with edge type to the schema so that proposal fits."
+      ],
+      "prompt_source": "Turn 1 is kg_triage_list's synonym; the MEASURED turn is kg_triage_schema_write's synonyms ['add this value to the schema'] + ['resolve triage by changing the schema'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Aldric Vane",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Mira Solene",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_propose_edge",
+          "args": {
+            "project_id": "{project_id}",
+            "source_entity_id": "{step:0:entity_id}",
+            "target_entity_id": "{step:1:entity_id}",
+            "edge_type": "allied_with",
+            "valid_from": 1
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "ONE parked edge, and the project has NO adopted ontology (edge_types=[], probed directly). So `add_to_schema` here is a real schema mutation and may well be refused on the same precondition kg_ontology_propose hit in batch 32 — that refusal, if it comes, is the tool being correct, and the falsifier says so rather than scoring it as a failure."
+        }
+      ],
+      "falsifier": "REFUTED IF: the schema changes with NO confirm card (Tier W), OR the action chosen is not `add_to_schema` when the author asked to add an edge TYPE — `add_to_vocab` adds a controlled-vocabulary VALUE and `widen_target_kinds` loosens which node kinds an edge may point at, both of which are different changes to the author's ontology — OR the model invents a signature. 🔴 A PRECONDITION REFUSAL IS NOT A FAILURE: this project has no adopted ontology, so 'there is nothing to add to' is a correct answer, and it must be recorded as the tool working rather than as the tool broken.",
+      "ship_audit": {
+        "gate": "OWED — Tier W and schema-mutating.",
+        "absent_case": "OWED — a signature that is not in the queue must be refused.",
+        "empty_case": "OWED — an action with no value to add must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_rerun_of": "batch33",
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P6-DESCRIBE-NOT-RECORD",
+      "_original_prompt": "Show me the graph triage queue."
+    },
+    {
+      "id": "catalog-get-book-asked",
+      "tool_under_test": "catalog_get_book",
+      "expect_tool": "catalog_get_book",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Open public book — show me its detail for the first one in the catalogue.",
+      "follow_ups": [
+        "Open the first one and show me its detail."
+      ],
+      "prompt_source": "Turn 1 is catalog_list_public_books' own purpose; the MEASURED turn is catalog_get_book's synonyms ['open public book'] + ['public book detail'], verbatim. Two turns because book_id is REQUIRED and the public listing is its only supplier — a private book_id is explicitly not accepted.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_sharing",
+          "query": "SELECT count(*)::text FROM sharing_policies WHERE book_id='{book_id}' AND visibility='public'",
+          "expect": "0",
+          "why": "🔴 THE FIXTURE'S OWN BOOK IS NOT PUBLIC, AND THAT IS THE POINT. Publication lives in loreweave_sharing.sharing_policies, NOT on the books row — there is no visibility column on `books` at all, which the preflight caught before this batch spent a single turn. This tool 'Returns not-found for a non-public or unknown book', so the throwaway is invisible to it, which is the state every unpublished manuscript is in. The model therefore CANNOT answer from the book in context and must go to the public listing, making turn 1 a real supplier step rather than decoration."
+        }
+      ],
+      "answer_expect": {
+        "none_of": [
+          "I've opened",
+          "here is the book",
+          "the book's summary is"
+        ],
+        "why": "🔴 REWRITTEN AFTER MEASUREMENT DISPROVED THE PREMISE. The first version asserted the reply must NOT say 'no public books', on the assumption that the catalogue was non-empty. It is empty — catalog_list_public_books returns {items: [], total: 0} — so that bar was punishing the one honest answer available, exactly as batch 33's did before its premise was corrected. A scenario premise can be wrong, and this one was.\n\nThe bar now targets the OPPOSITE failure: opening or describing a public book that does not exist in the catalogue. That is the invention this scenario can still catch."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model passes the FIXTURE'S OWN book_id — it is private and would come back not-found, and reaching for the book in context instead of the listing is the exact confusion this tool's not-found rule creates — OR it invents a book_id. CONTROL: the tool returns title, description, language, summary, genre tags, chapter count and available translation languages, so any claim about a public book's CONTENT beyond those fields is fabricated.",
+      "ship_audit": {
+        "absent_case": "OWED — a private or unknown book_id must return not-found, and the two must be indistinguishable.",
+        "empty_case": "OWED — an empty public catalogue is not reachable here.",
+        "tenancy": "OWED — scope=none: the PUBLIC surface must not leak a private book's detail to anyone, including its own owner, through this tool."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P7-FALSE-ABSENCE",
+      "_original_prompt": "What public books are in the catalogue?"
+    },
+    {
+      "id": "translation-job-control-asked",
+      "tool_under_test": "translation_job_control",
+      "expect_tool": "translation_job_control",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Cancel job — stop translation for this book's running translation job.",
+      "follow_ups": [
+        "Cancel that job."
+      ],
+      "prompt_source": "Turn 1 is translation_job_status' own purpose; the MEASURED turn is translation_job_control's synonyms ['cancel job'] + ['stop translation'], verbatim. Two turns because job_id is REQUIRED and job_status/list is its supplier.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'pending', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+            "why": "A PENDING translation job for the throwaway book. Seeded in SQL because the only tool that creates one is translation_start_job, which SPENDS — and a cost-bearing card is never approved. status='pending' rather than a terminal state so that CANCEL is a meaningful action rather than a no-op."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}' AND status='pending'",
+          "expect": "1",
+          "why": "EXACTLY ONE pending job — the SELECT that proves the SQL seed did what it claims. The card is never approved, so it must still be 'pending' afterwards; a status of 'cancelled' would mean the cancel landed without approval."
+        }
+      ],
+      "falsifier": "REFUTED IF: the job is cancelled with NO confirm card (Tier W), OR the action chosen is `resume` or `retry` — both RE-SPEND money by the tool's own description and neither is what the author asked for — OR the model invents a job_id rather than reading one from turn 1. CONTROL: cancel and pause 'apply immediately' while resume/retry return a cost estimate + confirm token, so the two halves of this enum have DIFFERENT gates and a model that treats them alike is wrong about its own tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier W.",
+        "absent_case": "OWED — a job_id that does not exist must be refused.",
+        "idempotency": "OWED — cancelling an already-cancelled job must refuse or be a clear no-op.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P11-DISTRIBUTION",
+      "_original_prompt": "What is the status of the translation job for this book?"
+    }
+  ]
+}

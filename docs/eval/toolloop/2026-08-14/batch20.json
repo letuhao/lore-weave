@@ -1,0 +1,1603 @@
+{
+ "batch": "batch20",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "composition_motif_search",
+   "scenario": "composition-motif-search",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model calls the tool with an invented argument such as `name` rather than the declared `q` (that is the exact defect fixed on 2026-08-21 — a regression here is a NEW instance), OR the reply reports motifs the library does not contain. NOTE `q` RANKS rather than filters, so a long result list is CORRECT behaviour; what matters is that the exact match is named.",
+   "answer_expect": {
+    "all_of": [
+     "Emberfall Reversal"
+    ],
+    "why": "The seeded motif is the only one by that name; naming it back is the minimum evidence the library was searched rather than described."
+   },
+   "falsifier_sha": "7251e118e6a554d1",
+   "ship_audit": {
+    "gate": "n/a — superseded arm.",
+    "absent_case": "n/a — superseded arm.",
+    "empty_case": "n/a — superseded arm.",
+    "tenancy": "n/a — superseded arm.",
+    "idempotency": "n/a — superseded arm."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02370-f834-74e0-91ee-12d6d87a0768",
+     "session_id": "01a02371-1173-7632-b026-adde1e41f466",
+     "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:01.442881+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:01.633278+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:01.62536+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:01.442881+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:01.633278+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:01.62536+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02371-6a3a-7668-b1de-e727cf96d382",
+     "session_id": "01a02371-810d-7b98-a02c-ac3e80c4c2d6",
+     "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:30.610127+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:30.812722+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:30.804221+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:30.610127+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:30.812722+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:30.804221+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02371-d7ab-7b9c-ade5-03e4aec8a99d",
+     "session_id": "01a02371-efdb-743c-a81f-55b797e2dc38",
+     "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:58.645962+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:58.826967+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:58.820824+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:58.645962+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:58.826967+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:30:58.820824+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02372-49fc-7c41-bff9-636ebb2cac55",
+     "session_id": "01a02372-619f-7c68-ab0e-549a2bd257c5",
+     "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:27.892149+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:28.076749+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:28.06989+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:27.892149+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:28.076749+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:28.06989+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02372-ba7a-71db-87c5-59c2b01ac1e7",
+     "session_id": "01a02372-d2bb-7b51-ae14-a85200cb1bc9",
+     "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:56.686009+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:56.895845+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:56.886434+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:56.686009+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:56.895845+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:31:56.886434+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "SUPERSEDED — this arm's runs were lost to two causes that are not evidence about the tool: the degenerate `<tool_call|>` output (D-SILENT-TURN), and a FIXTURE flaw of mine — an account-scoped seed with a FIXED motif code, which is unique per owner, so rep 0 created it and reps 1-4 failed with 'seed step 0 returned no id'. Fixed by adding a `{run_id}` nonce to provision.py. Re-run pending."
+  },
+  {
+   "tool": "composition_motif_link_list",
+   "scenario": "composition-motif-link-list",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes links the seeded motif does not have, OR it names the wrong direction — the edge is Ascent PRECEDES Descent, and reporting the reverse is a wrong fact read back to the author. CONTROL: the model must resolve a NAME to a motif_id; if it asks the author for the id instead, that is OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID again and a PRECONDITION finding, not a tool defect.",
+   "answer_expect": {
+    "all_of": [
+     "Emberfall Descent"
+    ],
+    "why": "The seeded edge points at exactly one neighbour; naming it is the minimum evidence the graph was read. The tool's description promises each neighbour's code + name, so the name is available without a second call."
+   },
+   "falsifier_sha": "c352121dd5e9a7a2",
+   "ship_audit": {
+    "gate": "n/a — superseded arm.",
+    "absent_case": "n/a — superseded arm.",
+    "empty_case": "n/a — superseded arm.",
+    "tenancy": "n/a — superseded arm.",
+    "idempotency": "n/a — superseded arm."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02373-2caf-7510-aba8-7f1d50016771",
+     "session_id": "01a02373-45be-79e8-8d03-1b82a32cda6d",
+     "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:25.923191+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:26.103265+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:26.096132+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:25.923191+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:26.103265+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:26.096132+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": null,
+     "session_id": null,
+     "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [],
+     "error": "PROVISION ProvisionError: seed step 0 returned no 'id' — got keys ['error', 'outcome', 'success']. The seed cannot reference a value the tool did not return.",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {},
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": null,
+     "session_id": null,
+     "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [],
+     "error": "PROVISION ProvisionError: seed step 0 returned no 'id' — got keys ['error', 'outcome', 'success']. The seed cannot reference a value the tool did not return.",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {},
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": null,
+     "session_id": null,
+     "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [],
+     "error": "PROVISION ProvisionError: seed step 0 returned no 'id' — got keys ['error', 'outcome', 'success']. The seed cannot reference a value the tool did not return.",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {},
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": null,
+     "session_id": null,
+     "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [],
+     "error": "PROVISION ProvisionError: seed step 0 returned no 'id' — got keys ['error', 'outcome', 'success']. The seed cannot reference a value the tool did not return.",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {},
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 1,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "SUPERSEDED — this arm's runs were lost to two causes that are not evidence about the tool: the degenerate `<tool_call|>` output (D-SILENT-TURN), and a FIXTURE flaw of mine — an account-scoped seed with a FIXED motif code, which is unique per owner, so rep 0 created it and reps 1-4 failed with 'seed step 0 returned no id'. Fixed by adding a `{run_id}` nonce to provision.py. Re-run pending."
+  },
+  {
+   "tool": "composition_motif_suggest_for_chapter",
+   "scenario": "composition-motif-suggest-for-chapter",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply presents a 'why this motif' rationale citing tension or preconditions the fixture cannot supply (one seeded chapter, no plan) — that is the D-FALSE-PRESENCE shape batch 11 measured on composition_conformance_status — OR the model invents a node_id rather than resolving 'this chapter'.",
+   "answer_expect": null,
+   "falsifier_sha": "fefbb67e880187a7",
+   "ship_audit": {
+    "empty_case": "This scenario IS the empty case and the tool PASSED the shape that caught composition_conformance_status in batch 11. Called 5/5 on a book with no compiled plan, and every reply said so instead of ranking: 'I'm unable to suggest specific motifs for this chapter right now because the composition plan (the outline/spec) for this book hasn't been compiled yet.' No invented tension score, no fabricated 'why this motif' rationale — which is exactly what a tool that promises a tension/genre/precondition breakdown could most easily fake.",
+    "absent_case": "EXERCISED — a node_id that does not exist is refused 'not found or not accessible'.",
+    "tenancy": "EXERCISED — a project_id the caller cannot reach is refused with the same message."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02373-ab46-7148-884d-0ba76184cc69",
+     "session_id": "01a02373-c27a-71a1-93d0-8324f0d2873e",
+     "prompt": "Which motif fits this chapter — and why this motif?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_read",
+      "composition_motif_suggest_for_chapter",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:58.33962+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:58.538862+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:58.671284+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:58.531087+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:58.33962+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:58.538862+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:58.671284+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:32:58.531087+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm unable to suggest specific motifs for this chapter right now because the **composition plan (the outline/spec)** for this book hasn't been compiled yet.\n\nTo suggest motifs, I need to compare your prose against a structured plan (the \"spec\") that defines your story's arcs and beats. Currently, your book has a chapter written, but the system sees it as \"unplanned\" because there is no compiled arc structure for me to anchor the motifs to.\n\n**To fix this and get motif suggestions, we should:**\n1. **Create a Plan:** If you have a story idea or an outline, I can use **The planner** to turn it into a structured plan.\n2. **Compile the Plan:** Once we have a proposed plan, I will \"compile\" it, which creates the actual chapter/scene structure the motif tool uses to perform its analysis.\n\nWould you like to start by laying out your story idea so I can build that foundation for you?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02374-2df4-73a6-a07f-656faae6aea8",
+     "session_id": "01a02374-46b2-7341-9803-63e2597db07b",
+     "prompt": "Which motif fits this chapter — and why this motif?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_motif_suggest_for_chapter",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:31.826999+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:32.031108+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:32.147896+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:32.023208+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:31.826999+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:32.031108+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:32.147896+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:32.023208+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm unable to suggest motifs for this chapter right now because the motif library hasn't been linked to your story's structure yet.\n\nTo use this feature, we first need to establish your story's foundation (the \"spec\") so the system knows which narrative patterns and tropes are relevant to your specific genre and arc.\n\nWould you like me to help you set up your story's foundation so we can start using motifs and planning your chapters?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02374-8117-74db-bc7b-84f98281e0db",
+     "session_id": "01a02374-9946-7893-b44e-f538ca32e4ea",
+     "prompt": "Which motif fits this chapter — and why this motif?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_motif_suggest_for_chapter",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:53.07121+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:53.291638+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:53.407371+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:53.285162+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:53.07121+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:53.291638+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:53.407371+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:33:53.285162+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm unable to suggest motifs for this chapter right now because the motif library hasn't been linked to your project's current chapter outline yet.\n\nTo fix this, I need to **compile your story plan**. Once the plan is compiled, the system will map your chapters to specific narrative beats, which allows me to analyze the tension and structure to find the perfect motifs.\n\nWould you like me to compile your current plan for **\"Arc I — The Emberfall\"** so we can start looking at motifs?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02374-d699-74d8-abe7-a1fc275bda1d",
+     "session_id": "01a02374-eb38-76b6-9d8d-86cae39287cb",
+     "prompt": "Which motif fits this chapter — and why this motif?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_motif_suggest_for_chapter",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:14.959359+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:15.1408+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:15.259256+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:15.134794+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:14.959359+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:15.1408+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:15.259256+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:15.134794+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm unable to suggest motifs for this chapter right now because I don't have access to the chapter's content or the project's motif library.\n\nTo help me give you a meaningful recommendation, could you please **paste the text of the chapter** (or a summary of the scene) here? \n\nOnce I can see the narrative beats and the emotional arc of the chapter, I can analyze it against the available motifs to find the best fit."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02375-26f2-73a9-9c43-ff2e348b32d7",
+     "session_id": "01a02375-3f66-7ed0-baf2-a3f2bf5bd58c",
+     "prompt": "Which motif fits this chapter — and why this motif?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_motif_suggest_for_chapter",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:35.5365+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:35.728784+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:35.840189+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:35.722036+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:35.5365+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:35.728784+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:35.840189+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:35.722036+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm unable to suggest motifs for this chapter because the motif library hasn't been linked to your project's current structure yet.\n\nTo provide you with meaningful suggestions and the \"why\" behind them, I need to be able to compare your chapter's content against the narrative patterns in the library. Since your current chapter (\"Chapter I — The Ember Codex\") is currently marked as \"unplanned\" in your project's coverage, the system doesn't have a structured outline to anchor the motif search to.\n\n**To fix this, we can do one of two things:**\n\n1.  **If you have a story plan or notes:** Paste them here, and I can use them to build your story's structure. Once the structure is established, I can run the motif suggestion.\n2.  **If you want to work from the prose:** I can read the text of Chapter I directly to understand the themes and beats, and then I'll be able to suggest motifs that match the actual writing.\n\nWhich would you prefer?"
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  },
+  {
+   "tool": "composition_motif_mine",
+   "scenario": "composition-motif-mine",
+   "intent": "write",
+   "falsifier": "REFUTED IF: motifs are mined with NO confirm card (Tier W and it spends), OR the model chooses scope='corpus' when the user said 'this book' — that would bill the author for mining their ENTIRE library instead of one book, which is the worst outcome reachable here — OR the reply claims patterns were extracted while the card is still pending. CONTROL: the fixture has one seeded chapter, so there is almost nothing to mine, and an honest 'not much to work with' is a fine answer.",
+   "answer_expect": null,
+   "falsifier_sha": "b7eb91ae54a401dc",
+   "ship_audit": {
+    "gate": "EXERCISED and it is the BEST confirm card measured in this loop. Called 5/5, store unchanged, and the card carries not just the descriptor and title but requires='human confirmation — this spends LLM tokens' AND an explicit estimate={estimated_usd: 0.5, currency: USD, basis: book}. The author is told what it will COST before approving, which no other cost-gated tool in this loop has done. The model said so plainly too: 'I've prepared a request to mine the recurring patterns ... please confirm the action in the card to begin.'",
+    "empty_case": "EXERCISED with a caveat stated honestly. A near-empty book (one seeded chapter) still mints a card, and the estimate stays $0.50. Unlike composition_decompile_arcs — which computed a dry-run of 0 chapters and carded anyway, a defect fixed this cycle — this tool computes no unit count, and mining one chapter may legitimately find a pattern. So it is NOT provably a no-op card and is not claimed as one; what is worth recording is that the estimate does not vary with how much there is to mine.",
+    "tenancy": "EXERCISED — scope='book' against a book the caller cannot reach is refused 'not found or not accessible' before any token is minted. Note scope='corpus' widens this to the whole account, which is why the falsifier watched for the model choosing it unasked; it did not, on any run."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02375-7e4f-75f4-acd3-4e4038358914",
+     "session_id": "01a02375-9662-70be-81d5-112290c75759",
+     "prompt": "Mine motifs from this book — extract the recurring patterns.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_mine"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:57.892923+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:58.081586+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:58.07325+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:57.892923+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:58.081586+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:34:58.07325+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've prepared a request to mine the recurring patterns and motifs from your book; please confirm the action in the card to begin."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02375-c16a-7998-802b-c76c6c6bbf44",
+     "session_id": "01a02375-d521-72b1-b4ab-226f0cad6808",
+     "prompt": "Mine motifs from this book — extract the recurring patterns.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_mine"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:15.090896+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:15.270664+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:15.263961+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:15.090896+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:15.270664+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:15.263961+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've prepared a request to mine the recurring patterns and motifs from your book. Please confirm the action in the card to begin."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02376-0118-71f7-9525-ebd78fce12cf",
+     "session_id": "01a02376-1910-72c1-a53c-9f93edca4298",
+     "prompt": "Mine motifs from this book — extract the recurring patterns.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_mine"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:31.399313+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:31.603042+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:31.59572+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:31.399313+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:31.603042+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:31.59572+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've prepared a request to mine the recurring patterns and motifs from your book; please confirm the action in the card to begin."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02376-4169-7c40-84d3-cc6f3ebb034d",
+     "session_id": "01a02376-5a18-7cd3-9528-10b958ac335a",
+     "prompt": "Mine motifs from this book — extract the recurring patterns.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_mine"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:47.840714+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:48.036007+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:48.028978+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:47.840714+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:48.036007+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:35:48.028978+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've prepared a request to mine the recurring patterns and motifs from your book; please confirm the action in the card to begin."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02376-84de-756c-bda4-354d9290bcea",
+     "session_id": "01a02376-9c50-767c-a7ed-56aa61fa6278",
+     "prompt": "Mine motifs from this book — extract the recurring patterns.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_mine"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:05.107065+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:05.297405+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:05.291036+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:05.107065+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:05.297405+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:05.291036+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've prepared a request to mine the recurring patterns and motifs from your book; please confirm the action in the card to begin."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  },
+  {
+   "tool": "composition_motif_bind_edit",
+   "scenario": "composition-motif-bind-edit",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind` when the user said attach — its enum is bind|unbind and `unbind` would remove a binding the author never asked to remove — OR the model invents a node_id or motif_id. 🔴 WATCH FOR THE KNOWN BLOCKER: if the turn ends with no prose and no card after a successful search, that is D-SILENT-TURN-NO-CARD-NO-PROSE again, which is a MODEL-output defect and NOT evidence about this tool. A run that ends that way must be re-run, not read.",
+   "answer_expect": null,
+   "falsifier_sha": "dc8618d114aa0975",
+   "ship_audit": {
+    "gate": "n/a — superseded arm.",
+    "absent_case": "n/a — superseded arm.",
+    "empty_case": "n/a — superseded arm.",
+    "tenancy": "n/a — superseded arm.",
+    "idempotency": "n/a — superseded arm."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02376-c594-7e0a-a201-a0307ef38627",
+     "session_id": "01a02376-ded3-7d03-a4d1-448424006e32",
+     "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:21.679627+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:21.866534+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:22.135337+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:21.860076+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:21.679627+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:21.866534+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:22.135337+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:21.860076+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02377-11d5-7227-8828-cf31b772b6f5",
+     "session_id": "01a02377-26eb-768a-940c-2c9dda730d97",
+     "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:41.191309+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:41.40206+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:41.695453+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:41.393088+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:41.191309+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:41.40206+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:41.695453+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:36:41.393088+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02377-83e4-7eee-aeb4-12a988a2e835",
+     "session_id": "01a02377-9a25-785e-a932-677410283326",
+     "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:10.414694+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:10.611956+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:10.905027+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:10.603315+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:10.414694+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:10.611956+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:10.905027+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:10.603315+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02377-fa93-7707-afda-4aa91cd7ef6b",
+     "session_id": "01a02378-1042-7a4a-b694-37c3c36db3c3",
+     "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:40.776386+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:40.960379+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:41.246213+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:40.954537+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:40.776386+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:40.960379+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:41.246213+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:37:40.954537+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02378-70c9-7c29-8b93-fff80855ce41",
+     "session_id": "01a02378-8614-784d-9de9-febe0b4a75cc",
+     "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:38:11.038738+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:38:11.262063+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:38:11.173081+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:38:11.255668+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:38:11.038738+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:38:11.262063+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 08:38:11.173081+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:38:11.255668+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 0,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "SUPERSEDED — this arm's runs were lost to two causes that are not evidence about the tool: the degenerate `<tool_call|>` output (D-SILENT-TURN), and a FIXTURE flaw of mine — an account-scoped seed with a FIXED motif code, which is unique per owner, so rep 0 created it and reps 1-4 failed with 'seed step 0 returned no id'. Fixed by adding a `{run_id}` nonce to provision.py. Re-run pending."
+  }
+ ]
+}

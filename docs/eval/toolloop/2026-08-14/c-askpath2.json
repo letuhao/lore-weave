@@ -1,0 +1,1304 @@
+{
+  "batch": "c-askpath2",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_authoring_run_manage",
+      "scenario": "composition-authoring-run-ask-for-the-budget",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the turn ends without naming budget_usd (or 'budget') to the author — the whole point is that it ASKS; OR the model invents a budget_usd the author never named, which is a number with money attached; OR an authoring run is created at all (authoring_runs must stay 0 for this book); OR the turn claims it started a run it did not start. CONTROL: the tool being called and REFUSED is expected and is not a failure — a turn that never calls it tells us nothing about the refusal's new arm.",
+      "answer_expect": null,
+      "falsifier_sha": "0ccc36e0bd09169a",
+      "ship_audit": {
+        "gate": "N/A — this scenario must never reach a confirm card; it is measuring the refusal that precedes one.",
+        "absent_case": "covered by scenarios-c-authrun.json",
+        "idempotency": "covered by scenarios-c-authrun.json",
+        "tenancy": "covered by scenarios-c-authrun.json"
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a039bb-f216-7701-a3b7-4d56fdc2a295",
+          "project_id": "01a039bb-f34d-7584-b58f-d3264a47f47d",
+          "seed_ids": {
+            "01a039bb-f216-7701-a3b7-4d56fdc2a295": "fixture book_id",
+            "01a039bb-f34d-7584-b58f-d3264a47f47d": "fixture project_id (composition_work)",
+            "01a039bb-f2a3-7dfa-8ea0-80cac12f6979": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a039bb-f3cc-7449-a1d3-53280ae15ce7": "seed[0] plan_propose_spec.run_id",
+            "01a039bb-f3d1-7452-8908-96fbe8fc8d2c": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a039bb-f3d8-7e49-bcf1-19970fb9b2ce": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a039bb-f3fa-7e24-b88d-bbe31180ca15": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a039bb-f3f2-7f67-8ea4-21e5db17129b": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a039bb-f3d5-75f8-a0c2-741b0a9db315": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a039bb-f352-7f03-8e2c-72dfd6f47175": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a039bc-2858-77c4-a3b0-672268b44513",
+          "prompt": "Start an authoring run for this book — begin autopilot.",
+          "scenario_prompt": "Start an authoring run for this book — begin autopilot.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_authoring_run_manage",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_manage",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a039bb-f216-7701-a3b7-4d56fdc2a295\", \"work\": {\"project_id\": \"01a039bb-f34d-7584-b58f-d3264a47f47d\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "composition_authoring_run_manage",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_authoring_run_manage: op=create requires plan_run_id, budget_usd, and pause_after_each_unit\"}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_authoring_run_manage"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.795737+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.795737+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.795737+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.795737+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.970781+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:23:34.134575+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:34.287215+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:23:34.134575+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.964239+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.795737+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.795737+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.795737+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.795737+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.970781+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:23:34.134575+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:34.287215+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:23:34.134575+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:23:33.964239+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To start an authoring run, I need to set a budget and decide how much control you want to have during the process.\n\n1.  **What is your budget for this run?** (This is the maximum amount in USD you want to spend on AI generation for this specific session).\n2.  **Do you want me to pause after each chapter for your review, or should I keep going until the run is finished?**\n\nOnce you provide those, I'll set everything up and begin."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a039bc-6db2-76a8-b5a2-2be01c56cc31",
+          "project_id": "01a039bc-6f14-7a45-bc46-8542f96c8b85",
+          "seed_ids": {
+            "01a039bc-6db2-76a8-b5a2-2be01c56cc31": "fixture book_id",
+            "01a039bc-6f14-7a45-bc46-8542f96c8b85": "fixture project_id (composition_work)",
+            "01a039bc-6e5a-7571-8ee5-05110dc8062d": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a039bc-6f8a-7960-b2ef-85d364d6c837": "seed[0] plan_propose_spec.run_id",
+            "01a039bc-6f8e-75f2-b046-97ece4c5cbc5": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a039bc-6f94-77b4-a059-7536a3a688b9": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a039bc-6fb6-75e3-bb30-63b7fcd6563d": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a039bc-6fae-79c1-a07d-70e6d6333c6c": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a039bc-6f91-7a60-822f-6a55862382d6": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a039bc-6f1a-740a-8173-1687b48c5546": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a039bc-a309-7c18-b413-8fe34533f4cc",
+          "prompt": "Start an authoring run for this book — begin autopilot.",
+          "scenario_prompt": "Start an authoring run for this book — begin autopilot.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_authoring_run_manage",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_manage",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a039bc-6db2-76a8-b5a2-2be01c56cc31\", \"work\": {\"project_id\": \"01a039bc-6f14-7a45-bc46-8542f96c8b85\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "composition_authoring_run_manage",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_authoring_run_manage: op=create requires plan_run_id, budget_usd, and pause_after_each_unit\"}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_authoring_run_manage"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.466058+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.466058+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.466058+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.466058+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.657962+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:24:05.810322+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.9405+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:24:05.810322+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.652114+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.466058+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.466058+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.466058+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.466058+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.657962+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:24:05.810322+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.9405+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:24:05.810322+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:05.652114+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:24.258656+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:24.258656+00"
+              }
+            }
+          },
+          "answer": "To start an authoring run, I need to set a budget for the session and decide if you want me to pause for your review after every chapter or if I should keep going autonomously.\n\nHow much would you like to set as the budget (in USD), and should I pause after each chapter?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a039bc-e678-75ca-88e8-5ab2c2e97c59",
+          "project_id": "01a039bc-e7ab-7d07-b07c-ea9b128f97d9",
+          "seed_ids": {
+            "01a039bc-e678-75ca-88e8-5ab2c2e97c59": "fixture book_id",
+            "01a039bc-e7ab-7d07-b07c-ea9b128f97d9": "fixture project_id (composition_work)",
+            "01a039bc-e70a-70db-adb5-4220a29b85f0": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a039bc-e843-76ac-9dbf-74f3abab756d": "seed[0] plan_propose_spec.run_id",
+            "01a039bc-e846-79bc-90bd-3a3e87baa179": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a039bc-e84b-7d48-b233-1f2a5a8fc844": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a039bc-e865-7f3b-a779-3412f864d164": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a039bc-e85f-796c-a51e-e6bb1da0776f": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a039bc-e849-7435-90e1-d9597e4be804": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a039bc-e7b0-72e6-9053-418db98b1ec7": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a039bd-1ac7-702b-9611-22ddb3be225a",
+          "prompt": "Start an authoring run for this book — begin autopilot.",
+          "scenario_prompt": "Start an authoring run for this book — begin autopilot.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_authoring_run_manage",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_manage",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a039bc-e678-75ca-88e8-5ab2c2e97c59\", \"work\": {\"project_id\": \"01a039bc-e7ab-7d07-b07c-ea9b128f97d9\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "composition_authoring_run_manage",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_authoring_run_manage: op=create requires plan_run_id, budget_usd, and pause_after_each_unit\"}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_authoring_run_manage"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.361943+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.361943+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.361943+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.361943+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.528149+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:24:36.706735+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.826072+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:24:36.706735+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.523219+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.361943+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.361943+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.361943+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.361943+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.528149+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:24:36.706735+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.826072+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:24:36.706735+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:36.523219+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:56.892991+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-25 16:24:56.892991+00"
+              }
+            }
+          },
+          "answer": "To start an authoring run, I need to set a budget and decide how much control you want to maintain during the process.\n\n1.  **What is your budget for this run?** (Please provide a limit in USD, e.g., $5.00 or $20.00).\n2.  **How much oversight do you want?** \n    *   **Full Autopilot:** I'll draft the chapters continuously.\n    *   **Review Mode:** I'll stop after every chapter so you can review and approve the prose before I move to the next one.\n\nOnce you provide these, I'll set up the run immediately."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a039bd-6017-7895-96b0-e5587618fa35",
+          "project_id": "01a039bd-6150-72c1-9fce-4bca663c8c91",
+          "seed_ids": {
+            "01a039bd-6017-7895-96b0-e5587618fa35": "fixture book_id",
+            "01a039bd-6150-72c1-9fce-4bca663c8c91": "fixture project_id (composition_work)",
+            "01a039bd-60a4-7e12-9416-91f53ae68ef1": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a039bd-61e9-7a75-b479-782942b5950d": "seed[0] plan_propose_spec.run_id",
+            "01a039bd-61ec-766a-9696-b263cae42c03": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a039bd-61f1-7e05-a08f-554b60c97035": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a039bd-620b-71bb-97ed-bf71728ebb2c": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a039bd-6204-7ad2-bf1c-4a24787ceac4": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a039bd-61ef-7428-b15a-546b34ebd539": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a039bd-6155-7413-a008-556bbbb1066d": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a039bd-9558-709b-8df5-59afccf538d1",
+          "prompt": "Start an authoring run for this book — begin autopilot.",
+          "scenario_prompt": "Start an authoring run for this book — begin autopilot.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_authoring_run_manage",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_manage",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a039bd-6017-7895-96b0-e5587618fa35\", \"work\": {\"project_id\": \"01a039bd-6150-72c1-9fce-4bca663c8c91\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "composition_authoring_run_manage",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_authoring_run_manage: op=create requires plan_run_id, budget_usd, and pause_after_each_unit\"}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_authoring_run_manage"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.492719+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.492719+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.492719+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.492719+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.669222+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:25:07.84784+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.969028+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:25:07.84784+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.663565+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.492719+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.492719+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.492719+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.492719+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.669222+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:25:07.84784+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.969028+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:25:07.84784+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:07.663565+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:29.578142+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:29.578142+00"
+              }
+            }
+          },
+          "answer": "To start an authoring run, I need to set a budget and decide how much control you want to have during the process.\n\n1.  **What is your budget for this run?** (Please provide a limit in USD, e.g., $5.00).\n2.  **How much oversight do you want?** Should I stop and ask for your review after every chapter, or should I keep going until the run is finished?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a039bd-d88a-751c-aee8-eb64b0c994aa",
+          "project_id": "01a039bd-d9be-7188-bbe2-fa0727c5a84f",
+          "seed_ids": {
+            "01a039bd-d88a-751c-aee8-eb64b0c994aa": "fixture book_id",
+            "01a039bd-d9be-7188-bbe2-fa0727c5a84f": "fixture project_id (composition_work)",
+            "01a039bd-d918-7559-9d6a-6e91b88586fd": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a039bd-da58-750e-98b4-f2bef2ee38a3": "seed[0] plan_propose_spec.run_id",
+            "01a039bd-da5b-7ba6-8f90-f381416cd94f": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a039bd-da61-7a96-8401-de08bd0ba3b5": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a039bd-da7e-77a4-b92f-c258a2146d85": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a039bd-da78-7405-ad76-92893e44c88d": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a039bd-da5e-78a4-bb9d-8e414141d8ca": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a039bd-d9c2-7b1f-87e7-470b7c037cb2": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a039be-0589-751c-99f5-4f25d0418600",
+          "prompt": "Start an authoring run for this book — begin autopilot.",
+          "scenario_prompt": "Start an authoring run for this book — begin autopilot.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_authoring_run_manage",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_manage",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a039bd-d88a-751c-aee8-eb64b0c994aa\", \"work\": {\"project_id\": \"01a039bd-d9be-7188-bbe2-fa0727c5a84f\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "composition_authoring_run_manage",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_authoring_run_manage: op=create requires plan_run_id, budget_usd, and pause_after_each_unit\"}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_authoring_run_manage"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_authoring_run_manage",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.328159+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.328159+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.328159+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.328159+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.498661+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:25:38.683362+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.812616+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:25:38.683362+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.493501+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.328159+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.328159+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.328159+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.328159+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.498661+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-25 16:25:38.683362+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.812616+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-25 16:25:38.683362+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:25:38.493501+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To start an authoring run, I need to set a budget and decide how much control you want to have during the process.\n\n1.  **What is your budget for this run?** (Please provide a dollar amount, e.g., $5.00).\n2.  **Do you want me to pause after each chapter for your review, or should I keep going until the run is finished?**"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 3,
+      "suspended_count": 0
+    }
+  ]
+}

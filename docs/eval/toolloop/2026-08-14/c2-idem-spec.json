@@ -1,0 +1,16 @@
+[
+  {"scenario": "world-delete",
+   "tool": "world_delete",
+   "args": {"world_id": "{step:1:world.world_id}"},
+   "why": "Tier-A HARD delete, not reversible. The second call must refuse rather than report success over nothing — the arc_template shape from batch 15. Target is step 1 (Cinderfall Reach), created by this probe's OWN throwaway seed and torn down after."},
+
+  {"scenario": "world-map-delete",
+   "tool": "world_map_delete",
+   "args": {"map_id": "{step:1:map.map_id}"},
+   "why": "CASCADE-removes markers and regions. Second delete must refuse. Target is step 1 (The Ashen Coast), NOT step 2 which the scenario itself acts on, so the two never contend."},
+
+  {"scenario": "composition-arc-template-edit",
+   "tool": "composition_arc_template_edit",
+   "args": {"op": "archive", "arc_id": "{step:1:id}"},
+   "why": "Archiving an already-archived template must not report success over zero rows — that exact defect (archived:true over 0 rows, with an undo hint) was found and fixed earlier in this loop, so this is the regression check for it."}
+]

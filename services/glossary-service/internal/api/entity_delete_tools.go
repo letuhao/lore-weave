@@ -82,7 +82,7 @@ func (s *Server) RegisterEntityDeleteTools(srv *mcp.Server) {
 // ── glossary_entity_delete (Tier-W: mint-only propose) ────────────────────────
 
 type entityDeleteToolIn struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book the entity belongs to (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book the entity belongs to (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity to delete (UUID)"`
 }
 
@@ -214,7 +214,7 @@ func (s *Server) previewEntityDelete(w http.ResponseWriter, ctx context.Context,
 // ── glossary_entity_restore (Tier-A: direct, auto-executing) ──────────────────
 
 type entityRestoreToolIn struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book the entity belongs to (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book the entity belongs to (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity to restore (UUID)"`
 }
 

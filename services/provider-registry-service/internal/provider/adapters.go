@@ -52,7 +52,12 @@ func loadPreconfig(data []byte) []ModelInventory {
 type Adapter interface {
 	ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error)
 	Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error)
-	HealthCheck(ctx context.Context, endpointBaseURL, secret string) error
+	// HealthCheck probes a credential. It returns the Usage it INCURRED, because on
+	// every cloud provider this probe is a real, billable completion — and every
+	// implementation used to discard that fact, so the spend reached the provider
+	// and never reached usage_logs. A caller that cannot attribute the usage may
+	// ignore it; one that can MUST record it.
+	HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error)
 
 	// Stream — Phase 1a (LLM_PIPELINE_UNIFIED_REFACTOR_PLAN). Open a
 	// streaming chat completion against the provider and emit canonical
@@ -1023,10 +1028,14 @@ func (a *openaiAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, mod
 	return out, usage, nil
 }
 
-func (a *openaiAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) error {
-	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "gpt-4o-mini",
-		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
-	return err
+func (a *openaiAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error) {
+	// max_tokens:1 — this probe asks "does the credential work", not for prose. It was
+	// UNCAPPED against a hardcoded paid model, so every health check bought an
+	// arbitrarily long completion that nothing recorded.
+	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, "gpt-4o-mini",
+		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}},
+			"max_tokens": 1})
+	return u, err
 }
 
 func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
@@ -1227,10 +1236,14 @@ func (a *anthropicAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, 
 	return out, usage, nil
 }
 
-func (a *anthropicAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) error {
-	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "claude-3-5-sonnet-20241022",
-		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
-	return err
+func (a *anthropicAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error) {
+	// max_tokens:1 — this probe asks "does the credential work", not for prose. It was
+	// UNCAPPED against a hardcoded paid model, so every health check bought an
+	// arbitrarily long completion that nothing recorded.
+	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, "claude-3-5-sonnet-20241022",
+		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}},
+			"max_tokens": 1})
+	return u, err
 }
 
 // Stream — Phase 1c-anthropic. Closes D-PHASE-1C-ANTHROPIC. Anthropic's
@@ -1296,13 +1309,54 @@ type ollamaAdapter struct {
 
 const ollamaDefaultBase = "http://localhost:11434"
 
-func (a *ollamaAdapter) ListModels(ctx context.Context, endpointBaseURL, _ string) ([]ModelInventory, error) {
+// ollamaAuthHeaders carries the API key when there is one.
+//
+// 🔴 EVERY OLLAMA METHOD USED TO TAKE THE SECRET AS `_` AND THROW IT AWAY, which made the
+// adapter local-only by construction: no Authorization header could ever be sent, so an
+// Ollama CLOUD endpoint (https://ollama.com, which serves both /api/chat and an
+// OpenAI-compatible /v1) authenticated nothing and 401'd. The kind was already registerable
+// and the context_length validation already special-cased it, so the gap was invisible from
+// the outside — it only appeared on a request that needed to prove who it was.
+//
+// Local Ollama sends no key and is unaffected: an empty secret yields no header, which is
+// byte-identical to the previous behaviour. Same idiom as lmStudioAdapter.
+// ollamaKeepAlive holds the model — and therefore its KV cache — resident between requests.
+//
+// Ollama's prompt cache is IMPLICIT and prefix-based: a request sharing a byte-for-byte prefix
+// with the previous one skips the prefill for the matched tokens. The default unloads the model
+// after 5 MINUTES of inactivity and dumps the cache with it, so a concurrency-1 eval batch with
+// gaps between turns pays a full cold prefill every time. This platform's prompts carry ~19k
+// schema tokens before any content — exactly the shape prefix caching exists for.
+//
+// 🔴 SENT ON BOTH PATHS, VERIFIED RATHER THAN ASSUMED. `keep_alive` is an Ollama-NATIVE field and
+// Stream posts to the OpenAI-compatible /v1/chat/completions, where an unknown field is how LM
+// Studio produced 5-of-5 HTTP 400s on an object `tool_choice` after seven green guards. Probed
+// live before shipping: POST /api/chat + keep_alive -> 200, POST /v1/chat/completions +
+// keep_alive -> 200.
+//
+// NOT num_ctx, and that is measured rather than overlooked: against the live cloud endpoint a
+// prompt of 8,458 tokens was processed WHOLE (prompt_eval_count 8458) and the model recalled a
+// marker placed at the very start, so hosted models are not served with a small default window.
+// num_ctx remains a real concern for LOCAL ollama, where llama.cpp does default small — but no
+// local ollama provider exists here to measure it on, and threading context_length to the adapter
+// changes the Stream signature and its callers.
+const ollamaKeepAlive = "60m"
+
+func ollamaAuthHeaders(secret string) map[string]string {
+	headers := map[string]string{}
+	if secret != "" {
+		headers["Authorization"] = "Bearer " + secret
+	}
+	return headers
+}
+
+func (a *ollamaAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
 	base := strings.TrimRight(endpointBaseURL, "/")
 	if base == "" {
 		base = ollamaDefaultBase
 	}
 	// Ollama exposes GET /api/tags to list local models
-	out, err := getJSON(ctx, a.client, base+"/api/tags", nil)
+	out, err := getJSON(ctx, a.client, base+"/api/tags", ollamaAuthHeaders(secret))
 	if err != nil {
 		return nil, fmt.Errorf("list models: %w", err)
 	}
@@ -1332,15 +1386,16 @@ func (a *ollamaAdapter) ListModels(ctx context.Context, endpointBaseURL, _ strin
 	return models, nil
 }
 
-func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, _ string, modelName string, input map[string]any) (map[string]any, Usage, error) {
+func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, secret string, modelName string, input map[string]any) (map[string]any, Usage, error) {
 	base := strings.TrimRight(endpointBaseURL, "/")
 	if base == "" {
 		base = ollamaDefaultBase
 	}
 	payload := map[string]any{
-		"model":    modelName,
-		"messages": extractMessages(input),
-		"stream":   false,
+		"model":      modelName,
+		"messages":   extractMessages(input),
+		"stream":     false,
+		"keep_alive": ollamaKeepAlive,
 	}
 	options := map[string]any{}
 	if v, ok := input["temperature"]; ok {
@@ -1355,7 +1410,7 @@ func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, _ string, m
 	if len(options) > 0 {
 		payload["options"] = options
 	}
-	out, err := postJSON(ctx, a.client, base+"/api/chat", nil, payload)
+	out, err := postJSON(ctx, a.client, base+"/api/chat", ollamaAuthHeaders(secret), payload)
 	if err != nil {
 		return nil, Usage{}, err
 	}
@@ -1365,24 +1420,69 @@ func (a *ollamaAdapter) Invoke(ctx context.Context, endpointBaseURL, _ string, m
 	return out, usage, nil
 }
 
-func (a *ollamaAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) error {
-	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "",
-		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
-	return err
+// HealthCheck proves the endpoint is reachable AND, when a key is configured, that the key
+// actually works.
+//
+// 🔴 IT USED TO CALL Invoke WITH AN EMPTY MODEL NAME. Local Ollama tolerated that; ollama.com
+// answers `404 model '' not found`, so a cloud provider that demonstrably serves completions was
+// reported unhealthy. Measured 2026-09-01 against the live endpoint.
+//
+// 🔴 AND THE OBVIOUS REPLACEMENT IS A GUARD THAT CANNOT FAIL. Listing models looks like the
+// natural cheap check, but on ollama.com BOTH listing endpoints answer 200 to a BOGUS key:
+//
+//	GET /api/tags    good key -> 200   bogus key -> 200
+//	GET /v1/models   good key -> 200   bogus key -> 200
+//	GET /api/ps      good key -> 401   (not served for cloud keys at all)
+//	POST /api/chat   good key -> 200   bogus key -> 401   <- the only one that discriminates
+//
+// So a listing-based health check would pass with a revoked or mistyped key and the failure
+// would surface later as a dead turn. Only a real completion authenticates.
+//
+// THE SHAPE, therefore, and it is deliberately different for the two deployments:
+//   - reachability first, via the model listing, which also supplies a model name we know the
+//     endpoint serves (asking for an invented one is what broke this in the first place);
+//   - then, ONLY when a secret is configured, one minimal completion to prove the credential.
+//     Local Ollama takes no key and skips it, so the common path costs nothing extra.
+//
+// num_predict 1 keeps the cost of the auth proof at a single token.
+func (a *ollamaAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error) {
+	models, err := a.ListModels(ctx, endpointBaseURL, secret)
+	if err != nil {
+		return Usage{}, fmt.Errorf("endpoint unreachable: %w", err)
+	}
+	if len(models) == 0 {
+		return Usage{}, fmt.Errorf("endpoint reachable but serves no models")
+	}
+	if secret == "" {
+		// Local Ollama: nothing to authenticate, and reachability is the whole question.
+		// No completion, so genuinely zero usage — not an unreported one.
+		return Usage{}, nil
+	}
+	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, models[0].ProviderModelName,
+		map[string]any{
+			"messages":   []map[string]any{{"role": "user", "content": "hi"}},
+			"max_tokens": 1,
+		})
+	if err != nil {
+		// The call still SPENT if it reached the model; a rejected credential did not.
+		return u, fmt.Errorf("credential rejected by %s: %w", models[0].ProviderModelName, err)
+	}
+	return u, nil
 }
 
 // Stream — Ollama supports streaming via its OpenAI-compatible
 // /v1/chat/completions endpoint (separate from the /api/chat NDJSON path
 // used by Invoke). This implementation uses the OpenAI-compat path so it
 // shares the SSE parser with openai/lm_studio.
-func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, modelName string, input map[string]any, emit EmitFn) error {
+func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, secret string, modelName string, input map[string]any, emit EmitFn) error {
 	base := strings.TrimRight(endpointBaseURL, "/")
 	if base == "" {
 		base = ollamaDefaultBase
 	}
 	body := map[string]any{
-		"model":    modelName,
-		"messages": extractMessages(input),
+		"model":      modelName,
+		"messages":   extractMessages(input),
+		"keep_alive": ollamaKeepAlive,
 	}
 	if v, ok := input["temperature"]; ok {
 		body["temperature"] = v
@@ -1401,7 +1501,7 @@ func (a *ollamaAdapter) Stream(ctx context.Context, endpointBaseURL, _ string, m
 		body["tool_choice"] = v
 	}
 	forwardOptionalChatFields(input, body)
-	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", nil, body)
+	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", ollamaAuthHeaders(secret), body)
 	if err != nil {
 		return err
 	}
@@ -1570,10 +1670,45 @@ func (a *lmStudioAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, m
 	return out, usage, nil
 }
 
-func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) error {
-	_, _, err := a.Invoke(ctx, endpointBaseURL, secret, "",
-		map[string]any{"messages": []map[string]any{{"role": "user", "content": "Hi"}}})
-	return err
+func (a *lmStudioAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret string) (Usage, error) {
+	// 🔴 THIS PROBE SENT AN EMPTY MODEL NAME. The ollama adapter carried the identical bug and
+	// was fixed on 2026-09-01 ("THE OLD CHECK CALLED Invoke WITH AN EMPTY MODEL NAME — tolerated
+	// locally, `404 model '' not found` on ollama.com, so a working cloud provider reported
+	// unhealthy"). The fix was ported to ollama and NOT to here, which is the recurring shape in
+	// this file: a repair lands on the adapter it was found on and its siblings keep the defect.
+	//
+	// 🔴 AND ON LM STUDIO AN EMPTY NAME IS WORSE THAN A 404, BECAUSE OF JIT LOADING. LM Studio
+	// loads a model on demand when one is requested. A health check that asks for a completion
+	// makes the host load a model — the local target here is a 26B — so a probe that is supposed
+	// to ask "are you there?" can pin the GPU for tens of seconds. The batch runner already pays
+	// for that once; a health check must not pay for it again.
+	//
+	// SO REACHABILITY IS THE WHOLE QUESTION HERE, and listing answers it without spending
+	// anything. Same shape as the local-Ollama arm: no completion, so genuinely zero usage
+	// rather than an unreported one.
+	models, err := a.ListModels(ctx, endpointBaseURL, secret)
+	if err != nil {
+		return Usage{}, fmt.Errorf("endpoint unreachable: %w", err)
+	}
+	if len(models) == 0 {
+		return Usage{}, fmt.Errorf("endpoint reachable but serves no models")
+	}
+	if secret == "" {
+		// LM Studio's local server takes no key: there is no credential to prove.
+		return Usage{}, nil
+	}
+	// A secret WAS configured (LM Studio can sit behind a proxy that requires one), so the
+	// question becomes "does the credential work" and only a completion discriminates —
+	// exactly the finding recorded on the ollama adapter, where both listing endpoints
+	// answered 200 to a bogus key. Named model, capped at one token.
+	_, u, err := a.Invoke(ctx, endpointBaseURL, secret, models[0].ProviderModelName,
+		map[string]any{"messages": []map[string]any{{"role": "user", "content": "hi"}},
+			"max_tokens": 1})
+	if err != nil {
+		// The call still SPENT if it reached the model; a rejected credential did not.
+		return u, fmt.Errorf("credential rejected by %s: %w", models[0].ProviderModelName, err)
+	}
+	return u, nil
 }
 
 // Stream — LM Studio is OpenAI-compatible on /v1/chat/completions, so this

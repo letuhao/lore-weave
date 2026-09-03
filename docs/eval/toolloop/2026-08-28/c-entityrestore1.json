@@ -1,0 +1,1623 @@
+{
+  "batch": "c-entityrestore1",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "glossary_entity_restore",
+      "scenario": "glossary-entity-restore",
+      "intent": "write",
+      "falsifier": "🔴 REFUTED IF NO CONFIRM CARD MINTS — and this is the measurement, not an assumption. The tool is declared tier=A, which means a card, but its own description says 'Direct — no confirmation needed, since restoring only reverses a prior delete'. Those cannot both be true. A card means the description is stale; no card means the tier declaration is wrong and a Tier-A tool is auto-applying. Either is a finding. ALSO REFUTED IF: the model invents an entity_id, or the reply claims the restore happened while a card is pending.",
+      "answer_expect": null,
+      "falsifier_sha": "dae9598febb31331",
+      "ship_audit": {
+        "gate": "OWED — and the answer is the point of this scenario; see the falsifier.",
+        "absent_case": "OWED — an entity_id that does not exist must be refused.",
+        "idempotency": "OWED — restoring an entity that is not deleted must be a clear no-op or refusal, not a silent success.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0511f-aed9-7f65-965a-bf76a5b93734",
+          "project_id": "01a0511f-b03a-7eac-87a6-97aa72bb6270",
+          "seed_ids": {
+            "01a0511f-aed9-7f65-965a-bf76a5b93734": "fixture book_id",
+            "01a0511f-b03a-7eac-87a6-97aa72bb6270": "fixture project_id (composition_work)",
+            "01a0511f-af90-715e-ab27-e373d93e5ca3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "0de4f994-33ad-4253-b327-756e270298af": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.genres[0].genre_id",
+            "4f4c73a1-4acf-4985-84a2-d4fb1b36a1a3": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.kinds[0].book_kind_id",
+            "b507d560-ce55-41b3-937b-f157875d45c4": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.kinds[1].book_kind_id",
+            "e61fd7de-c141-4e9b-94ac-0c5eeac79d89": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[0].attr_id",
+            "876fe7e8-1803-42d4-a097-8911b1a0256c": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[1].attr_id",
+            "02452853-1484-4ce8-8127-1d24b3434b62": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[2].attr_id",
+            "9f868679-d9d4-4a75-baa3-decdbe09197e": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[3].attr_id",
+            "10281dab-5f1c-422b-9fcc-eba2ea829c67": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[4].attr_id",
+            "3e16ea4d-e595-4eb5-8a6e-2e1f6a422da9": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[5].attr_id",
+            "4c88172b-02da-4766-8d33-0f15d45fe18a": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[6].attr_id",
+            "76d726ff-d68d-4ac4-86a9-6bc4a5f98bb4": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[7].attr_id",
+            "32638ee6-4253-4ae8-9592-73cf80759084": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[8].attr_id",
+            "10703d86-13cb-4ece-ab60-6c76f7fb06a9": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[9].attr_id",
+            "56418ada-76c4-492c-a632-6f70bc82ea1d": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[10].attr_id",
+            "8ad07733-3b72-4eb9-9d53-8c70a4ffdbc0": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[11].attr_id",
+            "eb1f4add-0b7a-4816-a905-74782bac8f56": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[12].attr_id",
+            "137624f3-75b8-4d25-8033-b597490d06f0": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[13].attr_id",
+            "59addc9c-a6ae-43e4-a1a2-09530ebf3a6a": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[14].attr_id",
+            "4645ee21-4165-4f9f-8b78-52a601e6b009": "seed[0] /v1/glossary/books/01a0511f-aed9-7f65-965a-bf76a5b93734/adopt.attributes[15].attr_id",
+            "01a0511f-b14b-709d-a9c8-3dcfff337ac8": "seed[1] glossary_propose_entities.results[0].entity_id"
+          },
+          "session_id": "01a0511f-f83d-72d6-a151-e6b751b88b63",
+          "prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "scenario_prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_entity_restore",
+            "glossary_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_restore",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_search",
+              "result_head": "{\"ok\": true, \"result\": {\"entities\": [{\"cached_aliases\": [], \"cached_name\": \"Mira Solene\", \"entity_id\": \"01a0511f-b14b-709d-a9c8-3dcfff337ac8\", \"is_pinned\": false, \"kind_code\": \"character\", \"rank_score\": 0.9, \"short_description\": null, \"tier\": \"exact\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_search"
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_entity_restore"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.191446+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.191446+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.191446+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.191446+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.369301+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:23:46.511983+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.511983+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:23:46.511983+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.827721+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.361843+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.191446+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.191446+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.191446+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.191446+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.369301+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:23:46.511983+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.511983+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:23:46.511983+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.827721+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:23:46.361843+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a05120-68d3-7f5d-99bd-26eaf703689b",
+          "project_id": "01a05120-6a4d-7e47-aab5-93609466607c",
+          "seed_ids": {
+            "01a05120-68d3-7f5d-99bd-26eaf703689b": "fixture book_id",
+            "01a05120-6a4d-7e47-aab5-93609466607c": "fixture project_id (composition_work)",
+            "01a05120-6978-79e9-b2cd-9abc4cddf891": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "971eb83d-d2f7-49c9-9a6a-4b51add8c3b0": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.genres[0].genre_id",
+            "bca549bb-eeda-4bdb-9986-dc72209c02ec": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.kinds[0].book_kind_id",
+            "1c8870ff-c48b-489e-94c6-d8a7d66f119a": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.kinds[1].book_kind_id",
+            "4ff5dde5-a965-440a-b1fb-d9d63118281e": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[0].attr_id",
+            "490f40cb-78c0-448b-96d4-d2b704c62e06": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[1].attr_id",
+            "532a2bf1-fb5f-472c-858e-4fa7f09b9d74": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[2].attr_id",
+            "c375e179-8859-4e0e-987a-733ef99e9b92": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[3].attr_id",
+            "ef22450a-18b4-4851-86d8-be1e42950662": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[4].attr_id",
+            "a046e653-ec81-4876-b968-0a3b9bab912f": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[5].attr_id",
+            "090503e9-2954-44b8-bf3a-d1322caf6ba3": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[6].attr_id",
+            "0b754ec3-b527-4450-b79c-0ceb7ed6c234": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[7].attr_id",
+            "abd99fc1-d7e4-4cb7-893c-905135000936": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[8].attr_id",
+            "478069d5-298a-45ee-906e-4bc7bae7d13e": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[9].attr_id",
+            "cc3692a2-b8d1-49b4-9d91-fb2825c98678": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[10].attr_id",
+            "2f7318d3-70b4-4817-95f4-bc1569246377": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[11].attr_id",
+            "fce1fe00-e8d1-4d40-b2f6-13e1abc0b3f7": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[12].attr_id",
+            "a8cedebc-27f3-422c-b62f-668eb1bb8b34": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[13].attr_id",
+            "3d66cca7-0e9a-46d0-8d72-4d23f3c2911a": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[14].attr_id",
+            "bdf1108a-e728-48db-834b-0152319bdab2": "seed[0] /v1/glossary/books/01a05120-68d3-7f5d-99bd-26eaf703689b/adopt.attributes[15].attr_id",
+            "01a05120-6ae4-70e2-b8e5-1005caa18eaf": "seed[1] glossary_propose_entities.results[0].entity_id"
+          },
+          "session_id": "01a05120-bb1c-7eca-853b-fa60caff632f",
+          "prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "scenario_prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_entity_restore",
+            "glossary_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_restore",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_search",
+              "result_head": "{\"ok\": true, \"result\": {\"entities\": [{\"cached_aliases\": [], \"cached_name\": \"Mira Solene\", \"entity_id\": \"01a05120-6ae4-70e2-b8e5-1005caa18eaf\", \"is_pinned\": false, \"kind_code\": \"character\", \"rank_score\": 0.9, \"short_description\": null, \"tier\": \"exact\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_search"
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_entity_restore"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.784311+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.784311+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.784311+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.784311+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:34.003735+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:24:34.050694+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:34.050694+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:24:34.050694+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:34.344112+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.997226+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.784311+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.784311+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.784311+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.784311+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:34.003735+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:24:34.050694+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:34.050694+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:24:34.050694+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:34.344112+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:24:33.997226+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a05121-28af-70d5-b13e-a55ea292a718",
+          "project_id": "01a05121-29f6-7300-859f-ff24e679c2ab",
+          "seed_ids": {
+            "01a05121-28af-70d5-b13e-a55ea292a718": "fixture book_id",
+            "01a05121-29f6-7300-859f-ff24e679c2ab": "fixture project_id (composition_work)",
+            "01a05121-2944-796e-ae11-9be04a0b75ca": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "4e1b59d4-6f58-4681-930b-e5ad3ae124ba": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.genres[0].genre_id",
+            "66476dea-8f88-4626-ba4f-45418335a736": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.kinds[0].book_kind_id",
+            "c96c8cf8-73ae-42a9-8e09-32d96be89e01": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.kinds[1].book_kind_id",
+            "4929d7a8-f8af-44c5-acf9-72468fb1f53a": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[0].attr_id",
+            "4e579f85-b26d-4823-b9ea-62409e81a31b": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[1].attr_id",
+            "9b71e40a-3d5a-4297-bda6-bd324b1aa4d7": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[2].attr_id",
+            "4c609135-fcc1-44a4-9232-01245a6c7506": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[3].attr_id",
+            "0de383bf-e05e-4e15-aea9-95da99557233": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[4].attr_id",
+            "a68d360b-be51-48f4-9f7b-80c5d88c840b": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[5].attr_id",
+            "b2955467-e152-4a11-ae8b-17d19235dc0b": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[6].attr_id",
+            "2852772c-c3c8-49b2-bab3-e655c0302bd4": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[7].attr_id",
+            "e9ff4396-571a-4d54-9706-3cb3c3dd67b9": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[8].attr_id",
+            "5b880ff4-75c9-4555-9976-c8f45bb170e2": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[9].attr_id",
+            "89497ab6-5537-42b5-aa55-d77fe3c9d4b4": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[10].attr_id",
+            "412223e9-3ae6-45cd-a5f5-4b82f3c85576": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[11].attr_id",
+            "587d1b86-2d26-4a3b-8b61-75f6093eda12": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[12].attr_id",
+            "0cc91ed7-b413-4645-8aae-e2d0697fb3d8": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[13].attr_id",
+            "a2a7ae35-162b-4439-9aad-b5a3e8212710": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[14].attr_id",
+            "ea15d921-80e2-4e69-a8e8-2c4e5deda78f": "seed[0] /v1/glossary/books/01a05121-28af-70d5-b13e-a55ea292a718/adopt.attributes[15].attr_id",
+            "01a05121-2a89-77e1-9f87-f23e8cffeea8": "seed[1] glossary_propose_entities.results[0].entity_id"
+          },
+          "session_id": "01a05121-6e04-7852-b557-dc548785b7b5",
+          "prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "scenario_prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_entity_restore",
+            "glossary_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_restore",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_search",
+              "result_head": "{\"ok\": true, \"result\": {\"entities\": [{\"cached_aliases\": [], \"cached_name\": \"Mira Solene\", \"entity_id\": \"01a05121-2a89-77e1-9f87-f23e8cffeea8\", \"is_pinned\": false, \"kind_code\": \"character\", \"rank_score\": 0.9, \"short_description\": null, \"tier\": \"exact\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_search"
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_entity_restore"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:22.884415+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:22.884415+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:22.884415+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:22.884415+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:23.068065+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:25:23.113749+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:23.113749+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:25:23.113749+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:23.39611+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:23.06151+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:22.884415+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:22.884415+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:22.884415+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:22.884415+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:23.068065+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:25:23.113749+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:23.113749+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:25:23.113749+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:23.39611+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:25:23.06151+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05121-d9e0-7d71-a67c-081310c4c474",
+          "project_id": "01a05121-db20-77c4-b833-177fe5aec298",
+          "seed_ids": {
+            "01a05121-d9e0-7d71-a67c-081310c4c474": "fixture book_id",
+            "01a05121-db20-77c4-b833-177fe5aec298": "fixture project_id (composition_work)",
+            "01a05121-da6e-7d21-bd66-27345d7d0452": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "68e0cca4-554e-4751-8388-12c6e17c969b": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.genres[0].genre_id",
+            "f6ca8ea9-97f0-4d07-b83b-3931ca0e64f6": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.kinds[0].book_kind_id",
+            "1bb5b502-3755-4848-8f27-178161cc249c": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.kinds[1].book_kind_id",
+            "1858b079-76ac-4770-9fc7-b067f0aae64e": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[0].attr_id",
+            "f63eb77c-9b5d-425a-bac2-c1cef3b2c999": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[1].attr_id",
+            "3ee4ab8a-fa25-4677-80c0-9afc354e166c": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[2].attr_id",
+            "2e1e8702-7c72-4bb4-b419-9b4fd2188a53": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[3].attr_id",
+            "357de345-e226-4c6b-b7e6-98f7c0aaafce": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[4].attr_id",
+            "2bcc87c1-226d-4f0b-921d-5b8cfb060c84": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[5].attr_id",
+            "b974c13a-7ea4-4c1f-817a-2b8a58d4430d": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[6].attr_id",
+            "17722090-8175-4906-87e1-f49f03148885": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[7].attr_id",
+            "661047b3-1061-4932-8639-ddbddc7905b6": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[8].attr_id",
+            "77e2752c-c8c4-46ae-ab8d-00e9a8196302": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[9].attr_id",
+            "49fdcaad-8005-45eb-978f-7f73a2d7a6e0": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[10].attr_id",
+            "5c6d4398-7154-4a94-82e0-5f06021c3f2e": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[11].attr_id",
+            "1f9314e8-3523-49c7-aca7-db834e9ad343": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[12].attr_id",
+            "ee33ae31-7fe0-4fa5-9ab4-ab38e9c48da1": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[13].attr_id",
+            "d563d0d0-a185-4db4-a86f-a3fbd1426877": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[14].attr_id",
+            "01a86b0d-e57f-4136-97c5-9a838ce83b64": "seed[0] /v1/glossary/books/01a05121-d9e0-7d71-a67c-081310c4c474/adopt.attributes[15].attr_id",
+            "01a05121-dbba-7459-b6c6-53e36d5e2f68": "seed[1] glossary_propose_entities.results[0].entity_id"
+          },
+          "session_id": "01a05122-2827-77d3-817c-01420e374943",
+          "prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "scenario_prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_entity_restore",
+            "glossary_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_restore",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_search",
+              "result_head": "{\"ok\": true, \"result\": {\"entities\": [{\"cached_aliases\": [], \"cached_name\": \"Mira Solene\", \"entity_id\": \"01a05121-dbba-7459-b6c6-53e36d5e2f68\", \"is_pinned\": false, \"kind_code\": \"character\", \"rank_score\": 0.9, \"short_description\": null, \"tier\": \"exact\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_search"
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_entity_restore"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.238673+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.238673+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.238673+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.238673+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.424696+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:26:08.471015+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.471015+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:26:08.471015+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.795532+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.415356+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.238673+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.238673+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.238673+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.238673+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.424696+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:26:08.471015+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.471015+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:26:08.471015+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.795532+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:08.415356+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05122-91ba-76f9-b6e4-6625b43a92ad",
+          "project_id": "01a05122-931e-7e99-8872-efee72c27900",
+          "seed_ids": {
+            "01a05122-91ba-76f9-b6e4-6625b43a92ad": "fixture book_id",
+            "01a05122-931e-7e99-8872-efee72c27900": "fixture project_id (composition_work)",
+            "01a05122-9265-7bd5-b15e-e4ccd0676bbf": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "1f0be151-a667-42d0-b8e3-782d1e392268": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.genres[0].genre_id",
+            "fa38ae27-cb54-477e-a295-4daf71d5497d": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.kinds[0].book_kind_id",
+            "a449d92f-afad-472c-8e2f-526b7a298fe6": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.kinds[1].book_kind_id",
+            "749a2132-d7b5-4da4-a23c-d26c8e2dcff3": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[0].attr_id",
+            "8164ba1b-2096-4e99-8eb1-ac62fd20bbf7": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[1].attr_id",
+            "52c88e35-42a9-4970-8718-d37cc0eea518": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[2].attr_id",
+            "3de0386a-6a25-46a0-9013-019b6a4ce1c8": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[3].attr_id",
+            "bb8f0bed-3f4e-4742-8439-7e8a574ba2bd": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[4].attr_id",
+            "8d7c39d1-ae95-48cd-87a6-f1486b3fbe05": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[5].attr_id",
+            "06c70d1b-f1f2-42ee-b0cf-ff7b9697d08d": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[6].attr_id",
+            "f95804eb-42b7-4b4a-b38b-0797803f771e": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[7].attr_id",
+            "fbfd07bf-ec2f-439f-8381-a3c291f0a37c": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[8].attr_id",
+            "ae304cc1-15d7-45c0-b24e-c1c739fb617a": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[9].attr_id",
+            "60f11f6c-3648-48c2-b6cb-72ce0cb5131f": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[10].attr_id",
+            "70d7a892-2d00-46a4-bc27-6b7b9c983322": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[11].attr_id",
+            "98a6e6d4-5bf7-4afe-96e3-5ffbc488ba2c": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[12].attr_id",
+            "7aefd7f2-bec5-41fa-8fb1-6e14ffb439f2": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[13].attr_id",
+            "a2a6904f-33b8-4a1d-97bf-65cc68c24963": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[14].attr_id",
+            "4aa1b6ac-ba04-4178-b01a-c4baa20d098e": "seed[0] /v1/glossary/books/01a05122-91ba-76f9-b6e4-6625b43a92ad/adopt.attributes[15].attr_id",
+            "01a05122-93c8-7d94-8948-7d80ab5be8b7": "seed[1] glossary_propose_entities.results[0].entity_id"
+          },
+          "session_id": "01a05122-d717-7467-ba58-859fdf2317ce",
+          "prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "scenario_prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_entity_restore",
+            "glossary_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_restore",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_search",
+              "result_head": "{\"ok\": true, \"result\": {\"entities\": [{\"cached_aliases\": [], \"cached_name\": \"Mira Solene\", \"entity_id\": \"01a05122-93c8-7d94-8948-7d80ab5be8b7\", \"is_pinned\": false, \"kind_code\": \"character\", \"rank_score\": 0.9, \"short_description\": null, \"tier\": \"exact\"}]}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_search"
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "pass_size": 71,
+              "of_the_called": [
+                "glossary_entity_restore",
+                "glossary_search"
+              ]
+            },
+            {
+              "call": "glossary_entity_restore"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.333565+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.333565+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.333565+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.333565+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.525272+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:26:55.594464+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.594464+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:26:55.594464+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.894351+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.518275+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.333565+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.333565+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.333565+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.333565+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.525272+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-30 05:26:55.594464+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.594464+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-30 05:26:55.594464+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.894351+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 05:26:55.518275+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 5
+    }
+  ]
+}

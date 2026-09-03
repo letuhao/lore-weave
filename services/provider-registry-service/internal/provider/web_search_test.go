@@ -150,11 +150,11 @@ func TestSafeHTTPURL(t *testing.T) {
 		{"unspecified 0.0.0.0", "http://0.0.0.0/", false},
 		// dropped — obfuscated numeric IP encodings net.ParseIP misses but libc/curl/
 		// browsers still dereference (integration-review gap over the S-PRODUCER slice)
-		{"decimal int loopback", "http://2130706433/", false},          // == 127.0.0.1
-		{"decimal int metadata", "http://2852039166/", false},          // == 169.254.169.254
-		{"hex loopback", "http://0x7f000001/", false},                  // == 127.0.0.1
-		{"octal loopback", "http://017700000001/", false},              // == 127.0.0.1
-		{"short dotted loopback", "http://127.1/", false},              // libc expands → 127.0.0.1
+		{"decimal int loopback", "http://2130706433/", false}, // == 127.0.0.1
+		{"decimal int metadata", "http://2852039166/", false}, // == 169.254.169.254
+		{"hex loopback", "http://0x7f000001/", false},         // == 127.0.0.1
+		{"octal loopback", "http://017700000001/", false},     // == 127.0.0.1
+		{"short dotted loopback", "http://127.1/", false},     // libc expands → 127.0.0.1
 		// kept — real hostnames that merely LOOK hex/numeric must NOT be flagged
 		{"hex-lookalike domain", "https://cafe.babe/", true},
 		{"numeric-looking real domain", "https://123reg.co.uk/", true},

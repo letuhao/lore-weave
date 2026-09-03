@@ -1,0 +1,214 @@
+{
+  "scenarios": [
+    {
+      "id": "softsweep-glossary-get-entity",
+      "tool_under_test": "glossary_get_entity",
+      "expect_tool": "glossary_get_entity",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the entity evidence and its revision history.",
+      "prompt_source": "meta.synonyms ['entity evidence', 'entity revision history'] — both verbatim. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF glossary_get_entity is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. It requires entity_id, which is NOT a context id. A run that calls glossary_search first and then this tool is the CORRECT sequence, not a miss; a run that fabricates an entity_id is the fabricated-id class. Report which happened.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-composition-get-mine-job",
+      "tool_under_test": "composition_get_mine_job",
+      "expect_tool": "composition_get_mine_job",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is the motif job done? Show me the mining job status.",
+      "prompt_source": "meta.synonyms ['is the motif job done', 'mining job', 'motif job status'] — verbatim. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_get_mine_job is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. Requires job_id with two observed suppliers. With no job running there is nothing to poll, so ASKING which job is correct behaviour and calling it with an invented id is not.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-composition-arc-template-get",
+      "tool_under_test": "composition_arc_template_get",
+      "expect_tool": "composition_arc_template_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Read arc template for me.",
+      "prompt_source": "meta.synonyms ['read arc template'] — verbatim. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_arc_template_get is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. 🔴 THIS TOOL HAS A KNOWN LIVE RESIDUE, recorded 2026-09-02: it fails with missing required argument ['arc_id'] at 41.7% and never improved, while its supplier composition_arc_template_list requires NOTHING. So the id is obtainable and the model does not fetch it. A run that lists first and then reads is the fix working; a bare call with no arc_id reproduces the residue.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-composition-get-derivative-context",
+      "tool_under_test": "composition_get_derivative_context",
+      "expect_tool": "composition_get_derivative_context",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the derivative context — the branch spec for this what-if.",
+      "prompt_source": "meta.synonyms ['derivative context', 'branch spec', 'what-if spec'] — three verbatim. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_get_derivative_context is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. project_id is context-injected, so surfacing is the only gate. A book with no derivative must say so rather than invent one.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-composition-get-outline-node",
+      "tool_under_test": "composition_get_outline_node",
+      "expect_tool": "composition_get_outline_node",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Read the outline node for me.",
+      "prompt_source": "meta.synonyms ['read the outline node'] — verbatim. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_get_outline_node is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. Requires node_id (one observed supplier) as well as project_id. Listing the outline first is the correct sequence.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-kg-build",
+      "tool_under_test": "kg_build",
+      "expect_tool": "kg_build",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Build the knowledge graph from my chapters.",
+      "prompt_source": "meta.synonyms ['build the knowledge graph from my chapters'] — verbatim, whole. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF kg_build is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. Tier-A: a confirm card is EXPECTED and a suspended run is not a failure. What would be a defect is the tool not reaching the wire on a request that quotes its synonym whole.",
+      "ship_audit": {
+        "gate": "a confirm card is EXPECTED (Tier A).",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-kg-project-set-embedding-model",
+      "tool_under_test": "kg_project_set_embedding_model",
+      "expect_tool": "kg_project_set_embedding_model",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set the embedding model for this project.",
+      "prompt_source": "meta.synonyms ['set the embedding model'] — verbatim. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF kg_project_set_embedding_model is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. Requires embedding_model, which is a NAME not an id — so unlike its neighbours there is no supplier problem here, only surfacing. Tier-A: a card is expected.",
+      "ship_audit": {
+        "gate": "a confirm card is EXPECTED (Tier A).",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-plan-bootstrap-propose",
+      "tool_under_test": "plan_bootstrap_propose",
+      "expect_tool": "plan_bootstrap_propose",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What chapters will this make? Preview chapters from plan.",
+      "prompt_source": "meta.synonyms ['what chapters will this make', 'preview chapters from plan'] — both verbatim. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF plan_bootstrap_propose is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. Requires run_id, whose supplier is on the wire 100% of the time (376/376). So if this one fabricates an id, the supply-side explanation does NOT apply and it is a different finding.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-translation-start-job",
+      "tool_under_test": "translation_start_job",
+      "expect_tool": "translation_start_job",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Translate book into Vietnamese.",
+      "prompt_source": "meta.synonyms ['translate book'] — verbatim. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF translation_start_job is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. Requires chapter_ids as well as book_id. Tier-A: a card is expected. A run that lists chapters first is correct.",
+      "ship_audit": {
+        "gate": "a confirm card is EXPECTED (Tier A).",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-glossary-propose-curation",
+      "tool_under_test": "glossary_propose_curation",
+      "expect_tool": "glossary_propose_curation",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Approve entity — retire entity, whichever applies.",
+      "prompt_source": "meta.synonyms ['approve entity', 'retire entity'] — both verbatim. CHECKED AGAINST answerable_tools BEFORE RUNNING — it returns this tool.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF glossary_propose_curation is not ADVERTISED on 5/5 — the prompt quotes its own declared synonyms and the matcher confirms it is answerable, so a miss is a surfacing defect with no fixture explanation left. CALLED is reported but is the weaker claim. Requires `op`. With no pending curation the honest outcome is to ask WHICH entity, and that is not a miss.",
+      "ship_audit": {
+        "gate": "a confirm card is EXPECTED (Tier A).",
+        "empty_case": "OWED — an empty/absent target must say so, never invent one.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    }
+  ]
+}
