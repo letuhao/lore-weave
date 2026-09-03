@@ -62,6 +62,8 @@ from ..effective_settings import resolve_effective_settings
 from ..languages import TRANSLATION_TARGET_CODES, is_translation_target, normalize_language
 from ..mcp.estimate import SCOPE_CHAPTERS, SCOPE_DIRTY, estimate_job_cost
 from ..routers.actions import (
+    DESC_JOB_RESUME,
+    DESC_JOB_RETRY,
     DESC_RETRANSLATE_DIRTY,
     DESC_START_EXTRACTION,
     DESC_START_JOB,
@@ -86,6 +88,104 @@ logger = logging.getLogger(__name__)
 __all__ = ["mcp_server", "build_mcp_app"]
 
 mcp_server = make_stateless_fastmcp("translation")
+
+
+# ── The durable ext-tasks human gate (DQ-V7, 2026-09-03) ─────────────────────────────────────
+#
+# translation was the LAST service minting bare confirm_tokens with no gate at all. It could not
+# adopt one for two reasons, both now removed: the store existed only as three copied
+# implementations in other services (promoted to `loreweave_mcp.pg_task_store` by VS), and the
+# confirm EFFECTS were inline in the HTTP handler where no resolver could reach them (extracted
+# to `_execute_*` in routers/actions.py).
+#
+# 🔴 WHY THIS ONE IS GATEABLE WHEN 17 OTHER SITES ARE NOT. Every exempted site's confirm route is
+# a consumed-token replay ledger — composition's, knowledge's (jti), provider-registry's (token
+# hash) — and a durable resolver holds no token, so it cannot claim one. translation has NO such
+# ledger: verified by an exhaustive search for single-use / consume / token-hash / replay across
+# the service, reading every hit rather than truncating (a truncated grep is exactly how I first
+# mis-classified provider-registry as ledger-free).
+from loreweave_mcp.pg_task_store import PgTaskStore  # noqa: E402
+from loreweave_mcp.tasks_wire import gate_or_confirm, register_task_endpoints  # noqa: E402
+
+
+async def _resolve_start_job(owner_user_id: str, payload: dict, _inputs: dict):
+    """translation.start_job ACCEPT effect.
+
+    RE-AUTHORIZES the book grant first, like the confirm route does and unlike the Work-scoped
+    resolvers elsewhere: a durable task can sit pending for its whole TTL, so a grant revoked in
+    that window must deny rather than spend money on a translation.
+    """
+    from fastapi import HTTPException
+
+    from ..routers.actions import _execute_start_job, _reauthorize_book
+
+    book_id = UUID(str(payload["book_id"]))
+    caller = UUID(str(owner_user_id))
+    try:
+        await _reauthorize_book(book_id, caller)
+    except HTTPException:
+        raise
+    return await _execute_start_job(get_pool(), payload, book_id, caller)
+
+
+async def _resolve_retranslate_dirty(owner_user_id: str, payload: dict, _inputs: dict):
+    """translation.retranslate_dirty ACCEPT effect — re-authorizes the book grant first."""
+    from ..routers.actions import _execute_retranslate_dirty, _reauthorize_book
+
+    book_id = UUID(str(payload["book_id"]))
+    caller = UUID(str(owner_user_id))
+    await _reauthorize_book(book_id, caller)
+    return await _execute_retranslate_dirty(get_pool(), payload, book_id, caller)
+
+
+async def _resolve_start_extraction(owner_user_id: str, payload: dict, _inputs: dict):
+    """translation.start_extraction ACCEPT effect.
+
+    🔴 THE GRANT LEVEL IS RE-DERIVED, NOT DEFAULTED. `_execute_start_extraction` takes
+    `caller_grant_level` as a REQUIRED keyword because it clamps extraction effort to the grant; a
+    default would turn a revoked-grant accept into an unclamped run rather than a refusal. The
+    resolver gets it from the same `_reauthorize_book` the confirm route calls.
+    """
+    from ..routers.actions import _execute_start_extraction, _reauthorize_book
+
+    book_id = UUID(str(payload["book_id"]))
+    caller = UUID(str(owner_user_id))
+    level = await _reauthorize_book(book_id, caller)
+    return await _execute_start_extraction(
+        get_pool(), payload, book_id, caller, caller_grant_level=level)
+
+
+def _job_control_resolver(descriptor: str):
+    """One resolver per job-control descriptor, CLOSED OVER the descriptor.
+
+    🔴 TWO ENTRIES, NOT ONE SHARED FUNCTION READING THE PAYLOAD. resume and retry differ only by
+    descriptor — resume re-prices the job's still-`pending` chapters, retry re-prices the FULL
+    stored set — and the payload does not carry which. A single resolver would have to guess, and
+    guessing wrong quotes one scope and spends the other. The registry key IS the discriminator,
+    so it is the honest source.
+    """
+    async def _resolve(owner_user_id: str, payload: dict, _inputs: dict):
+        from ..routers.actions import _execute_job_control, _reauthorize_book
+
+        book_id = UUID(str(payload["book_id"]))
+        caller = UUID(str(owner_user_id))
+        await _reauthorize_book(book_id, caller)
+        return await _execute_job_control(get_pool(), payload, book_id, caller, descriptor)
+
+    return _resolve
+
+
+_task_store = PgTaskStore(get_pool, {
+    DESC_START_JOB: _resolve_start_job,
+    DESC_RETRANSLATE_DIRTY: _resolve_retranslate_dirty,
+    DESC_START_EXTRACTION: _resolve_start_extraction,
+    DESC_JOB_RESUME: _job_control_resolver(DESC_JOB_RESUME),
+    DESC_JOB_RETRY: _job_control_resolver(DESC_JOB_RETRY),
+})
+register_task_endpoints(
+    mcp_server, _task_store, tool_prefix="translation",
+    internal_token=settings.internal_service_token,
+)
 
 
 # ── W0 #4b — model-directed validation errors ─────────────────────────────────
@@ -808,11 +908,26 @@ async def translation_start_job(
         "force_retranslate": force_retranslate,
         "estimate": est.as_dict(),
     }
-    token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, bid,
-        DESC_START_JOB, payload, _CONFIRM_TTL_S,
+    def _confirm_fallback():
+        token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, bid,
+            DESC_START_JOB, payload, _CONFIRM_TTL_S,
+        )
+        return _confirm_envelope(token, DESC_START_JOB, payload["title"], est)
+
+    # Capability-gated: a durable task for a tasks-capable client, else today's confirm_token card
+    # BYTE-UNCHANGED — the fallback above is the previous return verbatim, so the public MCP edge
+    # and external agents see no difference. GATE-2's fallback stays permanent.
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=DESC_START_JOB,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": payload["title"], "descriptor": DESC_START_JOB,
+                        "domain": "translation", "book_id": str(bid),
+                        "estimate": est.as_dict()},
+        confirm_fallback=_confirm_fallback,
     )
-    return _confirm_envelope(token, DESC_START_JOB, payload["title"], est)
 
 
 @mcp_server.tool(
@@ -871,11 +986,23 @@ async def translation_retranslate_dirty(
         "target_language": target_language,
         "estimate": est.as_dict(),
     }
-    token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, bid,
-        DESC_RETRANSLATE_DIRTY, payload, _CONFIRM_TTL_S,
+    def _confirm_fallback():
+        token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, bid,
+            DESC_RETRANSLATE_DIRTY, payload, _CONFIRM_TTL_S,
+        )
+        return _confirm_envelope(token, DESC_RETRANSLATE_DIRTY, payload["title"], est)
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=DESC_RETRANSLATE_DIRTY,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": payload["title"], "descriptor": DESC_RETRANSLATE_DIRTY,
+                        "domain": "translation", "book_id": str(bid),
+                        "estimate": est.as_dict()},
+        confirm_fallback=_confirm_fallback,
     )
-    return _confirm_envelope(token, DESC_RETRANSLATE_DIRTY, payload["title"], est)
 
 
 @mcp_server.tool(
@@ -1007,18 +1134,29 @@ async def translation_start_extraction(
         "thinking_enabled": effort not in ("none", "off"),
         "estimate": estimate,
     }
-    token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, bid,
-        DESC_START_EXTRACTION, payload, _CONFIRM_TTL_S,
+    def _confirm_fallback():
+        token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, bid,
+            DESC_START_EXTRACTION, payload, _CONFIRM_TTL_S,
+        )
+        return {
+            "needs_confirm": True,
+            "confirm_token": token,
+            "descriptor": DESC_START_EXTRACTION,
+            "domain": "translation",
+            "title": payload["title"],
+            "estimate": estimate,
+        }
+
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=DESC_START_EXTRACTION,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": payload["title"], "descriptor": DESC_START_EXTRACTION,
+                        "domain": "translation", "book_id": str(bid), "estimate": estimate},
+        confirm_fallback=_confirm_fallback,
     )
-    return {
-        "needs_confirm": True,
-        "confirm_token": token,
-        "descriptor": DESC_START_EXTRACTION,
-        "domain": "translation",
-        "title": payload["title"],
-        "estimate": estimate,
-    }
 
 
 # ── job_control — A (cancel/pause) / W (resume/retry) ─────────────────────────
@@ -1111,15 +1249,34 @@ async def translation_job_control(
         "book_id": str(row["book_id"]),
         "job_id": job_id,
         "control_action": action,
+        # book_id rides the payload because a RESOLVER has no request to read it from, and it
+        # re-authorizes the grant before spending. The confirm route gets it from the token's
+        # resource binding; a durable task gets it from here.
+        "book_id": str(row["book_id"]),
         # The job's chapter scope, bound so the confirm route can re-price (H14).
         "chapter_ids": [str(c) for c in (row["chapter_ids"] or [])],
         "estimate": est.as_dict(),
     }
-    token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, row["book_id"],
-        f"translation.job_{action}", payload, _CONFIRM_TTL_S,
+    _desc = f"translation.job_{action}"
+
+    def _confirm_fallback():
+        token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, row["book_id"],
+            _desc, payload, _CONFIRM_TTL_S,
+        )
+        return _confirm_envelope(token, _desc, payload["title"], est)
+
+    # Only resume/retry reach here — cancel/pause are Tier-A and never mint a token at all.
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_desc,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={"title": payload["title"], "descriptor": _desc,
+                        "domain": "translation", "book_id": str(row["book_id"]),
+                        "estimate": est.as_dict()},
+        confirm_fallback=_confirm_fallback,
     )
-    return _confirm_envelope(token, f"translation.job_{action}", payload["title"], est)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

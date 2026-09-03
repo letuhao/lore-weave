@@ -1,5 +1,7 @@
 import asyncpg
 
+from loreweave_mcp.pg_task_store import PG_TASK_STORE_DDL
+
 # 🔴 THIS BACKFILL CRASH-LOOPED THE SERVICE FOR A DAY, AND ITS OWN COMMENT SAID IT COULD NOT.
 #
 # It read: "Safe to re-run (idempotent — ROW_NUMBER is deterministic by created_at)." ROW_NUMBER is
@@ -667,3 +669,9 @@ ALTER TABLE translation_jobs
 async def run_migrations(pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
         await conn.execute(DDL)
+        # The durable ext-tasks gate store (2026-09-03). Applied from the KIT constant rather
+        # than retyped here: the schema was already copy-pasted into three services alongside
+        # three copies of the store, and a table that drifts from the code querying it is the
+        # same defect one level down. Idempotent (IF NOT EXISTS), so this is a no-op on a
+        # database that already has it.
+        await conn.execute(PG_TASK_STORE_DDL)

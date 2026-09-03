@@ -32,6 +32,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	lwmcp "github.com/loreweave/loreweave_mcp"
+	lwpg "github.com/loreweave/loreweave_mcp/pgstore"
 )
 
 // Action descriptors (intent). Grouped to the §4 confirm descriptors.
@@ -136,7 +137,7 @@ func (s *Server) registerActionProposeTools(srv *mcp.Server) {
 	// One DISPATCHING resolver serves every book write descriptor (delete/trash/purge
 	// via descBookDelete; publish/unpublish via descBookPublish) — it switches on the
 	// payload op and calls the SAME underlying logic the /actions/confirm effects run.
-	actionTasks := NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
+	actionTasks := lwpg.NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
 		descBookDelete:  s.resolveBookAction,
 		descBookPublish: s.resolveBookAction,
 	})

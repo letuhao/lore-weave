@@ -170,7 +170,10 @@ _install_validation_error_rewriter(mcp_server)
 # (single-process; a persistent store bound to the confirm/consumed-token layer is
 # the T3 hardening). `enable_task_results` is called AFTER all @mcp_server.tool defs
 # (bottom of module) so it wraps a handler that sees every tool.
-from app.mcp.pg_task_store import PgTaskStore  # noqa: E402
+# SDK-First: the store was promoted into the kit 2026-09-03 (it had three independent
+# implementations and none in an SDK). Imported by path, not from `loreweave_mcp` itself,
+# so `asyncpg` stays off the import path of kit consumers that never touch Postgres.
+from loreweave_mcp.pg_task_store import PgTaskStore  # noqa: E402
 from loreweave_mcp.tasks_wire import (  # noqa: E402
     gate_or_confirm,
     register_task_endpoints,
@@ -327,6 +330,52 @@ async def _resolve_authoring_run_resume(owner_user_id: str, payload: dict, _inpu
     return await _execute_authoring_run_resume(payload, book_id, UUID(str(owner_user_id)))
 
 
+async def _resolve_bootstrap_apply(owner_user_id: str, payload: dict, _inputs: dict):
+    """composition.bootstrap_apply ACCEPT effect — create the chapters a compiled plan previewed.
+
+    🔴 WHY THIS ONE IS GATEABLE WHEN THE FIVE BELOW ARE NOT. The ledger-guarded confirms keep the
+    plain mint path because their `_execute_*` reads the confirm TOKEN (the consumed-token replay
+    ledger; several also key a usage-billing reserve on its jti) and a durable resolver has none.
+    `_execute_bootstrap_apply(payload, book_id, envelope_user)` takes no token, so a task can run
+    exactly what was proposed. Verified from the executor's signature (`app/routers/actions.py`),
+    not from the comment below — that comment does not name this tool either way, and reading it
+    alone would have got both this and `composition_library_translate` wrong.
+
+    🔴 AND IT RE-AUTHORIZES, WHICH ITS WORK-SCOPED SIBLINGS DO NOT. The confirm route runs
+    `authorize_book(..., GrantLevel.EDIT)` immediately before this effect. A resolver that skipped
+    it would let an EDIT grant REVOKED between propose and accept still apply the plan — the task
+    is durable, so that window is not milliseconds, it is however long the task sits pending.
+    `_resolve_publish` gets away with a bare existence re-fetch because a Work is user-scoped and
+    the kit's provide-input already checks caller == task owner; a BOOK grant is revocable by a
+    third party, so owning the task is NOT the same question as still having access to the book.
+    """
+    from fastapi import HTTPException
+
+    from app.deps import get_grant_client_dep
+    from app.grant_client import GrantLevel
+    from app.grant_deps import InsufficientGrant, authorize_book
+    from app.packer.pack import OwnershipError
+    from app.routers.actions import _execute_bootstrap_apply
+
+    try:
+        book_id = UUID(str(payload["book_id"]))
+    except (KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+    caller = UUID(str(owner_user_id))
+    try:
+        await authorize_book(await get_grant_client_dep(), book_id, caller, GrantLevel.EDIT)
+    # BOTH, and the pair is not decorative: `InsufficientGrant` subclasses plain `Exception`, NOT
+    # `OwnershipError` (grant_deps.py:37 vs packer/pack.py:54). Catching only the latter would let
+    # an under-tier grant escape as a 500 — it still fails closed, but it stops saying WHY, and
+    # this file has been bitten before by a broad catch that swallowed a sibling. The confirm route
+    # catches the same pair at actions.py:485. GrantAuthorityUnavailable DOES subclass
+    # OwnershipError, so an authority outage denies here rather than proceeding — an accept that
+    # ran because the permission service was down is the one outcome worse than a retry.
+    except (OwnershipError, InsufficientGrant) as exc:
+        raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
+    return await _execute_bootstrap_apply(payload, book_id, caller)
+
+
 async def _resolve_authoring_run_revert_all(owner_user_id: str, payload: dict, _inputs: dict):
     """composition.authoring_run_revert_all ACCEPT effect — needs the book client
     for the per-chapter restore (headless bearer minted inside the effect)."""
@@ -362,6 +411,10 @@ _task_store = PgTaskStore(get_pool, {
     _AUTHORING_RUN_START_DESCRIPTOR: _resolve_authoring_run_start,
     _AUTHORING_RUN_RESUME_DESCRIPTOR: _resolve_authoring_run_resume,
     _AUTHORING_RUN_REVERT_ALL_DESCRIPTOR: _resolve_authoring_run_revert_all,
+    # 2026-09-03 (v1-retirement V1). Registered because `_execute_bootstrap_apply` takes only
+    # (payload, book_id, envelope_user) — no confirm token — so unlike the ledger-guarded five
+    # named above, a durable resolver CAN run exactly what was proposed.
+    _BOOTSTRAP_APPLY_DESCRIPTOR: _resolve_bootstrap_apply,
 })
 # tool_prefix="composition" → the input tool is `composition_task_provide_input`
 # (gateway-routable + collision-free across task-capable domains; see the routing
@@ -945,7 +998,7 @@ async def composition_list_canon_rules(
     include_archived: Annotated[
         bool,
         "Also list ARCHIVED (soft-deleted) rules. This is where a rule_id for "
-        "composition_canon_rule_restore comes from — without it an archived rule is "
+        "composition_canon_rule_edit (op=restore) comes from — without it an archived rule is "
         "invisible and the restore is unreachable. Ignored when active_only is true.",
     ] = False,
 ) -> dict:
@@ -7038,25 +7091,45 @@ async def plan_bootstrap_apply(
     diff = rec.diff or {}
     chapters = diff.get("new_chapters", [])
     payload = {"book_id": str(bid), "proposal_id": str(pid)}
-    confirm_token = mint_confirm_token(
-        settings.confirm_token_signing_secret, tc.user_id, bid, _BOOTSTRAP_APPLY_DESCRIPTOR, payload,
+    # The mint returned nothing but the ids it was handed, so the agent had nothing to tell
+    # the human it was asking to approve. These are the same numbers plan_bootstrap_propose
+    # already computes from the same diff — one computation, two consumers.
+    _summary = (
+        f"create {len(chapters)} chapter(s)"
+        + (f" + seed {len(diff.get('new_glossary_entities', []))} glossary entit(ies)"
+           if diff.get("new_glossary_entities") else "")
     )
-    return {
-        "confirm_token": confirm_token,
-        "descriptor": _BOOTSTRAP_APPLY_DESCRIPTOR,
-        "book_id": str(bid),
-        "proposal_id": str(pid),
-        # The mint returned nothing but the ids it was handed, so the agent had nothing to tell
-        # the human it was asking to approve. These are the same numbers plan_bootstrap_propose
-        # already computes from the same diff — one computation, two consumers.
-        "summary": (
-            f"create {len(chapters)} chapter(s)"
-            + (f" + seed {len(diff.get('new_glossary_entities', []))} glossary entit(ies)"
-               if diff.get("new_glossary_entities") else "")
-        ),
-        "new_chapters_count": len(chapters),
-        "new_glossary_entities_count": len(diff.get("new_glossary_entities", [])),
-    }
+
+    def _confirm_fallback():
+        confirm_token = mint_confirm_token(
+            settings.confirm_token_signing_secret, tc.user_id, bid,
+            _BOOTSTRAP_APPLY_DESCRIPTOR, payload,
+        )
+        return {
+            "confirm_token": confirm_token,
+            "descriptor": _BOOTSTRAP_APPLY_DESCRIPTOR,
+            "book_id": str(bid),
+            "proposal_id": str(pid),
+            "summary": _summary,
+            "new_chapters_count": len(chapters),
+            "new_glossary_entities_count": len(diff.get("new_glossary_entities", [])),
+        }
+
+    # Capability-gated (spec §4.2): a durable ext-tasks gate for a tasks-capable client, else
+    # today's confirm_token card BYTE-UNCHANGED — the fallback above is the previous return
+    # verbatim, so the public edge and external agents see no difference. `payload` is captured
+    # so the accept applies EXACTLY the proposal that was previewed.
+    return await gate_or_confirm(
+        ctx, _task_store,
+        descriptor=_BOOTSTRAP_APPLY_DESCRIPTOR,
+        owner_user_id=tc.user_id,
+        payload=payload,
+        input_requests={
+            "title": _summary, "descriptor": _BOOTSTRAP_APPLY_DESCRIPTOR, "domain": "composition",
+            "book_id": str(bid), "proposal_id": str(pid),
+        },
+        confirm_fallback=_confirm_fallback,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -16,6 +16,7 @@ import (
 
 	"github.com/loreweave/grantclient"
 	lwmcp "github.com/loreweave/loreweave_mcp"
+	lwpg "github.com/loreweave/loreweave_mcp/pgstore"
 )
 
 // mcpHandler builds the glossary MCP server (Tier-R read tools) wrapped in the
@@ -31,7 +32,7 @@ func (s *Server) mcpHandler() http.Handler {
 	// the propose tools register, so their gate helpers (action_task_gate.go) see it at
 	// call time. A tasks-capable client drives the gate to completion via the
 	// `glossary_task_provide_input` tool below; a non-tasks client is unchanged (confirm_token).
-	s.actionTasks = NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
+	s.actionTasks = lwpg.NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
 		descSchemaCreateKind:  s.resolveGlossaryAction,
 		descSchemaCreateKinds: s.resolveGlossaryAction,
 		descSchemaCreateAttr:  s.resolveGlossaryAction,
