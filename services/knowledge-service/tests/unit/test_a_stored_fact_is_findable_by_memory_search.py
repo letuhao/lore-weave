@@ -232,3 +232,37 @@ def _handler_source():
     from app.tools.executor import _handle_memory_search
 
     return _handle_memory_search
+
+
+# ── THE WIRING, not the repository ───────────────────────────────────────────────────────────
+#
+# 🔴 EVERY TEST ABOVE PASSES WITH memory_search's FACT LEG DELETED. Measured 2026-09-03 by
+# replacing `fact_hits = await search_facts_by_text(...)` with `fact_hits = []` in
+# app/tools/executor.py: all 20 stayed GREEN. They exercise the repository function, which is the
+# right thing to test and is not the thing that broke. P7-FALSE-ABSENCE's defect was that
+# memory_search — "the tool whose declared job is to search the project's stored knowledge" — had
+# no way to reach a fact AT ALL. A reader nothing calls fixes nothing.
+#
+# This is the third instance of one shape in this loop: P14's transitive walk, P16's guard, and
+# now this leg were each implemented, documented, and asserted by nothing.
+
+
+def test_memory_search_ACTUALLY_CALLS_the_fact_reader():
+    """AST, not a substring scan: the name appears in this file's own comments and in the import
+    line, both of which survive deleting the call."""
+    import ast
+    import pathlib as _pl
+
+    src = _pl.Path(__file__).resolve().parents[2] / "app" / "tools" / "executor.py"
+    tree = ast.parse(src.read_text(encoding="utf-8"))
+    awaited = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Await) and isinstance(node.value, ast.Call):
+            fn = node.value.func
+            name = getattr(fn, "id", None) or getattr(fn, "attr", None)
+            if name:
+                awaited.add(name)
+    assert "search_facts_by_text" in awaited, (
+        "memory_search does not AWAIT search_facts_by_text — a stored fact is unfindable by the "
+        "tool built to find it, which is P7-FALSE-ABSENCE's original instance exactly"
+    )
