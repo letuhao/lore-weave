@@ -174,6 +174,17 @@ EXEMPT: dict[str, str] = {
 # skip that is silent is a gate reported as passing when it never ran, which is
 # the failure this whole file is about. They belong in a stack-up CI job.
 NEEDS_STACK: dict[str, str] = {
+    # Arrives with the merge of `feat/frontend-tools-mcp-migration` (2026-09-04) and it is NOT
+    # a gate: it calls composition_entity_override_edit update/delete/restore over MCP against
+    # a RUNNING stack with a canonical project_id, and asserts the refusal names the kind of
+    # Work. It matches the discovery predicate only because "gate" is in its filename, and the
+    # thing it probes is a gate (`_require_derivative`). Bare it dies at import on
+    # `scripts.eval` — the repo root is not on its path — and fixing that would only move the
+    # failure to a connection error, because there is no stack for it to reach. SKIP with the
+    # reason is the honest verdict; RED would say the probe found something.
+    "scripts/toolloop/t_derivative_gate_probe.py": "a LIVE MCP probe, not a tree scan: it "
+        "drives three composition tools against a running stack and needs a book, a Work and a "
+        "minted token that this sweep cannot derive",
     "scripts/standing-integrity-gate-smoke.sh": "brings up foundation-dev postgres + needs "
         "replay-aggregate and integrity-checker binaries built first",
     "scripts/perf/bencher-gate.sh": "a benchmark comparison; needs a baseline run to compare "

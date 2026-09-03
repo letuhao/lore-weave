@@ -314,21 +314,18 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 # cycle of its own, not a merge resolution -- so the number is honest here and
 # the work is named rather than absorbed.
 #
-#   2026-09-04: 4 -> 5, MERGE with feat/frontend-tools-mcp-migration.
-#   scripts/toolloop/t_derivative_gate_probe.py
-#       It is NOT a gate. It is a LIVE PROBE: it calls composition_entity_override_edit
-#       update/delete/restore over MCP against a running stack with a canonical project_id
-#       and asserts the refusal names the kind of Work. It matches this sweep only because
-#       "gate" is in its filename, and the thing it probes is a gate (`_require_derivative`).
-#       A tree-scanning selftest cannot prove it red-able; the only proof it could carry is a
-#       live run, which this sweep does not do.
+#   2026-09-04: 4 -> 5 -> 4, MERGE with feat/frontend-tools-mcp-migration, AND THE ROUND TRIP
+#   IS THE RECORD. `scripts/toolloop/t_derivative_gate_probe.py` arrived with that merge and
+#   read as a fifth unproven gate, so the baseline was raised with a reason: it is not a gate
+#   but a LIVE MCP PROBE, matching only because "gate" is in its filename, and no tree-scanning
+#   selftest can prove it red-able.
 #
-#       The baseline moves rather than the discovery narrowing. Excluding by a name pattern
-#       (`*_probe.py`, or anything under `scripts/toolloop/`) would let a REAL gate escape the
-#       day someone names one that way, and this file's whole subject is proofs that are not
-#       what they look like. A ratchet that moved once with the reason written down is
-#       cheaper to audit than a discovery rule with a hole in it.
-NO_PROOF_BASELINE = 5
+#   That was the wrong instrument for a right observation. A thing that needs a running stack
+#   belongs in `gate-wiring-gate`'s NEEDS_STACK, where it SKIPs with its reason printed — and
+#   once classified there it leaves this file's CI-invoked denominator, so the number returns
+#   to 4 on its own. A baseline raised to absorb a misclassification hides the
+#   misclassification; the ratchet is for gates that ARE gates and lack a proof.
+NO_PROOF_BASELINE = 4
 
 #: The floor under `--verify-proofs`. Measured 90 on 2026-08-12 (was 30 against a
 #: then-population of 42). Named rather than inline so the test below can drive it.

@@ -291,7 +291,7 @@ lives in the section it cites.
   Proven RED on `executor.py:632` before green. None of the repo's 133 gates catches this. (§3 Phase 3)
 - [x] **V1** — re-prove the twelve invariants against the merged tree via the **owning suites**,
   not the board, plus the guard-is-called AST gate. (§3 Phase 3)
-- [ ] **V2** — KAL's 133 gates over FE's ~2000 files. Attribute every red against B0/B1 before
+- [x] **V2** — KAL's 133 gates over FE's ~2000 files. Attribute every red against B0/B1 before
   changing anything. (§3 Phase 4)
 - [x] **V3** — main's i18n key-resolution gate vs FE's frontend: 52 `t()` calls, zero bundle
   changes. Predicted red. (§3 Phase 4)
@@ -495,6 +495,44 @@ Fixed the way the standard says, not the way that would have been quicker:
 
 Both gates now green: key-resolution OK, completeness OK at *"20 locale-dirs x 37 namespaces at
 full `en` parity"*.
+
+### V2 — KAL's gates over the merged tree, 2026-09-04
+
+**124 GREEN / 17 RED / 23 SKIP → 139 / 2 / 23.** B0 was 135 / 2 / 23, so the sweep also grew by
+the gates the merge brought. Every red was attributed against a worktree at the pre-merge commit
+*before* anything was changed.
+
+**Merge-introduced, and fixed:**
+
+| gate | what it caught |
+|---|---|
+| `port-adoption-gate` | FE's `search_facts_by_text` unproven on AGE — **and it was right**, see above. Plus `user_data.py` binding the repo where the port exists |
+| `authored-catalog-reader-gate` | a new direct catalog read in a file whose roster read had already migrated |
+| `db-safety-gate` | a **comment** describing a removed cleanup — marked with the gate's own escape |
+| `pagination-cap-lint` | 2 fingerprints moved by `deletedClause(deleted)`; same 24 rows, no file added |
+| `phase0-reconcile-gate` | 17 merged docs with no `Reconciles:` line |
+| `language-bias-gate` | a `.lower()` on a tool identifier — 317/317 already lowercase, so a no-op |
+| `test_toolloop_answer_bar_gate` | `scripts/toolloop/gate.py` imported siblings by bare name and died at import from the repo root |
+| `gate-teeth` / `gate-wiring` | the probe classification below |
+
+**Not the merge's, and stated rather than absorbed:**
+
+- **`raw-sql-lint`** — red on two **gitignored** files. Bitten in B0: moved aside → exit 0 over
+  3693 files; restored → exit 1. Its verdict depends on whose working tree it runs in.
+- **`test_seed_assert_applies_the_lifecycle_predicate_gate`** — 42 findings, 2 account-scoped,
+  **byte-identical on the source branch**, measured in a worktree there. It is that branch's own
+  gate over its own harness: B1's 18, not this merge's.
+- **Six bite harnesses** — refused on a stale `target/.bite-harness.lock` left by a sweep **I**
+  killed with TaskStop. `gate-wiring-gate` documents this condition verbatim, down to the count:
+  *"a killed sweep left `target/.bite-harness.lock` behind and six gates then refused to start
+  in 0.1s each, which reads as six RED gates."* Removed; all six green.
+
+**A ratchet raised and then put back.** `t_derivative_gate_probe.py` read as a fifth unproven
+gate, so `NO_PROOF_BASELINE` went 4 → 5 with a reason. That was the wrong instrument for a right
+observation: a thing needing a running stack belongs in `NEEDS_STACK`, where it SKIPs with its
+reason printed — and once classified it leaves the CI-invoked denominator and the number returns
+to 4 by itself. **A baseline raised to absorb a misclassification hides the misclassification.**
+The round trip is recorded in the file rather than tidied away.
 
 ### What B0 refuted
 
