@@ -75,13 +75,7 @@ from app.db.pool import get_pool
 from app.db.session_blocks import project_story_state
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
-from app.services.frontend_tools import (
-    frontend_tool_def_by_name,
-    generic_frontend_tool_def,
-    is_browser_executed,
-    is_frontend_tool,
-    validate_frontend_tool_args,
-)
+from app.services.browser_tools import is_browser_executed
 from app.services.tool_surface import answerable_tools
 from app.services.tool_discovery import (
     ALWAYS_ON_CORE_NAMES,
@@ -94,10 +88,13 @@ from app.services.tool_discovery import (
     TOOL_LOAD_TOOL,
     declared_lane,
     find_tools_result_async,
+    is_legacy_tool,
     group_directory_text,
     hot_tool_names,
     provider_availability,
     strip_tool_meta,
+    tool_name,
+    tool_superseded_by,
     surface_hot_domains,
     tool_async,
     tool_list_result,
@@ -749,7 +746,14 @@ _MISSING_REQUIRED_ARGS_MARKER = "required: missing properties"
 #: today's data every one is genuinely unobtainable, and binding CP-5.3's resolver to this tool
 #: would have repaired **none** of them. That is why this row types the outcome rather than
 #: reaching for resolution.
-_UNRESOLVED_ID_RE = re.compile(r"must be a real UUID")
+# _UNRESOLVED_ID_RE REMOVED 2026-09-03 (V6). It classified a frontend-validation refusal as
+# `unresolved_identifier` — a kind that no longer occurs, because its ONLY producer was the v1
+# intercept. Deleting that branch left this regex defined and never read, which is a dead
+# mechanism of exactly the kind this loop keeps finding, so it goes with its consumer.
+#
+# The input class it flagged (a name where a UUID was required) is handled BETTER on the
+# surviving path: CP-5.3 RESOLVES the name to an id rather than classifying the refusal. The
+# kind appeared in no contract — only in this file, its test, and the falsifier anchors.
 
 # D-CONFIRM-CARD-NUDGE (dogfood 2026-07-21) — a Tier-W/S propose tool returns a
 # SERVER-BUILT confirm card ({confirm_token, descriptor, …}); the FE renders it with
@@ -1902,7 +1906,13 @@ def _advertise_discovery_tools(
         if name == TOOL_LOAD_NAME:
             _add(TOOL_LOAD_TOOL)
             continue
-        _add(catalog_index.get(name) or generic_frontend_tool_def(name))
+        # V7 — CATALOGUE ONLY. This read `catalog_index.get(name) or
+        # generic_frontend_tool_def(name)`, and because `confirm_action` was absent from the
+        # catalogue the FALLBACK always fired — which is precisely how a chat-service-local
+        # schema reached the model on every turn, on every surface, for weeks. A core name that
+        # the catalogue does not carry is now simply omitted, which is what CD4 requires:
+        # advertising a tool that cannot execute is worse than advertising nothing.
+        _add(catalog_index.get(name))
     # WS-2b — advertise the workflow meta-tools ONLY when the turn actually has
     # curated workflows visible (keeps the default core lean when there are none).
     # Consumer-local like tool_list/tool_load; dispatched below.
@@ -4517,6 +4527,15 @@ async def _stream_with_tools(
     plan_turn=None,
     plan_events_out: list | None = None,
     discovery_catalog: list[dict] | None = None,
+    #: name -> superseded_by for every LEGACY tool `drop_superseded_tools` removed from
+    #: `discovery_catalog`. Built at the drop site (the only place the pre-drop catalogue still
+    #: exists) and passed down, so `tool_load` can refuse a deprecated name by naming its
+    #: successor instead of asserting it does not exist. Built THERE rather than fetched here
+    #: because a catalogue read inside this function is a narrowing with no `arm_turn_surface()`
+    #: to register on, and a bare `except` around it degrades an outage silently —
+    #: `test_cp0_instrument.py` rejected the fetching version on exactly those two counts.
+    #: Empty/None = no index; behaviour degrades to today's `not_found`.
+    legacy_tool_index: dict[str, str | None] | None = None,
     #: DQ-T5 — the defs the N5a-FULL capability floor removed from `discovery_catalog`,
     #: keyed by name. A refusal that NAMES one unlocks it for the rest of the turn; nothing
     #: else reads this, so an un-named gated tool stays off the wire exactly as today.
@@ -6474,11 +6493,22 @@ async def _stream_with_tools(
                     _raw_names = args_obj.get("names")
                     _load_names = _raw_names if isinstance(_raw_names, list) else None
                     _load_category = args_obj.get("category") or None
+                    # 🔴 THE INDEX IS PASSED IN, NOT FETCHED HERE — and the first version DID
+                    # fetch it, which `test_cp0_instrument.py` correctly rejected on two counts.
+                    # It called `knowledge_client.get_tool_definitions()` inside
+                    # `_stream_with_tools`, which carries NO `arm_turn_surface()` (it is covered by
+                    # delegation from `stream_response`), so the read was a catalogue NARROWING
+                    # registered nowhere; and it wrapped the call in a bare `except Exception ->
+                    # {}`, so a catalogue OUTAGE degraded silently instead of registering — the
+                    # exact U-2A seam the gate exists to catch. `legacy_tool_index` is built at the
+                    # drop site in `stream_response`, where the pre-drop catalogue already is, so
+                    # this path makes no call at all.
                     payload, loaded = tool_load_result(
                         discovery_catalog or [],
                         name=_load_name, names=_load_names, category=_load_category,
                         unavailable_providers=provider_availability(
                             knowledge_client.get_catalog_meta(user_id)),
+                        legacy_index=legacy_tool_index,
                     )
                     from app.services.tool_surface import (
                         HOT_SEED_TOKEN_BUDGET,
@@ -7143,187 +7173,17 @@ async def _stream_with_tools(
                 # "does chat-service INTERCEPT and suspend here?". propose_edit/ui_*
                 # are browser-executed but route to ai-gateway and are detected from
                 # the directive in the RESULT, so they must not be intercepted here.
-                if is_frontend_tool(c["name"]):
-                    # Same gemma {"args":{…}} wrap-repair the backend dispatch does below —
-                    # a wrapped frontend-tool payload must be unwrapped BEFORE it is frozen
-                    # into the suspended run, or the resume/resolver sees the envelope instead
-                    # of the real fields. Load-bearing for the rail: its confirm gate
-                    # (glossary_confirm_action) is a frontend tool, and a wrapped confirm_token
-                    # would strand the confirm on resume. Protect ui_show_panel's real `args`
-                    # param via its schema (generic index for ui_*/propose_*, catalog for
-                    # domain confirm tools) — never a bare tool_def=None here.
-                    # Resolve the tool's canonical schema. The by-name map is the
-                    # COMPLETE frontend-tool set (Phase 0), so the two book-scoped
-                    # glossary tools are validated even when this turn didn't
-                    # advertise them (called-but-not-advertised → would otherwise
-                    # fail-open and skip the gate).
-                    _fe_def = (
-                        cat_index.get(c["name"])
-                        or plain_index.get(c["name"])
-                        or frontend_tool_def_by_name(c["name"])
-                    )
-                    _fe_args = _unwrap_wrapped_args(_parse_tool_args(c["arguments"]), _fe_def)
-                    # D-FE-TOOL-CONTEXT-IDS (2026-07-26, Mị Đế dogfood) — S02 parity for
-                    # frontend tools: they are validated BEFORE the backend dispatch's
-                    # context-id injection, so the session's known book_id never reached
-                    # them and a weak model had to transcribe it itself — it invented one
-                    # (live: "mình sẽ sử dụng một ID giả định") → guaranteed validation
-                    # failure, every call. Same injector, same conservative rules
-                    # (fill-blank + replace-malformed + studio single-book override).
-                    _inject_context_ids(
-                        _fe_args, _fe_def,
-                        book_id=(context_ids or {}).get("book_id"),
-                        chapter_id=(context_ids or {}).get("chapter_id"),
-                        project_id=(context_ids or {}).get("project_id"),
-                        studio=bool((context_ids or {}).get("studio")),
-                        id_ledger=_id_ledger,
-                    )
-                    # Phase 0 (frontend-tools → MCP migration) — the MCP-native
-                    # validation seam. A frontend tool used to SUSPEND on its raw
-                    # args with no validation, so a mis-shaped call (the reported
-                    # 019f771a bug: propose_edit with propose_record_edit's args)
-                    # rendered an un-appliable card. Validate against the tool's OWN
-                    # canonical inputSchema — the same enforcement a backend MCP tool
-                    # already gets — and on a mismatch feed the model the standard
-                    # `required: missing properties` signal it knows how to repair,
-                    # instead of suspending. Never suspend an un-appliable card.
-                    # TOOL-V2 LOOP #5 — the SAME check the backend dispatch runs, run here too.
-                    # DQ-5 is the standing lesson: this branch refuses or suspends and never
-                    # reaches the backend's pre-dispatch checks, which is exactly how CP-5.3's
-                    # resolver became unreachable for frontend tools and how the context-id
-                    # injector missed them before it. `glossary_propose_entity_edit` is in the
-                    # measured population (book_id == entity_id, 2 calls / 2 sessions), so a
-                    # one-sided gate would leave it out by construction. Pure argument check,
-                    # no dispatch — running it twice costs nothing and forgetting it costs a
-                    # whole surface.
-                    # 🔴 D-FJ-11 PARITY, and the next arm this branch was missing. The backend
-                    # dispatch drops an `*_id` the model filled with something that is not an
-                    # identifier — a NAME, a placeholder, a SCREAMING_SNAKE stub — and then hands
-                    # the NAME back as the query to search with. This branch never ran any of it.
-                    #
-                    # MEASURED 2026-08-23, composition_entity_override_edit at K=5: the model called
-                    # glossary_propose_entity_edit with entity_id="Aldric Vane" on all five runs and
-                    # got no repair, because that tool is a FRONTEND tool and returns above. The
-                    # name-repair sentence fired 0 times in the whole batch.
-                    #
-                    # This is the same divergence the comments above already record twice — the
-                    # context-id injector missed this branch, CP-5.3's resolver became unreachable
-                    # through it — so each repair gets hand-ported the run after it is found
-                    # missing. Porting this one rather than filing it again.
-                    _fe_invented = _invented_supplier_ids(
-                        _fe_args, None,
-                        ((_fe_def or {}).get("function", {}).get("parameters", {}) or {})
-                        .get("properties"),
-                        # DQ-T92 — the same provenance exemption the backend path gets. A
-                        # frontend tool is the branch every earlier repair was hand-ported to
-                        # after being found missing here; porting this one with it.
-                        published_ids=_id_ledger,
-                    )
-                    _fe_dropped = {n: _fe_args.get(n) for n in _fe_invented}
-                    for _n in _fe_invented:
-                        _fe_args.pop(_n, None)
-                    if _fe_invented:
-                        logger.info(
-                            "dropped non-identifier value(s) %s from FRONTEND tool %s "
-                            "(session=%s); values=%s",
-                            _fe_invented, c["name"], session_id,
-                            {k: (v if isinstance(v, str) and len(v) <= 80 else str(v)[:80])
-                             for k, v in _fe_dropped.items()},
-                        )
-                    from app.agentruntime.toolcontract import (
-                        duplicate_identifier as _fe_dup_check,
-                        duplicate_identifier_message as _fe_dup_message,
-                    )
-                    _fe_dupe = _fe_dup_check(_fe_args)
-                    _fe_err = (
-                        _fe_dup_message(*_fe_dupe) if _fe_dupe is not None
-                        else validate_frontend_tool_args(c["name"], _fe_args, _fe_def)
-                    )
-                    if _fe_err is not None and _MISSING_REQUIRED_ARGS_MARKER in _fe_err:
-                        # The dropped NAME is the query the recovery search needs — the same
-                        # sentence the backend appends. Without it the model is told only that the
-                        # argument is MISSING, and its follow-up search goes out blank.
-                        _fe_named = _name_like_dropped_ids(_fe_dropped)
-                        if _fe_named:
-                            _fe_err = _fe_err + " " + _fe_named
-                    if _fe_err is not None:
-                        # A missing-required miss feeds the SAME cross-tool blank/
-                        # invalid-args streak breaker the backend feeds (mirrors the
-                        # reset/increment rule at the backend dispatch site below).
-                        if _MISSING_REQUIRED_ARGS_MARKER in _fe_err:
-                            blank_tool_args_streak += 1
-                        # D-FE-TOOL-LOOP — frontend tools bypassed BOTH loop guards (the
-                        # repeated-failure breaker and the blank-args cap both live on the
-                        # backend dispatch path, below this branch), so a model that kept
-                        # re-emitting the same invalid frontend call looped unbounded.
-                        # Measured live (Mị Đế dogfood, session 019f9f2e): ~205 identical
-                        # malformed glossary_propose_entity_edit calls in ONE turn while the
-                        # backend sibling tripped its breaker at 2. Feed the shared
-                        # (tool → error → count) map and short-circuit + de-advertise at the
-                        # same cap a backend tool gets.
-                        _err_sig = _fe_err[:200]
-                        _fe_fails = fail_by_tool_error.setdefault(c["name"], {})
-                        _fe_fails[_err_sig] = _fe_fails.get(_err_sig, 0) + 1
-                        if _fe_fails[_err_sig] > REPEATED_FAILURE_CAP:
-                            _fe_err = (
-                                f"'{c['name']}' has already FAILED {_fe_fails[_err_sig]} times "
-                                f"this turn with the same invalid arguments: {_err_sig} — "
-                                "retrying it keeps hitting the same wall. STOP calling it. "
-                                "Fix EXACTLY what that error says is wrong, use a DIFFERENT "
-                                "tool, or tell the user plainly what is blocking you."
-                            )
-                            failure_suppress.add(c["name"])
-                            logger.info(
-                                "repeated-failure breaker (frontend): %s failed %d× with the "
-                                "same validation error this turn — short-circuited + "
-                                "de-advertised", c["name"], _fe_fails[_err_sig],
-                            )
-                        working.append({
-                            "role": "tool", "tool_call_id": c["id"],
-                            "content": tool_result_content({"error": _fe_err}),
-                        })
-                        # 🔴🔴 **CP-5.4/5.5 — THE FIFTH INSTANCE OF THE SAME CONFLATION, AND THE
-                        # LARGEST SINGLE POPULATION IN THE CORPUS.** `glossary_propose_entity_edit`
-                        # is recorded at **101 calls / 12 sessions / 0% success**, and every one of
-                        # those rows carries `result: null` with an `error` that is THIS FUNCTION'S
-                        # OWN PROSE — the tool never ran. They are runtime REFUSALS wearing a
-                        # tool's name, exactly like 5.5's suspensions, 5.4's owed arguments and
-                        # 5.7's breaker output, and while they are typed `failed` they inflate the
-                        # very corpus every member on this checkpoint is measured against.
-                        #
-                        # 89 of the 101 sent a model-invented PLACEHOLDER in `entity_id`
-                        # (`placeholder_id_1` ×60, `placeholder_id` ×29) — the class 5.3-pilot
-                        # separated out and 5.4 owns. It is split from a plain schema miss here so
-                        # the two never merge into one number: one says *the model invented a value
-                        # it had no way to know*, the other says *the model got the shape wrong*.
-                        #
-                        # ✖ **AND THIS DOES NOT CLAIM TO CHANGE THE MODEL'S BEHAVIOUR.** The
-                        # remedy this defect already received was PROSE — the re-route text a few
-                        # lines up in `validate_frontend_tool_args`, added 2026-07-22 after the
-                        # same failure was measured at 13 calls. The corpus AFTER that fix is the
-                        # 101. What is claimed is what is verifiable: the outcome is typed, the
-                        # refusal is counted as a refusal, and the cost was already removed because
-                        # nothing was dispatched.
-                        _fe_chunk = {
-                            "id": c["id"], "iteration": iteration, "tool": c["name"],
-                            "args": _fe_args, "ok": False, "result": None, "error": _fe_err,
-                        }
-                        yield {"tool_call": instrument.stamp_refused(
-                            _fe_chunk,
-                            "unresolved_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)
-                            else "invalid_arguments",
-                        )}
-                        continue
-                    blank_tool_args_streak = 0  # a valid frontend-tool call
-                    # A valid call breaks the failure loop — reset the tool's failure map
-                    # (mirrors the backend success-clears rule at the dispatch site below).
-                    fail_by_tool_error.pop(c["name"], None)
-                    suspended_call = {
-                        "id": c["id"],
-                        "name": c["name"],
-                        "args": _fe_args,
-                    }
-                    break
+                # 🔴 THE v1 INTERCEPT WAS DELETED HERE (V6, 2026-09-03) — and ONLY it.
+                #
+                # `if is_frontend_tool(c["name"]):` suspended the turn before dispatch, using a schema
+                # chat-service held locally. The three tools it guarded are ai-gateway directive tools
+                # now, so the suspend comes from the RESULT (see the gated-directive branch below) and
+                # this branch had become unreachable — `is_frontend_tool` returned False for everything.
+                #
+                # The OTHER SIX suspend producers are untouched: the Tier-A batch cap, require_approval,
+                # the DQ-T76 disambiguation picker, the DR-C2 write gate, the ext-tasks durable gate, and
+                # the propose_edit directive. `chat_suspended_runs` and POST /tool-results serve all of
+                # them and MUST survive; only one of the seven was v1.
                 args_obj = _parse_tool_args(c["arguments"])
                 # gemma arg-wrapping repair — a mid-tier model sometimes wraps the WHOLE
                 # payload in a single {"args": {...}} envelope (measured live: it sent
@@ -8841,6 +8701,28 @@ async def _stream_with_tools(
                             "id": c["id"],
                             "name": "propose_edit",
                             "args": _pe_args,
+                        }
+                        break
+                # V7 / DQ-V9 — the same shape for the three KIND-C human-gate tools, which moved
+                # to ai-gateway as directive tools. Detected from the RESULT, exactly like
+                # propose_edit, so chat-service holds no schema for them and `is_frontend_tool`
+                # has nothing left to intercept.
+                #
+                # Keyed on the DIRECTIVE MARKER, not on the tool name: the name is what the FE
+                # cards render, but a name test here would re-create the chat-service-local
+                # membership list this whole slice exists to delete — and `confirm_action` is
+                # four different things in this repo, so a name is the wrong identity to trust.
+                if bool(envelope.get("success")):
+                    from app.services.task_detect import (  # noqa: PLC0415
+                        gated_directive_suspend_args,
+                    )
+                    _gd = gated_directive_suspend_args(envelope.get("result"))
+                    if _gd is not None:
+                        _gd_name, _gd_args = _gd
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": _gd_name,
+                            "args": _gd_args,
                         }
                         break
                 ok = bool(envelope.get("success"))
@@ -10672,6 +10554,12 @@ async def stream_response(
     )
     tool_defs: list[dict] = []
     discovery_catalog: list[dict] | None = None
+    #: name -> superseded_by for the LEGACY tools `drop_superseded_tools` removes from
+    #: `discovery_catalog`. Bound HERE, at function scope beside the catalogue itself,
+    #: because the build that fills it lives inside `if discovery_eligible:` — two branches
+    #: down. Binding it there left the plain-gateway path with an UnboundLocalError on every
+    #: turn, which the story04 suite caught as 60 red.
+    legacy_tool_index: dict[str, str | None] = {}
     discovery_extra_frontend: list[dict] | None = None
     discovery_seed_names: set[str] | None = None
     if not disable_tools and kctx.tool_calling_enabled:
@@ -10686,12 +10574,14 @@ async def stream_response(
             # Already fetched at the top of the turn, so the outage can reach the system prompt
             # (U-2). Re-fetching here would double the call AND leave this the only reader.
             tool_defs = list(_admin_tool_defs or ())
-            # The generic class-C confirm frontend tool, so the agent can surface
-            # the System confirm card (suspend → human Confirm → the FE POSTs to
-            # /v1/glossary/actions/admin/confirm). Only when there ARE admin tools.
-            if stream_format == "agui" and tool_defs:
-                from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
-                tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
+            # The System confirm card (suspend -> human Confirm -> the FE POSTs to
+            # /v1/glossary/actions/admin/confirm).
+            # V7 (2026-09-03) — NO LONGER APPENDED FROM A LOCAL DEF. ai-gateway serves
+            # `glossary_confirm_action` on `/mcp/admin` as a consumer-local directive tool
+            # (admin-handlers.ts), so it arrives in `tool_defs` with every other admin tool.
+            # This append was the LAST production use of frontend_tools.py's schemas, and the
+            # reason chat-service still held one: `/mcp/admin` is a SEPARATE federation from
+            # `/mcp`, so nothing reached it by default.
         else:
             # REG-P2-03 — pass user_id so the gateway appends this user's external-MCP
             # federation overlay (u_/b_/s_ tools) into the turn catalog.
@@ -10702,7 +10592,6 @@ async def stream_response(
             if discovery_eligible and not catalog:
                 discovery_eligible = False
             if discovery_eligible:
-                from app.services.frontend_tools import frontend_tool_defs
                 from app.services.tool_discovery import filter_intent_gated_setup_tools
                 editor = bool(editor_context)
                 book_scoped = bool(editor_context or book_context)
@@ -10766,6 +10655,15 @@ async def stream_response(
                 # words a user actually says leave the turn along with the dead tool. See
                 # drop_superseded_tools' own docstring for the measurement and for the
                 # promote-the-definition variant that was built, measured and reverted.
+                # Built BEFORE the drop, because after it the legacy defs are gone and their
+                # `superseded_by` with them. This is the only point in the turn where a
+                # deprecated name can still be resolved to its replacement, which is what lets
+                # `tool_load` refuse it by name instead of calling it non-existent.
+                legacy_tool_index = {
+                    tool_name(_t): tool_superseded_by(_t)
+                    for _t in (discovery_catalog or [])
+                    if is_legacy_tool(_t) and tool_name(_t)
+                }
                 discovery_catalog, _superseded = drop_superseded_tools(
                     discovery_catalog, set(session_row.get("pinned_legacy_tools") or ())
                     if session_row else set(),
@@ -10786,7 +10684,7 @@ async def stream_response(
                     )
                 # GUI-nav tools deprecated 2026-07-25 — only the editor/book_scoped frontend
                 # tools (propose_edit / glossary) are advertised now.
-                discovery_extra_frontend = frontend_tool_defs(editor=editor, book_scoped=book_scoped)
+                discovery_extra_frontend = []  # V7: nothing is advertised locally any more
                 from app.services.tool_surface import discovery_seed_for_surface
                 # The union of step tools across the turn's visible workflows — the ONLY
                 # activated_tools re-advertised in auto mode (so a persisted rail survives
@@ -10889,15 +10787,12 @@ async def stream_response(
                 # No discovery: a legacy non-agui tool-calling client (full catalog —
                 # it has no find_tools loop), or an agui surface with the gateway down.
                 tool_defs = catalog
-                if stream_format == "agui" and (editor_context or book_context or studio_context):
-                    # Gateway down but still agui: re-advertise the frontend
-                    # write-back / studio-nav tools so the surface can still
-                    # propose/confirm/navigate (mirrors the resume path's catalog-down branch).
-                    from app.services.frontend_tools import frontend_tool_defs
-                    tool_defs = tool_defs + frontend_tool_defs(
-                        editor=bool(editor_context),
-                        book_scoped=bool(editor_context or book_context),
-                    )
+                # V7 — the gateway-down agui branch is GONE, not emptied. It re-advertised the
+                # frontend write-back / studio-nav tools so a catalog-down surface could still
+                # propose/confirm/navigate. Every one of those tools DISPATCHES inside ai-gateway,
+                # so with the gateway down it advertised tools that cannot execute — and CD4 is
+                # explicit that a broken tool is worse than an absent one, because the model spends
+                # a turn calling it and often reports success anyway.
         # A2A phase-2: advertise compose_prose only when a composer model is
         # configured for this session (orchestrator → writer delegation).
         if composer_model is not None:
@@ -10966,6 +10861,7 @@ async def stream_response(
             else MAX_TOOL_ITERATIONS
         ),
         discovery_catalog=discovery_catalog,
+        legacy_tool_index=legacy_tool_index,
         unlockable_gated=unlockable_gated,
         discovery_extra_frontend=discovery_extra_frontend,
         discovery_seed_names=discovery_seed_names,
@@ -11771,6 +11667,12 @@ async def _emit_chat_turn(
     planner_model_ref: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
     discovery_catalog: list[dict] | None = None,
+    #: name -> superseded_by for the LEGACY tools dropped from `discovery_catalog`, so
+    #: `tool_load` can refuse a deprecated name by naming its successor. Built at the drop
+    #: site in `stream_response` (the only place the pre-drop catalogue exists) and passed
+    #: in, exactly as the catalogue itself is. Defaults to {} so a caller that does not
+    #: supply it degrades to today's `not_found` rather than raising.
+    legacy_tool_index: dict[str, str | None] | None = None,
     #: DQ-T5 — the defs the N5a-FULL capability floor removed from `discovery_catalog`. Built
     #: beside that filter in `stream_response` and passed in, exactly as the catalogue itself
     #: is: a REFUSAL that names one unlocks it for the rest of the turn.
@@ -12247,6 +12149,7 @@ async def _emit_chat_turn(
                     "project_id": str(project_id) if project_id else None,
                 },
                 discovery_catalog=discovery_catalog,
+                legacy_tool_index=legacy_tool_index,
                 # DQ-T5 — the defs the capability floor removed, so a REFUSAL that names one
                 # can unlock it for the rest of this turn. `unlockable_gated` is defined
                 # beside the filter above and is {} when discovery is off.
@@ -13378,7 +13281,6 @@ async def resume_stream_response(
     rehydrated conversation, re-derives tool defs, and streams the 2nd LLM pass
     via the shared _emit_chat_turn. Yields an AG-UI RUN_ERROR if the suspended
     run is missing/expired."""
-    from app.services.frontend_tools import frontend_tool_defs
     from app.db.suspended_runs import load_suspended_run_any
 
     # CP-0.2 / U-2 — the resumed turn's narrowing sink, armed before its first decision. A resume
@@ -13873,9 +13775,12 @@ async def resume_stream_response(
         # tools, never discovery, never compose_prose. (The admin re-presents
         # X-Admin-Token on the tool-results request.)
         tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
-        if stream_format == "agui" and tool_defs:
-            from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
-            tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
+        # V7 (2026-09-03) — NO LONGER APPENDED FROM A LOCAL DEF. ai-gateway serves
+        # `glossary_confirm_action` on `/mcp/admin` as a consumer-local directive tool
+        # (admin-handlers.ts), so it arrives in `tool_defs` with every other admin tool.
+        # This append was the LAST production use of frontend_tools.py's schemas, and the
+        # reason chat-service still held one: `/mcp/admin` is a SEPARATE federation from
+        # `/mcp`, so nothing reached it by default.
         use_tools = bool(tool_defs)
     else:
         catalog: list[dict] = []
@@ -13927,10 +13832,9 @@ async def resume_stream_response(
             # The generic frontend tools (core) + the glossary write-back tools, both
             # available on resume; _stream_with_tools advertises {core} ∪ {discovered}
             # ∪ extra_frontend per pass.
-            resume_extra_frontend = (
-                frontend_tool_defs(editor=False, book_scoped=False)
-                + frontend_tool_defs(editor=True, book_scoped=True)
-            )
+            # V7 — the resume superset is empty: every tool it used to carry is federated and
+            # is re-advertised from the catalogue like any other.
+            resume_extra_frontend = []
             # Resume uses editor superset for frontend tools; discovery seed respects
             # session curated pins when enabled_tools is non-empty (story 04 S2).
             # Resume superset includes the studio hot domains — a suspend raised on the
@@ -13986,10 +13890,8 @@ async def resume_stream_response(
             # No catalog (gateway down) → no discovery, but still re-advertise the
             # frontend write-back tools so the suspended run resumes through the tool
             # path (seed_usage summed) rather than the no-tools gateway path.
-            tool_defs = (
-                frontend_tool_defs(editor=False, book_scoped=False)
-                + frontend_tool_defs(editor=True, book_scoped=True)
-            )
+            # V7 — see above: nothing local left to seed a resumed turn with.
+            tool_defs = []
         if composer_model is not None:
             from app.services.composer import compose_prose_defs
             tool_defs = tool_defs + compose_prose_defs()

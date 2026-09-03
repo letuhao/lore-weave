@@ -135,7 +135,16 @@ class TestItIsWiredOnBOTHDISPATCHPATHS:
         assert "_dupe = _dup_check(args_obj)" in self._src()
 
     def test_THE_FRONTEND_BRANCH_CHECKS_IT_TOO(self):
-        assert "_fe_dupe = _fe_dup_check(_fe_args)" in self._src()
+        # V6 (2026-09-03) — THE TWO PATHS BECAME ONE, so "wired on BOTH" is no longer the
+        # invariant. The v1 intercept (which carried `_fe_dupe = _fe_dup_check(_fe_args)`) is
+        # deleted; the three tools it guarded dispatch through the backend path now, where the
+        # SAME check runs — `_dupe = _dup_check(args_obj)`.
+        #
+        # The defect this guards has not changed: a duplicated identifier reaching a tool is a
+        # silent wrong-target write. What changed is that there is one place left to check it,
+        # which is the point of the migration rather than a gap in it.
+        assert "_dupe = _dup_check(args_obj)" in self._src(), (
+            "the duplicate-identifier check is gone from the surviving dispatch path")
 
     def test_IT_RUNS_BEFORE_THE_RESOLVER_SPENDS_A_DISPATCH(self):
         """A resolver read on a call that cannot succeed either way is the cost §3a is careful

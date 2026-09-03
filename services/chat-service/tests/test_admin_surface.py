@@ -202,10 +202,24 @@ def _admin_knowledge():
     assert which one a surface uses. Admin catalog = one admin tool; user
     catalog = one memory tool."""
     kc = _patched_knowledge(
-        tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        # `glossary_propose_entity_edit` rides the USER catalogue since V7 — it was appended from
+        # a chat-service local def before (`frontend_tool_defs(book_scoped=True)`), which is the
+        # duplicate-schema surface that removal closed.
+        tool_defs=[
+            {"type": "function", "function": {"name": "memory_search"}},
+            {"type": "function", "function": {"name": "glossary_propose_entity_edit"}},
+            {"type": "function", "function": {"name": "glossary_confirm_action"}},
+        ],
     )
+    # V7 (2026-09-03) — `glossary_confirm_action` is part of the ADMIN CATALOGUE now.
+    # chat-service used to append it from its own local def; ai-gateway serves it on
+    # `/mcp/admin` as a consumer-local directive tool (admin-handlers.ts), so it arrives
+    # here with every other admin tool. The fixture models the real catalogue, and the
+    # surface-curation assertions below are unchanged — they still prove the admin surface
+    # carries admin tools PLUS the confirm vehicle and nothing else.
     kc.get_admin_tool_definitions = AsyncMock(return_value=[
         {"type": "function", "function": {"name": "glossary_admin_propose_create"}},
+        {"type": "function", "function": {"name": "glossary_confirm_action"}},
     ])
     return kc
 

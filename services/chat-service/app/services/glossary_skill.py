@@ -81,10 +81,11 @@ propose. Do NOT re-send the failing kind unchanged, and do NOT give up — one a
 one retry fixes it. (The most common cause of a "place"/"faction" not saving.)
 - Add a new kind or attribute (schema-level, high-impact): `glossary_propose_batch` \
 with a `create_kinds` op (each kind carrying its own `attributes`) or an \
-`add_attributes` op (for a kind that already exists) returns a `confirm_token` + \
-`descriptor`; pass them to `glossary_confirm_action`, which asks the user to confirm. Delete a book genre/kind/attribute (destructive cascade): \
-`glossary_ontology_delete` (`scope="book"`) returns a `confirm_token` + `descriptor` + a preview of what \
-the cascade removes; pass them to `glossary_confirm_action`. Only say the change \
+`add_attributes` op (for a kind that already exists) returns a GATED proposal — the user is \
+asked to approve it and you do NOT drive the approval yourself. Delete a book genre/kind/attribute (destructive cascade): \
+`glossary_ontology_delete` (`scope="book"`) returns the same kind of gated proposal, plus a preview of what \
+the cascade removes. If a result instead carries a `confirm_token` + `descriptor`, pass them to \
+`glossary_confirm_action` — that is the fallback shape, not the usual one. Only say the change \
 happened on `action_done`. Use schema/delete changes sparingly.
 
 Never claim a change happened until a tool result confirms it.
@@ -123,7 +124,8 @@ turn FAILS (only the first can be confirmed), so ALWAYS batch into `glossary_pro
 rather than looping single-purpose proposal tools.
 - A book starts empty until its standards are ADOPTED. To scaffold one, \
 `glossary_adopt_standards` (genre/kind codes from `glossary_list_system_standards`) \
-returns a `confirm_token` + `descriptor` to confirm via `glossary_confirm_action`.
+returns a GATED proposal for the user to approve; if it instead carries a `confirm_token` + \
+`descriptor`, pass them to `glossary_confirm_action`.
 - **A kind is only useful with ATTRIBUTES.** A kind is just a type label; what makes \
 it describe anything are the attributes entities of that kind carry (e.g. a `vampire` \
 kind needs attributes like `weaknesses`, `powers`, `origin`, `bloodline`; a `hunter` \

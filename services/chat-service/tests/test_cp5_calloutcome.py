@@ -327,30 +327,33 @@ class TestAFrontendValidationRefusalIsNotAToolFailure:
         return (pathlib.Path(__file__).resolve().parents[1] / "app" / "services"
                 / "stream_service.py").read_text(encoding="utf-8")
 
-    def test_THE_FRONTEND_VALIDATION_REFUSAL_IS_STAMPED_REFUSED(self):
-        assert 'yield {"tool_call": instrument.stamp_refused(\n                            _fe_chunk,' in self._src(), (
-            "the frontend validation path still records `ok:false` untyped, so 101 calls that "
-            "never ran stay in the corpus as tool failures"
-        )
+    def test_A_REFUSAL_IS_STAMPED_REFUSED_NOT_RECORDED_AS_A_FAILURE(self):
+        """V6 (2026-09-03) — RE-POINTED off the v1 intercept.
 
-    def test_THE_TWO_REFUSAL_KINDS_ARE_KEPT_APART(self):
-        """*The model invented a value it had no way to know* and *the model got the shape wrong*
-        are different defects with different fixes; merged into one `refusal_kind` neither can be
-        counted."""
-        s = self._src()
-        assert '"unresolved_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)' in s
-        assert 'else "invalid_arguments",' in s
+        This anchored on `_fe_chunk`, the frontend branch's refusal stamp. That branch is deleted;
+        the mechanism it guarded survives on the paths that remain. CP-5.4 is why it is worth
+        guarding at all: 101 calls that never ran sat in the corpus as `failed`, inflating every
+        rate computed over it.
 
-    def test_THE_KIND_CLAIMS_ONLY_WHAT_THE_SITE_CAN_KNOW(self):
-        """🔴 It is `unresolved_identifier`, NOT `invented_identifier`. This site knows one thing —
-        an id-shaped argument is not a UUID, so it did not come from a read. It cannot tell an
-        invented placeholder from a human NAME the resolver could have substituted, and naming it
-        `invented` would assert that difference rather than observe it."""
-        s = self._src()
-        assert '"invented_identifier"' not in s, (
-            "the kind asserts the model's intent, which this site cannot observe"
-        )
-        assert '"unresolved_identifier"' in s
+        Asserting the SITE COUNT rather than one site's variable name, so the next relocation does
+        not red this for a reason that has nothing to do with the invariant.
+        """
+        src = self._src()
+        assert src.count("instrument.stamp_refused(") >= 4, (
+            "refusal stamping has thinned out; a refusal recorded as a plain failure re-inflates "
+            "the corpus CP-5.4 had to correct")
+
+    # test_THE_TWO_REFUSAL_KINDS_ARE_KEPT_APART REMOVED 2026-09-03 (V6) — see below.
+
+    # test_THE_KIND_CLAIMS_ONLY_WHAT_THE_SITE_CAN_KNOW REMOVED 2026-09-03 (V6).
+    #
+    # Both asserted the `unresolved_identifier` refusal kind, whose ONLY producer was the v1
+    # intercept. The kind no longer occurs and appeared in NO contract — only in this file, in
+    # stream_service, and in two falsifier scenarios, all three now retired together.
+    #
+    # Its input class (a name where a UUID was required) is handled BETTER on the surviving path:
+    # CP-5.3 RESOLVES the name to an id rather than classifying the refusal. Deleting a
+    # classification because its subject was repaired upstream is not a loss of coverage.
 
     def test_THE_MEASUREMENT_THAT_SAYS_RESOLUTION_WOULD_NOT_HELP_IS_RECORDED(self):
         """The tempting build here is to bind CP-5.3's resolver to this tool, since it declares

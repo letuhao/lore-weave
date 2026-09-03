@@ -24,7 +24,6 @@ catalogue lives in *other* services and changes without us.
 from __future__ import annotations
 
 from app.services.composer import COMPOSE_PROSE_TOOL
-from app.services.frontend_tools import _ALL_FRONTEND_TOOLS_BY_NAME
 
 
 def local_tool_defs() -> list[dict]:
@@ -33,7 +32,11 @@ def local_tool_defs() -> list[dict]:
     Returned in the WRAPPED (`{"type": "function", "function": {...}}`) shape they are authored in,
     which is what the wire uses; `derive._fn` accepts both that and the snapshot's flat shape.
     """
-    return [COMPOSE_PROSE_TOOL, *_ALL_FRONTEND_TOOLS_BY_NAME.values()]
+    # V7 (2026-09-03) — the frontend-tool dicts are GONE. They were unioned in here so the
+    # agent-runtime admission could see the tools chat-service served itself; all three moved
+    # to ai-gateway and now reach the admission through the federated baseline instead.
+    # `compose_prose` is the only tool chat-service still serves on its own.
+    return [COMPOSE_PROSE_TOOL]
 
 
 def local_tool_names() -> frozenset[str]:

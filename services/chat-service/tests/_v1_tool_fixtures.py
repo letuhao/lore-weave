@@ -1,82 +1,30 @@
-"""ARCH-1 C6 — frontend (client-executed) tool definitions.
+"""Frozen tool definitions kept ONLY as test fixtures — the production module is deleted.
 
-A *frontend tool* is advertised to the LLM by chat-service like any other tool,
-but it is NOT executed server-side. When the model calls one, the tool-loop
-SUSPENDS the run, streams the tool call to the browser, and waits for the
-frontend to execute it and POST the result back (the resume endpoint). For the
-editor write-back tool the "execution" is the human reviewing the proposed edit
-and clicking Apply/Dismiss — human-in-the-loop tool calling.
+🔴 THESE ARE NOT A SOURCE OF TRUTH AND MUST NEVER BECOME ONE. They are the schema dicts that
+lived in `app/services/frontend_tools.py` until V7 (2026-09-03) removed it. Every one of them has
+a LIVE owner elsewhere:
 
-The "execute on the client" marker lives ONLY here (FRONTEND_TOOL_NAMES); the
-schema sent over the wire to the provider is a standard OpenAI function def, so
-the LLM sees nothing non-standard. The tool-loop checks the name against this set
-to decide suspend-vs-execute.
+    propose_edit                      services/ai-gateway/src/mcp/propose-edit-tool.ts
+    ui_open_studio_panel, ui_focus_*  services/ai-gateway/src/mcp/ui-tools.ts
+    confirm_action, glossary_*        services/ai-gateway/src/mcp/confirm-tools.ts
 
-Only meaningful in agui stream mode + the editor `<Chat>` panel (the request must
-carry editor_context); other clients never have these tools advertised.
+and the CROSS-LANGUAGE SoT for all of them is `contracts/frontend-tools.contract.json`.
+
+They survive here because a dozen chat-service tests use a tool def as a fixture — a plausible
+`tools=[...]` argument to drive a turn — and rebuilding twelve hand-written dicts would be worse
+than moving these once. A test that wants to assert a SHAPE must assert it against the contract or
+against ai-gateway's own spec, never against this file: a snapshot asserting itself is the vacuity
+this loop has now found in four places.
+
+The production module was deleted because it had ZERO production references left — verified per
+symbol, not assumed — once `frontend_tool_defs` stopped advertising anything. That also closes
+`D-P3-RETIRE-UI-FRONTEND-DEFS`, which had tracked the `ui_*` and `propose_edit` residue since P3.2.
 """
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 
-from jsonschema import Draft202012Validator
-
-# Tool names that the FRONTEND executes (suspend the run, don't call a backend).
-#   propose_edit                  — editor prose write-back (chapter editor only)
-#   glossary_propose_entity_edit  — edit an existing glossary entity (any book-scoped
-#                                   surface); the browser renders a diff card, the user
-#                                   Applies (version-checked PATCH, H5) or Dismisses.
-#   glossary_confirm_action       — generic class-C confirm of any proposed
-#                                   high-impact glossary action (schema create,
-#                                   book_delete, adopt/sync/system later); the
-#                                   browser renders a confirm card keyed on the
-#                                   action `descriptor`, the user Confirms (POST to
-#                                   the token-gated /v1/glossary/actions/confirm) or
-#                                   Cancels. Supersedes the schema-only confirm card.
-# MCP-fanout S-CONSUMER — the GENERIC frontend tools (C-NAV / C-CONFIRM /
-# C-PROPOSE), shared across every domain (book/composition/translation/settings)
-# so the FE renders ONE confirm card + ONE diff card + the nav tools, not a
-# per-domain variant:
-#   ui_navigate/ui_open_book/ui_open_chapter/ui_show_panel/ui_watch_job
-#                                — navigation (C-NAV); resolve-immediately (no Apply)
-#   confirm_action               — generic Tier-W/S confirm (C-CONFIRM); the
-#                                  `domain` selects the committing endpoint, optional
-#                                  `items[]` renders ONE batch card (H2)
-#   propose_record_edit          — generic record diff card (C-PROPOSE) for
-#                                  book/composition record edits
-FRONTEND_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        "glossary_propose_entity_edit",
-        "glossary_confirm_action",
-        "confirm_action",
-        # propose_record_edit REMOVED (auto-gate M5, 2026-07-21): the generic record
-        # diff card is retired — every domain (glossary/composition/translation/settings)
-        # edits its records via its OWN natural direct-write MCP tool (audit confirmed each
-        # exists; book left in M0b). book_update_details' diff renders via ConfirmActionCard.
-        # NOTE (Phase 2, P2.2, 2026-07-20): propose_edit is NO LONGER a frontend tool —
-        # it is an ai-gateway consumer-local tool (propose-edit-tool.ts) that returns a
-        # GATED proposal directive. chat-service stops intercepting it here (→ routes to
-        # ai-gateway), detects io.loreweave/propose-edit in the tool result, and SUSPENDS
-        # with the same shape the old frontend-tool suspend used, so ProposeEditCard is
-        # unchanged. The PROPOSE_EDIT_TOOL def below stays for the editor-surface
-        # advertisement (frontend_tool_defs) until Phase 4 sources it from the catalog.
-        # NOTE (Phase 3, P3.2, 2026-07-20): the KIND-A ui_* tools are NO LONGER frontend
-        # tools — they are ai-gateway CONSUMER-LOCAL directive tools (ui-tools.ts). Removing
-        # them here stops chat-service intercepting/suspending on them: a ui_* call now routes
-        # to ai-gateway, which validates (enum/required) and returns an io.loreweave/ui-directive
-        # RESULT the FE acts on (useUiToolExecutor's directive path). They stay ADVERTISED —
-        # the 5 nav tools via the federated catalog (ALWAYS_ON_CORE_NAMES → catalog_index wins),
-        # the 2 studio tools via frontend_tool_defs (which keeps the F7c nav-intent gate). The
-        # defs below are retained only as an ai-gateway-down advertisement fallback + the P0
-        # validation-seam map; retire fully in P4 (D-P3-RETIRE-UI-FRONTEND-DEFS).
-        #   removed: ui_navigate, ui_open_book, ui_open_chapter, ui_show_panel, ui_watch_job,
-        #            ui_open_studio_panel, ui_focus_manuscript_unit
-    }
-)
-
-# OpenAI function-calling schema for the editor write-back tool. Wire-standard;
-# the description tells the model the edit is reviewed by the user, not applied
-# automatically.
 PROPOSE_EDIT_TOOL: dict = {
     "type": "function",
     "function": {
@@ -125,21 +73,8 @@ PROPOSE_EDIT_TOOL: dict = {
     },
 }
 
-
-# Id-shaped frontend-tool args are UUIDs by contract. Without a pattern they accept ANY
-# string, so a model that doesn't have a real id sends a placeholder and the call sails
-# through to a suspend that can never do anything — the silent no-op the Frontend-Tool-
-# Contract forbids. Measured 2026-07-22 (S00b real-stack E2E): 13 identical calls carrying
-# entity_id="new_entity_id_placeholder", effectful_tool_calls=0, book unchanged. The pattern
-# makes `validate_frontend_tool_args` reject it BEFORE the suspend, with an explicit error.
 _UUID_PATTERN = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
-# OpenAI function-calling schema for the glossary edit-existing write-back tool
-# (ARCH glossary-assistant P3). Like propose_edit it SUSPENDS the run and is
-# executed in the browser, but its "execution" is the user reviewing a diff card
-# and clicking Apply — which issues a version-checked PATCH to the glossary
-# (If-Match: base_version → 412 on drift, H5). The outcome enum is what lets the
-# agent report the REAL result (H6) instead of assuming success.
 GLOSSARY_PROPOSE_EDIT_TOOL: dict = {
     "type": "function",
     "function": {
@@ -256,15 +191,6 @@ GLOSSARY_PROPOSE_EDIT_TOOL: dict = {
     },
 }
 
-
-# OpenAI function-calling schema for the generalized class-C confirm frontend tool.
-# The LLM proposes a high-impact action with a glossary_propose_*/glossary_book_*
-# MCP tool (which MINTS a confirm_token + confirm card, no write), then calls THIS
-# tool to surface the human confirm step. It suspends; the browser renders a confirm
-# card keyed on `descriptor` (re-fetching a current-state preview via
-# /v1/glossary/actions/preview); on Confirm the FE POSTs the token to
-# /v1/glossary/actions/confirm (the only write path). H6: the resume reports the
-# real outcome so the agent can't claim an action that didn't happen.
 GLOSSARY_CONFIRM_ACTION_TOOL: dict = {
     "type": "function",
     "function": {
@@ -315,21 +241,6 @@ GLOSSARY_CONFIRM_ACTION_TOOL: dict = {
                   "_confirm_step": True},
     },
 }
-
-
-# ── MCP-fanout C-NAV — the navigation ui_* tools moved to ai-gateway ─────────
-# Phase 3 (P3.2): ui_navigate / ui_open_book / ui_open_chapter / ui_show_panel /
-# ui_watch_job are ai-gateway CONSUMER-LOCAL directive tools now (ui-tools.ts).
-# Their chat-service defs were retired in Phase 4 (D-P3-RETIRE-UI-FRONTEND-DEFS);
-# the 5 nav tools resolve their schema from the federated catalog. The 2 STUDIO
-# ui_* + propose_edit defs below remain until frontend_tool_defs sources them
-# from the catalog too (the deferred nav-intent-gate-as-catalog-filter).
-
-
-# ── Writing Studio surface (#09 Lane A) — dock navigation, resolve-immediately ──
-# Advertised ONLY when the request carries studio_context (mirrors editor_context →
-# propose_edit). The FE executes them against the StudioHost (open a dock panel / focus a
-# chapter's editor) and POSTs the resolve — no human gate.
 
 UI_OPEN_STUDIO_PANEL_TOOL: dict = {
     "type": "function",
@@ -481,12 +392,6 @@ UI_OPEN_STUDIO_PANEL_TOOL: dict = {
     },
 }
 
-# F7c (2026-07-19) — compact variant of ui_open_studio_panel's panel_id description. KEEPS the
-# exact panel_id enum (Frontend-Tool Contract: the closed set is correctness — a free-string
-# panel_id was the original silent-no-op bug; never trim the enum) and replaces the prose with a
-# terse area-grouped guide. DEPRECATED 2026-07-25 — ui_open_studio_panel is no longer advertised,
-# so this variant is unused at runtime; _studio_panel_tool + this constant remain only as the
-# compact-schema CONTRACT guard (the wire schema is ai-gateway-owned).
 _COMPACT_PANEL_DESC = (
     "The studio panel to open (pass one panel_id from the enum). Panels by area — "
     "WRITE: compose (AI co-writer chat), scene-compose, chapter-assemble, editor, agent-mode "
@@ -513,14 +418,6 @@ _COMPACT_PANEL_DESC = (
     "If unsure which panel fits, open 'user-guide' (the catalog of every Studio tool)."
 )
 
-
-# DEPRECATED 2026-07-25 — the F7c navigation-intent gate (_NAV_VERBS/_PANEL_NOUNS/
-# _is_panel_nav_intent) was removed with the ui_open_studio_panel advertisement it gated.
-# GUI control is user/logic-driven; nothing advertises the studio panel navigator now.
-# The schema constants + _studio_panel_tool remain as chat-service's schema-of-record for the
-# frontend-tool CONTRACT cross-check (ai-gateway is the authoritative owner of the wire schema).
-
-
 def _studio_panel_tool(*, compact: bool) -> dict:
     """ui_open_studio_panel with the full (default) or compact panel_id description.
     Same schema + IDENTICAL enum either way — only the guidance prose differs."""
@@ -529,7 +426,6 @@ def _studio_panel_tool(*, compact: bool) -> dict:
     td = deepcopy(UI_OPEN_STUDIO_PANEL_TOOL)
     td["function"]["parameters"]["properties"]["panel_id"]["description"] = _COMPACT_PANEL_DESC
     return td
-
 
 UI_FOCUS_MANUSCRIPT_UNIT_TOOL: dict = {
     "type": "function",
@@ -554,11 +450,6 @@ UI_FOCUS_MANUSCRIPT_UNIT_TOOL: dict = {
 
 _STUDIO_UI_TOOLS: list[dict] = [UI_OPEN_STUDIO_PANEL_TOOL, UI_FOCUS_MANUSCRIPT_UNIT_TOOL]
 
-
-# ── MCP-fanout C-CONFIRM — generic Tier-W/S confirm (generalizes glossary) ────
-# The `domain` selects which /v1/<domain>/actions/confirm endpoint commits; the
-# optional `items[]` array renders ONE batch card with a single Apply (H2 — so
-# "publish all my drafts" is one click, not N).
 CONFIRM_ACTION_TOOL: dict = {
     "type": "function",
     "function": {
@@ -620,215 +511,51 @@ CONFIRM_ACTION_TOOL: dict = {
 }
 
 
-# ── MCP-fanout C-PROPOSE — generic record diff card — REMOVED (auto-gate M5) ──
-# `PROPOSE_RECORD_EDIT_TOOL` was the generic fallback diff card for
-# glossary/composition/translation/settings record edits. Retired 2026-07-21: the
-# per-domain audit confirmed every domain edits its records via its OWN natural
-# direct-write MCP tool (composition_outline_node_update · glossary_propose_entity_edit ·
-# translation_update_settings/… · per-service pref tools), in the safety model the
-# project chose to keep (Tier-A auto-write+Undo, or the domain's own Tier-W propose).
-# So the generic tool was vestigial. Its FE renderer `RecordDiffCard.tsx` is deleted too
-# (no other caller); book_update_details' server-built diff renders via ConfirmActionCard's
-# own changes[] path (descriptor `book.meta`, M0c).
+# V7 (2026-09-03) — `frontend_tools` is DELETED. These names are frozen test fixtures now; every
+# one has a live owner in ai-gateway and a cross-language SoT in the contract. See
+# tests/_v1_tool_fixtures.py.
+FRONTEND_TOOL_NAMES: frozenset[str] = frozenset()
 
 
-# Map core frontend-tool names → their schema, so the discovery layer can
-# advertise the always-on core by name (C-FT).
-#
-# Phase 3 (P3.2): the ui_* tools are NO LONGER here — they are ai-gateway federated
-# directive tools now, so the always-on nav ui_* (ui_navigate/open_book/show_panel/
-# watch_job in ALWAYS_ON_CORE_NAMES) resolve their def from the federated CATALOG
-# (exactly like `web_search`: `catalog_index.get(name) or generic_frontend_tool_def(name)`
-# → the catalog def, else None ⇒ a degraded gateway simply omits it, never advertises a
-# fabricated schema). The studio ui_* keep their advertisement via `frontend_tool_defs`
-# (which references UI_OPEN_STUDIO_PANEL_TOOL / UI_FOCUS_MANUSCRIPT_UNIT_TOOL directly and
-# preserves the F7c nav-intent gate). The UI_*_TOOL constants remain for that + as the
-# ai-gateway-down reference; P4 sources the studio pair from the catalog too.
-_GENERIC_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
-    "confirm_action": CONFIRM_ACTION_TOOL,
-    # propose_edit removed (Phase 2 P2.2) — now an ai-gateway consumer-local tool; the
-    # PROPOSE_EDIT_TOOL const is still advertised via frontend_tool_defs (editor branch).
-}
+def frontend_tool_defs(**_kw) -> list:
+    """Nothing is advertised from chat-service any more; kept so the call sites read honestly."""
+    return []
 
 
-def generic_frontend_tool_def(name: str) -> dict | None:
-    """The schema for a generic (cross-domain) frontend tool by name, or None."""
-    return _GENERIC_FRONTEND_TOOLS_BY_NAME.get(name)
+def is_frontend_tool(_name: str) -> bool:
+    """chat-service intercepts nothing — the whole point of V7."""
+    return False
 
 
-# The COMPLETE frontend-tool schema map (generic + the two book-scoped glossary
-# tools) — every name in FRONTEND_TOOL_NAMES resolves here. Distinct from
-# `generic_frontend_tool_def`, which is deliberately the cross-domain-advertisement
-# subset (it must NOT surface the glossary tools on non-book surfaces). This map is
-# for the Phase 0 VALIDATION seam: it resolves a tool's canonical inputSchema even
-# when the tool is not in THIS turn's advertised set, so no frontend tool can slip
-# past validation on an unusual (called-but-not-advertised) path.
-_ALL_FRONTEND_TOOLS_BY_NAME: dict[str, dict] = {
-    **_GENERIC_FRONTEND_TOOLS_BY_NAME,
+# The one predicate that SURVIVED the module, re-exported from its real home so a test importing
+# it here gets the live function rather than a copy that can drift.
+from app.services.browser_tools import is_browser_executed  # noqa: E402,F401
+
+
+def generic_frontend_tool_def(_name: str):
+    """Always None: chat-service serves no tool schema of its own any more.
+
+    Kept honest rather than deleted, because the ADVERTISE path used to read
+    `catalog_index.get(name) or generic_frontend_tool_def(name)` and the `or` is exactly how a
+    local schema reached the model on every turn. A test asserting this returns None is asserting
+    that the fallback cannot come back.
+    """
+    return None
+
+
+def frontend_tool_def_by_name(_name: str):
+    """Always None — see `generic_frontend_tool_def`."""
+    return None
+
+
+#: The maps the contract test unions to build ALL_FRONTEND_TOOLS. Frozen fixtures, like everything
+#: else here — the live schemas are ai-gateway's and the SoT is the contract JSON.
+_GENERIC_FRONTEND_TOOLS_BY_NAME: dict = {"confirm_action": CONFIRM_ACTION_TOOL}
+_ALL_FRONTEND_TOOLS_BY_NAME: dict = {
+    "propose_edit": PROPOSE_EDIT_TOOL,
     "glossary_propose_entity_edit": GLOSSARY_PROPOSE_EDIT_TOOL,
     "glossary_confirm_action": GLOSSARY_CONFIRM_ACTION_TOOL,
+    "confirm_action": CONFIRM_ACTION_TOOL,
+    "ui_open_studio_panel": UI_OPEN_STUDIO_PANEL_TOOL,
+    "ui_focus_manuscript_unit": UI_FOCUS_MANUSCRIPT_UNIT_TOOL,
 }
-
-
-def frontend_tool_def_by_name(name: str) -> dict | None:
-    """The canonical schema-bearing def for ANY frontend tool by name — the whole
-    set, for the validation seam. None for a non-frontend name."""
-    return _ALL_FRONTEND_TOOLS_BY_NAME.get(name)
-
-
-def frontend_tool_defs(
-    *,
-    editor: bool = False,
-    book_scoped: bool = False,
-) -> list[dict]:
-    """Frontend tool schemas to advertise, by surface.
-
-    ``editor`` — the chapter editor panel (book_id + chapter_id): adds the prose
-    write-back ``propose_edit``.
-    ``book_scoped`` — any book-scoped chat (editor OR a glossary-page/reader chat
-    carrying a book context): adds ``glossary_propose_entity_edit`` + confirm.
-
-    The flags are independent: a glossary-page chat is book_scoped but not editor.
-
-    NOTE (2026-07-25): the studio GUI-navigation tools (ui_open_studio_panel /
-    ui_focus_manuscript_unit) are NO LONGER advertised — GUI control is user/logic-driven,
-    so agent-driven nav only cost tokens. They stay dispatchable via ai-gateway's handleUiTool
-    + the FE resolvers if a cached directive arrives; the model simply never sees them.
-    """
-    defs: list[dict] = []
-    if editor:
-        defs.append(PROPOSE_EDIT_TOOL)
-    if book_scoped:
-        defs.append(GLOSSARY_PROPOSE_EDIT_TOOL)
-        defs.append(GLOSSARY_CONFIRM_ACTION_TOOL)
-    return defs
-
-
-def is_frontend_tool(name: str) -> bool:
-    """Does chat-service INTERCEPT this tool (suspend the run, hand it to the FE)?
-
-    Membership of ``FRONTEND_TOOL_NAMES`` — i.e. "chat-service owns this schema and
-    short-circuits the call". NOT the same question as {@link is_browser_executed}; see
-    that docstring for why conflating the two produced a real bug.
-    """
-    return name in FRONTEND_TOOL_NAMES
-
-
-# Browser-executed tools that chat-service does NOT intercept: their schema lives in
-# ai-gateway and the call routes there, but what comes back is a DIRECTIVE the browser
-# performs. `ui_*` moved this way in Phase 3 P3.2, `propose_edit` in Phase 2 P2.2.
-_BROWSER_EXECUTED_EXTRA: frozenset[str] = frozenset({"propose_edit"})
-
-
-def is_browser_executed(name: str) -> bool:
-    """Does this tool's EFFECT happen in the browser (rather than on a server)?
-
-    Deliberately separate from :func:`is_frontend_tool`. Those two questions used to be
-    answered by the same set, and when P2.2/P3.2 moved `propose_edit` and the `ui_*` tools
-    out of ``FRONTEND_TOOL_NAMES`` (correct — chat-service stopped intercepting them), every
-    consumer asking "is this browser-executed?" silently started answering *no*:
-
-      * ``agent_surface.server_key_for_tool`` grouped every navigation / panel / watch call
-        under ``"other"`` instead of ``"ui"``;
-      * the advertised-surface split in ``stream_service`` counted them as ``activated``
-        instead of ``frontend``, so the Agent-runtime panel under-reported the UI surface
-        and the frontend/mcp schema-token split was wrong.
-
-    Neither is fatal, which is exactly why it went unnoticed — it only corrupts the numbers
-    you would use to diagnose something else. One predicate, one home, both consumers.
-    """
-    return (
-        name in FRONTEND_TOOL_NAMES
-        or name in _BROWSER_EXECUTED_EXTRA
-        or name.startswith("ui_")
-    )
-
-
-# ── Phase 0 (frontend-tools → MCP migration) — the MCP-native validation seam ──
-# A frontend tool advertised to the LLM carries a canonical JSON-Schema (its
-# `function.parameters`, JSON Schema 2020-12) exactly like a backend MCP tool.
-# Backend tools inherit arg VALIDATION for free (the domain-service SDK validates
-# `arguments` against inputSchema before dispatch); frontend tools were a pre-MCP
-# construct that SUSPENDED the run on the raw args with NO validation. That gap
-# shipped the reported bug (session 019f771a): the model called `propose_edit`
-# with `propose_record_edit`'s args — nothing rejected it, so the run suspended
-# and rendered an Apply card that could never apply.
-#
-# This closes the gap at the source for ALL frontend tools in one place: validate
-# the (already-unwrapped) args against the tool's OWN canonical schema before the
-# suspend, and on a mismatch feed the model the SAME `required: missing
-# properties` signal the domain validator emits — the shape it already knows how
-# to repair. Uses the STANDARD Draft202012Validator against the canonical schema
-# (NOT a hand-rolled per-tool check), so Phases 1-3 reuse the exact same schema.
-#
-# The marker substring MUST match stream_service._MISSING_REQUIRED_ARGS_MARKER so
-# a frontend-tool miss feeds the same cross-tool blank/invalid-args streak breaker
-# the backend feeds. Kept in sync deliberately (two consumers, one contract).
-_MISSING_REQUIRED_MARKER = "required: missing properties"
-
-
-def _canonical_input_schema(tool_def: dict | None) -> dict | None:
-    """The tool's JSON-Schema for its arguments — `function.parameters` for an
-    OpenAI-shaped def (how both the generic frontend defs and the normalized
-    discovery-catalog entries are stored). None if absent."""
-    schema = (((tool_def or {}).get("function") or {}).get("parameters"))
-    return schema if isinstance(schema, dict) and schema else None
-
-
-def validate_frontend_tool_args(
-    name: str, args: object, tool_def: dict | None
-) -> str | None:
-    """Validate a frontend tool's (unwrapped) args against its canonical
-    inputSchema. Return None when valid (or when there is nothing to validate
-    against — FAIL-OPEN, so a schema-less tool is never blocked); otherwise a
-    compact, model-repairable error string.
-
-    The message prioritises the two shapes the incident exercised:
-      * missing top-level required props  → ``required: missing properties: [...]``
-        (contains the shared streak marker),
-      * disallowed props (additionalProperties:false) → the validator's message,
-    then falls back to the first schema error (type/enum/...). This is the exact
-    root-cause fix: a `propose_edit`-with-`propose_record_edit`-args call is
-    rejected here, before any suspend, for every frontend tool.
-    """
-    schema = _canonical_input_schema(tool_def)
-    if schema is None or not isinstance(args, dict):
-        return None  # fail-open: no schema, or a non-object payload we can't judge
-    try:
-        errors = list(Draft202012Validator(schema).iter_errors(args))
-    except Exception:  # noqa: BLE001 — a malformed schema must never block a call
-        return None
-    if not errors:
-        return None
-
-    parts: list[str] = []
-    top_required = [
-        p for p in (schema.get("required") or []) if p not in args
-    ]
-    if top_required:
-        parts.append(f"{_MISSING_REQUIRED_MARKER}: {top_required}")
-    extra = next((e for e in errors if e.validator == "additionalProperties"), None)
-    if extra is not None:
-        parts.append(extra.message)
-    # A `pattern` failure on an id arg is ALWAYS a placeholder/made-up id (measured: 13×
-    # entity_id="new_entity_id_placeholder"). The raw jsonschema message is a regex dump the
-    # model can't act on — say what is wrong and what to do instead, so the call is repaired
-    # (or re-routed) on the NEXT attempt instead of repeated verbatim.
-    if not parts:
-        for pat in (e for e in errors if e.validator == "pattern"):
-            loc = "/".join(str(p) for p in pat.absolute_path) or "(root)"
-            got = pat.instance if isinstance(pat.instance, str) else ""
-            hint = ""
-            if loc.endswith("entity_id"):
-                # The re-route must be ACTIONABLE: glossary_propose_entities is a LAZY tool, so
-                # naming it alone leaves the model unable to act (measured: it retried the edit
-                # 3× then gave up). Name the discovery hop too — tool_load is proven reliable.
-                hint = (" — this tool only EDITS an entity that ALREADY EXISTS. To CREATE a new "
-                        "one, call tool_load(name='glossary_propose_entities') and then call "
-                        "glossary_propose_entities. Do NOT retry this edit tool.")
-            parts.append(f"{loc} must be a real UUID, got {got!r}{hint}")
-    if not parts:
-        e0 = errors[0]
-        loc = "/".join(str(p) for p in e0.absolute_path) or "(root)"
-        parts.append(f"{loc}: {e0.message}" if loc != "(root)" else e0.message)
-    return f'invalid arguments for "{name}": ' + "; ".join(parts)

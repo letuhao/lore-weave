@@ -2182,7 +2182,7 @@ class TestFrontendToolValidationSeam:
         # moved to ai-gateway (propose-edit-tool.spec.ts) in Phase 2. Here confirm_action
         # (requires confirm_token+descriptor+title) is called with the record-edit shape
         # → the seam rejects it BEFORE suspending, feeding the model the repair signal.
-        from app.services.frontend_tools import CONFIRM_ACTION_TOOL
+        from tests._v1_tool_fixtures import CONFIRM_ACTION_TOOL
 
         kc = AsyncMock()
         incident_args = {
@@ -2207,15 +2207,25 @@ class TestFrontendToolValidationSeam:
         assert len(tcs) == 1
         assert tcs[0]["tool"] == "confirm_action"
         assert tcs[0]["ok"] is False
-        assert "required: missing properties" in tcs[0]["error"]
-        assert "confirm_token" in tcs[0]["error"]
+        # 🔴 THE ASSERTION IS THE PROPERTY, NOT THE PHRASE. This pinned the literal string
+        # "required: missing properties" — the Phase-0 frontend validator's wording. V7 moved
+        # confirm_action to ai-gateway, so the refusal now comes from the standard arg-validation
+        # path and reads "is missing required argument(s): [...] Do NOT guess a value and do NOT
+        # substitute a placeholder". The safety property never changed; only the sentence did, and
+        # a test that pins a sentence reds on an improvement to it.
+        #
+        # What must hold (IN-6, self-correcting one-liner): the refusal NAMES the missing argument
+        # and tells the model what to do. A bare "invalid arguments" would pass neither clause.
+        err = tcs[0]["error"]
+        assert "confirm_token" in err, f"the refusal does not name the missing arg: {err}"
+        assert "missing" in err.lower(), f"the refusal does not say what is wrong: {err}"
         assert chunks[-1]["finish_reason"] == "stop"
-        # A frontend tool — no backend execute happened.
+        # Rejected BEFORE dispatch — the bad call never reached a backend, frontend tool or not.
         kc.mcp_execute_tool.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_valid_frontend_args_still_suspend(self):
-        from app.services.frontend_tools import CONFIRM_ACTION_TOOL
+        from tests._v1_tool_fixtures import CONFIRM_ACTION_TOOL
 
         kc = AsyncMock()
         good = {"confirm_token": "tok", "descriptor": "book.publish", "title": "Publish?", "domain": "book"}

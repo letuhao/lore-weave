@@ -592,7 +592,7 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
     # cases, which read the catalog through the advertiser, want this.
     if tool_defs and with_core_tools:
         from app.services import tool_discovery as _td
-        from app.services.frontend_tools import generic_frontend_tool_def as _gfd
+        from tests._v1_tool_fixtures import generic_frontend_tool_def as _gfd
         _have = {t["function"]["name"] for t in tool_defs if isinstance(t, dict) and "function" in t}
         tool_defs = list(tool_defs) + [
             {"type": "function", "function": {"name": _n, "description": "",
@@ -1005,7 +1005,13 @@ class TestK21BToolCallingIntegration:
 
         kc = _patched_knowledge(
             stable="", volatile="", mode="static",
-            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+            # V7 — glossary_propose_entity_edit rides the CATALOGUE now (ai-gateway serves
+            # it). It used to be appended from a chat-service local def on every
+            # book-scoped surface, which duplicated the federated copy.
+            tool_defs=[
+                {"type": "function", "function": {"name": "memory_search"}},
+                {"type": "function", "function": {"name": "glossary_propose_entity_edit"}},
+            ],
         )
 
         async def fake_tool_loop(**kwargs):
@@ -1269,7 +1275,17 @@ class TestK21BToolCallingIntegration:
         # full catalog dumped to the LLM. (F17 — find_tools retired from the LLM's view.)
         adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
         assert "tool_list" in adv_names and "tool_load" in adv_names
-        assert "confirm_action" in adv_names
+        # confirm_action was asserted here until V7 (2026-09-03). It is NOT retired — it moved to
+        # ai-gateway as a consumer-local directive tool, so it now arrives through the FEDERATED
+        # catalogue rather than from chat-service's own defs. This test's catalog is a fake, so
+        # its absence here is the fixture, not the surface. The live-wire proof is separate:
+        # `refresh_tool_catalog_cache.py` saw 316 -> 319 with exactly these three added.
+        #
+        # The clause that must NOT come back is a chat-service-local schema reaching the model —
+        # asserted directly by test_tool_discovery's empty-FRONTEND_TOOL_NAMES check.
+        assert "confirm_action" not in adv_names, (
+            "confirm_action is being advertised from a chat-service-local def again; it must "
+            "come from the federated catalogue")
         # `ui_navigate` was asserted here too, until the ui_* GUI-control surface was fully
         # retired (2026-07-27). d389a3022 de-advertised it at both emitters; the leftover name in
         # ALWAYS_ON_CORE_NAMES made this test keep vouching for a tool the model can never see.

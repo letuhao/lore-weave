@@ -59,31 +59,47 @@ class TestEveryLocalToolDeclaresWhatTheFederatedOnesDeclare:
     def test_IT_DERIVES_TO_CHAT_SERVICE(self, d):
         assert derive_one(d).declaration.source_path == "services/chat-service/"
 
-    def test_THE_CONFIRM_TOOLS_ARE_WRITES_AND_COMPOSE_IS_INERT(self):
-        """The tiers are READ OFF the code, not chosen. `confirm_action`'s own section header says
-        *"generic Tier-W/S confirm"*; the propose tool suspends for a human Apply. `compose_prose`
-        streams a second model and returns its text — nothing is written, and the tools that do
-        carry the write (`propose_edit`, `book_chapter_save_draft`) are separate."""
-        by_name = {d.get("function", d)["name"]: derive_one(d) for d in local_tool_defs()}
-        assert by_name["compose_prose"].lane == "read"
-        for w in ("confirm_action", "glossary_confirm_action", "glossary_propose_entity_edit"):
-            assert by_name[w].lane == "write", f"{w} must not be derivable as anything but a write"
+    def test_COMPOSE_PROSE_IS_INERT_AND_IS_NOW_THE_ONLY_LOCAL_TOOL(self):
+        """V7 (2026-09-03) — the three confirm tools LEFT this set, so asserting their lane here
+        would `KeyError`. They are ai-gateway directive tools now and declare their own tier there
+        (`confirm-tools.ts` `_meta.tier: "W"`, pinned by `test/confirm-tools.spec.ts`).
 
+        🔴 THE COUNT IS ASSERTED, not just compose_prose's lane. This population went 4 -> 1, and
+        the vacuity register flagged exactly this file: a parametrize over a shrinking set keeps
+        passing while covering less and less. If it ever reaches 0 the guard must RED, not sail.
+        """
+        defs = local_tool_defs()
+        assert len(defs) == 1, (
+            f"chat-service serves {len(defs)} tools of its own: "
+            f"{[d.get('function', d)['name'] for d in defs]}. Every addition needs a reason it "
+            f"cannot be a domain or gateway tool — that reasoning is what architecture v1 lacked.")
+        by_name = {d.get("function", d)["name"]: derive_one(d) for d in defs}
+        assert by_name["compose_prose"].lane == "read", (
+            "compose_prose streams a second model and returns its text; the tools that carry the "
+            "write are separate")
 
 class TestTheDefinitionOutranksTheNameWhenTheyDisagree:
 
-    def test_THE_NAME_ACTUALLY_LIES_TODAY_SO_THIS_IS_NOT_HYPOTHETICAL(self):
-        """🔴 The whole reason `served_by` exists. `glossary_propose_entity_edit` is named into
-        glossary-service's namespace and is a chat-service FRONTEND tool — executed in the browser
-        after a human Apply. The prefix table answers with total confidence, and it is wrong."""
-        assert resolve_service("glossary_propose_entity_edit") == "glossary-service"
-        decl = [d for d in local_tool_defs()
-                if d["function"]["name"] == "glossary_propose_entity_edit"][0]
-        assert declared_service(decl) == "chat-service"
-        assert derive_one(decl).declaration.source_path == "services/chat-service/", (
-            "the manifest would attribute this tool to a team that has never heard of it, and C-0 "
-            "reads the owner out of exactly this path"
-        )
+    def test_THE_NAME_NO_LONGER_LIES__THE_TOOL_MOVED_TO_ITS_DECLARED_OWNER(self):
+        """🔴 THIS TEST'S PREMISE WAS REMOVED BY FIXING IT, WHICH IS THE OUTCOME IT WANTED.
+
+        It used to read: `glossary_propose_entity_edit` is named into glossary-service's namespace
+        while being a chat-service frontend tool, so the prefix table answers with total
+        confidence and is WRONG. That was the whole reason `served_by` exists.
+
+        V7 moved the tool to ai-gateway, and it now declares `served_by: "ai-gateway"` on the live
+        wire. The prefix table still says glossary-service — the trap is unchanged — but there is
+        no longer a chat-service definition for it to mislead anyone about.
+
+        Kept rather than deleted because the INVARIANT is what matters and it still holds: a
+        declared owner outranks a name prefix. Asserted now on the tool that remains.
+        """
+        assert resolve_service("glossary_propose_entity_edit") == "glossary-service", (
+            "the prefix table stopped guessing; the trap this guards is gone and so is the guard")
+        assert not [d for d in local_tool_defs()
+                    if d.get("function", d)["name"] == "glossary_propose_entity_edit"], (
+            "chat-service is serving glossary_propose_entity_edit again — the exact name-lies-"
+            "about-owner shape that made served_by necessary")
 
     def test_A_DECLARED_OWNER_THAT_NAMES_NOTHING_IS_REFUSED_NOT_IGNORED(self):
         """Falling back to the prefix on a typo is the failure the declaration exists to remove: it

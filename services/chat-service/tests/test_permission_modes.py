@@ -22,7 +22,7 @@ from uuid import uuid4
 import pytest
 
 from app.db.suspended_runs import SuspendedRun
-from app.services.frontend_tools import PROPOSE_EDIT_TOOL
+from tests._v1_tool_fixtures import PROPOSE_EDIT_TOOL
 from app.services.stream_service import (
     _advertise_discovery_tools,
     _catalog_index,
@@ -56,6 +56,31 @@ from tests.test_stream_tools import (
     tool_frag,
     usage,
 )
+
+
+# V7 re-vehicle (2026-09-03) — a tool result carrying the ai-gateway CONFIRM directive.
+#
+# These tests assert that a SUSPEND persists the turn's mode. They used a chat-service-intercepted
+# frontend tool as the vehicle, and their docstrings record that the vehicle was ALREADY swapped
+# once (P2.2 moved propose_edit out). V7 moved the last three out too, so interception produces no
+# suspend at all — the mechanism under test is untouched, only its vehicle died.
+#
+# The replacement drives the LIVE path: ai-gateway returns a gated directive, chat-service detects
+# it in the RESULT and suspends. Strictly better than the old vehicle, which exercised a branch
+# that no longer exists.
+def _confirm_directive_client(kc):
+    """Make `kc.mcp_execute_tool` answer with a gated confirm directive."""
+    from app.services.task_detect import CONFIRM_DIRECTIVE_TYPE
+    kc.mcp_execute_tool = AsyncMock(return_value={
+        "success": True,
+        "result": {
+            "type": CONFIRM_DIRECTIVE_TYPE,
+            "confirm_token": "tok-1", "descriptor": "glossary.adopt",
+            "title": "Adopt standards", "domain": "glossary",
+        },
+    })
+    return kc
+
 
 
 # ── representative catalog (the C-TOOL tier spread) ──────────────────────────
@@ -191,7 +216,10 @@ class TestAdvertiseSurfaceSnapshot:
             idx, ALL_CATALOG_NAMES, [PROPOSE_EDIT_TOOL], permission_mode="ask",
         ))
         assert "tool_list" in out and "tool_load" in out
-        assert "confirm_action" in out
+        # confirm_action left the chat-service-local advertisement in V7 — it comes from the
+        # FEDERATED catalogue now, which this fixture does not carry. What ask-mode must
+        # still keep is the browser-executed survivor asserted just below.
+        assert "confirm_action" not in out
         # propose_record_edit was RETIRED in auto-gate M5 (2026-07-21) — the generic record
         # diff card is gone; each domain edits via its own direct-write tool. `propose_edit`
         # (the prose write-back) is the browser-executed survivor and is asserted above.
@@ -760,7 +788,14 @@ class TestSuspendPersistsMode:
         # book-scoped frontend confirm tool is re-advertised → the suspend path works.
         # (propose_edit is no longer a frontend tool since Phase 2 — it routes to
         # ai-gateway — so a still-frontend tool drives this suspend-persists check.)
-        kc = _patched_knowledge(tool_defs=[])
+        # V7 re-vehicle: the tool is served by ai-gateway now, so it must be ADVERTISED to
+        # reach dispatch, and the suspend comes from the DIRECTIVE in its result.
+        kc = _confirm_directive_client(_patched_knowledge(tool_defs=[
+            {"type": "function", "function": {
+                "name": "glossary_confirm_action",
+                "parameters": {"type": "object", "properties": {}},
+            }},
+        ]))
 
         scripts = [[
             tool_frag(index=0, id="c1", name="glossary_confirm_action"),

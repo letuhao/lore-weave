@@ -307,7 +307,13 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
     # just the one that emits schemas.
     # propose_record_edit REMOVED (auto-gate M5) — the generic record diff card is retired;
     # each domain edits via its own natural direct-write tool (audit-confirmed vestigial).
-    "confirm_action",
+    #
+    # confirm_action REMOVED 2026-09-03 (V7/DQ-V9). It is NOT retired — it moved to ai-gateway as
+    # a consumer-local DIRECTIVE tool, so it now arrives through the federated catalogue like any
+    # other tool and no longer needs naming here. It stayed in this list for weeks resolving via
+    # `catalog_index.get(name) or generic_frontend_tool_def(name)`; because it was absent from the
+    # catalogue the FALLBACK always fired, which is precisely how a chat-service-local schema
+    # reached the model on every turn, on every surface.
     # Track D CD5 — `web_search` is fundamental: grounding an answer in the open web is a
     # base capability, not a glossary errand, so it must not cost a find_tools round-trip.
     # It is the ONLY backend (federated) tool in this set, so it resolves from the CATALOG
@@ -515,7 +521,13 @@ def drop_superseded_tools(
     catalog: list[dict],
     pinned: "set[str] | frozenset[str] | None" = None,
 ) -> tuple[list[dict], list[str]]:
-    """Drop a legacy tool from a TURN CATALOG when its replacement is on the same wire.
+    """Drop EVERY legacy tool from a TURN CATALOG, transferring its synonyms to the successor.
+
+    (Summary line corrected 2026-09-03. It read "…when its replacement is on the same wire",
+    which is the pre-2026-08-25 NARROW rule — see the superseded block below. The first line is
+    what every IDE hover, `help()` and doc extractor shows, so it was the one sentence about this
+    function most readers ever saw, and it stated the opposite of the loop beneath it. The file
+    already names that exact cost two paragraphs down.)
 
     🔴 THE THIRD REACH-PATH. CAT-4's own comment states the invariant — "A legacy tool must
     never be discoverable: excluded from search_catalog() and from every domain hot-seed" —
@@ -1580,6 +1592,7 @@ def tool_load_result(
     names: list[str] | None = None,
     category: str | None = None,
     unavailable_providers: set[str] | None = None,
+    legacy_index: dict[str, str | None] | None = None,
 ) -> tuple[dict, list[str]]:
     """Build the ``tool_load`` payload + the names to activate (contracts.md C2).
     Pure disclosure — returns full ``input_schema``(s); executes nothing. Unknown
@@ -1625,6 +1638,47 @@ def tool_load_result(
         loaded.append(entry)
     payload: dict = {"tools": loaded}
     missing = sorted(n for n in want if n not in seen and n not in broken)
+
+    # 🔴 A DEPRECATED TOOL IS NOT A NON-EXISTENT ONE, AND SAYING SO IS THE LIE THIS FUNCTION
+    # ALREADY WARNS ABOUT ONE PARAGRAPH DOWN.
+    #
+    # Since the 2026-08-25 widening, `drop_superseded_tools` removes EVERY legacy tool from the
+    # turn catalogue, so a legacy name reaches here as simply absent and fell into `not_found`.
+    # Measured 2026-09-03 against the live catalogue: `tool_load("book_get")` answered
+    # `{"not_found": ["book_get"]}` — for a tool that exists, is federated, and has
+    # `superseded_by: book_read` sitting in its own meta. That is the same false premise that
+    # cost the 2026-07-23 incident, arrived at from the other direction: there a live tool was
+    # called non-existent because its provider was down; here because it was deprecated.
+    #
+    # A model told "no such tool" stops looking. Told "deprecated, use X" it calls X — which is
+    # the entire point of dropping the predecessor. So the refusal NAMES THE SUCCESSOR.
+    #
+    # PINNED legacy tools never reach this branch: a pin keeps them IN the catalogue, so they
+    # load normally and come back labelled `deprecated: True`. That is deliberate (DQ-V3) — an
+    # explicit per-session user pin is not the model reaching a dead tool.
+    if missing and legacy_index:
+        retired = [n for n in missing if n in legacy_index]
+        if retired:
+            missing = [n for n in missing if n not in legacy_index]
+            payload["deprecated"] = [
+                {"name": n, "superseded_by": legacy_index[n]} if legacy_index[n]
+                else {"name": n} for n in retired
+            ]
+            _named = [f"{n} -> {legacy_index[n]}" for n in retired if legacy_index[n]]
+            _bare = [n for n in retired if not legacy_index[n]]
+            _parts = []
+            if _named:
+                _parts.append("use the replacement instead: " + ", ".join(_named))
+            if _bare:
+                _parts.append("retired with no replacement: " + ", ".join(_bare))
+            # A DISTINCT KEY, not `note`. The block below also writes `note` (for a provider
+            # outage or a genuine not_found), so one request mixing a deprecated name with an
+            # absent one would have silently lost whichever wrote first.
+            payload["deprecated_note"] = (
+                f"{', '.join(retired)} is deprecated and is no longer offered. "
+                + ". ".join(_parts) + ". Do NOT report it as missing — it exists, it is retired."
+            )
+
     if missing:
         # `not_found` ASSERTS that no such tool exists. During an outage that assertion is
         # unknowable: a down provider's tools are absent from the catalog entirely, so an

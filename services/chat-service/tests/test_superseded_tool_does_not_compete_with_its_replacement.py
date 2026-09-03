@@ -25,12 +25,25 @@ scored 0/5 with nothing wrong with them —
     composition_canon_rule_edit       -> model called composition_canon_rule_delete   (5/5)
     composition_authoring_run_review  -> model called composition_authoring_run_pause (5/5)
 
-🔴 THE RULE IS DELIBERATELY NARROWER THAN "DROP EVERY LEGACY TOOL", and the count is why. Of 117
-legacy tools, 31 name NO superseded_by — including book_create, book_chapter_publish and
-book_chapter_delete. Dropping those would delete reach with nothing to redirect to. A tool is
-dropped only when its named replacement is in the SAME catalog, so the swap is
-capability-preserving by construction. (Verified across the live catalog: 0 of the 86 have a
-dangling superseded_by.)
+🔴 SUPERSEDED 2026-08-25 BY OWNER DECISION — THE INDENTED PARAGRAPH BELOW IS THE OLD RULE.
+
+It is kept because the reasoning still explains what the narrow rule was FOR, but it is NOT what
+this module tests: `drop_superseded_tools` now drops EVERY legacy tool, replacement or not, and
+the only re-admission path is an explicit per-session user pin. The live assertion is
+`TestEveryLegacyToolIsDroppedRegardlessOfSuccessor` further down this file; the standard is
+`docs/standards/mcp-tool-io.md` DIS-4.
+
+WHY THIS MARKER MATTERS HERE SPECIFICALLY: `mcp-tool-io.md`'s enforcement table names THIS FILE as
+the proof for "DIS-4 legacy is unreachable". So a reader who follows the standard to its evidence
+landed on a module header asserting the rule the standard had replaced. (Marked 2026-09-03; the
+reversal was already stated in the class docstring below, but 50 lines further down the page.)
+
+    [OLD RULE, 2026-08-14 — NO LONGER IN FORCE] THE RULE IS DELIBERATELY NARROWER THAN "DROP
+    EVERY LEGACY TOOL", and the count is why. Of 117 legacy tools, 31 name NO superseded_by —
+    including book_create, book_chapter_publish and book_chapter_delete. Dropping those would
+    delete reach with nothing to redirect to. A tool is dropped only when its named replacement
+    is in the SAME catalog, so the swap is capability-preserving by construction. (Verified
+    across the live catalog: 0 of the 86 have a dangling superseded_by.)
 """
 from __future__ import annotations
 
