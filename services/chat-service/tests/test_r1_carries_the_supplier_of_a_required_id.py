@@ -123,3 +123,68 @@ def test_a_declaration_cycle_does_not_hang(catalog):
     finally:
         stream_service._tool_contract_registry = original
     assert {CONSUMER, SUPPLIER} <= names
+
+
+# ── DEPTH ≥ 2 ────────────────────────────────────────────────────────────────────────────────
+#
+# 🔴 THE FILE'S OWN DOCSTRING DEMANDED THIS AND NOTHING ASSERTED IT. It says "AND IT HAS TO BE
+# TRANSITIVE, which composition_reference_update proves: reference_id comes from
+# composition_find_references, which was already on every one of 40 passes and itself refused for
+# its OWN missing entity_id. A one-hop fix would have looked correct on the other instances and
+# left that turn dying one call later."
+#
+# Measured 2026-09-03: replacing the arming loop's `_pending = _next` with `_pending = []` — the
+# original D-R1-STOPPED-AT-DEPTH-1 defect, restored exactly — left all four tests in this file
+# GREEN. The transitivity was implemented, documented in three places, and guarded by nothing.
+# P14's invariant is the word TRANSITIVELY; a suite that cannot tell one hop from two is not
+# enforcing it.
+CONSUMER2 = "composition_reference_update"
+MID = "composition_find_references"
+ROOT_SUPPLIER = "glossary_search"
+
+
+@pytest.fixture()
+def deep_catalog() -> dict:
+    return {
+        CONSUMER2: _td(CONSUMER2, synonyms=["update the reference", "fix the reference"],
+                       required=["book_id", "reference_id"]),
+        MID: _td(MID, synonyms=["find references"], required=["book_id", "entity_id"], tier="R"),
+        ROOT_SUPPLIER: _td(ROOT_SUPPLIER, synonyms=["search the glossary"], required=["book_id"],
+                           tier="R"),
+    }
+
+
+def _with_emitters(mapping, fn):
+    from app.services import stream_service
+    original = stream_service._tool_contract_registry
+    stream_service._tool_contract_registry = lambda: {"argument_emitters": mapping}
+    try:
+        return fn()
+    finally:
+        stream_service._tool_contract_registry = original
+
+
+def test_the_arming_is_TRANSITIVE_not_one_hop(deep_catalog):
+    """The request names only the consumer. Its supplier needs a supplier of its own, and that
+    second hop is the one composition_reference_update died on in production."""
+    names = _with_emitters(
+        {CONSUMER2: {"reference_id": MID}, MID: {"entity_id": ROOT_SUPPLIER}},
+        lambda: _advertised(deep_catalog, "Update the reference for this book."),
+    )
+    assert CONSUMER2 in names, "R1 no longer forces the tool the request names — re-anchor"
+    assert MID in names, "depth 1 broke — the direct supplier is missing"
+    assert ROOT_SUPPLIER in names, (
+        "R1 stopped at depth 1: it offered composition_find_references, which itself cannot run "
+        "without an entity_id, so the turn dies ONE CALL LATER than before instead of not at all"
+    )
+
+
+def test_the_transitive_walk_terminates_on_a_cycle(deep_catalog):
+    """A declaration map is data and data can be wrong. Two tools naming each other must not spin
+    the arming loop — `_seen` is what stops it, and a test that never exercises a cycle would not
+    notice if that guard were removed."""
+    names = _with_emitters(
+        {CONSUMER2: {"reference_id": MID}, MID: {"entity_id": CONSUMER2}},
+        lambda: _advertised(deep_catalog, "Update the reference for this book."),
+    )
+    assert CONSUMER2 in names and MID in names
