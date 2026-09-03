@@ -90,6 +90,7 @@ from app.services.tool_discovery import (
     find_tools_result_async,
     is_legacy_tool,
     group_directory_text,
+    tool_parameters,
     hot_tool_names,
     provider_availability,
     strip_tool_meta,
@@ -1282,6 +1283,94 @@ def _claimed_an_effect_without_acting(text: str, *, attempted: set[str]) -> bool
     if _REFUSAL_MARKER_RE.search(body):
         return False
     return bool(_CLAIMED_EFFECT_RE.search(body))
+
+
+#: The phrasing a turn uses to ask for permission it was already given. Deliberately narrow and
+#: END-ANCHORED: a mid-reply "would you like me to also add X?" offers EXTRA work and is not this
+#: defect. Measured on plan_bootstrap_apply, K=5, zero errored runs — every reply ended this way,
+#: e.g. "Would you like me to go ahead and create these chapters so we can start writing?"
+_OFFER_TO_ACT_RE = re.compile(
+    r"(?:would you like me to|shall i\b|do you want me to|should i (?:go ahead|proceed)|"
+    r"want me to|let me know if you(?:'d|r| would) like me to)"
+    r"[^.?!]{0,160}\?\s*$",
+    re.I,
+)
+
+
+def _asked_instead_of_acting(
+    text: str, *, attempted: set[str], succeeded, catalog_index: dict,
+    emitters: dict, advertised: set[str] | None = None,
+) -> str | None:
+    """The advertised WRITE this turn was EQUIPPED to call, and asked about in prose instead.
+
+    🔴 P16-PROSE-CONFIRMATION. The request IS the instruction, the turn already holds every
+    argument the write requires, and it ends by asking whether to proceed. The platform HAS a
+    consent mechanism for exactly this — the approval card — and prose asks for consent in a
+    channel that records nothing and gates nothing. The author answers a question they already
+    answered, and no card ever appears.
+
+    MEASURED K=5, zero errored runs, identical every time: composition_package_tree ->
+    plan_bootstrap_propose x2 -> composition_list_outline, a real `proposal_id` in hand, and a
+    reply ending "Would you like me to go ahead and create these chapters?". The request had been
+    "Create the chapters — make the plan real for this book".
+
+    WHY IT CANNOT REUSE THE EMPTY-`attempted` SHAPE of its two sibling guards. Those fire when the
+    turn called NOTHING. This turn called four tools; that is what makes it equipped. So the
+    mechanical condition is different, and it is taken from data the platform already declares
+    rather than from the prose:
+
+      * `argument_emitters` (contracts/agent-runtime-tool-contracts.json) says WHICH TOOL emits
+        each required opaque id — `plan_bootstrap_apply: {proposal_id: plan_bootstrap_propose}`.
+      * `turn_succeeded` says which tools actually returned a result THIS TURN.
+
+    So "the turn holds what it needs" is not inferred from the reply: every required argument of
+    the candidate has a declared emitter that SUCCEEDED on this turn. The prose test only decides
+    whether the turn ASKED — it never decides what the turn holds.
+
+    IT NAMES A TOOL OR RETURNS None. It does not accuse the model of anything, for the same
+    reason `_rail_write_step_stalled` refuses to: a runtime that asserts a claim the model did not
+    make is the same false-report defect pointed the other way, and this loop has fixed three.
+
+    NOT COVERED, deliberately: a write whose required args are ambient (book_id, project_id) and
+    therefore declare no emitter — those are always "held", so firing on them would make every
+    polite closing question a defect. Requiring at least one EMITTED argument is what keeps this
+    to turns that genuinely did the work and stopped one call short.
+    """
+    if not text or not _OFFER_TO_ACT_RE.search(text.strip()):
+        return None
+    ok = set(succeeded or ())
+    for name in sorted(advertised if advertised is not None else catalog_index):
+        if name in attempted:
+            continue
+        # 🔴 NOT `td = catalog_index.get(name)`. That exact line is the ANCHOR of
+        # test_cp0_instrument.py::test_the_catalog_miss_registers_before_the_early_return_swallows_it,
+        # which takes the FIRST occurrence in this module and scans 1800 chars for the
+        # registration that must follow it. This function sits ~4700 lines ABOVE that site, so
+        # writing the same line here silently stole the anchor and the guard could no longer see
+        # the code it guards. A distinct name keeps the anchor unambiguous.
+        cand_def = catalog_index.get(name)
+        if not cand_def or tool_tier(cand_def) not in ("A", "W"):
+            continue
+        required = (tool_parameters(cand_def) or {}).get("required") or []
+        emitted = emitters.get(name) or {}
+        # At least one required argument must be an EMITTED id, and every emitted one must have
+        # been produced this turn. An all-ambient write is not "equipped" in any meaningful sense.
+        # 🔴 AN ENTRY MAY BE A STRING OR A {tool, field} MAPPING, and reading only the string
+        # form would SILENTLY disable this guard for every pair upgraded to the mapping — the
+        # exact failure `declared_emitter`'s own docstring records for the refusal message.
+        # DQ-T76 needs the mapping form where the supplier returns the id under a different key
+        # (composition_arc_list returns nodes[].id for composition_arc_get's node_id).
+        wanted = {}
+        for a in required:
+            raw = emitted.get(a)
+            supplier = raw if isinstance(raw, str) else (raw or {}).get("tool")
+            if supplier:
+                wanted[a] = supplier
+        if not wanted:
+            continue
+        if all(v in ok for v in wanted.values()):
+            return name
+    return None
 
 
 def _rail_write_step_stalled(
@@ -6106,6 +6195,66 @@ async def _stream_with_tools(
                             "If what you changed was only your own understanding, say exactly "
                             "that and say their saved data is untouched. Never report a change "
                             "as done unless a tool call actually returned a result."
+                        )})
+                        continue
+
+                # P16-PROSE-CONFIRMATION — the turn HELD every argument an advertised write
+                # needs, did not call it, and ended by asking whether to proceed. Unlike the two
+                # guards above it does NOT require an empty turn: the measured instance called
+                # four tools, and that is precisely what made it equipped.
+                #
+                # Runs only when no write-side guard above claimed the slot, for the same reason
+                # they share one: a turn must never collect two directives.
+                _p16_tool = None
+                if not _directive_before_this_pass:
+                    _p16_tool = _asked_instead_of_acting(
+                        "".join(turn_text_parts),
+                        attempted=turn_attempted,
+                        succeeded=set(turn_succeeded),
+                        catalog_index=cat_index,
+                        emitters=(_tool_contract_registry() or {}).get("argument_emitters") or {},
+                        advertised=set(cat_index),
+                    )
+                if _p16_tool:
+                    _p16_guards = {
+                        "under_cap": narrated_write_nudges < NARRATED_WRITE_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_p16_guards.values()):
+                        logger.warning(
+                            "P16-PROSE-CONFIRMATION (session=%s): the turn holds what %s needs "
+                            "and asked instead — NOT nudging, held by: %s",
+                            session_id, _p16_tool,
+                            ", ".join(k for k, v in _p16_guards.items() if not v),
+                        )
+                    else:
+                        narrated_write_nudges += 1
+                        logger.warning(
+                            "P16-PROSE-CONFIRMATION (session=%s): the turn holds every argument "
+                            "%s requires, did not call it, and ended by asking — nudging once",
+                            session_id, _p16_tool,
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"prose_confirmation:{_p16_tool}", is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # It NAMES the tool, unlike the P2 directive above, and the reason
+                            # for the difference is what each guard measured. P2 infers a CLAIM
+                            # from prose and so may not say which claim. This one measured a
+                            # structural fact -- every argument this tool requires was emitted by
+                            # a tool that succeeded on this turn -- so naming it asserts only what
+                            # was measured.
+                            "[SYSTEM DIRECTIVE] You already hold every argument "
+                            f"`{_p16_tool}` requires, and you ended by asking whether to "
+                            "proceed. The author already asked for this; asking again in prose "
+                            "is not a confirmation, and it records nothing.\n"
+                            "Call it now with the arguments you are holding. If it is a "
+                            "high-impact action, calling it RAISES THE CONFIRMATION CARD -- that "
+                            "card is how this platform asks for consent, and it is the only way "
+                            "the author can actually say yes."
                         )})
                         continue
 
