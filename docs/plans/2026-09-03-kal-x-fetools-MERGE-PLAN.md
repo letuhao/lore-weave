@@ -301,6 +301,50 @@ lives in the section it cites.
 
 ---
 
+## 7.1 FINAL — every row ticked, 2026-09-04
+
+| | pre-merge (B0/B1) | final |
+|---|---|---|
+| `gate-wiring-gate --run-all` | 135 GREEN / 2 RED / 23 SKIP | **139 GREEN / 1 RED / 24 SKIP** |
+| `architecture-live-proof-iso` | NOT-PROVEN, 2 legs failed | **PROVEN, ran 7, failed []** |
+| knowledge units | 4502 | **4705** |
+| chat-service | — | **3911 passed, 7 skipped** |
+| composition units | — | **3996 passed** |
+| jobs-service | — | **142 passed, 13 skipped** |
+| AGE repo proof | 9 | **10** (wave 8 is new) |
+| FE commits outstanding | 1700 | **0** |
+
+The sweep runs against a rebuilt image, verified to carry the change **before** anything was
+asserted about it — the containers were 6–29 hours old and would have measured the old code.
+
+**The two reds are the two this merge does not own**, and both were measured rather than argued:
+
+- `raw-sql-lint` — red on two **gitignored** files. Moved aside it exits 0 over 3693 files;
+  restored, exit 1. Its verdict depends on whose working tree it runs in.
+- `test_seed_assert_applies_the_lifecycle_predicate_gate` — 42 findings, **byte-identical on the
+  source branch** in a worktree there. That branch's own gate over its own harness: B1's 18.
+
+`SKIP` is 24 rather than 23 because `t_derivative_gate_probe` is now classified NEEDS_STACK,
+which is what it always was.
+
+## 7.2 What is NOT done
+
+1. **`raw-sql-lint` scans untracked, gitignored files.** A real gate defect — its verdict is a
+   property of the developer's tree, not the repo. Not this merge's bug, not fixed here, and it
+   will read RED on any checkout carrying stray files.
+2. **The 18 pre-existing `scripts/` failures** B1 recorded are untouched. One of them
+   (`test_seed_assert`) surfaces in the sweep now only because this branch runs a sweep at all.
+3. **`_ISOLATED_NODES_CYPHER` is still unverified on AGE.** It carries `NOT EXISTS { MATCH … }`,
+   a Neo4j subquery form, and the note beside it in `graph_repos/graph_views.py` says so. The
+   AGE proof does not cover it. It is flagged, not fixed — and the same shape as the defect that
+   *was* found, so it deserves a wave of its own.
+4. **The other services were not rebuilt.** Only `knowledge-service` and `glossary-service` were
+   rebuilt for the live proof, because they are what the merge changed. The chat-service half of
+   this merge is verified by its suite (3911) and by the guard-is-called AST gate, not by a live
+   turn.
+
+---
+
 ## 8. Evidence
 
 ### B0 — KAL at `87690ed98`, measured 2026-09-03
