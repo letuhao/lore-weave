@@ -283,7 +283,10 @@
   "story-search-v2": "story_search",
   "structure-template-restore-finds-its-own-id": "composition_structure_template_edit",
   "studio-approved-call-keeps-the-studio-book": "glossary_propose_entities",
+  "t44-what-deleted-scene-links-can-i-bring-back": "composition_list_outline",
+  "t64-the-worklist-is-approved-does-the-build-follow": "composition_build_cast_and_graph",
   "t73-a-write-lands-then-the-turn-asks-about-another": "glossary_propose_entities",
+  "t87-what-deleted-entity-overrides-can-i-bring-back": "composition_entity_override_edit",
   "the-authors-word-linter-reaches-the-linter": "plan_validate",
   "tool-load": "tool_load",
   "tool-load-asks-what-a-TOOL-requires": "tool_load",
@@ -325,37 +328,94 @@
   "world-map-update-region": "world_map_update_region",
   "world-move-book": "world_move_book",
   "world-update": "world_update",
-  "t44-what-deleted-scene-links-can-i-bring-back": "composition_list_outline",
-  "t64-the-worklist-is-approved-does-the-build-follow": "composition_build_cast_and_graph",
-  "t87-what-deleted-entity-overrides-can-i-bring-back": "composition_entity_override_edit"
+  "glossary-propose-batch-seeded-and-approved": "glossary_propose_batch",
+  "glossary-propose-batch-NAMED-OUTRIGHT": "glossary_propose_batch",
+  "glossary-propose-batch-ontology-seeded": "glossary_propose_batch",
+  "softsweep-book-get": "book_get",
+  "softsweep-book-list-chapters": "book_list_chapters",
+  "softsweep-book-get-chapter": "book_get_chapter",
+  "softsweep-composition-motif-get": "composition_motif_get",
+  "softsweep-book-list": "book_list",
+  "softsweep-book-read": "book_read",
+  "softsweep-composition-get-work": "composition_get_work",
+  "softsweep-catalog-list-public-books": "catalog_list_public_books",
+  "softsweep-glossary-book-ontology-read": "glossary_book_ontology_read",
+  "softsweep-kg-list-templates": "kg_list_templates",
+  "softsweep-composition-reference-list": "composition_reference_list",
+  "softsweep-composition-arc-suggest": "composition_arc_suggest",
+  "softsweep-glossary-get-entity": "glossary_get_entity",
+  "softsweep-composition-get-mine-job": "composition_get_mine_job",
+  "softsweep-composition-arc-template-get": "composition_arc_template_get",
+  "softsweep-composition-get-derivative-context": "composition_get_derivative_context",
+  "softsweep-composition-get-outline-node": "composition_get_outline_node",
+  "softsweep-kg-build": "kg_build",
+  "softsweep-kg-project-set-embedding-model": "kg_project_set_embedding_model",
+  "softsweep-plan-bootstrap-propose": "plan_bootstrap_propose",
+  "softsweep-translation-start-job": "translation_start_job",
+  "softsweep-glossary-propose-curation": "glossary_propose_curation",
+  "arc-suggest-plural-request": "composition_arc_suggest",
+  "t76-wave1-record-a-relationship-between-two-named-entities": "kg_propose_edge",
+  "t88-replay-a-prior-turns-result-is-needed": "composition_arc_template_get",
+  "composition-generate-account-composer": "composition_generate"
  },
  "choiceless_runs_excluded": 107,
- "never_reached_runs_excluded": 184,
- "_bar_derivation": "DQ-T51: p = 1-(1-0.95)**(1/5) = 0.4507 — the selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero is evidence about the tool rather than a lost draw. THE DERIVATION IS PRIMARY; the robustness note below is measured fresh each time and is secondary to it. No measured tool lies in [0.425, 0.475), a gap of 0.050, and the bar sits inside it — so every value in that gap classifies the identical set of tools. THAT GAP HAS NARROWED: it was [0.400, 0.500) until 2026-08-30, when a denominator defect was fixed and 117 orphaned runs returned. The bar's justification is its POWER, not the width of this gap; the gap is only evidence that the exact value is not knife-edge.",
- "measured": 82,
- "lottery_count": 18,
+ "never_reached_runs_excluded": 199,
+ "_bar_derivation": "DQ-T51: p = 1-(1-0.95)**(1/5) = 0.4507 — the selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero is evidence about the tool rather than a lost draw. THE DERIVATION IS PRIMARY; the robustness note below is measured fresh each time and is secondary to it. No measured tool lies in [0.450, 0.475), a gap of 0.025, and the bar sits inside it — so every value in that gap classifies the identical set of tools. THAT GAP HAS NARROWED: it was [0.400, 0.500) until 2026-08-30, when a denominator defect was fixed and 117 orphaned runs returned. The bar's justification is its POWER, not the width of this gap; the gap is only evidence that the exact value is not knife-edge.",
+ "measured": 104,
+ "lottery_count": 24,
  "lottery": [
   "catalog_get_book",
   "composition_arc_import_analyze",
-  "composition_canon_rule_restore",
+  "composition_derivative_edit",
   "composition_generate",
+  "composition_get_mine_job",
   "composition_motif_bind_edit",
+  "composition_motif_get",
   "composition_scene_link_edit",
   "glossary_book_sync_apply",
   "glossary_create_evidence",
   "glossary_extract_entities_from_doc",
+  "glossary_get_entity",
   "glossary_propose_batch",
+  "glossary_propose_curation",
   "jobs_cancel",
   "jobs_pause",
   "kg_ontology_propose",
+  "kg_project_set_embedding_model",
   "kg_triage_schema_write",
   "plan_bootstrap_apply",
+  "plan_bootstrap_propose",
   "propose_edit",
   "settings_provider_inventory",
   "translation_job_control"
  ],
  "rates": {
   "book_chapter_save_draft": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
+  "book_get": {
+   "calls": 0,
+   "runs": 5,
+   "rate": 0.0
+  },
+  "book_get_chapter": {
+   "calls": 0,
+   "runs": 5,
+   "rate": 0.0
+  },
+  "book_list": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
+  "book_list_chapters": {
+   "calls": 0,
+   "runs": 5,
+   "rate": 0.0
+  },
+  "book_read": {
    "calls": 5,
    "runs": 5,
    "rate": 1.0
@@ -369,6 +429,11 @@
    "calls": 5,
    "runs": 30,
    "rate": 0.167
+  },
+  "catalog_list_public_books": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
   },
   "composition_arc_apply": {
    "calls": 20,
@@ -390,6 +455,11 @@
    "runs": 5,
    "rate": 0.2
   },
+  "composition_arc_suggest": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
   "composition_arc_template_drift": {
    "calls": 3,
    "runs": 5,
@@ -399,6 +469,11 @@
    "calls": 13,
    "runs": 13,
    "rate": 1.0
+  },
+  "composition_arc_template_get": {
+   "calls": 10,
+   "runs": 15,
+   "rate": 0.667
   },
   "composition_authoring_run_manage": {
    "calls": 27,
@@ -411,9 +486,9 @@
    "rate": 1.0
   },
   "composition_build_cast_and_graph": {
-   "calls": 85,
-   "runs": 175,
-   "rate": 0.486
+   "calls": 112,
+   "runs": 230,
+   "rate": 0.487
   },
   "composition_canon_rule_restore": {
    "calls": 0,
@@ -437,18 +512,38 @@
   },
   "composition_derivative_edit": {
    "calls": 9,
-   "runs": 15,
-   "rate": 0.6
+   "runs": 20,
+   "rate": 0.45
   },
   "composition_entity_override_edit": {
-   "calls": 77,
-   "runs": 93,
-   "rate": 0.828
+   "calls": 110,
+   "runs": 138,
+   "rate": 0.797
   },
   "composition_generate": {
    "calls": 0,
-   "runs": 10,
+   "runs": 45,
    "rate": 0.0
+  },
+  "composition_get_derivative_context": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
+  "composition_get_mine_job": {
+   "calls": 0,
+   "runs": 5,
+   "rate": 0.0
+  },
+  "composition_get_outline_node": {
+   "calls": 3,
+   "runs": 5,
+   "rate": 0.6
+  },
+  "composition_get_work": {
+   "calls": 5,
+   "runs": 10,
+   "rate": 0.5
   },
   "composition_library_translate": {
    "calls": 5,
@@ -467,17 +562,27 @@
   },
   "composition_motif_bind_edit": {
    "calls": 15,
-   "runs": 59,
-   "rate": 0.254
+   "runs": 69,
+   "rate": 0.217
   },
   "composition_motif_edit": {
    "calls": 15,
    "runs": 15,
    "rate": 1.0
   },
+  "composition_motif_get": {
+   "calls": 0,
+   "runs": 5,
+   "rate": 0.0
+  },
   "composition_motif_link_edit": {
    "calls": 112,
    "runs": 112,
+   "rate": 1.0
+  },
+  "composition_reference_list": {
+   "calls": 5,
+   "runs": 5,
    "rate": 1.0
   },
   "composition_reference_update": {
@@ -499,6 +604,11 @@
    "calls": 3,
    "runs": 5,
    "rate": 0.6
+  },
+  "glossary_book_ontology_read": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
   },
   "glossary_book_sync_apply": {
    "calls": 5,
@@ -535,6 +645,11 @@
    "runs": 15,
    "rate": 0.333
   },
+  "glossary_get_entity": {
+   "calls": 0,
+   "runs": 5,
+   "rate": 0.0
+  },
   "glossary_ontology_delete": {
    "calls": 5,
    "runs": 5,
@@ -542,8 +657,13 @@
   },
   "glossary_propose_batch": {
    "calls": 5,
-   "runs": 15,
-   "rate": 0.333
+   "runs": 50,
+   "rate": 0.1
+  },
+  "glossary_propose_curation": {
+   "calls": 0,
+   "runs": 5,
+   "rate": 0.0
   },
   "glossary_propose_entities": {
    "calls": 12,
@@ -556,8 +676,8 @@
    "rate": 0.8
   },
   "glossary_search": {
-   "calls": 5,
-   "runs": 5,
+   "calls": 10,
+   "runs": 10,
    "rate": 1.0
   },
   "jobs_cancel": {
@@ -580,7 +700,17 @@
    "runs": 10,
    "rate": 0.9
   },
+  "kg_build": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
   "kg_entity_edge_timeline": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
+  "kg_list_templates": {
    "calls": 5,
    "runs": 5,
    "rate": 1.0
@@ -589,6 +719,11 @@
    "calls": 1,
    "runs": 5,
    "rate": 0.2
+  },
+  "kg_project_set_embedding_model": {
+   "calls": 0,
+   "runs": 5,
+   "rate": 0.0
   },
   "kg_propose_edge": {
    "calls": 28,
@@ -616,13 +751,18 @@
    "rate": 0.6
   },
   "memory_timeline": {
-   "calls": 10,
-   "runs": 10,
+   "calls": 13,
+   "runs": 13,
    "rate": 1.0
   },
   "plan_bootstrap_apply": {
-   "calls": 24,
-   "runs": 60,
+   "calls": 29,
+   "runs": 100,
+   "rate": 0.29
+  },
+  "plan_bootstrap_propose": {
+   "calls": 2,
+   "runs": 5,
    "rate": 0.4
   },
   "plan_keep_material": {
@@ -636,9 +776,9 @@
    "rate": 1.0
   },
   "plan_validate": {
-   "calls": 19,
-   "runs": 20,
-   "rate": 0.95
+   "calls": 29,
+   "runs": 30,
+   "rate": 0.967
   },
   "propose_edit": {
    "calls": 11,
@@ -691,9 +831,9 @@
    "rate": 0.3
   },
   "tool_load": {
-   "calls": 30,
-   "runs": 45,
-   "rate": 0.667
+   "calls": 50,
+   "runs": 65,
+   "rate": 0.769
   },
   "translation_job_control": {
    "calls": 1,
@@ -708,6 +848,11 @@
   "translation_set_active_version": {
    "calls": 10,
    "runs": 10,
+   "rate": 1.0
+  },
+  "translation_start_job": {
+   "calls": 5,
+   "runs": 5,
    "rate": 1.0
   },
   "translation_update_settings": {
@@ -726,8 +871,8 @@
    "rate": 0.895
   },
   "world_get": {
-   "calls": 5,
-   "runs": 5,
+   "calls": 10,
+   "runs": 10,
    "rate": 1.0
   },
   "world_map_add_marker": {
@@ -741,13 +886,13 @@
    "rate": 1.0
   },
   "world_map_delete": {
-   "calls": 21,
-   "runs": 25,
-   "rate": 0.84
+   "calls": 22,
+   "runs": 30,
+   "rate": 0.733
   },
   "world_map_list": {
-   "calls": 5,
-   "runs": 5,
+   "calls": 10,
+   "runs": 10,
    "rate": 1.0
   },
   "world_map_remove_region": {

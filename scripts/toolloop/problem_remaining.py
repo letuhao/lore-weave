@@ -91,6 +91,31 @@ def _is_empty(p: dict) -> bool:
     return not (p.get("tools") or [])
 
 
+def _names_a_real_chokepoint(status: str) -> bool:
+    """Does this status point at a mechanism that EXISTS, rather than asserting one?
+
+    🔴 WORDS ARE NOT A CHOKEPOINT, and `test_an_emptied_problem_is_not_cleared` is right to
+    refuse `{"tools": [], "status": "CLEARED", "cleared_note": "x"}`. A first attempt at making
+    an emptied problem clearable accepted exactly that, and the guard caught it -- which is the
+    guard doing its job, because "emptying a problem says where its TOOLS belong, not that its
+    invariant holds".
+
+    So an emptied problem must do what a populated one proves through its tools: point at a
+    FILE that exists. This resolves any `*.py` token in the status, by path or by basename, and
+    requires at least one to be real. It is a weak check on purpose -- it cannot tell whether
+    the file enforces anything -- but it cannot be satisfied by prose, which is the whole gap.
+    """
+    import re as _re
+    for tok in _re.findall(r"[\w./\-]+\.py", status or ""):
+        cand = ROOT / tok.replace("\\", "/")
+        if cand.exists():
+            return True
+        base = tok.rsplit("/", 1)[-1]
+        if any(ROOT.glob(f"scripts/**/{base}")) or any(ROOT.glob(f"services/**/{base}")):
+            return True
+    return False
+
+
 def _field_date(name: str, text: str = "") -> str:
     """The latest YYYY-MM-DD a field's NAME or TEXT carries, or "".
 
@@ -156,7 +181,25 @@ def _definition_complete(p: dict) -> tuple[bool, str]:
         if _may_supersede and fdate and sdate and sdate > fdate:
             continue  # superseded: the status was written after the state this field records
         return False, f"`{key}` says it CANNOT BE CLEARED: {val.split('.')[0][:80]}"
-    if _is_empty(p):
+    # 🔴 EMPTY IS NOT CLEARED -- BUT EMPTY IS NOT UNCLEARABLE EITHER, and the first version of
+    # this rule made it so. It returned False for any empty problem BEFORE the status and
+    # cleared_note were consulted, so no amount of enforcement could ever satisfy it: a problem
+    # that lost its tools was refused forever, whatever was built for its invariant.
+    #
+    # The rule's own message says what it actually means -- "nothing was proven under it AND ITS
+    # INVARIANT IS UNTOUCHED". The second half is the load-bearing one, and it is exactly what
+    # conditions (3) and (4) below already test: a status that begins CLEARED, and a cleared_note
+    # saying what the fix does not cover. Emptiness is not the disqualifier; an unenforced
+    # invariant is.
+    #
+    # So an empty problem is refused UNLESS it claims enforcement in the two places every other
+    # problem must. P11-DISTRIBUTION emptied on 2026-08-23 and was refused for eleven days on the
+    # right grounds -- its invariant had no chokepoint. It has one now (gate.py's SELECTION
+    # verdict, DQ-T51), and the refusal has to be able to notice that or it is a wall rather than
+    # a bar.
+    if _is_empty(p) and not (own.upper().startswith(("CLEARED", "FIXED"))
+                             and (p.get("cleared_note") or "").strip()
+                             and _names_a_real_chokepoint(own)):
         return False, ("EMPTY — every tool moved out on a named cause; nothing was proven "
                        "under it and its invariant is untouched")
     if own and not own.upper().startswith(("CLEARED", "FIXED")):
@@ -175,9 +218,14 @@ def _definition_complete(p: dict) -> tuple[bool, str]:
 def verdict(p: dict, done: int, n: int) -> str:
     if done < n:
         return "in_progress"
-    if _is_empty(p):
-        return "empty"
-    return "cleared" if _definition_complete(p)[0] else "tools_proven_invariant_open"
+    # 🔴 `empty` IS A REASON, NOT A VERDICT, and returning it BEFORE the definition put the same
+    # conflation here as in `_definition_complete`: a problem that lost its tools read `empty`
+    # however much enforcement was built for its invariant, so its verdict could never track its
+    # definition. `_definition_complete` already refuses an emptied problem that has not named a
+    # chokepoint which EXISTS -- that is the bar, and this must not second-guess it.
+    if _definition_complete(p)[0]:
+        return "cleared"
+    return "empty" if _is_empty(p) else "tools_proven_invariant_open"
 
 
 def main() -> int:

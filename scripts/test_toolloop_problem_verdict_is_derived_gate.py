@@ -152,22 +152,41 @@ class TestTheVerdictItself:
         assert pr.verdict({"tools": ["a", "b"], "status": "CLEARED",
                            "cleared_note": "x"}, 1, 2) == "in_progress"
 
-    def test_the_real_partition_has_more_unmet_than_cleared(self):
-        """RED on the original defect, against the SHIPPED contract rather than a fixture.
+    def test_a_verdict_of_cleared_ALWAYS_tracks_the_definition(self):
+        """THE STRICTER ASSERTION THE PREDECESSOR ASKED FOR, in its own words.
 
-        The headline said cleared=16 remaining=0. Asserting the relation rather than the number
-        13, so the guard does not have to be edited every time a problem is genuinely closed.
+        This replaced `test_the_real_partition_has_more_unmet_than_cleared`, which asserted
+        `len(unmet) > len(cleared)` against the shipped contract and said of itself: "if this ever
+        flips, the loop is genuinely nearly done and this assertion should be replaced by a
+        stricter one". It flipped on 2026-09-03 when the last of the twelve closed.
+
+        🔴 THE OLD SHAPE WOULD HAVE GONE RED ON SUCCESS, which is the worst kind of guard: the
+        only way to make it green again is to stop finishing the work. It was also a COUNT, and a
+        count cannot say that the right problems are cleared -- only how many.
+
+        This asserts the RELATION instead, which is what the original defect was about and cannot
+        go stale: a problem reads `cleared` if and only if every one of its tools is proven AND
+        `_definition_complete` holds. The headline said cleared=16 remaining=0 while thirteen
+        problems failed the definition; that is exactly the disagreement this now forbids, in
+        either direction.
         """
         probs = json.loads(PROBLEMS.read_text(encoding="utf-8"))
         led = _ledger()
-        counts = {}
+        wrong = []
         for prob in probs["problems"]:
-            done = sum(1 for t in prob["tools"]
-                       if pr.state_of(led, t) == "proven")
-            counts[prob["id"]] = pr.verdict(prob, done, len(prob["tools"]))
-        unmet = [k for k, v in counts.items() if v == "tools_proven_invariant_open"]
-        cleared = [k for k, v in counts.items() if v == "cleared"]
-        assert unmet, "the whole point of the fix is that these are visible"
-        assert len(unmet) > len(cleared), (
-            f"cleared={sorted(cleared)} unmet={sorted(unmet)} — if this ever flips, the loop is "
-            f"genuinely nearly done and this assertion should be replaced by a stricter one")
+            done = sum(1 for t in prob["tools"] if pr.state_of(led, t) == "proven")
+            v = pr.verdict(prob, done, len(prob["tools"]))
+            defn_ok, _why = pr._definition_complete(prob)
+            tools_ok = done == len(prob["tools"])
+            if (v == "cleared") != (defn_ok and tools_ok):
+                wrong.append(f"{prob['id']}: verdict={v} definition={defn_ok} tools={tools_ok}")
+        assert not wrong, (
+            "a verdict disagrees with the definition it is supposed to be derived from — the "
+            "exact defect this file exists for, whichever way it points: " + "; ".join(wrong)
+        )
+
+    def test_the_definition_can_still_refuse(self):
+        """The control. Without it the assertion above passes on a definition that never
+        refuses anything -- which is how a derived verdict becomes a rubber stamp."""
+        ok, why = pr._definition_complete({"tools": ["a"], "status": "DIAGNOSED, not written"})
+        assert not ok and "its own status says" in why

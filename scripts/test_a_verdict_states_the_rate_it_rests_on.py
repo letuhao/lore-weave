@@ -29,8 +29,22 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
+import pytest  # noqa: E402
+
 import gate as gt  # noqa: E402
 import selection_rate as sr  # noqa: E402
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts" / "tool-selection-rates.json"
+
+
+def _all_measured_tools() -> set[str]:
+    """Every tool the LIVE catalogue serves — the population the rate contract is a subset of."""
+    try:
+        cat = json.loads((ROOT / "contracts" / "tool-catalog-cache.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return set(cat)
 
 LEDGER = json.loads((ROOT / "contracts" / "tool-deep-dive-ledger.json").read_text(
     encoding="utf-8"))
@@ -80,9 +94,24 @@ def test_a_HIGH_rate_tool_does_not():
 
 
 def test_a_tool_with_TOO_FEW_runs_is_not_labelled():
-    """A rate over 3 runs is noise, and labelling it would invent a finding."""
-    assert sr.rate_for("book_list") is None
-    assert "selection rate" not in _live_line("book_list")
+    """A rate over too few runs is noise, and labelling it would invent a finding.
+
+    🔴 THE TOOL IS DERIVED, NOT NAMED, AND THE HARDCODED ONE WENT STALE. This asserted
+    `rate_for("book_list") is None`. On 2026-09-03 the rate contract was regenerated -- a
+    deliberate act the ratchet requires -- and book_list crossed MIN_RUNS with 5 runs at rate
+    1.0, so it is now labelled, CORRECTLY. The test then failed for a tool doing exactly the
+    right thing, which is a fixture rotting rather than a defect.
+
+    A named example is a number typed into a test. Picking any tool the contract does not rate
+    keeps the assertion about the RULE -- no tool below the run floor may be labelled -- and it
+    cannot go stale when the corpus grows.
+    """
+    rated = set(json.loads(CONTRACT.read_text(encoding="utf-8"))["rates"])
+    unrated = next((t for t in sorted(_all_measured_tools()) if t not in rated), None)
+    if unrated is None:
+        pytest.skip("every measured tool now clears the run floor — nothing to assert against")
+    assert sr.rate_for(unrated) is None
+    assert "selection rate" not in _live_line(unrated)
 
 
 def _selection_line(tool: str, called: int = 0, runs: int = 5):

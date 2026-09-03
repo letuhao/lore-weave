@@ -284,6 +284,32 @@ def _catalog_defs() -> list[dict]:
 _CATALOG_DEFS: list[dict] | None = None
 
 
+def _legacy_tools() -> set[str]:
+    """Tools `drop_superseded_tools` removes from EVERY turn.
+
+    🔴 A LEGACY TOOL'S SELECTION RATE MEASURES NOTHING, and counting one dilutes the band this
+    module exists to police. Since 2026-08-25 the superseded gate drops every `visibility:
+    legacy` tool from the wire with or without a replacement, so the model is never offered it
+    and its rate is 0.0 BY CONSTRUCTION -- not because the model declined it.
+
+    Measured 2026-09-03: of the ten tools that had crossed DOWNWARD into the lottery band since
+    the contract was written, THREE were legacy (book_get, book_get_chapter, book_list_chapters),
+    each at exactly 0/5. Their presence made the ratchet report a wider regression than had
+    occurred and put a category error in front of whoever read it next -- "the model picks this
+    tool too rarely" about a tool it was never shown.
+
+    This is the same correction made to the measured-turn reachability gate in the same loop, and
+    for the same reason: a rule written before the superseded gate existed cannot tell "not
+    chosen" from "not offered".
+    """
+    try:
+        cat = json.loads((ROOT / "contracts" / "tool-catalog-cache.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {n for n, r in cat.items()
+            if (r.get("meta") or {}).get("visibility", "live") == "legacy"}
+
+
 def derive() -> dict:
     sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
     import collections
@@ -340,7 +366,9 @@ def derive() -> dict:
 
     rates = {t: {"calls": calls[t], "runs": n, "rate": round(calls[t] / n, 3)}
              for t, n in runs.items() if n >= MIN_RUNS}
-    lottery = sorted(t for t, v in rates.items() if v["rate"] < LOTTERY_BELOW)
+    _legacy = _legacy_tools()
+    lottery = sorted(t for t, v in rates.items()
+                     if v["rate"] < LOTTERY_BELOW and t not in _legacy)
     return {"min_runs": MIN_RUNS, "lottery_below": LOTTERY_BELOW, "_want": want,
             "choiceless_runs_excluded": skipped,
             "never_reached_runs_excluded": truncated,
