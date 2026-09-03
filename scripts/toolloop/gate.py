@@ -613,6 +613,30 @@ def cmd_refresh(a) -> int:
     return 0
 
 
+def _remaining(surface: int | None, concluded: int) -> int | None:
+    """`surface - concluded`, refusing to publish an impossible remainder.
+
+    🔴 THE VALUE THIS GUARDS AGAINST WAS SITTING IN THE LEDGER: `release_surface: 198`,
+    `concluded_in_release_surface: 200`, `remaining_in_release_surface: -2` — and `cmd_audit`
+    called the file clean, because nothing checked that the two sides counted the same population.
+    A numerator derived from the rows was being divided by a denominator frozen five weeks
+    earlier.
+
+    Raising here is deliberate. A wrong number that reads plausibly is worse than a stopped
+    generator: the -2 was published, quoted into two documents, and survived an audit.
+    """
+    if surface is None:
+        return None
+    r = surface - concluded
+    if r < 0:
+        raise ValueError(
+            f"remaining_in_release_surface would be {r}: the release surface is {surface} but "
+            f"{concluded} rows count toward release. The numerator and the denominator are "
+            f"measuring different populations — fix the SET they range over, never the subtraction."
+        )
+    return r
+
+
 def recompute_progress(ledger: dict) -> dict:
     """🔴 EVERY COUNTER IN `progress` IS DERIVED HERE, OR IT DOES NOT BELONG IN `progress`.
 
@@ -658,22 +682,76 @@ def recompute_progress(ledger: dict) -> dict:
     live_items = [(t, v) for t, v in tools.items() if counts(v)]
     live = [v for _, v in live_items]
     concluded = sum(1 for v in live if v.get("state") in TERMINAL)
-    surface = den.get("federated_tools")
 
-    # `last_batch` from the evidence actually on disk, not from whoever last remembered to type
-    # it. Both naming conventions are in use — `batch40.json` and `b41-norail.json` — and an
-    # anchored `batch(\d+)` silently stopped at 40 while four batch-41 files sat beside it.
-    best = (-1, "")
+    # 🔴 THE DENOMINATOR IS A SET, DERIVED FROM THE SSOT — NOT A CONSTANT FROZEN BEFORE THE SSOT
+    # EXISTED, AND NOT A NUMBER THAT COUNTS A DIFFERENT POPULATION FROM THE NUMERATOR.
+    #
+    # Measured 2026-09-03: `denominator.federated_tools` was a hand-derived **198**, snapshotted
+    # 2026-08-13. `contracts/tool-catalog-cache.json` — regenerated from the LIVE federation, and
+    # the thing that actually replaced that snapshot as the source of truth — was created
+    # 2026-08-14, one day later, and reads **199 live**. Meanwhile `concluded` is derived from the
+    # rows and reads **200**. So `progress` published `200 of 198` and
+    # `remaining_in_release_surface: -2`, and `cmd_audit` reported it CLEAN.
+    #
+    # The extra row is `workflow_list`: chat-service-local, advertised to the model when a turn has
+    # workflows, and NOT on the federated catalogue — so it is genuinely reachable and genuinely
+    # not federated. A denominator defined as "federated tools" can never contain it, which is why
+    # counting it against that denominator produced an impossible number rather than a wrong one.
+    #
+    # So the surface is the SET the numerator actually ranges over: everything live on the
+    # federated catalogue, plus every row this ledger counts toward release. Both sides now
+    # measure the same population, which is the only way the remainder means anything.
+    surface_set = {t for t, _ in live_items}
+    try:
+        cat = json.loads((ROOT / "contracts" / "tool-catalog-cache.json")
+                         .read_text(encoding="utf-8"))
+        surface_set |= {n for n, r in cat.items()
+                        if (r.get("meta") or {}).get("visibility") != "legacy"}
+    except (OSError, ValueError):
+        # The cache is the SSOT; without it fall back to the frozen figure rather than inventing
+        # one, and let the negative-remainder guard below catch the drift it causes.
+        surface_set = set()
+    surface = len(surface_set) if surface_set else den.get("federated_tools")
+
+    # 🔴 `last_batch` FROM THE EVIDENCE DIRECTORY DATE, NOT FROM A DIGIT IN THE FILENAME.
+    #
+    # This read `re.search(r"/(?:batch|b)(\d+)", f)`, so it could only see evidence whose stem
+    # began `batch<N>` or `b<N>`. Measured 2026-09-03: it returned `batch-40 (2026-08-14)` while
+    # the newest evidence in these very rows was `docs/eval/toolloop/2026-09-02/softsweep{1..4}
+    # .json`, and 33 rows carried `cycle: "batch-41"`. The field WAS derived and `cmd_audit` WAS
+    # clean, and the value was nineteen days stale — a derivation keyed on a naming convention is
+    # a hand-typed value with extra steps. The comment this replaces already recorded the same
+    # failure once and widened the regex instead of removing the name dependency.
+    #
+    # Every evidence path is `docs/eval/toolloop/<YYYY-MM-DD>/<stem>.json`, so the DATE is
+    # structural and the stem is free text. Order by (date, stem) and report both.
+    # ORDER BY (date, batch-number-if-any, stem). The date is primary because it is structural;
+    # the batch number is the SECONDARY key and not the primary one, because within a single day
+    # `batch40.json` and `b41-norail.json` sit side by side and a plain string max picks
+    # `batch40` — losing exactly the ordering the old regex got right. A stem with no number
+    # sorts below one that has a number on the same day, which is what "batch 41 came after the
+    # unnumbered reruns of that day" means.
+    dated: list[tuple[str, int, str]] = []
     for v in tools.values():
         f = v.get("evidence_file") or ""
-        m = re.search(r"/(?:batch|b)(\d+)", f)
-        if m and int(m.group(1)) > best[0]:
-            best = (int(m.group(1)), f)
-    last_batch = ledger.get("progress", {}).get("last_batch")
-    if best[0] >= 0:
-        parts = best[1].split("/")
-        date = parts[-2] if len(parts) > 1 else ""
-        last_batch = f"batch-{best[0]} ({date})" if date else f"batch-{best[0]}"
+        parts = f.split("/")
+        if len(parts) >= 2 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[-2]):
+            stem = parts[-1][:-5] if parts[-1].endswith(".json") else parts[-1]
+            m = re.match(r"(?:batch|b)(\d+)", stem)
+            dated.append((parts[-2], int(m.group(1)) if m else -1, stem))
+    if dated:
+        _d, _n, _stem = max(dated)
+        last_batch = f"batch-{_n} ({_d})" if _n >= 0 else f"{_stem} ({_d})"
+    elif any(v.get("evidence_file") for v in tools.values()):
+        # RAISE rather than silently keeping the stored value: rows HAVE evidence and none of it
+        # parsed, so the path convention moved. Keeping the old string is precisely how this field
+        # read as derived while being nineteen days out of date.
+        raise ValueError(
+            "rows carry evidence_file values but none matched "
+            "docs/eval/toolloop/<YYYY-MM-DD>/<stem>.json — last_batch cannot be derived. Fix the "
+            "path convention or this derivation; do not fall back to the stored value.")
+    else:
+        last_batch = ledger.get("progress", {}).get("last_batch")
 
     # 🔴 A COUNTER MUST NEVER PARSE ENGLISH. This read `state or status` and classified the result
     # with `startswith`. `status` is free prose — 104 of 156 rows carried only that field, median
@@ -708,7 +786,11 @@ def recompute_progress(ledger: dict) -> dict:
         "release_surface": surface,
         "shippable_denominator": surface,
         "concluded_in_release_surface": concluded,
-        "remaining_in_release_surface": (surface - concluded) if surface is not None else None,
+        # 🔴 A NEGATIVE REMAINDER IS ARITHMETICALLY IMPOSSIBLE AND WAS BEING REPORTED AS CLEAN.
+        # `_remaining()` raises instead of publishing one, because -2 sat in this file for weeks
+        # with `gate.py audit` printing "audit clean" over it. A counter that can express an
+        # impossible value without complaining is not a counter, it is a decoration.
+        "remaining_in_release_surface": _remaining(surface, concluded),
         # DERIVED from whether the row cites a re-checkable file, never from the label it wrote
         # about itself. See is_gate_backed() for what trusting the label cost.
         "evidence_split": {

@@ -1761,8 +1761,11 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_THE_FRONTEND_BRANCH_CHECKS_IT_TOO": [
         # DQ-5's shape exactly: a gate wired on one dispatch path only, leaving a measured tool
         # out by construction.
-        (f"{CS}/app/services/stream_service.py", "                    _fe_dupe = _fe_dup_check(_fe_args)",
-                                                 "                    _fe_dupe = None  # falsifier"),
+        # V6 — RE-ANCHORED. The v1 intercept carried `_fe_dupe = _fe_dup_check(_fe_args)` and is
+        # deleted; the surviving dispatch path runs the SAME check. DQ-5's shape is unchanged —
+        # a gate wired on one path only — there is simply one path left to wire it on.
+        (f"{CS}/app/services/stream_service.py", "                _dupe = _dup_check(args_obj)",
+                                                 "                _dupe = None  # falsifier"),
     ],
     # The narrowness half. A rule this cheap earns its keep by NOT over-firing, and a false
     # refusal on a write is worse than the failure it replaces — so each way of over-firing
@@ -2324,24 +2327,14 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                                 "        return True"),
     ],
 
-    "test_THE_FRONTEND_VALIDATION_REFUSAL_IS_STAMPED_REFUSED": [
-        # Put 101 calls that never ran back in the corpus with the genuine tool failures.
+    "test_A_REFUSAL_IS_STAMPED_REFUSED_NOT_RECORDED_AS_A_FAILURE": [
+        # Put refusals back in the corpus as genuine tool failures. The guard counts the stamping
+        # SITES (the v1 intercept's `_fe_chunk` stamp that the old scenario edited is deleted), so
+        # the falsifier removes one: below the floor, a refusal is recorded as a plain failure and
+        # every rate computed over the corpus re-inflates — CP-5.4's measured 101 calls.
         (f"{CS}/app/services/stream_service.py",
-         'yield {"tool_call": instrument.stamp_refused(\n                            _fe_chunk,',
-         'yield {"tool_call": (lambda c, k: c)(\n                            _fe_chunk,'),
-    ],
-    "test_THE_TWO_REFUSAL_KINDS_ARE_KEPT_APART": [
-        # Merge them: "invented a value it could not know" and "got the shape wrong" become one
-        # number, and neither can be counted again.
-        (f"{CS}/app/services/stream_service.py",
-         '"unresolved_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)',
-         '"invalid_arguments" if True or _UNRESOLVED_ID_RE.search(_fe_err)'),
-    ],
-    "test_THE_KIND_CLAIMS_ONLY_WHAT_THE_SITE_CAN_KNOW": [
-        # Assert the model's intent from a pattern failure the site cannot see intent through.
-        (f"{CS}/app/services/stream_service.py",
-         '"unresolved_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)',
-         '"invented_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)'),
+         'yield {"tool_call": instrument.stamp_refused(_vfail, "unknown_vocabulary_value")}',
+         'yield {"tool_call": _vfail}'),
     ],
     "test_THE_MEASUREMENT_THAT_SAYS_RESOLUTION_WOULD_NOT_HELP_IS_RECORDED": [
         # Drop the measurement and the next reader rebuilds the resolver binding that fixes none
@@ -2498,20 +2491,21 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/derive.py", "    service = declared_service(tool_def)",
                              "    service = None  # falsifier"),
     ],
-    "test_THE_CONFIRM_TOOLS_ARE_WRITES_AND_COMPOSE_IS_INERT": [
-        # A human-confirmed write derived as a read is the fail-OPEN direction declared_lane's
-        # docstring warns about: it would put a W tool in the safe read-first hot set.
-        (f"{CS}/app/services/frontend_tools.py",
-         '"_meta": {"tier": "W", "scope": "none", "served_by": "chat-service",\n'
-         '                  "_confirm_step": True},',
-         '"_meta": {"tier": "R", "scope": "none", "served_by": "chat-service",\n'
-         '                  "_confirm_step": True},'),
+    "test_COMPOSE_PROSE_IS_INERT_AND_IS_NOW_THE_ONLY_LOCAL_TOOL": [
+        # V7 — RE-ANCHORED. The old edit flipped a confirm tool's tier inside frontend_tools.py,
+        # which no longer exists. The guard's live half is the POPULATION: chat-service serves
+        # exactly one tool of its own, and a second appearing without a reason it cannot be a
+        # domain or gateway tool is how architecture v1 accumulated in the first place.
+        (f"{CS}/app/services/local_tools.py",
+         "    return [COMPOSE_PROSE_TOOL]",
+         "    return [COMPOSE_PROSE_TOOL, {'type': 'function', 'function': {'name': 'sneaky_local', 'parameters': {}}}]"),
     ],
-    "test_THE_NAME_ACTUALLY_LIES_TODAY_SO_THIS_IS_NOT_HYPOTHETICAL": [
-        # Attribute the tool to the team its NAME names — glossary-service, which does not serve it.
-        (f"{CS}/app/services/frontend_tools.py",
-         '"_meta": {"tier": "W", "scope": "book", "served_by": "chat-service"},',
-         '"_meta": {"tier": "W", "scope": "book"},'),
+    "test_THE_NAME_NO_LONGER_LIES__THE_TOOL_MOVED_TO_ITS_DECLARED_OWNER": [
+        # Put the tool back into chat-service's own set — the exact name-lies-about-owner shape
+        # that made `served_by` necessary, and the condition this guard asserts is gone.
+        (f"{CS}/app/services/local_tools.py",
+         "    return [COMPOSE_PROSE_TOOL]",
+         "    return [COMPOSE_PROSE_TOOL, {'type': 'function', 'function': {'name': 'glossary_propose_entity_edit', 'parameters': {}}}]"),
     ],
     "test_A_DECLARED_OWNER_THAT_NAMES_NOTHING_IS_REFUSED_NOT_IGNORED": [
         # Fall back to the prefix on a typo: `chat-serivce` silently becomes `glossary-service`.
@@ -2532,16 +2526,15 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_A_LOCAL_NAME_NEVER_COLLIDES_WITH_A_FEDERATED_ONE": [
         # Two definitions for one name is a real ambiguity about which one a turn dispatches.
         (f"{CS}/app/services/local_tools.py",
-         "    return [COMPOSE_PROSE_TOOL, *_ALL_FRONTEND_TOOLS_BY_NAME.values()]",
-         "    return [COMPOSE_PROSE_TOOL, *_ALL_FRONTEND_TOOLS_BY_NAME.values(),\n"
-         "            {'function': {'name': 'book_list'}}]"),
+         "    return [COMPOSE_PROSE_TOOL]",
+         "    return [COMPOSE_PROSE_TOOL, {'function': {'name': 'book_list'}}]"),
     ],
     "test_COMPOSE_PROSE_IS_IN_THE_SET_BECAUSE_IT_IS_THE_POINT_OF_THE_JOURNEY": [
         # Drop the co-writer's own tool from the union — the exact omission that made its role read
         # as one no recorded session had ever taken.
         (f"{CS}/app/services/local_tools.py",
-         "    return [COMPOSE_PROSE_TOOL, *_ALL_FRONTEND_TOOLS_BY_NAME.values()]",
-         "    return [*_ALL_FRONTEND_TOOLS_BY_NAME.values()]"),
+         "    return [COMPOSE_PROSE_TOOL]",
+         "    return []"),
     ],
 }
 

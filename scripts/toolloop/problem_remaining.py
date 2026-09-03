@@ -246,7 +246,20 @@ def main() -> int:
         print("DQ backlog, DERIVED from the ledger (never the hand-typed list):")
         for k, why in open_dqs(ledger):
             print(f"  open {k:<8} {why}")
-        return 0
+        # 🔴 THE EXIT CODE MUST AGREE WITH THE VERDICT PRINTED DIRECTLY ABOVE IT.
+        #
+        # This returned 0 unconditionally — so a run that printed "STOPPING IS NOT YET LEGITIMATE"
+        # over 13 unmet problems handed back SUCCESS. Measured 2026-09-03: the resolution
+        # RUNBOOK carried `STATUS: COMPLETE` while this script refused the stop, and any CI check
+        # or `$?` read scored the refusal as a pass. That is the same shape as the two other
+        # instruments the same audit found lying by construction (`gate.py`'s name-shaped
+        # last_batch, a frozen release_surface yielding a NEGATIVE remainder reported as clean).
+        #
+        # This is the THIRD time this function's stop signal has been wrong, and the previous two
+        # fixes both corrected what it PRINTS while leaving what it RETURNS alone — see the
+        # ledger rows at 4812 and 5713. A verdict nobody can act on programmatically is a warning,
+        # not a gate.
+        return 1 if unsound else 0
 
     i, p, states, done = nxt
     print(f"NEXT — cycle {i}: {p['id']} — {p['title']}")
