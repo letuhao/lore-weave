@@ -1,23 +1,36 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `30077d74f` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-25
+**HEAD:** `c25b8be99` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-09-03
 
-## 📕 2026-08-24 → 08-25 — the BLOCKED-TOOL loop: 197 proven, 1 blocked, and a warning about that number
+> 🔴 **THIS BLOCK WENT 495 COMMITS STALE (2026-08-25 → 2026-09-03) AND EVERY NUMBER IN IT WAS
+> WRONG.** `AGENTS.md` calls this file the source of truth for current status and orders every
+> session to open with it, so a stale block here is the most expensive stale block in the repo.
+> **Re-derive before quoting — never copy a number out of this file:**
+>
+> ```
+> cd scripts/toolloop && python gate.py audit        # ⚠ must cd; it imports call_outcome by bare name
+> cd scripts/toolloop && python problem_remaining.py # exits 1 while stopping is not legitimate
+> cat docs/sessions/OPEN_DECISIONS.md                # generated; the live DQ set
+> ```
 
-**Where it stands, derived not typed** — `python scripts/toolloop/gate.py audit` (clean, 203 rows)
-and `python scripts/toolloop/problem_remaining.py`:
+## 📕 2026-09-02 — the RESOLUTION loop CLOSED: 200 of 200 proven, 0 blocked, 0 defects open
+
+**Where it stands, derived not typed** (values 2026-09-03; re-run the commands above):
 
 ```
-tools:    declared=315  concluded=198  proven=197  blocked=1     (+5 deprecated = 203 rows)
-problems: problems=16   cleared=15     remaining=1
-DQs open: 10
+tools:    declared=315  concluded=200  proven=200  blocked=0   (207 ledger rows; 7 not counted toward release)
+          release surface 200 = 199 live federated + workflow_list (chat-service-local)
+problems: problems=16   cleared=3   tools-proven/invariant-open=12   empty=1
+defects:  222 total     0 open      (185 fixed · 28 withdrawn · 8 cannot_reproduce · 1 superseded)
+DQs open: 0             (68 rows: 64 answered, 4 withdrawn)
 ```
 
-### 🔴 READ THIS BEFORE QUOTING "197 PROVEN / 1 BLOCKED"
+### 🔴 READ THIS BEFORE QUOTING "200 PROVEN / 0 BLOCKED"
 
-That is a TOOL count, and `problem_remaining.py` refuses to let it stand alone:
+That is a TOOL count, and `problem_remaining.py` refuses to let it stand alone — **and since
+2026-09-03 it exits non-zero rather than printing the refusal over a green exit code**:
 
-> ⚠ 12 of 15 'CLEARED' problem(s) do NOT meet the definition — every tool reads proven, but…
+> ⚠ 13 of the 16 problem(s) whose TOOLS all read proven do NOT meet the CLEARED definition
 
 Several of those problems say so in their own words: **P3-NAME-TO-ID** "CANNOT BE CLEARED, AND I AM
 NOT GOING TO ENGINEER AROUND IT"; **P7-FALSE-ABSENCE** "NOW READS 'CLEARED' BY TOOL COUNT AND ITS

@@ -1,5 +1,11 @@
 # FRONTEND JOURNEY LOOP — one journey, driven by a real model, through the real UI
 
+> **STATUS: COMPLETE (2026-08-13).** Both declared denominators closed — 12/12 workflows,
+> 5/5 real skills. Superseded by
+> [`2026-08-13-tool-deep-dive-RUNBOOK.md`](2026-08-13-tool-deep-dive-RUNBOOK.md), itself now
+> COMPLETE. **Do not re-enter this loop.** *(Added 2026-09-03; the file carried no status
+> line at all.)*
+
 *Successor to [`2026-08-10-toolv2-loop-RUNBOOK.md`](2026-08-10-toolv2-loop-RUNBOOK.md), which closed
 2026-08-12 at 319 of 319 tools concluded.*
 

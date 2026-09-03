@@ -7031,6 +7031,7 @@
       "$defs": {
         "_ConformanceRunArgs": {
           "additionalProperties": false,
+          "description": "🔴 THE DECLARED REQUIRED-LIST WAS NOT SATISFIABLE, AND NOTHING ON THE WIRE SAID SO.\n\nThe schema advertises `required: [project_id, scope]` and SIX properties with no\ndescription at all, while the handler refuses per scope. Measured over the recorded\ncorpus — 37 calls, ZERO successes, the whole population of this tool:\n\n    arc_id is required when scope='arc'                                    8\n    chapter_id is required when scope='chapter'                            3\n    model_ref is required when scope='arc' (the deep overlay tags prose)   3\n    pydantic validation errors (1, 2 and 3 at a time)                     11\n    missing required argument(s) / the repeat breaker                      7\n    not found or not accessible                                            5\n\nA caller that supplies exactly what the schema declares is refused for a missing\nargument, whichever scope it picks. The conditional rule WAS written down — in the code\ncomment kept below — where the model never sees it. Same shape as DQ-T4's `,omitempty`\nand DQ-T5's refusal naming a tool it could not reach: the knowledge existed for a human\nand never reached the wire.\n\nStated in the FIELD DESCRIPTIONS rather than as `if/then` JSON Schema on purpose: the\nplatform's own missing-argument refusal quotes a property's description back to the model\n(\"The tool DOES declare what this is — …\"), so a description is load-bearing here, while\nconditional-schema support across MCP clients is not something this repo relies on\nanywhere else.",
           "properties": {
             "arc_id": {
               "anyOf": [
@@ -7042,6 +7043,7 @@
                 }
               ],
               "default": null,
+              "description": "REQUIRED when scope='arc' — the arc/saga STRUCTURE_NODE id (a UUID) from composition_arc_list, NOT a template id. Template drift is the separate composition_arc_template_drift tool.",
               "title": "Arc Id"
             },
             "chapter_id": {
@@ -7054,6 +7056,7 @@
                 }
               ],
               "default": null,
+              "description": "REQUIRED when scope='chapter' — the chapter to check (a UUID).",
               "title": "Chapter Id"
             },
             "model_ref": {
@@ -7066,6 +7069,7 @@
                 }
               ],
               "default": null,
+              "description": "REQUIRED when scope='arc' — the arc-scope deep overlay tags the book's prose with a BYOK classify model. The model's id (UUID) from settings_list_models; NOT a name or an alias.",
               "title": "Model Ref"
             },
             "model_source": {
@@ -7078,6 +7082,7 @@
                 }
               ],
               "default": null,
+              "description": "Accompanies model_ref: 'user_model' or 'platform_model'.",
               "title": "Model Source"
             },
             "project_id": {
@@ -7085,6 +7090,7 @@
               "type": "string"
             },
             "scope": {
+              "description": "WHICH SCOPE, and it decides which other arguments are REQUIRED: 'chapter' needs chapter_id; 'arc' needs BOTH arc_id and model_ref (+ model_source). Picking a scope without its partner is refused.",
               "enum": [
                 "chapter",
                 "arc"
@@ -7113,6 +7119,7 @@
             }
           ],
           "default": null,
+          "description": "REQUIRED when scope='arc' — the arc/saga STRUCTURE_NODE id (a UUID) from composition_arc_list, NOT a template id. Template drift is the separate composition_arc_template_drift tool.",
           "title": "Arc Id"
         },
         "chapter_id": {
@@ -7125,6 +7132,7 @@
             }
           ],
           "default": null,
+          "description": "REQUIRED when scope='chapter' — the chapter to check (a UUID).",
           "title": "Chapter Id"
         },
         "model_ref": {
@@ -7137,6 +7145,7 @@
             }
           ],
           "default": null,
+          "description": "REQUIRED when scope='arc' — the arc-scope deep overlay tags the book's prose with a BYOK classify model. The model's id (UUID) from settings_list_models; NOT a name or an alias.",
           "title": "Model Ref"
         },
         "model_source": {
@@ -7149,6 +7158,7 @@
             }
           ],
           "default": null,
+          "description": "Accompanies model_ref: 'user_model' or 'platform_model'.",
           "title": "Model Source"
         },
         "project_id": {
@@ -7156,6 +7166,7 @@
           "type": "string"
         },
         "scope": {
+          "description": "WHICH SCOPE, and it decides which other arguments are REQUIRED: 'chapter' needs chapter_id; 'arc' needs BOTH arc_id and model_ref (+ model_source). Picking a scope without its partner is refused.",
           "enum": [
             "chapter",
             "arc"
@@ -15797,6 +15808,57 @@
       "visibility": "legacy"
     }
   },
+  "confirm_action": {
+    "description": "Ask the user to CONFIRM a high-impact action (publish, delete, start a PRICED job, change a default) that you proposed with a domain MCP tool. Pass the `confirm_token`, `descriptor`, and `domain` you received from that propose call. High-impact and irreversible changes ALWAYS require explicit human confirmation — the action is NOT applied automatically. For a BULK action (e.g. publish several chapters) pass `items` so the user gets ONE card with a single Apply, not many cards. After the user decides you receive an `outcome`: `action_done` (applied), `token_expired` (the confirmation lapsed — propose again), `action_error` (it failed), or `cancelled` (the user declined). State that the change happened ONLY when the outcome is `action_done`.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm_token": {
+          "description": "The confirm_token returned by the propose call.",
+          "type": "string"
+        },
+        "descriptor": {
+          "description": "The action descriptor from the propose call (e.g. 'book.publish', 'translation.start_job').",
+          "type": "string"
+        },
+        "domain": {
+          "description": "Selects which service commits the action on Confirm.",
+          "enum": [
+            "glossary",
+            "book",
+            "composition",
+            "translation",
+            "settings"
+          ],
+          "type": "string"
+        },
+        "items": {
+          "description": "OPTIONAL — for a BATCH confirm: one entry per affected row (e.g. the chapters to publish). The browser renders one card listing all of them with a single Apply.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "title": {
+          "description": "Human-readable title of the action, shown on the card.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "confirm_token",
+        "descriptor",
+        "title",
+        "domain"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "scope": "none",
+      "served_by": "ai-gateway",
+      "tier": "W"
+    }
+  },
   "glossary_adopt_standards": {
     "description": "Propose ADOPTING System standards into a book — scaffolds the book's ontology by copying the picked genres/kinds (+ their attributes & links) down into the book tier. High-impact: it does NOT adopt; it returns a confirm_token + a preview of how many are new, which a human confirms via glossary_confirm_action. `universal` genre + `unknown` kind are always included. Args are genre/kind CODES (see glossary_list_system_standards). CALLING THIS IS HOW YOU ASK: the card carries the question with the preview attached. If the author already asked for the setup, do not ask again in prose first — that raises no card, mints no token, and spends a turn on permission they gave.",
     "inputSchema": {
@@ -15827,6 +15889,9 @@
           ]
         }
       },
+      "required": [
+        "book_id"
+      ],
       "type": "object"
     },
     "meta": {
@@ -15934,6 +15999,7 @@
         }
       },
       "required": [
+        "book_id",
         "level",
         "name"
       ],
@@ -15978,6 +16044,7 @@
         }
       },
       "required": [
+        "book_id",
         "level",
         "code"
       ],
@@ -16177,6 +16244,7 @@
         }
       },
       "required": [
+        "book_id",
         "level",
         "code"
       ],
@@ -16221,6 +16289,7 @@
         }
       },
       "required": [
+        "book_id",
         "level",
         "code"
       ],
@@ -16262,6 +16331,9 @@
           ]
         }
       },
+      "required": [
+        "book_id"
+      ],
       "type": "object"
     },
     "meta": {
@@ -16306,6 +16378,7 @@
         }
       },
       "required": [
+        "book_id",
         "kind_code"
       ],
       "type": "object"
@@ -16367,6 +16440,7 @@
         }
       },
       "required": [
+        "book_id",
         "items"
       ],
       "type": "object"
@@ -16391,6 +16465,9 @@
           "type": "string"
         }
       },
+      "required": [
+        "book_id"
+      ],
       "type": "object"
     },
     "meta": {
@@ -16401,6 +16478,38 @@
         "what standard updates are available"
       ],
       "tier": "R"
+    }
+  },
+  "glossary_confirm_action": {
+    "description": "Ask the user to CONFIRM a high-impact glossary action (a new kind/attribute, or DELETING a genre/kind/attribute) that you proposed with a glossary_propose_* or glossary_book_delete MCP tool. Pass the `confirm_token` and `descriptor` you received from that propose call. The action is shown with a Confirm button and is NOT applied automatically — high-impact and destructive changes ALWAYS require explicit human confirmation. After the user decides you receive an `outcome`: `action_done` (applied), `token_expired` (the confirmation lapsed — propose again), `action_error` (it failed), or `cancelled` (the user declined). State that the change happened ONLY when the outcome is `action_done`.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm_token": {
+          "description": "The confirm_token returned by the propose call.",
+          "type": "string"
+        },
+        "descriptor": {
+          "description": "The action `descriptor` from the propose call (e.g. book_delete, schema_create_kind) — keys which confirm card the browser renders.",
+          "type": "string"
+        },
+        "title": {
+          "description": "Human-readable title of the action (the `title` from the propose call), shown on the confirm card.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "confirm_token",
+        "descriptor",
+        "title"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "_confirm_step": true,
+      "scope": "none",
+      "served_by": "ai-gateway",
+      "tier": "W"
     }
   },
   "glossary_create_chapter_link": {
@@ -16434,6 +16543,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id",
         "chapter_id"
       ],
@@ -16514,6 +16624,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id",
         "attr_value_id",
         "original_text"
@@ -16623,6 +16734,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id",
         "query"
       ],
@@ -16657,6 +16769,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id"
       ],
       "type": "object"
@@ -16691,6 +16804,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id"
       ],
       "type": "object"
@@ -16721,6 +16835,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id",
         "name"
       ],
@@ -16760,6 +16875,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id"
       ],
       "type": "object"
@@ -16804,6 +16920,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id"
       ],
       "type": "object"
@@ -16846,6 +16963,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id"
       ],
       "type": "object"
@@ -16890,6 +17008,7 @@
         }
       },
       "required": [
+        "book_id",
         "source_ref"
       ],
       "type": "object"
@@ -17005,6 +17124,9 @@
           "type": "string"
         }
       },
+      "required": [
+        "book_id"
+      ],
       "type": "object"
     },
     "meta": {
@@ -17087,6 +17209,9 @@
           "type": "string"
         }
       },
+      "required": [
+        "book_id"
+      ],
       "type": "object"
     },
     "meta": {
@@ -17100,6 +17225,7 @@
     "description": "List the SYSTEM standards catalogue — the entity kinds a book can adopt, by CODE. Use once to learn what exists BEFORE scaffolding a book, then pass the codes you want to glossary_adopt_standards; each kind's attributes come down with it. Calling this twice returns the identical list. For what a specific book ALREADY has, use glossary_book_ontology_read.",
     "inputSchema": {
       "additionalProperties": false,
+      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -17135,6 +17261,9 @@
           "type": "string"
         }
       },
+      "required": [
+        "book_id"
+      ],
       "type": "object"
     },
     "meta": {
@@ -17202,6 +17331,7 @@
       },
       "required": [
         "scope",
+        "book_id",
         "items"
       ],
       "type": "object"
@@ -17366,6 +17496,7 @@
       },
       "required": [
         "scope",
+        "book_id",
         "items"
       ],
       "type": "object"
@@ -17417,6 +17548,7 @@
         }
       },
       "required": [
+        "book_id",
         "goal"
       ],
       "type": "object"
@@ -17479,6 +17611,7 @@
         }
       },
       "required": [
+        "book_id",
         "language_code",
         "items"
       ],
@@ -17551,6 +17684,7 @@
         }
       },
       "required": [
+        "book_id",
         "ops"
       ],
       "type": "object"
@@ -17699,6 +17833,7 @@
         }
       },
       "required": [
+        "book_id",
         "items"
       ],
       "type": "object"
@@ -17720,6 +17855,84 @@
         "batch propose entities"
       ],
       "tier": "A"
+    }
+  },
+  "glossary_propose_entity_edit": {
+    "description": "Propose ONE OR MORE edits to an EXISTING glossary entity (correct the name, an alias, the description, and/or any attribute) — all applied TOGETHER, atomically. The changes are shown to the user as a diff card with an Apply button and are NOT applied automatically — the user reviews them first. BEFORE calling this, call glossary_get_entity to read the current values and the entity's `updated_at` (pass it as `base_version`); for an attribute edit also read that attribute's `attr_value_id`. PRESERVE each value's format in `new_value` — if `old_value` is a JSON array (e.g. aliases like [\"King\",\"Art\"]) keep it a JSON array; if it is a number or a fixed option, keep that shape. After the user decides you receive an `outcome`: `applied_saved` (the edit was saved), `applied_conflict` (the entity changed since you read it — call glossary_get_entity again and propose afresh), `applied_error` (the save failed), or `dismissed` (the user declined). State that the change was made ONLY when the outcome is `applied_saved`. This tool ONLY EDITS an entity that ALREADY EXISTS. To CREATE a new entity that does not exist yet, call `tool_load(name='glossary_propose_entities')` and use that instead — do NOT call this with a made-up or placeholder entity_id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "base_version": {
+          "description": "The entity's `updated_at` value from glossary_get_entity — used to detect a concurrent change (optimistic concurrency). One token covers ALL the changes (they apply in a single transaction).",
+          "type": "string"
+        },
+        "book_id": {
+          "description": "The book the entity belongs to (UUID).",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "type": "string"
+        },
+        "changes": {
+          "description": "One or more field changes to apply together. A single-field edit is just a one-element array.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "attr_value_id": {
+                "description": "Required when target=attribute: the attribute value to change (from glossary_get_entity).",
+                "type": "string"
+              },
+              "field_label": {
+                "description": "Human-readable label of the field (e.g. 'Name', 'Aliases', 'Description'), shown on the diff card.",
+                "type": "string"
+              },
+              "new_value": {
+                "description": "The proposed new value.",
+                "type": "string"
+              },
+              "old_value": {
+                "description": "The current value, for the diff.",
+                "type": "string"
+              },
+              "target": {
+                "description": "short_description = the entity's summary. attribute = one attribute value (name, aliases, or any attribute), identified by attr_value_id.",
+                "enum": [
+                  "short_description",
+                  "attribute"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "field_label",
+              "old_value",
+              "new_value"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "entity_id": {
+          "description": "The entity to edit (UUID, from glossary_get_entity/glossary_search). MUST be a real existing entity's id — never a placeholder.",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "type": "string"
+        },
+        "rationale": {
+          "description": "Optional one-line explanation shown to the user.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "book_id",
+        "entity_id",
+        "base_version",
+        "changes"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "scope": "book",
+      "served_by": "ai-gateway",
+      "tier": "W"
     }
   },
   "glossary_propose_kinds": {
@@ -17824,6 +18037,7 @@
         }
       },
       "required": [
+        "book_id",
         "kinds"
       ],
       "type": "object"
@@ -17860,6 +18074,7 @@
         }
       },
       "required": [
+        "book_id",
         "winner_id",
         "loser_ids"
       ],
@@ -17925,6 +18140,7 @@
         }
       },
       "required": [
+        "book_id",
         "kind_code",
         "code",
         "name"
@@ -17966,6 +18182,7 @@
         }
       },
       "required": [
+        "book_id",
         "kind",
         "name"
       ],
@@ -18072,6 +18289,7 @@
         }
       },
       "required": [
+        "book_id",
         "code",
         "name"
       ],
@@ -18103,6 +18321,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id",
         "kind_code"
       ],
@@ -18134,6 +18353,7 @@
         }
       },
       "required": [
+        "book_id",
         "entity_id",
         "revision_id"
       ],
@@ -18177,6 +18397,7 @@
         }
       },
       "required": [
+        "book_id",
         "status",
         "entity_ids"
       ],
@@ -18229,6 +18450,7 @@
         }
       },
       "required": [
+        "book_id",
         "language_code",
         "items"
       ],
@@ -20209,9 +20431,17 @@
           "title": "Project Id"
         },
         "source_entity_id": {
-          "description": "The graph NODE id of the relationship's source — NOT a glossary entity id. Get it from kg_add_nodes (which returns each node's id) or kg_graph_query; if the entity exists only in the glossary, kg_add_nodes with mode=from_glossary turns it into a node first.",
-          "title": "Source Entity Id",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LEGACY, still accepted: the graph NODE id of the source — NOT a glossary entity id. Prefer source_name. If you pass both, the ID wins and the result says so in `resolved_by`. Node ids come from kg_add_nodes or kg_graph_query.",
+          "title": "Source Entity Id"
         },
         "source_kind": {
           "anyOf": [
@@ -20226,10 +20456,31 @@
           "description": "Optional — the source entity's node kind, for validation.",
           "title": "Source Kind"
         },
+        "source_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The NAME of the relationship's source entity — the ordinary way to say it, e.g. \"Aldric Vane\". The server resolves it to the graph node. If the name matches more than one entity the call is REFUSED with the candidates, so nothing is guessed.",
+          "title": "Source Name"
+        },
         "target_entity_id": {
-          "description": "The graph NODE id of the relationship's target — NOT a glossary entity id. Same source as source_entity_id.",
-          "title": "Target Entity Id",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LEGACY, still accepted: the graph NODE id of the target — NOT a glossary entity id. Prefer target_name, which cannot be the wrong id family at all. Same source as source_entity_id.",
+          "title": "Target Entity Id"
         },
         "target_kind": {
           "anyOf": [
@@ -20243,6 +20494,19 @@
           "default": null,
           "description": "Optional — the target entity's node kind, for validation.",
           "title": "Target Kind"
+        },
+        "target_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The NAME of the relationship's target entity. Same resolution as source_name.",
+          "title": "Target Name"
         },
         "valid_from": {
           "anyOf": [
@@ -20274,8 +20538,6 @@
         }
       },
       "required": [
-        "source_entity_id",
-        "target_entity_id",
         "edge_type"
       ],
       "title": "kg_propose_edgeArguments",
@@ -23170,6 +23432,7 @@
     "description": "Get the user's per-capability default models (e.g. which model is the default for rerank or embedding).",
     "inputSchema": {
       "additionalProperties": false,
+      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23187,6 +23450,7 @@
     "description": "Get the signed-in user's account profile: display name, locale, avatar URL, bio, languages, email, and email-verified status. Read-only.",
     "inputSchema": {
       "additionalProperties": false,
+      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23250,6 +23514,7 @@
     "description": "List the user's configured AI provider credentials (e.g. OpenAI, Anthropic, a local LM Studio). Returns provider kind, display name, endpoint, status, and whether a secret is set — but NEVER the secret itself. Use to see which providers exist before registering a model.",
     "inputSchema": {
       "additionalProperties": false,
+      "properties": {},
       "type": "object"
     },
     "meta": {

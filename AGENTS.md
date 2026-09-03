@@ -1,5 +1,6 @@
 # AGENTS.md — LoreWeave Development Guide
 
+
 > **This is the canonical development guide for LoreWeave — for humans and for AI coding agents alike.**
 > It is tool-neutral. `CLAUDE.md` at the repo root is a pointer to this file, and any other
 > assistant-specific entry point (`.cursor/rules`, `.github/copilot-instructions.md`, …) should point
@@ -114,7 +115,7 @@ features/<name>/
 
 ### Frontend-Tool Contract (agent→GUI tools — LOCKED)
 
-Full standard: [`docs/standards/mcp-tool-io.md`](docs/standards/mcp-tool-io.md) (inputs IN-1..8 + outputs OUT-1..6). Essentials: a frontend tool (`ui_open_studio_panel`, `propose_edit`, `confirm_action`, …) spans **2 services / 2 languages** joined only by the LLM — BE schema `chat-service/app/services/frontend_tools.py` ↔ FE resolver `frontend/src/features/**`. So a drift/free-string/silent-no-op passes unit tests yet kills the live loop (shipped once: `panel_id` had no enum → gemma sent `panel:"editor"` → silent no-op → hallucinated success). Rules: **closed-set arg ⇒ `enum`** (register in `CLOSED_SET_ARGS`); **resolver never silently no-ops** (return `result.error`); **one name for one concept**; **machine-checked both sides** via `contracts/frontend-tools.contract.json` (change a schema → `WRITE_FRONTEND_CONTRACT=1 pytest` + update the resolver, or a test reds); **verify by EFFECT** (live browser smoke, not raw-stream).
+Full standard: [`docs/standards/mcp-tool-io.md`](docs/standards/mcp-tool-io.md) (inputs IN-1..8 + outputs OUT-1..6). Essentials: a **browser-executed** tool — one the BROWSER performs the effect of, because it has no server executor — is exactly four: `propose_edit`, `confirm_action`, `glossary_confirm_action`, `glossary_propose_entity_edit`, plus the de-advertised `ui_*` family (`BROWSER_EXECUTED_NAMES`, `chat-service/app/services/browser_tools.py`). ⚠ **chat-service no longer intercepts or declares ANY of them** — architecture v1 was retired 2026-09-03 and `frontend_tools.py` is deleted. They are ai-gateway DIRECTIVE tools (`src/mcp/confirm-tools.ts`, `propose-edit-tool.ts`, `ui-tools.ts`); chat-service only SUSPENDS on the directive they return (`task_detect.py`). It still spans **2 services / 2 languages** joined only by the LLM — TS schema in ai-gateway ↔ FE resolver `frontend/src/features/**`. ⚠ **`propose_edit` (P2.2) and the seven `ui_*` tools (P3.2) moved to ai-gateway on 2026-07-20** (`src/mcp/propose-edit-tool.ts`, `src/mcp/ui-tools.ts`); chat-service no longer intercepts them, and `ui_*` has not been advertised to any model since 2026-07-25. There is no longer a chat-service copy to edit by mistake: the fallback was deleted with v1. Those two also carry a **third** source: ai-gateway's committed mirror (`ui-tools.ts` `STUDIO_PANEL_IDS`), drift-tested by `test/ui-tools.spec.ts`, because the image cannot read the repo-root contract at runtime. So a drift/free-string/silent-no-op passes unit tests yet kills the live loop (shipped once: `panel_id` had no enum → gemma sent `panel:"editor"` → silent no-op → hallucinated success). Rules: **closed-set arg ⇒ `enum`** (register in `CLOSED_SET_ARGS`); **resolver never silently no-ops** (return `result.error`); **one name for one concept**; **machine-checked both sides** via `contracts/frontend-tools.contract.json`, which stays the SoT (change a schema → edit the contract JSON **by hand** + the ai-gateway TS + the FE resolver, or a spec reds; `WRITE_FRONTEND_CONTRACT=1` is CLOSED — it regenerated from `frontend_tools.py`, which no longer exists); **verify by EFFECT** (live browser smoke, not raw-stream).
 
 ### Data Persistence Rules
 - **Server is the source of truth** — all user data in Postgres, all files in S3/MinIO
@@ -646,8 +647,18 @@ Read only the docs for the module you're actively working on.
 
 A tool marked `visibility: legacy` is **kept as a record, not as a reserve.** Since
 2026-08-25 the superseded gate drops **every** legacy tool from the wire — *with or without*
-a declared replacement — so no legacy tool reaches a model on any turn. Measured against the
-live 316-tool catalogue: 117 legacy tools, 116 withheld on every turn.
+a declared replacement — so no legacy tool reaches a model on any turn. Measured 2026-09-03 by
+running `drop_superseded_tools` over the live catalogue: **117 legacy in, 117 dropped, 0
+kept.** (The catalogue TOTAL is deliberately not written here. It read 316 for most of
+2026-09-03 and was stale by the afternoon of the same day, when v1's retirement re-homed the
+three KIND-C tools to ai-gateway and they began federating. Derive it:
+`python scripts/v1_retire/runstate.py`.) The only re-admission path is an explicit per-session user pin
+(`pinned_legacy_tools`, CAT-4 Part D) — a user choice, never the model's.
+
+> This sentence read "117 legacy tools, **116** withheld" until 2026-09-03. The number appeared
+> nowhere else in the repo and encoded no exception; the rule and its own measurement simply
+> disagreed by one, which invites a reader to hunt a phantom leak or to conclude the gate is
+> partial and reopen the narrow-rule argument this section exists to close.
 
 **Therefore:**
 

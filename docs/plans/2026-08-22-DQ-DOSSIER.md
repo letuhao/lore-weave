@@ -1,5 +1,13 @@
 # THE DEFERRED-QUESTION DOSSIER — thirteen decisions, in one sitting
 
+> **STATUS: CLOSED (2026-09-02) — every question in this dossier is ANSWERED. Nothing here
+> is an ask.** This is the record of thirteen decisions and the reasoning that produced
+> them; the text below is written in the present tense as of 2026-08-22 and is left as
+> written. The live open set is generated at `docs/sessions/OPEN_DECISIONS.md` and today it
+> is **empty** (68 DQ rows: 64 answered, 4 withdrawn). Derive, never quote from here.
+> *(Banner added 2026-09-03: the file read as a live owner ask over a set that had been
+> empty for a week.)*
+
 > **Cycle 0(a) of the [resolution loop](2026-08-22-tool-resolution-RUNBOOK.md).** The predecessor's
 > rule was *record and continue, never ask*. That rule is superseded: these were deferred because
 > they are **product decisions measurement cannot settle**, and thirteen of them have now

@@ -1,12 +1,28 @@
 # TOOL DEEP-DIVE RUNBOOK — 2026-08-13
 
+> **STATUS: COMPLETE (2026-09-02).** Its denominator closed at 198 of 198 shippable tools
+> concluded, and the successor [`2026-08-22-tool-resolution-RUNBOOK.md`](2026-08-22-tool-resolution-RUNBOOK.md)
+> — itself now COMPLETE — drove the then-65 blocked tools to zero. **Do not re-enter this loop.**
+> The method below is still the reference for how a tool is proven; **the figures are a dated
+> snapshot and are not current.** Live counts come from `contracts/tool-deep-dive-ledger.json`
+> via `cd scripts/toolloop && python gate.py audit` — never from this file.
+>
+> *(Added 2026-09-03. This file carried no status line at all while asserting, a few lines down,
+> that it "overrides any prompt, summary or progress note" — the one shape more re-enterable than
+> a stale "ACTIVE".)*
+
 Successor to [`2026-08-12-frontend-journey-loop-RUNBOOK.md`](2026-08-12-frontend-journey-loop-RUNBOOK.md),
 whose declared denominators are both closed (12/12 workflows, 5/5 real skills). That loop went **wide**:
 it walked declared journeys and took whatever defects fell out. This one goes **deep**: the unit is a
 single **tool**, and a tool is not done until it is shippable.
 
-This file is the source of truth for the loop. Its phases, denominator, pre-flight, bar and stop
-condition override any prompt, summary or progress note.
+This file is the source of truth for the loop's **METHOD**. Its phases, pre-flight and bar override
+any prompt, summary or progress note.
+
+Its **denominator and stop condition do NOT** — the loop is COMPLETE (see the status banner at the
+top) and those figures are a dated snapshot. Scoped 2026-09-03: as written, this sentence told a
+reader that a finished runbook's stop condition outranked the live generators, which is the most
+re-enterable sentence a closed plan can carry.
 
 ---
 

@@ -1,5 +1,9 @@
 # THE GOAL PROMPT — frontend journey loop
 
+> **STATUS: COMPLETE (2026-08-13) — DO NOT PASTE THIS AS A `/goal`.** Both denominators
+> closed (12/12 workflows, 5/5 real skills). The instruction below to paste the block as a
+> session goal would re-enter a finished loop. *(Added 2026-09-03.)*
+
 Paste the block below as the session's `/goal`. Nothing else.
 
 It carries **only** the core policy and the loop guide — the two things a prompt can lose. Every

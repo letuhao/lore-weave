@@ -1,7 +1,7 @@
 # CP-5 · the tool contract — the solid ground
 
 **Scale:** β · **Status:** 🔒 **SEALED v3** — three evaluation rounds applied · 2026-08-09
-**Next action:** ~~`5.3-pilot`~~ ✅ **RAN 2026-08-09 — §3b. Verdict: BUILD 5.3.** Next is **5.1 / 5.2**.
+**Next action:** none — **CP-5 CLOSED 2026-08-10** (see §Exit). 5.1 and 5.2 are both ✅ BUILT in the checkpoint table below; the `5.3-pilot` verdict that used to sit here (RAN 2026-08-09, §3b, BUILD 5.3) is recorded there too. **Nothing in this file is an open action item.** *(Corrected 2026-09-03: this line still read "Next is 5.1 / 5.2" while the same file marked both BUILT and declared the checkpoint closed.)*
 *The pilot is the only edit made to a sealed spec: it is the measurement this spec ordered before
 code, and §3b records what it returned. No design was re-opened.*
 **Supersedes** SPEC v1 of the same day, which did not survive its own evaluation. The six findings
