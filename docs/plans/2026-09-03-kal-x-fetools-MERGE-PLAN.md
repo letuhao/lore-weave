@@ -295,7 +295,7 @@ lives in the section it cites.
   changing anything. (§3 Phase 4)
 - [x] **V3** — main's i18n key-resolution gate vs FE's frontend: 52 `t()` calls, zero bundle
   changes. Predicted red. (§3 Phase 4)
-- [ ] **V4** — a live run through the real stack. A 502 route is invisible to both boards. (§3 Phase 4)
+- [x] **V4** — a live run through the real stack. A 502 route is invisible to both boards. (§3 Phase 4)
 - [ ] **R1** — **STOP CONDITION** — §4.1: rename `app/db/neo4j.py`, still named for one engine,
   or record it as a named follow-up. Owner's decision; mechanical now, worse per caller. (§4.1)
 
@@ -533,6 +533,27 @@ observation: a thing needing a running stack belongs in `NEEDS_STACK`, where it 
 reason printed — and once classified it leaves the CI-invoked denominator and the number returns
 to 4 by itself. **A baseline raised to absorb a misclassification hides the misclassification.**
 The round trip is recorded in the file rather than tidied away.
+
+### V4 — the live run, 2026-09-04
+
+```
+"verdict": "PROVEN",  "ran": 7,  "failed": [],  "skipped": []
+```
+
+`bash scripts/architecture-live-proof-iso.sh` against the rebuilt `lw-iso` stack. This is the
+same bar PR #219 set for itself, and it went **NOT-PROVEN → PROVEN** across this row.
+
+**The deployed image was verified before the run, not after.** The containers were 6–29 hours
+old — every one predating the merge — so a sweep against them would have measured the old code.
+Checked directly: `search_facts_by_text` appeared **zero** times in the running image. Rebuilt,
+restarted, and confirmed the AGE rewrite (`UNWIND $tokens AS t`) was present in the container
+before anything was asserted about it.
+
+**Its first run was NOT-PROVEN, 2 legs failed** — `1 BACKEND` and `4 PORT`. Both are
+`port-adoption-gate` ratchets, so both closed when that gate did; neither needed separate work.
+Leg 3 is the one that mattered for attribution: **SURFACE passed throughout** — *"13 route(s)
+carried rows, no route errored"* — which is exactly the surface this merge touched most, and
+exactly the leg that caught `fact-for-check` answering 502 to every caller in PR #219.
 
 ### What B0 refuted
 
