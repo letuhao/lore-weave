@@ -1170,6 +1170,67 @@ def _unanswered_data_question_reads(
     return sorted(reads)
 
 
+#: A request that OPENS with an interrogative, or ends in a question mark, is a QUESTION. The
+#: read-side guard's docstring states the danger outright — "nudging a write from a question would
+#: be this loop's own worst defect" — so this is the discriminator that keeps the two apart, and it
+#: is mechanical rather than a judgement about intent.
+_QUESTION_OPENER_RE = re.compile(
+    r"^\s*(?:what|which|how|when|where|who|whose|why|is|are|was|were|do|does|did|can|could|"
+    r"should|would|will|has|have|had|any|show me (?:what|which|how))\b",
+    re.I,
+)
+
+
+def _instruction_names_a_recorder(
+    request_text: str | None, *, catalog_index: dict, attempted: set[str],
+    reply_text: str, min_reply_chars: int = 400,
+) -> list[str]:
+    """The RECORDING tools this INSTRUCTION names, when the turn called none and answered in prose.
+
+    🔴 P6-DESCRIBE-NOT-RECORD. "When the request names an artefact the platform can STORE, prose
+    about it is not an answer." Measured 2026-08-23, K=5, zero errored runs, the same shape every
+    run: asked "Make the opening line of this chapter darker — SHOW ME THE CHANGE before it goes
+    in", the model called `book_read` and then wrote THREE ALTERNATIVE REWRITES OUT IN THE REPLY.
+    `propose_edit` declares "show me the change" verbatim and `answerable_tools` returns EXACTLY
+    that one tool for the sentence. Nothing else was called. What beat the tool was the model's own
+    prose — always available, always cheaper, and it looks like an answer.
+
+    WHY THIS IS NOT THE READ GUARD WITH THE TIER FLIPPED. `_unanswered_data_question_reads` says in
+    as many words that nudging a WRITE from a QUESTION would be this loop's own worst defect, and
+    it is right. The separation here is the sentence's own grammar: this fires only on an
+    INSTRUCTION — no trailing question mark, no interrogative opener. "How should I make this
+    darker?" is a question and is none of this guard's business; "Make it darker and show me the
+    change" is an instruction naming a tool that exists to record exactly that.
+
+    THE FOUR CONDITIONS, all mechanical:
+      * the request matches the tool's OWN declared synonyms (`answerable_tools`), the same signal
+        R1 trusts to decide the surface — never a keyword list maintained here;
+      * that tool's tier is A or W, i.e. it RECORDS something;
+      * the turn attempted NOTHING — successes and failures both count, exactly as the sibling
+        guards count them, because a model that tried and got a real error has honest feedback;
+      * the reply is long enough to BE the artefact. A short refusal or a clarifying sentence is
+        not "prose instead of the record", and without this floor every brief reply on an
+        instruction turn would read as this defect.
+
+    IT RETURNS NAMES OR AN EMPTY LIST and asserts nothing about intent — the same posture as
+    `_rail_write_step_stalled`, and for the same reason.
+    """
+    if not request_text or not catalog_index:
+        return []
+    if attempted:
+        return []
+    body = (reply_text or "").strip()
+    if len(body) < min_reply_chars:
+        return []
+    q = request_text.strip()
+    if q.endswith("?") or _QUESTION_OPENER_RE.search(q):
+        return []
+    names = [
+        nm for nm in answerable_tools(request_text, list(catalog_index.values()))
+        if nm in catalog_index and tool_tier(catalog_index[nm]) in ("A", "W")
+    ]
+    return sorted(names)
+
 #: A catalog name must be at least this long, and contain an underscore, before a literal
 #: substring match counts as "the user named this tool". Every LoreWeave tool name is
 #: snake_case (`composition_list_outline`, `kg_add_nodes`), so this cannot fire on ordinary
@@ -6336,6 +6397,87 @@ async def _stream_with_tools(
                             "NOT re-read, and that your answer may be stale.\n"
                             "Never state a count, a name, or a detail from this book unless a "
                             "tool call on THIS turn returned it."
+                        )})
+                        continue
+
+                # P6-DESCRIBE-NOT-RECORD — the WRITE-side twin of the guard above, and the one
+                # that guard deliberately refuses to be. Its docstring says nudging a write from
+                # a QUESTION would be this loop's own worst defect; the separation is the
+                # sentence's grammar, so this fires only on an INSTRUCTION that names a recorder
+                # while the turn called nothing and answered at length in prose.
+                #
+                # Runs last among the end-of-turn guards and only when none of them took the
+                # slot: a claimed write and a stale data answer are both more damaging than a
+                # withheld record, and a turn must never collect two directives.
+                _unrecorded = []
+                if not _directive_before_this_pass:
+                    _unrecorded = _instruction_names_a_recorder(
+                        request_text,
+                        catalog_index=cat_index,
+                        attempted=turn_attempted,
+                        reply_text="".join(turn_text_parts),
+                    )
+                if _unrecorded:
+                    _p6_guards = {
+                        "under_cap": data_question_nudges < DATA_QUESTION_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_p6_guards.values()):
+                        logger.warning(
+                            "P6-DESCRIBE-NOT-RECORD (session=%s): %s record(s) what this "
+                            "instruction asks and none ran — NOT nudging, held by: %s",
+                            session_id, _unrecorded,
+                            ", ".join(k for k, v in _p6_guards.items() if not v),
+                        )
+                    else:
+                        data_question_nudges += 1
+                        # ARM what we name, for the same reason the sibling does: naming a tool
+                        # that is not on the surface sent the model thrashing through twelve
+                        # others hunting for it (measured 2026-08-14).
+                        _p6_armed = [
+                            nm for nm in _unrecorded
+                            if discovery and nm in cat_index and nm not in active_tool_names
+                        ]
+                        _arm_tools(
+                            _p6_armed, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        )
+                        logger.warning(
+                            "P6-DESCRIBE-NOT-RECORD (session=%s): the turn wrote the artefact "
+                            "into the reply instead of recording it — %s declare(s) this "
+                            "instruction and none was called; nudging once (armed: %s)",
+                            session_id, _unrecorded, _p6_armed or "—",
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"describe_not_record:{','.join(_unrecorded)}",
+                                      is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # Asserts only what was measured: these tools declare this request,
+                            # none ran, and the reply is long. It does NOT tell the model its
+                            # prose was wrong -- three alternative rewrites may be excellent
+                            # writing, and the defect is that they went nowhere the author can
+                            # accept, edit or undo.
+                            "[SYSTEM DIRECTIVE] You answered an instruction by writing the work "
+                            "into the reply. "
+                            f"{', '.join(_unrecorded)} "
+                            + ("records" if len(_unrecorded) == 1 else "record")
+                            + " exactly what was asked for, and "
+                            + ("is" if len(_unrecorded) == 1 else "are")
+                            + " available to you right now.\n"
+                            "Prose in a chat reply is not something the author can accept, "
+                            "revise or undo -- it is not IN their book, and nothing records "
+                            "that you offered it.\n"
+                            "Do ONE of these, and nothing else:\n"
+                            "(a) call the tool now, passing the work you just wrote; or\n"
+                            "(b) if you genuinely cannot -- because the request needs something "
+                            "you cannot see, such as a selection in the editor -- say plainly "
+                            "what is missing and that you have NOT recorded anything."
                         )})
                         continue
 

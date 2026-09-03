@@ -58,8 +58,14 @@ except Exception as e:  # chat-service not importable here
 # an exemption without one becomes a place to hide a real failure.
 EXEMPT = {
     **{n: "ALWAYS_ON_CORE — advertised on every turn" for n in ALWAYS_ON_CORE_NAMES},
-    "propose_edit": "frontend tool on the editor surface; declares NO synonyms by design, so "
-                    "answerability cannot reach it and is not meant to (see P6)",
+    # 🔴 `propose_edit` WAS EXEMPT ON A REASON THE CATALOGUE CONTRADICTS, and the exemption is
+    # REMOVED rather than reworded. It read: "declares NO synonyms by design, so answerability
+    # cannot reach it and is not meant to". Measured 2026-09-03 against the live catalogue: it
+    # declares SIX synonyms ('show me the change', 'suggest an edit', 'rewrite this', ...), it has
+    # a measured turn, and answerable_tools reaches it on that turn. An exemption whose stated
+    # reason is false is a place a real failure can hide — this file's own comment says an
+    # exemption without a reason becomes exactly that, and a WRONG reason is worse than none
+    # because it survives review. The tool passes the gate on its own merits; nothing is lost.
     "workflow_list": "consumer-local meta-tool, advertised when the turn has curated workflows",
     "workflow_load": "consumer-local meta-tool, same",
     "load_skill": "consumer-local control, advertised when lazy skill bodies are on",
