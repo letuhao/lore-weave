@@ -509,6 +509,7 @@
       "pricing_hint": "Wird bei der Erstellung vorausgefüllt. Falls sich der veröffentlichte Tarif des Anbieters geändert hat, bitte anpassen oder OpenRouter für eine aktuelle Schätzung prüfen.",
       "pricing_check": "OpenRouter prüfen",
       "pricing_checking": "Prüfung läuft...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out",
       "pricing_apply": "Anwenden",
       "pricing_not_found": "Kein passendes Modell auf OpenRouter gefunden — Preisangaben von dieser Quelle nicht verfügbar.",
       "pricing_check_failed": "Fehler beim Abrufen der OpenRouter-Preise",
@@ -520,7 +521,6 @@
       "cancel": "Abbrechen",
       "saving": "Wird gespeichert...",
       "submit": "Änderungen speichern",
-      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out",
       "capabilities_refreshed": "Modell-Fähigkeiten aktualisiert",
       "capabilities_refresh_failed": "Modell-Fähigkeiten konnten nicht aktualisiert werden",
       "delete_blocked_active": "Dieses Modell kann nicht gelöscht werden: Beenden Sie zuerst die aktiven Jobs.",
@@ -554,7 +554,9 @@
     "plannerHint": "Das Chatmodell, das der Glossar-Assistent verwendet, um mehrstufige Pläne zu erstellen. Wählen Sie ein leistungsstarkes Modell mit Tool-Unterstützung – andernfalls fällt die Planung auf ein beliebiges Chatmodell zurück und schlägt häufig fehl.",
     "none": "Keines",
     "empty": "Keine geeigneten Modelle konfiguriert.",
-    "saved": "Standardmodelle aktualisiert"
+    "saved": "Standardmodelle aktualisiert",
+    "composer": "Standard-Composer",
+    "composerHint": "Das Modell, das deine Prosa schreibt, wenn ein Buch kein eigenes Modell hat. Wähle dies bewusst – die Generierung ist der kostspieligste Prozess hier, und es wird kein Chat-Modell in deinem Namen auf deine Kosten verbraucht."
   },
   "external_services": {
     "delete_blocked": "Dieser Dienst kann nicht entfernt werden: Sein Modell wird von {{count}} aktiven Job(s) verwendet. Beenden Sie diese zuerst.",

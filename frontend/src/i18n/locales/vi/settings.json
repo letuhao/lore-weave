@@ -554,7 +554,9 @@
     "plannerHint": "Mô hình chat mà trợ lý thuật ngữ sử dụng để xây dựng các kế hoạch đa bước. Hãy chọn một mô hình mạnh mẽ và có khả năng sử dụng công cụ — nếu không, việc lập kế hoạch sẽ chuyển về một mô hình chat ngẫu nhiên và thường thất bại.",
     "none": "Không có",
     "empty": "Chưa cấu hình mô hình phù hợp nào.",
-    "saved": "Đã cập nhật mặc định"
+    "saved": "Đã cập nhật mặc định",
+    "composer": "Trình soạn thảo mặc định",
+    "composerHint": "Mô hình sẽ viết văn xuôi cho bạn khi một cuốn sách không có mô hình riêng. Hãy thiết lập một cách cẩn thận — việc tạo nội dung là tác vụ tốn kém nhất ở đây, và sẽ không có gì tiêu tốn hạn mức mô hình chat của bạn thay cho bạn cả."
   },
   "external_services": {
     "delete_blocked": "Không thể xóa dịch vụ này: mô hình của nó đang được sử dụng bởi {{count}} công việc đang chạy. Hãy dừng chúng trước.",

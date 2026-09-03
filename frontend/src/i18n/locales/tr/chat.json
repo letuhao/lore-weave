@@ -566,5 +566,12 @@
     "done": "Onaylandı ✓",
     "error": "Onaylanamadı",
     "label": "Onayla"
+  },
+  "disambiguation": {
+    "label": "Hangisini kastetmiştiniz?",
+    "empty": "Hiçbir seçenek bulunamadı.",
+    "unnamed": "(isimsiz)",
+    "truncated": "{{total}} sonuçtan {{shown}} tanesi gösteriliyor — diğerlerini görmek için isteğinizi daraltın.",
+    "cancel": "Bunların hiçbiri"
   }
 }

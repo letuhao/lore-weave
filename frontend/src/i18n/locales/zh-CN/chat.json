@@ -21,14 +21,15 @@
     "context_meter": {
       "label": "已用上下文",
       "unknown": "此模型无法获取上下文窗口使用情况",
+      "tokens": "{{used}} / {{limit}} 个 token",
       "until_compact": "自动压缩前：{{pct}}%",
-      "baseline": "系统 + 工具：首个词前占用 {{tokens}} tok",
-      "tokens": "{{used}} / {{limit}} 个 token"
+      "baseline": "系统 + 工具：首个词前占用 {{tokens}} tok"
     }
   },
   "context_panel": {
     "title": "上下文详情",
     "free": "剩余空间：{{tokens}} tok",
+    "tok": "tok",
     "compact_at": "在窗口占用达到 {{pct}}% 时触发自动压缩",
     "zero": "零",
     "manage": "管理工具与技能",
@@ -64,8 +65,7 @@
       "total": "总计",
       "empty": "暂无轮次历史 — 发送消息以开始追踪 Token 使用情况。",
       "error": "无法加载上下文历史记录。"
-    },
-    "tok": "tok"
+    }
   },
   "compaction": {
     "toast": "早期轮次已压缩 — {{before}}→{{after}} tok",
@@ -351,6 +351,7 @@
     "temperature": "温度",
     "temp_min": "0 (精准)",
     "temp_max": "2 (创意)",
+    "top_p": "Top P",
     "topp_min": "0 (聚焦)",
     "topp_max": "1 (多样)",
     "default_mode": "默认模式",
@@ -362,8 +363,7 @@
     "yes": "是",
     "no": "否",
     "reset": "重置为默认",
-    "save_failed": "保存失败: {{error}}",
-    "top_p": "Top P"
+    "save_failed": "保存失败: {{error}}"
   },
   "session_toast": {
     "create_failed": "创建聊天失败: {{error}}",
@@ -381,11 +381,11 @@
     "approve_once": "仅允许一次",
     "always_allow": "始终允许",
     "deny": "拒绝",
+    "never_allow": "从不允许",
     "approved": "已批准 — 正在运行 ✓",
     "always_allowed": "始终允许 — 正在运行 ✓",
     "denied": "已拒绝",
-    "never_allowed": "永不允许 — 您可以在“设置 → 权限”中撤销此操作",
-    "never_allow": "从不允许"
+    "never_allowed": "永不允许 — 您可以在“设置 → 权限”中撤销此操作"
   },
   "rack": {
     "label": "上下文",
@@ -420,9 +420,9 @@
       "composition": "创作",
       "translation": "翻译",
       "jobs": "任务",
+      "ui": "UI",
       "chat": "聊天",
-      "other": "其他",
-      "ui": "UI"
+      "other": "其他"
     }
   },
   "inspector": {
@@ -566,5 +566,12 @@
     "done": "已确认 ✓",
     "error": "无法确认",
     "label": "确认"
+  },
+  "disambiguation": {
+    "label": "您是指哪一个？",
+    "empty": "未返回任何选项。",
+    "unnamed": "（未命名）",
+    "truncated": "正在显示第 {{shown}} 项，共 {{total}} 项 — 请缩小搜索范围以查看更多。",
+    "cancel": "都不是"
   }
 }

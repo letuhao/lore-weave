@@ -351,6 +351,7 @@
     "temperature": "温度",
     "temp_min": "0（正確）",
     "temp_max": "2（創造的）",
+    "top_p": "Top P",
     "topp_min": "0（狭い）",
     "topp_max": "1（多様）",
     "default_mode": "デフォルトモード",
@@ -362,8 +363,7 @@
     "yes": "はい",
     "no": "いいえ",
     "reset": "デフォルトにリセット",
-    "save_failed": "保存に失敗しました: {{error}}",
-    "top_p": "Top P"
+    "save_failed": "保存に失敗しました: {{error}}"
   },
   "session_toast": {
     "create_failed": "チャットの作成に失敗しました: {{error}}",
@@ -381,11 +381,11 @@
     "approve_once": "今回のみ許可",
     "always_allow": "常に許可",
     "deny": "拒否",
+    "never_allow": "常に拒否",
     "approved": "許可しました — 実行中 ✓",
     "always_allowed": "常に許可 — 実行中 ✓",
     "denied": "拒否しました",
-    "never_allowed": "許可されません — 設定 → 権限 から変更できます",
-    "never_allow": "常に拒否"
+    "never_allowed": "許可されません — 設定 → 権限 から変更できます"
   },
   "rack": {
     "label": "コンテキスト",
@@ -420,9 +420,9 @@
       "composition": "コンポジション",
       "translation": "翻訳",
       "jobs": "ジョブ",
+      "ui": "UI",
       "chat": "チャット",
-      "other": "その他",
-      "ui": "UI"
+      "other": "その他"
     }
   },
   "inspector": {
@@ -566,5 +566,12 @@
     "done": "確定済み ✓",
     "error": "確認できませんでした",
     "label": "確認"
+  },
+  "disambiguation": {
+    "label": "どちらのことですか？",
+    "empty": "候補が見つかりませんでした。",
+    "unnamed": "（名前なし）",
+    "truncated": "{{total}}件中{{shown}}件を表示しています — 他の候補を表示するには検索条件を絞り込んでください。",
+    "cancel": "これらの中に該当なし"
   }
 }

@@ -554,7 +554,9 @@
     "plannerHint": "Sözlük asistanının çok adımlı planlar oluşturmak için kullandığı sohbet modeli. Güçlü ve araç kullanma yeteneğine sahip bir model seçin; aksi takdirde planlama rastgele bir sohbet modeline düşer ve genellikle başarısız olur.",
     "none": "Yok",
     "empty": "Yapılandırılmış yetkin model bulunmuyor.",
-    "saved": "Varsayılan güncellendi"
+    "saved": "Varsayılan güncellendi",
+    "composer": "Varsayılan besteci",
+    "composerHint": "Bir kitabın kendine ait bir modeli olmadığında düzyazınızı yazan modeldir. Bilinçli bir şekilde ayarlayın — üretim buradaki en maliyetli işlemdir ve sohbet modeliniz üzerinden sizin adınıza harcama yapılmayacaktır."
   },
   "external_services": {
     "delete_blocked": "Bu servis kaldırılamaz: modeli {{count}} aktif iş tarafından kullanılıyor. Önce bunları durdurun.",

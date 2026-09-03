@@ -289,11 +289,11 @@ lives in the section it cites.
   alone. (§2.2)
 - [x] **G1** — build the **import-resolution gate**: every `from app.X import Y` resolves.
   Proven RED on `executor.py:632` before green. None of the repo's 133 gates catches this. (§3 Phase 3)
-- [ ] **V1** — re-prove the twelve invariants against the merged tree via the **owning suites**,
+- [x] **V1** — re-prove the twelve invariants against the merged tree via the **owning suites**,
   not the board, plus the guard-is-called AST gate. (§3 Phase 3)
 - [ ] **V2** — KAL's 133 gates over FE's ~2000 files. Attribute every red against B0/B1 before
   changing anything. (§3 Phase 4)
-- [ ] **V3** — main's i18n key-resolution gate vs FE's frontend: 52 `t()` calls, zero bundle
+- [x] **V3** — main's i18n key-resolution gate vs FE's frontend: 52 `t()` calls, zero bundle
   changes. Predicted red. (§3 Phase 4)
 - [ ] **V4** — a live run through the real stack. A 502 route is invisible to both boards. (§3 Phase 4)
 - [ ] **R1** — **STOP CONDITION** — §4.1: rename `app/db/neo4j.py`, still named for one engine,
@@ -460,6 +460,41 @@ Now **1076 files across 10 services, every import resolving, `BASELINE = 0`.** W
 `foundation-ci.yml` rather than only the hook: the hook is opt-in per checkout, and the defect
 arrives through a merge — exactly when nobody is looking. `gate-teeth` counts it, 145 CI-invoked
 gates with 140 proven; `gate-wiring-gate` 187 discovered, all wired or exempt.
+
+### V1 — the twelve invariants re-proved on the merged tree, 2026-09-04
+
+**By the suites, not the board.** `problem_remaining.py` exits 0 — and would have exited 0 with
+P7 broken, because it reads contracts rather than code. That is why it is not the bar.
+
+| bar | result |
+|---|---|
+| `test_no_turn_guard_is_defined_and_never_called.py` | **9 passed** — all eight end-of-turn guards still *called*, plus the arm that keeps the list honest |
+| chat-service suite (whole) | **3911 passed, 7 skipped, 0 failed** |
+| knowledge-service units (whole) | **4705 passed, 0 failed** (KAL baseline 4502) |
+| `problem_remaining.py` | exit 0 — `problems=16 cleared=16`, `tools 65/65 proven` |
+
+`stream_service.py` is **14495** lines on the merged tree — FE's 14490 plus main's additions —
+and `app/agentruntime/` has its 20 modules. The centre of gravity landed intact, as §0 predicted.
+
+### V3 — the i18n gate, predicted red and red, 2026-09-04
+
+§5's prediction was exact. `i18n-key-resolution-gate` failed on **7 keys**, five of them from
+FE's new `DisambiguationCard.tsx` and two from its edit to `DefaultModelsCard.tsx` — components
+written before main's gate existed, in a branch that touched no bundle.
+
+Fixed the way the standard says, not the way that would have been quicker:
+
+1. The 7 `en` entries were added **verbatim from the `defaultValue` at each call site**, so the
+   string a reader sees is the string the code already had. Key-resolution then passed:
+   6509 literal keys resolve.
+2. That broke `i18n-completeness-gate` — 38 gaps, because `en` gained keys 19 locales lacked.
+   The standard forbids hand-editing those (*"never hand-edited, never a one-off translator"*),
+   so the gap-fill ran through `scripts/i18n_translate.py`.
+3. **`$0`.** That script targets LM Studio at `localhost:1234`; no cloud call was made.
+   34 namespaces written, 0 skipped, **0 keys needing review**.
+
+Both gates now green: key-resolution OK, completeness OK at *"20 locale-dirs x 37 namespaces at
+full `en` parity"*.
 
 ### What B0 refuted
 

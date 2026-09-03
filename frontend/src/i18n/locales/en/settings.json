@@ -554,7 +554,9 @@
     "plannerHint": "The chat model the glossary assistant uses to build multi-step plans. Pick a strong, tool-capable model — otherwise planning falls back to an arbitrary chat model and often fails.",
     "none": "None",
     "empty": "No capable models configured.",
-    "saved": "Default updated"
+    "saved": "Default updated",
+    "composer": "Default composer",
+    "composerHint": "The model that writes your prose when a book has no model of its own. Set deliberately — generation is the most expensive thing here, and nothing will spend through your chat model on your behalf."
   },
   "external_services": {
     "delete_blocked": "This service cannot be removed: its model is in use by {{count}} active job(s). Stop them first.",

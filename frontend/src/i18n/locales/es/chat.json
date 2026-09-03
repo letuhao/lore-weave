@@ -566,5 +566,12 @@
     "done": "Confirmado ✓",
     "error": "No se pudo confirmar",
     "label": "Confirmar"
+  },
+  "disambiguation": {
+    "label": "¿A cuál te refieres?",
+    "empty": "No se encontraron opciones.",
+    "unnamed": "(sin nombre)",
+    "truncated": "Mostrando {{shown}} de {{total}} — acota tu búsqueda para ver otras.",
+    "cancel": "Ninguna de estas"
   }
 }

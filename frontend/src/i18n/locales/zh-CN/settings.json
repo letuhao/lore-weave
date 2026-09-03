@@ -227,10 +227,10 @@
       "endpoint_hint": "留空则使用默认端点 (OpenAI, Anthropic)。",
       "api_key": "API 密钥",
       "api_key_ph_local": "本地模型可选",
+      "api_key_ph": "sk-...",
       "cancel": "取消",
       "adding": "正在添加...",
-      "submit": "添加供应商",
-      "api_key_ph": "sk-..."
+      "submit": "添加供应商"
     },
     "edit_dialog": {
       "aria": "编辑供应商",
@@ -241,14 +241,14 @@
       "endpoint_ph_default": "留空则使用默认值",
       "api_key": "API 密钥",
       "api_key_ph_keep": "••••••••  (留空以保留当前密钥)",
+      "api_key_ph": "sk-...",
       "api_key_keep_hint": "留空以保留现有密钥。",
       "max_concurrency": "最大并发请求数",
       "max_concurrency_ph": "无限制",
       "max_concurrency_hint": "该供应商同时运行的请求数。留空为无限制（由后端决定）。仅在您的后端有明确限制（如本地 GPU）时设置数值。",
       "cancel": "取消",
       "saving": "正在保存...",
-      "submit": "保存更改",
-      "api_key_ph": "sk-..."
+      "submit": "保存更改"
     },
     "delete": {
       "title": "移除 {{name}}？",
@@ -371,13 +371,13 @@
       "extended_thinking": "深度思考",
       "json_mode": "JSON 模式",
       "reasoning": "推理",
+      "tts": "TTS",
+      "stt": "语音转文字",
       "image_gen": "图像生成",
       "video_gen": "视频生成",
       "embedding": "嵌入",
       "rerank": "重排序",
-      "moderation": "内容审核",
-      "tts": "TTS",
-      "stt": "语音转文字"
+      "moderation": "内容审核"
     }
   },
   "services": {
@@ -554,7 +554,9 @@
     "plannerHint": "术语表助手用于构建多步计划的对话模型。请选择一个强大的、具备工具调用能力的模型 —— 否则规划功能将回退到随机的对话模型，且经常失败。",
     "none": "无",
     "empty": "未配置任何可用模型。",
-    "saved": "默认设置已更新"
+    "saved": "默认设置已更新",
+    "composer": "默认创作模型",
+    "composerHint": "当书籍未指定特定模型时，用于撰写正文的模型。请谨慎设置 —— 生成内容是成本最高的环节，且不会自动消耗您的对话模型额度。"
   },
   "external_services": {
     "delete_blocked": "无法移除此服务：其模型正被 {{count}} 个正在运行的任务使用。请先停止这些任务。",

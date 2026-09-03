@@ -554,7 +554,9 @@
     "plannerHint": "Model sembang yang digunakan oleh pembantu glosari untuk membina pelan pelbagai langkah. Pilih model yang kuat dan berkemampuan alat — jika tidak, perancangan akan kembali ke model sembang rawak dan sering kali gagal.",
     "none": "Tiada",
     "empty": "Tiada model berkemampuan yang dikonfigurasikan.",
-    "saved": "Lalai dikemas kini"
+    "saved": "Lalai dikemas kini",
+    "composer": "Komposer lalai",
+    "composerHint": "Model yang menulis prosa anda apabila sesebuah buku tidak mempunyai model sendiri. Tetapkan dengan teliti — penjanaan adalah perkara yang paling mahal di sini, dan tiada apa yang akan menggunakan kuota model sembang anda bagi pihak anda."
   },
   "external_services": {
     "delete_blocked": "Perkhidmatan ini tidak boleh dibuang: modelnya sedang digunakan oleh {{count}} kerja aktif. Hentikan kerja tersebut terlebih dahulu.",

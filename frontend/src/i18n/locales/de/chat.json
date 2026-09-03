@@ -566,5 +566,12 @@
     "done": "Bestätigt ✓",
     "error": "Bestätigung fehlgeschlagen",
     "label": "Bestätigen"
+  },
+  "disambiguation": {
+    "label": "Was meinten Sie?",
+    "empty": "Es wurden keine Optionen gefunden.",
+    "unnamed": "(unbenannt)",
+    "truncated": "Es werden {{shown}} von {{total}} angezeigt — verfeinern Sie Ihre Suche, um weitere Ergebnisse zu sehen.",
+    "cancel": "Keine davon"
   }
 }

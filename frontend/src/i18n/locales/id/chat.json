@@ -566,5 +566,12 @@
     "done": "Terkonfirmasi ✓",
     "error": "Tidak dapat mengonfirmasi",
     "label": "Konfirmasi"
+  },
+  "disambiguation": {
+    "label": "Mana yang Anda maksud?",
+    "empty": "Tidak ada pilihan yang ditemukan.",
+    "unnamed": "(tanpa nama)",
+    "truncated": "Menampilkan {{shown}} dari {{total}} — persempit permintaan Anda untuk melihat lainnya.",
+    "cancel": "Tidak ada yang sesuai"
   }
 }

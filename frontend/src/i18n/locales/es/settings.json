@@ -554,7 +554,9 @@
     "plannerHint": "El modelo de chat que utiliza el asistente de glosario para crear planes de varios pasos. Elige un modelo potente y con capacidad de uso de herramientas; de lo contrario, la planificación recurrirá a un modelo de chat arbitrario y suele fallar.",
     "none": "Ninguno",
     "empty": "No hay modelos capaces configurados.",
-    "saved": "Predeterminado actualizado"
+    "saved": "Predeterminado actualizado",
+    "composer": "Compositor predeterminado",
+    "composerHint": "El modelo que escribe tu prosa cuando un libro no tiene un modelo propio. Configúralo con cuidado: la generación es el proceso más costoso y nada consumirá tus créditos de modelo de chat en tu nombre."
   },
   "external_services": {
     "delete_blocked": "Este servicio no se puede eliminar: su modelo está siendo utilizado por {{count}} trabajo(s) activo(s). Deténlos primero.",

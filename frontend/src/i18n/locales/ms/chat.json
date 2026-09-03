@@ -566,5 +566,12 @@
     "done": "Disahkan ✓",
     "error": "Tidak dapat mengesahkan",
     "label": "Sahkan"
+  },
+  "disambiguation": {
+    "label": "Yang mana satu yang anda maksudkan?",
+    "empty": "Tiada pilihan dikembalikan.",
+    "unnamed": "(tanpa nama)",
+    "truncated": "Menunjukkan {{shown}} daripada {{total}} — kecilkan permintaan anda untuk melihat yang lain.",
+    "cancel": "Tiada satu pun daripada ini"
   }
 }

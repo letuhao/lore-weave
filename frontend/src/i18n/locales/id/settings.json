@@ -456,11 +456,11 @@
     "cap": {
       "chat": "Chat / LLM",
       "embedding": "Embedding",
+      "tts": "Teks-ke-Suara",
+      "stt": "Suara-ke-Teks",
       "image_gen": "Gen Gambar",
       "moderation": "Moderasi",
-      "reranker": "Reranker",
-      "tts": "Teks-ke-Suara",
-      "stt": "Suara-ke-Teks"
+      "reranker": "Reranker"
     },
     "add": {
       "aria": "Tambah model",
@@ -554,7 +554,9 @@
     "plannerHint": "Model chat yang digunakan asisten glosarium untuk menyusun rencana multi-langkah. Pilih model kuat yang memiliki kemampuan alat — jika tidak, perencanaan akan beralih ke model chat sembarang dan sering kali gagal.",
     "none": "Tidak ada",
     "empty": "Tidak ada model mumpuni yang dikonfigurasi.",
-    "saved": "Default diperbarui"
+    "saved": "Default diperbarui",
+    "composer": "Composer default",
+    "composerHint": "Model yang menulis prosa Anda ketika sebuah buku tidak memiliki model sendiri. Atur dengan cermat — pembuatan teks adalah hal yang paling memakan biaya di sini, dan tidak ada yang akan menghabiskan kuota model chat Anda atas nama Anda."
   },
   "external_services": {
     "delete_blocked": "Layanan ini tidak dapat dihapus: modelnya sedang digunakan oleh {{count}} pekerjaan aktif. Hentikan pekerjaan tersebut terlebih dahulu.",

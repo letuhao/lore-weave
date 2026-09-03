@@ -566,5 +566,12 @@
     "done": "Đã xác nhận ✓",
     "error": "Không thể xác nhận",
     "label": "Xác nhận"
+  },
+  "disambiguation": {
+    "label": "Bạn muốn tìm cái nào?",
+    "empty": "Không tìm thấy tùy chọn nào.",
+    "unnamed": "(chưa đặt tên)",
+    "truncated": "Đang hiển thị {{shown}} trên {{total}} — hãy thu hẹp yêu cầu để xem các kết quả khác.",
+    "cancel": "Không phải những mục này"
   }
 }
