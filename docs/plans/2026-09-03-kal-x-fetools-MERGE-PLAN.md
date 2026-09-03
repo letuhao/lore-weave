@@ -277,11 +277,11 @@ lives in the section it cites.
 - [x] **M1** — merge `--no-commit`; resolve the rename-sweep files. **Only `mcp/server.py` is
   mechanical**; `facts.py`/`relations.py` invert the rule — take KAL, port FE's three functions.
   (§1.1, as corrected by B0)
-- [ ] **M2** — resolve **Class B**, the 6 two-sided files. `ledger.go` by reading the ledger,
+- [x] **M2** — resolve **Class B**, the 6 two-sided files. `ledger.go` by reading the ledger,
   never by taking a side. (§1.1, §4.3)
-- [ ] **M3** — resolve **Class C**, the 5 gate/CI files: union of the bars, every count
+- [x] **M3** — resolve **Class C**, the 5 gate/CI files: union of the bars, every count
   re-derived. `docker-compose.yml` is three-way and must not regain a backend default. (§1.1, §4.2)
-- [ ] **M4** — resolve **Class D**, the 7 prose/config files, including the `goal-prompt.md`
+- [x] **M4** — resolve **Class D**, the 7 prose/config files, including the `goal-prompt.md`
   add/add. Commit the merge **without** `--no-verify`. (§1.1)
 - [x] **S1** — fix the **5 silent hard-break** files, `executor.py:632` first — FE's P7
   chokepoint. (§2, §2.1)
@@ -394,6 +394,40 @@ What the resolutions actually were:
    because AGE has neither `ON CREATE SET` nor `ON MATCH SET`. Behaviour preserved, anchors stale.
    Re-anchored on the CASE — then **proven still red**: making the bump conditional fails it,
    restoring passes, `git diff` byte-identical.
+
+### M2 + M3 + M4 — the rest of the 23, 2026-09-04
+
+Merge commit `8958c839a`, two parents, pre-commit hook run (no `--no-verify`). **0 FE commits
+outstanding.**
+
+| conflict | resolution |
+|---|---|
+| `glossary entity_handler.go` | **ours** — its `setEntityStatusCore` already appends the lifecycle ledger via `emitEntityStatusChangedTx`, in-transaction and with `prior_status`. Theirs inlined the INSERT. Their DQ-T1 concern is met, better. |
+| `glossary migrate/ledger.go` | **renumbered** — see the commit; 70 steps, no duplicates |
+| `jobs contract.py` / `routers/jobs.py` | **union** — `detail_status` suppresses every cap on an owner-lost row; `_retry_blocked` withdraws only `retry`. Different questions. |
+| `composition name_grounding.py` | **ours** — its tokeniser is Unicode-aware; theirs was the Latin-1 regex that could not see Vietnamese names |
+| `context-budget-defaults-lint.py` | **ported**, not picked — see below |
+| `gate-teeth-gate.py` | 1,2 ours · 3 **theirs** (the red-ability sweep reader) |
+| `docs/standards/README.md` | **a mix** — our Multilingual row (carries main's new i18n gate) + THEIR Artifact Language row, which points at `AGENTS.md`; ours pointed at `CLAUDE.md`, which says of itself it is "a pointer, deliberately kept empty of rules" |
+| `.gitignore`, `DEFERRED.md` | union — both are additive registers |
+| `docker-compose.yml`, `foundation-ci.yml`, `llm-budget-ssot-gate.py`, `goal-prompt.md` | ours; each is the superset or the corrected version |
+| `SESSION_HANDOFF.md` | PR #219's own convention — live section kept, theirs preserved verbatim as history |
+
+**The `Reconciles:` line predicted one of these.** The standards index cited
+`contracts/frontend-tools.contract.json` as the Frontend-Tool Contract's SoT, and this merge
+renames it. Zero references to the dead path remain; two point at `browser-tools.contract.json`.
+
+**A defect neither branch had.** `scan_file` and `scan_go_file` both recorded a subject only
+*after* the ALLOW check, so an exempted tool was never counted — and the shrink arm, which calls
+a row dead when no scanned tool bears its name, declared **ten live exemptions deletable**. The
+tempting fix was to delete ten live exemptions. Latent here (no row named a selectorless tool),
+exposed by their nine Go-service rows. Fixed in both halves; subjects **8 → 39**. Bitten: remove
+the one line and the gate goes red with 10 dead-row findings, restore it and it exits 0.
+
+**A ratchet moved, with the reason written in.** `NO_PROOF_BASELINE` 4 → 5 for
+`scripts/toolloop/t_derivative_gate_probe.py`, which is not a gate — it is a live MCP probe that
+matches the sweep only because "gate" is in its filename. The baseline moved rather than the
+discovery narrowing, because excluding by name pattern would let a real gate escape.
 
 ### What B0 refuted
 
