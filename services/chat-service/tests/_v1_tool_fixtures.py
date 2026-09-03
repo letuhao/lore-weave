@@ -8,7 +8,7 @@ a LIVE owner elsewhere:
     ui_open_studio_panel, ui_focus_*  services/ai-gateway/src/mcp/ui-tools.ts
     confirm_action, glossary_*        services/ai-gateway/src/mcp/confirm-tools.ts
 
-and the CROSS-LANGUAGE SoT for all of them is `contracts/frontend-tools.contract.json`.
+and the CROSS-LANGUAGE SoT for all of them is `contracts/browser-tools.contract.json`.
 
 They survive here because a dozen chat-service tests use a tool def as a fixture — a plausible
 `tools=[...]` argument to drive a turn — and rebuilding twelve hand-written dicts would be worse

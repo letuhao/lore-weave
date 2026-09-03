@@ -23,7 +23,7 @@ import { PROPOSE_EDIT_DIRECTIVE_TYPE } from '../src/mcp/propose-edit-tool.js';
 // executor, a gate the client must honour — rather than "the function returned something".
 
 const CONTRACT = JSON.parse(
-  readFileSync(join(__dirname, '../../../contracts/frontend-tools.contract.json'), 'utf-8'),
+  readFileSync(join(__dirname, '../../../contracts/browser-tools.contract.json'), 'utf-8'),
 ) as Record<string, { args: Record<string, { type?: string; enum?: string[] }>; required?: string[] }>;
 
 describe('the human gate survives the move to ai-gateway', () => {

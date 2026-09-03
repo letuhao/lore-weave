@@ -98,7 +98,7 @@ class TestFrontendToolDefs:
         # by tool NAME, and the names did not change when their home did.
         contract = json.loads(
             (pathlib.Path(__file__).resolve().parents[3] / "contracts"
-             / "frontend-tools.contract.json").read_text(encoding="utf-8"))
+             / "browser-tools.contract.json").read_text(encoding="utf-8"))
         glossary_tools = {n for n in contract if n.startswith("glossary_")}
         assert glossary_tools, "the contract lists no glossary tools — this test would be vacuous"
         for name in glossary_tools:
@@ -200,7 +200,7 @@ class TestFrontendToolDefs:
         # sharing, book-settings, translation, enrichment-*, user-guide, agent-mode) because
         # nothing forced it to stay in sync with the real enum. The actual anti-drift
         # mechanism for that is test_frontend_tools_contract.py's committed
-        # contracts/frontend-tools.contract.json (regenerated via WRITE_FRONTEND_CONTRACT=1),
+        # contracts/browser-tools.contract.json (regenerated via WRITE_FRONTEND_CONTRACT=1),
         # which the FE guard also reads — duplicating the list here only added a second,
         # unmaintained copy that could fail for reasons unrelated to whatever change
         # actually broke the contract. Keep this test to what it can uniquely catch:

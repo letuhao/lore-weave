@@ -17,7 +17,7 @@
 // redeeming them. mcp-public-gateway's OWN confirm_action (src/scope/confirm-action.ts) is a
 // different tool with the same name and is not affected.
 //
-// Arg shapes are the contract's (contracts/frontend-tools.contract.json), which stays the SoT.
+// Arg shapes are the contract's (contracts/browser-tools.contract.json), which stays the SoT.
 
 /** A gated CONFIRM directive. Distinct from PROPOSE_EDIT_DIRECTIVE_TYPE (an editor write) and
  *  from UI_DIRECTIVE_TYPE (resolve-immediately nav): the client must gate on the human, then

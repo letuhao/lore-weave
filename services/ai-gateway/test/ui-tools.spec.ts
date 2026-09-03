@@ -11,16 +11,16 @@ import {
 
 // Phase 3 (P3.1) — the ai-gateway ui_* directive tools. Two guarantees under test:
 //  1) DRIFT: the committed mirror's args/required/enums equal the contract SoT
-//     (contracts/frontend-tools.contract.json) — read here from the repo checkout,
+//     (contracts/browser-tools.contract.json) — read here from the repo checkout,
 //     which the Docker image can't do (why the mirror exists).
 //  2) NO SILENT NO-OP: an out-of-enum/missing-required arg is a tool ERROR, never a
 //     pass — the exact bug the migration exists to kill.
 
 const CONTRACT = JSON.parse(
-  readFileSync(join(__dirname, '../../../contracts/frontend-tools.contract.json'), 'utf-8'),
+  readFileSync(join(__dirname, '../../../contracts/browser-tools.contract.json'), 'utf-8'),
 ) as Record<string, { args: Record<string, { type?: string; enum?: string[] }>; required?: string[] }>;
 
-describe('ui-tools drift vs contracts/frontend-tools.contract.json', () => {
+describe('ui-tools drift vs contracts/browser-tools.contract.json', () => {
   const uiNames = UI_TOOLS.map((t) => t.name).sort();
   const contractUiNames = Object.keys(CONTRACT).filter((k) => k.startsWith('ui_')).sort();
 

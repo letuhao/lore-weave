@@ -12,7 +12,7 @@
 // Apply card, and on Apply the client applies the text + resolves. Nothing is written
 // server-side — there is no server executor (contrast KIND-C's durable gate).
 //
-// SoT: contracts/frontend-tools.contract.json (propose_edit entry) — this is a committed
+// SoT: contracts/browser-tools.contract.json (propose_edit entry) — this is a committed
 // MIRROR (ai-gateway can't read the repo-root contract at runtime); propose-edit-tool.
 // contract.spec.ts drift-tests it. The prose description moves here from frontend_tools.py
 // (a MOVE, not a duplication — Phase 4 removes chat-service's copy).

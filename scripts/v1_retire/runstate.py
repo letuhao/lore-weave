@@ -31,7 +31,7 @@ FE_TOOLS = ROOT / "services/chat-service/app/services/frontend_tools.py"
 TOOL_DISCOVERY = ROOT / "services/chat-service/app/services/tool_discovery.py"
 CATALOG = ROOT / "contracts/tool-catalog-cache.json"
 MANIFEST = ROOT / "contracts/agent-runtime-manifest.json"
-FE_CONTRACT = ROOT / "contracts/frontend-tools.contract.json"
+FE_CONTRACT = ROOT / "contracts/browser-tools.contract.json"
 
 V1_TOOLS = ("confirm_action", "glossary_confirm_action", "glossary_propose_entity_edit")
 
@@ -446,7 +446,7 @@ def render(d: dict) -> None:
         print()
 
     ct = d["contract"]
-    print(f"contract  frontend-tools.contract.json: {ct['total_entries']} entries "
+    print(f"contract  browser-tools.contract.json: {ct['total_entries']} entries "
           f"({len(ct['v1_entries'])} v1, {len(ct['migrated_entries'])} already migrated)")
     if ct["v1_entries"]:
         print(f"        v1: {', '.join(ct['v1_entries'])}")

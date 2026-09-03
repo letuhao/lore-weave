@@ -11,7 +11,7 @@
 // a no-op the model reported as success): an out-of-enum value returns a tool ERROR
 // carrying the `enum`/`required` signal — never a silent no-op.
 //
-// SoT: contracts/frontend-tools.contract.json is the single schema source. ai-gateway
+// SoT: contracts/browser-tools.contract.json is the single schema source. ai-gateway
 // cannot read it at runtime (its Docker build context is the service dir, not the repo
 // root), so these definitions are a COMMITTED MIRROR — ui-tools.contract.spec.ts is the
 // drift test that reads the repo-root contract (from the checkout, not the image) and
