@@ -287,7 +287,7 @@ lives in the section it cites.
   chokepoint. (§2, §2.1)
 - [x] **S2** — re-point the **2 source-substring assertions**; leave the 19 cosmetic mentions
   alone. (§2.2)
-- [ ] **G1** — build the **import-resolution gate**: every `from app.X import Y` resolves.
+- [x] **G1** — build the **import-resolution gate**: every `from app.X import Y` resolves.
   Proven RED on `executor.py:632` before green. None of the repo's 133 gates catches this. (§3 Phase 3)
 - [ ] **V1** — re-prove the twelve invariants against the merged tree via the **owning suites**,
   not the board, plus the guard-is-called AST gate. (§3 Phase 3)
@@ -428,6 +428,38 @@ the one line and the gate goes red with 10 dead-row findings, restore it and it 
 `scripts/toolloop/t_derivative_gate_probe.py`, which is not a gate — it is a live MCP probe that
 matches the sweep only because "gate" is in its filename. The baseline moved rather than the
 discovery narrowing, because excluding by name pattern would let a real gate escape.
+
+### G1 — the import-resolution gate, 2026-09-04
+
+`scripts/import-resolution-gate.py`. Every in-repo `from app.… import …` must resolve to a
+module **and** a name, read from the AST, function-level imports included — which is the point,
+since the defect that motivated it is one.
+
+**Proven RED on both original instances, then restored byte-exact:**
+
+```
+executor.py:632:  no module `app.db.neo4j_repos.facts` under services/knowledge-service/app
+user_data.py:35:  `app.db.neo4j_helpers` has no `purge_project`
+```
+
+The first is FE's P7 chokepoint. The second is the case a grep cannot reach: a symbol that
+**moved** while both modules kept existing, so the module resolves and the line reads ordinary.
+
+**Its first run over the tree found a defect in itself and one in the repo.**
+
+- *In itself:* `fleiss_kappa, kappa_interpretation = _resolve()` binds two names by tuple
+  unpacking, and reading only `ast.Name` targets reported a module that exports them as
+  exporting neither. Fixed, plus a literal `__all__` is now trusted as the module's own
+  assertion of what it provides.
+- *In the repo:* `backfill_entity_alias_map.py:138` imported `init_knowledge_pool`, which has
+  **never existed** — `app.db.pool` provides `create_pools`, which is what `app/main.py:179`
+  calls. That CLI entry point could not have run since it was written, and its own docstring
+  says no test covers it. Fixed at the call site rather than baselined.
+
+Now **1076 files across 10 services, every import resolving, `BASELINE = 0`.** Wired into
+`foundation-ci.yml` rather than only the hook: the hook is opt-in per checkout, and the defect
+arrives through a merge — exactly when nobody is looking. `gate-teeth` counts it, 145 CI-invoked
+gates with 140 proven; `gate-wiring-gate` 187 discovered, all wired or exempt.
 
 ### What B0 refuted
 

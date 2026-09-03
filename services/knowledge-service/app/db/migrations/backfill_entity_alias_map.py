@@ -133,12 +133,18 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
     from app.config; logs the BackfillResult to stdout. Not unit-
     tested because it touches real I/O — coverage is on run_backfill.
     """
-    from app.config import settings  # noqa: F401  (init validation)
+    # 🔴 `init_knowledge_pool` NEVER EXISTED, and this entry point could not have run since it
+    # was written — `app.db.pool` provides `create_pools(knowledge_dsn, glossary_dsn)`, which is
+    # what `app/main.py:179` calls. Found 2026-09-04 by `import-resolution-gate` on its first
+    # run over the tree: a module that resolves, an import line that reads ordinary, and a name
+    # that is not there. No test covers this function (its own docstring says so), so nothing
+    # else was ever going to notice.
+    from app.config import settings
     from app.db.neo4j import get_neo4j_driver, graph_session
-    from app.db.pool import get_knowledge_pool, init_knowledge_pool
+    from app.db.pool import create_pools, get_knowledge_pool
 
     logging.basicConfig(level=logging.INFO)
-    await init_knowledge_pool()
+    await create_pools(settings.knowledge_db_url, settings.glossary_db_url)
     # Ensure driver lifecycle for the session context manager.
     get_neo4j_driver()
     pool = get_knowledge_pool()

@@ -223,6 +223,12 @@ jobs:
       # Previously pre-commit-hook-only. The hook is opt-in per checkout; CI is not.
       - run: python scripts/context-budget-defaults-lint.py
       - run: python scripts/context-inspector-checklist-gate.py
+      # Every in-repo `from app.… import …` resolves — the module AND the name. Written
+      # 2026-09-04 because the merge with feat/frontend-tools-mcp-migration produced a file
+      # git called clean that imported a renamed package, and 133 gates looked at none of it.
+      # It belongs in CI rather than only the hook: the hook is opt-in per checkout, and the
+      # defect it catches arrives through a merge, which is exactly when nobody is looking.
+      - run: python scripts/import-resolution-gate.py
       - run: python scripts/db-safety-gate.py
       - run: python scripts/design-draft-token-lint.py
       - run: python scripts/i18n-completeness-gate.py
