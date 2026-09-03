@@ -5645,7 +5645,16 @@ class _MotifBindEditArgs(ForbidExtra):
                   "bind", "bind it to", "attach the motif", "use this motif here",
                   "tie the motif to",
                   "attach motif to arc", "bind motif to arc", "set the arc's motif",
-                  "motif for this arc", "apply motif to the arc"],
+                  "motif for this arc", "apply motif to the arc",
+                  # DQ-T32 (owner, 2026-08-28): keep the CONTIGUOUS match, FIX THE DECLARATIONS.
+                  # P8's sharpened case: "Attach the pattern called Emberfall Binding to this
+                  # book's opening arc" splits the declared "attach pattern to chapter" with the
+                  # motif's OWN NAME, so no contiguous phrase spans it. Three corpus turns missed
+                  # on exactly that shape. Measured over the corpus before adding: these two fix
+                  # all three and claim ZERO turns belonging to another tool, and neither
+                  # normalised key ("attach pattern", "as book's motif") is declared by any other
+                  # LIVE tool -- checked, because creating a collision is what P5/DQ-T41 forbids.
+                  "attach the pattern", "as this book's motif"],
         tool_name="composition_motif_bind_edit",
     ),
 )

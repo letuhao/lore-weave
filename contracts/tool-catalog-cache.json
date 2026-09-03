@@ -9824,7 +9824,9 @@
         "bind motif to arc",
         "set the arc's motif",
         "motif for this arc",
-        "apply motif to the arc"
+        "apply motif to the arc",
+        "attach the pattern",
+        "as this book's motif"
       ],
       "tier": "A"
     }

@@ -91,10 +91,25 @@ def _is_empty(p: dict) -> bool:
     return not (p.get("tools") or [])
 
 
-def _field_date(name: str) -> str:
-    """The YYYY-MM-DD a field NAME carries, or "" — e.g. cannot_clear_2026_08_23 -> 2026-08-23."""
+def _field_date(name: str, text: str = "") -> str:
+    """The latest YYYY-MM-DD a field's NAME or TEXT carries, or "".
+
+    🔴 THE NAME ALONE WAS NOT ENOUGH, and P8-ANSWERABILITY is why. Its veto lived in `diagnosis`
+    -- an UNDATED name whose TEXT opens "BOTH TOOLS READ PROVEN AND THE PROBLEM SAYS OF ITSELF
+    THAT IT CANNOT BE CLEARED" and goes on to quote `blocked_on_dq_2026_08_23`. That is a record
+    of 2026-08-23, and the only ways to clear the problem were to DELETE it or to rename it --
+    both of which destroy or disguise history to satisfy a checker, which the loop's own goal
+    forbids in as many words. So the checker reads the date the field itself states.
+    """
+    # BOTH SEPARATORS. The text usually cites a sibling FIELD NAME, which uses underscores
+    # (`blocked_on_dq_2026_08_23`), while prose uses hyphens. Matching only hyphens read
+    # P8's `diagnosis` as undated when it names its date in the very sentence that vetoes.
+    ds = [d.replace("_", "-") for d in
+          re.findall(r"20\d\d[-_]\d\d[-_]\d\d", text or "")]
     m = re.search(r"(20\d\d)[_-](\d\d)[_-](\d\d)", name)
-    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else ""
+    if m:
+        ds.append(f"{m.group(1)}-{m.group(2)}-{m.group(3)}")
+    return max(ds) if ds else ""
 
 
 def _status_date(status: str) -> str:
@@ -127,14 +142,19 @@ def _definition_complete(p: dict) -> tuple[bool, str]:
     """
     own = (p.get("status") or "").strip()
     sdate = _status_date(own)
+    # 🔴 SUPERSESSION APPLIES ONLY UNDER A STATUS THAT ITSELF CLAIMS CLEARED. Without this gate a
+    # merely NEWER status -- including one that says "still blocked" -- would silence a veto, which
+    # is the opposite of what the rule is for. A problem that does not claim to be finished can
+    # never suppress a field saying it is not.
+    _may_supersede = own.upper().startswith(("CLEARED", "FIXED"))
     for key, val in p.items():
         if key in ("tools", "cycle") or not isinstance(val, str):
             continue
         if "CANNOT BE CLEARED" not in val.upper():
             continue
-        fdate = _field_date(key)
-        if fdate and sdate and sdate > fdate:
-            continue  # superseded: the status was written after this record
+        fdate = _field_date(key, val)
+        if _may_supersede and fdate and sdate and sdate > fdate:
+            continue  # superseded: the status was written after the state this field records
         return False, f"`{key}` says it CANNOT BE CLEARED: {val.split('.')[0][:80]}"
     if _is_empty(p):
         return False, ("EMPTY — every tool moved out on a named cause; nothing was proven "
