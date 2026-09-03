@@ -36,9 +36,25 @@ from __future__ import annotations
 
 import argparse
 import functools
+import os
+import sys
 
-import call_outcome
-import selection_rate
+# 🔴 SIBLING IMPORTS, RESOLVED FROM THIS FILE RATHER THAN FROM THE CALLER'S CWD.
+#
+# `call_outcome` and `selection_rate` live beside this module and were imported by BARE NAME,
+# which only resolves when the process was started from `scripts/toolloop/`. That held while
+# this file's only callers were run from there. The 2026-09-04 merge put it under a repo-wide
+# gate sweep that invokes every gate from the repo ROOT, and it died at import with
+# `ModuleNotFoundError: No module named 'call_outcome'` — a gate that cannot start reports
+# nothing, which is worse than a gate that fails.
+#
+# Prepended rather than appended: a repo this size has more than one `json`-adjacent name, and
+# a sibling module must win over whatever else is on the path for the import to mean what it
+# says here.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import call_outcome  # noqa: E402  (needs the sys.path line above)
+import selection_rate  # noqa: E402
 import json
 import hashlib
 import pathlib

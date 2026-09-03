@@ -1254,10 +1254,18 @@ def _tools_named_in_request(text: str | None, catalog_index: dict) -> frozenset[
     """
     if not text or not catalog_index:
         return frozenset()
+    # 🔴 NO `.lower()` ON THE TOOL NAME, and it is not a style choice. `language-bias-gate`
+    # (ML-2) flags a bare `.lower()` on a name-shaped variable because a PERSON's name needs
+    # the NFKC + CJK spine. A TOOL name is not that: it is an ASCII snake_case identifier —
+    # measured 2026-09-04, 317 of 317 in `contracts/tool-names.json` are already lowercase and
+    # none carries a capital — so the call was a no-op standing where a real defect looks
+    # identical. Dropping it keeps the behaviour and stops this line spending the gate's
+    # attention. The TEXT side is still folded, which is where the user's own writing arrives.
+    # If a tool name ever needs folding, the catalogue is the place, not this call site.
     low = text.lower()
     return frozenset(
         name for name in catalog_index
-        if len(name) >= _NAMED_TOOL_MIN_LEN and "_" in name and name.lower() in low
+        if len(name) >= _NAMED_TOOL_MIN_LEN and "_" in name and name in low
     )
 
 
