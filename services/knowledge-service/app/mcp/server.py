@@ -59,7 +59,7 @@ from app.clients.embedding_client import get_embedding_client
 from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.entities import list_entities_filtered
 from app.db.graph_repos.facts import FactType
 from app.db.pool import get_knowledge_pool

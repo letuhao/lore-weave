@@ -25,7 +25,7 @@ from uuid import UUID
 
 from app.config import settings
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos import maintenance
 from app.db.graph_repos.passages import (
     delete_all_kg_nodes_for_project,
@@ -322,7 +322,7 @@ async def recall_assistant_facts(body: _RecallFactsIn) -> dict:
     book), then returns confirmed :Fact nodes in the event_date range (optionally ABOUT a subject),
     newest-first. This is the read that answers "what did <subject> say about <topic> last month" — it
     is project-scoped (never all-projects), so it cannot surface another project's facts (D16)."""
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
     from app.db.graph_repos.facts import group_supersessions, recall_facts
 
     pool = get_knowledge_pool()
@@ -390,7 +390,7 @@ async def merge_assistant_entities(body: _MergeEntitiesIn) -> dict:
     Idempotent-ish: a `from_name` that no longer resolves (already merged) → 404 `from_not_found`. Same
     entity both sides → 400 `same_entity`. Internal-token; the diary subjects are KG-only auto-created
     entities (no glossary anchor), so this never touches an authored glossary row."""
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
     from app.db.graph_repos.entities import (
         MergeEntitiesError,
         find_entities_by_name,
@@ -451,7 +451,7 @@ async def close_assistant_epoch(body: _CloseEpochIn) -> dict:
     (`valid_until` — the bi-temporal close) then ARCHIVE the project so default recall can never resolve
     it again. The gateway `new-epoch` orchestration then trashes the old diary book + provisions a fresh
     project + diary volume (WS-2.10b). Internal-token; idempotent. Returns the closed project id."""
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
     from app.db.graph_repos.facts import invalidate_all_facts_for_project
 
     pool = get_knowledge_pool()
@@ -482,7 +482,7 @@ async def export_purge_assistant_epoch(body: _ExportPurgeEpochIn) -> dict:
     inboxes + the project row) — so this is the epoch-scoped sibling of the account-scoped D-R27 erase and
     the entity-scoped WS-2.6c forget: one primitive, three scopes. Export-before-purge order means a purge
     failure never loses the export. Owner/project scoped; internal-token."""
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
     from app.db.graph_repos.facts import export_facts_for_project
 
     pool = get_knowledge_pool()
@@ -530,7 +530,7 @@ async def forget_assistant_entity(body: _ForgetEntityIn) -> dict:
     are needed for a complete forget; this endpoint returns the resolved name so the caller can redact.
 
     Idempotent: a name that no longer resolves → `forgotten:false` (already gone). Internal-token."""
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
     from app.db.graph_repos.entities import erase_entity_subgraph, find_entities_by_name
     from app.db.repositories.pending_facts import PendingFactsRepo
     from app.events.outbox_emit import ENTITY_FORGOTTEN, emit_correction

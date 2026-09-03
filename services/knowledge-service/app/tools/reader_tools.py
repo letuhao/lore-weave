@@ -34,7 +34,7 @@ from app.clients.glossary_client import (
     get_glossary_client,
 )
 from app.clients.grant_client import GrantLevel
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.entities import resolve_kg_entity_id_by_glossary_id
 from app.db.graph_repos.entity_status import statuses_detail_at_order
 from app.db.graph_repos.events import list_events_filtered

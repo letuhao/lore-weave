@@ -684,7 +684,7 @@ async def _cli_main() -> int:
     from app.config import settings
     from app.db.age_pool import age_pool, close_age_pool, init_age_pool
     from app.db.neo4j import close_neo4j_driver, init_neo4j_driver
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
 
     ap = argparse.ArgumentParser(description="Migrate a Neo4j knowledge graph into AGE")
     ap.add_argument("--apply", action="store_true", help="execute (default: dry-run)")

@@ -72,7 +72,7 @@ from app.context.selectors.summary_blend import LevelSummaryHit  # select_summar
 from app.context.selectors.projects import load_project_summary
 from app.context.selectors.summaries import load_global_summary
 from app.db.models import Project
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.repositories.summaries import SummariesRepo
 from app.metrics import (
     layer_timeout_total,

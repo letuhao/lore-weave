@@ -53,7 +53,7 @@ from app.context.formatters.stopwords import (
 )
 from app.extraction.scripts import CJK_FAMILY_RUN_RE, LATIN_NAME_RE
 from app.db.models import Project
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.neo4j_helpers import CypherSession
 from app.adapters.vector_store_provider import get_vector_store
 from app.ports.vector_store import VectorFilter

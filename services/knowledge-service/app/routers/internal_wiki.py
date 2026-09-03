@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 
 from app.domain.graph_models import EVENT_ORDER_CHAPTER_STRIDE
 from app.config import settings
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.adapters.graph_store_provider import get_graph_store
 from app.wiki.context import DEFAULT_KG_LIMIT, gather_entity_context, gather_kg_facts
 from app.wiki.fingerprint import stable_hash

@@ -78,7 +78,7 @@ async def glossary_mirror_drift(
             "skipped": "neo4j_unavailable",
         }
 
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
 
     async with graph_session() as session:
         drift = await detect_mirror_drift(
@@ -138,7 +138,7 @@ async def glossary_mirror_repair(
             "skipped": "neo4j_unavailable",
         }
 
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
 
     client = get_glossary_client()
     async with graph_session() as session:

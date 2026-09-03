@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
 from app.config import settings
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.fact_for_check import FactForCheck, get_fact_for_check
 from app.db.pool import get_knowledge_pool
 from app.middleware.internal_auth import require_internal_token

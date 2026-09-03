@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from app.clients.glossary_client import GlossaryClient
 from app.clients.llm_client import LLMClient
 from app.config import settings
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_glossary_client, get_llm_client, get_projects_repo
 from app.extraction import coref_detect

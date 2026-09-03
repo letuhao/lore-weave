@@ -215,7 +215,8 @@ def _clustered(rows: int, dim: int, seed: int, clusters: int = 64, spread: float
 
 async def _from_neo4j(project_id: str, user_id: str, dim: int, limit: int):
     """Real passage vectors, READ-ONLY. The dev graph holds real books; this only reads."""
-    from app.db.neo4j import init_neo4j_driver, graph_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import init_neo4j_driver
     from app.db.graph_repos.passages import find_passages_by_vector
     # T25 ③ step 5 — own the index rather than inheriting it from `neo4j_schema.cypher`,
     # which the cutover deletes. Same name and options, so this is the identical index and

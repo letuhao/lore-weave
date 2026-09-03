@@ -486,7 +486,7 @@ async def test_confirm_proposed_edge_happy(monkeypatch):
 
     monkeypatch.setattr(triage_proposed_edge_effect, "graph_session", lambda: _FakeSession(), raising=False)
     # the effect imports graph_session lazily from app.db.neo4j — patch there too.
-    import app.db.neo4j as _neo4j
+    import app.db.graph as _neo4j
     monkeypatch.setattr(_neo4j, "graph_session", lambda: _FakeSession())
 
     r = await _post(app, "/v1/kg/actions/confirm", {"confirm_token": _pe_token(triage_id=tid)})

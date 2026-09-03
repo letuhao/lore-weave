@@ -292,7 +292,7 @@ async def index_drafts(
 
     # Inline imports mirror the event-handler pattern (avoid circular import at
     # module load before the Neo4j driver is wired).
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
     from app.db.pool import get_knowledge_pool
     from app.extraction.passage_ingester import ingest_chapter_passages
 

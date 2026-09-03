@@ -114,7 +114,8 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
     """Production entry point. Not unit-tested — coverage lives in
     run_backfill."""
     from app.config import settings  # noqa: F401  (init validation)
-    from app.db.neo4j import get_neo4j_driver, graph_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import get_neo4j_driver
 
     logging.basicConfig(level=logging.INFO)
     get_neo4j_driver()

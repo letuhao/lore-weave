@@ -91,7 +91,7 @@ async def apply_proposed_edge(
     ProposedEdgeDrift (422), or ProposedEdgeWriteFailed (409) — the router maps."""
     # Imported lazily so the module has no hard Neo4j import at collection time
     # (mirrors the router's lazy graph_session import).
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
     from app.ontology.triage_apply import Neo4jReapplyWriter, TriageApplyError
 
     triage_id = UUID(params.triage_id)

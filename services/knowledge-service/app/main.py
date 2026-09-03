@@ -423,7 +423,7 @@ async def lifespan(app: FastAPI):
     refresh_task = None
     if settings.neo4j_uri:
         try:
-            from app.db.neo4j import graph_session
+            from app.db.graph import graph_session
             from app.jobs.anchor_refresh_loop import run_anchor_refresh_loop
 
             def _anchor_session_factory():
@@ -459,7 +459,7 @@ async def lifespan(app: FastAPI):
     global_regen_task = None
     if settings.neo4j_uri:
         try:
-            from app.db.neo4j import graph_session
+            from app.db.graph import graph_session
             from app.db.repositories.summaries import SummariesRepo
             from app.db.repositories.summary_spending import SummarySpendingRepo
             from app.jobs.summary_regen_scheduler import (
@@ -542,7 +542,7 @@ async def lifespan(app: FastAPI):
     mirror_drift_task = None
     if settings.neo4j_uri:
         try:
-            from app.db.neo4j import graph_session
+            from app.db.graph import graph_session
             from app.db.repositories.sweeper_state import SweeperStateRepo
             from app.jobs.reconcile_evidence_count_scheduler import (
                 run_reconcile_loop,

@@ -296,7 +296,7 @@ lives in the section it cites.
 - [x] **V3** — main's i18n key-resolution gate vs FE's frontend: 52 `t()` calls, zero bundle
   changes. Predicted red. (§3 Phase 4)
 - [x] **V4** — a live run through the real stack. A 502 route is invisible to both boards. (§3 Phase 4)
-- [ ] **R1** — **STOP CONDITION** — §4.1: rename `app/db/neo4j.py`, still named for one engine,
+- [x] **R1** — **STOP CONDITION** — §4.1: rename `app/db/neo4j.py`, still named for one engine,
   or record it as a named follow-up. Owner's decision; mechanical now, worse per caller. (§4.1)
 
 ---
@@ -554,6 +554,38 @@ before anything was asserted about it.
 Leg 3 is the one that mattered for attribution: **SURFACE passed throughout** — *"13 route(s)
 carried rows, no route errored"* — which is exactly the surface this merge touched most, and
 exactly the leg that caught `fact-for-check` answering 502 to every caller in PR #219.
+
+### R1 — the split, 2026-09-04 (owner: "split it now, in this branch")
+
+**The plan called this a rename; measuring refuted that**, which is why it went to the owner as
+a hand-back rather than being done quietly. `app/db/neo4j.py` was a **hybrid**: three of its four
+public functions — `init_neo4j_driver`, `get_neo4j_driver`, `close_neo4j_driver` — are genuinely
+Neo4j's driver lifecycle and are correctly named. Only `graph_session` is engine-neutral, and it
+had **81 import sites across 55 files**. Renaming the whole file would have put the driver
+lifecycle under an abstraction's name — the same misleading-name problem one level over.
+
+So: `graph_session` moved to a new `app/db/graph.py`; the driver lifecycle stayed. **No
+re-export shim** — a shim keeps the misleading import path working, which is the thing being
+fixed.
+
+**Two mistakes I made doing it, both caught by running rather than reading:**
+
+1. The bulk rewrite **lost the indentation** on function-level imports — 9 files stopped
+   parsing. Caught by an `ast.parse` sweep, not by the import gate: the imports would have
+   resolved fine, the files just weren't Python any more. Two different classes of broken.
+2. The alias rewrite was **too broad**. `tests/.../conftest.py` and `test_neo4j_driver.py` drive
+   `_driver` / `_init_attempted` — the driver singleton, which did **not** move — and I had
+   repointed them at `graph`. Reverted after checking every aliased file for which module it
+   actually touches. `test_recanon_honorifics.py` needs **both**, and said so by raising
+   `AttributeError` rather than passing quietly.
+
+| check | result |
+|---|---|
+| knowledge units | **4705 passed, 0 failed** — the same count as before the split |
+| AGE repo proof | **10 passed** |
+| `import-resolution-gate` | OK — 1077 files, every `app.…` import resolves |
+| `port-adoption-gate` | exit 0, no ratchet moved |
+| `language-bias-gate` | exit 0 |
 
 ### What B0 refuted
 

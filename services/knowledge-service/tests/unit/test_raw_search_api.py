@@ -592,7 +592,7 @@ def test_index_drafts_owner_indexes_draft_chapters():
     ])
     ingest = AsyncMock(return_value=IngestResult(chunks_created=3, chunks_skipped=0))
     with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"), \
-         patch("app.db.neo4j.graph_session", new=lambda: _noop_session()), \
+         patch("app.db.graph.graph_session", new=lambda: _noop_session()), \
          patch("app.extraction.passage_ingester.ingest_chapter_passages", ingest):
         resp = client.post(_drafts_url())
     assert resp.status_code == 200, resp.json()
@@ -612,7 +612,7 @@ def test_index_drafts_zero_chunks_counts_as_skipped():
     ])
     ingest = AsyncMock(return_value=IngestResult(chunks_created=0, chunks_skipped=0))
     with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"), \
-         patch("app.db.neo4j.graph_session", new=lambda: _noop_session()), \
+         patch("app.db.graph.graph_session", new=lambda: _noop_session()), \
          patch("app.extraction.passage_ingester.ingest_chapter_passages", ingest):
         resp = client.post(_drafts_url())
     assert resp.json() == {"indexed": 0, "skipped": 1, "chapters": 1}

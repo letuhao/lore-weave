@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.adapters.vector_store_provider import get_vector_store
 from app.ports.vector_store import VectorFilter
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.neo4j_helpers import run_read
 from loreweave_extraction.canonical import canonicalize_entity_name
 from app.domain.passage_contract import SUPPORTED_VECTOR_DIMS

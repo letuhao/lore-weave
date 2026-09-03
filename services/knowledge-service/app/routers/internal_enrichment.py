@@ -40,7 +40,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.enrichment import (
     promote_enriched_facts,
     retract_enriched_facts,

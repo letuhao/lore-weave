@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.extraction.passage_ingester import ingest_chapter_passages
 
 logger = logging.getLogger(__name__)

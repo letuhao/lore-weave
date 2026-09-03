@@ -65,7 +65,7 @@ from app.ontology.confirm import (
     mint_action_token,
 )
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.graph_views import (
     _GRAPH_READ_CYPHER,
     _ISOLATED_NODES_CYPHER,

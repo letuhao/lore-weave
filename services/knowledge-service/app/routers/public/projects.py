@@ -35,7 +35,7 @@ from app.db.models import (
     ProjectExtractionConfigUpdate,
     ProjectUpdate,
 )
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.adapters.graph_store_provider import get_graph_store
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.pool import get_knowledge_pool

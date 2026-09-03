@@ -119,7 +119,8 @@ def build_queries(entities: list[dict], focus_n: int) -> tuple[list[dict], list[
 async def _load_entities(user_id, project_id, limit: int = 12) -> list[dict]:
     """Top glossary-anchored entities for the project from Neo4j (by evidence),
     joined to their glossary entity_id (the id the context block surfaces)."""
-    from app.db.neo4j import init_neo4j_driver, graph_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import init_neo4j_driver
 
     await init_neo4j_driver()
     async with graph_session() as session:

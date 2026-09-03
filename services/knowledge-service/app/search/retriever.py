@@ -28,7 +28,7 @@ from app.context.query_embedding import embed_query_cached
 from app.adapters.vector_store_provider import get_vector_store
 from app.ports.vector_store import VectorFilter, VectorHit
 from app.db.models import Project
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.graph_repos.passages import PassageSearchHit, find_passages_by_fulltext
 from app.search.hybrid_fusion import (

@@ -22,7 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
 
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 # T17 A4 — through the GraphStore PORT. This router asks nothing Neo4j-specific: it
 # fetches, invalidates and recreates edges, all three of which the port grew in A1
 # BY THIS ROUTER'S DEMAND. Binding it to the concrete layer bought nothing and cost

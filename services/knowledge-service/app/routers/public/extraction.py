@@ -40,7 +40,7 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.model_name import resolve_model_name
 from app.config import settings as app_settings
 from app.pricing import cost_per_token
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos import maintenance
 from app.db.graph_repos.flywheel import get_flywheel_delta
 from app.db.pool import get_knowledge_pool
@@ -1678,7 +1678,7 @@ async def change_embedding_model(
         try:
             from app.clients.book_client import get_book_client
             from app.clients.embedding_client import get_embedding_client
-            from app.db.neo4j import graph_session
+            from app.db.graph import graph_session
             from app.extraction.passage_ingester import (
                 backfill_published_passages,
                 backfill_source_lang,

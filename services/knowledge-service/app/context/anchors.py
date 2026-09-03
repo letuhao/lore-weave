@@ -37,7 +37,7 @@ except Exception:  # dep missing in a stripped env — degrade to no dict-anchor
         "(select_l2_facts falls back to classifier-only anchors)."
     )
 
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.entities import (
     get_most_connected_entity,
     list_project_entity_names,

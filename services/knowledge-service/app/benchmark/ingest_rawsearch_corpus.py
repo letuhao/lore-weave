@@ -36,7 +36,8 @@ async def _run(args: Any) -> int:
 
     from app.clients.book_client import get_book_client
     from app.clients.embedding_client import init_embedding_client
-    from app.db.neo4j import init_neo4j_driver, graph_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import init_neo4j_driver
     from app.extraction.passage_ingester import ingest_chapter_passages
 
     _logging.basicConfig(level=_logging.INFO)

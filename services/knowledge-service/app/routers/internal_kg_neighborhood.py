@@ -171,7 +171,7 @@ async def get_kg_neighborhood(
     # substitutability: T43 chooses the engine on measurement, and an operation reachable
     # only through the concrete layer produces no shadow observations to measure.
     from app.adapters.graph_store_provider import get_graph_store
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
 
     async with graph_session() as session:
         detail = await get_graph_store(session).neighborhood(

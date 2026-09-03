@@ -27,7 +27,7 @@ from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.reranker_client import RerankerClient
 from app.db.models import Project
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.adapters.graph_store_provider import get_graph_store
 from app.extraction.injection_defense import neutralize_injection
 from app.search.retriever import Granularity, SearchMode, run_hybrid_search

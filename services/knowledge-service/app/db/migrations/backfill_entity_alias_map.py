@@ -140,7 +140,8 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
     # that is not there. No test covers this function (its own docstring says so), so nothing
     # else was ever going to notice.
     from app.config import settings
-    from app.db.neo4j import get_neo4j_driver, graph_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import get_neo4j_driver
     from app.db.pool import create_pools, get_knowledge_pool
 
     logging.basicConfig(level=logging.INFO)

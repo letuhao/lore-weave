@@ -30,7 +30,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 # T17 A4 — the browse goes through the PORT (`events_page`, grown in A3 by this
 # router's demand). `EVENT_ORDER_CHAPTER_STRIDE` stays a domain constant, not an
 # operation: it is the reading-axis stride every producer stamps on, and moving it

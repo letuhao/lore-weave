@@ -404,7 +404,7 @@ def test_the_DEFAULT_targets_the_SAME_graph_the_service_opens___DERIVED():
 
     from app.db.age_bootstrap import graph_name_for
 
-    src = (pathlib.Path(__file__).resolve().parents[2] / "app" / "db" / "neo4j.py").read_text(
+    src = (pathlib.Path(__file__).resolve().parents[2] / "app" / "db" / "graph.py").read_text(
         encoding="utf-8"
     )
     calls = [
@@ -412,10 +412,14 @@ def test_the_DEFAULT_targets_the_SAME_graph_the_service_opens___DERIVED():
         if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Name)
         and n.func.id == "age_repo_session"
     ]
-    assert calls, "db/neo4j.py no longer opens an AGE repo session — re-derive this test"
+    assert calls, (
+        "db/graph.py no longer opens an AGE repo session — re-derive this test. The AGE "
+        "branch moved out of db/neo4j.py on 2026-09-04 (plan row R1): that module is the "
+        "Neo4j driver lifecycle now, and the engine DISPATCH lives in db/graph.py."
+    )
     for call in calls:
         assert len(call.args) <= 1 and not call.keywords, (
-            "db/neo4j.py now passes a project to age_repo_session, so the repo layer reads "
+            "db/graph.py now passes a project to age_repo_session, so the repo layer reads "
             "PER-PROJECT graphs. The migration's default layout must move with it."
         )
 

@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.pricing import cost_per_token
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.domain.passage_contract import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
 from app.db.graph_repos.passages import count_passages_by_source_type
 

@@ -81,7 +81,7 @@ async def test_returns_edges_in_the_published_shape(client, monkeypatch):
     public contract — a rename would break the FE with a 200.
     """
     monkeypatch.setattr(mod, "get_knowledge_pool", lambda: _pool(_LIVE_PROJECT))
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.neighborhood",
                autospec=True,
                return_value=_detail([_rel("a", "b", "mentors", vf=3, vt=None)], total=1)):
@@ -101,7 +101,7 @@ async def test_the_project_scope_reaches_the_graph_read(client, monkeypatch):
     """The glossary FK is unique per (user, project) — an unscoped lookup returns an
     arbitrary project's node. The same defect that put every lifecycle archive in the DLQ."""
     monkeypatch.setattr(mod, "get_knowledge_pool", lambda: _pool(_LIVE_PROJECT))
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.neighborhood",
                autospec=True, return_value=_detail([])) as read:
         async with client as c:
@@ -116,7 +116,7 @@ async def test_the_project_scope_reaches_the_graph_read(client, monkeypatch):
 async def test_cap_is_clamped_to_the_contract_ceiling(client, monkeypatch):
     """An uncapped neighbourhood on a hub entity is how a prompt budget disappears."""
     monkeypatch.setattr(mod, "get_knowledge_pool", lambda: _pool(_LIVE_PROJECT))
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.neighborhood",
                autospec=True, return_value=_detail([])) as read:
         async with client as c:
@@ -139,7 +139,7 @@ async def test_a_book_with_no_kg_project_is_an_empty_200(client, monkeypatch):
 async def test_an_entity_with_no_kg_node_is_an_empty_200(client, monkeypatch):
     """A glossary entity that was never synced into the graph is empty, not missing."""
     monkeypatch.setattr(mod, "get_knowledge_pool", lambda: _pool(_LIVE_PROJECT))
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.neighborhood",
                autospec=True, return_value=None):
         async with client as c:
@@ -168,7 +168,7 @@ async def test_as_of_is_dropped_when_the_kg_cannot_honour_it(client, monkeypatch
 
     monkeypatch.setattr(settings, "kg_temporal_enabled", False, raising=False)
     monkeypatch.setattr(mod, "get_knowledge_pool", lambda: _pool(_LIVE_PROJECT))
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.neighborhood",
                autospec=True, return_value=_detail([])):
         async with client as c:

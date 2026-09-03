@@ -28,7 +28,7 @@ from app.clients.book_client import (
 from app.clients.chapter_title_enricher import enrich_events_with_chapter_titles
 from app.clients.glossary_client import GlossaryClient
 from app.clients.translation_client import TranslationClient
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.entities import get_entity
 from app.db.graph_repos.events import (
     EVENTS_MAX_LIMIT,

@@ -34,7 +34,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.db.models import PendingFact
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.entities import merge_entity
 from app.db.graph_repos.facts import Fact, days_since_epoch, merge_fact
 from app.db.repositories.pending_facts import PendingFactsRepo

@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Path, Response, s
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 # T17 A4 — through the GraphStore PORT. All four operations were grown in A2 BY THIS
 # ROUTER'S DEMAND, so nothing here needs the concrete layer's vocabulary.
 from app.adapters.graph_store_provider import get_graph_store

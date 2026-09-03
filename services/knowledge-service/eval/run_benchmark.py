@@ -42,7 +42,8 @@ async def _run_cli(args: Any) -> int:
     from app.benchmark.persist import persist_benchmark_report
     from app.clients.embedding_client import init_embedding_client
     from app.config import settings
-    from app.db.neo4j import init_neo4j_driver, graph_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import init_neo4j_driver
 
     _logging.basicConfig(level=_logging.INFO)
     logger = _logging.getLogger("K17.9.cli")

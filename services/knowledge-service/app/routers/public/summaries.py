@@ -31,7 +31,7 @@ from typing import Literal
 from app.clients.llm_client import LLMClient, ProviderError
 from app.config import settings
 from app.db.models import Summary, SummaryContent, SummaryVersion
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo

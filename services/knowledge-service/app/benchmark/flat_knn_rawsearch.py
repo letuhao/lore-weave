@@ -39,7 +39,8 @@ async def _run(args: Any) -> int:
     from uuid import UUID as _UUID
 
     from app.clients.embedding_client import init_embedding_client
-    from app.db.neo4j import init_neo4j_driver, graph_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import init_neo4j_driver
     from app.db.graph_repos.passages import find_passages_by_vector
     # T25 ③ step 5 — this benchmark OWNS its index. It used to inherit
     # `passage_embeddings_<dim>` from `neo4j_schema.cypher`, which the cutover deletes;

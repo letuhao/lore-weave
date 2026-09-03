@@ -26,7 +26,7 @@ from app.clients.default_model import resolve_user_default_model
 from app.clients.glossary_client import get_glossary_client
 from app.clients.llm_client import get_llm_client
 from app.config import settings
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.pool import get_knowledge_pool
 from app.deps import get_projects_repo
 from app.db.repositories.graph_schemas import GraphSchemasRepo

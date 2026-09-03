@@ -44,7 +44,7 @@ from app.clients.book_client import BookClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.glossary_ontology_client import GlossaryOntologyClient
 from app.clients.grant_client import GrantClient
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.graph_views import (
     read_entity_edge_timeline,
     read_project_graph_edges,

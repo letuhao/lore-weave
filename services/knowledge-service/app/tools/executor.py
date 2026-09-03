@@ -52,7 +52,7 @@ from app.ports.vector_store import VectorFilter
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.config import settings
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.entities import (
     get_entity_with_relations,
 )

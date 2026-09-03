@@ -43,7 +43,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.adapters.graph_store_provider import get_graph_store
 # T17 — the model comes from the engine-neutral domain module, so this file no longer
 # imports `graph_repos` at all.

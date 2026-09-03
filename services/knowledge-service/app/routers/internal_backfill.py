@@ -30,7 +30,7 @@ from app.db.migrations.backfill_status import (
     make_llm_classify_fn,
     run_status_backfill,
 )
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.pool import get_knowledge_pool
 from app.middleware.internal_auth import require_internal_token
 

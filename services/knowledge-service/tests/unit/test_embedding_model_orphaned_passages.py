@@ -127,7 +127,7 @@ class TestPassageExistenceProbe:
         from app.db.graph_repos.graph_state import project_has_embedded_passages
 
         with patch("app.config.settings.neo4j_uri", "bolt://x"), \
-             patch("app.db.neo4j.graph_session", side_effect=RuntimeError("down")):
+             patch("app.db.graph.graph_session", side_effect=RuntimeError("down")):
             assert await project_has_embedded_passages(_USER, _PROJECT) is True
 
     @pytest.mark.asyncio
@@ -136,7 +136,7 @@ class TestPassageExistenceProbe:
 
         cm, _ = _mock_neo4j()
         with patch("app.config.settings.neo4j_uri", "bolt://x"), \
-             patch("app.db.neo4j.graph_session", return_value=cm), \
+             patch("app.db.graph.graph_session", return_value=cm), \
              patch("app.db.graph_repos.passages.project_has_passages",
                    AsyncMock(return_value=True)):
             assert await project_has_embedded_passages(_USER, _PROJECT) is True
@@ -147,7 +147,7 @@ class TestPassageExistenceProbe:
 
         cm, _ = _mock_neo4j()
         with patch("app.config.settings.neo4j_uri", "bolt://x"), \
-             patch("app.db.neo4j.graph_session", return_value=cm), \
+             patch("app.db.graph.graph_session", return_value=cm), \
              patch("app.db.graph_repos.passages.project_has_passages",
                    AsyncMock(return_value=False)):
             assert await project_has_embedded_passages(_USER, _PROJECT) is False

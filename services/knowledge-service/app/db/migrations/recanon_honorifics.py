@@ -383,11 +383,8 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
 async def _cli_main() -> None:  # pragma: no cover (integration-only)
     import argparse
 
-    from app.db.neo4j import (
-        close_neo4j_driver,
-        init_neo4j_driver,
-        graph_session,
-    )
+    from app.db.graph import graph_session
+    from app.db.neo4j import close_neo4j_driver, init_neo4j_driver
     from app.config import settings
 
     ap = argparse.ArgumentParser(description="A5 honorific re-canonicalization backfill")

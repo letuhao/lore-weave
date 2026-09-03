@@ -84,7 +84,7 @@ async def test_graph_session_follows_the_configured_backend(age_backend):
     """`graph_session()` — the name is historical — must hand back an AGE session when the
     configuration says AGE. This one function is what the whole split turned on."""
     from app.db.age_session import AgeCypherSession
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
     from app.db.neo4j_helpers import engine_of
 
     async with graph_session() as session:
@@ -106,7 +106,7 @@ async def test_the_repo_layer_and_the_PORT_read_the_SAME_store(age_backend):
     are supposed to be the same graph. Under the split they were not, and nothing said so.
     """
     from app.adapters.graph_store_provider import get_graph_store
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
     from app.db.graph_repos import entities as en
 
     uid = f"u-{uuid.uuid4().hex[:8]}"
@@ -135,7 +135,8 @@ async def test_pinning_an_engine_OVERRIDES_the_configuration(age_backend):
     engines or ran against a known one, so they must be able to name one even while the
     process is configured for the other. Without this the backend flip would silently
     repoint every benchmark at the engine it was measuring against."""
-    from app.db.neo4j import Neo4jNotConfiguredError, graph_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import Neo4jNotConfiguredError
 
     # No Bolt driver is initialised in this process, so asking for Neo4j must reach the Neo4j
     # path and fail THERE — proving the pin was honoured rather than quietly ignored.
@@ -145,7 +146,7 @@ async def test_pinning_an_engine_OVERRIDES_the_configuration(age_backend):
 
 async def test_an_UNKNOWN_backend_refuses_rather_than_guessing(age_backend, monkeypatch):
     """Rule 9. A typo in the deploy config must not silently select an engine."""
-    from app.db.neo4j import graph_session
+    from app.db.graph import graph_session
 
     monkeypatch.setenv(_GRAPH_ENV, "memgraph")
     with pytest.raises(ValueError, match="not a graph backend"):

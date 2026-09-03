@@ -22,7 +22,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.db.graph_repos.facts import Fact, get_fact, invalidate_fact, revalidate_fact
 from app.events.outbox_emit import (
     FACT_CORRECTED,

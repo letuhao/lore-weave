@@ -36,7 +36,7 @@ from uuid import UUID
 import asyncpg
 
 from app.clients.embedding_client import EmbeddingClient
-from app.db.neo4j import graph_session
+from app.db.graph import graph_session
 from app.domain.passage_contract import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
 from app.db.repositories.projects import ProjectsRepo
 from .core import (

@@ -98,7 +98,7 @@ async def test_status_leaving_active_archives_with_that_reason(pool, status):
     kept answering RAG queries about it.
     """
     entity = MagicMock(id="kg-node-1")
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.db.graph_repos.entities.get_entity_by_glossary_id",
                autospec=True, return_value=entity), \
          patch("app.db.graph_repos.entities.user_archive_entity", autospec=True) as archive, \
@@ -126,7 +126,7 @@ async def test_status_returning_to_active_restores_only_status_archives(pool):
     a node that is archived because the glossary entity is in the recycle bin, resurrecting a
     deleted entity into every RAG answer.
     """
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.db.graph_repos.entities.restore_entity_by_glossary_id",
                autospec=True, return_value=MagicMock(id="kg-node-1")) as restore, \
          patch("app.db.graph_repos.entities.user_archive_entity", autospec=True) as archive:
@@ -147,7 +147,7 @@ async def test_status_missing_from_payload_touches_nothing(pool):
     Defaulting to archive would retire nodes on a producer bug; defaulting to restore would
     resurrect them. Neither is a safe silent choice, so the handler does nothing and warns.
     """
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.db.graph_repos.entities.user_archive_entity", autospec=True) as archive, \
          patch("app.db.graph_repos.entities.restore_entity_by_glossary_id",
                autospec=True) as restore:
@@ -163,7 +163,7 @@ async def test_status_missing_from_payload_touches_nothing(pool):
 async def test_status_change_on_a_book_with_no_kg_project_is_a_no_op(pool):
     """The cold-start answer for most books, and it must be silent rather than an error."""
     pool.fetchrow = AsyncMock(return_value=None)
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.db.graph_repos.entities.user_archive_entity", autospec=True) as archive:
         await handle_glossary_entity_status_changed(
             _event("glossary.entity_status_changed",
@@ -179,7 +179,7 @@ async def test_status_change_on_a_book_with_no_kg_project_is_a_no_op(pool):
 @pytest.mark.asyncio
 async def test_delete_archives_with_the_glossary_deleted_reason(pool):
     entity = MagicMock(id="kg-node-1")
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.db.graph_repos.entities.get_entity_by_glossary_id",
                autospec=True, return_value=entity), \
          patch("app.adapters.graph_store_provider.Neo4jGraphStore.archive_entity",
@@ -199,7 +199,7 @@ async def test_recycle_bin_restore_does_not_undo_a_status_retirement(pool):
     whether the author still wants it live — that is the status axis. Restoring with the
     `glossary_deleted` prefix is what keeps a still-`rejected` entity archived.
     """
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.db.graph_repos.entities.restore_entity_by_glossary_id",
                autospec=True, return_value=None) as restore:
         await handle_glossary_entity_restored(
@@ -213,7 +213,7 @@ async def test_recycle_bin_restore_does_not_undo_a_status_retirement(pool):
 async def test_purge_hard_deletes_the_node(pool):
     """A Postgres purge does not cascade to Neo4j, so without this the node outlives the
     entity that justified it and keeps answering queries about something permanently gone."""
-    with patch("app.db.neo4j.graph_session", _session), \
+    with patch("app.db.graph.graph_session", _session), \
          patch("app.db.graph_repos.entities.purge_entity_by_glossary_id",
                autospec=True, return_value=1) as purge:
         await handle_glossary_entity_purged(
