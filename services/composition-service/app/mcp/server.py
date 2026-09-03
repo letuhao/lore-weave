@@ -981,8 +981,8 @@ async def composition_get_prose(
     description=(
         "List the author-declared canon rules (invariants the critic enforces) for a "
         "Work — e.g. 'magic always costs HP'. Pass include_archived=true to also see "
-        "ARCHIVED rules, which is where the id for composition_canon_rule_restore comes "
-        "from. Owner/grant-filtered (VIEW)."
+        "ARCHIVED rules, which is where the id for composition_canon_rule_edit (op=restore) "
+        "comes from. Owner/grant-filtered (VIEW)."
     ),
     meta=require_meta(
         "R", "book",

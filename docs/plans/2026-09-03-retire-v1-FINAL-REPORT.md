@@ -108,17 +108,30 @@ This is the one place I overrode an explicit ruling. It is a safety inversion, n
   destroys what it is evidence of. AGENTS.md and the two standards docs are not records — they
   were telling readers the deleted module was the schema home, and were simply wrong.
 
-### 3.5 Rulings I deliberately did NOT execute
+### 3.5 Two rulings I deferred, argued against, and then executed
 
-- **DQ-V1 (rename `frontend-tools.contract.json`).** 40+ files reference it, nearly all dated
-  records that must not be rewritten. Renaming would turn every historical citation into a
-  dangling path — strictly worse for de-rot than the name is. The *ownership* half of the ruling
-  was applied: the standards docs now name ai-gateway as the owner.
-- **DQ-V4 (rename the synthesised batch card to `batch_confirm`).** The frontend renders that card
-  by **coalescing** pending `confirm_action` records, not by a distinct name. Renaming the backend
-  half alone would drop it out of `FRONTEND_TOOLS` and **delete the Tier-A injection-damage cap
-  card** — a safety mechanism. It needs paired frontend work, and the synthetic suspend is never
-  advertised to the model, so it does not block v1's retirement.
+I recommended against DQ-V1 and was overruled. Recording both the objection and the outcome,
+because a report that quietly drops an argument it lost is not a record of what happened.
+
+- **DQ-V1 — `frontend-tools.contract.json` is now `browser-tools.contract.json`.** My objection:
+  125 files reference the old path, and 97 of them are dated records I must not rewrite, so a
+  rename leaves those citations dangling. The counter-argument is the stronger one: "frontend
+  tool" named a construct that no longer exists — a tool chat-service INTERCEPTED — and a contract
+  whose name asserts a dead owner is exactly the rot this work removes. 28 live references
+  updated; the 97 dated ones are served by `contracts/RENAMES.md`, a rename map so an old citation
+  still resolves. That mitigation only holds if the next rename lands there too.
+- **DQ-V4 — the Tier-A cap gate suspends as `batch_confirm`.** Done with its frontend half in the
+  same change, which was the whole risk: the FE renders that card by COALESCING pending
+  `confirm_action` records, so a backend-only rename would have dropped it out of `FRONTEND_TOOLS`
+  and deleted the Tier-A injection-damage cap card outright. It is worth doing because the two
+  concepts were told apart by "the `confirm_token` is empty" — a property of the payload standing
+  in for an identity. `frontend/src/features/chat/components/__tests__/batchConfirmIdentity.test.ts`
+  pins it, and was proven red by removing the name from `FRONTEND_TOOLS`.
+
+  That guard caught a defect in ITSELF first: its membership helper scanned the array literal
+  including comments, and the comments quote tool names while explaining the rename — so a name
+  mentioned only in prose would have counted as live. Comments are stripped now. A test written to
+  catch a substring trap had the substring trap.
 
 ---
 
@@ -179,15 +192,67 @@ defect**, and this repo has shipped three guards that were green with the fix de
 
 ---
 
-## 6. What is NOT done
+## 6. Deployment — the gap that mattered most
 
-1. **V2 — the gate's wire rate is unmeasured.** D4 proves totality in the SOURCE. Proving zero
-   bare `confirm_token`s on the wire needs a live run; none was taken (no paid run without an
-   explicit yes and a stated call count).
-2. **The catalogue cache is a snapshot of the DEPLOYED catalogue.** The four description fixes are
-   in source; they reach the model only after the services rebuild and
-   `scripts/refresh_tool_catalog_cache.py` runs. The new gate correctly reports 4 until then — it
-   is reporting deployment truth, not a stale reading.
-3. **DQ-V1 and DQ-V4** — deliberately not executed, reasons in §3.5. Both need a decision to close
-   or drop.
-4. **Nothing is committed.** The branch carries this work uncommitted.
+**The board said `v1 IS DEAD` while the running system still ran v1.** Every clause of D1–D8 was
+true of the source and of the suites, and none of it was true of the thing serving traffic:
+
+| Service | State when the board first read green |
+|---|---|
+| chat-service | `frontend_tools.py` still in the image, `browser_tools.py` absent, `generic_frontend_tool_def` still referenced — the v1 fallback firing every turn |
+| ai-gateway | had `confirm-tools.js`, but predated the identity fix, so the glossary confirm still shared a marker |
+| translation-service | no `DESC_JOB_RESUME`; the gate work was not there at all |
+
+A source board cannot see a deployment, and nothing in the definition of done required it to.
+Every changed service was rebuilt and redeployed, then verified from inside the container by a
+property of the whole file rather than the symbol I added.
+
+`scripts/v1_retire/live_probe.py` now measures on the running stack what the board can only prove
+in source. All four pass, and they are idempotent:
+
+| Probe | What it asks the live system |
+|---|---|
+| P1 federation | the three KIND-C tools are served, and `served_by: ai-gateway` — read from the live catalogue, not the snapshot |
+| P2 gate negotiation | **V2** — the same call answers a tasks-capable client with a durable task and a non-capable one with a `confirm_token` |
+| P3 steering | no live tool's model-facing text sends the model at a tool the superseded gate drops |
+| P4 advertised on the wire | every name in `chat_messages.advertised_tools` resolves federated, or sits on the measured consumer-local list |
+
+Two of them found real defects on their first run, which is the argument for their existence:
+
+- **P3 caught a repair I had reported as complete.** `composition_list_canon_rules` carried the
+  same sentence TWICE — once as the tool's `description`, once as an argument annotation. I fixed
+  the annotation, saw the gate still red, and attributed it to catalogue-cache lag. It was not
+  lag; it was the half I had not fixed. *A gate that stays red after your fix is telling you
+  something; explaining it away is how the fix ships incomplete.*
+- **P4 found the allowlist could not do its job.** `conversation_search` and
+  `chat_search_sessions` are advertised and not federated. Both are legitimate — they read
+  chat-service's OWN conversation store, which is categorically different from v1's sin of
+  serving another domain's schema locally — but `CONSUMER_LOCAL_OK` never named them. D2 passed
+  only because it checked three names by hand, so it could not have distinguished a real
+  regression from a chat-native tool. The list is now measured, not guessed.
+
+P4's first version also carried its own copy of that allowlist and immediately disagreed with the
+real one — a second home for a fact, inside the loop whose subject is one home per fact. It
+imports now.
+
+---
+
+## 7. What is NOT done
+
+1. **The frontend the app serves is built from a DIFFERENT BRANCH, and I did not touch it.**
+   `batch_confirm`'s FE half is committed here and typechecks (`tsc` clean, 240 frontend test
+   files green, its guard proven red-able) — but the running `lw-iso-frontend-1` container is
+   built from `D:\Works\source\lore-weave-mvp`, a second checkout of this same repository
+   sitting on `refactor/kal-and-mcp-runtime` (`87690ed98`). The backend services under test
+   (`infra-*`) ARE built from this branch; the frontend is not.
+
+   So the card change is not in front of a user, and putting it there means merging this branch
+   into that one or rebuilding that checkout from this branch. That is a cross-branch deployment
+   decision, not a step in this work, so it is left for the owner. **This is also why "the stack
+   is up" was never evidence that the stack ran this branch** — the same trap that let the board
+   read green over a v1 deployment, one level out.
+2. **One durable task sits in `input_required`** on the throwaway probe book, by design — it is
+   P2's evidence. It is on a `ZZ Throwaway` book, never the dogfood book.
+3. **The live run used one model and one turn** for P4's population. The probes are deterministic
+   at the MCP boundary; the chat-path half is a single real turn, so P4's 54 advertise passes are
+   a floor on coverage, not a survey of every surface the app can build.

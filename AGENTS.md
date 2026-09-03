@@ -648,8 +648,10 @@ Read only the docs for the module you're actively working on.
 A tool marked `visibility: legacy` is **kept as a record, not as a reserve.** Since
 2026-08-25 the superseded gate drops **every** legacy tool from the wire — *with or without*
 a declared replacement — so no legacy tool reaches a model on any turn. Measured 2026-09-03 by
-running `drop_superseded_tools` over the live catalogue: **117 legacy in, 117 dropped, 0
-kept.** (The catalogue TOTAL is deliberately not written here. It read 316 for most of
+running `drop_superseded_tools` over the live catalogue: **every legacy tool in, every one
+dropped, none kept.** (Counts are deliberately not written here — this line has now gone stale
+twice, most recently when a 118th legacy tool arrived the same day. Derive them:
+`python scripts/v1_retire/runstate.py`.) (The catalogue TOTAL is deliberately not written here. It read 316 for most of
 2026-09-03 and was stale by the afternoon of the same day, when v1's retirement re-homed the
 three KIND-C tools to ai-gateway and they began federating. Derive it:
 `python scripts/v1_retire/runstate.py`.) The only re-admission path is an explicit per-session user pin
@@ -673,7 +675,7 @@ three KIND-C tools to ai-gateway and they began federating. Derive it:
 The one exception is *deleting* dead weight, which is cheap and shrinks the catalogue. Adding
 metadata to it is not.
 
-> Worked example: a proposal to make `superseded_by` mandatory across 117 legacy tools and
+> Worked example: a proposal to make `superseded_by` mandatory across every legacy tool and
 > backfill the 31 gaps was **withdrawn** on this rule. The label gates nothing — the gate
 > already drops labelled and unlabelled alike — so the whole task would have changed nothing
 > any user or model could observe.

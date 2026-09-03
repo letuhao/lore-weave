@@ -1156,7 +1156,7 @@
     }
   },
   "book_structure_edit": {
-    "description": "Reorganize the manuscript STRUCTURE. `op` selects the operation: create_part (title) · rename_part (part_id, title) · reorder_parts (ordered_part_ids — the full active set, each once) · home_chapter (chapter_id + part_id, or part_id=\"unassigned\" to un-home) · reorder_chapters (chapter_ids — the complete new order for one language track). Every op is reversible (Undo). To DELETE a part, call the SEPARATE tool book_structure_part_archive (soft-delete to trash, restorable — its chapters keep their text and fall to Unassigned). This tool has no archive op.",
+    "description": "Reorganize the manuscript STRUCTURE. `op` selects the operation: create_part (title) · rename_part (part_id, title) · reorder_parts (ordered_part_ids — the full active set, each once) · home_chapter (chapter_id + part_id, or part_id=\"unassigned\" to un-home) · reorder_chapters (chapter_ids — the complete new order for one language track). Every op is reversible (Undo). Deleting a PART has no tool: book_structure_part_archive was retired with no replacement, so do NOT look for it and do NOT claim a part was deleted — tell the user to remove it in the manuscript UI. (Was: \"call the SEPARATE tool book_structure_part_archive\" (soft-delete to trash, restorable — its chapters keep their text and fall to Unassigned). This tool has no archive op.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -9222,7 +9222,7 @@
     }
   },
   "composition_list_canon_rules": {
-    "description": "List the author-declared canon rules (invariants the critic enforces) for a Work — e.g. 'magic always costs HP'. Pass include_archived=true to also see ARCHIVED rules, which is where the id for composition_canon_rule_restore comes from. Owner/grant-filtered (VIEW).",
+    "description": "List the author-declared canon rules (invariants the critic enforces) for a Work — e.g. 'magic always costs HP'. Pass include_archived=true to also see ARCHIVED rules, which is where the id for composition_canon_rule_edit (op=restore) comes from. Owner/grant-filtered (VIEW).",
     "inputSchema": {
       "properties": {
         "active_only": {
@@ -9246,7 +9246,7 @@
         },
         "include_archived": {
           "default": false,
-          "description": "Also list ARCHIVED (soft-deleted) rules. This is where a rule_id for composition_canon_rule_restore comes from — without it an archived rule is invisible and the restore is unreachable. Ignored when active_only is true.",
+          "description": "Also list ARCHIVED (soft-deleted) rules. This is where a rule_id for composition_canon_rule_edit (op=restore) comes from — without it an archived rule is invisible and the restore is unreachable. Ignored when active_only is true.",
           "title": "Include Archived",
           "type": "boolean"
         },
@@ -16481,7 +16481,7 @@
     }
   },
   "glossary_confirm_action": {
-    "description": "Ask the user to CONFIRM a high-impact glossary action (a new kind/attribute, or DELETING a genre/kind/attribute) that you proposed with a glossary_propose_* or glossary_book_delete MCP tool. Pass the `confirm_token` and `descriptor` you received from that propose call. The action is shown with a Confirm button and is NOT applied automatically — high-impact and destructive changes ALWAYS require explicit human confirmation. After the user decides you receive an `outcome`: `action_done` (applied), `token_expired` (the confirmation lapsed — propose again), `action_error` (it failed), or `cancelled` (the user declined). State that the change happened ONLY when the outcome is `action_done`.",
+    "description": "Ask the user to CONFIRM a high-impact glossary action (a new kind/attribute, or DELETING a genre/kind/attribute) that you proposed with a glossary_propose_* or glossary_ontology_delete MCP tool. Pass the `confirm_token` and `descriptor` you received from that propose call. The action is shown with a Confirm button and is NOT applied automatically — high-impact and destructive changes ALWAYS require explicit human confirmation. After the user decides you receive an `outcome`: `action_done` (applied), `token_expired` (the confirmation lapsed — propose again), `action_error` (it failed), or `cancelled` (the user declined). State that the change happened ONLY when the outcome is `action_done`.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -17274,7 +17274,7 @@
     }
   },
   "glossary_ontology_delete": {
-    "description": "Delete book- or user-tier ontology row(s). scope=book mints a confirm token — a human must approve before the delete executes; returns {confirm_token, preview}. scope=user executes immediately as a soft-delete: the row is retained and stops applying, but it KEEPS ITS CODE reserved — so glossary_ontology_upsert CANNOT re-add the same code (it answers \"already exists\"). To undo, use glossary_user_restore (level + code), which revives the existing row. Returns {results} plus a {trashed, already_trashed, failed} summary. Deleting an already-deleted row is a no-op, not an error — counted under already_trashed, never under trashed.",
+    "description": "Delete book- or user-tier ontology row(s). scope=book mints a confirm token — a human must approve before the delete executes; returns {confirm_token, preview}. scope=user executes immediately as a soft-delete: the row is retained and stops applying, but it KEEPS ITS CODE reserved — so glossary_ontology_upsert CANNOT re-add the same code (it answers \"already exists\"). To undo, use the UI (glossary_user_restore was retired with no tool replacement — do not look for it, and do not tell the user you can undo this yourself). Returns {results} plus a {trashed, already_trashed, failed} summary. Deleting an already-deleted row is a no-op, not an error — counted under already_trashed, never under trashed.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -24656,6 +24656,51 @@
         "run translation"
       ],
       "tier": "W"
+    }
+  },
+  "translation_task_provide_input": {
+    "description": "Resolve a pending durable-gate task: accept to run the gated action, or decline.",
+    "inputSchema": {
+      "properties": {
+        "accepted": {
+          "default": true,
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "inputs": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inputs"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "title": "task_provide_inputArguments",
+      "type": "object"
+    },
+    "meta": {
+      "scope": "user",
+      "synonyms": [
+        "resolve the pending task",
+        "accept the pending action",
+        "decline the pending action",
+        "answer the confirmation"
+      ],
+      "tier": "A",
+      "visibility": "legacy"
     }
   },
   "translation_update_settings": {

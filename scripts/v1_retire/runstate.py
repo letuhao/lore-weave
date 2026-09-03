@@ -35,10 +35,28 @@ FE_CONTRACT = ROOT / "contracts/browser-tools.contract.json"
 
 V1_TOOLS = ("confirm_action", "glossary_confirm_action", "glossary_propose_entity_edit")
 
-#: Tools that are legitimately consumer-local and are NOT v1. Derived from the audit, and named
-#: here so D2 can distinguish "chat-service serves a schema it should not" from "a discovery
-#: meta-tool that has no domain to belong to". Widen this deliberately, never by accident.
-CONSUMER_LOCAL_OK = {"tool_list", "tool_load", "compose_prose", "workflow_list", "workflow_load"}
+#: Tools that are legitimately consumer-local and are NOT v1. MEASURED against the live federated
+#: catalogue on 2026-09-03, not guessed -- each of these came back `federated=False` while
+#: `tool_list` and `tool_load` came back True (ai-gateway serves those too).
+#:
+#: 🔴 THE DISTINCTION D2 ACTUALLY DRAWS. v1's sin was chat-service serving ANOTHER DOMAIN'S tool
+#: from a local schema, so the model saw a shape no domain could contradict. A tool that reads
+#: chat-service's OWN store is not that. `conversation_search` and `chat_search_sessions` search
+#: the user's conversations -- chat-service is their domain, and `agent_surface` already groups
+#: them under the `chat` server key for exactly this reason.
+#:
+#: This list was missing both of them until a live turn was measured: the board passed only
+#: because D2 checked the three v1 names by hand, so it could not have told a real regression
+#: from a chat-native tool. Widen this DELIBERATELY, with the measurement, never by accident.
+CONSUMER_LOCAL_OK = {
+    "tool_list", "tool_load",      # the deterministic discovery pair (also federated)
+    "compose_prose",               # the co-writer role; chat-service owns the composer surface
+    "workflow_list", "workflow_load",  # workflow discovery, chat-native
+    "find_tools",                  # RETIRED 2026-08-25; still dispatchable, answers a refusal
+    "load_skill", "run_subagent",  # chat-native runtime primitives, no domain to belong to
+    "conversation_search",         # reads chat-service's OWN conversation store
+    "chat_search_sessions",        # cross-session recall over the user's own chats
+}
 
 UNKNOWN = "UNKNOWN"
 

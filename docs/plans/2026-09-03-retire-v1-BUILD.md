@@ -45,10 +45,10 @@ code looks right".
 |---|---|---|---|
 | **V0** | De-rot — correct every document that describes v1 as current | — | **D6** |
 | **V1** | Gate totality — the 14 ungated mint sites open tasks | DQ-V2 | **D4** |
-| **V2** | Prove the gate total on the wire (zero bare confirm_tokens) | V1 | **OPEN** — needs a live paid run; D4 proves it in the SOURCE only |
-| **V3** | Model-facing prose — stop steering the model to v1 | V0 | **PARTIAL** — Python/TS done (D6); 19 Go tool descriptions unreviewed |
+| **V2** | Prove the gate total on the wire (zero bare confirm_tokens) | V1 | **DONE** — measured live 2026-09-03 at $0, no paid run needed. `scripts/v1_retire/live_probe.py` P2: the same `translation_start_job` call answers a tasks-capable client with a durable task (`io.loreweave/task-handle`, `input_required`) and a non-capable one with a `confirm_token` |
+| **V3** | Model-facing prose — stop steering the model to v1 | V0 | **DONE** — the Go descriptions were reviewed by census over all 202 live tools, not by reading: 4 steered at dropped tools and are repaired. Gated by `scripts/test_a_live_tool_never_sends_the_model_to_a_dropped_one.py` |
 | **V4** | Advertisement — stop offering the three schemas | V3 | **D2** |
-| **V5** | Frontend — re-home the card render gates | DQ-V4 | **DONE for the render gates** (see the identity fix below); DQ-V4's `batch_confirm` rename deliberately NOT taken — reason below |
+| **V5** | Frontend — re-home the card render gates | DQ-V4 | **DONE** — render gates fixed (the glossary identity fix), and DQ-V4's `batch_confirm` re-home landed with its FE half on 2026-09-03; pinned by `batchConfirmIdentity.test.ts` |
 | **V6** | Interception — delete the v1 suspend branch | V4, V5 | **D1** |
 | **V7** | Machinery — retire `frontend_tools.py`, re-home survivors | V6 | **D1** |
 | **V8** | Manifest — `glossary_propose_entity_edit` → `retired` | V7 | **D3** |

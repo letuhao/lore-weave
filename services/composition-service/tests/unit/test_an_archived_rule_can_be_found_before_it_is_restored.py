@@ -49,10 +49,22 @@ def test_active_only_still_WINS():
 
 def test_the_DESCRIPTION_says_where_the_restore_id_comes_from():
     """A flag the model cannot know to set is the same as no flag. The description is the only
-    place that connects this listing to composition_canon_rule_restore."""
+    place that connects this listing to the restore path.
+
+    🔴 IT MUST NAME THE LIVE SUCCESSOR, NOT THE RETIRED TOOL. This test pinned
+    `composition_canon_rule_restore`, which was marked `visibility: legacy` and superseded by
+    `composition_canon_rule_edit`. Since 2026-08-25 the superseded gate drops EVERY legacy tool
+    from the wire, so the description was pointing the model at a tool it is never offered — and
+    this test was holding it there. A guard that pins a name has to be re-pointed when the name
+    retires, or it enforces the defect. Measured 2026-09-03: four live tools were steering at
+    dropped tools, and this was one of them.
+    """
     src = inspect.getsource(server)
     i = src.index('name="composition_list_canon_rules"')
     block = src[i:i + 900]
     assert "include_archived" in block
-    assert "composition_canon_rule_restore" in block, (
+    assert "composition_canon_rule_edit" in block, (
         "nothing tells the model this listing is where a restorable id comes from")
+    assert "composition_canon_rule_restore" not in block, (
+        "the description names a tool the superseded gate drops from every turn; the model "
+        "cannot call it, so it will invent a call or claim success")

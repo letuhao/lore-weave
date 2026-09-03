@@ -31,9 +31,28 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "contracts/tool-catalog-cache.json"
 MANIFEST = ROOT / "contracts/agent-runtime-manifest.json"
 
-#: Tools legitimately served by the consumer itself. Widen DELIBERATELY — this is G1's whole
-#: escape hatch, and `confirm_action` lived outside any such list for six weeks.
-CONSUMER_LOCAL_OK = {"tool_list", "tool_load", "compose_prose", "workflow_list", "workflow_load"}
+#: Tools that are legitimately consumer-local and are NOT v1. MEASURED against the live federated
+#: catalogue on 2026-09-03, not guessed -- each of these came back `federated=False` while
+#: `tool_list` and `tool_load` came back True (ai-gateway serves those too).
+#:
+#: 🔴 THE DISTINCTION D2 ACTUALLY DRAWS. v1's sin was chat-service serving ANOTHER DOMAIN'S tool
+#: from a local schema, so the model saw a shape no domain could contradict. A tool that reads
+#: chat-service's OWN store is not that. `conversation_search` and `chat_search_sessions` search
+#: the user's conversations -- chat-service is their domain, and `agent_surface` already groups
+#: them under the `chat` server key for exactly this reason.
+#:
+#: This list was missing both of them until a live turn was measured: the board passed only
+#: because D2 checked the three v1 names by hand, so it could not have told a real regression
+#: from a chat-native tool. Widen this DELIBERATELY, with the measurement, never by accident.
+CONSUMER_LOCAL_OK = {
+    "tool_list", "tool_load",      # the deterministic discovery pair (also federated)
+    "compose_prose",               # the co-writer role; chat-service owns the composer surface
+    "workflow_list", "workflow_load",  # workflow discovery, chat-native
+    "find_tools",                  # RETIRED 2026-08-25; still dispatchable, answers a refusal
+    "load_skill", "run_subagent",  # chat-native runtime primitives, no domain to belong to
+    "conversation_search",         # reads chat-service's OWN conversation store
+    "chat_search_sessions",        # cross-session recall over the user's own chats
+}
 
 Result = tuple[str, str]  # (state, detail); state in {"GREEN", "RED"}
 
@@ -210,7 +229,12 @@ def g4_doc_count_drift(docs: dict[pathlib.Path, str] | None = None,
             # 2026-09-03 by / running ...: 316 tools' — dated, but not on the matching line,
             # so a line-local check called it undated. Widen to the sentence's neighbourhood.
             window = "\n".join(lines[max(0, i - 2):i + 1])
-            for m in _COUNT_RE.finditer(line):
+            # A QUOTED count is a record of former wording, not a claim about now. G6
+            # learned this and G4 had not: AGENTS.md's own correction reads
+            # `This sentence read "117 legacy tools, 116 withheld" until 2026-09-03`, and
+            # the gate flagged the correction that fixed the defect. Same failure, same
+            # remedy -- strip what the line is quoting before matching.
+            for m in _COUNT_RE.finditer(_QUOTED_RE.sub(" ", line)):
                 n = int(m.group(1))
                 if n in truth or _DATED_RE.search(window):
                     continue
