@@ -68,6 +68,7 @@ from loreweave_mcp import (
 
 from app.clients.book_client import BookClient, BookClientError, get_book_client
 from app.clients.glossary_client import GlossaryClientError, get_glossary_client
+from app.clients.kal_client import RosterIncomplete, get_kal_client
 from app.clients.knowledge_client import (
     KnowledgeClient,
     KnowledgeContractError,
@@ -2209,9 +2210,14 @@ async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverride
     # apart would be an existence oracle for a book the caller may not own.
     _target = _uuid(args.target_entity_id, "target_entity_id")
     try:
-        _known = await get_glossary_client().entities_by_ids_or_raise(
-            work.book_id, [str(_target)])
-    except GlossaryClientError as exc:
+        # THROUGH THE KAL, not glossary-service directly. The merge that added this check read
+        # `/internal/books/{book}/entities/by-ids` straight from the catalog, and
+        # `authored-catalog-reader-gate` refused it: this file's roster read had already been
+        # migrated, so a new direct read was a regression rather than untracked debt.
+        # `cast_by_ids` keeps both properties this branch depends on — it RAISES rather than
+        # degrading, and it is book-scoped.
+        _known = await get_kal_client().cast_by_ids(work.book_id, [str(_target)])
+    except RosterIncomplete as exc:
         # The THIRD branch, and the reason the raising variant is used instead of the
         # degrade-safe one: "I could not ask" is not "it is not there". Refusing keeps today's
         # bug from surviving an outage, and naming it separately means the caller is never told
@@ -2219,7 +2225,7 @@ async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverride
         logger.warning("override target check unavailable (book=%s): %s", work.book_id, exc)
         return {"success": False, "error": (
             "TARGET_UNVERIFIED — could not confirm that this entity exists, because "
-            "glossary-service did not answer. NOTHING WAS WRITTEN and the argument may well be "
+            "the knowledge layer did not answer. NOTHING WAS WRITTEN and the argument may well be "
             "fine; this is an availability failure, not a rejection. Retry shortly."
         )}
     if not any(str(e.get("entity_id")) == str(_target) for e in _known):

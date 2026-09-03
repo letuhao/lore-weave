@@ -37,9 +37,14 @@ from tests.unit.test_mcp_server import _Ctx, _derivative, _patched  # noqa: F401
 
 
 def _glossary(items=None, raises=None):
-    """A stand-in for the glossary client whose ONLY job is `entities_by_ids_or_raise`."""
+    """A stand-in for the KAL client whose ONLY job is `cast_by_ids`.
+
+    MERGE 2026-09-04 — the target check reads through the KAL now, not glossary-service
+    directly, because `authored-catalog-reader-gate` refused the direct read. The fake keeps its
+    name and shape so the behavioural tests below are unchanged; only the seam moved.
+    """
     c = NS()
-    c.entities_by_ids_or_raise = (
+    c.cast_by_ids = (
         AsyncMock(side_effect=raises) if raises is not None
         else AsyncMock(return_value=list(items or []))
     )
@@ -55,7 +60,7 @@ async def _add(srv, deriv, target, *, gloss, fields=None):
     async with _patched(works_get=get_deriv) as s:
         s.WorksRepo(None).get = AsyncMock(return_value=deriv)
         with patch.object(srv, "DerivativesRepo") as DR, \
-                patch.object(srv, "get_glossary_client", return_value=gloss):
+                patch.object(srv, "get_kal_client", return_value=gloss):
             DR.return_value.add_override = AsyncMock(return_value=ov)
             res = await srv.composition_entity_override_add(
                 _Ctx(), srv._EntityOverrideAddArgs(
@@ -128,10 +133,10 @@ class TestAnOutageIsNotARejection:
 
     async def test_a_glossary_failure_refuses_with_a_DISTINCT_code(self):
         import app.mcp.server as srv
-        from app.clients.glossary_client import GlossaryClientError
+        from app.clients.kal_client import RosterIncomplete
 
         deriv = _derivative()
-        gloss = _glossary(raises=GlossaryClientError(502, "GLOSSARY_SERVICE_UNAVAILABLE", "boom"))
+        gloss = _glossary(raises=RosterIncomplete("status 502"))
         res, add = await _add(srv, deriv, uuid.uuid4(), gloss=gloss)
         assert res["success"] is False
         assert "TARGET_UNVERIFIED" in res["error"], res
@@ -142,10 +147,10 @@ class TestAnOutageIsNotARejection:
 
     async def test_it_says_nothing_was_written_and_that_the_argument_may_be_fine(self):
         import app.mcp.server as srv
-        from app.clients.glossary_client import GlossaryClientError
+        from app.clients.kal_client import RosterIncomplete
 
         deriv = _derivative()
-        gloss = _glossary(raises=GlossaryClientError(503, None, None))
+        gloss = _glossary(raises=RosterIncomplete("status 503"))
         res, _ = await _add(srv, deriv, uuid.uuid4(), gloss=gloss)
         low = res["error"].lower()
         assert "nothing was written" in low
@@ -153,44 +158,51 @@ class TestAnOutageIsNotARejection:
 
 
 class TestTheClientContract:
-    """`entities_by_ids_or_raise` must differ from its degrade-safe twin in exactly one way."""
+    """`cast_by_ids` must differ from its degrade-safe twin `cast` in exactly one way.
+
+    MOVED 2026-09-04 off `GlossaryClient.entities_by_ids_or_raise`, which this merge deleted:
+    the read goes through the KAL now. The PROPERTY is what mattered and it is unchanged — a
+    caller about to write must never see "I could not ask" as "it is not there" — so the tests
+    followed the property rather than being deleted with the method.
+    """
 
     async def test_it_raises_on_a_non_200(self):
-        from app.clients.glossary_client import GlossaryClient, GlossaryClientError
+        from app.clients.kal_client import KalClient, RosterIncomplete
 
-        c = GlossaryClient("http://glossary", "tok")
+        c = KalClient("http://kal", "tok")
         c._http = NS(post=AsyncMock(return_value=NS(
-            status_code=500, json=lambda: {"error": "BOOM", "message": "nope"})))
-        with pytest.raises(GlossaryClientError) as e:
-            await c.entities_by_ids_or_raise(uuid.uuid4(), [str(uuid.uuid4())])
-        assert e.value.status == 500
+            status_code=500, json=lambda: {"error": "BOOM"})))
+        with pytest.raises(RosterIncomplete) as e:
+            await c.cast_by_ids(uuid.uuid4(), [str(uuid.uuid4())])
+        assert "500" in str(e.value)
 
     async def test_it_raises_on_a_transport_failure(self):
         import httpx
 
-        from app.clients.glossary_client import GlossaryClient, GlossaryClientError
+        from app.clients.kal_client import KalClient, RosterIncomplete
 
-        c = GlossaryClient("http://glossary", "tok")
+        c = KalClient("http://kal", "tok")
         c._http = NS(post=AsyncMock(side_effect=httpx.ConnectError("down")))
-        with pytest.raises(GlossaryClientError):
-            await c.entities_by_ids_or_raise(uuid.uuid4(), [str(uuid.uuid4())])
+        with pytest.raises(RosterIncomplete):
+            await c.cast_by_ids(uuid.uuid4(), [str(uuid.uuid4())])
 
     async def test_a_200_returns_its_items(self):
-        from app.clients.glossary_client import GlossaryClient
+        from app.clients.kal_client import KalClient
 
         eid = str(uuid.uuid4())
-        c = GlossaryClient("http://glossary", "tok")
+        c = KalClient("http://kal", "tok")
         c._http = NS(post=AsyncMock(return_value=NS(
-            status_code=200, json=lambda: {"items": [{"entity_id": eid}]})))
-        got = await c.entities_by_ids_or_raise(uuid.uuid4(), [eid])
-        assert got == [{"entity_id": eid}]
+            status_code=200,
+            json=lambda: {"items": [{"entity_id": eid, "name": "Aldric"}]})))
+        got = await c.cast_by_ids(uuid.uuid4(), [eid])
+        assert [g["entity_id"] for g in got] == [eid]
 
     async def test_an_empty_id_list_never_calls_the_wire(self):
-        from app.clients.glossary_client import GlossaryClient
+        from app.clients.kal_client import KalClient
 
-        c = GlossaryClient("http://glossary", "tok")
+        c = KalClient("http://kal", "tok")
         c._http = NS(post=AsyncMock())
-        assert await c.entities_by_ids_or_raise(uuid.uuid4(), []) == []
+        assert await c.cast_by_ids(uuid.uuid4(), []) == []
         c._http.post.assert_not_awaited()
 
     async def test_the_degrade_safe_twin_is_unchanged(self):

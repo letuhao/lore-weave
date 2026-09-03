@@ -1160,9 +1160,10 @@ async def test_entity_override_add_success_and_duplicate():
     ov = NS(id=uuid.uuid4(), target_entity_id=target, overridden_fields={"role": "hero"})
     async with _patched(works_get=get_deriv) as s:
         s.WorksRepo(None).get = AsyncMock(return_value=deriv)
-        _gloss = NS(entities_by_ids_or_raise=AsyncMock(
-            return_value=[{"entity_id": str(target), "cached_name": "Aldric"}]))
-        with patch.object(srv, "DerivativesRepo") as DR,                 patch.object(srv, "get_glossary_client", return_value=_gloss):
+        # Through the KAL since 2026-09-04 — the direct catalog read was removed.
+        _gloss = NS(cast_by_ids=AsyncMock(
+            return_value=[{"entity_id": str(target), "name": "Aldric"}]))
+        with patch.object(srv, "DerivativesRepo") as DR,                 patch.object(srv, "get_kal_client", return_value=_gloss):
             DR.return_value.add_override = AsyncMock(return_value=ov)
             res = await srv.composition_entity_override_add(
                 _Ctx(), srv._EntityOverrideAddArgs(

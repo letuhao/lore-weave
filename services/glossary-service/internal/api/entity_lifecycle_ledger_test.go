@@ -20,8 +20,15 @@ func readSrc(t *testing.T, name string) string {
 	return string(b)
 }
 
-// 🔴 THESE TESTS LEAVE THEIR LEDGER ROWS BEHIND, ON PURPOSE, AND THE FIRST VERSION LIED
-// ABOUT IT. Cleanup called `DELETE FROM entity_lifecycle_ledger` with //nolint:errcheck — and
+// 🔴 THESE TESTS LEAVE THEIR LEDGER ROWS BEHIND, ON PURPOSE, AND THE FIRST VERSION
+// LIED ABOUT IT.
+//
+// db-safety-gate: ok — the next line is PROSE describing a cleanup that was REMOVED, not a
+// statement this file runs; the real deletes below are scoped `WHERE entity_id=$1`. Marked
+// rather than reworded, because a guard that reads source text will match the next accurate
+// description of a defect too, and the description is worth more than the silence.
+//
+// Cleanup called `DELETE FROM entity_lifecycle_ledger` with //nolint:errcheck — and
 // the table's trigger is `trg_ell_append_only` on DELETE, which RAISEs. So the delete always
 // failed, the error was swallowed, and the test read as if it tidied up. An audit trail you can
 // delete from is a cache; the rows stay, and saying so is better than a cleanup that cannot run.

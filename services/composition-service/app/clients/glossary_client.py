@@ -134,47 +134,15 @@ class GlossaryClient:
             logger.warning("glossary entities/by-ids unavailable: %s", exc)
             return []
 
-    async def entities_by_ids_or_raise(
-        self, book_id: UUID, entity_ids: list[str],
-    ) -> list[dict[str, Any]]:
-        """Same wire call as `entities_by_ids`, but RAISES `GlossaryClientError` on any
-        non-200 instead of degrading to `[]` — the same contract, and for the same reason,
-        as `seed_entities_or_raise`: a caller that is about to WRITE on the strength of this
-        answer must never mistake "I could not ask" for "it is not there".
-
-        It exists for composition_entity_override_add's target check. Because the endpoint is
-        BOOK-SCOPED, one call answers both of that tool's open boundary cases: an entity that
-        does not exist and an entity belonging to ANOTHER book are both simply absent from
-        this book's items, and so earn the same refusal — which is also what H13 wants, since
-        distinguishing them would be an existence oracle for a book the caller may not own.
-
-        Identity only, exactly as `entities_by_ids` returns it; callers should look for the
-        ids they asked about rather than relying on response order or length.
-        """
-        if not entity_ids:
-            return []
-        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
-        payload: dict[str, Any] = {"entity_ids": [str(e) for e in entity_ids]}
-        try:
-            resp = await self._http.post(url, json=payload)
-        except httpx.HTTPError as exc:
-            raise GlossaryClientError(502, "GLOSSARY_SERVICE_UNAVAILABLE", str(exc)) from exc
-        if resp.status_code != 200:
-            code: str | None = None
-            detail: str | None = None
-            try:
-                body = resp.json()
-                code = body.get("error") or body.get("code")
-                detail = body.get("message") or body.get("detail")
-            except (ValueError, AttributeError):
-                pass
-            raise GlossaryClientError(resp.status_code, code, detail)
-        try:
-            return resp.json().get("items", [])
-        except (ValueError, AttributeError) as exc:
-            # A 200 whose body will not parse is not an empty result — saying "not found"
-            # here would be the same lie the degrade-safe variant tells deliberately.
-            raise GlossaryClientError(200, "GLOSSARY_BAD_RESPONSE", str(exc)) from exc
+    # `entities_by_ids_or_raise` WAS HERE, and it is gone rather than exempted.
+    #
+    # It read `/internal/books/{book}/entities/by-ids` straight from the authored catalog,
+    # and `authored-catalog-reader-gate` refused it on the merge that added it (2026-09-04).
+    # The gate was right: this file's roster read had ALREADY been migrated onto the KAL, so
+    # a new direct read was a regression against the direction of travel, not a fresh debt to
+    # baseline. Its one caller now uses `KalClient.cast_by_ids`, which keeps both properties
+    # it depended on — it RAISES rather than degrading, and it is book-scoped, so
+    # "does not exist" and "belongs to another book" earn the same refusal (H13).
 
     async def read_book_ontology(
         self, bearer: str, book_id: UUID,

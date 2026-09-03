@@ -217,6 +217,63 @@ class KalClient:
 
 
 
+    async def cast_by_ids(
+        self, book_id: UUID, entity_ids: list[str], *,
+        user_id: UUID | str | None = None,
+    ) -> list[dict[str, Any]]:
+        """The identity of specific entities IN THIS BOOK — ``[{entity_id, name, aliases, kind}]``.
+
+        Added 2026-09-04 by the merge with `feat/frontend-tools-mcp-migration`, which brought a
+        `composition_entity_override_add` target check that read glossary-service's
+        `/internal/books/{book}/entities/by-ids` DIRECTLY. `authored-catalog-reader-gate` caught
+        it, and correctly: that file's roster read had already been migrated onto the KAL, so the
+        new read was a regression against the direction of travel rather than a fresh debt to
+        baseline. This is the missing rung it needed.
+
+        ⚠️ **IT RAISES, AND THAT IS THE WHOLE POINT.** Its caller is about to WRITE on the
+        strength of the answer, so "I could not ask" must never arrive looking like "it is not
+        there" — the same contract the direct client spelled as `_or_raise`. `cast` degrades to
+        a partial list because its callers want names; this one has no partial worth having.
+
+        BOOK-SCOPED, and that is load-bearing rather than incidental: an entity that does not
+        exist and one belonging to ANOTHER book are both simply absent from this book's items and
+        earn the same refusal, which is what H13 wants — telling them apart would be an existence
+        oracle for a book the caller may not own.
+        """
+        if not entity_ids:
+            return []
+        url = f"{self._base_url}/v1/kal/books/{book_id}/cast/by-ids"
+        try:
+            resp = await self._http.post(
+                url, json={"entity_ids": [str(e) for e in entity_ids]},
+                headers=self._headers(user_id))
+        except httpx.HTTPError as exc:
+            raise RosterIncomplete(f"transport: {exc}") from exc
+        if resp.status_code != 200:
+            raise RosterIncomplete(f"status {resp.status_code}")
+        try:
+            data = resp.json()
+        except (ValueError, AttributeError) as exc:
+            raise RosterIncomplete("bad json") from exc
+        items = data.get("items", []) if isinstance(data, dict) else []
+        out: list[dict[str, Any]] = []
+        for e in items:
+            eid = e.get("entity_id")
+            if not eid:
+                continue
+            # Both alias keys, for the reason `cast` states one method up: the LIST endpoint
+            # returns `aliases` while by-ids returns `cached_aliases`.
+            raw = e.get("aliases")
+            if not isinstance(raw, list):
+                raw = e.get("cached_aliases")
+            out.append({
+                "entity_id": str(eid),
+                "name": e.get("name") or e.get("cached_name"),
+                "aliases": [a for a in (raw or []) if isinstance(a, str)],
+                "kind": e.get("kind"),
+            })
+        return out
+
     async def state(
         self, book_id: UUID, *, as_of: int, user_id: UUID | str | None = None,
     ) -> list[dict[str, Any]]:
