@@ -9040,7 +9040,8 @@
         "authoring context",
         "get work",
         "resolve project id",
-        "the book's authoring workspace"
+        "the book's authoring workspace",
+        "authoring workspace for this book"
       ],
       "tier": "R"
     }
@@ -17024,7 +17025,8 @@
         "read this doc and add the characters",
         "import entities from text",
         "populate the glossary from a seed doc",
-        "extract characters places and terms from notes"
+        "extract characters places and terms from notes",
+        "add everything in here to my glossary"
       ],
       "tier": "R"
     }
@@ -23293,7 +23295,8 @@
         "change the skill description",
         "rename skill",
         "change the skill",
-        "edit the skill"
+        "edit the skill",
+        "change the description"
       ],
       "tier": "A"
     }
@@ -24052,6 +24055,7 @@
         "coverage",
         "translation coverage",
         "how much translated",
+        "has been translated",
         "translation matrix",
         "languages translated"
       ],

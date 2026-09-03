@@ -114,6 +114,10 @@ func (s *Server) RegisterEntityDocExtractTools(srv *mcpsdk.Server) {
 			"extract entities from a document", "parse my notes into entities", "add everything in this doc",
 			"turn my notes into glossary entries", "read this doc and add the characters", "import entities from text",
 			"populate the glossary from a seed doc", "extract characters places and terms from notes",
+			// DQ-T32 2026-09-03: the measured turn ends "Add everything in here to my glossary."
+			// Every phrase above describes the DOCUMENT; none matches the ASK. Noise measured
+			// over 281 corpus turns: 2, both this tool's own.
+			"add everything in here to my glossary",
 		})),
 	}, s.toolExtractEntitiesFromDoc)
 }

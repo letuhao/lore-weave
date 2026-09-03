@@ -158,13 +158,34 @@ def measured_turns() -> dict[str, str]:
     return out
 
 
+def _legacy_names() -> set[str]:
+    """Tools `drop_superseded_tools` removes from EVERY turn.
+
+    🔴 REQUIRING A DROPPED TOOL TO BE REACHABLE IS A CONTRADICTION, and the gate held one.
+    Since 2026-08-25 the superseded gate drops every `visibility: legacy` tool from the wire --
+    with or without a declared replacement -- so no declaration can put one in front of a model.
+    The gate nonetheless demanded that `book_get` be answerable on its measured turn and failed
+    when it was not. Widening its synonyms would have been busywork with a green light at the
+    end: the tool would still never be advertised, and the next reader would have inherited a
+    declaration written to satisfy a check rather than to describe a capability.
+
+    This is the same shape as the day's other findings -- a rule outliving the state it was
+    written against. The measured turns for these tools stay on file; they simply cannot be
+    reachability failures.
+    """
+    raw = json.loads(CACHE.read_text(encoding="utf-8"))
+    return {n for n, t in raw.items()
+            if (t.get("meta") or {}).get("visibility", "live") == "legacy"}
+
+
 def unreachable() -> dict[str, str]:
-    """{tool: the turn that could not reach it} for every non-exempt tool in the catalogue."""
+    """{tool: the turn that could not reach it} for every non-exempt LIVE tool in the catalogue."""
     defs = _catalog()
     names = {td["function"]["name"] for td in defs}
+    legacy = _legacy_names()
     bad = {}
     for tool, text in sorted(measured_turns().items()):
-        if tool in EXEMPT or tool not in names:
+        if tool in EXEMPT or tool not in names or tool in legacy:
             continue
         if tool not in answerable_tools(text, defs):
             bad[tool] = text
@@ -256,6 +277,11 @@ def unreachable_scenarios() -> set[str]:
     from fe_runner import measured_turn  # noqa: PLC0415
     defs = _catalog()
     names = {td["function"]["name"] for td in defs}
+    # Same legacy exclusion as the per-tool scan: a tool the superseded gate drops from every
+    # turn cannot be made reachable by any declaration, so it is not a reachability failure.
+    # Both scans must agree — two answers to one question is how this file's own docstring says
+    # the earlier falsifier became a silent no-op.
+    legacy = _legacy_names()
     out = set()
     for f in sorted((ROOT / "scripts" / "toolloop").glob("scenarios-*.json")):
         try:
@@ -264,7 +290,7 @@ def unreachable_scenarios() -> set[str]:
             continue
         for s in d.get("scenarios", []):
             tool = s.get("tool_under_test")
-            if not tool or tool in EXEMPT or tool not in names:
+            if not tool or tool in EXEMPT or tool not in names or tool in legacy:
                 continue
             if tool not in answerable_tools(measured_turn(s), defs):
                 out.add(f"{f.name}::{s.get('id')}")

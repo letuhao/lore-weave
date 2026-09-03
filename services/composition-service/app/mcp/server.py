@@ -738,6 +738,9 @@ def _translate_estimate(
         synonyms=[
             "composition work", "authoring context", "get work",
             "resolve project id", "the book's authoring workspace",
+            # DQ-T32 2026-09-03: the possessive form does not reach "the authoring
+            # workspace FOR THIS BOOK" under a contiguous match. Noise: 1, its own turn.
+            "authoring workspace for this book",
         ],
         ambient_book=True,
         ambient_project=True,

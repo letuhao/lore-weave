@@ -289,6 +289,9 @@ def _ctx(ctx: MCPContext) -> ToolContext:
         # "translation progress" -> "translation coverage": that phrase means a running
         # job to a reader; this is the per-chapter x language matrix of what EXISTS.
         synonyms=["coverage", "translation coverage", "how much translated",
+                  # DQ-T32: fix the declaration, not the matcher. "how much translated" is
+                  # not contiguous in "how much of this book HAS BEEN TRANSLATED so far".
+                  "has been translated",
                   "translation matrix", "languages translated"],
         tool_name="translation_coverage",
     ),
