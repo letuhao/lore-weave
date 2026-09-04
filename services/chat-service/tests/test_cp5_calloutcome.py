@@ -339,7 +339,17 @@ class TestAFrontendValidationRefusalIsNotAToolFailure:
         not red this for a reason that has nothing to do with the invariant.
         """
         src = self._src()
-        assert src.count("instrument.stamp_refused(") >= 4, (
+        # 🔴 THE FLOOR STOPPED RATCHETING, AND A FLOOR THAT LAGS ITS SUBJECT GUARDS NOTHING.
+        # This read `>= 4` while the tree carries EIGHT stamping sites, so deleting one left
+        # seven — comfortably above a floor set when there were about four. The falsification
+        # harness measured exactly that: removing the `unknown_vocabulary_value` stamp left this
+        # guard green, and below it a refusal is recorded as a plain failure, which is the
+        # corpus inflation CP-5.4 had to correct (101 calls that never ran, sitting as `failed`).
+        #
+        # Raised to the measured count in the same change that found it. The direction is the
+        # safe one: a site ADDED reds this until someone raises it deliberately, which is the
+        # conversation a ratchet exists to force.
+        assert src.count("instrument.stamp_refused(") >= 8, (
             "refusal stamping has thinned out; a refusal recorded as a plain failure re-inflates "
             "the corpus CP-5.4 had to correct")
 

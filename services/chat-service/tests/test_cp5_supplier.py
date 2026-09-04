@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 
 import pytest
 
@@ -158,7 +159,19 @@ class TestARefusalArmsTheToolsItNames:
         # The ASSIGNMENT, not the bare name: `def _tools_named_in_refusal(` also contains
         # "_tools_named_in_refusal(", so grepping for that alone stays green with the call site
         # deleted — the guard would have been guarding its own definition.
-        assert "_recovery = _tools_named_in_refusal(" in src
+        # 🔴 ...AND THE SUBSTRING TRAP ONE LEVEL DOWN, which the comment above walked into.
+        # There are TWO call sites, and `_ma_recovery = _tools_named_in_refusal(` CONTAINS
+        # `_recovery = _tools_named_in_refusal(` as a substring. So deleting or neutering the
+        # real `_recovery` site left this assertion satisfied by the OTHER one, and the
+        # falsification harness measured exactly that: the guard stayed green with
+        # `_recovery = [] and _tools_named_in_refusal(` in the tree.
+        #
+        # Anchored at line start so the `_ma_` prefix cannot stand in for it, and BOTH sites are
+        # asserted, because both arm a live turn.
+        assert re.search(r"(?m)^\s+_recovery = _tools_named_in_refusal\(", src), (
+            "the refusal-recovery call site is gone or neutered; `_ma_recovery` does not "
+            "substitute for it")
+        assert "_ma_recovery = _tools_named_in_refusal(" in src
         assert "no tool_load needed" in src
         assert "merge_activated_tools" in src
 
@@ -398,6 +411,13 @@ class TestAStalledRailWriteIsCaughtWhenNoToolWasNamed:
         unmeasured claim is the same false-report defect pointed the other way."""
         src = (pathlib.Path(__file__).resolve().parents[1]
                / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        # 🔴 THE PHRASE APPEARS TWICE — once in this arm's f-string and once in the
+        # sibling arm's plain string — so `in src` was satisfied by whichever one was left. The
+        # harness measured it: rewriting this arm's directive to "You just described using "
+        # (the unmeasured claim this test is named for) left the guard green.
+        assert 'f"[SYSTEM DIRECTIVE] This turn called no tool at all, and "' in src, (
+            "this arm's directive no longer says what it measured; the sibling arm's copy of "
+            "the phrase does not stand in for it")
         assert "This turn called no tool at all" in src
         assert "_stalled_tool = _rail_write_step_stalled(" in src
         # 🔴 CAUGHT ON A LIVE RUN by reading this guard's own log output: the two arms shared one

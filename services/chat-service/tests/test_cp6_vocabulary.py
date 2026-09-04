@@ -114,6 +114,22 @@ class TestTheRefusalCarriesTheVALUESNotOnlyTheMechanism:
         assert "glossary_ontology_upsert" in msg
         assert "glossary_propose_kinds" not in msg
 
+        # 🔴 ...AND THE SHIPPED CONTRACT, WHICH IS WHAT THIS TEST'S NAME CLAIMS. Everything
+        # above runs on `vocab()`, an inline fixture that hardcodes the create tool — so it
+        # asserts the fixture agrees with itself and says nothing about the file the runtime
+        # loads. The falsification harness measured it: pointing
+        # `contracts/agent-runtime-vocabularies.json` back at `glossary_propose_kinds`, the
+        # deprecated tool this test exists to keep out, left the whole test GREEN.
+        #
+        # `glossary_propose_kinds` carries `visibility: legacy` in its own `_meta` and has no
+        # `superseded_by`, so a model routed there is routed at nothing.
+        shipped = (pathlib.Path(__file__).resolve().parents[3]
+                   / "contracts" / "agent-runtime-vocabularies.json").read_text(encoding="utf-8")
+        assert '"create_tool": "glossary_propose_kinds"' not in shipped, (
+            "the shipped vocabulary routes creation at the LEGACY tool")
+        assert '"create_tool": "glossary_ontology_upsert"' in shipped, (
+            "the shipped vocabulary no longer names the live create path")
+
 
 class TestTheSourceMustBeSafeToDispatchUnasked:
 
@@ -188,6 +204,17 @@ class TestTheArgumentReaderHasNoExpressionSyntax:
         assert values_at({}, "items[].kind") == []
         assert values_at({"items": "not a list"}, "items[].kind") == []
         assert values_at({"items": [None, 7]}, "items[].kind") == []
+        # 🔴 A DICT, not just a string. The three rows above already feed a non-list, and the
+        # falsification harness measured that they cannot see the mutation that matters:
+        # replacing `if not isinstance(seq, list): return []` with `seq = [seq]` — a reader that
+        # WRAPS a wrong shape instead of refusing it — leaves all three green, because wrapping
+        # `"not a list"` still yields nothing when the walk asks it for `.kind`.
+        #
+        # A mapping is the shape where wrapping changes the answer: `[{"kind": "x"}]` yields
+        # `["x"]`, so a single value silently becomes a one-element vocabulary the caller never
+        # sent. That is the difference between "yields nothing" and "yields something wrong",
+        # which is the whole subject of this test's name.
+        assert values_at({"items": {"kind": "x"}}, "items[].kind") == []
 
     def test_CODES_COME_FROM_THE_DECLARED_FIELD(self):
         assert codes_from(BOOK_KINDS, "ontology.kinds", "code") == (

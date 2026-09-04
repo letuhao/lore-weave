@@ -132,6 +132,28 @@ class TestTheAdmissionCatalogueContainsThem:
         assert cov["unresolved"] == 0, cov["by_field"]
         assert cov["total"] == cov["derived"] == len(_snapshot()) + len(local_tool_defs())
 
+        # 🔴 AND A ROW IT CANNOT DERIVE MUST STILL BE COUNTED. Everything above is fed a
+        # catalogue of well-formed tools, so it says nothing about the case `derive_all`'s own
+        # docstring calls the point: "A producer that silently skipped what it could not handle
+        # would report 100% coverage of the rows it chose to attempt ... Every input appears in
+        # exactly one of the two lists."
+        #
+        # Measured by the falsification harness: mutating that append to
+        # `derived.append(derive_one(td)) if _fn(td).get('name') else None` — a producer that
+        # drops nameless tools — left this test GREEN, because no input here has ever been
+        # missing a name. A guard against a self-derived denominator that only ever sees
+        # derivable rows is not guarding it.
+        #
+        # A nameless tool resolves to `unresolved` (field `id`) today. What is asserted is the
+        # INVARIANT, not that number: derived + unresolved accounts for every input. Under the
+        # mutation the row reaches neither list and `coverage()` raises on its own check.
+        nameless = {"type": "function", "function": {"description": "no name field"}}
+        with_bad = coverage(_snapshot() + local_tool_defs() + [nameless])
+        assert with_bad["total"] == len(_snapshot()) + len(local_tool_defs()) + 1
+        assert with_bad["derived"] + with_bad["unresolved"] == with_bad["total"], (
+            "a row reached neither list — the coverage fraction is measuring a set the caller "
+            f"did not hand in: {with_bad}")
+
     def test_A_LOCAL_NAME_NEVER_COLLIDES_WITH_A_FEDERATED_ONE(self):
         """A name served both locally and federated is a real ambiguity about which definition a
         turn dispatches. The admit script refuses to pick a side; this says there is no side to

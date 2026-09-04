@@ -2328,7 +2328,17 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/vocabulary.py", "    unknown = tuple(s for s in pending.sent if s not in allowed_set)",
                                  "    unknown = ()  # falsifier"),
     ],
-    "test_THERE_IS_NO_FUZZY_SUBSTITUTION_ARM": [
+    # 🔴 RE-POINTED from `test_THERE_IS_NO_FUZZY_SUBSTITUTION_ARM`, which does NOT catch this
+    # edit — and the reason is worth keeping. That test sends `place`, whose whole point is that
+    # it is a near-miss the normaliser does NOT reach: `_normalise("place")` is still "place",
+    # so adding the guess arm changes nothing about it and the test stays green.
+    #
+    # The edit IS caught, by the guard twenty lines below it, which sends `power_systems` —
+    # a value that normalises INTO an allowed kind and is therefore exactly what the guess arm
+    # would swallow. Measured both ways under the mutation: the named guard passed, this one
+    # failed. So this was a falsifier naming the wrong guard, not a guard requiring nothing;
+    # the two look identical from the summary line and have opposite repairs.
+    "test_A_NORMALISED_NEAR_MISS_IS_SUGGESTED_NEVER_SUBSTITUTED": [
         # Add the guess arm: `place` silently becomes `location`, and a wrong kind is written into
         # canon with no failure anywhere.
         (f"{PKG}/vocabulary.py", "    unknown = tuple(s for s in pending.sent if s not in allowed_set)",
@@ -2490,8 +2500,22 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_NO_FEDERATED_TOOL_DECLARES_ITS_OWN_OWNER": [
         # A provider claiming an owner the gateway does not route it to — the drift this guard is
         # here to surface rather than silently resolve.
+        #
+        # 🔴 THIS INJECTED `_meta_forged`, A KEY NOTHING READS. The guard looks at
+        # `(t.get("_meta") or {}).get("served_by")`, so a forged sibling key was invisible to it
+        # and the row filed the guard as "requires nothing" — a false finding against a guard
+        # that works. Writing a SECOND `"_meta"` would not have helped either: JSON duplicate
+        # keys resolve to the last, and the real one comes 34 lines later, so the injection would
+        # have been shadowed. That is very likely why the sibling name was reached for.
+        #
+        # The edit now goes INTO book_list's own `_meta`. The anchor carries down to
+        # `"my library"` because `"_meta": {` and `"scope": "book",` are each shared with other
+        # tools, and `_apply` demands exactly one match.
         ("contracts/agent-runtime-baseline/tools-list.snapshot.json",
-         '"name": "book_list",', '"name": "book_list", "_meta_forged": {"served_by": "chat-service"},'),
+         '"_meta": {\n        "scope": "book",\n        "synonyms": [\n          "books",\n'
+         '          "my library",',
+         '"_meta": {\n        "served_by": "chat-service",\n        "scope": "book",\n'
+         '        "synonyms": [\n          "books",\n          "my library",'),
     ],
     "test_THE_UNION_DERIVES_COMPLETELY": [
         # An underivable local tool reported as covered — the self-derived denominator again.
