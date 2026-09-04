@@ -56,6 +56,24 @@ async def age_conn():
 
     conn = await asyncpg.connect(dsn)
     try:
+        # 🔴 CREATE the extension, do not assume it. `prepare()` does `LOAD 'age'` and puts
+        # `ag_catalog` on the search path — it does NOT run `CREATE EXTENSION`, which is what
+        # actually creates that schema and with it `ag_graph` / `drop_graph`. The app reaches
+        # them through `create_age_pool()` → `ensure_age_extension()`, and this fixture
+        # connects with raw asyncpg, so it never passes that seam.
+        #
+        # Against a FRESH database the next line therefore failed, not the test:
+        #
+        #   asyncpg.exceptions.UndefinedTableError: relation "ag_graph" does not exist
+        #   asyncpg.exceptions.UndefinedFunctionError: function drop_graph(unknown, boolean)
+        #   does not exist
+        #
+        # The CI leg creates `loreweave_age_test` empty on purpose and says so: "No CREATE
+        # EXTENSION here: create_age_pool() calls ensure_age_extension() itself ... so a
+        # missing extension would be a real bug rather than a setup gap this step papered
+        # over." That reasoning holds for the app; this fixture is not the app. Same statement
+        # `ensure_age_extension` runs, on a connection instead of a pool.
+        await conn.execute("CREATE EXTENSION IF NOT EXISTS age")
         await AgeCypherSession.prepare(conn)
         if await conn.fetchval("SELECT count(*) FROM ag_graph WHERE name = $1", _GRAPH):
             await conn.execute(f"SELECT drop_graph('{_GRAPH}', true)")
