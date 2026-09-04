@@ -19,6 +19,38 @@
 #
 # 🔴 A testid alone is not enough — the component must be MOUNTED. LOOM M9 shipped a Publish
 # button gated on a scene status no UI could set; the control existed, nothing rendered it.
+# ── WHAT THE VERDICTS MEASURED, 2026-09-04 (T1-T6) ───────────────────────────────────────────
+#   96  UI             a mounted control, named by route + data-testid, does the same thing by hand
+#   20  UI_NO_TESTID   the control is real and mounted but carries NO testid, so the row cannot be
+#                      machine-checked. A DECLARABILITY gap, not a user-facing one. The largest
+#                      cluster is systemic: ProvidersTab / DefaultModelsCard / ModelOrderCard carry
+#                      no testids at all between them.
+#    2  AGENT_ONLY     deliberately no manual path — see below
+#    0  NONE           no live write tool lacks a manual path
+#    0  UNTRIAGED      every one of the 118 has a real verdict
+#
+# ── THE TWO AGENT_ONLY EXEMPTIONS, AND WHY EACH IS HONEST ────────────────────────────────────
+# Both pass the same test, and it is the test rule 8 exists to force: **"no manual path to this
+# OPERATION" is only acceptable when the manual path to its RESULT exists.**
+#
+#   memory_remember  memory is ACCRUED from use, never hand-authored. The corrective affordance —
+#                    the one this metric actually cares about — is there: a memory the assistant
+#                    got wrong is removed with `memory-forget-*`.
+#   glossary_plan    a one-shot LLM planner; "produce a plan" has no hand equivalent. But every
+#                    EFFECT it proposes is separately doable — adopt-pick-*, create-pick-kind-*,
+#                    add-attr-submit, ontology-edit-* — so a bad plan is repaired by hand.
+#
+# An exemption that could NOT say that would be a NONE wearing a costume, which is the failure
+# this file exists to catch.
+#
+# ── HOW A ROW IS ADJUDICATED, because three matchers were refuted trying to automate it ───────
+# MCP tool -> the api.ts function with the same EFFECT -> the hook that calls it -> the component
+# that renders the control, reading the handler at each end. Never by name similarity: the FE's
+# vocabulary genuinely differs (`book_update_details` is a settings form sharing no token with it).
+#
+# ⚠️ AND NEVER AGAINST A TEST DOUBLE. Three declarations were refused this session for naming a
+# testid that exists only under `__tests__` — `embedding-picker`, `job-controls`, `step-confirm`.
+# Each looked exactly like coverage. The gate's __tests__ exclusion is load-bearing, not hygiene.
 tools:
   - tool: book_chapter_bulk_create
     provider: book

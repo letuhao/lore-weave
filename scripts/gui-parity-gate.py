@@ -54,9 +54,14 @@ FE_SRC = os.path.join("frontend", "src")
 # ── RATCHETS ────────────────────────────────────────────────────────────────────────────────
 # Set from P1's census (2026-09-04). Both may only DECREASE, and a change moves in the same
 # commit as the work that moved it, with the reason written in.
-MAX_NONE = 1          # book_chapter_bulk_create. world_delete closed 2026-09-04 (P3): it was
-                      # the worst gap the census found — 92 agent calls, 92 failures, and no
-                      # manual path at all — and now has a guarded control on /worlds.
+MAX_NONE = 0          # T6 (2026-09-04): every one of the 118 live write tools has been
+                      # adjudicated and NONE of them lacks a manual path, so 0 is now a
+                      # MEASURED floor rather than an aspiration. It was deliberately held
+                      # at 1 while 95 rows were unlooked-at: a ratchet that turns the next
+                      # honestly-found gap into a build break teaches people not to look.
+                      # That risk is gone — a NEW gap now means a new tool shipped without a
+                      # manual path, which is exactly what should stop the build.
+                      # History: 2 (P1 census) -> 1 (P3 closed world_delete) -> 0.
 MAX_UNTRIAGED = 0     # T5 (2026-09-04): translation 8 + settings 7 adjudicated, 15 -> 0.
                       # EVERY live tier-A/W tool now carries a real verdict. A tool added
                       # tomorrow lands as UNTRIAGED, breaches this, and reddens CI until
