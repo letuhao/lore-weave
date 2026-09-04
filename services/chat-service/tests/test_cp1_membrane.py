@@ -2988,7 +2988,11 @@ class TestStageKindsAreDataNotClosures:
             writes.append(pathlib.Path(self))
             return _real_write(self, data)
 
-        def _instant_green(cwd=None):
+        # `**_kw` so the double tracks the real signature. `_suite_is_green` grew an
+        # `explain` flag (it discarded pytest's output on rc==1, so a red baseline could only
+        # be reported as "the suite is not green" with no test named), and a double that
+        # pins the OLD arity turns that into a TypeError in every test that patches it.
+        def _instant_green(cwd=None, **_kw):
             seen.append(pathlib.Path(cwd) if cwd else None)
             return True
 
@@ -3359,7 +3363,9 @@ class TestStageKindsAreDataNotClosures:
                     return io.BytesIO() if "b" in str(mode) else io.StringIO()
                 return _rbo(file, mode, *a, **kw)
 
-            def _fake_green(cwd):
+            # `**_kw`: see the note on `_instant_green` above — the real
+            # `_suite_is_green` takes an `explain` flag.
+            def _fake_green(cwd, **_kw):
                 # 🔴 This used to answer on `cwd is None`, which stopped working the moment
                 # `_suite_is_green`'s live-tree `cwd` DEFAULT was removed — the baseline and the
                 # probe run now pass the same argument, as they should. A counter would have worked
