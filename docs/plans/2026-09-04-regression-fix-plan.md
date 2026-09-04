@@ -338,15 +338,19 @@ actually fixed.
   850 words is 1,100+. Every guard is silent because the turn DID act: F1 needs a refusal, F1b
   needs a failure, `_claimed_an_effect_without_acting` sees a successful create. **The third
   member of the family, and the worst: a specific word count for prose that never existed.**
-- [ ] **V2** — told the tool name, the reason and the evidence, it called `book_chapter_create`
+- [~] **V2** — NOT a detection gap: `D-NARRATED-WRITE` fired, named `book_chapter_save_draft`, and nudged; the model called `book_chapter_create` three more times anyway. Its root is V1's (the model reaches for `create`), and post-fix all 3 creates carried the body. **Left open, not ticked** — 3 post-fix turns is not enough to claim the symptom is gone, and there is no separate fix to make. Re-check on the next run.
+  *Original diagnosis, kept:* told the tool name, the reason and the evidence, it called `book_chapter_create`
   three more times and `book_chapter_save_draft` zero times, making two more empty chapters. Its
   own mid-turn prose was accurate ("I have not written or saved any prose… I apologize for the
   false confirmation"). **Correct self-diagnosis did not change the next call**, so "it does not
   know" is ruled out and the tool surface is the place to look.
-- [ ] **V3** — a failed turn renders as a **blank bubble**. `outcome=failed` with `is_error=false`
+- [ ] **D2** — **STOP CONDITION** (was V3). A failed turn renders as a blank bubble, and the fix runs straight into a **sealed owner decision**: `_last_tool_error_for_author`'s docstring records that *"the owner declined a generic failure line… a blank turn cannot be told apart from a crash, a refusal or a slow turn."* DQ-T33 surfaces the last TOOL error instead — and the measured turn called **zero tools**, so there was nothing to borrow. **New evidence the owner did not have:** this sub-population IS distinguishable — `input_tokens=0`, `output_tokens=0`, 0 tool calls, and provider-registry reporting `usage:false`. Does that change the answer? ⚠️ The frontend also has **no renderer** for `is_error`/`error_detail` on an assistant message, so this is two-sided work either way.
+  *Original diagnosis, kept:* a failed turn renders as a **blank bubble**. `outcome=failed` with `is_error=false`
   and `error_detail=NULL` gives the frontend nothing to render. The `silent turn` guard and CP-0.4
   both did their jobs; **the gap is the persistence seam, not the detection.**
-- [ ] **V4** — ai-gateway returns a **500 with an Express default HTML page** on `/v1/llm/stream`
+- [x] **V4 — RETRACTED, the finding was wrong.** Not ai-gateway (which has no `/v1/llm/stream` route at all): `loreweave_llm` uses `provider_registry_internal_url`, and provider-registry-service logged the 500 **in full** at WARN with `chunk_err_code=LLM_UPSTREAM_ERROR`. `duration_ms:25` and an Express error page — the upstream **LM Studio** rejected it. I read the wrong service's logs; one grep for the route would have refuted it.
+- [ ] **V5** — provider-registry logs `status:"success"` for a stream with `output_chars:0` **and** `usage:false` — the empty turn. That is where the blank bubble begins. ⚠️ `output_chars:0` ALONE is not the signal: legitimate tool-only turns show it with `usage:true`. Needs a measurement across the store before a status re-classification, since every metric over `status` moves with it.
+  *Original diagnosis, kept:* ai-gateway returns a **500 with an Express default HTML page** on `/v1/llm/stream`
   and logs nothing: zero `error`/`exception`/`500` in its whole buffer, no restarts, not OOM.
   ⚠️ It logs nothing for SUCCESSFUL chat turns either, so the silence alone proves nothing — the
   finding is that a 500 on the main LLM path leaves no line to diagnose it by.

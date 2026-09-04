@@ -264,3 +264,61 @@ approved*, not *failed*.
 A Tier-A card waiting for a click reads as a hung turn on any database poll. It cost minutes in this
 session four separate times before the poll was changed to watch `outcome='awaiting_input'` alongside
 the chapter rows. **Poll the card, not just the store.**
+
+
+---
+
+## 7. V4 IS RETRACTED — I read the wrong service's logs
+
+**The finding as filed was wrong in every particular.** It said *"ai-gateway returns a 500 on
+`/v1/llm/stream` and logs NOTHING."* All three parts are false.
+
+**It is not ai-gateway.** `loreweave_llm` is constructed with
+`base_url=settings.provider_registry_internal_url` (`http://provider-registry-service:8085`), and
+`/internal/llm/stream` is served by **provider-registry-service**. The `AI_GATEWAY_URL` I found in
+the container is `tools_base_url` — the MCP tool surface, a different path entirely. ai-gateway has
+no `/v1/llm/stream` controller at all, which I could have checked in one grep and did not.
+
+**It is not unlogged.** provider-registry logged the whole thing, at WARN, structured:
+
+```json
+{"time":"2026-09-04T06:04:07Z","level":"WARN","msg":"chat stream finished",
+ "status":"provider_error","op":"chat","duration_ms":25,"output_chars":0,"usage":false,
+ "chunk_err_code":"LLM_UPSTREAM_ERROR",
+ "err":"provider transient error: HTTP 500: <!DOCTYPE html>…<pre>Internal Server Error</pre>…"}
+```
+
+**The 500 is not ours.** `provider transient error: HTTP %d: %s` is
+`provider-registry-service/internal/provider/errors.go:38` wrapping an **upstream** response and
+passing its body through verbatim. `duration_ms: 25` — the upstream rejected it immediately. LM
+Studio's server is Node/Express, and that HTML is its default error page. **The failing component
+was the local model server, not LoreWeave.**
+
+### How the wrong answer survived, which is the part worth keeping
+
+The report even flagged that ai-gateway logs nothing for *successful* turns and warned that its
+silence proved nothing — and then rested on that silence anyway. The check that would have refuted
+it in seconds was never run: **grep for the route before blaming the service that supposedly serves
+it.** An `AI_GATEWAY_URL` in the environment is not evidence that the LLM path uses it.
+
+### What the same log line actually shows, and it is a real finding
+
+The empty turn (§3, V3) is in there too:
+
+```json
+{"time":"2026-09-04T05:56:45Z","level":"INFO","msg":"chat stream finished",
+ "status":"success","duration_ms":4135,"output_chars":0,"usage":false}
+```
+
+**`status: "success"` for a stream that produced zero characters and reported no usage.** That is
+where the blank bubble begins: chat-service was told the turn succeeded, so nothing downstream had
+an error to carry.
+
+⚠️ **`output_chars: 0` alone is NOT the signal, and a fix keyed on it would be wrong.** Many
+genuinely successful rows in the same window show `output_chars: 0` with `usage: true` — turns whose
+whole output was tool calls. The distinguishing pair is **`output_chars: 0` AND `usage: false`**:
+every legitimate row in this window reported usage; the empty one did not.
+
+**Not fixed here, and deliberately.** Re-classifying a provider status changes what every metric and
+ratchet over `status` counts, and the honest bar for that is a measurement across the store rather
+than the one instance in front of me. Filed as **V5** with the discriminator above.
