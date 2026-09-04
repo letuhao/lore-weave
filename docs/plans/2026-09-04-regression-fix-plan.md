@@ -315,11 +315,24 @@ actually fixed.
 - [x] **F6** — a CHECK violation is PERMANENT: stop the infinite retry and mark it processed with a
   reason, so the drop is recorded rather than repeated 50,529 times a day.
 - [x] **F1b** — a failed WRITE that is never retried loses the work whatever the reason. Found by row V with F1 live: `save_draft` called without `body`, turn ended, chapter left at 0 words. The missing-argument seam records it with an EMPTY prerequisite; the guard reports those unconditionally. **Writes only.**
-- [~] **V** — RAN, and the bar is **NOT met**. Five chapter rows, prose in **two**. Full record in
+- [x] **V** — **MET on the re-run.** `01a06b30-d618-7712-8cee-c654f9082c3c`, five chapters,
+  **4,611 words, zero empty**: 1103 / 1242 / 700 / 808 / 758. $0, all `lm_studio`, image verified
+  before the run (14,696 lines). Four of five landed first try; chapter 5 took one correction turn
+  and two approval clicks. **The shape that works is one chapter per turn with no two-part
+  invitation** — the "write it in two parts" framing in the first run's prompt is what the model
+  latched onto, and Part Two never once arrived. Evidence in the report below.
+- [~] **V-run-1** — the FIRST attempt, kept because its failures are what V1 is built from: five
+  chapter rows, prose in **two**. Full record in
   [`2026-09-04-row-V-live-run-report.md`](2026-09-04-row-V-live-run-report.md). F1/F1b are proven
   live (turn 2: 782 words first try, where the pre-fix build left 0) and F3 is visibly better, but
   the run found V1/V2 below. **Do not tick this row** until a re-run persists five.
-- [ ] **V1** — a write that is **never attempted** and reported as done. Turn 11 claimed "saved
+- [x] **V1** — a write that is **never attempted** and reported as done. **FIXED as an affordance,
+  not a guard** (`0f56d7abb`): every stranded chapter came from a TITLE-ONLY
+  `book_chapter_create`, while every create that PASSED a `body` produced a complete chapter in one
+  call. `body`'s whole description was *"plain-text body (optional)"* — five words naming neither
+  what it is for nor what omitting it costs. Deliberately not another detector: D-NARRATED-WRITE
+  already fires on the adjacent shape and the model ignored it. Bitten both ways, book-service
+  suite green. Original diagnosis kept below. Turn 11 claimed "saved
   Part One (approx. 850 words)"; it called `book_list` and `book_chapter_create` and never called
   `book_chapter_save_draft`. **248 output tokens settles it independently of any tool record** —
   850 words is 1,100+. Every guard is silent because the turn DID act: F1 needs a refusal, F1b

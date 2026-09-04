@@ -182,3 +182,85 @@ re-demonstrate a fault already measured three times in one session.
 **What is NOT concluded:** that F1/F1b failed. They are fixed and turn 2 proves it. The claim is
 narrower and checkable — *on this build an author gets their chapter when the assistant attempts
 the save, and gets a confident false report when it does not.*
+
+
+---
+
+## 6. The re-run, and what fixed it — 2026-09-04, later the same day
+
+### The bar is MET
+
+Book `01a06b30-d618-7712-8cee-c654f9082c3c`, same verified image, $0:
+
+```
+1 | The Sixth Signal           | 1103 words
+2 | Chapter 2: The Hollow Step | 1242 words
+3 | The Keeper's Greeting      |  700 words
+4 | The Ink of Yesterday       |  808 words
+5 | The Unfamiliar Hand        |  758 words
+                        TOTAL   4611 words, ZERO empty
+```
+
+Four of five landed first try. Chapter 5 took one correction turn and two approval clicks.
+
+**The shape that works is one chapter per turn with no two-part invitation.** The first run's prompt
+offered *"if you can only manage ~1200 in one pass, write it in two parts"*; the model took that
+framing on every subsequent turn, and **Part Two never once arrived** — it is the proximate cause of
+every stranded chapter in §1. That is F4/D1 territory, not a bug to fix here, but it decides how the
+request should be phrased.
+
+### V1's real cause, and it was not a missing guard
+
+Turn 10 of the re-run reproduced V1 exactly and more damningly: called **only `book_read`**, emitted
+**430 output tokens**, and reported *"I have written and saved Chapter Five… Word Count: 1,054
+words"* — then, four lines later in the same reply, *"The current chapter count is 4."* It
+contradicts itself inside one message. 1,054 words is not expressible in 430 tokens.
+
+Reading every `book_chapter_create` across both runs settled the cause:
+
+| | chapter ends with prose |
+|---|---|
+| create **with** `body` | always |
+| create **title-only** | only if a later `save_draft` lands — usually the turn ended first |
+
+So the one-call path already worked. What the surface said about it, in full, was
+`jsonschema:"plain-text body (optional)"` — five words naming neither what the field is for nor what
+omitting it costs, while the sibling field on `book_chapter_save_draft` gets a whole sentence calling
+itself *"the chapter's PROSE"*.
+
+**Fixed as an affordance, not a guard** (`0f56d7abb`). Deliberately: `D-NARRATED-WRITE` already fires
+on the adjacent shape, named the tool exactly, nudged — and the model called `book_chapter_create`
+three more times regardless. A second detector here would be a mechanism that fires without
+mattering. `body` stays OPTIONAL; a title-only create is still legal for building a skeleton.
+
+### Verified end to end, then measured
+
+Source → deployed binary (new wording present **and the old five-word string gone**) → ai-gateway's
+federated catalog version moved `5d1f92cf868a130e` → `748533b689ad8900`, so the description reaches
+the model.
+
+Post-fix run on book `01a06b54-1f5d-7782-9da7-136461163f50`, three chapters, **all with prose**
+(1069 / 954 / 840), each from a **single `book_chapter_create` carrying the body** — 5,838 / 5,246 /
+4,751 characters.
+
+| | creates carrying `body` |
+|---|---|
+| pre-fix (both runs) | **4 / 11** |
+| post-fix | **3 / 3** |
+
+⚠️ **State the sample honestly: 3/3 against 4/11 is directional, not conclusive** — Fisher's exact
+gives p≈0.09, and the model is nondeterministic. What IS established without statistics is the
+mechanism: the one-call path exists, it always produces a complete chapter, and the surface now says
+so where before it did not.
+
+⚠️ **A measurement error worth recording.** The first pass at this table read `tc->'args' ? 'body'`
+and reported the post-fix creates as *not* carrying a body. Approval rows nest the real arguments one
+level deeper (`args.args`, alongside `kind: "tool_approval"`), so the probe was reading the wrapper.
+Corrected to `coalesce(tc->'args'->'args', tc->'args')`. An `ok:false` on such a row means *not yet
+approved*, not *failed*.
+
+### The pending-card trap, for the fifth time
+
+A Tier-A card waiting for a click reads as a hung turn on any database poll. It cost minutes in this
+session four separate times before the poll was changed to watch `outcome='awaiting_input'` alongside
+the chapter rows. **Poll the card, not just the store.**
