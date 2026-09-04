@@ -124,6 +124,16 @@ jobs:
       - name: gate script dependencies
         run: python -m pip install --upgrade pip && python -m pip install pyyaml pytest
 
+      # 🔴 `agentruntime-membrane-gate` IMPORTS `app.agentruntime` rather than reading it as
+      # text, and that package imports `pydantic_ai` at module scope — a DELIBERATE dependency
+      # the gate itself allowlists. Without chat-service's requirements it fails on its first
+      # line with `ModuleNotFoundError("No module named 'pydantic_ai'")`, and after T2 it was
+      # the LAST red gate left in this job. Same step the lint-foundation matrix and the
+      # agentruntime-census job carry, for the same reason.
+      - name: chat-service deps (the gates that IMPORT app.agentruntime)
+        working-directory: services/chat-service
+        run: python -m pip install --quiet -r requirements.txt
+
       # The registry has to be honest before its verdicts mean anything: the
       # scope is still a predicate, every exemption carries a reason, every
       # KNOWN_RED row names a deferral, and this runner is wired.

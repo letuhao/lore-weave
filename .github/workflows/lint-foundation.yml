@@ -119,6 +119,23 @@ jobs:
       # a fast no-op for the stdlib lints and keeps the single shared step simple.
       - name: Install lint deps
         run: python -m pip install --quiet pyyaml
+      # 🔴 ...except one. `agentruntime-membrane-gate` IMPORTS `app.agentruntime` and runs
+      # `build`/`validate_document` against the manifest — it does not read the package as
+      # text — and that package imports `pydantic_ai` at module scope. That import is
+      # DELIBERATE and the gate itself allows it (`ALLOWED_EXTERNAL["pydantic_ai"]`, scoped to
+      # assembly.py), so it is not a purity violation to fix in the source. With only pyyaml
+      # installed the gate could not get past its first line:
+      #
+      #   FAIL: cannot import app.agentruntime:
+      #   ModuleNotFoundError("No module named 'pydantic_ai'")
+      #
+      # Conditional so the other P1 lints — stdlib-only — keep their fast shared step. This
+      # mirrors what the agentruntime-census and agentruntime-falsification jobs below already
+      # do for exactly the same reason.
+      - name: Install chat-service deps (agentruntime-membrane-gate imports app.agentruntime)
+        if: matrix.lint == 'agentruntime-membrane-gate'
+        working-directory: services/chat-service
+        run: python -m pip install --quiet -r requirements.txt
       - name: Run ${{ matrix.lint }}
         run: python scripts/${{ matrix.lint }}.py
 
