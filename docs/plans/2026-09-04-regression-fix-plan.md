@@ -15,6 +15,42 @@ this plan.
 
 ## Evidence
 
+### F6R + F6 — 2026-09-04
+
+**Rule 7 is why the diagnosis is right.** Forbidding the constraint widening forced the read, and
+the read found the **producer is already correct**: `usage_outbox` holds 4 rows, all
+`model_source='user_model'`, with `provider_kind` in its OWN column. The bad value — `"openai"`, a
+provider kind in a source-category field — is historical. Widening the CHECK would have admitted a
+wrong value into the schema permanently *and* left the real mechanism untouched.
+
+`XINFO GROUPS` gave the true shape: `lag: 0`, `pending: 3`, retrying **the same two ids** — 177 in
+5 minutes, 2100 in an hour. The stream had moved on; the group was spinning on its own Pending
+Entries List.
+
+**The consumer's design was already right** — `permanent` acks and drops, transient retries. Only
+the CLASSIFICATION was wrong: `writeUsageLog`'s error was returned unconditionally transient, so a
+violated CHECK — a property of the ROW, not the database — was retried forever.
+
+| bite | result |
+|---|---|
+| `23514` removed from the permanent set | **RED**, with the measured message |
+| restored | green; all 4 packages `ok` |
+| the transient arm (blips, `40001`, `57P01`, `53300`) | stays green — dropping a row that was never wrong is the more expensive defect |
+
+**Proven live, on the rebuilt image:**
+
+```
+pending: 3 -> 0      lag: 0      retries in 45s: 0   (was ~35/min, 50,529/day)
+usage consumer dropping unprocessable event  id=1781773507908-0
+usage consumer dropping unprocessable event  id=1781773507909-0
+usage consumer dropping unprocessable event  id=1781773545897-0
+```
+
+**The usage IS lost** — that is what a violated CHECK means, and the code says so rather than
+implying recovery. What changed is that the loss is recorded once and the group moves on.
+`23505` is deliberately excluded: `ON CONFLICT DO NOTHING` makes a duplicate a success, so it can
+never reach that branch, and listing it would be a classification for a case that cannot occur.
+
 ### F2R + F2 — 2026-09-04
 
 **The read answered it, and it eliminated two of the three candidates.** The recorded `tool_calls`
@@ -213,9 +249,9 @@ actually fixed.
   candidates in §F2. **Decide from it before writing anything.**
 - [x] **F2** — the fix the read points at. If candidate 3 (ordering), check whether F1 already
   covers it and say so rather than building twice.
-- [ ] **F6R** — READ ONLY. Capture one offending outbox payload and name the producer emitting a
+- [x] **F6R** — READ ONLY. Capture one offending outbox payload and name the producer emitting a
   third `model_source`. **Do not widen the CHECK to admit it.**
-- [ ] **F6** — a CHECK violation is PERMANENT: stop the infinite retry and mark it processed with a
+- [x] **F6** — a CHECK violation is PERMANENT: stop the infinite retry and mark it processed with a
   reason, so the drop is recorded rather than repeated 50,529 times a day.
 - [ ] **V** — re-run the human-sim to **five chapters**, every one persisted in the manuscript, on a
   freshly rebuilt image and a NEW throwaway book. This is the proof; the plan is not.
