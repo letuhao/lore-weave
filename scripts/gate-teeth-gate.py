@@ -329,7 +329,16 @@ NO_PROOF_BASELINE = 4
 
 #: The floor under `--verify-proofs`. Measured 90 on 2026-08-12 (was 30 against a
 #: then-population of 42). Named rather than inline so the test below can drive it.
-VERIFY_PROOF_FLOOR = 70
+#:
+#: 2026-09-04: 70 -> 118. The population reached **130** certified self-tests and the
+#: staleness test had been RED at 129 before `gui-parity-gate` was written — a floor of 70
+#: would have passed with a third of them gone, which is the direction nobody tests.
+#: Re-measured against the live count: the window the test allows is 87..129, and 118
+#: leaves a 12-gate buffer for ordinary churn while still reddening if a meaningful
+#: fraction of the proofs is lost. Attributed BEFORE moving: removing gui-parity-gate.py
+#: leaves 129 and the test still fails, so this red is pre-existing — but that gate did
+#: move the population by one, so the ratchet moves here rather than in a later sweep.
+VERIFY_PROOF_FLOOR = 118
 
 #: The floor under `ci_invoked_scripts()`. Measured 99 on 2026-08-12. See the
 #: REACH FLOOR note in `main()` for why zeroing the baseline above created the
