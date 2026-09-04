@@ -69,7 +69,11 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
 
 ## 3. Board
 
-- [ ] **P1** — **READ ONLY.** The parity census: enumerate LIVE Tier-A/W tools from the servers'
+- [x] **P1** — **DONE.** Denominator **118** live Tier-A/W tools, machine-derived from all 10
+  providers' own `tools/list` and cross-checked against ai-gateway's own 314 count. Census at
+  `contracts/gui-parity.yaml`: **20 UI · 2 NONE · 1 UI_NO_TESTID · 95 UNTRIAGED**. **Key
+  finding: three auto-matchers all refuted by known-positive controls — parity must be
+  DECLARED, and the gate verifies declarations + that the component is MOUNTED.** Original row: The parity census: enumerate LIVE Tier-A/W tools from the servers'
   own declarations (not a hand list), and for each record `UI` (route + `data-testid`) / `NONE` /
   `AGENT-ONLY`. Output a single number and the `NONE` list. **Decide the rest of this plan from what
   it returns** — scoping the fixes before the count is exactly the guess this repo forbids.
@@ -95,6 +99,73 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
 - [ ] **D4** — **STOP CONDITION.** One cloud-model run to cover the path most users would take.
   Everything proven this month was proven on a local model. **This costs money and needs an explicit
   yes plus a stated call count before it runs.**
+
+---
+
+## P1 — the census, and the finding that reshapes P2
+
+**Artefact: [`contracts/gui-parity.yaml`](../../contracts/gui-parity.yaml)** — 118 rows.
+
+### The denominator is solid, and verified against the system's own count
+
+Queried all **10 federated providers' own `tools/list`** (not a hand list, not a source grep — the
+servers' live declarations, via each provider's `/mcp`). Go services answer plain JSON and Python
+ones answer SSE; both are parsed.
+
+```
+TOTAL tools            314    <- matches ai-gateway's own log line exactly
+visibility=legacy      118    <- deprecated, excluded (rule 5)
+live                   196
+live tier A/W          118    <- THE DENOMINATOR
+```
+
+### 🔴 THE FINDING: parity cannot be auto-derived. Three matchers, all refuted.
+
+| matcher | result | why it is not a metric |
+|---|---|---|
+| endpoint-name overlap | 25/118 | **missed `book_update_details`**, which is plainly doable in the UI |
+| symbol + endpoint tokens | 48/118 | missed **2 of 4** known-positive controls |
+| loose keyword on testids | 115/118 | over-matched — `translation_save_edited_version` → `arc-save-conflict` |
+
+Each was checked against a **known-positive control** (tools I had personally driven through the
+UI), and each failed it. The cause is not a weak regex: **the FE's vocabulary genuinely differs from
+the tool vocabulary.** `book_update_details` is a settings form whose controls share no token with
+the tool name; the world-map tools have 36 dedicated testids that name-matching never connected.
+
+**So the census must be DECLARED, and P2's gate verifies declarations rather than discovering
+them** — which is what rule 6 already required, now with the evidence for why.
+
+### And a second requirement the census surfaced: MOUNTED, not merely present
+
+`book_chapter_restore_revision` has a real restore control in `RevisionHistory.tsx` — and I nearly
+recorded it as a plain `UI` before checking that anything renders it. It IS mounted
+(`ChapterEditorPage`), but its restore button carries **no `data-testid`**, so the record cannot be
+machine-checked. That is a third state, `UI_NO_TESTID`, and it is P3 work: add the testid, promote
+to `UI`. **A testid in an unmounted component is still the LOOM M9 trap**, so the gate must check
+both.
+
+### Verdicts so far
+
+```
+UI              20     book + world, adjudicated with route + testid
+NONE             2     book_chapter_bulk_create, world_delete
+UI_NO_TESTID     1     book_chapter_restore_revision
+UNTRIAGED       95     8 providers, not yet adjudicated — NOT a verdict
+```
+
+⚠️ **`UNTRIAGED` is the absence of a verdict and never counts toward parity.** Reporting
+"20/118 = 17%" would be false: the 95 are unmeasured, not failing. Every provider has a frontend
+feature folder with real write mutations — composition 103 writes / 688 testids, knowledge 65 / 438,
+registry 28 / 131 — so the true number is likely far higher than 20. **Nobody knows it yet, and
+inventing it is exactly what this row exists to prevent.**
+
+🔴 **My own declarations were checked and one was wrong.** I wrote `editor-root` for
+`book_chapter_save_draft` from memory; it does not exist. Caught before commit by resolving all 20
+declared testids against the FE source — the same check P2 automates. The real control is
+`chapter-save-button`.
+
+**P1 is complete as a READ.** The remaining 95 rows are triage work, and per the plan's own rule 4
+they belong to P3, whose scope this census now defines.
 
 ---
 

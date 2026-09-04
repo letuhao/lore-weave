@@ -1,0 +1,535 @@
+# GUI-parity census — every LIVE write-tier MCP tool, and the manual path to the same effect
+#
+# WHY: owner, 2026-09-04 — "FE should have ability to help user fix llm weakness by edit manually
+# on gui, so we avoid to ship feature that user cannot use and agent is dumb". A capability
+# reachable ONLY through an unreliable agent is a capability that does not work.
+#
+# DENOMINATOR: 314 tools live on the federated catalog (matches ai-gateway's own log line);
+# 118 are visibility=legacy and excluded (deprecated tools are dead); 196 live; of those
+# 118 are tier A or W. That 118 is what this file must cover.
+#
+# VERDICTS
+#   UI            a mounted control achieves the same effect by hand. route + testid REQUIRED.
+#   UI_NO_TESTID  the control exists and is mounted but carries no data-testid, so the record
+#                 cannot be machine-checked. P3 work: add the testid, then promote to UI.
+#   NONE          no manual path. THE GAP THIS FILE EXISTS TO FIND.
+#   AGENT_ONLY    deliberately no manual path — `reason:` is REQUIRED and is reviewed.
+#   UNTRIAGED     not yet adjudicated. NOT a verdict; it is the absence of one, and it never
+#                 counts toward parity.
+#
+# 🔴 A testid alone is not enough — the component must be MOUNTED. LOOM M9 shipped a Publish
+# button gated on a scene status no UI could set; the control existed, nothing rendered it.
+tools:
+  - tool: book_chapter_bulk_create
+    provider: book
+    tier: A
+    verdict: NONE
+  - tool: book_chapter_create
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: manuscript-chapter-new
+  - tool: book_chapter_restore_revision
+    provider: book
+    tier: A
+    verdict: UI_NO_TESTID
+    route: /books/:id/chapters/:cid
+  - tool: book_chapter_save_draft
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/chapters/:cid
+    testid: chapter-save-button
+  - tool: book_chapter_set_kg_exclude
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/chapters/:cid
+    testid: knowledge-forget-button
+  - tool: book_chapter_update_meta
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/chapters/:cid
+    testid: chapter-title-input
+  - tool: book_index_chapter
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/chapters/:cid
+    testid: knowledge-index-button
+  - tool: book_steering_delete
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: steering-editor
+  - tool: book_steering_set
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: steering-add
+  - tool: book_structure_edit
+    provider: book
+    tier: A
+    verdict: UNTRIAGED
+  - tool: book_update_details
+    provider: book
+    tier: W
+    verdict: UI
+    route: /books/:id/settings
+    testid: book-title-input
+  - tool: world_create
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds
+    testid: create-world-submit
+  - tool: world_delete
+    provider: book
+    tier: A
+    verdict: NONE
+  - tool: world_map_add_marker
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-marker-save
+  - tool: world_map_add_region
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-region-finish
+  - tool: world_map_create
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-new
+  - tool: world_map_delete
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-rail
+  - tool: world_map_remove_marker
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-marker-delete
+  - tool: world_map_remove_region
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-region-delete
+  - tool: world_map_update
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-editor
+  - tool: world_map_update_marker
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-marker-label
+  - tool: world_map_update_region
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-region-entity
+  - tool: world_move_book
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds
+    testid: world-add-book
+  - tool: world_update
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds
+    testid: create-world-name
+  - tool: composition_arc_apply
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_arc_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_arc_extract_template
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_arc_import_analyze
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_arc_template_edit
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_authoring_run_manage
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_authoring_run_review
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_build_cast_and_graph
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_canon_rule_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_conformance_run
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_create_derivative
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_create_work
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_decompile_arcs
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_derivative_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_entity_override_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_error_block_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_generate
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_library_translate
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_motif_adopt
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_motif_bind_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_motif_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_motif_link_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_motif_mine
+    provider: composition
+    tier: W
+    verdict: UNTRIAGED
+  - tool: composition_outline_node_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_reference_update
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_scene_link_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_structure_template_edit
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: composition_switch_active_work
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_apply_revision
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_bootstrap_apply
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_bootstrap_propose
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_compile
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_handoff_autofix
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_interpret_feedback
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_keep_material
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_link
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_propose_spec
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_review_checkpoint
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: plan_run_pass
+    provider: composition
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_adopt_standards
+    provider: glossary
+    tier: W
+    verdict: UNTRIAGED
+  - tool: glossary_book_sync_apply
+    provider: glossary
+    tier: W
+    verdict: UNTRIAGED
+  - tool: glossary_create_chapter_link
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_create_evidence
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_deep_research
+    provider: glossary
+    tier: W
+    verdict: UNTRIAGED
+  - tool: glossary_entity_delete
+    provider: glossary
+    tier: W
+    verdict: UNTRIAGED
+  - tool: glossary_entity_rename
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_entity_restore
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_entity_set_attributes
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_ontology_delete
+    provider: glossary
+    tier: W
+    verdict: UNTRIAGED
+  - tool: glossary_ontology_upsert
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_plan
+    provider: glossary
+    tier: W
+    verdict: UNTRIAGED
+  - tool: glossary_propose_aliases
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_propose_batch
+    provider: glossary
+    tier: W
+    verdict: UNTRIAGED
+  - tool: glossary_propose_curation
+    provider: glossary
+    tier: W
+    verdict: UNTRIAGED
+  - tool: glossary_propose_entities
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_propose_translation
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: glossary_set_genres
+    provider: glossary
+    tier: A
+    verdict: UNTRIAGED
+  - tool: jobs_cancel
+    provider: jobs
+    tier: A
+    verdict: UNTRIAGED
+  - tool: jobs_pause
+    provider: jobs
+    tier: A
+    verdict: UNTRIAGED
+  - tool: kg_add_nodes
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: kg_build
+    provider: knowledge
+    tier: W
+    verdict: UNTRIAGED
+  - tool: kg_ontology_propose
+    provider: knowledge
+    tier: W
+    verdict: UNTRIAGED
+  - tool: kg_project_create
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: kg_project_set_embedding_model
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: kg_propose_edge
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: kg_propose_fact
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: kg_run_benchmark
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: kg_triage_place_edge
+    provider: knowledge
+    tier: W
+    verdict: UNTRIAGED
+  - tool: kg_triage_resolve
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: kg_triage_schema_write
+    provider: knowledge
+    tier: W
+    verdict: UNTRIAGED
+  - tool: kg_view_edit
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: memory_forget
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: memory_remember
+    provider: knowledge
+    tier: A
+    verdict: UNTRIAGED
+  - tool: lore_enrichment_auto_enrich
+    provider: lore_enrichment
+    tier: A
+    verdict: UNTRIAGED
+  - tool: registry_propose_skill
+    provider: registry
+    tier: A
+    verdict: UNTRIAGED
+  - tool: registry_propose_workflow
+    provider: registry
+    tier: A
+    verdict: UNTRIAGED
+  - tool: registry_set_skill_enabled
+    provider: registry
+    tier: A
+    verdict: UNTRIAGED
+  - tool: registry_update_skill
+    provider: registry
+    tier: A
+    verdict: UNTRIAGED
+  - tool: registry_update_workflow
+    provider: registry
+    tier: A
+    verdict: UNTRIAGED
+  - tool: settings_model_delete
+    provider: settings
+    tier: W
+    verdict: UNTRIAGED
+  - tool: settings_model_register
+    provider: settings
+    tier: A
+    verdict: UNTRIAGED
+  - tool: settings_model_set_active
+    provider: settings
+    tier: A
+    verdict: UNTRIAGED
+  - tool: settings_model_set_default
+    provider: settings
+    tier: A
+    verdict: UNTRIAGED
+  - tool: settings_model_set_favorite
+    provider: settings
+    tier: A
+    verdict: UNTRIAGED
+  - tool: settings_model_update
+    provider: settings
+    tier: A
+    verdict: UNTRIAGED
+  - tool: settings_update_profile
+    provider: settings
+    tier: A
+    verdict: UNTRIAGED
+  - tool: translation_job_control
+    provider: translation
+    tier: W
+    verdict: UNTRIAGED
+  - tool: translation_patch_block
+    provider: translation
+    tier: A
+    verdict: UNTRIAGED
+  - tool: translation_retranslate_dirty
+    provider: translation
+    tier: W
+    verdict: UNTRIAGED
+  - tool: translation_save_edited_version
+    provider: translation
+    tier: A
+    verdict: UNTRIAGED
+  - tool: translation_set_active_version
+    provider: translation
+    tier: A
+    verdict: UNTRIAGED
+  - tool: translation_start_extraction
+    provider: translation
+    tier: W
+    verdict: UNTRIAGED
+  - tool: translation_start_job
+    provider: translation
+    tier: W
+    verdict: UNTRIAGED
+  - tool: translation_update_settings
+    provider: translation
+    tier: A
+    verdict: UNTRIAGED
