@@ -115,3 +115,57 @@ rows, not an author's chapter.
 
 **Then re-run the smoke test to five chapters**, which is the only thing that proves F1 and F2 are
 actually fixed.
+
+---
+
+## Board
+
+- [ ] **F1** — track `{refused_tool → prerequisite named in its refusal}` at the dispatch seam that
+  already calls `_tools_named_in_refusal`, and re-arm the refused tool when that prerequisite
+  SUCCEEDS in the same turn. Half exists (`_resume_refused_tool`) but only on suspend/resume.
+- [ ] **G1** — the guard `_refusal_precondition_met_but_never_retried`, wired at the shared
+  end-of-turn site and added to `TURN_GUARDS` so it cannot be defined-and-never-called. **Bite it
+  RED on the original shape** — save_draft refused, chapter_create succeeded, turn ended — and
+  silent on the three negatives (retry happened / prerequisite failed / refusal named nothing).
+- [ ] **F2R** — READ ONLY. The recorded `book_chapter_save_draft` arguments for the "Chapter Two"
+  turn, and whether any `book_chapter_create` preceded it. One read; it eliminates two of the three
+  candidates in §F2. **Decide from it before writing anything.**
+- [ ] **F2** — the fix the read points at. If candidate 3 (ordering), check whether F1 already
+  covers it and say so rather than building twice.
+- [ ] **F6R** — READ ONLY. Capture one offending outbox payload and name the producer emitting a
+  third `model_source`. **Do not widen the CHECK to admit it.**
+- [ ] **F6** — a CHECK violation is PERMANENT: stop the infinite retry and mark it processed with a
+  reason, so the drop is recorded rather than repeated 50,529 times a day.
+- [ ] **V** — re-run the human-sim to **five chapters**, every one persisted in the manuscript, on a
+  freshly rebuilt image and a NEW throwaway book. This is the proof; the plan is not.
+- [ ] **D1** — **STOP CONDITION** — F4 is a product decision, not a bug: a single draft call holds
+  ~1500 words, so an 1800-2500 ask cannot be met in one call. Deliver in parts, or say so up front?
+  Owner's call.
+
+```goal-prompt
+goal: an author's chapter reaches the manuscript, and a five-chapter run proves it
+po_decisions: [D1]
+rules: |
+  1 $0. Every model must resolve to lm_studio/local. Check user_default_models BEFORE a run and say the expected call count out loud; a PAID run needs the owner's yes first.
+  2 Content-creating runs use a NEW throwaway book, never the dogfood book, never an existing one.
+  3 Verify the DEPLOYED IMAGE before believing any live result — a green build log is not a rebuilt container.
+  4 A guard must be bitten RED on the ORIGINAL recorded shape, then restored byte-exact. A guard added to TURN_GUARDS that is never called is the defect this whole family exists to stop.
+  5 The retry is OFFERED, never performed silently. It is a Tier-A write and goes through the approval card like every other one.
+  6 F2R and F6R are READS. Decide from what they return; a fix built on a guess is worse than no fix.
+  7 Do NOT widen the usage_logs CHECK to admit the value that is arriving — that encodes the bug in the schema. Find the producer.
+  8 A ratchet or baseline moves in the SAME COMMIT as the code that moved it, with the reason written in.
+  9 Attribute a red thing before fixing it: F6 predates this merge, and fixing it on the wrong branch helps nobody.
+discipline: |
+  NO "BLOCKED" meaning "I would have to build it". Decide it, write the decision down, keep going.
+  Commit every row, and tick the box in the commit that does the work.
+  Record near-misses as they happen. An empty drift log is dishonest, not clean.
+stop: |
+  a fix would need a product decision neither the report nor the plan answers
+  a run would call a model that is not local
+  the CHECK constraint would have to be widened to admit the arriving value
+note: |
+  F1's cause is LOCATED and half the machinery exists: the refusal's named prerequisite is already
+  armed and called. Nothing brings the REFUSED tool back outside suspend/resume.
+```
+
+**RESUME: F1 — re-arm the refused tool when its named prerequisite succeeds in the same turn**
