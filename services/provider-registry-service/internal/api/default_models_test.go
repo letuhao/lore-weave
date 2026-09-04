@@ -213,9 +213,34 @@ func TestEmbeddingModel_FallsBackToActiveEmbeddingCapableModel(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM user_default_models WHERE owner_user_id=$1`, owner)
 	})
 
-	// No explicit 'embedding' default is set — the strict per-capability lookup alone 404s.
-	if rr := internalDefault(t, srv, owner, "embedding"); rr.Code != http.StatusNotFound {
-		t.Fatalf("strict default-models lookup: expected 404 (nothing set), got %d (%s)", rr.Code, rr.Body.String())
+	// 🔴 RECONCILED. This asserted that the strict lookup 404s with nothing set, and it stopped
+	// being true: `internalGetDefaultModel` grew its own embedding fallback so a project
+	// referencing a user_model that was deleted and re-added keeps retrieving.
+	//
+	// The fallback STAYS and the assertion moves, because removing it breaks live callers —
+	// `knowledge-service/app/clients/embedding_client.py` and `default_model.py` both call
+	// `/internal/default-models/embedding` directly, and this file's own note records that ZERO
+	// accounts ever set an explicit embedding default. A 404 there is not a tidier contract;
+	// it is embedding retrieval switched off for everyone.
+	//
+	// What must NOT be lost is the caller's ability to tell the two apart, and that survives in
+	// the payload: a fallback answer says `source: embedding_fallback`, an explicit one does
+	// not. So that is what is pinned now.
+	rrStrict := internalDefault(t, srv, owner, "embedding")
+	if rrStrict.Code != http.StatusOK {
+		t.Fatalf("strict lookup with no explicit default: expected 200 via the embedding "+
+			"fallback, got %d (%s)", rrStrict.Code, rrStrict.Body.String())
+	}
+	if !strings.Contains(rrStrict.Body.String(), `"source":"embedding_fallback"`) {
+		t.Fatalf("the fallback must SAY it is a fallback, or no caller can distinguish it from "+
+			"an explicit default: %s", rrStrict.Body.String())
+	}
+
+	// ...and the fallback is EMBEDDING-ONLY. Any other capability must still 404 when nothing
+	// is set, or "no default configured" becomes unanswerable for every capability at once.
+	if rr := internalDefault(t, srv, owner, "chat"); rr.Code != http.StatusNotFound {
+		t.Fatalf("a non-embedding capability must still 404 with nothing set, got %d (%s)",
+			rr.Code, rr.Body.String())
 	}
 
 	// The fallback-aware resolver finds the active embedding-capable model anyway.

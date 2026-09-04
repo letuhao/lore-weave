@@ -9,6 +9,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -82,7 +83,7 @@ func TestPgTaskStore_MultiReplica_ProposeOnA_AcceptOnB(t *testing.T) {
 	if gotA.Status != lwmcp.TaskCompleted {
 		t.Fatalf("A.Get after accept = %q, want completed", gotA.Status)
 	}
-	if _, err := replicaA.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); err != lwmcp.ErrTaskNotWaiting {
+	if _, err := replicaA.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); !errors.Is(err, lwmcp.ErrTaskNotWaiting) {
 		t.Fatalf("double-accept on A err = %v, want ErrTaskNotWaiting", err)
 	}
 	if len(hits) != 1 {
@@ -105,7 +106,7 @@ func TestPgTaskStore_DeclineCancelsWithoutResolver(t *testing.T) {
 		t.Fatalf("resolver ran on decline (%d hits)", len(hits))
 	}
 	// A post-decline accept is refused.
-	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); err != lwmcp.ErrTaskNotWaiting {
+	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); !errors.Is(err, lwmcp.ErrTaskNotWaiting) {
 		t.Fatalf("accept after decline err = %v, want ErrTaskNotWaiting", err)
 	}
 }
@@ -125,7 +126,7 @@ func TestPgTaskStore_TTLExpiryLapsesToFailed(t *testing.T) {
 		t.Fatalf("status=%q err=%q, want failed/task_expired", got.Status, got.ErrorMsg)
 	}
 	// The lapse is durable → a later accept is refused.
-	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); err != lwmcp.ErrTaskNotWaiting {
+	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); !errors.Is(err, lwmcp.ErrTaskNotWaiting) {
 		t.Fatalf("accept after expiry err = %v, want ErrTaskNotWaiting", err)
 	}
 }
@@ -144,7 +145,7 @@ func TestPgTaskStore_CancelIdempotentThenReject(t *testing.T) {
 	if err != nil || c2.Status != lwmcp.TaskCancelled {
 		t.Fatalf("second cancel: err=%v status=%q", err, c2.Status)
 	}
-	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); err != lwmcp.ErrTaskNotWaiting {
+	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); !errors.Is(err, lwmcp.ErrTaskNotWaiting) {
 		t.Fatalf("accept after cancel err = %v, want ErrTaskNotWaiting", err)
 	}
 }
@@ -179,7 +180,7 @@ func TestPgTaskStore_ConcurrentAccept_SingleWinner(t *testing.T) {
 	for i := range 2 {
 		if results[i] == nil && completed[i] {
 			wins++
-		} else if results[i] == lwmcp.ErrTaskNotWaiting {
+		} else if errors.Is(results[i], lwmcp.ErrTaskNotWaiting) {
 			notWaiting++
 		} else {
 			t.Fatalf("unexpected result[%d]: err=%v completed=%v", i, results[i], completed[i])

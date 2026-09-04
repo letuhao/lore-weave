@@ -10,6 +10,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,16 +32,42 @@ func TestLive_PgProjectionDriftReader(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	applyDDL(ctx, t, pool, "../../../../migrations/meta/001_reality_registry.up.sql")
-	applyDDL(ctx, t, pool, "../../../../contracts/migrations/per_reality/0007_drift_metadata.up.sql")
+	applyDriftSchema(ctx, t, pool)
 
-	const proj = "canon_projection" // one of the 10 allowlist tables; low-traffic choice
+	// 🔴 `canon_projection` IS CORRECT, AND THE SCHEMA THIS TEST BUILDS WAS NOT.
+	// The seeding UPDATE below matched ZERO rows and every assertion then read the table's
+	// default state and blamed the reader:
+	//
+	//     projection_drift_check_pg_test.go:85: drift_count: want 7, got 0
+	//     projection_drift_check_pg_test.go:88: last_sample_size: want 50, got <nil>
+	//
+	// The cause is the applyDDL list above. It stopped at `0007`, whose CHECK admits ten
+	// tables and which seeds those ten -- a schema that has not existed for a long time.
+	// `0017` narrowed it to three and `0018` to ONE: "Ten (0007) -> three (0017) -> one
+	// (0018), as each projection with no producer was removed." So the real database admits
+	// `canon_projection` and NOTHING else, while this test's database admitted everything
+	// except it.
+	//
+	// ⚠️ The later migrations are applied rather than the row simply being inserted. Seeding
+	// alone would have made this pass against a CHECK constraint production does not have --
+	// green here, and no evidence about the thing that ships.
+	const proj = "canon_projection"
 	verified := time.Now().UTC().Truncate(time.Second)
-	if _, e := pool.Exec(ctx,
-		`UPDATE projection_drift_state
-		    SET drift_count = 7, last_verified_at = $1, last_sample_size = 50
-		  WHERE table_name = $2`, verified, proj); e != nil {
+	// ⚠️ The seed ASSERTS IT WROTE SOMETHING. An UPDATE whose WHERE matches nothing is a
+	// silent no-op, and every assertion downstream then reads the table's default state and
+	// blames the reader. That is exactly how the wrong table name above survived: the seed
+	// reported success while writing no row.
+	tag, e := pool.Exec(ctx,
+		`INSERT INTO projection_drift_state (table_name, drift_count, last_verified_at, last_sample_size)
+		      VALUES ($2, 7, $1, 50)
+		 ON CONFLICT (table_name) DO UPDATE
+		    SET drift_count = 7, last_verified_at = $1, last_sample_size = 50`, verified, proj)
+	if e != nil {
 		t.Fatalf("seed drift row: %v", e)
+	}
+	if n := tag.RowsAffected(); n != 1 {
+		t.Fatalf("seeding %q updated %d row(s), want 1 — there is no projection_drift_state "+
+			"row for it, so nothing below would be measuring the reader", proj, n)
 	}
 
 	rid := uuid.New()
@@ -117,8 +144,7 @@ func TestLive_PgProjectionDriftReader_ToleratesDownShard(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	applyDDL(ctx, t, pool, "../../../../migrations/meta/001_reality_registry.up.sql")
-	applyDDL(ctx, t, pool, "../../../../contracts/migrations/per_reality/0007_drift_metadata.up.sql")
+	applyDriftSchema(ctx, t, pool)
 
 	const proj = "canon_projection"
 	if _, e := pool.Exec(ctx, `UPDATE projection_drift_state SET drift_count = 2 WHERE table_name = $1`, proj); e != nil {
@@ -190,8 +216,7 @@ func TestLive_PgProjectionDriftReader_MissingRowFlagged(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	applyDDL(ctx, t, pool, "../../../../migrations/meta/001_reality_registry.up.sql")
-	applyDDL(ctx, t, pool, "../../../../contracts/migrations/per_reality/0007_drift_metadata.up.sql")
+	applyDriftSchema(ctx, t, pool)
 
 	const proj = "canon_projection"
 	// Remove the migration-seeded row so readOne hits ErrNoRows for this projection.
@@ -256,6 +281,47 @@ func TestLive_PgProjectionDriftReader_MissingRowFlagged(t *testing.T) {
 // tables. `PIIKMS_TEST_PG_URL` pointed at a real service DB is all it takes — which is
 // how an unscoped `DELETE FROM books` once hard-deleted every user's books. The
 // statement was fine; the DSN was not.
+// applyDriftSchema brings a throwaway database to the EFFECTIVE per-reality drift schema:
+// `0007` creates the table with a ten-name CHECK and seeds those ten, `0017` narrows it to
+// three, `0018` to one (`canon_projection`). Production applies each exactly once, in order.
+//
+// 🔴 ONCE PER PROCESS, and that is the whole reason this helper exists. Each test used to
+// apply the list itself, so the second test re-ran `0007` against a database whose CHECK
+// `0018` had already narrowed — and `0007`'s seed of the ten old projection names then
+// violated it:
+//
+//	ERROR: new row for relation "projection_drift_state" violates check constraint
+//
+// Re-running an earlier migration over a later one is not something production ever does;
+// it was an artefact of the fixture. Applying the chain once models the real sequence.
+var driftSchemaOnce sync.Once
+
+func applyDriftSchema(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	driftSchemaOnce.Do(func() {
+		// A real migration runner records what it has applied and never re-runs a step. This
+		// fixture has no ledger, so it asks the database instead: if the CHECK has already
+		// been narrowed to the single surviving projection, the chain is applied and re-running
+		// `0007` would only re-insert the ten names that constraint now forbids. Matters
+		// whenever the throwaway database outlives one `go test` invocation.
+		var def string
+		if e := pool.QueryRow(ctx, `
+			SELECT pg_get_constraintdef(oid) FROM pg_constraint
+			 WHERE conname = 'projection_drift_table_name_allowlist'`).Scan(&def); e == nil &&
+			strings.Contains(def, "canon_projection") && !strings.Contains(def, "pc_projection") {
+			return
+		}
+		for _, m := range []string{
+			"../../../../migrations/meta/001_reality_registry.up.sql",
+			"../../../../contracts/migrations/per_reality/0007_drift_metadata.up.sql",
+			"../../../../contracts/migrations/per_reality/0017_drop_pc_npc_projections.up.sql",
+			"../../../../contracts/migrations/per_reality/0018_drop_region_session_world_kv_projections.up.sql",
+		} {
+			applyDDL(ctx, t, pool, m)
+		}
+	})
+}
+
 func applyDDL(ctx context.Context, t *testing.T, pool *pgxpool.Pool, path string) {
 	t.Helper()
 	var dbName string

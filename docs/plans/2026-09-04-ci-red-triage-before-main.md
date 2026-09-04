@@ -251,8 +251,47 @@ network step. Attribute before touching.
   - Evidence: `pytest tests` → **5000 passed, 848 skipped, 0 failed** (CI had 4998 + 2). Image
     built locally and smoked: `age 1.7.0`, `vector 0.8.6`, `vectorscale 0.9.0` all created, and AGE
     exercised through a real cypher write/read round-trip.
-- [ ] **T5** — **C5, the four DB jobs.** Three round-trip jobs plus `create meta smoke DB`. If one
-  migration or one image explains all four, that is one fix; prove it rather than assuming it.
+- [x] **T5** — **DONE. No single cause; six defects across four jobs, and two are real production
+  bugs rather than test debt.** Every one reproduced against a throwaway Postgres in Docker and was
+  re-verified after the fix. 🔴 **Three of the six only bite a FRESH database** — invisible on any
+  developer's machine and on any long-lived environment, fatal on a new deployment.
+  - 🔴 **`ALTER TABLE usage_outbox` ran ~60 lines BEFORE its `CREATE TABLE`.** `schemaSQL` is one
+    ordered `pool.Exec`, so on a fresh DB Postgres hit the ALTER first and aborted the whole
+    migration: `relation "usage_outbox" does not exist (SQLSTATE 42P01)`. **No new deployment could
+    migrate.** A static scan found exactly one such violation; a new test
+    (`schema_order_test.go`) now fails the build on any ALTER-before-CREATE, and it was bitten by
+    restoring the defect verbatim — it reproduces the shipped error text.
+  - 🔴 **The `create meta smoke DB` step's own seed row was incomplete.** It named six columns while
+    `session_max_pcs/_npcs/_total` are `INT NOT NULL` with no default. It is the last line of a step
+    whose migrations emit pages of NOTICEs, so it read like a migration failure — every migration
+    applied cleanly. Proven both ways against a fresh DB: the old INSERT reproduces the error, the
+    new one inserts the row.
+  - **`errors.Is`, not `!=`.** The expiry path wraps the sentinel (`%w — it EXPIRED …`) on purpose;
+    identity comparison cannot see through it. Bitten: reverting one site reproduces CI exactly.
+  - **The drift test built a schema that has not existed for a long time.** It applied `0007` (ten
+    projections) and stopped; `0017` narrowed to three and `0018` to one. ⚠️ I first "fixed" this by
+    switching to `world_kv_projection` — a table `0018` **drops** — and the command's own allowlist
+    refuted me in one run. `canon_projection` was right all along; the schema was wrong. The seed
+    now asserts `RowsAffected() == 1`, so a silent no-op can never masquerade as a reader bug again.
+  - 🔴 **A fixture placeholder that acquired a meaning.** `seedPricedModel` seeds
+    `http://127.0.0.1:1` — picked as a *dead* address — and `billing.DecodePricing` later gave
+    loopback semantics: `IsLocalEndpoint(url) → FreePricing()`. Every model those guardrail tests
+    seeded was silently a **free local** model, so the unpriced guard never fired and the cap
+    arithmetic had no price to cap. Three tests, one cause. Only the pricing assertions now rewrite
+    the endpoint; the dispatch-failure tests keep loopback, which refuses instantly where an
+    unroutable public IP would hang.
+  - **Two 402s were split on purpose** — `LLM_MODEL_UNPRICED` vs `LLM_QUOTA_EXCEEDED`, because
+    "no price table" and "budget spent" are opposite problems and one shared code made the
+    author-facing message wrong for one of them every time. The tests still asserted the old code.
+  - **The strict default-model lookup was RECONCILED, not reverted.** It grew an embedding fallback,
+    and removing it would break `knowledge-service`'s embedding clients, which call
+    `/internal/default-models/embedding` directly — while this repo's own note records that **zero
+    accounts** ever set an explicit embedding default. The fallback stays; what is pinned now is
+    that it SAYS SO (`source: embedding_fallback`) and that it is embedding-only.
+  - Evidence: provider-registry `go test ./...` exit 0 · admin-cli exit 0 (fresh DB *and* an
+    already-migrated one) · book-service `internal/api` + `internal/migrate` green in isolation.
+    ⚠️ Two book-service backfill tests deadlocked under my single shared DB; they are green on an
+    isolated one and appear **nowhere** in the CI log — my environment, not a defect.
 - [ ] **T6** — **C6, conformance-ci.** 🔴 Red on `main` today — attribute each of the three before
   fixing. `install benchstat` is a network step and probably not ours.
 - [ ] **T7** — **C7, agentruntime.** Falsification + membrane. ⚠️ The two untracked

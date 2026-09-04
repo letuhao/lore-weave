@@ -708,9 +708,25 @@ jobs:
           for f in migrations/meta/*.up.sql; do
             psql -d meta_cp_smoke -v ON_ERROR_STOP=1 -f "$f"
           done
+          # 🔴 THE SESSION CAPS ARE NOT OPTIONAL. This INSERT named six columns and
+          # `001_reality_registry.up.sql` declares session_max_pcs / _npcs / _total as
+          # `INT NOT NULL` with no DEFAULT, so the step died on the last statement after
+          # applying every migration:
+          #
+          #   ERROR: null value in column "session_max_pcs" of relation
+          #   "reality_registry" violates not-null constraint
+          #
+          # ⚠️ It is the LAST line of the step and the migrations above it are noisy with
+          # NOTICEs, so the failure reads like a migration problem. It is not — every
+          # migration applied cleanly; the seed row was incomplete.
+          #
+          # 4/4/8 mirrors the fixture in admin-cli's projection-drift test and satisfies all
+          # three CHECKs: pcs BETWEEN 1 AND 50, npcs BETWEEN 0 AND 50, total BETWEEN 2 AND
+          # 100 AND total >= pcs.
           psql -d meta_cp_smoke -v ON_ERROR_STOP=1 -c \
-            "INSERT INTO reality_registry (reality_id, db_host, db_name, status, locale, deploy_cohort) \
-             VALUES ('1ec91442-100c-45f5-85e1-34865d7daeaf','pg-shard-0.internal','lw_reality_ci','active','en',0) \
+            "INSERT INTO reality_registry (reality_id, db_host, db_name, status, locale, \
+                                           session_max_pcs, session_max_npcs, session_max_total, deploy_cohort) \
+             VALUES ('1ec91442-100c-45f5-85e1-34865d7daeaf','pg-shard-0.internal','lw_reality_ci','active','en',4,4,8,0) \
              ON CONFLICT (reality_id) DO NOTHING;"
       - name: cargo test dp ControlPlane live-smoke
         env:
