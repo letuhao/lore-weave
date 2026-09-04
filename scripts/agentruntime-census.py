@@ -340,7 +340,7 @@ def _neutered(src: str, node: ast.Raise) -> str:
     return "".join(out)
 
 
-def _suite_is_green(cwd) -> bool:
+def _suite_is_green(cwd, explain: bool = False) -> bool:
     """Green / not-green — and **a crash is neither.**
 
     🔴 This returned `r.returncode == 0`, so **any** non-zero exit read as "the suite noticed",
@@ -396,6 +396,21 @@ def _suite_is_green(cwd) -> bool:
     # off the end and returned `None` — falsy — and every run reported "the suite is not green
     # before any injection" while the suite ran 137 green from the same directory, measured. The
     # census could not have classified a single site, and its failure message pointed at the suite.
+    #
+    # 🔴 `explain` — SAY WHICH TEST, on the ONE call where the answer is a verdict about the tree
+    # rather than about a site. rc==1 is a real test failure and this function threw the output
+    # away, so the only thing the caller could print was "the suite is not green before any
+    # injection". That is true and unactionable: it names 18 suites and no test, and the reader
+    # cannot tell a broken guard from a broken environment. CI printed exactly that line for a
+    # whole cycle. Deliberately OFF for the per-site calls, where a red suite is the expected
+    # answer and 88 pytest tails would bury the census's own output.
+    if explain and r.returncode == 1:
+        tail = [ln for ln in (r.stdout or "").splitlines()
+                if ln.startswith("FAILED") or ln.startswith("ERROR")]
+        for ln in tail[:10]:
+            print("    " + ln[:200])
+        if not tail:
+            print("    " + (r.stdout or "")[-1200:])
     return r.returncode == 0
 
 
@@ -564,7 +579,7 @@ def _selftest() -> int:
 
 
 def _selftest_in(mirror: pathlib.Path, n_sites: int) -> int:
-    if not _suite_is_green(mirror / _CS_REL):
+    if not _suite_is_green(mirror / _CS_REL, explain=True):
         print("SELFTEST FAIL: the suite is not green before any injection")
         return 1
     # ...and it must go red when a known-guarded site is neutered.

@@ -410,7 +410,6 @@ BASELINE = {
     # `_is_read_tool(name)` folds an MCP TOOL NAME (`composition_motif_get`) — an ASCII
     # identifier from our own registry, never user prose. The spine would be correct and
     # pointless here.
-    'ml2-naive-normalize|services/chat-service/app/services/tool_surface.py|n = name.lower()',
     'ml2-naive-normalize|services/chat-service/app/client/known_entities_client.py|toks.add(name.strip().lower())',
     'ml2-naive-normalize|services/chat-service/app/services/steering.py|if name.casefold() in mentioned:',
     'ml2-naive-normalize|services/composition-service/app/engine/cast_plan.py|key = name.strip().casefold()',

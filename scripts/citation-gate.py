@@ -943,7 +943,14 @@ def self_test() -> int:
                  # `line_count` reads the filesystem rather than this list -- so a
                  # synthetic path would report 0 lines and red on line 1.
                  "scripts/citation-gate.py",
-                 "contracts/frontend-tools.contract.json",
+                 # 🔴 RENAMED, and that is the hazard this list carries by design. These entries
+                 # are REAL paths (see the note above) so `line_count` can read them — which
+                 # means a rename elsewhere in the repo reds a self-test case here for a reason
+                 # that has nothing to do with the rule. `8e7402ad4` renamed
+                 # `frontend-tools.contract.json` to `browser-tools.contract.json`, so the
+                 # `.json is not truncated to .js` case cited a file with 0 lines and its `:3`
+                 # was correctly reported missing.
+                 "contracts/browser-tools.contract.json",
                  "frontend/src/app/shell/AppShell.tsx",
                  ".github/workflows/gates.yml"])
     real_lines = tree.line_count
@@ -1001,7 +1008,13 @@ def self_test() -> int:
         ("C2 line zero", "see scripts/citation-gate.py:0", 1),
         ("C2 a valid range", "see scripts/citation-gate.py:1-2", 0),
         # F2 — dead alternation branches made these commit-blocking false positives.
-        ("a .json citation is not truncated to .js", "see contracts/frontend-tools.contract.json:3", 0),
+        # 🔴 The subject is the EXTENSION, not this particular file — but the case still needs a
+        # citation that RESOLVES, or it reds for the wrong reason. It cited
+        # `contracts/frontend-tools.contract.json`, which `8e7402ad4` renamed to
+        # `browser-tools.contract.json`, so the gate correctly reported the file missing (1) and
+        # the case expected 0. A positive case anchored on a real path goes stale the day that
+        # path moves; the negative cases below cite `crates/nope/...` on purpose and never do.
+        ("a .json citation is not truncated to .js", "see contracts/browser-tools.contract.json:3", 0),
         ("a .tsx citation is not truncated to .ts", "see frontend/src/app/shell/AppShell.tsx:3", 0),
         # F3 — a leading dot was truncated and the result reported missing.
         ("a dotfile directory resolves", "see .github/workflows/gates.yml:3", 0),
