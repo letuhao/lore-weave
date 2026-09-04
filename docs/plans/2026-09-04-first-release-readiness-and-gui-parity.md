@@ -77,7 +77,13 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
   own declarations (not a hand list), and for each record `UI` (route + `data-testid`) / `NONE` /
   `AGENT-ONLY`. Output a single number and the `NONE` list. **Decide the rest of this plan from what
   it returns** — scoping the fixes before the count is exactly the guess this repo forbids.
-- [ ] **R1** — **the new-user run.** A fresh account with NO pre-seeded models, driven through the
+- [x] **R1** — **DONE. The stranger is not stranded.** Register → verify → onboarding → create a
+  book all work; the co-writer disables Start Chat and says *"No active models. Add one in
+  Settings → Providers"*, and that path exists and opens — **the affordance gate done right,
+  the inverse of LOOM M9**. Answers D3 in the product's own voice: the model story is **BYOK**.
+  🔴 Found a real defect: Add Provider **autofilled the saved account password into the API-key
+  field** and the email into Endpoint URL. Fixed (8 inputs, `new-password` on secrets), bitten
+  two ways, verified live. Original row: A fresh account with NO pre-seeded models, driven through the
   real UI: what does a stranger actually get? $0, touches nothing existing. **The cheapest check on
   this board and the one most likely to change the release answer.**
 - [ ] **P2** — the gate in `scripts/`, with the baseline at whatever P1 measured and the reason
@@ -166,6 +172,63 @@ declared testids against the FE source — the same check P2 automates. The real
 
 **P1 is complete as a READ.** The remaining 95 rows are triage work, and per the plan's own rule 4
 they belong to P3, whose scope this census now defines.
+
+---
+
+## R1 — the new-user run
+
+A fresh account (`zz-newuser-20260904@loreweave.test`), registered and driven through the real UI
+end to end. **$0** — `platform_models` is still 0 rows, so no model could have been billed.
+
+### The stranger is NOT stranded, and the empty state is handled well
+
+| step | result |
+|---|---|
+| register | ✓ — though the register form carries **no `data-testid`s** while `/login` does |
+| verify email | ✓ — Mailhog delivers, the token works, `email_verified` flips to `t` |
+| onboarding | ✓ — five clear paths (Write / Build a world / Translate / Explore / Work assistant) |
+| create a book | ✓ |
+| open the co-writer | **"No active models. Add one in Settings → Providers."** and **Start Chat is disabled** |
+| Settings → Providers | ✓ — *"Bring your own API keys. Your keys are encrypted and never shared."* + Add Provider |
+
+🔴 **This is the affordance gate done RIGHT — the exact inverse of LOOM M9.** The action is gated,
+the reason is stated, the fix is named, and the named path actually exists and opens. That is worth
+recording as the positive pattern the parity metric is trying to generalise.
+
+**It also answers D3 in the product's own voice: the first-release model story is BYOK**, and the UI
+says so at both the point of failure and the point of repair. What remains for the owner is not
+"what happens to a stranger" — it is whether BYOK-only is the *intended* posture.
+
+### 🔴 And the run found a real defect the UI could not have told me about
+
+Read straight off the live DOM in **Add Provider**, on a browser holding saved credentials:
+
+```
+type="url"       placeholder="https://api.example.com"   value="claude-test@loreweave.dev"
+type="password"  placeholder="sk-..."                    value=<NONEMPTY>
+```
+
+**The saved email autofilled into Endpoint URL and the saved password into API Key.** None of the
+dialog's inputs declared `autocomplete`, so the browser read an adjacent text+password pair as a
+login form. A user with a password manager who does not notice **submits their own account password
+as a provider API key** — it is then encrypted and stored as a provider credential, and every
+provider call fails with no hint why.
+
+Fixed: all **8** inputs across both dialogs now declare it, with **`new-password`** on the two
+secret fields — `off` alone is widely ignored by password managers.
+
+| bite | result |
+|---|---|
+| all `autoComplete` stripped (the pre-fix state) | **3 RED** |
+| secrets weakened `new-password` → `off` (the *subtle wrong fix*) | **1 RED**, that arm alone |
+| restored byte-exact | 4 green |
+
+**Verified live on the rebuilt bundle**, same dialog, same browser: all four fields now `(empty)`.
+
+⚠️ The falsifier is a **source scan, not a render test**, and the file says why: jsdom does not
+autofill, so a `render()` assertion would pass just as happily with every attribute deleted. It also
+pins the input count — the first version of the scan used `<input[^>]*>`, matched **nothing**
+(handler bodies contain `>`), and passed vacuously.
 
 ---
 

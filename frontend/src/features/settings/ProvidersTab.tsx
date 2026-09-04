@@ -469,6 +469,7 @@ export function ProvidersTab() {
                 <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.provider_kind')}</label>
                 <input
                   type="text"
+                  autoComplete="off"
                   value={addKind}
                   onChange={(e) => setAddKind(e.target.value)}
                   placeholder={t('providers.add_dialog.provider_kind_ph')}
@@ -483,6 +484,7 @@ export function ProvidersTab() {
                 <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.display_name')}</label>
                 <input
                   type="text"
+                  autoComplete="off"
                   value={addDisplayName}
                   onChange={(e) => setAddDisplayName(e.target.value)}
                   placeholder={t('providers.add_dialog.display_name_ph')}
@@ -507,6 +509,7 @@ export function ProvidersTab() {
               <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.endpoint_url')}</label>
               <input
                 type="url"
+                autoComplete="off"
                 value={addEndpoint}
                 onChange={(e) => setAddEndpoint(e.target.value)}
                 placeholder={addApiStandard === 'ollama' ? t('providers.add_dialog.endpoint_ph_ollama') : t('providers.add_dialog.endpoint_ph_default')}
@@ -519,6 +522,7 @@ export function ProvidersTab() {
               <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.api_key')}</label>
               <input
                 type="password"
+                autoComplete="new-password"
                 value={addSecret}
                 onChange={(e) => setAddSecret(e.target.value)}
                 placeholder={addApiStandard === 'ollama' ? t('providers.add_dialog.api_key_ph_local') : t('providers.add_dialog.api_key_ph')}
@@ -556,6 +560,7 @@ export function ProvidersTab() {
               <label className="mb-1 block text-xs font-medium">{t('providers.edit_dialog.display_name')}</label>
               <input
                 type="text"
+                autoComplete="off"
                 value={editDisplayName}
                 onChange={(e) => setEditDisplayName(e.target.value)}
                 className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
@@ -577,6 +582,7 @@ export function ProvidersTab() {
               <label className="mb-1 block text-xs font-medium">{t('providers.edit_dialog.endpoint_url')}</label>
               <input
                 type="url"
+                autoComplete="off"
                 value={editEndpoint}
                 onChange={(e) => setEditEndpoint(e.target.value)}
                 placeholder={t('providers.edit_dialog.endpoint_ph_default')}
@@ -588,6 +594,7 @@ export function ProvidersTab() {
               <label className="mb-1 block text-xs font-medium">{t('providers.edit_dialog.api_key')}</label>
               <input
                 type="password"
+                autoComplete="new-password"
                 value={editSecret}
                 onChange={(e) => setEditSecret(e.target.value)}
                 placeholder={editProvider.has_secret ? t('providers.edit_dialog.api_key_ph_keep') : t('providers.edit_dialog.api_key_ph')}
@@ -600,6 +607,7 @@ export function ProvidersTab() {
               <label className="mb-1 block text-xs font-medium">{t('providers.edit_dialog.max_concurrency')}</label>
               <input
                 type="number"
+                autoComplete="off"
                 min={0}
                 step={1}
                 value={editConcurrency}
