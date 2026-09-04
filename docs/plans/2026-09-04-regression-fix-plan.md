@@ -13,6 +13,38 @@ this plan.
 
 ---
 
+## Evidence
+
+### F1 + G1 — 2026-09-04
+
+**The row was wrong and reading the seam caught it.** "Re-arm the refused tool" is work that does
+not exist: the refused tool is never de-armed (it was called this turn, so it is already active —
+observed in the run itself, where `save_draft` was called again later with nothing re-arming it),
+and the seam already injects *"Call them to clear this, then retry."* **The whole gap was
+detection.** F1 shrank to one dict; G1 is the work.
+
+**Then the first draft of the guard could never have fired.** It took `attempted_after` and the
+call site passed `turn_attempted`, which contains the refused tool's own FIRST call — so
+`refused not in retried` was False on exactly the shape the guard exists for. Caught by reasoning
+through the call order before the bite; the parameter is gone and the docstring says why. "Not
+retried" IS the dict: `refusal_pending` is popped the moment the tool is called again.
+
+| bite | result |
+|---|---|
+| detector emptied (`return []`) | **4 RED**, restored → 8 green |
+| call site deleted | **2 RED** — this file's AST test AND the `TURN_GUARDS` parametrised case — and only those two |
+| `TURN_GUARDS` | 9 → **10**; the guard cannot become defined-and-never-called |
+| chat-service suite | **3920 passed, 7 skipped, 0 failed** (baseline 3911 + 7) |
+
+**Rule 5 held:** the directive OFFERS the retry, it does not perform it. It is a Tier-A write and
+goes through the approval card like every other one. The fix is that the turn stops being silent,
+not that it starts writing unasked.
+
+**Not yet proven live.** These are unit-level. Row V — five chapters through the real UI — is what
+shows the author actually keeps their chapter.
+
+---
+
 ## The board
 
 | # | finding | severity | root cause | state |
@@ -42,13 +74,26 @@ None of the eight existing end-of-turn guards covers it: P2 asks whether the tur
 effect (it did not — it was honest), P16 whether it asked in *prose* (it did not — it used the
 card). **A turn that is silent about a write it abandoned is the case none of them see.**
 
-**Build.**
-1. Track, per turn, `{refused_tool → prerequisite named in its refusal}` at the dispatch seam that
-   already computes the refusal — the same place `_tools_named_in_refusal` is called.
-2. When a named prerequisite **succeeds**, re-arm the refused tool for the turn.
-3. Add an eighth-and-ninth guard, `_refusal_precondition_met_but_never_retried`, wired at the
-   shared end-of-turn site and added to `TURN_GUARDS` in
-   `test_no_turn_guard_is_defined_and_never_called.py` so it cannot be defined-and-never-called.
+**🔴 CORRECTED 2026-09-04, BEFORE BUILDING, BY READING THE SEAM THIS ROW CITES.** Step 2 below
+was *"re-arm the refused tool"*, and that work does not exist to be done:
+
+- The refused tool is **never de-armed**. It was called this turn, so it is in `active_tool_names`.
+  Observed in the run itself — `book_chapter_save_draft` was called again in a later turn without
+  anything re-arming it.
+- The seam **already tells the model to retry**. Its injected system message reads: *"… are now
+  available to you on this turn — no tool_load needed. Call them to clear this, **then retry**."*
+
+So the arming works, the instruction is present, and the model ignored it. **The whole gap is
+DETECTION** — nothing notices the retry did not happen, so the author is never told. Building a
+re-arm would have been a mechanism with no defect to catch, and this file's own family of bugs is
+mechanisms that fire and do not matter.
+
+**Build, as corrected.**
+1. Track, per turn, `{refused_tool → prerequisite named in its refusal}` at that same seam. This is
+   the only new state, and it exists solely so the guard can ask its question.
+2. `_refusal_precondition_met_but_never_retried`, wired at the shared end-of-turn site and added to
+   `TURN_GUARDS` in `test_no_turn_guard_is_defined_and_never_called.py` so it cannot be
+   defined-and-never-called.
 
 **Bite.** Reproduce the original: a `save_draft` refused with "no chapters yet", then a successful
 `book_chapter_create`, then turn end. The guard must go RED on that exact shape and stay silent when
@@ -120,10 +165,11 @@ actually fixed.
 
 ## Board
 
-- [ ] **F1** — track `{refused_tool → prerequisite named in its refusal}` at the dispatch seam that
-  already calls `_tools_named_in_refusal`, and re-arm the refused tool when that prerequisite
-  SUCCEEDS in the same turn. Half exists (`_resume_refused_tool`) but only on suspend/resume.
-- [ ] **G1** — the guard `_refusal_precondition_met_but_never_retried`, wired at the shared
+- [x] **F1** — track `{refused_tool → prerequisite named in its refusal}` at the dispatch seam that
+  already calls `_tools_named_in_refusal`. **Re-arming is NOT part of this** — see §F1: the refused
+  tool is never de-armed and the seam already says "then retry". The tracking exists only so G1 can
+  ask whether the retry happened.
+- [x] **G1** — the guard `_refusal_precondition_met_but_never_retried`, wired at the shared
   end-of-turn site and added to `TURN_GUARDS` so it cannot be defined-and-never-called. **Bite it
   RED on the original shape** — save_draft refused, chapter_create succeeded, turn ended — and
   silent on the three negatives (retry happened / prerequisite failed / refusal named nothing).

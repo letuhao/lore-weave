@@ -55,6 +55,9 @@ TURN_GUARDS = {
         "P12 / DQ-T33 — a silent turn surfaces the last tool ERROR",
     "_last_tool_success_for_author":
         "P12 / DQ-T75 — a silent turn that had nothing fail says what it read",
+    "_refusal_precondition_met_but_never_retried":
+        "F1 — a tool refused for a stated precondition, whose precondition then succeeded, "
+        "was never called again and the turn said nothing about the lost write",
 }
 
 

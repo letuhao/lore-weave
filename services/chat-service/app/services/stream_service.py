@@ -1239,6 +1239,53 @@ def _instruction_names_a_recorder(
 _NAMED_TOOL_MIN_LEN = 6
 
 
+def _refusal_precondition_met_but_never_retried(
+    pending: dict[str, str], succeeded,
+) -> list[str]:
+    """Tools whose refusal named a prerequisite, whose prerequisite then SUCCEEDED, and which
+    were never called again. F1, measured live 2026-09-04.
+
+    🔴 THE TURN THAT LOSES A CHAPTER AND IS HONEST ABOUT EVERYTHING ELSE. An author asked for
+    Chapter One. The model wrote ~2000 words into the reply, called `book_chapter_save_draft`,
+    and got the correct refusal *"this book has no chapters yet — create one first with
+    book_chapter_create"*. The seam armed `book_chapter_create`, injected *"Call them to clear
+    this, then retry"*, the model called it — and the turn ENDED. The book held a chapter of 0
+    words whose only revision was that create's own 64-byte empty seed, while the novel sat in a
+    chat bubble the author had to notice for themselves.
+
+    🔴 WHY NONE OF THE OTHER SEVEN SEES IT, which is the whole reason this exists:
+
+        _claimed_an_effect_without_acting  the turn was HONEST. It claimed nothing.
+        _asked_instead_of_acting           it did not ask in prose. It used the approval card.
+        _instruction_names_a_recorder      a recorder WAS called; it was refused, not skipped.
+        _rail_write_step_stalled           that fires when the turn called NOTHING. It called six.
+
+    **A turn silent about a write it abandoned is the case none of them cover.** The failure is
+    not a lie and not a refusal to act — it is stopping one call short, after being told exactly
+    which call, and saying nothing about it.
+
+    ⚠️ THE PREREQUISITE MUST HAVE SUCCEEDED. If it failed, the retry would fail too and nagging
+    for it would be noise on a turn already carrying a real error the author needs to read.
+
+    ⚠️ "NOT RETRIED" IS THE DICT ITSELF, and a second parameter for it would have been worse
+    than redundant — it would have been WRONG. The first draft took `attempted_after` and was
+    passed `turn_attempted`, which contains the refused tool's own FIRST call: `refused not in
+    retried` was therefore false on the exact shape this guard exists for, and it could never
+    have fired. `refusal_pending` is popped the moment the tool is called again, so an entry
+    surviving to here already means no retry — including a retry that failed a second time,
+    which clears it too and is deliberately none of this guard's business.
+
+    Returns the refused tool names, in a stable order, so the caller's message can name them.
+    """
+    if not pending:
+        return []
+    # `set(Counter)` yields its KEYS, and a plain set/iterable works too — the call site passes a
+    # Counter and a future one will reach for a set; failing on that would be a trap.
+    done = set(succeeded or ())
+    return sorted(refused for refused, prereq in pending.items() if prereq in done)
+
+
+
 def _tools_named_in_request(text: str | None, catalog_index: dict) -> frozenset[str]:
     """The catalog tools the user named LITERALLY in their message.
 
@@ -5037,6 +5084,13 @@ async def _stream_with_tools(
         # repeats the tool name. The claim and the silence are in different passes.
         turn_text_parts: list[str] = []
         turn_attempted: set[str] = set()  # D-NARRATED-WRITE — see the update site
+        # F1 — {refused tool: the prerequisite its refusal named}. The ONLY new state F1 needed:
+        # the refused tool is never de-armed and the seam already injects "then retry", so there
+        # is nothing to re-arm. This exists so the end-of-turn guard can ask whether the retry
+        # the runtime asked for actually happened. Entries are dropped the moment the tool is
+        # called again, so a retry that fails a SECOND time never reaches the guard.
+        refusal_pending: dict[str, str] = {}
+        retry_nudges = 0                 # F1 — per-turn cap, like its siblings
         rail_nudge_counts: Counter = Counter()   # per-step: how many times we've nudged it
         rail_twice_nudged: set[str] = set()      # a step the model ignored twice → give up on it
         # Set when the step-runner injected at least one synthetic '[SYSTEM DIRECTIVE]' nudge
@@ -6408,6 +6462,71 @@ async def _stream_with_tools(
                         )})
                         continue
 
+                # F1 — THE RUNTIME TOLD IT TO RETRY AND IT DID NOT. Measured live 2026-09-04:
+                # book_chapter_save_draft refused "no chapters yet — create one first with
+                # book_chapter_create", the seam armed that tool and injected "then retry", the
+                # model called it, and the turn ended. An empty chapter, the prose in a chat
+                # bubble, and nothing said about it.
+                #
+                # Ranked ABOVE P6 deliberately. P6 infers from the sentence's grammar that a
+                # recorder should have run; this one has the RUNTIME'S OWN INSTRUCTION and the
+                # tool's own refusal. Evidence outranks inference, and P6's docstring says it
+                # runs last, which stays true.
+                _unretried = []
+                if not _directive_before_this_pass:
+                    _unretried = _refusal_precondition_met_but_never_retried(
+                        refusal_pending, turn_succeeded,
+                    )
+                if _unretried:
+                    _f1_guards = {
+                        "under_cap": retry_nudges < DATA_QUESTION_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_f1_guards.values()):
+                        # Held, and SAID so. A turn that runs out of passes here has still lost
+                        # the write, and a silent hold is how this defect stayed invisible.
+                        logger.warning(
+                            "F1-UNRETRIED-AFTER-PRECONDITION (session=%s): %s was refused, its "
+                            "prerequisite succeeded, and it was never retried — NOT nudging, "
+                            "held by: %s",
+                            session_id, _unretried,
+                            ", ".join(k for k, v in _f1_guards.items() if not v),
+                        )
+                    else:
+                        retry_nudges += 1
+                        logger.warning(
+                            "F1-UNRETRIED-AFTER-PRECONDITION (session=%s): %s refused, "
+                            "prerequisite %s succeeded, no retry — nudging once",
+                            session_id, _unretried,
+                            [refusal_pending.get(n) for n in _unretried],
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"unretried_after_precondition:{','.join(_unretried)}",
+                                      is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # Asserts only what was measured: this tool was refused, the thing
+                            # its refusal named then succeeded, and the tool was not called
+                            # again. It does NOT assert the retry will work.
+                            "[SYSTEM DIRECTIVE] "
+                            f"{', '.join(_unretried)} was refused earlier this turn because "
+                            f"{', '.join(sorted({v for k, v in refusal_pending.items() if k in _unretried}))} "
+                            "had not run yet. That has now succeeded, and you did not call the "
+                            "refused tool again.\n"
+                            "The work you produced is only in this reply. Prose in a chat reply "
+                            "is not in the author's book -- they cannot accept, revise or undo "
+                            "it, and nothing records that you offered it.\n"
+                            "Do ONE of these, and nothing else:\n"
+                            "(a) call the refused tool again now, passing the work you already "
+                            "wrote -- do not rewrite it; or\n"
+                            "(b) if it still cannot succeed, say plainly what is still missing "
+                            "and that you have NOT saved anything."
+                        )})
+                        continue
+
                 # P6-DESCRIBE-NOT-RECORD — the WRITE-side twin of the guard above, and the one
                 # that guard deliberately refuses to be. Its docstring says nudging a write from
                 # a QUESTION would be this loop's own worst defect; the separation is the
@@ -6603,6 +6722,13 @@ async def _stream_with_tools(
             # `test_a_write_actually_called_never_nudges`; a false accusation right after real
             # work is worse than the silence this guard exists to break.
             turn_attempted.update(c["name"] for c in calls)
+            # F1 — A RETRY CLEARS THE DEBT. Called here, where every emitted tool is already
+            # being recorded, so a tool the model DID come back to can never reach the guard.
+            # A retry that fails a second time clears it too, deliberately: that turn carries a
+            # real error the author needs to read, and nagging on top of it would bury the error
+            # under advice about a call they can see was made.
+            for _c in calls:
+                refusal_pending.pop(_c["name"], None)
             for c in calls:
                 # Wrap-repair for CONSUMER-LOCAL meta tools (find_tools/tool_load/workflow_load/
                 # run_subagent/*_list). The federated dispatch below unwraps {"args":{…}} with each
@@ -9340,6 +9466,14 @@ async def _stream_with_tools(
                             "armed recovery tool(s) %s named in %s's refusal (session=%s)",
                             _recovery, c["name"], session_id,
                         )
+                        # F1 — REMEMBER WHAT WE JUST TOLD IT TO DO. The message above ends
+                        # "then retry", and on 2026-09-04 a turn did the first half and stopped:
+                        # it called the named prerequisite and never came back, leaving the
+                        # author an empty chapter and their prose in a chat bubble. Only the
+                        # FIRST prerequisite is recorded — the message ranks them and a retry
+                        # clears the entry either way, so a second key would only add a way to
+                        # nag about a tool the model did come back to.
+                        refusal_pending.setdefault(c["name"], _recovery[0])
                 working.append({
                     "role": "tool", "tool_call_id": c["id"],
                     "content": _tool_content,
