@@ -110,7 +110,12 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
   **340 → 35** false positives, and the P2 bite re-run to prove it still bites. Original row: ranked by how often the agent actually fails at that
   tool. **Not scoped until P1 lands** — the list does not exist yet, and inventing rows for it now
   would be a plan built on a guess.
-- [ ] **R4** — two concurrent sessions on one account, and a slow-provider run. Both are unmeasured;
+- [~] **R4** — **concurrency DONE and clean**; the slow-provider half is **not** done and the row
+  stays open for it. Two overlapping sessions completed with **no cross-contamination** (each
+  returned its own token), 4 provider streams all `success` at 8.8–13.9 s, **0 errors**. A
+  near-miss caught: tab B's Send looked cross-session-locked and was simply empty-input
+  disabled. ⚠️ **A deliberately slow/hanging provider is still untested** — the unplanned 500
+  and empty-stream from earlier today are real evidence but not a substitute. Original row: Both are unmeasured;
   the blank bubble I fixed today came from the local model 500ing under my own load, and I do not
   know how that path behaves when a provider is merely slow rather than broken.
 - [ ] **R5** — housekeeping: this all lives on `refactor/kal-and-mcp-runtime`, unmerged; PR #219's
@@ -246,6 +251,42 @@ secret fields — `off` alone is widely ignored by password managers.
 autofill, so a `render()` assertion would pass just as happily with every attribute deleted. It also
 pins the input count — the first version of the scan used `<input[^>]*>`, matched **nothing**
 (handler bodies contain `>`), and passed vacuously.
+
+---
+
+## R4 — two concurrent sessions, and what a degraded provider does
+
+Two fresh throwaway books, two studio tabs, two chats, sent overlapping — each asked for a
+distinctive token so the answers could not be confused.
+
+| | |
+|---|---|
+| both turns | **completed** |
+| cross-contamination | **none** — A returned `SESSION-A` + the lighthouse, B returned `SESSION-B` + the toll-keeper |
+| provider streams | 4 (two passes each), **all `success`**, 8.8–13.9 s |
+| errors / silent turns / timeouts in the window | **0** |
+
+**Concurrency is clean at this scale.** The local model handled two simultaneous sessions with
+mild latency spread (8.8 s → 13.9 s) and no failures.
+
+⚠️ **A near-miss worth recording.** Tab B's Send looked *disabled while another session streamed*,
+which would have been a significant cross-session lock. It was not: the textarea was empty because
+my fill was lost when the chat session mounted, and Send is correctly disabled on empty input. One
+`evaluate` on the actual DOM separated a false finding from a real one — the same shape as the
+pending-approval-card trap that cost time four times in the previous plan.
+
+### 🔴 What I did NOT test, stated plainly
+
+**A deliberately slow or hanging provider.** Two concurrent short prompts did not strangle the
+local GPU, so this run does not cover the case. What I do have is *unplanned* evidence from earlier
+today, which is real but not a substitute:
+
+- an upstream **HTTP 500** (`provider_error`, `duration_ms: 25`, LM Studio's own Express page), and
+- an **empty stream** reported `success` with `output_chars: 0, usage: false`.
+
+Both rendered as a blank bubble at the time; both would now show D2's badge. **A run against an
+artificially latent provider remains open**, and it is the one shape most likely to behave badly
+in front of a real user on a slow network.
 
 ---
 
