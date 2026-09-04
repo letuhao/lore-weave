@@ -63,20 +63,20 @@ reason) · never left `UNTRIAGED`.
 
 ## 3. Board
 
-- [ ] **T1** — **composition (39 tools, 1,189 failures)** — the biggest by a distance. Triage all 39, close what
+- [x] **T1** — **DONE.** composition's 39 adjudicated, 95 → 56. Every one resolved to a real mounted control — the gap was the CENSUS, not the UI. 🔴 Exposed that the gate was blind to **per-row controls** (`divergence-switch-${id}`): 425 became visible. Original row: **composition (39 tools, 1,189 failures)** — the biggest by a distance. Triage all 39, close what
   it finds, tighten `MAX_UNTRIAGED` in the same commit.
-- [ ] **T2** — **knowledge (14, 930).**
-- [ ] **T3** — **glossary (18, 591).**
-- [ ] **T4** — **the 100%-failure cluster (9 rows)**: `jobs` 2, `registry` 5, `book`'s
+- [x] **T2** — **DONE.** knowledge's 14, 56 → 42. 🔴 The gate **refused one of my own declarations** — `embedding-picker` exists only in a test double. 1 AGENT_ONLY (`memory_remember`, with `memory-forget-*` as the repair path). Original row: **knowledge (14, 930).**
+- [x] **T3** — **DONE.** glossary's 18, 42 → 24. 4 of the UI verdicts are per-row controls T1 made visible. 1 AGENT_ONLY (`glossary_plan`) whose every EFFECT is separately hand-doable. Original row: **glossary (18, 591).**
+- [x] **T4** — **DONE.** the 100%-failure cluster (9), 24 → 15. None were gaps. The registry four resolve through the plugin **bundle round-trip** (export → edit → import), recorded with a `note:` so nobody reads it as "there is a skill editor". Original row: **the 100%-failure cluster (9 rows)**: `jobs` 2, `registry` 5, `book`'s
   `book_structure_edit`, `lore_enrichment` 1. Small, and every one fails every time — the
   `world_delete` signature. Cheap to triage and the likeliest total gaps.
-- [ ] **T5** — **translation (8, 101)** and **settings (7, 64)**, whichever remain.
-- [ ] **T6** — **tighten the ratchets to the final measured numbers**, and record what `AGENT_ONLY`
+- [x] **T5** — **DONE. UNTRIAGED reaches 0.** translation 8 + settings 7. A **third** test mock (`step-confirm`) was refused. The settings finding is systemic: ProvidersTab / DefaultModelsCard / ModelOrderCard carry no testids at all. Original row: **translation (8, 101)** and **settings (7, 64)**, whichever remain.
+- [x] **T6** — **DONE.** `MAX_NONE` 1 → **0** — now a measured floor, not an aspiration. Both ratchets bitten. The census header now explains every verdict and both exemptions. Original row: **tighten the ratchets to the final measured numbers**, and record what `AGENT_ONLY`
   legitimately covers, so the next reader can tell a declared exemption from a forgotten row.
-- [ ] **R6** — an **orphaned turn** (no assistant row; `outcome='failed'` on the USER message) shows
+- [x] **R6** — **FIXED** (`aba30a062`). `outcome` now reaches the FE and a badge renders on the USER message. Narrow: `'failed'` only — `awaiting_input` is a live approval card. Bitten both ways. Original: an **orphaned turn** (no assistant row; `outcome='failed'` on the USER message) shows
   the author nothing. D2's badge renders on an assistant message and there is none, so it cannot
   reach this. Reproduction in the previous plan's §R4.
-- [ ] **R7** — a model under **~11K context cannot chat at all** (the tool surface alone is ~9.7K)
+- [x] **R7** — **FIXED** (`5c52c49bb`). The Add Model form warns as you type, chat-capable models only, **advisory not a gate** (the floor rises with the tool count). `CHAT_CONTEXT_FLOOR = 12_000` carries its derivation. Original: a model under **~11K context cannot chat at all** (the tool surface alone is ~9.7K)
   and nothing warns at registration. The user finds out by watching a message vanish — via R6.
 - [ ] **D3** — **STOP CONDITION.** `platform_models` is empty, so the model story is **BYOK**, and
   the UI says so at both the point of failure and the point of repair. Is BYOK-only the *intended*
