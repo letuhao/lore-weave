@@ -1242,8 +1242,9 @@ _NAMED_TOOL_MIN_LEN = 6
 def _refusal_precondition_met_but_never_retried(
     pending: dict[str, str], succeeded,
 ) -> list[str]:
-    """Tools whose refusal named a prerequisite, whose prerequisite then SUCCEEDED, and which
-    were never called again. F1, measured live 2026-09-04.
+    """Writes this turn refused and never called again — either because the prerequisite the
+    refusal named has since SUCCEEDED (F1), or because there was none to wait for (F1b).
+    Both measured live, 2026-09-04.
 
     🔴 THE TURN THAT LOSES A CHAPTER AND IS HONEST ABOUT EVERYTHING ELSE. An author asked for
     Chapter One. The model wrote ~2000 words into the reply, called `book_chapter_save_draft`,
@@ -1264,8 +1265,18 @@ def _refusal_precondition_met_but_never_retried(
     not a lie and not a refusal to act — it is stopping one call short, after being told exactly
     which call, and saying nothing about it.
 
-    ⚠️ THE PREREQUISITE MUST HAVE SUCCEEDED. If it failed, the retry would fail too and nagging
-    for it would be noise on a turn already carrying a real error the author needs to read.
+    ⚠️ THE PREREQUISITE MUST HAVE SUCCEEDED — when there IS one. If it failed, the retry would
+    fail too, and nagging for it would be noise on a turn already carrying a real error the
+    author needs to read.
+
+    ⚠️ AN EMPTY PREREQUISITE IS THE F1b CASE AND IS REPORTED UNCONDITIONALLY. Row V, 2026-09-04,
+    with F1 already deployed: the model called `book_chapter_create` (ok), then
+    `book_chapter_save_draft` WITHOUT its `body`, and the turn ended — chapter created, 0 words,
+    prose in the reply. F1 was silent and RIGHTLY so, because a missing-argument refusal names no
+    prerequisite, so nothing armed and this dict stayed empty. **The blind spot was one step
+    over.** A failed WRITE that is never retried loses the work whatever the reason it failed, so
+    the missing-argument seam now records the tool with an empty prerequisite, meaning "nothing
+    to wait for". Writes only: a failed READ the model moves on from is ordinary.
 
     ⚠️ "NOT RETRIED" IS THE DICT ITSELF, and a second parameter for it would have been worse
     than redundant — it would have been WRONG. The first draft took `attempted_after` and was
@@ -1282,7 +1293,12 @@ def _refusal_precondition_met_but_never_retried(
     # `set(Counter)` yields its KEYS, and a plain set/iterable works too — the call site passes a
     # Counter and a future one will reach for a set; failing on that would be a trap.
     done = set(succeeded or ())
-    return sorted(refused for refused, prereq in pending.items() if prereq in done)
+    # An EMPTY prerequisite means "nothing to wait for — this write simply failed" (F1b). It is
+    # reported unconditionally: there is no arrival to wait for, and the work is already lost.
+    return sorted(
+        refused for refused, prereq in pending.items()
+        if not prereq or prereq in done
+    )
 
 
 
@@ -6487,17 +6503,18 @@ async def _stream_with_tools(
                         # Held, and SAID so. A turn that runs out of passes here has still lost
                         # the write, and a silent hold is how this defect stayed invisible.
                         logger.warning(
-                            "F1-UNRETRIED-AFTER-PRECONDITION (session=%s): %s was refused, its "
-                            "prerequisite succeeded, and it was never retried — NOT nudging, "
-                            "held by: %s",
+                            "F1-UNRETRIED-AFTER-PRECONDITION (session=%s): %s failed and was never "
+                            "retried (prerequisites: %s; empty = nothing was waited on) — "
+                            "NOT nudging, held by: %s",
                             session_id, _unretried,
+                            [refusal_pending.get(n) for n in _unretried],
                             ", ".join(k for k, v in _f1_guards.items() if not v),
                         )
                     else:
                         retry_nudges += 1
                         logger.warning(
-                            "F1-UNRETRIED-AFTER-PRECONDITION (session=%s): %s refused, "
-                            "prerequisite %s succeeded, no retry — nudging once",
+                            "F1-UNRETRIED-AFTER-PRECONDITION (session=%s): %s failed, no retry — "
+                            "nudging once (prerequisites: %s; empty = nothing was waited on)",
                             session_id, _unretried,
                             [refusal_pending.get(n) for n in _unretried],
                         )
@@ -6508,14 +6525,21 @@ async def _stream_with_tools(
                         working.append({"role": "assistant", "content": "".join(text_parts)})
                         _directive_before_this_pass = True  # D-FJ-19
                         working.append({"role": "user", "content": (
-                            # Asserts only what was measured: this tool was refused, the thing
-                            # its refusal named then succeeded, and the tool was not called
-                            # again. It does NOT assert the retry will work.
+                            # Asserts only what was measured: this tool FAILED and was not called
+                            # again — plus, when there was one, that the thing its refusal
+                            # named has since succeeded. It does NOT assert a retry will work.
                             "[SYSTEM DIRECTIVE] "
-                            f"{', '.join(_unretried)} was refused earlier this turn because "
-                            f"{', '.join(sorted({v for k, v in refusal_pending.items() if k in _unretried}))} "
-                            "had not run yet. That has now succeeded, and you did not call the "
-                            "refused tool again.\n"
+                            f"{', '.join(_unretried)} FAILED earlier this turn and you did "
+                            "not call it again. "
+                            + (
+                                ", ".join(sorted(
+                                    v for k, v in refusal_pending.items()
+                                    if k in _unretried and v))
+                                + " has since succeeded, so the reason it was refused is "
+                                "gone. "
+                                if any(refusal_pending.get(n) for n in _unretried) else ""
+                            )
+                            + "\n"
                             "The work you produced is only in this reply. Prose in a chat reply "
                             "is not in the author's book -- they cannot accept, revise or undo "
                             "it, and nothing records that you offered it.\n"
@@ -8598,6 +8622,29 @@ async def _stream_with_tools(
                     # MEASURED over 35 live runs (7 tools, K=5): supplier ADVERTISED and not called
                     # happened ZERO times, supplier absent and not called 27 times, agreement 35/35.
                     # The model walks the chain exactly when it can see the supplier.
+                    # F1b — A FAILED WRITE THAT IS NEVER RETRIED LOSES THE WORK, whatever the
+                    # reason it failed. Row V, 2026-09-04: with F1 deployed, the model called
+                    # `book_chapter_create` (ok), then `book_chapter_save_draft` WITHOUT `body`,
+                    # and the turn ended — chapter created, 0 words, prose in the reply. F1 was
+                    # silent and correctly so: a missing-argument refusal names no prerequisite,
+                    # so nothing armed and `refusal_pending` stayed empty. The blind spot was one
+                    # step over. An EMPTY prerequisite means "nothing to wait for — it simply
+                    # failed", and the guard reports it unconditionally.
+                    #
+                    # WRITES ONLY. A failed READ that the model moves on from is ordinary; a
+                    # failed WRITE with prose in the reply is work the author cannot reach.
+                    #
+                    # AND NOT BROWSER-EXECUTED, which the first draft got wrong and a test
+                    # caught: `confirm_action` is Tier A, so the tier gate alone admitted it,
+                    # and the guard nudged on a rejected approval card
+                    # (`test_bad_frontend_args_rejected_and_not_suspended`). The directive
+                    # says "pass the work you already wrote" — for a confirm card there is no
+                    # such work, and a directive that misdescribes what happened is the same
+                    # defect as a log that overstates. Tier answers "does this need
+                    # approval"; it does not answer "did this hold the author's prose".
+                    if not is_browser_executed(c["name"]) and tool_tier(
+                            cat_index.get(c["name"]) or plain_index.get(c["name"])) in ("A", "W"):
+                        refusal_pending.setdefault(c["name"], "")
                     if discovery:
                         _ma_recovery = _tools_named_in_refusal(
                             _ma_msg or "", cat_index, active_tool_names,

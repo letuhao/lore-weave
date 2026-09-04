@@ -116,6 +116,67 @@ shows the author actually keeps their chapter.
 
 ---
 
+### F1b — 2026-09-04, found BY row V, with F1 already deployed
+
+**F1 is necessary and not sufficient.** The first turn of the re-run, on a rebuilt image carrying
+the F1 guard, went: prose written immediately (no planning detour — F3 visibly better),
+`book_chapter_create` **ok**, then `book_chapter_save_draft` **without `body`** —
+
+```
+book_chapter_save_draft — missing required argument(s): ['body']
+```
+
+— and the turn ended. Measured in the book database: `Chapter One | word_count=0 |
+draft_revision_count=1`, the create's own empty seed. **The same loss as F1, one step over.**
+
+**The F1 guard was silent, and it was RIGHT to be.** `grep -c F1-UNRETRIED-AFTER-PRECONDITION` = 0,
+0 tools armed. A missing-argument refusal names no prerequisite, so nothing was recorded and
+`refusal_pending` stayed empty. F1 asks *"did the thing it was waiting for arrive?"* — and this
+call was waiting for nothing. It just failed.
+
+**The fix is one line at the missing-argument seam and one clause in the guard.** A failed WRITE
+that is never retried loses the work *whatever the reason it failed*, so the seam records the tool
+with an **empty prerequisite** meaning "nothing to wait for", and the guard reports empty entries
+unconditionally. **Writes only** (`tool_tier in ("A","W")`) — a failed READ the model moves on from
+is ordinary traffic, and nudging on all of them would train the reader to ignore the directive.
+
+Three log lines and one comment were corrected in the same edit: they said "its prerequisite
+succeeded" unconditionally, which is now false for half the entries. A log that overstates is how
+this family of defects stays invisible.
+
+**The first gate was too wide, and the suite caught it before the live run did.** `tool_tier(...)
+in ("A","W")` alone admits `confirm_action` — Tier A, because it needs approval — so a rejected
+approval card made the guard nudge, and `test_bad_frontend_args_rejected_and_not_suspended` failed
+on the extra model pass. **Tier answers "does this need approval"; it does not answer "did this
+hold the author's prose".** The directive says *"call the refused tool again now, passing the work
+you already wrote"* — for a confirm card there is no such work, so the directive would have
+misdescribed what happened, which is the same defect as the three log lines above. The recording is
+now `not is_browser_executed(...) and tool_tier(...) in ("A","W")`, reusing the repo's existing
+named predicate rather than adding a second membership rule to drift from it.
+
+The two AST arms anchor on the `if` whose **own body** holds the recording, not on `ast.walk`'s
+first match — walk is breadth-first from the module and hands back the enclosing `if discovery:`,
+so an arm anchored there asks its question of the wrong test expression. That was a real red before
+it was a comment.
+
+| bite | result |
+|---|---|
+| `not prereq or` removed from the guard (pre-F1b behaviour) | **2 RED** — exactly the two F1b cases; the 8 F1 arms stayed green |
+| the recording seam deleted | **2 RED** — the AST wiring test and the writes-only test |
+| the `tool_tier` gate removed (records every refused READ) | **1 RED** — the writes-only test alone; the recording test stayed green, correctly |
+| `is_browser_executed` exclusion dropped | **1 RED** — the browser-executed arm alone |
+| chat-service suite | run in full; `test_bad_frontend_args_rejected_and_not_suspended` is what found the wide gate |
+| restored byte-exact after each | 12 green |
+
+⚠️ **`sed -i` is not usable for a bite here.** It rewrote all 14,685 line endings of a CRLF file,
+so the "one-line" bite was a whole-file diff and the restore failed `cmp` on content that was
+right. Bites in this repo go through Python `write_text`, and the restore is checked with `cmp`
+plus `git diff --stat`, never by eye on the changed line.
+
+**What the unit tests do NOT prove:** that the seam is reached on a real turn. Row V is that proof.
+
+---
+
 ## The board
 
 | # | finding | severity | root cause | state |
@@ -253,6 +314,7 @@ actually fixed.
   third `model_source`. **Do not widen the CHECK to admit it.**
 - [x] **F6** — a CHECK violation is PERMANENT: stop the infinite retry and mark it processed with a
   reason, so the drop is recorded rather than repeated 50,529 times a day.
+- [x] **F1b** — a failed WRITE that is never retried loses the work whatever the reason. Found by row V with F1 live: `save_draft` called without `body`, turn ended, chapter left at 0 words. The missing-argument seam records it with an EMPTY prerequisite; the guard reports those unconditionally. **Writes only.**
 - [ ] **V** — re-run the human-sim to **five chapters**, every one persisted in the manuscript, on a
   freshly rebuilt image and a NEW throwaway book. This is the proof; the plan is not.
 - [ ] **D1** — **STOP CONDITION** — F4 is a product decision, not a bug: a single draft call holds

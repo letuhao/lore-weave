@@ -114,3 +114,142 @@ def test_the_guard_is_actually_CALLED_by_the_turn_loop():
         "_refusal_precondition_met_but_never_retried is defined but never CALLED — F1 is "
         "detected by nothing, which is the state the live run found it in"
     )
+
+
+# ── F1b — the shape row V found with F1 already deployed ─────────────────────────────────────
+
+def test_a_failed_write_with_NO_prerequisite_is_reported_unconditionally():
+    """🔴 ROW V, 2026-09-04, WITH F1 ALREADY LIVE. The model called `book_chapter_create` (ok),
+    then `book_chapter_save_draft` WITHOUT its `body`, and the turn ended: chapter created, 0
+    words, prose in the reply. F1 was SILENT and rightly so — a missing-argument refusal names no
+    prerequisite, so nothing armed and the dict stayed empty. **The blind spot was one step
+    over.** A failed write that is never retried loses the work whatever the reason, so the
+    missing-argument seam records it with an EMPTY prerequisite, meaning "nothing to wait for"."""
+    assert _guard({"book_chapter_save_draft": ""}, Counter()) == ["book_chapter_save_draft"]
+    # and still reported when unrelated tools succeeded
+    assert _guard({"book_chapter_save_draft": ""},
+                  Counter({"book_chapter_create": 1})) == ["book_chapter_save_draft"]
+
+
+def test_the_two_shapes_coexist_in_one_turn():
+    """One write blocked behind a prerequisite that arrived, one that simply failed. Both are
+    lost work and both must be named; reporting only one would leave the author to find the
+    other for themselves, which is the whole defect."""
+    pending = {
+        "book_chapter_save_draft": "",                     # F1b — just failed
+        "composition_scene_write": "book_chapter_create",   # F1  — prerequisite arrived
+        "kg_build": "kg_project_set_embedding_model",       # neither — prerequisite never ran
+    }
+    assert _guard(pending, Counter({"book_chapter_create": 1})) == [
+        "book_chapter_save_draft", "composition_scene_write"]
+
+
+def _f1b_recording_if():
+    """The `if` whose OWN body holds the empty-prerequisite recording.
+
+    Immediate body, not `ast.walk` — walk is breadth-first from the module, so it hands back an
+    ENCLOSING `if` (here `if discovery:`) before the one that actually gates the statement, and an
+    arm anchored on that would ask its question of the wrong test expression."""
+    import ast
+    import inspect
+
+    from app.services import stream_service
+
+    def is_recording(node):
+        return (
+            isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "setdefault"
+            and isinstance(node.value.func.value, ast.Name)
+            and node.value.func.value.id == "refusal_pending"
+            and len(node.value.args) == 2
+            and isinstance(node.value.args[1], ast.Constant)
+            and node.value.args[1].value == ""
+        )
+
+    tree = ast.parse(inspect.getsource(stream_service))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and any(is_recording(st) for st in node.body):
+            return node, ast
+    raise AssertionError(
+        "no `if` directly gates an empty-prerequisite recording — F1b is detected by nothing, "
+        "which is the state row V found the build in: chapter created, 0 words, prose in the reply"
+    )
+
+
+def test_the_missing_argument_seam_ACTUALLY_records_the_failed_write():
+    """🔴 F1b IS TWO PARTS AND THE ABOVE ONLY EXERCISES ONE. The guard is a pure function;
+    every test in this file would still pass with the recording deleted, and the deployed build
+    would go straight back to the silence row V measured. So this checks the OTHER half exists:
+    the missing-argument seam records the tool with an EMPTY prerequisite.
+
+    AST, not a substring search — `refusal_pending` appears in this module's docstrings and in
+    four comments, and a grep would go green on any of them (a source-substring guard matching
+    non-behavioural text has gone green-with-the-fix-deleted here before).
+
+    ⚠️ WHAT THIS DOES NOT PROVE: that the seam is REACHED on a real turn, or that the tier
+    filter admits the right tools. Only a live run shows that, and row V is that proof — the
+    deployed image, a real chapter, `word_count` in the book database."""
+    import ast
+    import inspect
+
+    from app.services import stream_service
+
+    tree = ast.parse(inspect.getsource(stream_service))
+    setdefaults = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute) and n.func.attr == "setdefault"
+        and isinstance(n.func.value, ast.Name) and n.func.value.id == "refusal_pending"
+    ]
+    assert len(setdefaults) >= 2, (
+        f"expected both recording seams (F1 names a prerequisite, F1b records an empty one); "
+        f"found {len(setdefaults)} refusal_pending.setdefault call(s)"
+    )
+    empty = [
+        n for n in setdefaults
+        if len(n.args) == 2 and isinstance(n.args[1], ast.Constant) and n.args[1].value == ""
+    ]
+    assert empty, (
+        "no seam records a failed write with an EMPTY prerequisite — F1b is detected by nothing, "
+        "which is the state row V found the build in: chapter created, 0 words, prose in the reply"
+    )
+
+
+def test_the_F1b_recording_is_limited_to_WRITES():
+    """🔴 THE ARM THAT KEEPS THE RECORDING HONEST. A failed READ the model moves on from is
+    ordinary traffic, and nudging on every one of them would fire the directive constantly and
+    train the reader to ignore it. The recording must sit under a tier test, so it cannot silently
+    widen to every refused tool on the turn."""
+    node, ast = _f1b_recording_if()
+    assert any(
+        isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "tool_tier"
+        for n in ast.walk(node.test)
+    ), (
+        "the empty-prerequisite recording is not gated on tool_tier — it would record every "
+        "refused READ as lost work and the directive would fire on ordinary traffic"
+    )
+
+
+def test_the_F1b_recording_EXCLUDES_browser_executed_tools():
+    """🔴 THE FIRST DRAFT OF THE GATE WAS TOO WIDE AND A TEST CAUGHT IT.
+    `tool_tier(...) in ("A","W")` alone admitted `confirm_action`, so a rejected approval card made
+    the guard nudge and `test_bad_frontend_args_rejected_and_not_suspended` failed on the extra
+    model pass.
+
+    **Tier answers "does this need approval". It does not answer "did this hold the author's
+    prose".** The directive tells the model to *"call the refused tool again now, passing the work
+    you already wrote"* — for a confirm card there is no such work, and a directive that
+    misdescribes what happened is the same defect as the three log lines corrected alongside it.
+
+    `is_browser_executed` is the existing named predicate, and a prefix rule or a hand-listed set
+    here would be a second membership rule to drift from that one."""
+    node, ast = _f1b_recording_if()
+    assert any(
+        isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        and n.func.id == "is_browser_executed"
+        for n in ast.walk(node.test)
+    ), (
+        "the F1b recording does not exclude browser-executed tools — a rejected `confirm_action` "
+        "would be nudged with a directive telling the model to re-pass prose that does not exist"
+    )
