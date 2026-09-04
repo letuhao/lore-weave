@@ -37,6 +37,22 @@ Each persona owns its **account** for the same reason. The first version borrowe
 developer login; a "newcomer" on an account with 83 books and completed onboarding is not a
 newcomer, and every empty-state claim it made was vacuous.
 
+## Evidence tools — read [`TOOLS.md`](TOOLS.md) before a generation journey
+
+Three pieces added 2026-09-04, because a journey that ends in a JUDGEMENT ("did the assistant
+write five coherent chapters") needs evidence a person can re-read, and the default config
+captures nothing on a passing run:
+
+| tool | what it gives you |
+|---|---|
+| `x-trace-id` (`src/lib/traceId.ts`) | a labelled id per STEP, so logs filter to that step's requests instead of a time window |
+| `scripts/e2e/collect_run_evidence.py` | those log lines, per service + a merged timeline. **Zero matches exits 2**, never a clean-looking 0 |
+| `helpers/humanRun.ts` | a full-page snapshot per step — pass OR fail — and a `run.json` rewritten after every step |
+
+`TOOLS.md` also carries the three things that cost the most time to learn: **which stack** (the
+documented account logs into `infra`, NOT `lw-iso`), **why a fresh account cannot write prose**
+(models are per-owner, so `freshAccount()` has none), and **verify the image, not the build log**.
+
 ## Run
 
 ```bash
