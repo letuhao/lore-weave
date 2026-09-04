@@ -223,8 +223,34 @@ network step. Attribute before touching.
     Allowlisted as three **exact literals**, never by path: a path entry for
     `services/knowledge-gateway/test/` or `.claude/skills/` would blind the scanner to a real
     secret committed there tomorrow.
-- [ ] **T4** — **C4, knowledge-service.** Unit fails outright; integration fails **building the
-  Postgres image** (PG18 + pgvector + pgvectorscale + AGE) — separate faults, so separate verdicts.
+- [x] **T4** — **DONE. Three faults, and the two test failures were both PLATFORM, not code.**
+  **2 of 5,048** unit tests failed, and both passed on my machine.
+  - 🔴 **The Kuzu single-writer test could only ever pass on Windows.** `Failed: DID NOT RAISE
+    Exception` on Linux — *not* version drift: kuzu is 0.11.3 in both places, which is also the
+    latest on PyPI. It is **file-locking scope**. Windows locks are handle-scoped, so a second
+    `Database()` in the same process is refused; POSIX advisory locks are PROCESS-scoped, so a
+    process may re-acquire its own lock. The test took both handles in one process. Its docstring
+    calls this "the fact that decides whether Kuzu can be the engine at all" and names the risk as
+    **`--workers 4`** — which is by definition several *processes*. It now takes the second handle
+    in a **subprocess**: platform-independent, and the stronger claim. Control: the probe exits 3
+    while the lock is held and 0 after `close_kuzu`.
+  - **`app.routes` is not a flat list of things with `.path`.** `AttributeError: '_IncludedRouter'
+    object has no attribute 'path'` — CI resolved an `fastapi>=0.111` floor to a version newer than
+    the local 0.136.1, which has no such class. The property is *"this path is served"*, so the
+    walk now descends into nested `routes` and skips entries without one. ⚠️ My first anti-vacuity
+    check was `len(paths) > 5` — a **guessed constant**, and the fixture is a bare `FastAPI()` with
+    one router, so it collected exactly 5 and went red on my own guess. Re-anchored on
+    `/openapi.json`, which is there by construction.
+  - **The integration job never ran a test** — it died building the image at
+    `COPY --from=age .../age--1.7.0.sql: not found`. The stage was `FROM apache/age:latest`, in a
+    file that forbids "a silent `latest`" six lines below. ⚠️ **I could not reproduce the obvious
+    story**: pulled a day later, `latest` *does* carry that file, so the trigger was whatever it
+    resolved to on that runner — and that is the argument, not a footnote. The tag is now DERIVED
+    as `release_PG${PG_MAJOR}_${AGE_VERSION}` from the two variables that already name the copied
+    file, so they cannot disagree.
+  - Evidence: `pytest tests` → **5000 passed, 848 skipped, 0 failed** (CI had 4998 + 2). Image
+    built locally and smoked: `age 1.7.0`, `vector 0.8.6`, `vectorscale 0.9.0` all created, and AGE
+    exercised through a real cypher write/read round-trip.
 - [ ] **T5** — **C5, the four DB jobs.** Three round-trip jobs plus `create meta smoke DB`. If one
   migration or one image explains all four, that is one fix; prove it rather than assuming it.
 - [ ] **T6** — **C6, conformance-ci.** 🔴 Red on `main` today — attribute each of the three before

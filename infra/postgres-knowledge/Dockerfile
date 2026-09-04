@@ -52,10 +52,37 @@
 # exercises them, so a glibc or packaging regression fails there rather than in production.
 
 ARG PG_MAJOR=18
+# 🔴 AGE_VERSION IS DECLARED TWICE ON PURPOSE — here for the `FROM` below, and again inside
+# the build stage where a global ARG is not visible. Both must say the same thing, which is
+# the whole point of deriving the tag from it.
+ARG AGE_VERSION=1.7.0
 # ⚠️ AGE's official image is the SOURCE of the age.so this image copies, so its base and this
 # one must stay on the same Debian release. Pinned by digest-free tag deliberately: the
 # smoke below is what certifies a bump, not the tag.
-FROM apache/age:latest AS age
+#
+# 🔴 THIS WAS `apache/age:latest`, AND THE FILE FORBIDS THAT SIX LINES DOWN
+# ("never a silent `latest`"). MEASURED — CI, 2026-09-04 17:36, `knowledge-service
+# (integration, PG + Neo4j)`:
+#
+#     > [stage-1 4/5] COPY --from=age .../extension/age--1.7.0.sql:
+#     failed to compute cache key: ... "age--1.7.0.sql": not found   (Dockerfile:84)
+#
+# ⚠️ WHAT I DID **NOT** ESTABLISH, said plainly because the obvious story is the tempting one:
+# I did not observe `latest` lacking that file. Pulled 2026-09-05, `apache/age:latest` DOES
+# carry `/usr/share/postgresql/18/extension/age--1.7.0.sql`. So the trigger was whatever
+# `latest` resolved to on that runner at that moment — a re-push, an arch, or a partial layer
+# — and it is not reproducible by construction. That is the point: an unpinned upstream image
+# paired with a HARDCODED `AGE_VERSION` used to name the file copied out of it can disagree at
+# any time, and the failure is a broken build rather than a wrong answer only by luck.
+#
+# `apache/age` publishes exact tags — `release_PG18_1.7.0` is the one this file already
+# describes — so the tag is now DERIVED from the same two variables that name the copied file.
+# They can no longer drift apart, and a bump is one edit with the smoke attached. Verified by
+# `docker run --rm apache/age:release_PG18_1.7.0 ls`: age.so, age.control and age--1.7.0.sql
+# are all present at the paths copied below.
+# (`release_PG18_1.8.0` exists and is the next step, deliberately not taken here: this row is
+# repairing a broken build, and an extension-version bump is a decision with its own test.)
+FROM apache/age:release_PG${PG_MAJOR}_${AGE_VERSION} AS age
 FROM postgres:${PG_MAJOR}-trixie
 
 ARG PG_MAJOR=18

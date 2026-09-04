@@ -16,6 +16,10 @@ so `test_kuzu_is_declared_or_the_skip_is_honest` asserts the skip means what it 
 """
 from __future__ import annotations
 
+import re
+import subprocess
+import sys
+
 import pytest
 
 from app.db.kuzu_bootstrap import (
@@ -119,12 +123,43 @@ def test_a_SECOND_handle_on_the_same_path_is_refused(tmp_path):
     """⚠️ Kuzu is EMBEDDED: one process may hold the database. This is not a defect to fix —
     it is the fact that decides whether Kuzu can be the engine at all, and it belongs in the
     suite so the bake-off cannot forget it. `knowledge-service` runs a bare uvicorn with no
-    `--workers` today; nothing pins that, and `--workers 4` breaks Kuzu and nothing else."""
+    `--workers` today; nothing pins that, and `--workers 4` breaks Kuzu and nothing else.
+
+    🔴 THE SECOND HANDLE IS TAKEN IN A SECOND PROCESS, AND IT HAS TO BE.
+    This opened both handles in ONE process and passed on Windows and failed on Linux —
+    `Failed: DID NOT RAISE Exception`, measured in CI on 2026-09-04 with the same kuzu 0.11.3
+    that is installed locally. Not version drift: **file locking**. Windows locks are
+    handle-scoped, so a second `Database()` in the same process is refused there; POSIX
+    advisory locks are PROCESS-scoped, so the same process may re-acquire its own lock and
+    the call succeeds.
+
+    So the old test could only ever demonstrate this on the maintainer's platform, and it was
+    silent on the deployment one — while the risk it names, `--workers 4`, is by definition
+    several PROCESSES. Taking the second handle in a subprocess tests the constraint that
+    actually governs the deployment, on every platform, and it is the stronger claim.
+    """
     path = str(tmp_path / "kg")
     db, conn = open_kuzu(path)
     try:
-        with pytest.raises(Exception, match="(?i)lock|io"):
-            kuzu.Database(path)
+        probe = (
+            "import sys, kuzu\n"
+            "try:\n"
+            "    kuzu.Database(sys.argv[1])\n"
+            "except Exception as e:\n"
+            "    sys.stderr.write(type(e).__name__ + ': ' + str(e))\n"
+            "    sys.exit(3)\n"
+            "sys.exit(0)\n"
+        )
+        r = subprocess.run([sys.executable, "-c", probe, path],
+                           capture_output=True, text=True, timeout=120)
+        assert r.returncode == 3, (
+            "a SECOND PROCESS opened the same Kuzu database while this one holds it. Kuzu's "
+            "single-writer lock is the fact that decides whether it can be the engine at all "
+            "— if it no longer holds, `--workers 4` or a second replica corrupts silently "
+            f"instead of failing loudly.\nstdout={r.stdout!r}\nstderr={r.stderr!r}"
+        )
+        assert re.search(r"(?i)lock|io", r.stderr), (
+            f"refused, but not for a locking reason: {r.stderr!r}")
     finally:
         close_kuzu(db, conn)
 

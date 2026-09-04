@@ -182,6 +182,36 @@ async def test_as_of_is_dropped_when_the_kg_cannot_honour_it(client, monkeypatch
 @pytest.mark.asyncio
 async def test_the_endpoint_the_gateway_builds_actually_exists(app):
     """The whole point. `kal-read.controller.ts` builds this exact path, and for the life of
-    the route nothing served it — including in a published OpenAPI contract."""
-    paths = {r.path for r in app.routes}
+    the route nothing served it — including in a published OpenAPI contract.
+
+    🔴 `app.routes` IS NOT A FLAT LIST OF THINGS WITH `.path`, and assuming it was made this
+    test fail on a FastAPI newer than the maintainer's:
+
+        AttributeError: '_IncludedRouter' object has no attribute 'path'
+
+    Measured in CI on 2026-09-04 against an unpinned `fastapi>=0.111`; the local 0.136.1 has no
+    such class. The property being asserted is *"this path is served"* — not *"every entry in
+    app.routes exposes .path"* — so the walk descends into anything carrying its own `routes`
+    and skips entries without a path, rather than pinning FastAPI's internal shape.
+    """
+    def _paths(routes) -> set[str]:
+        out: set[str] = set()
+        for r in routes:
+            p = getattr(r, "path", None)
+            if isinstance(p, str):
+                out.add(p)
+            nested = getattr(r, "routes", None)
+            if nested:
+                out |= _paths(nested)
+        return out
+
+    paths = _paths(app.routes)
+    # Anti-vacuity, anchored on a route that is there BY CONSTRUCTION rather than on a count.
+    # A walk that quietly collected nothing would make the real assertion below fail for the
+    # wrong reason, and a hand-picked number would just be a second thing to guess: this
+    # fixture is a bare `FastAPI()` plus one router, so `/openapi.json` is present on any
+    # version and its absence means the walk — not the route — is broken.
+    assert "/openapi.json" in paths, (
+        f"the route walk did not even find FastAPI's own defaults ({sorted(paths)}) — it is "
+        "not walking the app, so the assertion below would prove nothing")
     assert "/internal/books/{book_id}/kg/neighborhood" in paths
