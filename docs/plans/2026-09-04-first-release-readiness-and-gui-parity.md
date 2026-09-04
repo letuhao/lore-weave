@@ -73,6 +73,9 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
   own declarations (not a hand list), and for each record `UI` (route + `data-testid`) / `NONE` /
   `AGENT-ONLY`. Output a single number and the `NONE` list. **Decide the rest of this plan from what
   it returns** — scoping the fixes before the count is exactly the guess this repo forbids.
+- [ ] **R1** — **the new-user run.** A fresh account with NO pre-seeded models, driven through the
+  real UI: what does a stranger actually get? $0, touches nothing existing. **The cheapest check on
+  this board and the one most likely to change the release answer.**
 - [ ] **P2** — the gate in `scripts/`, with the baseline at whatever P1 measured and the reason
   written in. **NV-1..6 applies: bite it.** Delete a `data-testid` the census depends on and watch
   it go red for the right reason; restore byte-exact. A parity gate that cannot fail is worse than
@@ -80,9 +83,6 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
 - [ ] **P3** — close the `NONE` gaps P1 finds, ranked by how often the agent actually fails at that
   tool. **Not scoped until P1 lands** — the list does not exist yet, and inventing rows for it now
   would be a plan built on a guess.
-- [ ] **R1** — **the new-user run.** A fresh account with NO pre-seeded models, driven through the
-  real UI: what does a stranger actually get? $0, touches nothing existing. **The cheapest check on
-  this board and the one most likely to change the release answer.**
 - [ ] **R4** — two concurrent sessions on one account, and a slow-provider run. Both are unmeasured;
   the blank bubble I fixed today came from the local model 500ing under my own load, and I do not
   know how that path behaves when a provider is merely slow rather than broken.
