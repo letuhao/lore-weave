@@ -1,5 +1,9 @@
 # CI red, case by case — the 26 checks standing between this branch and `main`
 
+Reconciles: Non-Vacuity (NV-1..6) · Foundation Lint Catalog (L1.K) — every row here ends in a
+gate's verdict, and the failures it triages are mostly gates that reported a colour they had
+not earned; L1.K is the catalogue those gates belong to.
+
 PR [#219](https://github.com/letuhao1994/lore-weave/pull/219) · base `main` · head `refactor/kal-and-mcp-runtime`
 · `mergeable: MERGEABLE` (no conflicts) · **`mergeStateStatus: UNSTABLE`**
 
@@ -142,9 +146,36 @@ network step. Attribute before touching.
     written; the Go branches never got it. Carried across as `[NOTEST]`, and three GDPR erasure
     obligations that had read as measured for their whole existence now have tests
     (`scrubber_obligations_test.go`).
-- [ ] **T2** — **C2, the 10 red gates.** Start with the two branch-added gates that **crash**
-  (`Traceback`) and `gate-number-visibility` (one line). Then the three that reach a real verdict.
-  Any gate that stays red leaves with a `KNOWN_RED` row naming its deferral — never silently.
+- [x] **T2** — **DONE for 9 of 10; the 10th (`agentruntime-membrane-gate`) is adjudicated in T7,
+  where its other CI home is.** Not one of the nine was "a gate finding a bug in the code". Every
+  one was a gate reporting a colour it had not earned, and **four of them were GREEN on a dev box
+  and RED in CI** — the shape gates.yml's own PyYAML comment already warns about.
+  - **Four (`dp-aggregate`, `crate-purity`, `dp-oracle`, `dp-slice5c`)** were T1's fault B. All pass
+    locally against cargo 1.89.0; `dp-oracle` 19/19 bitten, `dp-slice5c` 7/7.
+  - 🔴 **Two `Traceback`s exposed a much larger hole.** `gate-wiring-gate` invokes gates as
+    `python <file>`, and a pytest module has no `__main__` — so the call **defines its test
+    functions and exits 0 having asserted nothing**. Seven were in the run list; **21** were being
+    invoked this way in total. Four reported **GREEN over 29 assertions that never ran**. The two
+    REDs were the only honest ones, and only by accident: they end their import guard with
+    `pytest.skip(..., allow_module_level=True)`, which raises outside a pytest run. The file's own
+    comment already said these "get EXEMPT rows" — two of twenty-one had one. Now COMPUTED from the
+    structure (`test_*.py` with no `__main__`), not listed, so a pytest gate written tomorrow is
+    exempt the day it lands and one that grows a `__main__` returns to scope. Their real home is
+    foundation-ci's `gate red-ability proofs` step, which runs all of them properly.
+  - **`gate-number-visibility-gate` was the wrong diagnosis, not a one-line fix.** It reported
+    `MAX_COLLIDING_PAIRS = 51 never reaches the output` for a gate that is in `NEEDS_STACK` — CI has
+    no AGE store, so it never printed anything, while a dev box runs it and the finding evaporates.
+    The repair it demanded would have fixed nothing. Live-stack gates are now reported **UNVERIFIED**
+    on both paths (2 of them, incl. `causal-coverage-gate`, which was also passing on an
+    unsupportable verdict), reading `NEEDS_STACK` from gate-wiring-gate as the SSOT.
+  - **`graph-tenancy-coupling-gate` had stopped calling the function it exists to call.**
+    `id_is_project_scoped=None` in CI, `True` locally: importing `loreweave_extraction.canonical`
+    runs the package `__init__`, which pulls httpx, pydantic, bs4 and three opentelemetry
+    distributions. Now falls back to a package-init-free load (both modules are stdlib-only), so CI
+    calls the real function instead of degrading to `None`.
+  - **`phase0-reconcile-gate` was right, and I was one of the four offenders.** All four plan docs
+    missing a `Reconciles:` line were written in this session; the fifth failure was a wrapped
+    `Reconciles:` whose continuation line became a phantom row. Now 61 specs checked, all green.
 - [ ] **T3** — **C3, glossary-service Go.** The chokepoint ledger write and the missing
   `0060_glossary_recalc_restore` chain step. Highest severity: a real regression, not infra.
 - [ ] **T4** — **C4, knowledge-service.** Unit fails outright; integration fails **building the

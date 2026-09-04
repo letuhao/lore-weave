@@ -69,6 +69,53 @@ KEYED, FILTERED, UNPROTECTED, NOT_SHARED, ERROR = (
     "KEYED", "FILTERED", "UNPROTECTED", "NOT-SHARED", "ERROR")
 
 
+def _load_canonical_fn():
+    """`entity_canonical_id`, imported without dragging in the SDK's whole dependency set.
+
+    🔴 MEASURED on run 33881838120. This gate reported
+    `id_is_project_scoped=None` in CI and `True` on a dev box — the difference being that
+    `import loreweave_extraction.canonical` executes the package's `__init__.py` first,
+    and that pulls the extractors, which need httpx, pydantic, beautifulsoup4 and three
+    opentelemetry distributions. `all-gates` installs pyyaml and pytest. So the gate that
+    exists to CALL the function (its docstring: "So it now runs the thing") silently
+    stopped running it in the one place the answer is published.
+
+    Installing six runtime dependencies into a lint job to reach one pure-stdlib function
+    is the wrong trade, and degrading to `None` is worse — an unanswered tenancy question
+    reported as a verdict. So: try the ordinary import, and if the package's `__init__`
+    cannot load, bind a minimal parent package (`__path__` only) so `canonical.py`'s
+    relative `from .name_normalize import ...` still resolves. `canonical` and
+    `name_normalize` are stdlib-only (`hashlib`, `re`, `unicodedata`, plus a data table).
+
+    Ordinary import FIRST, deliberately: if this module ever grows a dependency on the
+    package `__init__`, the real path is what runs everywhere it can, and the shim is the
+    fallback rather than a second, quietly-diverging definition.
+    """
+    sys.path.insert(0, str(ROOT / "sdks" / "python"))
+    try:
+        from loreweave_extraction.canonical import entity_canonical_id as fn
+        return fn
+    except Exception:  # noqa: BLE001 — the package __init__'s deps, not this module's
+        pass
+    finally:
+        sys.path.pop(0)
+
+    import importlib.util
+    import types
+    d = ROOT / "sdks" / "python" / "loreweave_extraction"
+    pkg = sys.modules.get("loreweave_extraction")
+    if pkg is None or not hasattr(pkg, "__path__"):
+        pkg = types.ModuleType("loreweave_extraction")
+        pkg.__path__ = [str(d)]  # type: ignore[attr-defined]
+        sys.modules["loreweave_extraction"] = pkg
+    spec = importlib.util.spec_from_file_location(
+        "loreweave_extraction.canonical", d / "canonical.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod.entity_canonical_id
+
+
 def id_is_project_scoped(canonical_src: str | None = None) -> bool | None:
     """Do two DIFFERENT projects mint different entity ids? Asked by CALLING the function.
 
@@ -83,11 +130,7 @@ def id_is_project_scoped(canonical_src: str | None = None) -> bool | None:
     import hashlib  # noqa: F401 — available to an exec'd variant
     try:
         if canonical_src is None:
-            sys.path.insert(0, str(ROOT / "sdks" / "python"))
-            try:
-                from loreweave_extraction.canonical import entity_canonical_id as fn
-            finally:
-                sys.path.pop(0)
+            fn = _load_canonical_fn()
         else:
             ns: dict = {}
             exec(compile(canonical_src, "<variant>", "exec"), ns)  # noqa: S102 — selftest only

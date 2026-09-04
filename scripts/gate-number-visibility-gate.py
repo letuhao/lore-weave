@@ -116,6 +116,25 @@ def gate_scripts() -> list[str]:
             if f.endswith(".py") and "gate" in f and f != os.path.basename(__file__)]
 
 
+def needs_a_live_stack() -> set[str]:
+    """The gates `gate-wiring-gate` declares unrunnable without a live stack.
+
+    🔴 READ FROM THAT FILE, never restated here. It is the SSOT for "this gate cannot
+    run in a bare checkout", it carries a reason per row, and a second copy of that
+    judgement is a second thing to drift. If it cannot be imported, the set is EMPTY —
+    which keeps every gate in scope and can only make this gate stricter, never blind.
+    """
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_gwg", os.path.join(SCRIPTS, "gate-wiring-gate.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return {os.path.basename(k) for k in getattr(mod, "NEEDS_STACK", {})}
+    except Exception:
+        return set()
+
+
 def run_gate(fname: str) -> str:
     """The gate's combined output. A crash is output too — it still either shows the number
     or does not, and a gate that cannot run is a separate problem this one must not mask."""
@@ -169,6 +188,16 @@ def selftest() -> int:
         got = thresholds(tmp)
     finally:
         os.remove(tmp)
+    # 🔴 The silent-failure mode of the NEEDS_STACK read. `needs_a_live_stack()` swallows
+    # every exception and returns set() so a broken import can only make this gate
+    # STRICTER — but a permanently-empty set quietly restores the false findings it was
+    # added to remove, and nothing else here would notice. So the SSOT link is asserted:
+    # the set must be non-empty and must contain the gate that produced the finding.
+    live = needs_a_live_stack()
+    expect("the NEEDS_STACK SSOT is readable (not silently empty)", bool(live), True)
+    expect("and it names the live-stack gate that produced the false finding",
+           "event-order-collision-gate.py" in live, True)
+
     expect("threshold vocabulary is matched", sorted(got), ["MAX_THINGS", "MIN_ADOPTERS", "SOME_CEILING"])
     expect("an unrelated integer is not a threshold", "UNRELATED" in got, False)
     expect("a bool is not a threshold", "ENABLED" in got, False)
@@ -208,10 +237,28 @@ def main() -> int:
         return selftest()
 
     findings: list[str] = []
+    unverified: list[str] = []
     checked = 0
+    live = needs_a_live_stack()
     for fname in gate_scripts():
         values = thresholds(os.path.join(SCRIPTS, fname))
         if not values:
+            continue
+        # 🔴 "The gate did not print its number" and "the gate could not run at all"
+        # are two different sentences, and this gate printed the first one for both.
+        # MEASURED on run 33881838120: it reported
+        #   event-order-collision-gate.py: MAX_COLLIDING_PAIRS = 51 never reaches the output
+        # and it is GREEN on a dev box. The gate needs the AGE store; CI has none, so it
+        # never got as far as printing anything, while a developer's local stack lets it
+        # run and the finding evaporates. The repair it demanded — "print it on the PASS
+        # path" — would have fixed nothing, because the PASS path is not reachable here.
+        #
+        # So it is reported as UNVERIFIED rather than as a finding or a pass. A verdict
+        # this environment cannot support must not be stated in either direction; that is
+        # the same distinction the reality-layer harness draws between a weak guard and a
+        # bite that never ran.
+        if fname in live:
+            unverified.append(f"{fname}: {', '.join(f'{k} = {v}' for k, v in values.items())}")
             continue
         checked += 1
         output = run_gate(fname)
@@ -222,9 +269,19 @@ def main() -> int:
                 continue
             findings.append(f"{fname}: {miss} never reaches the output")
 
+    # Printed on BOTH paths, and before the verdict: an unverified row that only shows up
+    # in a failure is exactly the silence this gate exists to punish.
+    if unverified:
+        print(f"[gate-number-visibility-gate] {len(unverified)} gate(s) NOT VERIFIED — they "
+              f"need a live stack (gate-wiring-gate's NEEDS_STACK), so whether their number "
+              f"reaches a green run cannot be answered here:")
+        for u in unverified:
+            print(f"    {u}")
+
     if not findings:
         print(f"[gate-number-visibility-gate] OK — {checked} gate(s) carry a threshold; every "
-              f"one prints it on a green run ({len(SILENT_BY_DESIGN)} declared silent)")
+              f"one prints it on a green run ({len(SILENT_BY_DESIGN)} declared silent, "
+              f"{len(unverified)} unverified)")
         return 0
 
     print("[gate-number-visibility-gate] FAIL — a ratchet nobody can see:\n")

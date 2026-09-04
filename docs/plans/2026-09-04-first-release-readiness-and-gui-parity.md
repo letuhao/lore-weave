@@ -1,6 +1,8 @@
 # First-release readiness, and the GUI-parity metric
 
-Reconciles: MCP Tool I/O Standard · Agent GUI Reconciliation (09) · Non-Vacuity (NV-1..6). Follows
+Reconciles: MCP Tool I/O Standard · Agent GUI Reconciliation (09) · Non-Vacuity (NV-1..6)
+
+Follows
 [`2026-09-04-regression-fix-plan.md`](2026-09-04-regression-fix-plan.md), whose goal is met — the
 writing loop works and a five-chapter run proved it. **This plan is about what that run did NOT
 cover**, plus a new invariant the owner asked for.

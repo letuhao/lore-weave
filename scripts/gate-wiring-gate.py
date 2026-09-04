@@ -169,6 +169,58 @@ EXEMPT: dict[str, str] = {
                            "`--run-all` does not recurse into itself",
 }
 
+
+def _pytest_module_exemptions() -> dict[str, str]:
+    """`scripts/test_*.py` with no `__main__` guard is a pytest MODULE, not a gate.
+
+    🔴 MEASURED on run 33881838120. `is_gate` accepts `_gate`/`_lint` for the reason
+    stated above it — which pulls the pytest self-tests in, "and they get EXEMPT rows".
+    **Two of them had one.** The rest were being invoked as `python scripts/test_x.py`,
+    and a pytest file has no `__main__`, so that call DEFINES its test functions and
+    exits 0 without executing a single assertion. Seven were in the run list:
+
+        test_a_failed_snapshot_is_not_a_snapshot_gate.py   4 tests   GREEN, ran none
+        test_a_required_id_declares_its_emitter_gate.py   10 tests   GREEN, ran none
+        test_required_args_are_declared_gate.py            8 tests   GREEN, ran none
+        test_the_out2_lint_coverage_is_measured.py         7 tests   GREEN, ran none
+        test_a_measured_turn_reaches_its_tool_gate.py      9 tests   RED (Traceback)
+        test_synonym_spelling_variants_gate.py             4 tests   RED (Traceback)
+
+    The two REDs are the honest ones: they end their import guard with
+    `pytest.skip(..., allow_module_level=True)`, which raises outside a pytest run,
+    so an unimportable chat-service crashed instead of skipping. The four GREENs are
+    the lie — 29 assertions reported as passing, none of them executed.
+
+    Their real home is foundation-ci's `gate red-ability proofs` step
+    (`python -m pytest scripts/test_*.py`), which runs every one of them properly.
+
+    ⚠️ COMPUTED, not listed, for the reason that step's own comment gives: "a list is
+    default-uncovered; a glob is default-covered". A pytest gate written tomorrow is
+    exempt the day it lands, and a `test_*.py` that DOES grow a `__main__` stays in
+    scope and gets run. Scoped to what `is_gate` already discovers so no row here
+    describes a file the report never looks at.
+    """
+    out: dict[str, str] = {}
+    for p in sorted((REPO / "scripts").glob("test_*.py")):
+        rel = f"scripts/{p.name}"
+        if rel in EXEMPT or not is_gate(p.name):
+            continue
+        try:
+            src = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if "__main__" in src:
+            continue  # it can run as a script; leave it in scope
+        out[rel] = ("pytest module with no `__main__` guard: running it as a script "
+                    "defines its tests and exits 0 without asserting anything. It runs "
+                    "under foundation-ci's `gate red-ability proofs` step "
+                    "(`python -m pytest scripts/test_*.py`), which is where its "
+                    "red-ability is actually proven")
+    return out
+
+
+EXEMPT.update(_pytest_module_exemptions())
+
 # Gates that need a LIVE STACK (docker, Postgres, a built binary). `--run-all`
 # SKIPS these and says so on every run — a skip that prints is a known hole; a
 # skip that is silent is a gate reported as passing when it never ran, which is

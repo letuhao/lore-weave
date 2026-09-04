@@ -1,5 +1,8 @@
 # Row V — the five-chapter live run, 2026-09-04
 
+Reconciles: Non-Vacuity (NV-1..6) — a live-run report is evidence, and its whole discipline is
+NV's: state what was measured, on what build, and what would have refuted it.
+
 **Verdict: the bar is NOT met.** The book ends with **five chapter rows and prose in two of them**.
 F1 and F1b are fixed and the fix is proven — Chapter One reached the manuscript with 782 words
 where the pre-fix build left 0 — but the run found a **third member of the same family that

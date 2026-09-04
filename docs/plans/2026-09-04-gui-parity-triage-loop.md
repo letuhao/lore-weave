@@ -1,5 +1,9 @@
 # GUI-parity triage — the remaining 95, domain by domain
 
+Reconciles: Agent GUI Reconciliation (09) · Non-Vacuity (NV-1..6) — the metric IS 09's
+question (can a human do by hand what the agent attempts), and UNTRIAGED-is-not-parity is
+NV-1: a count that cannot fail is not a measurement.
+
 Continues [`2026-09-04-first-release-readiness-and-gui-parity.md`](2026-09-04-first-release-readiness-and-gui-parity.md),
 whose gate and census shipped. **That plan's goal is only half met and this is the other half.**
 
