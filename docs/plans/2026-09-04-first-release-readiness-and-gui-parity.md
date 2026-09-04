@@ -118,7 +118,17 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
   and empty-stream from earlier today are real evidence but not a substitute. Original row: Both are unmeasured;
   the blank bubble I fixed today came from the local model 500ing under my own load, and I do not
   know how that path behaves when a provider is merely slow rather than broken.
-- [ ] **R5** — housekeeping: this all lives on `refactor/kal-and-mcp-runtime`, unmerged; PR #219's
+- [x] **R5** — **DONE.** PR #219's body **appended** (not rewritten — the existing text is an
+  accurate record of the game-logic reconcile) with everything that landed since; the branch
+  is **3,118 commits ahead of main**. The `scripts/` suite measured **19** failures, not the
+  18 recorded: the extra is `VERIFY_PROOF_FLOOR` **stale at 70 against 130** certified
+  self-tests. Attributed first — it still fails at 129 with my gate removed, so it is
+  **pre-existing** — but `gui-parity-gate` moved the population by one, so per rule 9 the
+  ratchet moves here: **70 → 118**, bitten both ways, reason written into the constant.
+  🔴 Closes a P2 loose end: the new gate is **already CI-invoked** — `gate-wiring-gate
+  --run-all` discovers any `scripts/*-gate.py` by convention. The other 18 remain
+  pre-existing and untouched. ⚠️ **Merging to `main` is deliberately NOT done here** — that is
+  an outward-facing call for the owner, not housekeeping. Original row: this all lives on `refactor/kal-and-mcp-runtime`, unmerged; PR #219's
   body is stale; 5 pre-existing FE reds in `DefaultModelsCard.test.tsx` and 18 in `scripts/`.
 - [ ] **D3** — **STOP CONDITION.** `platform_models` is **empty (0 rows)**. The same fact that made
   every run this month provably $0 means **a brand-new user with no API key has no model at all**.
