@@ -86,7 +86,15 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
   two ways, verified live. Original row: A fresh account with NO pre-seeded models, driven through the
   real UI: what does a stranger actually get? $0, touches nothing existing. **The cheapest check on
   this board and the one most likely to change the release answer.**
-- [ ] **P2** — the gate in `scripts/`, with the baseline at whatever P1 measured and the reason
+- [x] **P2** — **DONE.** `scripts/gui-parity-gate.py`, clean on the real census. **Two real
+  bites**: deleting a declared testid → RED ("the declaration has rotted"); renaming the
+  `<KnowledgeIndexControl` render site so the testid still exists but nothing renders it → RED
+  on both dependent tools ("present in source, unreachable by a user (LOOM M9)"). Selftest: 9
+  cases, all red for their own reason, plus a positive control. 🔴 **The gate improved under
+  its own first run** — it false-reported `book_update_details` because my index kept only the
+  FIRST file per testid; a testid defined twice is reachable if EITHER is mounted. ⚠️ The
+  mounted check is a documented **heuristic that over-reports** (340 testids look unreachable,
+  most are not — providers, Tiptap node views, registry-mounted dock panels). Original row: with the baseline at whatever P1 measured and the reason
   written in. **NV-1..6 applies: bite it.** Delete a `data-testid` the census depends on and watch
   it go red for the right reason; restore byte-exact. A parity gate that cannot fail is worse than
   no gate, because it reports coverage and silences review.
