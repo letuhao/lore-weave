@@ -15,6 +15,41 @@ this plan.
 
 ## Evidence
 
+### F2R + F2 — 2026-09-04
+
+**The read answered it, and it eliminated two of the three candidates.** The recorded `tool_calls`
+for the "Chapter Two" turn were exactly two, both FAILED:
+
+```
+04:01:07  composition_outline_node_edit  ok=false  title='Chapter Two: The Bureaucracy of Silence'
+04:01:07  composition_outline_node_edit  ok=false  title="The Warden's Office"
+   error: 'parent_id' and 'project_id' were both set to 01a06a7f-abcb-… — they identify
+          DIFFERENT things and can never be the same id.
+```
+
+No `book_chapter_create` for a second chapter was ever attempted. So it is **candidate 3
+(ordering)** — with a specific blocker: the model was building Chapter Two as a composition
+OUTLINE node, both attempts died on the id conflation, and it then fell back to re-saving Chapter
+One. The revision timestamps corroborate: the identical 14,970-byte body was written twice,
+`03:59:32` and `04:02:17`.
+
+**F1's guard does NOT cover this**, and it should not: the prerequisite never succeeded, and F1 is
+deliberately silent then, because nagging for a retry that would fail again buries the real error.
+
+**The fix, and what it is careful NOT to be.** The duplicate-identifier check is a well-measured
+refusal — 135 calls, 7 tools, 19 sessions, **zero successes** — and deliberately not a repair,
+because the runtime does not know which of the two is wrong. That stands. What was wrong is the
+ADVICE: `parent_id` is **optional** on `op=create` and a chapter's parent IS the project root, so
+*"look the missing one up"* named an action with no referent. The model obeyed it and failed
+again. Now, and only when the tool's own schema says a colliding param is droppable, the refusal
+says to OMIT it.
+
+| bite | result |
+|---|---|
+| the optional-advice branch disabled | **2 RED** — exactly the two asserting the new advice |
+| the four arms protecting the REQUIRED case (`book_id`/`chapter_id`, 38 measured calls) | stayed GREEN |
+| restored | 6 green |
+
 ### F1 + G1 — 2026-09-04
 
 **The row was wrong and reading the seam caught it.** "Re-arm the refused tool" is work that does
@@ -173,10 +208,10 @@ actually fixed.
   end-of-turn site and added to `TURN_GUARDS` so it cannot be defined-and-never-called. **Bite it
   RED on the original shape** — save_draft refused, chapter_create succeeded, turn ended — and
   silent on the three negatives (retry happened / prerequisite failed / refusal named nothing).
-- [ ] **F2R** — READ ONLY. The recorded `book_chapter_save_draft` arguments for the "Chapter Two"
+- [x] **F2R** — READ ONLY. The recorded `book_chapter_save_draft` arguments for the "Chapter Two"
   turn, and whether any `book_chapter_create` preceded it. One read; it eliminates two of the three
   candidates in §F2. **Decide from it before writing anything.**
-- [ ] **F2** — the fix the read points at. If candidate 3 (ordering), check whether F1 already
+- [x] **F2** — the fix the read points at. If candidate 3 (ordering), check whether F1 already
   covers it and say so rather than building twice.
 - [ ] **F6R** — READ ONLY. Capture one offending outbox payload and name the producer emitting a
   third `model_source`. **Do not widen the CHECK to admit it.**

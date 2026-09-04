@@ -149,12 +149,41 @@ def duplicate_identifier(call_args: dict) -> tuple[str, str, str] | None:
     return None
 
 
-def duplicate_identifier_message(param_a: str, param_b: str, value: str) -> str:
+def duplicate_identifier_message(
+    param_a: str, param_b: str, value: str, *, optional: tuple[str, ...] = (),
+) -> str:
+    """The refusal. `optional` names those of the two the tool does NOT require.
+
+    🔴 THE ADVICE WAS UNFOLLOWABLE FOR AN OPTIONAL PARAM, AND A LIVE RUN PAID FOR IT.
+    2026-09-04: `composition_outline_node_edit` was called twice in one turn with
+    `parent_id == project_id` to create a Chapter Two node. Both were refused, correctly. But
+    `parent_id` is OPTIONAL for `op=create`, and a chapter's parent IS the project root — so
+    there was no parent to look up, the instruction *"look the missing one up"* could not be
+    followed, and the model tried the same shape again and then gave up on the chapter entirely.
+    The author asked for Chapter Two and got Chapter One re-saved.
+
+    **This stays a REFUSAL, not a repair.** The docstring above is right that the runtime does
+    not know which argument is wrong — dropping `parent_id` silently would file the chapter at
+    the root when the model may have meant a real parent, and §3a forbids a guess deciding that.
+    What changes is only the ADVICE: when one of the two is optional, "omit it" is an action the
+    caller can actually take, and "look it up" is not.
+    """
+    fix = (
+        f"Look the missing one up (a list/search tool for that kind of record returns it) "
+        f"and call again with both ids distinct."
+    )
+    if optional:
+        droppable = " or ".join(f"'{o}'" for o in optional)
+        fix = (
+            f"{droppable} is OPTIONAL on this tool — if you do not have a distinct id for it, "
+            f"OMIT it entirely rather than repeating another. If you did mean a specific one, "
+            f"look it up (a list/search tool for that kind of record returns it) and call again "
+            f"with both ids distinct."
+        )
     return (
         f"'{param_a}' and '{param_b}' were both set to {value} — they identify DIFFERENT things "
         f"and can never be the same id. One of them is wrong, and this call cannot succeed as "
-        f"sent. Look the missing one up (a list/search tool for that kind of record returns it) "
-        f"and call again with both ids distinct."
+        f"sent. {fix}"
     )
 
 

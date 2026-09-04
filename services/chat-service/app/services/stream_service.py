@@ -7740,7 +7740,19 @@ async def _stream_with_tools(
                 )
                 _dupe = _dup_check(args_obj)
                 if _dupe is not None:
-                    _dup_msg = _dup_message(*_dupe)
+                    # F2 — WHICH OF THE TWO MAY SIMPLY BE DROPPED. Measured 2026-09-04:
+                    # composition_outline_node_edit was refused twice in one turn for
+                    # parent_id == project_id while creating a Chapter Two node. `parent_id` is
+                    # OPTIONAL there and a chapter's parent IS the project root, so "look the
+                    # missing one up" named an action with no referent — the model repeated the
+                    # shape and then abandoned the chapter. The refusal stands; only the advice
+                    # changes, and only when the schema says the param is droppable.
+                    _dup_params = tool_parameters(
+                        cat_index.get(c["name"]) or plain_index.get(c["name"])) or {}
+                    _dup_required = set(_dup_params.get("required") or ())
+                    _dup_optional = tuple(
+                        pname for pname in (_dupe[0], _dupe[1]) if pname not in _dup_required)
+                    _dup_msg = _dup_message(*_dupe, optional=_dup_optional)
                     logger.info("loop#5: refused %r — %s and %s are both %s",
                                 c["name"], _dupe[0], _dupe[1], _dupe[2])
                     working.append({
