@@ -76,7 +76,9 @@ tools:
   - tool: book_structure_edit
     provider: book
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: manuscript-part-new
   - tool: book_update_details
     provider: book
     tier: W
@@ -499,11 +501,13 @@ tools:
   - tool: jobs_cancel
     provider: jobs
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: JobControls' cancel button is real and mounted (JobMonitor, JobRow) but carries no testid; the job-controls id is a TEST MOCK only.
   - tool: jobs_pause
     provider: jobs
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: same JobControls: a real mounted pause button with no testid.
   - tool: kg_add_nodes
     provider: knowledge
     tier: A
@@ -584,27 +588,43 @@ tools:
   - tool: lore_enrichment_auto_enrich
     provider: lore_enrichment
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/enrichment
+    testid: enrichment-detect-gaps
   - tool: registry_propose_skill
     provider: registry
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /settings/extensions
+    testid: plugin-import-btn
+    note: no inline skill/workflow EDITOR exists; the manual path is the plugin bundle round-trip (plugin-export -> edit the JSON -> plugin-import), which a bundle really does carry (skills WHERE plugin_id). Recorded so nobody reads this row as "there is an editor".
   - tool: registry_propose_workflow
     provider: registry
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /settings/extensions
+    testid: plugin-import-btn
+    note: no inline skill/workflow EDITOR exists; the manual path is the plugin bundle round-trip (plugin-export -> edit the JSON -> plugin-import), which a bundle really does carry (skills WHERE plugin_id). Recorded so nobody reads this row as "there is an editor".
   - tool: registry_set_skill_enabled
     provider: registry
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /settings/extensions
+    testid: skill-toggle
   - tool: registry_update_skill
     provider: registry
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /settings/extensions
+    testid: plugin-import-btn
+    note: no inline skill/workflow EDITOR exists; the manual path is the plugin bundle round-trip (plugin-export -> edit the JSON -> plugin-import), which a bundle really does carry (skills WHERE plugin_id). Recorded so nobody reads this row as "there is an editor".
   - tool: registry_update_workflow
     provider: registry
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /settings/extensions
+    testid: plugin-import-btn
+    note: no inline skill/workflow EDITOR exists; the manual path is the plugin bundle round-trip (plugin-export -> edit the JSON -> plugin-import), which a bundle really does carry (skills WHERE plugin_id). Recorded so nobody reads this row as "there is an editor".
   - tool: settings_model_delete
     provider: settings
     tier: W

@@ -57,7 +57,8 @@ FE_SRC = os.path.join("frontend", "src")
 MAX_NONE = 1          # book_chapter_bulk_create. world_delete closed 2026-09-04 (P3): it was
                       # the worst gap the census found — 92 agent calls, 92 failures, and no
                       # manual path at all — and now has a guarded control on /worlds.
-MAX_UNTRIAGED = 24    # T3 (2026-09-04): glossary's 18 adjudicated, 42 -> 24.
+MAX_UNTRIAGED = 15    # T4 (2026-09-04): the 100%-failure cluster (9) adjudicated, 24 -> 15.
+                      # T3: glossary's 18, 42 -> 24.
                       # T2: knowledge's 14, 56 -> 42.
                       # T1 before it: composition's 39 write tools adjudicated, 95 -> 56.
                       # The domain with the most measured agent failures by a distance (1,189
