@@ -386,3 +386,33 @@ outcome, which is the guard's own before/after showing up in the data.
 **The only thing still missing is that the author sees nothing** — which is D2, which is the owner's
 declined generic-failure-line, and which is now known to cost ~0.1% of turns. That number is the
 decision input that did not exist before.
+
+
+---
+
+## 9. The long-ask check — D1a confirmed live, first try
+
+Same prompt shape that produced the never-finished split in §1, on the rebuilt image and a new
+throwaway book (`01a06bad-d6c6-7b01-9251-c5cb27a3cb1a`): *"Chapter One… 1800-2500 words."*
+
+**Before:** *"Because of the length requirement I am writing this in two parts. I have saved Part
+One (approx. 780 words). I am now working on Part Two."* — Part Two never arrived, 0 of 4.
+
+**After:**
+
+> "As per my instructions, I have provided the full prose in a single pass. **For longer chapters,
+> we can use the composition tool to build them scene-by-scene** to reach your 2,500-word target."
+
+Ceiling stated, one complete chapter saved in the same turn — **1,426 words**, `body` carried on
+the create (8,015 chars) — the composition path offered, and **no multi-part announcement**. The
+read-side honesty guard fired unprompted too.
+
+Creates carrying `body`, post-fix cumulative: **5/5** (3 in the affordance run, 2 here) against
+**4/11** before.
+
+### One new observation, self-corrected
+
+The first `book_chapter_create` was rejected: `unexpected additional properties ["chapter"]`. The
+model passed `chapter` — which is a **`book_chapter_save_draft` selector**, not a `create`
+argument — and then retried correctly in the same turn. Recorded, not fixed: it cost nothing, the
+refusal was precise, and the recovery was immediate. Worth watching only if it recurs.
