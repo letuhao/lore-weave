@@ -176,8 +176,33 @@ network step. Attribute before touching.
   - **`phase0-reconcile-gate` was right, and I was one of the four offenders.** All four plan docs
     missing a `Reconciles:` line were written in this session; the fifth failure was a wrapped
     `Reconciles:` whose continuation line became a phantom row. Now 61 specs checked, all green.
-- [ ] **T3** — **C3, glossary-service Go.** The chokepoint ledger write and the missing
-  `0060_glossary_recalc_restore` chain step. Highest severity: a real regression, not infra.
+- [x] **T3** — **DONE, and the severity call was wrong in the safest direction.** I ranked this
+  highest because `the chokepoint no longer writes the ledger` reads like the merge hazard the
+  merge plan predicted at `executor.py:632`. It is not a regression: **both failures are stale
+  tests, and the production code is correct and better than what the tests describe.** Worth
+  saying plainly — the alarm was loud, specific, and wrong, and only reading the code showed it.
+  - **The migration three** named `0060_glossary_recalc_restore`. Nothing was lost: the merge
+    **renumbered** the pair to `0067`/`0068` (`0060` is now `0060_seed_genre_kind_attributes` from
+    the other side), and a second repair pair `0069`/`0070` was added when 0067 turned out to have
+    been reverted on the running database. Renumbering on merge is this ledger's normal practice —
+    it carries three MERGE notes saying so. Re-anchored on the **function and the order** instead
+    of the number, so the next renumber cannot break them *or* hide a real removal. Bitten both
+    ways.
+  - 🔴 **The chokepoint test was reading a 214-character alias through a 3,000-character window.**
+    T28 moved the SQL and its `glossary.entity_status_changed` emission together into
+    `setEntityStatusCore`; `bulkSetEntityStatusCore` survives as a wrapper that "deliberately holds
+    no SQL of its own". The old guard read `src[i : i+3000]` from the wrapper, found nothing, and
+    reported a lost audit trail. The guarantee is now the same **TRANSACTION** rather than the same
+    **STATEMENT** — stronger, and enforced in a signature: `appendLifecycleLedgerTx` takes a
+    `pgx.Tx` and no pool, so its row cannot commit independently. Every property the old test
+    asserted still holds (`FOR UPDATE` kept; `IS DISTINCT FROM` is now the Go `continue`).
+  - ⚠️ **Two guard-shape defects fixed while here**, both of which fail quietly: the fixed-size
+    window (it measures the file's layout, not the function, and reads the *next* function's code
+    when the target shrinks), and CRLF. This package is **mixed** — `entity_handler.go` is
+    1780/1780 CRLF while the other two files are pure LF — so a source guard that is not
+    line-ending agnostic silently covers whichever half it was written on.
+  - Evidence: `go test ./...` in glossary-service — **10 packages ok, 0 FAIL**. Five bites, each
+    red for its own reason and none via a build failure, all restored byte-exact.
 - [ ] **T4** — **C4, knowledge-service.** Unit fails outright; integration fails **building the
   Postgres image** (PG18 + pgvector + pgvectorscale + AGE) — separate faults, so separate verdicts.
 - [ ] **T5** — **C5, the four DB jobs.** Three round-trip jobs plus `create meta smoke DB`. If one

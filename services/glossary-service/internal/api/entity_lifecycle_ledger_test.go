@@ -20,6 +20,34 @@ func readSrc(t *testing.T, name string) string {
 	return string(b)
 }
 
+// funcBodyIn returns ONE function's body, from its declaration to the closing brace in
+// column 0. Gofmt guarantees that brace's position, so this needs no brace counting and
+// cannot be fooled by braces inside a composite literal or a raw SQL string.
+//
+// 🔴 It exists because the guard below used `src[i : i+3000]`. A fixed window measures the
+// FILE'S LAYOUT, not the function: it covers too little the day the function grows and too
+// much the day it shrinks, and in the shrinking direction it reads the NEXT function's code
+// as if it were this one's. Both directions fail quietly.
+func funcBodyIn(t *testing.T, file, decl string) string {
+	t.Helper()
+	// 🔴 CRLF-normalised, because this package is MIXED and a guard that is not agnostic
+	// covers whichever half it was written on. Measured: entity_handler.go is 1780/1780 CRLF
+	// while outbox_curation.go and lifecycle_ledger.go are pure LF, so a bare "\n}\n" search
+	// finds the function end in two files and fails outright in the third.
+	src := strings.ReplaceAll(readSrc(t, file), "\r\n", "\n")
+	i := strings.Index(src, decl)
+	if i < 0 {
+		t.Fatalf("%s no longer declares %q — has it moved? Re-point this guard rather than "+
+			"deleting it; that rename is exactly how this test came to read an empty wrapper", file, decl)
+	}
+	rest := src[i:]
+	end := strings.Index(rest, "\n}\n")
+	if end < 0 {
+		t.Fatalf("no column-0 closing brace after %q in %s", decl, file)
+	}
+	return rest[:end]
+}
+
 // 🔴 THESE TESTS LEAVE THEIR LEDGER ROWS BEHIND, ON PURPOSE, AND THE FIRST VERSION
 // LIED ABOUT IT.
 //
@@ -141,28 +169,74 @@ func TestSettingTheSameStatusAppendsNothing(t *testing.T) {
 	}
 }
 
-// The write and the transition are the same fact, so they must be one statement: a follow-up
+// The write and the transition are the same fact, so they must commit together: a follow-up
 // INSERT could fail and leave a transition with no record, which is the gap being closed.
-func TestTheLedgerWriteIsInTheSAMEStatementAsTheUpdate(t *testing.T) {
-	src := readSrc(t, "entity_handler.go")
-	i := strings.Index(src, "func (s *Server) bulkSetEntityStatusCore")
-	if i < 0 {
-		t.Fatal("the status chokepoint is gone — has it moved?")
+//
+// 🔴 THIS TEST WAS ANCHORED ON A FUNCTION THAT NO LONGER HOLDS THE SQL, and it failed with
+// a message that was actively misleading:
+//
+//	entity_lifecycle_ledger_test.go:154: the chokepoint no longer writes the ledger
+//
+// The chokepoint still writes the ledger. T28 moved the write and its
+// `glossary.entity_status_changed` emission together into `setEntityStatusCore`
+// (outbox_curation.go), leaving `bulkSetEntityStatusCore` as a 214-character alias that
+// "deliberately holds no SQL of its own". The old test read `src[i : i+3000]` from the WRAPPER,
+// found nothing, and reported a lost audit trail.
+//
+// Two lessons are pinned below rather than written down. First, the guarantee is now the same
+// TRANSACTION rather than the same STATEMENT — a stronger and more general form of the same
+// property, and `appendLifecycleLedgerTx` enforces it in its signature by taking a `pgx.Tx` and
+// no pool, so a caller cannot commit the ledger row independently. Second, the fixed-size
+// window is gone: a guard that reads a fixed number of characters from a function start is
+// measuring the file's layout, and it silently stops covering the code it names as soon as
+// anything above it grows.
+func TestTheLedgerWriteIsInTheSAMETransactionAsTheUpdate(t *testing.T) {
+	ledger := funcBodyIn(t, "lifecycle_ledger.go", "func appendLifecycleLedgerTx(")
+	// The structural guarantee, and the reason a same-statement check is no longer needed:
+	// the appender cannot reach a pool, so its row can only commit with its caller's work.
+	if !strings.Contains(ledger, "tx pgx.Tx") {
+		t.Error("appendLifecycleLedgerTx no longer takes a pgx.Tx — handed a pool it could " +
+			"commit independently, which is exactly the divergence the ledger exists to prevent")
 	}
-	body := src[i : i+3000]
-	if !strings.Contains(body, "entity_lifecycle_ledger") {
-		t.Fatal("the chokepoint no longer writes the ledger")
+	if strings.Contains(ledger, "pgxpool") {
+		t.Error("appendLifecycleLedgerTx reaches a pool")
 	}
-	if !strings.Contains(body, "WITH prior AS") {
-		t.Error("the ledger append is no longer part of the UPDATE's own statement; a separate " +
-			"write can fail and leave a transition unrecorded")
+	if !strings.Contains(ledger, "INSERT INTO entity_lifecycle_ledger") {
+		t.Fatal("appendLifecycleLedgerTx no longer inserts into entity_lifecycle_ledger")
 	}
-	if !strings.Contains(body, "FOR UPDATE") {
+
+	core := funcBodyIn(t, "outbox_curation.go", "func (s *Server) setEntityStatusCore(")
+	if !strings.Contains(core, "s.pool.Begin(ctx)") {
+		t.Fatal("setEntityStatusCore no longer opens a transaction")
+	}
+	// Every write in the chokepoint must ride that tx. A stray pool call here commits outside
+	// it and re-opens the gap from the other side.
+	for _, stray := range []string{"s.pool.Exec(", "s.pool.Query(", "s.pool.QueryRow("} {
+		if strings.Contains(core, stray) {
+			t.Errorf("setEntityStatusCore calls %s — that write commits outside the transaction", stray)
+		}
+	}
+	if !strings.Contains(core, "FOR UPDATE") {
 		t.Error("prior_status is read without FOR UPDATE — a concurrent writer can slip a " +
 			"different prior between the read and the write")
 	}
-	if !strings.Contains(body, "IS DISTINCT FROM") {
+	// The no-op skip. It used to be SQL (`IS DISTINCT FROM`) and is now the Go `continue`;
+	// same property, and TestSettingTheSameStatusAppendsNothing proves it against a real DB.
+	if !strings.Contains(core, "if r.status == status {") {
 		t.Error("every set is appended, including no-ops")
+	}
+
+	// The emission and the ledger row are one fact, on the caller's tx.
+	emit := funcBodyIn(t, "outbox_curation.go", "func emitEntityStatusChangedTx(")
+	if !strings.Contains(emit, "appendLifecycleLedgerTx(ctx, tx,") {
+		t.Error("the status emission no longer appends the ledger row on the same tx")
+	}
+
+	// The wrapper must stay empty. A status write that is separable from its event is a status
+	// write that will be separated again — which is the whole reason T28 collapsed them.
+	wrapper := funcBodyIn(t, "entity_handler.go", "func (s *Server) bulkSetEntityStatusCore(")
+	if strings.Contains(wrapper, "INSERT") || strings.Contains(wrapper, "UPDATE ") {
+		t.Error("bulkSetEntityStatusCore grew SQL of its own; it must delegate to setEntityStatusCore")
 	}
 }
 
