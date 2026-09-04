@@ -334,10 +334,15 @@ which is what it always was.
    will read RED on any checkout carrying stray files.
 2. **The 18 pre-existing `scripts/` failures** B1 recorded are untouched. One of them
    (`test_seed_assert`) surfaces in the sweep now only because this branch runs a sweep at all.
-3. **`_ISOLATED_NODES_CYPHER` is still unverified on AGE.** It carries `NOT EXISTS { MATCH … }`,
-   a Neo4j subquery form, and the note beside it in `graph_repos/graph_views.py` says so. The
-   AGE proof does not cover it. It is flagged, not fixed — and the same shape as the defect that
-   *was* found, so it deserves a wave of its own.
+3. ~~`_ISOLATED_NODES_CYPHER` is still unverified on AGE.~~ **CLOSED 2026-09-04, and the
+   suspicion was wrong.** AGE compiles `NOT EXISTS { MATCH … }`. Compiling was never the bar:
+   `search_facts_by_text` failed loudly with a syntax error, whereas a query that compiles and
+   returns the wrong rows fails quietly — and here it would fail in the worst direction, since
+   this read exists precisely so an edgeless node is not invisible. `test_wave_9_…` asserts the
+   behaviour on a live graph: the edgeless node comes back, connected ones do not, the scalar
+   count is right, and neither another user nor another project can see the rows. Deliberately
+   **not** added to `_PROVEN_ON_AGE` — that counts repo functions, and these are raw constants
+   no function wraps.
 4. **The other services were not rebuilt.** Only `knowledge-service` and `glossary-service` were
    rebuilt for the live proof, because they are what the merge changed. The chat-service half of
    this merge is verified by its suite (3911) and by the guard-is-called AST gate, not by a live

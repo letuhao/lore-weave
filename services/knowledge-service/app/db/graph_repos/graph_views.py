@@ -101,10 +101,19 @@ async def read_entity_edge_timeline(
 # handler deliberately does not (FE's own note: `isolated` DEFAULTS TO NONE SO THE REST
 # CALLER IS UNTOUCHED).
 #
-# ⚠ UNVERIFIED ON AGE. `NOT EXISTS { MATCH ... }` is a Neo4j subquery form and this
-# module's siblings already document AGE refusing constructs Neo4j accepts (facts.py:
-# "AGE refuses the second form"). It was written against Neo4j and has never run on AGE.
-# Measure it before trusting it — row V4.
+# ✅ PROVEN ON AGE 2026-09-04 — and the suspicion recorded here was WRONG, which is worth
+# more than quietly deleting it. `NOT EXISTS { MATCH ... }` is a Neo4j subquery form and this
+# module's siblings document AGE refusing constructs Neo4j accepts (facts.py: "AGE refuses the
+# second form"), so it was flagged unverified. Measured: AGE compiles it.
+#
+# Compiling was not the bar. `search_facts_by_text` was caught by a syntax error — the LOUD
+# failure. A query that compiles and returns the wrong rows is the quiet one, and here it would
+# be quiet in the worst direction: this read exists because an edgeless node is invisible to the
+# edge-projected graph read, so a predicate AGE evaluated differently would report `nodes: []`
+# on a project that holds entities — the exact answer the read was added to stop.
+# `test_wave_9_the_ISOLATED_NODE_read_runs_on_AGE_and_discriminates` asserts the behaviour:
+# the edgeless node comes back, connected ones do not, the scalar count is right, and neither
+# another user nor another project can see the rows.
 
 # 🔴 D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ. `_GRAPH_READ_CYPHER` projects nodes FROM EDGES,
 # so a node with no active relation cannot appear in a graph read at all — and `kg_add_nodes`

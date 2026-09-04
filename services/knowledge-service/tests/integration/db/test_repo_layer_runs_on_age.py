@@ -48,6 +48,12 @@ _WAVE_5 = 12   # enrichment, hierarchy summaries, the last janitors            (
 _WAVE_6 = 1    # set_entity_embedding — NOT a vector-procedure function        (T91)
 _WAVE_7 = 1    # max_event_order_in_band — the read that stops event_order colliding
 _WAVE_8 = 1    # search_facts_by_text — P7's read leg, arrived by merge written for Neo4j
+# Wave 9 is deliberately NOT in this sum. `_PROVEN_ON_AGE` counts repo FUNCTIONS, and
+# wave 9 proves two raw Cypher CONSTANTS (`_ISOLATED_NODES_CYPHER`, `_NODE_TOTAL_CYPHER`)
+# that no repo function wraps — the tools layer runs them itself. Adding a 1 here would
+# inflate a count of functions with something that is not one, which is the shape
+# `scan_age_proven`'s own docstring already corrects (it counts DISTINCT functions, not
+# invocations, because reading calls as functions overstated coverage by four).
 _PROVEN_ON_AGE = (_WAVE_1 + _WAVE_2 + _WAVE_3 + _WAVE_4 + _WAVE_5 + _WAVE_6
                   + _WAVE_7 + _WAVE_8)
 
@@ -841,3 +847,63 @@ async def test_wave_8_the_fact_TEXT_SEARCH_runs_on_AGE(age_session):
     assert await fx.search_facts_by_text(
         s, user_id=uid, project_id=None, query="storm") == [], (
         "a memory read spanned the user's projects")
+
+
+async def test_wave_9_the_ISOLATED_NODE_read_runs_on_AGE_and_discriminates(age_session):
+    """`_ISOLATED_NODES_CYPHER` / `_NODE_TOTAL_CYPHER` — the edgeless-node read, on AGE.
+
+    🔴 WHY IT NEEDED A WAVE OF ITS OWN. It arrived in the 2026-09-04 merge written against
+    Neo4j, and it carries `NOT EXISTS { MATCH ... }` — a subquery form its sibling `facts.py`
+    gave every reason to suspect (*"AGE refuses the second form"*). The merge plan flagged it
+    **unverified**, and the honest outcome is that the suspicion was WRONG: AGE compiles it.
+
+    THAT IS NOT THE BAR, AND THIS FILE'S OWN HISTORY SAYS WHY. `search_facts_by_text` was
+    caught by a syntax error, which is the *loud* failure. A query that compiles and returns
+    the wrong rows is the quiet one, and here it would be quiet in the worst direction: the
+    read exists because a node with no active relation is invisible to the edge-projected
+    graph read (D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ), so a predicate AGE evaluates
+    differently would report `nodes: []` on a project that holds entities — the very answer the
+    read was added to stop. Compiling proves nothing about that. Each arm below does.
+    """
+    s = age_session
+    from app.db.graph_repos import entities as en
+    from app.db.graph_repos import relations as rl
+    from app.db.graph_repos.graph_views import _ISOLATED_NODES_CYPHER, _NODE_TOTAL_CYPHER
+    from app.db.neo4j_helpers import run_read
+
+    uid, proj = f"u-{uuid.uuid4().hex[:8]}", f"p-{uuid.uuid4().hex[:8]}"
+
+    lone = await en.merge_entity(s, user_id=uid, project_id=proj, name="Lone",
+                                 kind="person", source_type="chapter")
+    kai = await en.merge_entity(s, user_id=uid, project_id=proj, name="Kai",
+                                kind="person", source_type="chapter")
+    rin = await en.merge_entity(s, user_id=uid, project_id=proj, name="Rin",
+                                kind="person", source_type="chapter")
+    await rl.create_relation(s, user_id=uid, subject_id=kai.id, predicate="knows",
+                             object_id=rin.id, confidence=0.8)
+
+    async def _isolated(user_id=uid, project_id=proj, limit=50):
+        res = await run_read(s, _ISOLATED_NODES_CYPHER, user_id=user_id,
+                             project_id=project_id, limit=limit)
+        return [r["node"] async for r in res]
+
+    names = {n.get("name") for n in await _isolated()}
+    assert "Lone" in names, (
+        f"the edgeless entity did not come back: {names!r}. If AGE evaluated "
+        f"`NOT EXISTS {{ MATCH (e)-[r:RELATES_TO]-() }}` differently the result is empty, which "
+        f"reads as 'this project has no entities' — the defect this read exists to remove")
+    assert {"Kai", "Rin"} & names == set(), (
+        f"a CONNECTED entity was returned as isolated: {names!r}. The predicate is not "
+        f"excluding active edges, so every node would be reported twice over")
+
+    # The TOTAL is a separate read on purpose (K25: a capped slice must never read as the whole
+    # set), and `count(e)` is a scalar — the shape that made `_records` raise once already.
+    res = await run_read(s, _NODE_TOTAL_CYPHER, user_id=uid, project_id=proj)
+    total = [r async for r in res][0]["total"]
+    assert total == 3, f"the partition holds 3 entities, the count said {total!r}"
+
+    # Tenancy — the half a query ignoring `user_id` would still satisfy above.
+    assert await _isolated(user_id=f"u-{uuid.uuid4().hex[:8]}") == [], (
+        "another user could read this project's isolated nodes")
+    assert await _isolated(project_id=f"p-{uuid.uuid4().hex[:8]}") == [], (
+        "another project's isolated nodes leaked into this one")
