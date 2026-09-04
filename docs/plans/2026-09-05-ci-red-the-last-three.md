@@ -66,11 +66,32 @@ that continues.
   - Evidence: `go -C services/glossary-service test ./internal/api/... -count=1` **exit 0** and
     `go -C services/book-service test ./internal/api/... -count=1` **exit 0** — CI's exact
     commands, each against a fresh throwaway database.
-- [ ] **R2** — **`gates` → `dp-clippy`.** Five of six self-test legs pass; `R-6` reported
-  `MISCOUNTED: 0 finding(s), expected 3` while the same leg passes locally on the same pinned
-  nightly. The last commit taught that branch to separate *the lint found nothing* from *the
-  fixture never built* and to print the compiler output, so **read the new CI run before touching
-  anything** — the answer should now be in the log rather than inferred.
+- [~] **R2** — **the self-test is FIXED and verified under CI's own environment. The step behind it
+  is a real architectural finding and becomes D7.**
+  - 🔴 **The whole difference was ANSI colour.** Every verdict in `run-lint.sh` is a `grep`, and
+    the R-6 leg *counts* lines matching `^error: \`.`. The runner exports
+    `CARGO_TERM_COLOR: always`, so in CI those lines begin with an escape sequence and the anchor
+    matched nothing. Measured on this tree, same pinned nightly, one variable changed:
+    **without colour → 3** (correct), **`CARGO_TERM_COLOR=always` → 0** (what CI counted). Forced
+    to `never` inside `lint()` — one place, and it makes every leg deterministic instead of
+    dependent on whoever set the environment. Self-test now exits **0 under both** environments.
+  - ⚠️ **And my own diagnostic from the previous cycle was wrong in an instructive way.** It keyed
+    the build-failure branch on `could not compile` — which is *exactly what a firing lint
+    produces*, because dylint reports each finding as an `error:` and cargo then says "due to 3
+    previous errors". So the branch written to tell a dead fixture from a weak rule announced the
+    rule's **success** as a build failure. It now keys on `error[E####]`, a code only rustc emits.
+  - 🔴 **D7 — the step after it.** With the self-test passing, `dp-clippy-gate.py` finally runs,
+    and the ratchet refuses:
+
+        WORSE: `commit-service` went 3 -> 4 DP-R3 finding(s).
+        WORSE: `world-service`  went 5 -> 12 DP-R3 finding(s).
+
+    All 12 are `sqlx::PgPool` held directly in a non-SDK crate. **7 of those 12 files do not exist
+    at the merge-base** — exactly the 5→12 increase — so this branch is introducing them. This
+    session touched **zero** files in either service. `world-service` already depends on the dp SDK
+    (`dp::RealityId`) while constructing and holding its own pool, which is the precise question
+    DP-R3 asks, and `server/db.rs` is pool construction carrying a connection guard. That is an
+    architecture change, not CI triage.
 - [ ] **R3** — **`lint-foundation` → `agentruntime-falsification`: CI says 13, the harness's own
   run says 2.**
   - 🔴 **A CORRECTION I AM CARRYING FORWARD RATHER THAN QUIETLY DROPPING.** The previous plan
@@ -108,6 +129,18 @@ that continues.
 - [ ] **D4** — **STOP.** One cloud-model run; everything is proven on one local model. Costs money,
   needs an explicit yes and a stated call count. Carried unanswered.
 - [ ] **D5** — **STOP.** Merge with `dep-vuln` advisory-red, or block on it?
+- [ ] **D7** — **STOP. `world-service` and DP-R3: adopt, declare, or record.** The branch adds 7
+  new files holding a raw `sqlx::PgPool` in a non-SDK crate, taking the ratchet 5 → 12 (plus
+  3 → 4 in `commit-service`). The ratchet is doing its job; the question is which answer is right.
+  **(a) Adopt** — route world-service's data access through the dp SDK. The correct answer by
+  DP-R3's own wording, and a real refactor of a service's data layer across 12 files, with its own
+  test cycle. **(b) Declare** — give world-service `[package.metadata.dp] dp-crate = true`, the
+  marker that exempts a crate legitimately holding a client. Cheap, and honest *if* world-service
+  is meant to be part of the data plane — which is exactly the design question, not a formality.
+  **(c) Record** — raise the baseline to 12/4 with the reason written in, so the debt is visible
+  and can only shrink. ⚠️ (c) weakens a ratchet without doing the work it exists to force, which
+  this repo's own convention warns against; it is listed because a permanently-red check on an
+  otherwise-ready merge is its own cost.
 - [ ] **D6** — **STOP. The first release's security posture.** Real advisories in all four
   ecosystems, none blocking: `rsa` (Marvin Attack, key recovery via timing — **no patched
   release**), `google.golang.org/grpc` (GO-2026-6061), `h2`, `quinn-proto`, `crossbeam-epoch`, 21

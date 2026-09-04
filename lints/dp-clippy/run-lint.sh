@@ -111,7 +111,23 @@ assert_loaded() {
 # Any CI leg that runs this without --all-features is reporting coverage it does
 # not have.
 lint() {
-    ( cd "$1" && DYLINT_LIBRARY_PATH="$HERE/libs" cargo dylint --all -- --all-features )
+    # 🔴 `CARGO_TERM_COLOR=never`, AND IT IS THE WHOLE BUG THIS SCRIPT HAD.
+    #
+    # Every verdict below is a `grep` over this output, and the R-6 leg COUNTS lines matching
+    # `^error: \`.`. The GitHub runner exports `CARGO_TERM_COLOR: always`, so in CI those lines
+    # actually begin with an escape sequence — `\033[0m\033[1m\033[31merror` — and the anchor
+    # matched NOTHING. Measured on this tree, same pinned nightly, only the variable changed:
+    #
+    #     without colour                 3   <- correct
+    #     CARGO_TERM_COLOR=always        0   <- what CI counted
+    #
+    # It reported `R-6 MISCOUNTED: 0 finding(s), expected 3` — a defect in the rule that the
+    # evidence never supported. The rule was firing all three times.
+    #
+    # Forced here rather than stripped at each grep: one place, and it makes the `if lint ...`
+    # legs above deterministic instead of dependent on whoever set the environment.
+    ( cd "$1" && CARGO_TERM_COLOR=never DYLINT_LIBRARY_PATH="$HERE/libs" \
+        cargo dylint --all -- --all-features )
 }
 
 if [ "${1:-}" = "--self-test" ]; then
@@ -181,11 +197,18 @@ if [ "${1:-}" = "--self-test" ]; then
         n=$(printf '%s\n' "$out" | grep -c "^error: \`\." || true)
         if [ "$n" = "3" ]; then
             echo "OK  R-6 fires on exactly the 3 discards, not on the 2 legitimate uses"
-        elif [ "$n" = "0" ] && printf '%s\n' "$out" | grep -qE "^error(\[E[0-9]+\])?: |could not compile|error: could not"; then
+        elif [ "$n" = "0" ] && printf '%s\n' "$out" | grep -qE "^error\[E[0-9]+\]"; then
+            # 🔴 A RUSTC ERROR CODE, not "could not compile". This branch first keyed on
+            # `could not compile`, and that is exactly what a FIRING lint produces: dylint
+            # reports each finding as an `error:` and cargo then says "could not compile
+            # `swallower` (lib) due to 3 previous errors". So the branch written to tell a dead
+            # fixture from a weak rule confidently announced the rule's SUCCESS as a build
+            # failure — and it did, in CI, before the colour fix above. Only rustc's own
+            # diagnostics carry `error[E####]`; a lint's never do.
             echo "R-6 DID NOT RUN: fixtures/swallower failed to BUILD, so the lint never saw it."
             echo "  A build failure is not a lint finding, and counting it as 0 findings"
             echo "  reports a defect in the rule that the evidence does not support."
-            printf '%s\n' "$out" | grep -E "^error|could not compile" | head -5 | sed 's/^/    /'
+            printf '%s\n' "$out" | grep -E "^error\[E[0-9]+\]|^\s+-->" | head -8 | sed 's/^/    /'
             fail=1
         else
             echo "R-6 MISCOUNTED: $n finding(s), expected 3 (an unrelated Result or a"
