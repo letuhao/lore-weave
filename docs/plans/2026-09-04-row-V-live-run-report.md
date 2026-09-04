@@ -322,3 +322,67 @@ every legitimate row in this window reported usage; the empty one did not.
 **Not fixed here, and deliberately.** Re-classifying a provider status changes what every metric and
 ratchet over `status` counts, and the honest bar for that is a measurement across the store rather
 than the one instance in front of me. Filed as **V5** with the discriminator above.
+
+
+---
+
+## 8. V5 measured — and the measurement REFUTED the fix
+
+Owner chose *"measure the store first"*, and the store said don't do it. Recorded in full because
+the proposed change would have looked reasonable right up to the moment it shipped.
+
+### My discriminator was wrong twice before it was right
+
+**First form — `output_chars:0 AND usage:false`.** Across all of `usage_logs`, 14,823 `success`
+rows match. Stratifying kills it immediately: **14,347 of them are `purpose='embed'`** — embeddings
+legitimately report no token usage. Pooling them with chat was the same defect this repo already has
+a name for.
+
+**Second form — both token counts zero, restricted to chat.** Also wrong, and the run's own
+instance is what refuted it. The 05:56 empty turn is:
+
+```
+05:56:45 | success | chat | input_tokens=18221 | output_tokens=0
+```
+
+`input_tokens` is **18,221**, not zero. **My discriminator would not have matched the one case I
+built it from.**
+
+**Third form — `purpose='chat' AND output_tokens=0`.** 177 `success` rows since 2026-08-26, 1.68% of
+chat successes. Bounded, plausible, and still wrong.
+
+### The control that killed it
+
+The chat side, same window, same condition:
+
+| | rows |
+|---|---|
+| `usage_logs`: chat, `output_tokens=0`, success | **177** |
+| `chat_messages`: assistant, `output_tokens=0` | **1** |
+
+**A 177× mismatch, and the cause is that the two tables count different things.** `usage_logs` has a
+row per **LLM call** — every pass of a multi-pass turn, plus every non-chat-service consumer that
+uses `purpose='chat'` (subagents, enrichment, glossary action plans), none of which produce an
+assistant message at all. `chat_messages` has a row per **turn**.
+
+So re-classifying that column would have flipped **177 rows to catch 1**, and most of the 177 are
+not turns and were never blank bubbles. **V5 is not the right fix and is closed refuted.**
+
+### What the defect actually costs, measured properly
+
+A true blank bubble is an assistant row with no content, no tool calls and no card:
+
+| month | blank | assistant turns | rate |
+|---|---|---|---|
+| 2026-09 (4 days) | 1 | 625 | 0.16% |
+| 2026-08 | 7 | 6,640 | **0.11%** |
+| 2026-07 | 1 | 2,263 | 0.04% |
+| 2026-06 | 14 | 192 | 7.3% (early, low traffic) |
+
+**About 1 turn in 1,000 on current builds.** And the September one is already recorded
+`outcome='failed'` — the `D-SILENT-TURN` guard works; the August ones predate it and carry a NULL
+outcome, which is the guard's own before/after showing up in the data.
+
+**The only thing still missing is that the author sees nothing** — which is D2, which is the owner's
+declined generic-failure-line, and which is now known to cost ~0.1% of turns. That number is the
+decision input that did not exist before.
