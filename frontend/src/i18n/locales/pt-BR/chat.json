@@ -214,6 +214,7 @@
     "feedback_error": "Não foi possível salvar o feedback",
     "incomplete_error": "Erro — resposta incompleta",
     "incomplete_interrupted": "Interrompido — resposta incompleta",
+    "empty_turn": "Nenhuma resposta foi gerada — nada foi alterado. Tente novamente.",
     "insert_into_chapter": "Inserir no capítulo"
   },
   "tools": {

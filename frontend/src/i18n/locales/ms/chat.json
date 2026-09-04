@@ -214,6 +214,7 @@
     "feedback_error": "Tidak dapat menyimpan maklum balas",
     "incomplete_error": "Ralat — respons tidak lengkap",
     "incomplete_interrupted": "Terganggu — respons tidak lengkap",
+    "empty_turn": "Tiada balasan dihasilkan — tiada apa-apa yang berubah. Cuba lagi.",
     "insert_into_chapter": "Masukkan ke dalam bab"
   },
   "tools": {

@@ -214,6 +214,7 @@
     "feedback_error": "Feedback konnte nicht gespeichert werden",
     "incomplete_error": "Fehler – Antwort unvollständig",
     "incomplete_interrupted": "Unterbrochen – Antwort unvollständig",
+    "empty_turn": "Es wurde keine Antwort erzeugt – nichts wurde geändert. Bitte erneut versuchen.",
     "insert_into_chapter": "In Kapitel einfügen"
   },
   "tools": {

@@ -214,6 +214,7 @@
     "feedback_error": "تعذر حفظ الملاحظات",
     "incomplete_error": "خطأ — الاستجابة غير مكتملة",
     "incomplete_interrupted": "انقطع الاتصال — الاستجابة غير مكتملة",
+    "empty_turn": "لم يتم إنشاء أي رد — لم يتغير أي شيء. حاول مرة أخرى.",
     "insert_into_chapter": "إدراج في الفصل"
   },
   "tools": {

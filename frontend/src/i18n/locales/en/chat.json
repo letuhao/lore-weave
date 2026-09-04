@@ -214,6 +214,7 @@
     "feedback_error": "Couldn't save feedback",
     "incomplete_error": "Error — response incomplete",
     "incomplete_interrupted": "Interrupted — response incomplete",
+    "empty_turn": "No reply was produced — nothing was changed. Try again.",
     "insert_into_chapter": "Insert into chapter"
   },
   "tools": {

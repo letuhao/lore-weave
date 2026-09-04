@@ -214,6 +214,7 @@
     "feedback_error": "피드백을 저장할 수 없습니다",
     "incomplete_error": "오류 — 응답이 불완전합니다",
     "incomplete_interrupted": "중단됨 — 응답이 불완전합니다",
+    "empty_turn": "응답이 생성되지 않았습니다 — 변경된 내용이 없습니다. 다시 시도하세요.",
     "insert_into_chapter": "장(章)에 삽입"
   },
   "tools": {

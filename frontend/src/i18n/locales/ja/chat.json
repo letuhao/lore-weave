@@ -214,6 +214,7 @@
     "feedback_error": "フィードバックを保存できませんでした",
     "incomplete_error": "エラー — レスポンスが不完全です",
     "incomplete_interrupted": "中断されました — レスポンスが不完全です",
+    "empty_turn": "応答が生成されませんでした — 変更はありません。もう一度お試しください。",
     "insert_into_chapter": "章に挿入"
   },
   "tools": {

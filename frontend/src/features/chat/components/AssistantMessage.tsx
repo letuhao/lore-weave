@@ -237,6 +237,47 @@ export function AssistantMessage({
         </div>
       )}
 
+      {/* D2 (owner, 2026-09-04) — THE BLANK BUBBLE. A turn that produced no reply at all
+          rendered as nothing: no text, no badge, no error. The author sees an empty bubble
+          and retries by instinct.
+
+          🔴 MEASURED over the live store: assistant rows with no content, no tool calls and
+          no card run at ~0.11% of turns — 7 of 6,640 in August, 1 of 625 in September. Rare,
+          but the author is told nothing at all when it happens.
+
+          ⚠️ WHY THIS IS CHROME AND NOT MESSAGE TEXT, which is the whole reason it can exist.
+          The owner DECLINED a generic failure line in the assistant's own words (recorded in
+          `_last_tool_error_for_author`: "a blank turn cannot be told apart from a crash, a
+          refusal or a slow turn"). That decision stands and this does not touch it — nothing
+          is written into `content`, no runtime-authored prose enters the transcript, and the
+          stored message is unchanged. This is the same badge affordance the interrupted /
+          errored turns already use, extended to the case that renders as literally nothing.
+
+          The backend already records these correctly (`outcome='failed'`, via D-SILENT-TURN);
+          `is_error`/`error_detail` are NOT used, because nothing on this surface reads them
+          and inventing a consumer for them would be a second mechanism to keep in sync.
+
+          NARROW ON PURPOSE. `finishReason` interrupted/error is the badge above and must not
+          be double-badged. A turn that called a tool said something by doing; a turn holding
+          a confirm card has the CARD as its output and is legitimately text-free — both are
+          excluded, or this fires on the 92 measured card-suspends that are working correctly. */}
+      {!isStreaming
+        && !content.trim()
+        && !reasoning
+        && finishReason !== 'interrupted'
+        && finishReason !== 'error'
+        && !(toolCalls && toolCalls.length > 0) && (
+        <div
+          data-testid="message-empty-turn-badge"
+          className="mt-1 inline-flex items-center gap-1.5 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-400/90"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80" />
+          {t('message.empty_turn', {
+            defaultValue: 'No reply was produced — nothing was changed. Try again.',
+          })}
+        </div>
+      )}
+
       {/* K21-C (D2): memory tool calls used in this reply. Renders
           nothing when toolCalls is empty/null. ARCH-1 C6: a pending
           propose_edit (frontend write-back tool) renders as an interactive
