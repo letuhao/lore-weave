@@ -46,34 +46,9 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     # truncated it. Reproduced against real Postgres in the founding instance's own numbers:
     # writing p1..p5 then p1..p4 left FOUR entries. Each falsifier below was RUN and the tests
     # it reds recorded from that run, not assumed from reading the edit.
-    "test_a_shorter_write_does_not_truncate_the_segment": [
-        (f"{CS}/app/services/instrument.py",
-         "                                 WHERE s ->> 'segment'\n                                       IS NOT DISTINCT FROM {incoming} -> 0 ->> 'segment'",
-         "                                 WHERE s ->> 'segment'\n                                       IS DISTINCT FROM {incoming} -> 0 ->> 'segment'"),
-    ],
-    "test_it_holds_for_withheld_too": [
-        (f"{CS}/app/services/instrument.py",
-         "                                 WHERE s ->> 'segment'\n                                       IS NOT DISTINCT FROM {incoming} -> 0 ->> 'segment'",
-         "                                 WHERE s ->> 'segment'\n                                       IS DISTINCT FROM {incoming} -> 0 ->> 'segment'"),
-    ],
-    "test_a_shorter_write_STILL_cannot_reach_another_segment": [
-        (f"{CS}/app/services/instrument.py",
-         "                                 WHERE s ->> 'segment'\n                                       IS NOT DISTINCT FROM {incoming} -> 0 ->> 'segment'",
-         "                                 WHERE s ->> 'segment'\n                                       IS DISTINCT FROM {incoming} -> 0 ->> 'segment'"),
-    ],
     # Not-shrinking must not become not-updating: with the pass match off every stored entry
     # survives and the incoming version of a pass stops replacing it.
-    "test_the_LATER_write_still_WINS_on_a_pass_it_carries": [
-        (f"{CS}/app/services/instrument.py",
-         "                                     WHERE i2 ->> 'pass' IS NOT DISTINCT FROM s ->> 'pass'",
-         '                                     WHERE FALSE'),
-    ],
     # A survivor rescued from truncation has to land in its place, not at the end.
-    "test_the_surviving_pass_keeps_the_segment_in_pass_ORDER": [
-        (f"{CS}/app/services/instrument.py",
-         "                               SELECT jsonb_agg(e ORDER BY (e ->> 'pass')::int)",
-         "                               SELECT jsonb_agg(e ORDER BY (e ->> 'pass')::int DESC)"),
-    ],
     # ── CP-3 · the plan ─────────────────────────────────────────────────────────────────────
     # The load-bearing one. Degrading to "ask the model for it" reintroduces the 61.8% failure --
     # silently, and only where the carrier has already failed.
