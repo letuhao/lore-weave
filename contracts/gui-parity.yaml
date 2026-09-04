@@ -164,159 +164,237 @@ tools:
   - tool: composition_arc_apply
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: arc-apply-run
   - tool: composition_arc_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: arc-timeline-editor
   - tool: composition_arc_extract_template
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: arc-extract-submit
   - tool: composition_arc_import_analyze
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: deconstruct-run
   - tool: composition_arc_template_edit
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-editor-save
   - tool: composition_authoring_run_manage
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: agent-mode-new-run-button
   - tool: composition_authoring_run_review
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: agent-mode-accept-unit
   - tool: composition_build_cast_and_graph
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: cast-new-entity
   - tool: composition_canon_rule_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: composition-canon-submit
   - tool: composition_conformance_run
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: arc-conf-run-deep-btn
   - tool: composition_create_derivative
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: divergence-submit
   - tool: composition_create_work
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: composition-setup-button
   - tool: composition_decompile_arcs
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: decompile-confirm
   - tool: composition_derivative_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: divergence-canon-save
   - tool: composition_entity_override_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: divergence-override-add-save
   - tool: composition_error_block_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: mark-error-save
   - tool: composition_generate
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: compose-generate
   - tool: composition_library_translate
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-translate-btn
   - tool: composition_motif_adopt
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-adopt-mint
   - tool: composition_motif_bind_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-suggest-bind
   - tool: composition_motif_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-editor-save
   - tool: composition_motif_link_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-graph-add-submit
   - tool: composition_motif_mine
     provider: composition
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-mine-run-btn
   - tool: composition_outline_node_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: composition-add-scene
   - tool: composition_reference_update
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: references-add-submit
   - tool: composition_scene_link_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: scene-links-add
   - tool: composition_structure_template_edit
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: structtpl-save
   - tool: composition_switch_active_work
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: divergence-switch-*
   - tool: plan_apply_revision
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-repair-apply
   - tool: plan_bootstrap_apply
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: bootstrap-apply-btn
   - tool: plan_bootstrap_propose
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: bootstrap-propose-btn
   - tool: plan_compile
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-compile-btn
   - tool: plan_handoff_autofix
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-repair-autofix
   - tool: plan_interpret_feedback
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-repair-explain
   - tool: plan_keep_material
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: edit-save
   - tool: plan_link
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-passes-relink
   - tool: plan_propose_spec
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-propose-btn
   - tool: plan_review_checkpoint
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: review-approve
   - tool: plan_run_pass
     provider: composition
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: pass-run-confirm
   - tool: glossary_adopt_standards
     provider: glossary
     tier: W
