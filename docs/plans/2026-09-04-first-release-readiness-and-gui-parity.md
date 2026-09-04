@@ -110,7 +110,11 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
   **340 → 35** false positives, and the P2 bite re-run to prove it still bites. Original row: ranked by how often the agent actually fails at that
   tool. **Not scoped until P1 lands** — the list does not exist yet, and inventing rows for it now
   would be a plan built on a guess.
-- [~] **R4** — **concurrency DONE and clean**; the slow-provider half is **not** done and the row
+- [x] **R4** — **DONE, both halves.** Concurrency clean (2 sessions, no cross-contamination, 0
+  errors). The slow-provider half ran against a socket that accepts and never answers — and
+  **the context preflight rejected the turn before the provider was reached**, with a precise
+  error. That surfaced two new findings, **R6** and **R7** below. Cleanup verified by SELECT
+  either side; both real accounts untouched. Original row: the slow-provider half is **not** done and the row
   stays open for it. Two overlapping sessions completed with **no cross-contamination** (each
   returned its own token), 4 provider streams all `success` at 8.8–13.9 s, **0 errors**. A
   near-miss caught: tab B's Send looked cross-session-locked and was simply empty-input
@@ -130,6 +134,12 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
   pre-existing and untouched. ⚠️ **Merging to `main` is deliberately NOT done here** — that is
   an outward-facing call for the owner, not housekeeping. Original row: this all lives on `refactor/kal-and-mcp-runtime`, unmerged; PR #219's
   body is stale; 5 pre-existing FE reds in `DefaultModelsCard.test.tsx` and 18 in `scripts/`.
+- [ ] **R6** — an **orphaned turn** (no assistant row, `outcome='failed'` on the USER message)
+  shows the author nothing at all. D2's badge renders on an assistant message and there is
+  none, so it cannot reach this. Same experience, different mechanism. Reproduction in §R4.
+- [ ] **R7** — a model whose context window is under **~11K cannot chat at all** (the tool
+  surface alone is ~9.7K), and nothing warns at registration. The user finds out by watching
+  a message vanish — i.e. via R6.
 - [ ] **D3** — **STOP CONDITION.** `platform_models` is **empty (0 rows)**. The same fact that made
   every run this month provably $0 means **a brand-new user with no API key has no model at all**.
   What does a first-release user run on — a platform-provided model, BYOK-required onboarding, or a
@@ -297,6 +307,50 @@ today, which is real but not a substitute:
 Both rendered as a blank bubble at the time; both would now show D2's badge. **A run against an
 artificially latent provider remains open**, and it is the one shape most likely to behave badly
 in front of a real user on a slow network.
+
+### R4's second half — and the stall was never reached
+
+Stood up a provider that **accepts the socket and never answers** (the shape that hurts; a refused
+connection fails fast and was already covered), registered it on the **isolated new-user account**
+so the shared test account's defaults were never touched, and sent a turn.
+
+**The preflight rejected it before the provider was ever called**, with a precise, actionable error:
+
+```
+LLMInvalidRequest: the assembled prompt overflows this model's context window:
+input=9732 + safety=1228 = 10960 > context_length=8192 — reduce injected context
+(tools/grounding/history) or use a larger-window model
+```
+
+Excellent backend behaviour: nothing was spent, and the message says exactly what is wrong and what
+to do. **Two findings fall out of it.**
+
+### 🔴 R6 — an orphaned turn shows the author NOTHING, and D2's badge cannot reach it
+
+The author's own message sits alone at 7:17:21 PM with **no assistant bubble, no badge, no error**,
+while the backend holds the diagnosis above. `outcome='failed'` is stamped on the **user** message
+by `CP-0.4 orphaned turn: no assistant row`.
+
+**D2's badge does not and cannot cover this**, and the distinction is exact:
+
+| | assistant row | D2's badge |
+|---|---|---|
+| V3 (fixed) | exists, empty | renders on it |
+| **this** | **does not exist** | **nothing to render on** |
+
+Same author experience, different mechanism. Filed as **R6** with its reproduction.
+
+### 🔴 R7 — an 8K model cannot chat at all, and nothing says so at registration
+
+The tool surface alone is **~9.7K tokens** (the panel read `10,594 tok`). Any model registered with
+a context window under roughly 11K is unusable for chat, and the Add Provider / model form accepts
+one without a word. The user learns it only by sending a message and watching it vanish (R6).
+
+Filed as **R7**. ⚠️ Both are *findings from R4*, not queued rows — recorded with evidence rather
+than built, because the queue's remaining items are the two owner decisions.
+
+**Cleanup verified:** provider archived, model unusable, throwaway account back to its R1 state,
+**both real accounts' defaults untouched** (`SELECT` before and after).
 
 ---
 
