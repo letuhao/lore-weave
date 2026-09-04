@@ -9,7 +9,15 @@
     "description": "Crea tu primer mundo para empezar a escribir el lore; no hace falta tener capítulos."
   },
   "card": {
-    "books": "{{count}} libros"
+    "books": "{{count}} libros",
+    "delete": "Eliminar mundo",
+    "delete_blocked": "Saca primero sus {{count}} libro(s) de este mundo",
+    "delete_title": "¿Eliminar este mundo?",
+    "delete_description": "Eliminar \"{{name}}\" no se puede deshacer. Su lore, mapas y cronología se van con él.",
+    "delete_hint": "Un mundo con libros no se puede eliminar: sácalos primero.",
+    "delete_cancel": "Cancelar",
+    "delete_confirm": "Eliminar definitivamente",
+    "delete_done": "Mundo eliminado"
   },
   "create": {
     "cta": "Nuevo mundo",

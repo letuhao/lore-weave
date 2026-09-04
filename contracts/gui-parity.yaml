@@ -90,7 +90,9 @@ tools:
   - tool: world_delete
     provider: book
     tier: A
-    verdict: NONE
+    verdict: UI
+    route: /worlds
+    testid: world-delete-confirm
   - tool: world_map_add_marker
     provider: book
     tier: A

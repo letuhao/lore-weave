@@ -73,6 +73,17 @@ export const worldsApi = {
     });
   },
 
+  /** P3 — delete a world (C20 `DELETE /v1/worlds/{id}`).
+   *
+   * 🔴 THE CALLER MUST CARRY D-S07's GUARD. `books.world_id` is ON DELETE SET NULL, so this
+   * route SILENTLY ORPHANS member books — which is exactly why `world_delete` (the MCP tool)
+   * refuses while the world still holds any. Sealed as D-S07-world-delete-guard. The REST route
+   * has no such guard, so a UI that calls it without checking `book_count` re-opens the footgun
+   * the tool was hardened against: replacing a surface does not inherit its guarantees. */
+  deleteWorld(token: string, worldId: string): Promise<void> {
+    return apiJson<void>(`${WORLDS}/${encodeURIComponent(worldId)}`, { method: 'DELETE', token });
+  },
+
   /** W5 (G1) — attach an existing book to a world (C20 `POST /v1/worlds/{id}/
    *  books` — sets `books.world_id`). Requires world ownership AND edit grant on
    *  the book (BE-enforced). Idempotent: re-adding a book already in the world

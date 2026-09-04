@@ -54,7 +54,9 @@ FE_SRC = os.path.join("frontend", "src")
 # ── RATCHETS ────────────────────────────────────────────────────────────────────────────────
 # Set from P1's census (2026-09-04). Both may only DECREASE, and a change moves in the same
 # commit as the work that moved it, with the reason written in.
-MAX_NONE = 2          # book_chapter_bulk_create, world_delete
+MAX_NONE = 1          # book_chapter_bulk_create. world_delete closed 2026-09-04 (P3): it was
+                      # the worst gap the census found — 92 agent calls, 92 failures, and no
+                      # manual path at all — and now has a guarded control on /worlds.
 MAX_UNTRIAGED = 95    # 8 providers not yet adjudicated — P3's scope
 
 VERDICTS = {"UI", "UI_NO_TESTID", "AGENT_ONLY", "NONE", "UNTRIAGED"}

@@ -9,7 +9,15 @@
     "description": "첫 번째 월드를 만들어 세계관 설정을 시작하세요. 챕터는 필요하지 않습니다."
   },
   "card": {
-    "books": "{{count}} 권의 도서"
+    "books": "{{count}} 권의 도서",
+    "delete": "월드 삭제",
+    "delete_blocked": "먼저 이 월드에서 책 {{count}}권을 옮기세요",
+    "delete_title": "이 월드를 삭제할까요?",
+    "delete_description": "\"{{name}}\" 삭제는 되돌릴 수 없습니다. 설정, 지도, 연표도 함께 사라집니다.",
+    "delete_hint": "책이 있는 월드는 삭제할 수 없습니다. 먼저 옮기세요.",
+    "delete_cancel": "취소",
+    "delete_confirm": "영구 삭제",
+    "delete_done": "월드를 삭제했습니다"
   },
   "create": {
     "cta": "새 월드",

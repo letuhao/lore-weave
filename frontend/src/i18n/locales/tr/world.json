@@ -9,7 +9,15 @@
     "description": "Kurgunuzu yazmaya başlamak için ilk dünyanızı oluşturun — bölümlere gerek yok."
   },
   "card": {
-    "books": "{{count}} kitap"
+    "books": "{{count}} kitap",
+    "delete": "Dünyayı sil",
+    "delete_blocked": "Önce {{count}} kitabı bu dünyadan çıkarın",
+    "delete_title": "Bu dünya silinsin mi?",
+    "delete_description": "\"{{name}}\" silinirse geri alınamaz. Lore, haritalar ve zaman çizelgesi de gider.",
+    "delete_hint": "Kitap içeren bir dünya silinemez — önce kitapları çıkarın.",
+    "delete_cancel": "İptal",
+    "delete_confirm": "Kalıcı olarak sil",
+    "delete_done": "Dünya silindi"
   },
   "create": {
     "cta": "Yeni dünya",

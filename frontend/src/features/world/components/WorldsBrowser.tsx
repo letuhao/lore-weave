@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Globe2, Plus } from 'lucide-react';
+import { Globe2, Plus, Trash2 } from 'lucide-react';
 import { FormDialog, EmptyState } from '@/components/shared';
 import { useWorlds } from '../hooks/useWorlds';
+import type { World } from '../types';
 
 // C21 — Worlds HOME browser. Lists the caller's worlds + a create-world flow.
 // On create, lands the user in the world workspace (no manuscript). View-only
@@ -12,9 +13,11 @@ import { useWorlds } from '../hooks/useWorlds';
 export function WorldsBrowser() {
   const { t } = useTranslation('world');
   const navigate = useNavigate();
-  const { items, isLoading, createWorld, isCreating } = useWorlds();
+  const { items, isLoading, createWorld, isCreating, deleteWorld, isDeleting } = useWorlds();
 
   const [open, setOpen] = useState(false);
+  // P3 — the world pending deletion. Irreversible, so it is always a two-step.
+  const [pendingDelete, setPendingDelete] = useState<World | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
@@ -67,7 +70,27 @@ export function WorldsBrowser() {
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="worlds-list">
           {items.map((w) => (
-            <li key={w.world_id}>
+            <li key={w.world_id} className="relative">
+              {/* P3 — the manual path for `world_delete`, which the agent called 92 times and
+                  got right ZERO times (always missing world_id), while the UI offered no way to
+                  do it by hand at all. Outside the card button: nesting a button inside a button
+                  is invalid HTML and the click would navigate instead of deleting. */}
+              <button
+                type="button"
+                onClick={() => setPendingDelete(w)}
+                disabled={w.book_count > 0}
+                title={w.book_count > 0
+                  ? t('card.delete_blocked', {
+                      defaultValue: 'Move its {{count}} book(s) out of this world first',
+                      count: w.book_count,
+                    })
+                  : t('card.delete', { defaultValue: 'Delete world' })}
+                aria-label={t('card.delete', { defaultValue: 'Delete world' })}
+                data-testid={`world-delete-${w.world_id}`}
+                className="absolute right-2 top-2 z-10 rounded p-1.5 text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
               <button
                 type="button"
                 onClick={() => navigate(`/worlds/${w.world_id}`)}
@@ -89,6 +112,54 @@ export function WorldsBrowser() {
           ))}
         </ul>
       )}
+
+      {/* P3 — irreversible, so it is confirmed by name rather than a bare OK. The guard is
+          enforced in useWorlds' mutation as well: a disabled button is a hint, not a guarantee. */}
+      <FormDialog
+        open={!!pendingDelete}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+        title={t('card.delete_title', { defaultValue: 'Delete this world?' })}
+        description={t('card.delete_description', {
+          defaultValue:
+            'Deleting "{{name}}" cannot be undone. Its lore, maps and timeline go with it.',
+          name: pendingDelete?.name ?? '',
+        })}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setPendingDelete(null)}
+              className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary"
+            >
+              {t('card.delete_cancel', { defaultValue: 'Cancel' })}
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              data-testid="world-delete-confirm"
+              onClick={async () => {
+                if (!pendingDelete) return;
+                try {
+                  await deleteWorld(pendingDelete);
+                  toast.success(t('card.delete_done', { defaultValue: 'World deleted' }));
+                  setPendingDelete(null);
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : String(e));
+                }
+              }}
+              className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+            >
+              {t('card.delete_confirm', { defaultValue: 'Delete permanently' })}
+            </button>
+          </>
+        }
+      >
+        <p className="text-xs text-muted-foreground">
+          {t('card.delete_hint', {
+            defaultValue: 'A world with books cannot be deleted — move them out first.',
+          })}
+        </p>
+      </FormDialog>
 
       <FormDialog
         open={open}
