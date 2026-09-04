@@ -23,7 +23,9 @@ tools:
   - tool: book_chapter_bulk_create
     provider: book
     tier: A
-    verdict: NONE
+    verdict: UI
+    route: /books
+    testid: book-import-open-text
   - tool: book_chapter_create
     provider: book
     tier: A

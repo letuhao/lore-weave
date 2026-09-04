@@ -107,7 +107,16 @@ def fe_index() -> tuple[dict[str, set[str]], set[str]]:
             rel = os.path.relpath(path, REPO_ROOT).replace("\\", "/")
             for m in re.finditer(r'data-testid="([A-Za-z0-9_-]+)"', txt):
                 tid.setdefault(m.group(1), set()).add(rel)
-            for m in re.finditer(r"<([A-Z][A-Za-z0-9]*)[\s/>]", txt):
+            # A component is USED if another file names it outside an import line: a JSX tag
+            # for ordinary rendering, and a bare identifier for the registry mounts this
+            # codebase relies on (`catalog.ts` maps studio dock panels as
+            # `component: BookImportPanel`). Import lines are stripped deliberately — an import
+            # with no use left is exactly the unmounted case, and it is what the P2 bite made.
+            body = chr(10).join(
+                l for l in txt.split(chr(10)) if not l.lstrip().startswith("import "))
+            for m in re.finditer(r"<([A-Z][A-Za-z0-9]*)[\s/>]", body):
+                rendered.add(m.group(1))
+            for m in re.finditer(r"[:=,(\[]\s*([A-Z][A-Za-z0-9]*)\b", body):
                 rendered.add(m.group(1))
     return tid, rendered
 
@@ -118,13 +127,18 @@ def is_mounted(files: set[str], rendered: set[str]) -> bool:
     🔴 This is the LOOM M9 half. A testid that exists in a component nothing renders is exactly
     the permanently-disabled Publish button: present in source, unreachable by a user.
 
-    ⚠️ IT IS A HEURISTIC, AND IT OVER-REPORTS. Measured 2026-09-04: 340 of the frontend's testids
-    look unreachable to it, and most are not — `auth.tsx` is a context provider, `AudioBlockNode`
-    is a Tiptap node view registered with the editor by type name, and dock panels are registered
-    by string key. None of those appear as a `<JsxTag>`. It is clean on all 20 declared rows and
-    it caught a real unmount in the P2 bite, so it earns its place — but **a red here is a
-    prompt to look, not a proof of a gap.** Triage before believing it, and if the control is
-    registry-mounted, that is a legitimate reason to keep the row as `UI`."""
+    ⚠️ IT IS A HEURISTIC. The first version only looked for `<JsxTag>` and called **340 of 2,588**
+    testids unreachable, nearly all wrongly: `catalog.ts` mounts every studio dock panel as
+    `component: BookImportPanel`, never as a tag. P3 hit that as a false red on
+    `book_chapter_bulk_create` and widened it to "named in another file outside an import line",
+    which covers registry mounts and ordinary JSX both. **340 → 35.**
+
+    The import-line strip is the load-bearing half: an import with nothing left using it IS the
+    unmounted case, and it is exactly what the P2 bite produced. Re-verified after widening — the
+    bite still goes red, so the wider rule did not blunt the check.
+
+    35 remain, and they are still mostly false (a context provider in `auth.tsx`, Tiptap node
+    views registered by type name). **A red here is a prompt to look, not a proof of a gap.**"""
     for f in files:
         norm = f.replace("\\", "/")
         if "/pages/" in norm or norm.endswith("Page.tsx"):
