@@ -398,75 +398,104 @@ tools:
   - tool: glossary_adopt_standards
     provider: glossary
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: adopt-pick-*
   - tool: glossary_book_sync_apply
     provider: glossary
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: sync-take-*
   - tool: glossary_create_chapter_link
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: book-links-save
   - tool: glossary_create_evidence
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
   - tool: glossary_deep_research
     provider: glossary
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: research-submit
   - tool: glossary_entity_delete
     provider: glossary
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
   - tool: glossary_entity_rename
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: entity-edit-confirm
   - tool: glossary_entity_restore
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
   - tool: glossary_entity_set_attributes
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: add-attr-submit
   - tool: glossary_ontology_delete
     provider: glossary
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: ontology-delete-*
   - tool: glossary_ontology_upsert
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: ontology-edit-*
   - tool: glossary_plan
     provider: glossary
     tier: W
-    verdict: UNTRIAGED
+    verdict: AGENT_ONLY
+    reason: a one-shot LLM PLANNER: it reads the book's ontology and emits ONE typed plan (adopt genres, create kinds, add attributes). There is no hand equivalent of 'produce a plan', and inventing a UI for it would be a worse product. Crucially the user is NOT blocked - every EFFECT the plan proposes is separately doable by hand (adopt-pick-*, create-pick-kind-*, add-attr-submit, ontology-edit-*), so a bad plan is repaired by doing the steps directly.
   - tool: glossary_propose_aliases
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: entity-edit-aliases
   - tool: glossary_propose_batch
     provider: glossary
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: glossary-batch-translate-trigger
   - tool: glossary_propose_curation
     provider: glossary
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: merge-confirm-*
   - tool: glossary_propose_entities
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: glossary-extract-trigger
   - tool: glossary_propose_translation
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: glossary-translate-trigger
   - tool: glossary_set_genres
     provider: glossary
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/glossary
+    testid: entity-add-genre
   - tool: jobs_cancel
     provider: jobs
     tier: A
