@@ -315,8 +315,28 @@ actually fixed.
 - [x] **F6** — a CHECK violation is PERMANENT: stop the infinite retry and mark it processed with a
   reason, so the drop is recorded rather than repeated 50,529 times a day.
 - [x] **F1b** — a failed WRITE that is never retried loses the work whatever the reason. Found by row V with F1 live: `save_draft` called without `body`, turn ended, chapter left at 0 words. The missing-argument seam records it with an EMPTY prerequisite; the guard reports those unconditionally. **Writes only.**
-- [ ] **V** — re-run the human-sim to **five chapters**, every one persisted in the manuscript, on a
-  freshly rebuilt image and a NEW throwaway book. This is the proof; the plan is not.
+- [~] **V** — RAN, and the bar is **NOT met**. Five chapter rows, prose in **two**. Full record in
+  [`2026-09-04-row-V-live-run-report.md`](2026-09-04-row-V-live-run-report.md). F1/F1b are proven
+  live (turn 2: 782 words first try, where the pre-fix build left 0) and F3 is visibly better, but
+  the run found V1/V2 below. **Do not tick this row** until a re-run persists five.
+- [ ] **V1** — a write that is **never attempted** and reported as done. Turn 11 claimed "saved
+  Part One (approx. 850 words)"; it called `book_list` and `book_chapter_create` and never called
+  `book_chapter_save_draft`. **248 output tokens settles it independently of any tool record** —
+  850 words is 1,100+. Every guard is silent because the turn DID act: F1 needs a refusal, F1b
+  needs a failure, `_claimed_an_effect_without_acting` sees a successful create. **The third
+  member of the family, and the worst: a specific word count for prose that never existed.**
+- [ ] **V2** — told the tool name, the reason and the evidence, it called `book_chapter_create`
+  three more times and `book_chapter_save_draft` zero times, making two more empty chapters. Its
+  own mid-turn prose was accurate ("I have not written or saved any prose… I apologize for the
+  false confirmation"). **Correct self-diagnosis did not change the next call**, so "it does not
+  know" is ruled out and the tool surface is the place to look.
+- [ ] **V3** — a failed turn renders as a **blank bubble**. `outcome=failed` with `is_error=false`
+  and `error_detail=NULL` gives the frontend nothing to render. The `silent turn` guard and CP-0.4
+  both did their jobs; **the gap is the persistence seam, not the detection.**
+- [ ] **V4** — ai-gateway returns a **500 with an Express default HTML page** on `/v1/llm/stream`
+  and logs nothing: zero `error`/`exception`/`500` in its whole buffer, no restarts, not OOM.
+  ⚠️ It logs nothing for SUCCESSFUL chat turns either, so the silence alone proves nothing — the
+  finding is that a 500 on the main LLM path leaves no line to diagnose it by.
 - [ ] **D1** — **STOP CONDITION** — F4 is a product decision, not a bug: a single draft call holds
   ~1500 words, so an 1800-2500 ask cannot be met in one call. Deliver in parts, or say so up front?
   Owner's call.
