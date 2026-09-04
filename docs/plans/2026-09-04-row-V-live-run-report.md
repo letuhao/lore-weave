@@ -75,6 +75,11 @@ in total.** 850 words is 1,100+ tokens. The prose it reported saving was never w
 | the F1b clause | nothing **failed** — the call was never made |
 | `_rail_write_step_stalled` | the turn called three tools |
 | `silent turn` | the turn produced 562 characters of text |
+| `D-NARRATED-WRITE` | the prose says "saved", never the tool's NAME — the regex looks for identifiers |
+
+(That last row is the one that fired on turn 13 and could not fire here: turn 13 wrote the literal
+string `book_chapter_save_draft`, and turn 11 only wrote "saved". A guard keyed on tool names is
+blind to a claim phrased in English, which is how the *more* confident-sounding turn escapes.)
 
 **F1 covers "refused and not retried". F1b covers "failed and not retried". Neither covers
 "never attempted, and claimed done"** — and that third shape is the worst of the three, because
@@ -89,8 +94,31 @@ Turn 13's prompt named the tool, the reason, and the evidence: *"you never calle
 It called `book_chapter_create` **three more times** and `book_chapter_save_draft` **zero** times,
 creating chapters 4 and 5 as empty duplicates. Its own prose was accurate mid-turn — *"I have not
 written or saved any prose for Chapter Three… I apologize for the false confirmation"* — and it
-then did the wrong thing anyway. **Correct self-diagnosis did not change the next call**, which
-rules out "it does not know" as the explanation and points at the tool surface instead.
+then did the wrong thing anyway.
+
+🔴 **CORRECTION TO THE FIRST DRAFT OF THIS REPORT, which claimed every guard was silent here. It
+was not, and checking refuted me:**
+
+```
+06:37:32 WARNING D-NARRATED-WRITE: the turn is ending with write tool(s) named in prose but
+                 never called: ['book_chapter_save_draft'] — nudging once
+06:37:41 WARNING D-NARRATED-WRITE: ['book_chapter_save_draft'] named but never called
+                 — NOT nudging, held by: under_cap
+06:38:06 WARNING D-NARRATED-WRITE: (same, held by: under_cap)
+```
+
+**The guard fired, named the exact tool, and nudged — and the model called `book_chapter_create`
+three more times regardless.** So V2 is NOT a detection gap. Detection, naming, and the nudge all
+worked; the behaviour did not change. That matters for what to build next: another detector on
+this shape would be a mechanism that fires without mattering. All three creates were **title-only**
+(`title`, `book_id`, `original_language`, no content), so the model was making placeholders and
+never reaching the save — not trying to smuggle prose through the wrong tool.
+
+⚠️ And the machine-readable link that would let a guard know the turn was EQUIPPED to save is
+missing: `book_chapter_save_draft` has **no entry in `argument_emitters`**, though its own
+`argument_supplier` prose says `chapter_id` is *"obtained from a prior listing or create"*. So the
+one signal `_asked_instead_of_acting` trusts to decide "the turn holds what it needs" is
+unavailable for the single most important write on the platform.
 
 ### V3 — a failed turn renders as a blank bubble (BLOCKING, new)
 
@@ -138,6 +166,9 @@ after the fact. LM Studio was healthy throughout (`/v1/chat/completions` -> 200 
   This is the second run running where a pending Tier-A card first read as a hang.
 - **"The gateway logged nothing, so the request never reached it."** Wrong — it logs nothing for
   successful chat requests either. The traceback and `AI_GATEWAY_URL` are what identify the source.
+- **"Every guard was silent on V2."** Wrong, and this report said so before the logs were read.
+  `D-NARRATED-WRITE` fired on turn 13, named `book_chapter_save_draft`, and nudged once. The claim
+  that survives is narrower and more useful: the guard worked and the behaviour did not change.
 
 ---
 
