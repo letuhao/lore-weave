@@ -98,7 +98,16 @@ it needs one would be dishonest. But it must be **declared and argued**, never a
   written in. **NV-1..6 applies: bite it.** Delete a `data-testid` the census depends on and watch
   it go red for the right reason; restore byte-exact. A parity gate that cannot fail is worse than
   no gate, because it reports coverage and silences review.
-- [ ] **P3** — close the `NONE` gaps P1 finds, ranked by how often the agent actually fails at that
+- [x] **P3** — **DONE. NONE is 0.** Ranked by the plan's own criterion (measured agent failure):
+  `world_delete` **92 calls / 92 failures**, every one a missing `world_id`, **and no manual
+  path at all** — the sharpest instance of the owner's "user cannot use it and the agent is
+  dumb". Built a guarded delete on `/worlds` carrying **D-S07**'s refusal *in the mutation*,
+  because `books.world_id` is ON DELETE SET NULL and the naked REST route silently orphans
+  member books. Bite proof: removing the mutation guard goes RED **while the disabled-button
+  test still passes** — the button alone would have shipped the footgun. `book_chapter_bulk_create`
+  resolved to the existing FB2/EPUB/text import flow. 🔴 Declaring it exposed a **false red** in
+  my own gate (registry mounts via `catalog.ts` are not JSX tags); heuristic widened,
+  **340 → 35** false positives, and the P2 bite re-run to prove it still bites. Original row: ranked by how often the agent actually fails at that
   tool. **Not scoped until P1 lands** — the list does not exist yet, and inventing rows for it now
   would be a plan built on a guess.
 - [ ] **R4** — two concurrent sessions on one account, and a slow-provider run. Both are unmeasured;
