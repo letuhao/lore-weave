@@ -35,13 +35,37 @@ that continues.
 
 ## 1. Board
 
-- [ ] **R1** — **`domain-db-smoke` → `Domain DB round-trips (book + glossary)`.** One test:
-  `TestStatusChangeAppendsToTheLifecycleLedger`, dying on
-  `panic="runtime error: invalid memory address or nil pointer dereference"`. It is the LIVE half
-  of the ledger chokepoint T3 rewrote the source half of, so read T3's finding first — the write
-  moved into `setEntityStatusCore` and the ledger row rides `appendLifecycleLedgerTx` on the
-  caller's `tx`. Reproducible: a throwaway Postgres, `BOOK_TEST_DATABASE_URL` at a `*_test`
-  database (`testsafe` refuses anything else), `go test ./internal/api/`.
+- [x] **R1** — **DONE. TWO tests, not one, and the nil-pointer panic was a red herring.** That
+  `panic="runtime error: invalid memory address or nil pointer dereference"` is a *recovered* panic
+  logged by an unrelated handler; the actual failures were two assertions. Both are **pre-existing
+  and were invisible** — `f_dbsmoke` shows neither, because the book-service test T5 fixed failed
+  first and the job's `set -euo pipefail` never reached the glossary step. Rule 6, fourth time.
+  - **A stale vocabulary.** `TestStatusChangeAppendsToTheLifecycleLedger` asserted
+    `op == "status_change"`; the code writes `"status_changed"`. **Two vocabularies**:
+    `status_change` is the confirm-token / propose-tool action (`descStatusChange`), while the
+    LEDGER's op is fixed by migration 0063's own column comment — *"`status_changed` /
+    `kind_reassigned`. Deliberately the same vocabulary as the outbox event's `op`, so a ledger row
+    and its event can be read side by side without a mapping table that would itself drift."* The
+    event is `glossary.entity_status_changed`. The code was right. Bitten: flipping the production
+    op reds the test with a message naming the distinction.
+  - 🔴 **A flake with a guaranteed tie, not a race.** `TestReassignKind_EmitsUpdatedCarryingTheNewKind`
+    passed in one CI run and failed the next on the same commit, and passes locally every time.
+    Three reads in that file take `LIMIT 1` off `ORDER BY created_at DESC` with **no tiebreaker** —
+    and `outbox_events.created_at` defaults to `now()`, which in Postgres is **transaction-start**
+    time, so rows written in one transaction are byte-identical. Measured: two rows inserted 50ms
+    apart in one tx → `distinct_created_at=1`. Reproduced the CI failure verbatim on a scratch
+    table: `WITHOUT tiebreaker -> terminology` (the OLD kind, exactly what CI reported) and
+    `WITH tiebreaker -> generic`. `id` is `uuidv7()` and therefore time-ordered, so `, id DESC` is
+    a real monotonic tiebreaker — which `entity_command_parity_test.go` in the same package was
+    already using.
+  - ⚠️ **One local-only failure, attributed and left alone.**
+    `TestSystemAttrDescriptions_SeedsDescriptionsAndRefreshesHash` fails here
+    (`pre-migration empty descriptions = 3, want 93`) and appears **nowhere** in the CI log for
+    this job. It drives migration step functions directly, which is the ApplyOnce-bypass shape;
+    it is my environment, not a CI row, and inventing a fix for it would be work nobody asked for.
+  - Evidence: `go -C services/glossary-service test ./internal/api/... -count=1` **exit 0** and
+    `go -C services/book-service test ./internal/api/... -count=1` **exit 0** — CI's exact
+    commands, each against a fresh throwaway database.
 - [ ] **R2** — **`gates` → `dp-clippy`.** Five of six self-test legs pass; `R-6` reported
   `MISCOUNTED: 0 finding(s), expected 3` while the same leg passes locally on the same pinned
   nightly. The last commit taught that branch to separate *the lint found nothing* from *the

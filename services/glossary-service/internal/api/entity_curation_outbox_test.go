@@ -150,7 +150,7 @@ func TestStatusChange_BothEntryPointsEmitIdentically(t *testing.T) {
 	if err := pool.QueryRow(ctx,
 		`SELECT payload->>'status', payload->>'prior_status' FROM outbox_events
 		  WHERE aggregate_id=$1 AND event_type='glossary.entity_status_changed'
-		  ORDER BY created_at DESC LIMIT 1`, f.entityID).Scan(&restStatus, &restPrior); err != nil {
+		  ORDER BY created_at DESC, id DESC LIMIT 1`, f.entityID).Scan(&restStatus, &restPrior); err != nil {
 		t.Fatalf("REST payload: %v", err)
 	}
 
@@ -166,7 +166,7 @@ func TestStatusChange_BothEntryPointsEmitIdentically(t *testing.T) {
 	if err := pool.QueryRow(ctx,
 		`SELECT payload->>'status', payload->>'prior_status' FROM outbox_events
 		  WHERE aggregate_id=$1 AND event_type='glossary.entity_status_changed'
-		  ORDER BY created_at DESC LIMIT 1`, f.entityID).Scan(&effStatus, &effPrior); err != nil {
+		  ORDER BY created_at DESC, id DESC LIMIT 1`, f.entityID).Scan(&effStatus, &effPrior); err != nil {
 		t.Fatalf("confirm-effect payload: %v", err)
 	}
 	if effStatus != "active" || effPrior != restStatus {
@@ -222,6 +222,21 @@ func TestReassignKind_EmitsUpdatedCarryingTheNewKind(t *testing.T) {
 		t.Skip("book ontology has only one kind — nothing to reassign to")
 	}
 
+	// 🔴 `ORDER BY created_at DESC` ALONE DOES NOT NAME A ROW. `outbox_events.created_at`
+	// defaults to `now()`, which in Postgres is TRANSACTION START time — every row written in
+	// one transaction carries a byte-identical timestamp, so "the latest" is a tie the planner
+	// breaks however it likes. This entity already has earlier `entity_updated` rows (that is
+	// what `before` counts), and the reads below take `LIMIT 1` off that tie.
+	//
+	// It went green here and RED in CI on consecutive runs of the same commit:
+	//
+	//     entity_curation_outbox_test.go:240: payload kind: want the NEW kind "generic",
+	//     got "terminology"
+	//
+	// — the OLD event, read as the newest. `id` is `uuidv7()`, which is time-ordered, so
+	// `, id DESC` is a real monotonic tiebreaker rather than an arbitrary one.
+	// `entity_command_parity_test.go` in this package already orders that way; these three
+	// reads did not.
 	before := curationEventCount(t, pool, f.entityID, "glossary.entity_updated")
 	if err := f.srv.reassignEntityKindCore(ctx, f.bookID, f.entityID, targetID, f.ownerID); err != nil {
 		t.Fatalf("reassignEntityKindCore: %v", err)
@@ -233,7 +248,7 @@ func TestReassignKind_EmitsUpdatedCarryingTheNewKind(t *testing.T) {
 	if err := pool.QueryRow(ctx,
 		`SELECT payload->>'kind', payload->>'actor_type' FROM outbox_events
 		  WHERE aggregate_id=$1 AND event_type='glossary.entity_updated'
-		  ORDER BY created_at DESC LIMIT 1`, f.entityID).Scan(&kind, &actorType); err != nil {
+		  ORDER BY created_at DESC, id DESC LIMIT 1`, f.entityID).Scan(&kind, &actorType); err != nil {
 		t.Fatalf("read payload: %v", err)
 	}
 	if kind != targetCode {

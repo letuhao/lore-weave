@@ -126,8 +126,27 @@ func TestStatusChangeAppendsToTheLifecycleLedger(t *testing.T) {
 		t.Fatalf("the ledger recorded %q -> %q; the whole point is the TRANSITION, and both "+
 			"columns were NULL on every pre-existing row", prior, next)
 	}
-	if op != "status_change" {
-		t.Errorf("op = %q", op)
+	// 🔴 `status_changeD`. This asserted `status_change` and failed on every live run:
+	//
+	//     entity_lifecycle_ledger_test.go:130: op = "status_changed"
+	//
+	// TWO VOCABULARIES, and the test reached for the wrong one. `status_change` is the
+	// CONFIRM-TOKEN / propose-tool action name (`descStatusChange` in
+	// action_confirm_token.go; `curation_propose_tools.go` offers "status_change |
+	// restore_revision | reassign_kind | merge"). The LEDGER's `op` is a different set, and
+	// migration 0063 says which and why on the column itself:
+	//
+	//     "status_changed" / "kind_reassigned". Deliberately the same vocabulary as the
+	//     outbox event's 'op', so a ledger row and its event can be read side by side
+	//     without a mapping table that would itself drift.
+	//
+	// The event is `glossary.entity_status_changed`, so the ledger writes `status_changed`
+	// and the two line up — which is the whole point. Asserting the propose-tool spelling
+	// here would have forced the mapping table that comment exists to prevent.
+	if op != "status_changed" {
+		t.Errorf("op = %q, want \"status_changed\" — the ledger shares the outbox event's "+
+			"vocabulary (glossary.entity_status_changed), NOT the propose-tool's "+
+			"\"status_change\"", op)
 	}
 	if actorType != "user" || gotActor != actor {
 		t.Errorf("actor recorded as %q/%v, want user/%v — actor_type is NOT NULL and an audit "+
