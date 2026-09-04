@@ -457,10 +457,23 @@ def iter_files(staged: bool, services_root: str | None = None) -> list[str]:
 def _staged_paths() -> list[str]:
     """Absolute paths of the staged files — the Go half's `--staged` arm needs them, and
     `iter_files` cannot answer it because it only ever yields MCP Python files."""
-    out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-        cwd=REPO_ROOT, capture_output=True, text=True,
-    ).stdout.split()
+    # Same spawn as `iter_files`'s `--staged` arm above, and it lost that arm's
+    # two safeguards on the way across: a `timeout=`, and a handler that refuses
+    # rather than returning []. `gate-bite-harness --self-test` names this rule
+    # "a child nothing can interrupt" — a `git` that never answers hangs the
+    # gate forever, and an empty list would make it scan nothing and print PASS
+    # over a commit it never read.
+    try:
+        out = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+            timeout=GIT_TIMEOUT_S,
+        ).stdout.split()
+    except subprocess.TimeoutExpired:
+        print(f"CANNOT RUN — `git diff --cached` did not return within "
+              f"{GIT_TIMEOUT_S}s; refusing to report a verdict on a file list "
+              f"that was never read.", file=sys.stderr)
+        raise SystemExit(2)
     return [os.path.join(REPO_ROOT, f) for f in out]
 
 

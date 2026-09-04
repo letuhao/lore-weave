@@ -116,9 +116,32 @@ network step. Attribute before touching.
 
 ## 3. Board
 
-- [ ] **T1** — **C1, the Rust class.** Establish how many distinct faults there are before fixing any.
-  The toolchain-component error and the `dp-control-plane` build.rs error are different failures that
-  happen to be both Rust. Fix what is ours; declare what is runner provisioning. **6 checks.**
+- [x] **T1** — **DONE. C1 was never one class: it was FOUR unrelated faults, and one member is not
+  even Rust.** Rule 7 earned its place on the first row.
+  - **A — `protoc` is installed by NO workflow in this repo.** `crates/dp-control-plane` is a
+    workspace member whose build.rs runs tonic-build, so `cargo build --workspace` died at BUILD and
+    everything downstream of it was dark, not passing. Added to `foundation-ci/rust` and `dp-clippy`.
+  - **B — `all-gates` had no Rust toolchain at all.** The three `rust-toolchain@` uses in gates.yml
+    are all in the *other* jobs; `ubuntu-latest` ships rustup, so cargo resolved and then died on the
+    `1.89.0` pin. All four cargo gates pass locally against 1.89.0 — pure provisioning. Provisioned
+    rather than skipped, so four real static gates stay in CI.
+  - **C — `lints/dp-clippy/run-lint.sh` was mode `100644` in git.** `./run-lint.sh` → Permission
+    denied, exit 126. One `git update-index --chmod=+x`.
+  - **D — `rust-mutations` and `reality-layer-mutations` were not infra, and the second is Go.**
+    Both were reporting *dead pointers as findings about the code*:
+    - `rust-mutations`: 1 of 26 survived — `NOTEST … selected nothing`. The row named
+      `actor::tests::existence_…` with `--lib`, but the test is an INTEGRATION test in
+      `tests/hub.rs`. Now `26/26 RED, 0 NOTEST`, exit 0.
+    - `reality-layer-mutations`: 4 bites unproven — one anchor matching **2x**, one matching **0x**
+      (the code was refactored out from under it), and two naming tests **that do not exist anywhere
+      in this repository**. Now `all 37 guards proved load-bearing (15 go + 16 rust + 6 meta)`.
+  - 🔴 **The mechanism defect behind D, which is the real finding.** `go test -run <nonexistent>`
+    exits **0** and prints `[no tests to run]`, so the harness reported a missing test as
+    `[VACUOUS] … stayed GREEN with the guard broken` — *the guard is weak* — when the truth was
+    *the bite never ran*. The Rust branch of that same file has guarded against this since it was
+    written; the Go branches never got it. Carried across as `[NOTEST]`, and three GDPR erasure
+    obligations that had read as measured for their whole existence now have tests
+    (`scrubber_obligations_test.go`).
 - [ ] **T2** — **C2, the 10 red gates.** Start with the two branch-added gates that **crash**
   (`Traceback`) and `gate-number-visibility` (one line). Then the three that reach a real verdict.
   Any gate that stays red leaves with a `KNOWN_RED` row naming its deferral — never silently.

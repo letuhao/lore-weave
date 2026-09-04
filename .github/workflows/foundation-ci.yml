@@ -36,6 +36,19 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # 🔴 `crates/dp-control-plane` is a workspace member (Cargo.toml:50) and
+      # its build.rs compiles `contracts/proto/dp_control_plane.proto` with
+      # tonic-build, which shells out to `protoc`. NOT ONE workflow in this repo
+      # installed it, so `cargo build --workspace` died here every time:
+      #
+      #   error: failed to run custom build command for `dp-control-plane v0.1.0`
+      #   Caused by: ... Error: Custom { kind: NotFound, error: "Could not find
+      #   `protoc`. If `protoc` is installed, try setting the `PROTOC` env var"
+      #
+      # It fails at BUILD, so nothing downstream of it ran — the whole workspace
+      # test leg below was dark, not passing.
+      - name: install protoc (dp-control-plane's build.rs needs it)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler
       - run: cargo build --workspace # build ALL crates (world-gen included) — keeps compile coverage
       # Test everything EXCEPT world-gen. world-gen is main-track game code whose
       # golden tests pin blake3 of generated content_hash / sphere renders against

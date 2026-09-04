@@ -306,23 +306,40 @@ META_BITES: list[tuple[str, Path, str, str, str]] = [
     (
         "the nil UUID is accepted as an owner (a reality owned by nobody)",
         BRIDGE,
-        "if oid == uuid.Nil {",
-        "if false {",
+        # 🔴 Was the bare `if oid == uuid.Nil {`, which matches TWICE in
+        # bridge.go -- `deriveOwner` (the guard this bite is about) and
+        # `deriveFindingReality`'s reality_id check. The harness needs exactly
+        # one match, so it skipped the bite and this guard went UNPROVEN.
+        # The two sites differ on the NEXT line (`return "", nil,` here vs
+        # `return nil,` there), so two lines of CODE disambiguate without
+        # anchoring on a comment that an edit could silently move.
+        'if oid == uuid.Nil {\n\t\treturn "", nil, fmt.Errorf(',
+        'if false {\n\t\treturn "", nil, fmt.Errorf(',
         "TestDeriveOwner_NilUUIDIsRefused",
     ),
     (
         "user erasure never reassigns the realities the user owns",
         SCRUB,
-        "return s.reassignOwnedRealities(ctx, userID)",
-        "return nil",
-        "TestScrubberSourceNamesEveryTableItClaims",
+        # 🔴 Was `return s.reassignOwnedRealities(ctx, userID)`, which matched
+        # ZERO times: `ScrubUserMetaRefs` was refactored so each obligation
+        # owns "its own enumeration and its own early return", turning the
+        # tail-call into an `if err := ...; err != nil` block. The anchor was
+        # never updated, so the bite has been silently skipped ever since --
+        # the guard reads as covered and has never once been executed.
+        "if err := s.reassignOwnedRealities(ctx, userID); err != nil {",
+        "if err := error(nil); err != nil {",
+        "TestScrubberReassignsRealitiesOwnedByTheErasedUser",
     ),
     (
         "erasure clears the owner id but leaves the tier (a half-written erasure)",
         SCRUB,
+        # 🔴 Named `TestScrubberSourceNamesEveryTableItClaims`, which does not
+        # exist in this repository -- see the NOTEST note in run_test(). The
+        # replacement asserts the actual property: the pair is written TOGETHER,
+        # because reality_registry's CHECK ties owner_kind to owner_user_id.
         '"owner_kind": "system", "owner_user_id": nil',
         '"owner_user_id": nil',
-        "TestScrubberSourceNamesEveryTableItClaims",
+        "TestReassignWritesBothOwnerColumnsTogether",
     ),
     (
         "a user who OWNS a reality but drives no actor is invisible to the cascade",
@@ -355,6 +372,32 @@ def restore() -> None:
     git("checkout", "--", *TARGETS)
 
 
+# The one string both halves speak. A bite whose test SELECTOR matches nothing
+# is not a weak guard and not a strong one — it is a bite that has never been
+# executed, and the two must never print the same way.
+NOTEST_MARK = "[harness] NO TEST SELECTED — the filter matched nothing"
+
+
+def _go_selected_nothing(out: str) -> bool:
+    """Did `go test -run` match zero tests in EVERY package it was given?
+
+    🔴 `go test -run <name-that-does-not-exist>` exits **0** and prints
+    `ok  <pkg>  0.24s [no tests to run]`. The Rust branch below has guarded
+    against exactly this since it was written ("cargo exits 0 when a filter
+    matches NOTHING, which would read as a passing bite") — the Go branches
+    never got the same treatment, so two bites in this file named tests that
+    **do not exist anywhere in the repo** and were reported as `[VACUOUS] ...
+    stayed GREEN with the guard broken`. That reads as "the guard is weak",
+    when the truth was "the bite never ran". Measured on run 33881838120.
+
+    Per-PACKAGE, because META runs two: a selector that matches in one package
+    and not the other HAS run. Only "no package ran anything" is a dead bite.
+    """
+    ran = [l for l in out.splitlines()
+           if l.startswith("ok ") and "[no tests to run]" not in l]
+    return not ran
+
+
 def run_test(suite: str, regex: str) -> tuple[int, str]:
     if suite == GO:
         p = subprocess.run(
@@ -384,8 +427,12 @@ def run_test(suite: str, regex: str) -> tuple[int, str]:
         # cargo exits 0 when a filter matches NOTHING, which would read as a
         # passing bite. Demand that the named test actually ran.
         if p.returncode == 0 and "1 passed" not in (p.stdout + p.stderr):
-            return 1, p.stdout + p.stderr + "\n[harness] filter matched no test — treated as red"
-    return p.returncode, p.stdout + p.stderr
+            return 1, p.stdout + p.stderr + "\n" + NOTEST_MARK
+    out = p.stdout + p.stderr
+    # The Go halves need the same demand, for the same reason.
+    if suite in (GO, META) and p.returncode == 0 and _go_selected_nothing(out):
+        return 1, out + "\n" + NOTEST_MARK
+    return p.returncode, out
 
 
 def red_names_the_test(out: str, regex: str) -> bool:
@@ -439,6 +486,16 @@ def main() -> int:
                 path.write_text(src.replace(anchor, mutation), encoding="utf-8")
                 rc, out = run_test(suite, regex)
                 restore()
+                if NOTEST_MARK in out:
+                    # Distinct from VACUOUS on purpose. VACUOUS says "the guard
+                    # is weak"; this says "the bite never ran, so nothing is
+                    # known either way" — and the repair is a pointer, not a
+                    # test. Conflating them sent two dead pointers here into CI
+                    # dressed as findings about the code.
+                    print(f"[NOTEST]  {label}\n           -> `{regex}` selected nothing — "
+                          f"the bite has never been executed")
+                    failures.append((label, "named test does not exist"))
+                    continue
                 if rc == 0:
                     print(f"[VACUOUS] {label}\n           -> {regex} stayed GREEN with the guard broken")
                     failures.append((label, "test stayed green"))

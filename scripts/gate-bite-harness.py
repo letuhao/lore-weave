@@ -1976,8 +1976,18 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "crates/actor-hub/src/actor.rs",
      "        self.existence = state;",
      "        self.existence = entity_existence::higher(self.existence, state);",
-     "actor::tests::existence_is_platform_state_and_is_carried_not_adjudicated",
-     "--lib"),
+     # 🔴 This row was `("actor::tests::existence_...", "--lib")` and selected
+     # NOTHING for as long as it has existed: the test is an INTEGRATION test
+     # (`crates/actor-hub/tests/hub.rs`), so it lives in the `hub` test binary
+     # and carries no `actor::tests::` module path. `--lib` cannot reach it and
+     # the module path does not exist, so `cargo test` matched zero tests.
+     # The harness caught it honestly -- `NOTEST ... selected nothing`, counted
+     # as a SURVIVOR -- which is the fail-closed direction and the only reason
+     # this was ever visible. But it means the mutation "the hub ADJUDICATES
+     # existence instead of carrying it" has never once been executed, so the
+     # guard it certifies was unproven while the row claimed to prove it.
+     "existence_is_platform_state_and_is_carried_not_adjudicated",
+     "hub"),
     # A row for `owner_of(q) == Some(p)` was written here, MEASURED, and
     # REMOVED: it survived, and correctly so. `actor.rs` says the guard is not
     # observable until a feature can move a quantity after attach, so
