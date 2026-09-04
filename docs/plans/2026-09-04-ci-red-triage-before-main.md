@@ -320,9 +320,32 @@ network step. Attribute before touching.
   - ⚠️ Rule 9 said conformance-ci is red on `main` too, and it is — **but not for a reason that
     excuses it.** Both causes are unpinned-upstream and incomplete-removal, and both are the
     branch's to carry.
-- [ ] **T7** — **C7, agentruntime.** Falsification + membrane. ⚠️ The two untracked
-  `contracts/agentruntime-*-verdict.json` files in the working tree are evidence to read first, and
-  a falsification verdict can be vacuous — check its bar before believing either colour.
+- [x] **T7a** — **DONE. `agentruntime-membrane-gate` — the gate IMPORTS the package it guards.**
+  It runs `build`/`validate_document` rather than reading source, so it needs `pydantic_ai` — a
+  DELIBERATE dependency the gate itself allowlists. The two jobs that run it installed `pyyaml`
+  (and `pytest`) and nothing else. Both now install chat-service's requirements, conditionally in
+  the P1 matrix so the stdlib-only lints keep their fast step. Bitten with a `meta_path` hook: the
+  gate reproduces CI's message verbatim and exits 1; unblocked it exits 0. This was also the **last
+  red gate in `all-gates`** — that job went 10 red → 1 → 0.
+- [~] **T7b** — **`agentruntime-falsification`: MEASURED and SPLIT, not fixed. 8 real findings.**
+  CI reports `395/408 falsifiers red the guard they name` with 13 `NOT FALSIFIABLE — GREEN, the
+  guard requires nothing`.
+  - 🔴 **The obvious explanation is wrong, and the count is why it is tempting.** The script's own
+    note says *"THE 13 ROWS FROM `tests/test_cp0_merge_db.py`… are DB-gated: without a real
+    Postgres they SKIP, and a skip is not a failure"*. Thirteen rows, thirteen findings — but they
+    are **not the same thirteen**. Only **5** live in `test_cp0_merge_db.py`; the other 8 are in
+    `test_cp5_{calloutcome,localtools,supplier}` and `test_cp6_vocabulary`, which have **no skip
+    mechanism at all**. A matching count is not a matching population.
+  - **The 8 reproduce locally**, on a machine where the DB-gated ones pass. Running their own
+    falsifier edits through the script's own `_apply`/`_run_one`: 8 stay GREEN, 1 reds. And
+    `_apply` **raises** `ANCHOR STALE` when an edit does not apply, so these are not silent
+    no-ops — the edits landed and the guards did not notice.
+  - **So: 5 environment, 8 real.** The 5 are the documented DB-gated case and belong in the
+    unproven backlog rather than `FALSIFIERS` (a fix commit, `73b3189a8`, added falsifier rows for
+    them — exactly what that note says produces "a lie about a guard that works"). The 8 are guards
+    that do not require what they claim to, and each needs its own analysis of what it should
+    assert — which is test-quality work, not CI triage. **Left open deliberately rather than
+    papered over.**
 - [x] **T8** — **TRIAGED, not fixed — and the fixing is a security-posture call, so it is D6.**
   These four are `continue-on-error` and do not block the merge. They are also the only red checks
   whose content is *real findings about shipped dependencies* rather than harness defects, which is
