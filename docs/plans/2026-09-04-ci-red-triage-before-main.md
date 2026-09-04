@@ -1,0 +1,186 @@
+# CI red, case by case — the 26 checks standing between this branch and `main`
+
+PR [#219](https://github.com/letuhao1994/lore-weave/pull/219) · base `main` · head `refactor/kal-and-mcp-runtime`
+· `mergeable: MERGEABLE` (no conflicts) · **`mergeStateStatus: UNSTABLE`**
+
+Follows [`2026-09-04-gui-parity-triage-loop.md`](2026-09-04-gui-parity-triage-loop.md), whose board is
+closed. This is the last thing before the merge.
+
+---
+
+## 0. The correction this plan opens with
+
+I reported earlier that *"none of the failures appear to be mine"*. That was scoped to **this
+session's commits** (`742fd34b0..HEAD`), where it is true — zero Rust, zero knowledge-service files.
+
+Scoped to **the branch**, it is false, and the branch is what merges:
+
+| failing area | files changed vs merge-base `df18e9049` |
+|---|---:|
+| `scripts/` | **616** |
+| `services/knowledge-service/` | **414** |
+| `crates/` | **166** |
+| `services/glossary-service/` | **103** |
+| `services/world-service/` | 64 |
+| `services/meta*` | 20 |
+| `crates/meta-rs/` | 12 |
+| `crates/dp-control-plane/` | 7 |
+
+**3,768 files** changed in total. And the three gates that crash inside `all-gates` —
+`event-order-collision-gate.py`, `test_a_measured_turn_reaches_its_tool_gate.py`,
+`test_synonym_spelling_variants_gate.py` — are all **files this branch added**. The branch owns them.
+
+🔴 **`main`'s green is not a baseline.** Its last successful run for 7 of these 8 workflows is
+**2026-08-09**, nearly a month ago against a tree 3,118 commits behind. "It was green on main" cannot
+attribute anything here. The one workflow with a fresh main run — `conformance-ci`, 2026-09-04
+11:59 — is **failing on main too**, which is the only pre-existing verdict that is actually measured.
+
+---
+
+## 1. What is red, measured 2026-09-04 from run `2a5cd293b`
+
+**106 checks: 69 SUCCESS · 26 FAILURE · 11 SKIPPED.** The 26 are **22 distinct jobs** — the `gates`
+workflow runs twice (push + pull_request), so its 4 failures are counted 8 times.
+
+⚠️ **4 of the 26 do not block.** `dep-vuln`'s four audit jobs are `continue-on-error`: their checks
+read FAILURE while the workflow conclusion is SUCCESS. **18 blocking job failures** is the real number.
+
+| # | class | checks | blocking |
+|---|---|---:|---|
+| **C1** | Rust toolchain + workspace build | 6 (10 w/ dup) | yes |
+| **C2** | `all-gates` — 10 red gates of 188 | 1 (2 w/ dup) | yes |
+| **C3** | Go modules — glossary-service | 1 | yes |
+| **C4** | knowledge-service python, unit + integration | 2 | yes |
+| **C5** | DB round-trips + live-smoke | 4 | yes |
+| **C6** | conformance-ci | 3 | yes |
+| **C7** | agentruntime falsification + membrane | 2 | yes |
+| **C8** | dep-vuln audits | 4 | **no — advisory** |
+
+---
+
+## 2. The evidence already in hand, so no row starts from zero
+
+**C1 — one root cause may account for the whole class.** `rust-toolchain.toml` pins `1.89.0`; the
+`gates` job reports:
+
+    error: the 'cargo' binary, normally provided by the 'cargo' component,
+    is not applicable to the '1.89.0-x86_64-...' toolchain
+
+That is a **runner provisioning fault, not code** — and it is why `dp-aggregate-gate` and
+`crate-purity-gate` (`cargo metadata` failed) are red. But `dp-clippy` installs
+`nightly-2025-09-12` separately, and `foundation-ci`'s `cargo build --workspace` dies on something
+else entirely:
+
+    error: failed to run custom build command for `dp-control-plane v0.1.0`
+
+**So C1 is at least two faults, not one.** Prove which checks share a cause before fixing any of them.
+
+**C2 — the 10 named red gates**, out of 188 discovered (`gate-wiring-gate: OK — 188 gate(s)
+discovered, 6 exempt, 0 tracked-red`):
+
+| gate | first line of its failure | reading |
+|---|---|---|
+| `dp-aggregate-gate.py` | cargo not applicable to 1.89.0 | C1 |
+| `crate-purity-gate.py` | `cargo metadata` failed | C1 |
+| `dp-oracle-bite-gate.py` | doc/code pair, broken | likely C1 |
+| `dp-slice5c-bite-gate.py` | gRPC guards, each removed | likely C1 |
+| `gate-number-visibility-gate.py` | `MAX_COLLIDING_PAIRS = 51 never reaches the output` | **one-line fix** |
+| `test_a_measured_turn_reaches_its_tool_gate.py` | `Traceback` | **branch-added, crashes** |
+| `test_synonym_spelling_variants_gate.py` | `Traceback` | **branch-added, crashes** |
+| `agentruntime-membrane-gate.py` | selftest OK, then fails | real finding |
+| `phase0-reconcile-gate.py` | SELFTEST PASS, then fails | real finding |
+| `graph-tenancy-coupling-gate.py` | `traversal_filters_project=False` | real finding |
+
+⚠️ **A crashing gate is not a passing gate and not a failing one** — it is a gate with no verdict.
+Two of them are this branch's own files, which makes them the same defect class as `UNTRIAGED`.
+
+⚠️ `gate-number-visibility-gate` fails over **`event-order-collision-gate.py`**, also branch-added:
+its ratchet `MAX_COLLIDING_PAIRS = 51` is never printed on the pass path. Print it or declare it in
+`SILENT_BY_DESIGN` — the same ratchet-visibility rule this branch has already applied twice.
+
+**C3 — the one that looks like a genuine merge regression.** `go module failed:
+./services/glossary-service`, on two separate points:
+
+    entity_lifecycle_ledger_test.go:154: the chokepoint no longer writes the ledger
+    recalc_restore_test.go:43: chain has no step "0060_glossary_recalc_restore"
+
+The first is **the exact hazard the merge plan predicted** — `executor.py:632 silently disables FE's
+P7 chokepoint`. The second says a migration step vanished from the chain, which on this repo is the
+`DDL-in-an-applied-ledger-step` family. Neither is infra. Treat C3 as the highest-severity row even
+though it is one check.
+
+**C6 is red on `main` today.** Its `S7/F2 perf micro-bench gate` fails at `install benchstat` — a
+network step. Attribute before touching.
+
+---
+
+## 3. Board
+
+- [ ] **T1** — **C1, the Rust class.** Establish how many distinct faults there are before fixing any.
+  The toolchain-component error and the `dp-control-plane` build.rs error are different failures that
+  happen to be both Rust. Fix what is ours; declare what is runner provisioning. **6 checks.**
+- [ ] **T2** — **C2, the 10 red gates.** Start with the two branch-added gates that **crash**
+  (`Traceback`) and `gate-number-visibility` (one line). Then the three that reach a real verdict.
+  Any gate that stays red leaves with a `KNOWN_RED` row naming its deferral — never silently.
+- [ ] **T3** — **C3, glossary-service Go.** The chokepoint ledger write and the missing
+  `0060_glossary_recalc_restore` chain step. Highest severity: a real regression, not infra.
+- [ ] **T4** — **C4, knowledge-service.** Unit fails outright; integration fails **building the
+  Postgres image** (PG18 + pgvector + pgvectorscale + AGE) — separate faults, so separate verdicts.
+- [ ] **T5** — **C5, the four DB jobs.** Three round-trip jobs plus `create meta smoke DB`. If one
+  migration or one image explains all four, that is one fix; prove it rather than assuming it.
+- [ ] **T6** — **C6, conformance-ci.** 🔴 Red on `main` today — attribute each of the three before
+  fixing. `install benchstat` is a network step and probably not ours.
+- [ ] **T7** — **C7, agentruntime.** Falsification + membrane. ⚠️ The two untracked
+  `contracts/agentruntime-*-verdict.json` files in the working tree are evidence to read first, and
+  a falsification verdict can be vacuous — check its bar before believing either colour.
+- [ ] **T8** — **C8, the advisory four.** Non-blocking by construction. Either fix or record why
+  shipping with them red is acceptable, so the next reader does not re-open this.
+- [ ] **D3** — **STOP.** `platform_models` is empty, so the model story is BYOK. Is BYOK-only the
+  intended first-release posture? Owner's call, carried over unanswered.
+- [ ] **D4** — **STOP.** One cloud-model run; everything so far is proven on one local model. Costs
+  money, needs an explicit yes and a stated call count. Carried over unanswered.
+- [ ] **D5** — **STOP.** Merge with C8 advisory-red, or block on it? Owner's call.
+
+---
+
+## 4. What "resolved" means, so the row cannot be ticked cheaply
+
+A row closes when every check in its class is **GREEN**, or **declared** with a reason a stranger can
+audit: a `KNOWN_RED` row naming a tracked deferral, an advisory job's accepted-risk note, or a
+measured attribution to runner infrastructure. **A red check with no verdict is the failure this plan
+exists to end**, and it is the same defect as an `UNTRIAGED` parity row.
+
+🔴 **Re-run before believing a fix.** A green local run proves the fix compiles here; only the PR's
+own checks prove it in CI. And re-run the FULL workflow — a subset run hides the regression you
+just shipped.
+
+**RESUME: T1 — separate the Rust faults, the class that is 6 of the 18 blocking failures**
+
+---
+
+```goal-prompt
+goal: every one of the 26 red checks on PR 219 carries a verdict - fixed, or declared with a reason a stranger can audit - and the branch is fit to merge to main
+po_decisions: [D3, D4, D5]
+rules: |
+  1 $0. Local models only. A PAID run needs an explicit yes and its CALL COUNT stated first. platform_models is EMPTY - keep it that way.
+  2 main's green is NOT a baseline: its last pass for 7 of 8 workflows is 2026-08-09, 3118 commits behind. Never attribute by "it was green on main".
+  3 Attribute a red thing BEFORE fixing it. The branch changed 3768 files and touches every failing area, so "not mine" needs the BRANCH diff, not the session diff.
+  4 A crashing gate (Traceback) has NO verdict - neither pass nor fail. Same defect class as UNTRIAGED.
+  5 A check that stays red leaves with a KNOWN_RED row naming a tracked deferral, or an accepted-risk note. Never silently.
+  6 dep-vuln's 4 checks are continue-on-error and do NOT block. 18 blocking failures is the real number; do not pool the 26.
+  7 Two Rust errors that look alike may be different faults. Prove a shared root cause before applying one fix to a class.
+  8 Re-run the FULL workflow to confirm a fix. A local green proves it compiles here, not in CI; a subset run hides the regression you shipped.
+  9 conformance-ci is red on main TODAY - the only measured pre-existing verdict. Everything else needs its own attribution.
+  10 Never merge or push to main without an explicit yes. Merging is outward-facing and the owner's call.
+discipline: |
+  A pipe to head/tail reports the PIPE's exit, not the command's. Capture to a file when the exit code matters.
+  sed -i rewrites every line ending on this repo's CRLF files - edit with Python or Edit, and check cmp AND git diff --stat after a bite.
+  Verify the pointer before declaring evidence missing, and grep for the route before blaming a service.
+  A falsification verdict can be vacuous - check what its bar actually asserts before believing either colour.
+  Numerator and denominator must measure the same population - stratify before pooling.
+stop: |
+  a write would touch a non-throwaway book or database
+  a run would call a model that is not local
+  a merge or push to main is about to happen
+  a product decision is owed: D3, D4, D5
+```
