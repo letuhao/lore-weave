@@ -591,6 +591,13 @@ class ChatMessage(BaseModel):
     # suspend was abandoned/expired/refused. Lets the FE badge an incomplete reply
     # instead of the reply vanishing.
     finish_reason: str | None = None
+    # R6 — the CP-0.4 outcome, and it is the only signal an ORPHANED turn leaves.
+    # When a turn dies before the model answers there is NO assistant row at all: the
+    # failure is stamped on the USER message instead. Measured live 2026-09-04 — the author
+    # saw their own message and nothing else, no bubble, no badge, no error, while the
+    # backend held a precise diagnosis. D2's empty-turn badge cannot reach that case because
+    # it renders on an assistant message that does not exist, so the FE needs this field.
+    outcome: str | None = None
     parent_message_id: UUID | None
     created_at: datetime
 

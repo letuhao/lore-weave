@@ -215,6 +215,7 @@
     "incomplete_error": "Fehler – Antwort unvollständig",
     "incomplete_interrupted": "Unterbrochen – Antwort unvollständig",
     "empty_turn": "Es wurde keine Antwort erzeugt – nichts wurde geändert. Bitte erneut versuchen.",
+    "orphaned_turn": "Für diese Nachricht wurde keine Antwort erzeugt – nichts wurde geändert. Bitte erneut versuchen.",
     "insert_into_chapter": "In Kapitel einfügen"
   },
   "tools": {

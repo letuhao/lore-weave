@@ -215,6 +215,7 @@
     "incomplete_error": "Kesalahan — respons tidak lengkap",
     "incomplete_interrupted": "Terputus — respons tidak lengkap",
     "empty_turn": "Tidak ada balasan yang dihasilkan — tidak ada yang berubah. Coba lagi.",
+    "orphaned_turn": "Tidak ada balasan untuk pesan ini — tidak ada yang berubah. Coba lagi.",
     "insert_into_chapter": "Masukkan ke dalam bab"
   },
   "tools": {

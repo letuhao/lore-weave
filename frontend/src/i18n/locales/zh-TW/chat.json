@@ -215,6 +215,7 @@
     "incomplete_error": "錯誤 — 回應不完整",
     "incomplete_interrupted": "已中斷 — 回應不完整",
     "empty_turn": "未產生任何回覆 — 沒有任何變更。請重試。",
+    "orphaned_turn": "這則訊息未產生任何回覆 — 沒有任何變更。請重試。",
     "insert_into_chapter": "插入至章節"
   },
   "tools": {

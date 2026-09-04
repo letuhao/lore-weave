@@ -125,7 +125,7 @@ export function MessageBubble({
         >
           {isUser ? (
             <>
-              <UserMessage content={displayText} onEdit={onEdit} onDelete={onDelete} disabled={disabled} />
+              <UserMessage content={displayText} outcome={message.outcome} onEdit={onEdit} onDelete={onDelete} disabled={disabled} />
               {/* Branch navigator — shown on edited messages (have parent_message_id) */}
               {message.parent_message_id && sessionId && onSwitchBranch && (
                 <div className="mt-1.5 flex justify-end">

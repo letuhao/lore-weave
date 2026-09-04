@@ -215,6 +215,7 @@
     "incomplete_error": "Error: respuesta incompleta",
     "incomplete_interrupted": "Interrumpido: respuesta incompleta",
     "empty_turn": "No se generó ninguna respuesta: no se ha cambiado nada. Inténtalo de nuevo.",
+    "orphaned_turn": "No se generó ninguna respuesta para este mensaje: no se ha cambiado nada. Inténtalo de nuevo.",
     "insert_into_chapter": "Insertar en el capítulo"
   },
   "tools": {

@@ -215,6 +215,7 @@
     "incomplete_error": "Hata — yanıt eksik",
     "incomplete_interrupted": "Kesildi — yanıt eksik",
     "empty_turn": "Yanıt üretilmedi — hiçbir şey değişmedi. Tekrar deneyin.",
+    "orphaned_turn": "Bu mesaj için yanıt üretilmedi — hiçbir şey değişmedi. Tekrar deneyin.",
     "insert_into_chapter": "Bölüme ekle"
   },
   "tools": {

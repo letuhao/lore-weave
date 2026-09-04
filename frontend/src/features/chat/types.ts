@@ -412,6 +412,11 @@ export interface ChatMessage {
   // frontend-tool card was abandoned/expired. Drives the "incomplete" badge so
   // a turn that didn't finish cleanly is shown instead of vanishing.
   finish_reason?: string | null;
+  // R6 — the CP-0.4 outcome. On a USER message it is the ONLY trace an orphaned turn
+  // leaves: when a turn dies before the model answers, no assistant row is written at all
+  // and 'failed' is stamped here instead. D2's empty-turn badge cannot cover that, because
+  // it renders on an assistant message that does not exist.
+  outcome?: string | null;
   parent_message_id: string | null;
   created_at: string;
   // K21-C (D1): tool calls the assistant made during this turn.

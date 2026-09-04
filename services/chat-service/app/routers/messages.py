@@ -79,6 +79,9 @@ def _row_to_message(r: asyncpg.Record) -> ChatMessage:
         # `.get()` so a row read before the finish_reason migration ran (or a
         # partial test record) degrades to None instead of a KeyError.
         finish_reason=r.get("finish_reason"),
+        # R6 — same `.get()` reason as finish_reason above: a row written before this
+        # column existed degrades to None rather than raising.
+        outcome=r.get("outcome"),
         parent_message_id=r["parent_message_id"],
         created_at=r["created_at"],
     )

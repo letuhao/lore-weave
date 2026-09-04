@@ -215,6 +215,7 @@
     "incomplete_error": "Lỗi — phản hồi không đầy đủ",
     "incomplete_interrupted": "Bị gián đoạn — phản hồi không đầy đủ",
     "empty_turn": "Không có phản hồi nào được tạo — không có gì thay đổi. Hãy thử lại.",
+    "orphaned_turn": "Không có phản hồi nào cho tin nhắn này — không có gì thay đổi. Hãy thử lại.",
     "insert_into_chapter": "Chèn vào chương"
   },
   "tools": {
