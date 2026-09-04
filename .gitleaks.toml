@@ -38,6 +38,28 @@ regexes = [
   '''postgres://test:test@localhost''',  # per-DPS isolated test stack (B2)
   '''minioadmin''',                       # MinIO default for B2 test stack
   '''sk-ant-FAKE-DEMO-[A-Z]+''',
+
+  # ── 10 findings on PR #219, every one a false positive ────────────────────
+  # Allowlisted as EXACT LITERALS rather than by path. A path entry for
+  # `services/knowledge-gateway/test/` or `.claude/skills/` would blind the
+  # scanner to a real secret committed there tomorrow; these three strings
+  # cannot be anything but placeholders.
+  #
+  # The JWT secret three test files share. It is 37 characters that say what
+  # they are, and the length exists only to clear a >=32 validation.
+  # (services/knowledge-gateway/test/{grants,kal-cast,kal-state}.spec.ts)
+  '''test_secret_at_least_32_chars_long_xx''',
+  # The dev header in the isolated-stack runbook and its seeding script, shown
+  # against `http://localhost:28216`. Documentation of a local call, not a
+  # credential. (docs/dev/ISOLATED_STACK.md, infra/iso-seed.sh)
+  '''dev_internal_token''',
+  # 🔴 A SECURITY CHECKLIST'S OWN COUNTER-EXAMPLE. Line 339 of
+  # `aif-security-checklist/SKILL.md` — replicated into five agent-config
+  # directories — reads `const API_KEY = "sk_live_abc123";` under the heading
+  # "❌ Secrets in code". The scanner was flagging the document that tells
+  # people not to do this. Exact literal only: a broader `sk_live_` allowance
+  # would let a real Stripe key through.
+  '''sk_live_abc123''',
 ]
 stopwords = [
   "loreweave-fake",

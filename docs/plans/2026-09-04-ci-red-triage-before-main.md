@@ -203,6 +203,26 @@ network step. Attribute before touching.
     line-ending agnostic silently covers whichever half it was written on.
   - Evidence: `go test ./...` in glossary-service — **10 packages ok, 0 FAIL**. Five bites, each
     red for its own reason and none via a build failure, all restored byte-exact.
+
+- [x] **T1b** — **the two follow-ons the first CI re-run exposed.** Fixing a check does not always
+  make it green; sometimes it just lets it fail further along, and that is progress worth naming.
+  - **`dp-clippy` got past `Permission denied` and died on the next line.**
+    `BUILD PRODUCED NO CDYLIB: nothing matched target/debug/dp_clippy.{dll,so,dylib}` — that is the
+    **Windows** spelling, and the only platform this script had ever run on. Linux emits
+    `libdp_clippy.so`. The `lib` prefix is now carried through to the destination too, because
+    dylint builds the name it searches for from the platform convention and a library it cannot
+    see fails as `No libraries were found.` with **exit 0** — the exact silent pass `assert_loaded`
+    exists to refuse.
+  - 🔴 **`Secret scan (gitleaks)` went red, and it is NOT one of the original 26.** It was SUCCESS
+    at `2a5cd293b`. **All 10 findings are false positives and none is from this session** (commits
+    dated 2026-08-05 … 2026-08-23): a self-describing test JWT
+    (`test_secret_at_least_32_chars_long_xx`, ×3 spec files), a `dev_internal_token` header shown
+    against `http://localhost:28216` in the isolated-stack runbook, and — four times over, once per
+    agent-config directory — **a security checklist's own counter-example**,
+    `const API_KEY = "sk_live_abc123";` sitting under the heading *"❌ Secrets in code"*.
+    Allowlisted as three **exact literals**, never by path: a path entry for
+    `services/knowledge-gateway/test/` or `.claude/skills/` would blind the scanner to a real
+    secret committed there tomorrow.
 - [ ] **T4** — **C4, knowledge-service.** Unit fails outright; integration fails **building the
   Postgres image** (PG18 + pgvector + pgvectorscale + AGE) — separate faults, so separate verdicts.
 - [ ] **T5** — **C5, the four DB jobs.** Three round-trip jobs plus `create meta smoke DB`. If one

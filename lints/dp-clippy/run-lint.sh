@@ -34,15 +34,35 @@ TOOLCHAIN="$(rustup show active-toolchain | awk '{print $1}')"
 build() {
     ( cd "$HERE" && cargo build --quiet )
     mkdir -p "$HERE/libs"
+    # 🔴 THE `lib` PREFIX. This loop looked for `dp_clippy.{dll,so,dylib}` only, which is the
+    # WINDOWS spelling — and it is the only platform this script had ever run on. On Linux and
+    # macOS a cdylib is emitted as `libdp_clippy.so` / `libdp_clippy.dylib`, so on the CI runner
+    # `cargo build` succeeded, produced the library, and this loop matched nothing:
+    #
+    #     BUILD PRODUCED NO CDYLIB: nothing matched target/debug/dp_clippy.{dll,so,dylib}
+    #
+    # Measured on run 33897931330. It surfaced only once the file's executable bit was fixed —
+    # before that the step died at `./run-lint.sh: Permission denied` (exit 126) and never got
+    # far enough to be wrong here.
+    #
+    # The PREFIX IS CARRIED THROUGH to the destination, not stripped: dylint builds the filename
+    # it looks for using the platform's own convention, so a Linux library copied to
+    # `dp_clippy@<toolchain>.so` would not be found — and the failure mode of a library dylint
+    # cannot see is `No libraries were found.` with exit 0, which is precisely what
+    # `assert_loaded` below exists to refuse.
     local found=0
-    for ext in dll so dylib; do
-        if [ -f "$HERE/target/debug/dp_clippy.$ext" ]; then
-            cp "$HERE/target/debug/dp_clippy.$ext" "$HERE/libs/dp_clippy@${TOOLCHAIN}.$ext"
+    for cand in dp_clippy.dll libdp_clippy.so libdp_clippy.dylib dp_clippy.so dp_clippy.dylib; do
+        if [ -f "$HERE/target/debug/$cand" ]; then
+            local ext="${cand##*.}"
+            local prefix=""
+            case "$cand" in lib*) prefix="lib" ;; esac
+            cp "$HERE/target/debug/$cand" "$HERE/libs/${prefix}dp_clippy@${TOOLCHAIN}.$ext"
             found=1
         fi
     done
     if [ "$found" -eq 0 ]; then
-        echo "BUILD PRODUCED NO CDYLIB: nothing matched target/debug/dp_clippy.{dll,so,dylib}" >&2
+        echo "BUILD PRODUCED NO CDYLIB: nothing matched target/debug/{lib,}dp_clippy.{dll,so,dylib}" >&2
+        ls -la "$HERE/target/debug/" 2>/dev/null | head -30 >&2
         exit 2
     fi
     assert_loaded
