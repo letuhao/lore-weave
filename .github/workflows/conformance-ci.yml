@@ -154,8 +154,23 @@ jobs:
         with:
           go-version: "1.25"
       - name: install benchstat
+        # 🔴 PINNED, because `@latest` broke this job the day upstream raised its floor:
+        #
+        #   go: golang.org/x/perf/cmd/benchstat@latest: golang.org/x/perf@v0.0.0-20260825160852
+        #   requires go >= 1.26.0 (running go 1.25.14; GOTOOLCHAIN=local)
+        #
+        # Nothing in this repo changed. `@latest` is a moving target and this job deliberately
+        # pins `go-version: "1.25"` with `GOTOOLCHAIN: local` for reproducible numbers — the
+        # two cannot both float. The tool is a statistics formatter for `go test -bench`
+        # output; its CLI has been stable for years, and the gate's own `--bite` leg proves it
+        # still discriminates.
+        #
+        # This pseudo-version declares `go 1.18`, so it installs under any Go this repo uses.
+        # Verified with `GOTOOLCHAIN=local go install` on go1.25.1. Raising it means bumping
+        # `go-version` here first, which is a decision about the benchmark numbers rather than
+        # a dependency bump.
         run: |
-          go install golang.org/x/perf/cmd/benchstat@latest
+          go install golang.org/x/perf/cmd/benchstat@v0.0.0-20240604174448-3b48cf0e0164
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: gate non-vacuity (--bite must fire)
         run: bash scripts/perf/bench-gate.sh --bite

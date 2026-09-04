@@ -33,13 +33,14 @@ const N_AGGREGATES: usize = 5;
 
 /// Build the fixed event script for aggregate `i`: spawn, then two moves.
 fn script(reality: Uuid, i: usize) -> Vec<EventEnvelope> {
-    let agg = format!("pc-{i}");
+    let agg = format!("canon-{i}");
+    let entry = format!("ce-{i}");
     let mk = |ver: u64, etype: &str, payload: serde_json::Value| EventEnvelope {
         event_id: Uuid::from_u128(((i as u128 + 1) << 32) | ver as u128),
         event_type: etype.into(),
         event_version: 1,
         aggregate_id: agg.clone(),
-        aggregate_type: "pc".into(),
+        aggregate_type: "canon".into(),
         aggregate_version: ver,
         reality_id: reality,
         occurred_at: "2026-01-01T00:00:00Z".into(),
@@ -49,14 +50,32 @@ fn script(reality: Uuid, i: usize) -> Vec<EventEnvelope> {
         metadata: None,
         ruleset_digest: None,
     };
+    // One row per aggregate, then two updates to it — the same create-then-mutate shape the
+    // pc script had. `CanonProjection` ignores any envelope whose `aggregate_type` is not
+    // "canon" and returns no updates, so getting these strings wrong would not fail loudly:
+    // it would make every run produce an EMPTY table and the oracle would "converge"
+    // vacuously. `test_the_script_actually_produces_updates` below is what stops that.
     vec![
         mk(
             1,
-            "pc.spawned",
-            json!({ "user_id": format!("u{i}"), "name": format!("PC{i}"), "spawn_region_id": "r0" }),
+            "canon.entry.created",
+            json!({
+                "canon_entry_id": entry, "book_id": format!("b{i}"),
+                "attribute_path": "world.name", "value": format!("V{i}"),
+                "canon_layer": "L2_seeded"
+            }),
         ),
-        mk(2, "pc.moved", json!({ "to_region_id": "r1" })),
-        mk(3, "pc.moved", json!({ "to_region_id": "r2" })),
+        mk(
+            2,
+            "canon.entry.updated",
+            json!({ "canon_entry_id": entry, "new_value": format!("V{i}-edited"),
+                    "canon_layer": "L2_seeded" }),
+        ),
+        mk(
+            3,
+            "canon.entry.promoted",
+            json!({ "canon_entry_id": entry, "to_layer": "L1_axiom" }),
+        ),
     ]
 }
 
@@ -147,19 +166,19 @@ pub fn check(bite: bool) -> Result<String, String> {
     }
 
     // Real projection must converge across the whole sweep.
-    let replay = run_replay(&projections_pc::PcProjection);
+    let replay = run_replay(&projections_canon::CanonProjection);
     let seeds = crate::seed_sweep(64);
     for seed in 0..seeds {
-        let live = run_live(seed, Arc::new(projections_pc::PcProjection));
+        let live = run_live(seed, Arc::new(projections_canon::CanonProjection));
         if live != replay {
             return Err(format!(
-                "convergence FAILED at seed {seed}: real PcProjection diverged between \
+                "convergence FAILED at seed {seed}: real CanonProjection diverged between \
                  interleaved-apply and canonical replay\n--- live ---\n{live}\n--- replay ---\n{replay}"
             ));
         }
     }
     Ok(format!(
-        "convergence OK: real PcProjection over {N_AGGREGATES} aggregates converged to canonical \
+        "convergence OK: real CanonProjection over {N_AGGREGATES} aggregates converged to canonical \
          replay across all {seeds} interleavings"
     ))
 }
@@ -194,5 +213,59 @@ impl Projection for GlobalSeqProjection {
             fields: json!({ "agg": env.aggregate_id, "ver": env.aggregate_version }),
             meta: VerificationMeta::from_envelope(env),
         }]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 🔴 THE ORACLE'S OWN ANTI-VACUITY CHECK.
+    ///
+    /// `CanonProjection::apply_event` returns `vec![]` for any envelope whose
+    /// `aggregate_type` is not `"canon"`, and for any `event_type` it does not recognise.
+    /// So a typo in the script below — `"canon.entry.create"`, `"pc"`, a renamed event —
+    /// would not fail. It would make every run project NOTHING, live and replay would both
+    /// be empty, they would compare equal, and the convergence oracle would report OK while
+    /// measuring an empty table.
+    ///
+    /// That is the exact shape this file's own bite arm warns about ("the convergence
+    /// oracle would be VACUOUS"), and it is why the script is pinned by its EFFECT rather
+    /// than by reading it.
+    #[test]
+    fn the_script_actually_produces_updates() {
+        let reality = Uuid::from_u128(REALITY);
+        let proj = projections_canon::CanonProjection;
+        let mut total = 0usize;
+        for i in 0..N_AGGREGATES {
+            for env in script(reality, i) {
+                let ups = proj.apply_event(&env);
+                assert!(
+                    !ups.is_empty(),
+                    "CanonProjection ignored {} on aggregate_type {} — the script and the \
+                     projection disagree, so the convergence oracle would measure an empty \
+                     table and pass vacuously",
+                    env.event_type,
+                    env.aggregate_type
+                );
+                total += ups.len();
+            }
+        }
+        assert_eq!(
+            total,
+            N_AGGREGATES * 3,
+            "expected one update per scripted event across {N_AGGREGATES} aggregates"
+        );
+    }
+
+    /// And the replay must produce a NON-EMPTY table. `run_replay` returning "" would make
+    /// every comparison in the oracle trivially true.
+    #[test]
+    fn replay_builds_a_non_empty_table() {
+        let out = run_replay(&projections_canon::CanonProjection);
+        assert!(
+            out.contains("canon_projection"),
+            "replay produced no canon_projection rows: {out:?}"
+        );
     }
 }

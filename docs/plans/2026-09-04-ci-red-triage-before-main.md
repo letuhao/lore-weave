@@ -292,8 +292,34 @@ network step. Attribute before touching.
     already-migrated one) · book-service `internal/api` + `internal/migrate` green in isolation.
     ⚠️ Two book-service backfill tests deadlocked under my single shared DB; they are green on an
     isolated one and appear **nowhere** in the CI log — my environment, not a defect.
-- [ ] **T6** — **C6, conformance-ci.** 🔴 Red on `main` today — attribute each of the three before
-  fixing. `install benchstat` is a network step and probably not ours.
+- [x] **T6** — **DONE. Two causes, both `@latest`-shaped, and my "probably not ours" guess about
+  benchstat was wrong in the way that matters.**
+  - 🔴 **An incomplete removal took out FIVE conformance cases and the DST leg.** Commit
+    `5d09f376b` — *"remove pc/npc — and add the Phase 0 that would have caught them"* — deleted
+    `crates/projections/{pc,npc}` alongside migration `0017`, and left
+    `tests/sim/Cargo.toml` depending on `../../crates/projections/pc`. The whole sim crate could
+    not build (`failed to load manifest for dependency projections-pc`), so every case that shells
+    into it reported `setup error: exit 101`: `kernel-sim-{atomicity,cas,convergence,skeleton}`
+    **and** `tilemap-determinism`. The Phase 0 that commit added did not catch its own last
+    consumer.
+  - **Ported to `projections-canon`** — the projection that *survived* that cleanup, and the one
+    `0018` keeps "with a real producer". ⚠️ **A naive swap would have been vacuous**:
+    `CanonProjection.apply_event` returns `vec![]` for any envelope whose `aggregate_type` is not
+    `"canon"`, so a wrong string would have made both live and replay project *nothing*, compared
+    equal, and reported convergence over an empty table — the exact failure this file's own bite
+    arm names. Two anti-vacuity tests pin the script **by its effect**, and the bite fires on a
+    wrong `aggregate_type` with the diagnostic that says so.
+  - **The oracle keeps its teeth**, which is the whole point: `bite_global_order_dependent_
+    projection_diverges` ✅ and `real_projection_converges_across_interleavings` ✅. All five cases
+    now PASS locally, and both `--bite` arms still fire.
+  - **`go install …/benchstat@latest` — the same defect as `apache/age:latest` in T4.** Upstream
+    raised its floor (`requires go >= 1.26.0; running go 1.25.14; GOTOOLCHAIN=local`) and this job
+    pins Go 1.25 deliberately for reproducible numbers. Both cannot float. Pinned to a
+    pseudo-version declaring `go 1.18`, verified by installing it under go1.25.1 and running the
+    gate: `bite fired — REGRESSION PerfGateBite-32 +195.77% (p=0.000 n=10)`.
+  - ⚠️ Rule 9 said conformance-ci is red on `main` too, and it is — **but not for a reason that
+    excuses it.** Both causes are unpinned-upstream and incomplete-removal, and both are the
+    branch's to carry.
 - [ ] **T7** — **C7, agentruntime.** Falsification + membrane. ⚠️ The two untracked
   `contracts/agentruntime-*-verdict.json` files in the working tree are evidence to read first, and
   a falsification verdict can be vacuous — check its bar before believing either colour.

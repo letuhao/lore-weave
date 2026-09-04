@@ -31,7 +31,14 @@ path = "src/bin/sim.rs"
 dp-kernel = { path = "../../crates/dp-kernel" }
 # The REAL projection code the convergence oracle drives (review HIGH-2: no
 # hand-rolled re-impl → no common-mode vacuity).
-projections-pc = { path = "../../crates/projections/pc" }
+# `projections-pc` was REMOVED by 5d09f376b ("remove pc/npc") together with migration
+# 0017, and this dependency was left behind pointing at a directory that no longer
+# exists -- so `tests/sim` could not build at all:
+#     error: failed to load manifest for dependency `projections-pc`
+# That took out the whole kernel-sim conformance family (5 cases, "setup error: exit
+# 101") and the S10/H1 DST leg with it. `projections-canon` is the projection that
+# SURVIVED that cleanup, with a real producer.
+projections-canon = { path = "../../crates/projections/canon" }
 # The REAL tilemap engine (Inc-5 determinism-DST drives `place_tilemap`).
 tilemap-service = { path = "../../services/tilemap-service" }
 
