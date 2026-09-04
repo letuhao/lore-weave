@@ -171,12 +171,26 @@ if [ "${1:-}" = "--self-test" ]; then
     else
         # `|| true`: pipefail takes the pipeline status from `lint`, which exits 1
         # BECAUSE the lint fired. Without this the script aborts on success.
-        n=$(lint "$HERE/fixtures/swallower" 2>&1 | grep -c "^error: \`\." || true)
+        # 🔴 CAPTURE THE OUTPUT ONCE, and tell "the lint found nothing" apart from "the
+        # fixture never compiled". `lint` exits non-zero for BOTH, so the `if` above proves
+        # only that something went wrong — and the count then reported `MISCOUNTED: 0`, which
+        # reads as a lint that lost its rule. Measured on run 33905121511: 0 findings on
+        # Linux CI while this same leg passes locally on the same pinned nightly, so the
+        # message that matters is the one this branch could not say.
+        out=$(lint "$HERE/fixtures/swallower" 2>&1 || true)
+        n=$(printf '%s\n' "$out" | grep -c "^error: \`\." || true)
         if [ "$n" = "3" ]; then
             echo "OK  R-6 fires on exactly the 3 discards, not on the 2 legitimate uses"
+        elif [ "$n" = "0" ] && printf '%s\n' "$out" | grep -qE "^error(\[E[0-9]+\])?: |could not compile|error: could not"; then
+            echo "R-6 DID NOT RUN: fixtures/swallower failed to BUILD, so the lint never saw it."
+            echo "  A build failure is not a lint finding, and counting it as 0 findings"
+            echo "  reports a defect in the rule that the evidence does not support."
+            printf '%s\n' "$out" | grep -E "^error|could not compile" | head -5 | sed 's/^/    /'
+            fail=1
         else
             echo "R-6 MISCOUNTED: $n finding(s), expected 3 (an unrelated Result or a"
             echo "  propagating call is being flagged, or a discard is being missed)"
+            printf '%s\n' "$out" | tail -15 | sed 's/^/    /'
             fail=1
         fi
     fi

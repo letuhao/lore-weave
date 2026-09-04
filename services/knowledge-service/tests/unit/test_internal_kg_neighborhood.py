@@ -194,15 +194,37 @@ async def test_the_endpoint_the_gateway_builds_actually_exists(app):
     app.routes exposes .path"* — so the walk descends into anything carrying its own `routes`
     and skips entries without a path, rather than pinning FastAPI's internal shape.
     """
-    def _paths(routes) -> set[str]:
+    def _paths(routes, prefix="", _seen=None) -> set[str]:
+        # Descends whatever container the installed FastAPI happens to use, because the shape
+        # that broke this test exposes NONE of the obvious ones. Measured against 0.141.1:
+        # `include_router()` yields an `_IncludedRouter` with no `.path`, no `.routes`, no
+        # `.router` and no `.app` — it keeps the real routes on `.original_router` and the
+        # mount prefix on `.include_context.prefix`, and `original_router.routes` are
+        # UNPREFIXED, so the two must be recomposed or the answer is wrong in a new way.
+        #
+        # Rather than pin `original_router` (the next name this repo would chase), any
+        # attribute holding a `.routes` list is followed. `_seen` stops the cycle back to the
+        # app via `dependency_overrides_provider`.
+        _seen = set() if _seen is None else _seen
         out: set[str] = set()
-        for r in routes:
+        for r in routes or ():
+            if id(r) in _seen:
+                continue
+            _seen.add(id(r))
             p = getattr(r, "path", None)
             if isinstance(p, str):
-                out.add(p)
-            nested = getattr(r, "routes", None)
-            if nested:
-                out |= _paths(nested)
+                out.add(prefix + p)
+            ctx = getattr(r, "include_context", None)
+            sub = prefix + (getattr(ctx, "prefix", "") or "") if ctx is not None else prefix
+            containers = list(vars(r).values()) if hasattr(r, "__dict__") else []
+            for attr in ("routes", "router", "app"):
+                v = getattr(r, attr, None)
+                if v is not None and v is not r:
+                    containers.append(v)
+            for v in containers:
+                nested = v if isinstance(v, (list, tuple)) else getattr(v, "routes", None)
+                if isinstance(nested, (list, tuple)):
+                    out |= _paths(nested, sub, _seen)
         return out
 
     paths = _paths(app.routes)
@@ -214,4 +236,5 @@ async def test_the_endpoint_the_gateway_builds_actually_exists(app):
     assert "/openapi.json" in paths, (
         f"the route walk did not even find FastAPI's own defaults ({sorted(paths)}) — it is "
         "not walking the app, so the assertion below would prove nothing")
-    assert "/internal/books/{book_id}/kg/neighborhood" in paths
+    assert "/internal/books/{book_id}/kg/neighborhood" in paths, (
+        f"the route the gateway builds is not served. Collected: {sorted(paths)}")
