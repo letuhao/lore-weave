@@ -628,60 +628,79 @@ tools:
   - tool: settings_model_delete
     provider: settings
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
   - tool: settings_model_register
     provider: settings
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
   - tool: settings_model_set_active
     provider: settings
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
   - tool: settings_model_set_default
     provider: settings
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
   - tool: settings_model_set_favorite
     provider: settings
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
   - tool: settings_model_update
     provider: settings
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
   - tool: settings_update_profile
     provider: settings
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: the account tab renders a real profile form; only its container c-account carries a testid.
   - tool: translation_job_control
     provider: translation
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: extraction StepProgress' cancel has no testid.
   - tool: translation_patch_block
     provider: translation
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/translation
+    testid: correction-cell-*
   - tool: translation_retranslate_dirty
     provider: translation
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/translation
+    testid: translate-retranslate-selected
   - tool: translation_save_edited_version
     provider: translation
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: useEditTranslation's save control has no testid.
   - tool: translation_set_active_version
     provider: translation
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: TranslationReviewView renders 12 real buttons, none with a testid.
   - tool: translation_start_extraction
     provider: translation
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
+    note: the extraction wizard's fields carry testids (extraction-strategy, extraction-concurrency) but its SUBMIT does not; step-confirm exists only as a test mock.
   - tool: translation_start_job
     provider: translation
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/translation
+    testid: translate-modal-body
   - tool: translation_update_settings
     provider: translation
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/translation
+    testid: translate-thinking-toggle
