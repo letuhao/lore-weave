@@ -94,31 +94,37 @@ that continues.
     architecture change, not CI triage.
 - [ ] **R3** — **`lint-foundation` → `agentruntime-falsification`: CI says 13, the harness's own
   run says 2.**
-  - 🔴 **A CORRECTION I AM CARRYING FORWARD RATHER THAN QUIETLY DROPPING.** The previous plan
-    recorded "5 environment and 8 real", from an ad-hoc probe I wrote that drove the falsifiers
-    one at a time through `_apply`/`_run_one` on a single shared mirror. The harness's **own**
-    `--run --force`, finished afterwards, disagrees:
+  - 🔴 **I WITHDREW A CORRECT FINDING, AND THE MEASUREMENT PUT IT BACK. Both corrections stand
+    here.** The original reading was *"5 environment and 8 real"*. I withdrew it after the
+    harness's own `--run --force` appeared to say **two** — and it did not. I read `tail -3` of
+    that run and took the last two lines for the whole list. The full log has **eight**, and they
+    are exactly the eight the probe named. The probe was right; the withdrawal was a truncated
+    read, which is the failure my own notes call *"a pipe to tail reports the PIPE's exit"* wearing
+    different clothes.
+  - **Now measured both ways, and the arithmetic is exact:**
 
-        400/408 falsifiers red the guard they name
-        NOT FALSIFIABLE  test_the_CALL_SITE_arms_what_the_refusal_named
-        NOT FALSIFIABLE  test_the_DIRECTIVE_for_this_arm_claims_nothing_it_did_not_measure
+    | environment | falsifiers reddening | NOT FALSIFIABLE |
+    |---|---|---|
+    | Postgres reachable | 400/408 | **8** |
+    | Postgres unreachable | 395/408 | **13** |
+    | **CI** | **395/408** | **13** |
 
-    **Two, not eight.** My probe over-reported by six — it reuses one mirror across every test
-    while the harness manages its own lifecycle. The harness is authoritative and the probe is
-    withdrawn. Both survivors were in the probe's list, so the six extra were the probe's fault,
-    not a shrinking set.
-  - **So the real split is unknown and must be measured, not inferred.** CI (no Postgres) reports
-    13; this machine (Postgres reachable) reports 2. The 5 in `tests/test_cp0_merge_db.py` are
-    DB-gated and explain part of the gap, but **5 + 2 ≠ 13** — six are still unaccounted for, and
-    guessing which is what produced the withdrawn finding. The measurement that settles it is the
-    harness's own run in an environment with no Postgres.
-  - **What is safe to do now, independent of that count:** move the 5 DB-gated rows out of
-    `FALSIFIERS` into the unproven backlog. The script's own note says a falsifier row for a
-    DB-gated test "would read GREEN and be filed as `the guard requires nothing`, which is a lie
-    about a guard that works", and a fix commit (`73b3189a8`) added them anyway.
-  - 🔴 **The count is a trap, and it caught me once already.** The note says "THE 13 ROWS FROM
-    `tests/test_cp0_merge_db.py`" and CI reports 13 findings — but only **5** live in that file.
-    A matching count is not a matching population, in either direction.
+    The no-Postgres run reproduces CI **exactly** — same ratio, same 13 names. And
+    `13 − 8 = 5`, those five being precisely the DB-gated rows in `tests/test_cp0_merge_db.py`,
+    with the 8 a strict subset of the 13. Nothing is left unaccounted for.
+  - ✅ **The 5 are handled.** Moved out of `FALSIFIERS` into the unproven backlog, which the
+    script's own note prescribes: a falsifier row for a DB-gated test *"would read GREEN and be
+    filed as `the guard requires nothing`, which is a lie about a guard that works"*. Partition
+    kept exact — 798 = 403 + 2 + 393.
+  - 🔴 **The 8 are real, and they are the row's remaining work.** They reddened nothing with a
+    Postgres present *and* absent, and `_apply` raises on a stale anchor, so the edits landed and
+    the guards did not notice. Each needs a case that exercises the mutated path — e.g.
+    `test_THE_UNION_DERIVES_COMPLETELY`'s falsifier makes derivation skip a tool with no name, and
+    the test has no nameless-tool case. That is test-authoring, one analysis per guard.
+  - ⚠️ **The count in the script's note was a trap in both directions.** It said "THE 13 ROWS FROM
+    `tests/test_cp0_merge_db.py`" while that file has 20 tests and exactly 5 falsifier rows.
+    Reading the note forward closes 8 real findings as environment; reading a truncated log
+    backward withdraws them. Header corrected.
 - [ ] **R4** — **The 48 unsettled checks.** Not a wait: a row. When they land, triage anything new
   the same way — attribute before fixing, and expect a fix to reveal the next failure rather than
   end the chain. `conformance-ci`, `foundation-ci`, `lint-foundation` and
