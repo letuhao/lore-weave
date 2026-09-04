@@ -323,13 +323,46 @@ network step. Attribute before touching.
 - [ ] **T7** — **C7, agentruntime.** Falsification + membrane. ⚠️ The two untracked
   `contracts/agentruntime-*-verdict.json` files in the working tree are evidence to read first, and
   a falsification verdict can be vacuous — check its bar before believing either colour.
-- [ ] **T8** — **C8, the advisory four.** Non-blocking by construction. Either fix or record why
-  shipping with them red is acceptable, so the next reader does not re-open this.
+- [x] **T8** — **TRIAGED, not fixed — and the fixing is a security-posture call, so it is D6.**
+  These four are `continue-on-error` and do not block the merge. They are also the only red checks
+  whose content is *real findings about shipped dependencies* rather than harness defects, which is
+  why they get a written record instead of a shrug.
+  - ⚠️ **Two of them read as clean and are not.** `pip-audit` and `govulncheck` print
+    *"No known vulnerabilities found"* dozens of times and exit 1, because each loops over every
+    requirements file / `go.mod` and only the FAILING iterations matter. Reading the tail of that
+    log is how a real finding gets dismissed.
+
+  | audit | finding | fix |
+  |---|---|---|
+  | Python | `datasets 2.21.0` — PYSEC-2026-3716 (knowledge-service) | 5.0.1 — a **major** jump |
+  | Go | `google.golang.org/grpc` — GO-2026-6061, xDS RBAC + HTTP/2 transport | upstream bump |
+  | Rust | **4**: `rsa` (Marvin Attack, key recovery via timing), `h2` (unbounded empty DATA frames), `quinn-proto` (remote memory exhaustion), `crossbeam-epoch` — plus 2 allowed warnings | mostly transitive; `RUSTSEC-2023-0071` has no patched release |
+  | JS/TS | **21** across frontend + gateways | mixed |
+
+  - **The Python one is lower exposure than it looks, and I got it wrong once.** I first read
+    `datasets` as never imported; it *is* imported — lazily, inside
+    `tests/quality/anchor_runner.py`, which an indented-import grep missed. Its own requirements
+    comment says *"Used only in tests/quality/* and only opt-in via --run-quality"*. So it is
+    test-only and opt-in — but it sits in `requirements.txt`, not `requirements-test.txt`, so it
+    ships in the runtime image (~500MB–1GB by that same comment's estimate). That placement is
+    worth fixing on its own merits, separately from the CVE.
+  - 🔴 **Not fixed here, deliberately.** Every one is a dependency bump: a 2.x→5.x major, three
+    transitive Rust crates, an unpatched advisory, and 21 JS findings. Bumping dependencies across
+    four ecosystems at the end of a long session — with no test cycle behind it — would trade a
+    known, non-blocking, advisory red for an unknown blocking one. **D6.**
 - [ ] **D3** — **STOP.** `platform_models` is empty, so the model story is BYOK. Is BYOK-only the
   intended first-release posture? Owner's call, carried over unanswered.
 - [ ] **D4** — **STOP.** One cloud-model run; everything so far is proven on one local model. Costs
   money, needs an explicit yes and a stated call count. Carried over unanswered.
 - [ ] **D5** — **STOP.** Merge with C8 advisory-red, or block on it? Owner's call.
+- [ ] **D6** — **STOP. The security posture for the first release.** T8 found real advisories in
+  all four ecosystems (table above), none of them blocking. Three ways to go, and it is a risk
+  call rather than an engineering one: **(a)** bump everything now and take the regression risk on
+  a branch that is already 3,100+ commits ahead; **(b)** fix only what is cheap and safe — move
+  `datasets` to `requirements-test.txt` (it is test-only by its own comment and is ~500MB–1GB of
+  runtime image), leave the transitive ones; **(c)** accept and record, and schedule the bumps as
+  their own change with its own test cycle. ⚠️ `rsa`'s Marvin Attack advisory has **no patched
+  release**, so no option makes that one green.
 
 ---
 
