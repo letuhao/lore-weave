@@ -247,8 +247,9 @@ func (s *Server) newMCPServer() *mcp.Server {
 		s.toolBookUpdateMeta)
 
 	addTool(srv, "book_chapter_create",
-		"Create a new chapter — a unit of manuscript PROSE (the story text itself) — from plain text "+
-			"(or empty). Returns the new chapter_id. For the book's own description / summary / blurb "+
+		"Create a new chapter — a unit of manuscript PROSE (the story text itself). PASS THE PROSE IN "+
+			"body: a create without body makes an EMPTY chapter (0 words) that the author cannot read, "+
+			"and it stays empty until a later book_chapter_save_draft fills it. Returns the new chapter_id. For the book's own description / summary / blurb "+
 			"(the book's own details, not chapter prose), use book_update_details instead — do NOT create a chapter for it. "+
 			"Reverse: trashing a chapter is a manual UI action — tell the user, do not look for a tool.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new chapter", "add chapter"}),

@@ -259,7 +259,13 @@ type chapterCreateIn struct {
 	Title            string `json:"title,omitempty"`
 	OriginalLanguage string `json:"original_language" jsonschema:"ISO language code of the chapter text (required)"`
 	SortOrder        int    `json:"sort_order,omitempty" jsonschema:"position; 0 = append at the end"`
-	Body             string `json:"body,omitempty" jsonschema:"plain-text body (optional)"`
+	// MEASURED 2026-09-04, two live authoring runs. Every chapter this tool left at 0 words was
+	// created TITLE-ONLY, and the turn ended before any save_draft filled it - four stranded
+	// chapters across the two runs, one of them reported to the author as a 1,054-word save.
+	// Every create that PASSED a body produced a complete chapter in one call (1242 and 700
+	// words). The one-call path already worked; nothing on this surface said body was where
+	// the prose goes, or what omitting it costs. Five words became this.
+	Body             string `json:"body,omitempty" jsonschema:"the chapter's PROSE, as plain text - the same content you would pass to book_chapter_save_draft. Separate paragraphs with a blank line. OPTIONAL, but omitting it creates an EMPTY chapter (0 words) that the author cannot read until a later book_chapter_save_draft supplies the text. If you have already written the chapter, pass it HERE and the chapter is complete in one call."`
 }
 type chapterCreateOut struct {
 	ChapterID string `json:"chapter_id"`
