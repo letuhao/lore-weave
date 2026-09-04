@@ -482,7 +482,8 @@
       "adding": "Menambahkan...",
       "submit": "Tambah Model",
       "pricing_summary": "Biaya: input ${{input}}/1M · output ${{output}}/1M",
-      "pricing_missing": "Penyedia tidak memublikasikan harga — tambahkan secara manual setelah model terdaftar."
+      "pricing_missing": "Penyedia tidak memublikasikan harga — tambahkan secara manual setelah model terdaftar.",
+      "context_too_small": "Terlalu kecil untuk obrolan: perkakas asisten saja butuh sekitar {{floor}} token sebelum buku Anda ditambahkan, jadi obrolan akan gagal sejak awal. Gunakan jendela lebih besar, atau pakai model ini untuk tugas lain."
     },
     "edit": {
       "aria": "Edit model",

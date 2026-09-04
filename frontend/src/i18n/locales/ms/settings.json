@@ -482,7 +482,8 @@
       "adding": "Menambah...",
       "submit": "Tambah Model",
       "pricing_summary": "Kos: input ${{input}}/1M · output ${{output}}/1M",
-      "pricing_missing": "Penyedia tidak menerbitkan harga — masukkan secara manual setelah model didaftarkan."
+      "pricing_missing": "Penyedia tidak menerbitkan harga — masukkan secara manual setelah model didaftarkan.",
+      "context_too_small": "Terlalu kecil untuk sembang: alat pembantu sahaja perlukan kira-kira {{floor}} token sebelum buku anda ditambah, jadi sembang akan gagal dari mula. Guna tetingkap lebih besar, atau simpan model ini untuk kerja lain."
     },
     "edit": {
       "aria": "Edit model",

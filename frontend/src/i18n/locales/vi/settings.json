@@ -482,7 +482,8 @@
       "adding": "Đang thêm...",
       "submit": "Thêm mô hình",
       "pricing_summary": "Chi phí: đầu vào ${{input}}/1M · đầu ra ${{output}}/1M",
-      "pricing_missing": "Nhà cung cấp không công bố giá — hãy tự nhập thủ công sau khi mô hình đã được đăng ký."
+      "pricing_missing": "Nhà cung cấp không công bố giá — hãy tự nhập thủ công sau khi mô hình đã được đăng ký.",
+      "context_too_small": "Quá nhỏ cho trò chuyện: riêng các công cụ của trợ lý đã cần khoảng {{floor}} token trước khi thêm sách của bạn, nên cuộc trò chuyện sẽ hỏng ngay từ đầu. Hãy dùng cửa sổ lớn hơn, hoặc giữ mô hình này cho việc khác."
     },
     "edit": {
       "aria": "Sửa mô hình",

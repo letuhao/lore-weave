@@ -482,7 +482,8 @@
       "adding": "Ekleniyor...",
       "submit": "Model Ekle",
       "pricing_summary": "Maliyet: giriş ${{input}}/1M · çıkış ${{output}}/1M",
-      "pricing_missing": "Sağlayıcı fiyatlandırma bilgilerini yayınlamıyor — model kaydedildikten sonra manuel olarak ekleyin."
+      "pricing_missing": "Sağlayıcı fiyatlandırma bilgilerini yayınlamıyor — model kaydedildikten sonra manuel olarak ekleyin.",
+      "context_too_small": "Sohbet için fazla küçük: kitabınız eklenmeden önce yalnızca asistan araçları yaklaşık {{floor}} token istiyor, bu yüzden sohbet daha başlamadan başarısız olur. Daha büyük bir pencere kullanın veya bu modeli başka işler için saklayın."
     },
     "edit": {
       "aria": "Modeli düzenle",

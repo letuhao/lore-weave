@@ -482,7 +482,8 @@
       "adding": "新增中...",
       "submit": "新增模型",
       "pricing_summary": "成本：輸入 ${{input}}/1M · 輸出 ${{output}}/1M",
-      "pricing_missing": "該供應商未公布價格 — 請在模型註冊後手動新增。"
+      "pricing_missing": "該供應商未公布價格 — 請在模型註冊後手動新增。",
+      "context_too_small": "對話視窗太小：僅助理工具就需要約 {{floor}} 個 token，尚未加入書稿便會失敗。請改用更大的上下文視窗，或將此模型用於非對話任務。"
     },
     "edit": {
       "aria": "編輯模型",

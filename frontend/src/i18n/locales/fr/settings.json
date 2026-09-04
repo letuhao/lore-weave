@@ -482,7 +482,8 @@
       "adding": "Ajout en cours...",
       "submit": "Ajouter le modèle",
       "pricing_summary": "Coût : entrée ${{input}}/1M · sortie ${{output}}/1M",
-      "pricing_missing": "Le fournisseur ne publie pas de tarifs — ajoutez-les manuellement une fois le modèle enregistré."
+      "pricing_missing": "Le fournisseur ne publie pas de tarifs — ajoutez-les manuellement une fois le modèle enregistré.",
+      "context_too_small": "Trop petit pour discuter : les seuls outils de l'assistant demandent environ {{floor}} tokens avant même votre livre, la discussion échouera donc d'emblée. Utilisez une fenêtre plus grande, ou réservez ce modèle à d'autres tâches."
     },
     "edit": {
       "aria": "Modifier le modèle",

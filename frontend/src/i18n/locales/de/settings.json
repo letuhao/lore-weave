@@ -482,7 +482,8 @@
       "adding": "Wird hinzugefügt...",
       "submit": "Modell hinzufügen",
       "pricing_summary": "Kosten: Input ${{input}}/1M · Output ${{output}}/1M",
-      "pricing_missing": "Der Anbieter veröffentlicht keine Preisgestaltung – fügen Sie diese manuell hinzu, sobald das Modell registriert ist."
+      "pricing_missing": "Der Anbieter veröffentlicht keine Preisgestaltung – fügen Sie diese manuell hinzu, sobald das Modell registriert ist.",
+      "context_too_small": "Zu klein für den Chat: Allein die Assistenz-Tools brauchen rund {{floor}} Token, bevor Ihr Buch hinzukommt – der Chat scheitert also sofort. Nutzen Sie ein größeres Fenster oder dieses Modell für anderes."
     },
     "edit": {
       "aria": "Modell bearbeiten",

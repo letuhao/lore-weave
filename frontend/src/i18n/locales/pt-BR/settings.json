@@ -482,7 +482,8 @@
       "adding": "Adicionando...",
       "submit": "Adicionar Modelo",
       "pricing_summary": "Custo: entrada ${{input}}/1M · saída ${{output}}/1M",
-      "pricing_missing": "O provedor não publica preços — adicione-os manualmente após o registro do modelo."
+      "pricing_missing": "O provedor não publica preços — adicione-os manualmente após o registro do modelo.",
+      "context_too_small": "Pequeno demais para conversar: só as ferramentas do assistente precisam de cerca de {{floor}} tokens antes de incluir seu livro, então o chat falhará antes de começar. Use uma janela maior ou reserve este modelo para outras tarefas."
     },
     "edit": {
       "aria": "Editar modelo",
