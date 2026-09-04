@@ -478,59 +478,80 @@ tools:
   - tool: kg_add_nodes
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /knowledge
+    testid: entity-create-confirm
   - tool: kg_build
     provider: knowledge
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
   - tool: kg_ontology_propose
     provider: knowledge
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/kg-ontology
+    testid: create-schema-entry
   - tool: kg_project_create
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /knowledge
+    testid: kg-no-project-create-btn
   - tool: kg_project_set_embedding_model
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
   - tool: kg_propose_edge
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /knowledge
+    testid: relation-create-confirm
   - tool: kg_propose_fact
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: cast-fact
   - tool: kg_run_benchmark
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI_NO_TESTID
   - tool: kg_triage_place_edge
     provider: knowledge
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: triage-map-confirm
   - tool: kg_triage_resolve
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: kg-triage-item-dismiss
   - tool: kg_triage_schema_write
     provider: knowledge
     tier: W
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /books/:id/studio
+    testid: triage-retarget-confirm
   - tool: kg_view_edit
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /knowledge
+    testid: view-save
   - tool: memory_forget
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: UI
+    route: /assistant
+    testid: memory-forget-*
   - tool: memory_remember
     provider: knowledge
     tier: A
-    verdict: UNTRIAGED
+    verdict: AGENT_ONLY
+    reason: memory is ACCRUED from use, never hand-authored - the sheet's own copy says so ("Nothing kept yet - end a day to build your memory") and it offers search + forget, no add. The CORRECTIVE affordance the parity metric actually cares about exists: a memory the assistant got wrong is removed with memory-forget-*. Authoring one by hand is deliberately not a product surface, so this is declared rather than counted as a gap.
   - tool: lore_enrichment_auto_enrich
     provider: lore_enrichment
     tier: A
