@@ -109,6 +109,40 @@ merged.** It removes one wrong reason to think the question is already answered 
 us" is false here. Rule 10 stands: the merge is the owner's call and needs an explicit yes.
 
 
+### An out-of-scope finding, surfaced while proving the last fix, recorded rather than dropped
+
+While confirming `knowledge-http-surface-gate`'s 5 mutation survivors were actually closed (see
+R-below / the commit on this gate), `gate-bite-harness` was run FULL (`--no-cargo`, no `--gate`
+filter) to satisfy Rule 8 — a subset run had already been shown to hide a regression once this
+session. The full 475-mutation sweep: **473 red, 2 survived**, and neither survivor is in
+`knowledge-http-surface-gate` — that gate is now clean across the whole sweep, not just its own
+subset.
+
+The 2 survivors are both in `gate-self-tests`, a file untouched this session (confirmed against
+`git diff` — the only change to `gate-bite-harness.py` is the one indentation fix + comment for
+`knowledge-http-surface-gate`'s row). Both carry the identical harness-reported reason: *"the
+self-test did not finish within 300s."* Reproduced in isolation (`--gate gate-self-tests` alone,
+nothing else running): same 2, same reason — not machine contention from the full sweep.
+
+**Mechanism, traced to source:** both mutations disable the injection that lets `self_test()`
+drive `main()` with a FAKE discovery list. `self_test()` calls `main(argv=[],
+discover_fn=lambda: [])` in-process to test the starved-discovery refusal. Under either mutation
+(`if mode == "self-test": ` -> `if False:`, or `found = (discover_fn or discover)()` ->
+`found = discover()`), that in-process call silently falls through to the REAL `discover()` —
+finding all ~44 real gates — and, since the floor check now passes, `main()` proceeds to actually
+RUN all of them for real, from inside what is meant to be a lightweight, fast self-test. That is
+legitimately slow; whether it clears 300s depends on the machine, and it did not clear it here,
+twice, in isolation.
+
+This is **not** one of the 26 tracked checks, was not flagged red by any CI run in this plan, and
+is not attributable to this branch's changes to `gate-bite-harness.py` (the diff is one line). It
+is left **unfixed and undecided** — fixing it would mean changing shared harness/self-test
+plumbing nobody asked to change, and doing that without a CI signal that this job is actually red
+there would be exactly the "not mine" attribution error Rule 3 warns against, aimed the other way.
+Recorded here so it does not sit as a silent local finding: if `every gate's rules, mutated`
+(`gate-bite-harness.py --no-cargo`) is ever seen red in CI on this branch, this is the first place
+to look.
+
 - [x] **R1** — **DONE. TWO tests, not one, and the nil-pointer panic was a red herring.** That
   `panic="runtime error: invalid memory address or nil pointer dereference"` is a *recovered* panic
   logged by an unrelated handler; the actual failures were two assertions. Both are **pre-existing
