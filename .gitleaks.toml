@@ -60,6 +60,33 @@ regexes = [
   # people not to do this. Exact literal only: a broader `sk_live_` allowance
   # would let a real Stripe key through.
   '''sk_live_abc123''',
+
+  # -- 2 further findings on PR #219, surfaced when the scan RANGE widened ------
+  # 🔴 THESE WERE NOT NEW COMMITS. Two consecutive `pull_request` runs on this same
+  # branch scanned DIFFERENT ranges -- the green one a narrow one, the red one 1,569
+  # commits -- so the earlier greens were partial scans, not clean ones. Both findings
+  # live in branch history (021550e46, 70315044c), which is also why editing the files
+  # at HEAD cannot clear them: gitleaks reads the commit range, not the worktree.
+  #
+  # Exact literals, per this file's rule above: a path entry for `docs/eval/toolloop/`
+  # would blind the scanner to a real credential captured in a recorded run tomorrow,
+  # and those files are machine-written transcripts of live calls -- exactly where a
+  # real secret could land by accident.
+  #
+  # 1. A composition CONFIRM token, captured inside a recorded HTTP 400 error against
+  #    `http://localhost:8217`. Not a credential: it is issued by a LOCAL dev server, a
+  #    confirm token is single-use and short-lived, and this copy is TRUNCATED -- the
+  #    base64 decodes to JSON that ends mid-string at char 118, because the error text
+  #    cut the URL. It cannot be replayed anywhere, least of all against anything of
+  #    the owner's. (docs/eval/toolloop/2026-08-14/idem-authoring6.json)
+  '''eyJkIjoiY29tcG9zaXRpb24uYXV0aG9yaW5nX3J1bl9nYXRlIiwiZXhwIjoxNzg3NDY2MDA2LCJwIjp7ImJvb2tfaWQiOiIwMWEwMmQzZC05M2YyLTdmYmEtYWViNC04ZGQyYTM3Mjk1NWIiLCJydW5faWQiOiIwMWEwMmQzZC05Nzk2LTc4MTEt''',
+  # 2. NOT A KEY AT ALL -- two model UUIDs in explanatory PROSE. The ledger note reads
+  #    "post-fix the confirm token carries llm_model=<uuid> and embedding_model=<uuid>,
+  #    both real ids obtained from settings_list_models". `generic-api-key` matched
+  #    `llm_model=` followed by 36 characters. A model id is a public identifier the
+  #    catalogue hands out. (contracts/frontend-journey-ledger.json)
+  '''019eeb08-8be3-78fb-86c0-3b1eda7e0457''',
+  '''019eeb08-8bff-75cb-8e86-700efd4033b5''',
 ]
 stopwords = [
   "loreweave-fake",
