@@ -121,14 +121,35 @@ def test_a_HEALTHY_session_is_not_reported_as_a_dead_turn():
 def test_it_really_reads_the_LOG_and_not_just_the_store():
     """ANTI-VACUITY. The store half alone would have been available all along; the log is the
     half that rotates, and it is the half the row could never get."""
-    row = subprocess.run(
+    # 🔴 THE PRECONDITION IS A SESSION INSIDE THE LOG WINDOW, NOT MERELY A STACK.
+    # `capture_dead_turn(..., since="6h")` reads the container log for the last six hours. On
+    # an idle stack the newest chat message is older than that, so the reader correctly finds
+    # nothing and the assertion below fails with "the reader is looking at the wrong stream or
+    # the wrong container" -- naming a defect that is not there. Measured here at 15h52m old.
+    # The sibling above already skips when the store is EMPTY; a row outside the window is the
+    # same absence of evidence, so ask for the age in the same query and say so.
+    WINDOW_H = 6
+    out = subprocess.run(
         ["docker", "exec", "-i", "infra-postgres-1", "psql", "-U", "loreweave",
-         "-d", "loreweave_chat", "-At", "-c",
-         "SELECT session_id FROM chat_messages ORDER BY created_at DESC LIMIT 1;"],
+         "-d", "loreweave_chat", "-At", "-F", "|", "-c",
+         "SELECT session_id, EXTRACT(EPOCH FROM (now() - created_at))::bigint "
+         "FROM chat_messages ORDER BY created_at DESC LIMIT 1;"],
         capture_output=True, text=True).stdout.strip()
+    if not out:
+        pytest.skip("no chat messages")
+    row, _, age = out.partition("|")
     if not row:
         pytest.skip("no chat messages")
-    d = fr.capture_dead_turn(row, since="6h")
+    try:
+        age_h = int(age) / 3600
+    except ValueError:
+        age_h = 0.0                      # unreadable age: attempt the read rather than skip
+    if age_h > WINDOW_H:
+        pytest.skip(
+            f"the newest chat message is {age_h:.1f}h old and the log window is "
+            f"{WINDOW_H}h - there is no log left to read for it, which is an idle stack "
+            "rather than a broken reader")
+    d = fr.capture_dead_turn(row, since=f"{WINDOW_H}h")
     assert "log_error" not in d, d.get("log_error")
     assert d["log_line_count"] >= 1, (
         "no log line for the most recent session — the reader is looking at the wrong stream "
