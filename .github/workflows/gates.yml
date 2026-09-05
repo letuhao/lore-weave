@@ -130,9 +130,23 @@ jobs:
       # line with `ModuleNotFoundError("No module named 'pydantic_ai'")`, and after T2 it was
       # the LAST red gate left in this job. Same step the lint-foundation matrix and the
       # agentruntime-census job carry, for the same reason.
+      # 🔴 `requirements-test.txt`, NOT `requirements.txt`, AND THE DIFFERENCE IS ONE
+      # PACKAGE THAT DECIDES A GATE. `agentruntime-census` copies the tree and runs the
+      # chat-service suite to establish a green baseline BEFORE injecting anything. Without
+      # `pytest-asyncio` (declared only in requirements-test.txt) every async fixture errors:
+      #
+      #     ERROR tests/test_cp3_plan_db.py::...::test_A_SECOND_LIVE_PLAN_IS_UNREPRESENTABLE
+      #     - Failed: requested an async fixture 'conn', with no plugin or hook to run it
+      #     SELFTEST FAIL: the suite is not green before any injection
+      #
+      # The census then reports FAIL, and it is right to: it cannot measure an injection
+      # against a baseline that is already red. The suite passes locally and in
+      # `chat-service (pytest, unit)` because BOTH install requirements-test.txt; this job
+      # installed only the runtime half. `-r requirements-test.txt` pulls in
+      # `-r requirements.txt` on its first line, so this is one file, not two.
       - name: chat-service deps (the gates that IMPORT app.agentruntime)
         working-directory: services/chat-service
-        run: python -m pip install --quiet -r requirements.txt
+        run: python -m pip install --quiet -r requirements-test.txt
 
       # The registry has to be honest before its verdicts mean anything: the
       # scope is still a predicate, every exemption carries a reason, every
