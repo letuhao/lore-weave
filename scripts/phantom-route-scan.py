@@ -146,31 +146,69 @@ def _read_url_literal(src: str, i: int, consts: dict[str, str]) -> tuple[str, in
     file-scope const — `apiJson<World>(WORLDS, …)` is a real call site, not an unparsed one, and
     counting it as blind spot would overstate the gap as surely as hiding it would understate it.
     """
-    while i < len(src) and src[i] in " \t\r\n":
-        i += 1
-    if i >= len(src):
-        raise Unparsed("end of file after apiJson(")
-    if src[i] not in "`'\"":
-        ident = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*,", src[i:])
-        if ident and ident.group(1) in consts:
-            return consts[ident.group(1)], i + ident.end()
-        raise Unparsed("first argument is not a string literal or a known const")
-    quote, j, depth = src[i], i + 1, 0
-    while j < len(src):
-        c = src[j]
-        if c == "\\":
-            j += 2
+    def _ws(k: int) -> int:
+        while k < len(src) and src[k] in " \t\r\n":
+            k += 1
+        return k
+
+    def _one_term(k: int) -> tuple[str, int]:
+        """One `+`-joined term: a string literal, or a bare identifier naming a const."""
+        k = _ws(k)
+        if k >= len(src):
+            raise Unparsed("end of file after apiJson(")
+        if src[k] not in "`'\"":
+            # A COMPLETE term only: the identifier must be followed by `+` or the comma that ends
+            # the argument. Without that, `actionsBase(domain)` would match `actionsBase` and
+            # leave `(domain)` behind — a misparse dressed as a resolution, which is worse than
+            # the blind spot it would be hiding.
+            ident = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*(?=[+,])", src[k:])
+            if not ident:
+                raise Unparsed("first argument is not a string literal or a known const")
+            name = ident.group(1)
+            if name in consts:
+                return consts[name], k + ident.end()
+            # An unknown identifier is a RUNTIME value — `BASE + '/books/' + bookId + '/x'`.
+            # Handed to `_resolve` as an interpolation so it takes the SAME decision it already
+            # takes for `${bookId}` in a template literal: a placeholder segment after a `/`, a
+            # dropped suffix otherwise, and a refusal in first position. Writing that rule a
+            # second time here is how the two spellings would drift apart.
+            return "${" + name + "}", k + ident.end()
+        quote, j, depth = src[k], k + 1, 0
+        while j < len(src):
+            c = src[j]
+            if c == "\\":
+                j += 2
+                continue
+            if quote == "`" and c == "$" and j + 1 < len(src) and src[j + 1] == "{":
+                depth += 1
+                j += 2
+                continue
+            if depth and c == "}":
+                depth -= 1
+            elif not depth and c == quote:
+                return src[k + 1:j], j + 1
+            j += 1
+        raise Unparsed("unterminated string literal")
+
+    # 🔴 `+` CONCATENATION, which is the third way this codebase writes a URL and the one the
+    # extractor could not read. `glossary/api.ts` builds every path as `BASE + '/kinds'`, and the
+    # identifier branch demanded `IDENT` followed immediately by a comma — so three live call
+    # sites landed in the blind-spot list, which is ratcheted at 0, and `Foundation lints` failed
+    # on them. The gate's own error says the honest options are "teach the extractor, or raise
+    # UNPARSED_CEIL with a reason"; the paths are perfectly static, so there is no reason to
+    # raise.
+    #
+    # Each term is a literal or a known const, joined left to right. A term that is neither still
+    # raises, so a genuinely dynamic first argument stays in the blind spot where it belongs —
+    # widening this to accept anything would trade a visible gap for an invisible one.
+    text, i = _one_term(i)
+    while True:
+        j = _ws(i)
+        if j < len(src) and src[j] == "+":
+            more, i = _one_term(j + 1)
+            text += more
             continue
-        if quote == "`" and c == "$" and j + 1 < len(src) and src[j + 1] == "{":
-            depth += 1
-            j += 2
-            continue
-        if depth and c == "}":
-            depth -= 1
-        elif not depth and c == quote:
-            return src[i + 1:j], j + 1
-        j += 1
-    raise Unparsed("unterminated string literal")
+        return text, i
 
 
 def _resolve(url: str, consts: dict[str, str]) -> str:
