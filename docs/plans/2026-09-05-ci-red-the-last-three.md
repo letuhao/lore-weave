@@ -302,6 +302,46 @@ that continues.
     wrong stream"* - a defect that is not there. It now asks for the age in the same query and
     skips saying which it was.
 
+- [x] **R13** - **DONE. `gate-teeth-gate --verify-proofs` - a step CI had NEVER REACHED, and one
+  of its two findings was the RUNNER'S OWN BUG.**
+  Fixing R11 let the job get this far. It reported two gates certified PROVEN whose self-tests do
+  not pass.
+  - 🔴 **`_py_selftest_flag` returns the first non-docstring string matching
+    `--self[-_]?test`, while its docstring says it returns "the flag this file actually ACCEPTS".
+    Those are not the same thing.** `gate-wiring-gate.py` carries a TABLE of OTHER gates' required
+    arguments - `(["--selftest"], "requires --file or --selftest; ...")` - and `ast.walk` reaches
+    those strings long before its own `add_argument("--self-test")` on line 962. A working
+    self-test was invoked with a spelling it does not accept, exited 2, and was reported BROKEN.
+    A bad GUESS reading as a broken gate is the exact failure `BDR-75` is cited for one paragraph
+    above in that same function. An `add_argument` literal DECLARES what the parser accepts, so it
+    wins now; the any-string pass stays for files using the `"--self-test" in sys.argv` idiom.
+  - 🔴 **`test-dsn-coverage-gate.py`'s `__main__` called `_selftest()`, which has never
+    existed** - the function is `self_test()`. Invisible because `main()` already handles BOTH
+    spellings two hundred lines up and returns `self_test()`, so the branch was redundant as well
+    as broken, and nothing reached it until the runner began calling gates by their advertised
+    flag. Deleted rather than repaired: one entry point, not two.
+  - ✅ **132 advertised self-tests RAN and passed** (floor 118). `gate-teeth-gate` itself:
+    PASS, 145 CI-invoked gates, 141 carrying a proof. Its own pytest proof: 27 passed.
+  - ✅ **Then all 83 `run:` steps of the Foundation lints job were executed locally**, to
+    stop discovering the next failure one CI round-trip at a time. Two "failures" and both are
+    artifacts: `raw-sql-lint` flagged two **UNTRACKED** local scratch files that CI cannot see
+    (and both matches are `print()` statements showing a human a query to paste), and the
+    red-ability step needs bash, which my runner gave cmd. Verified separately: 901 passed.
+
+- [x] **R14** - **DONE. Two of the four dep-vuln advisories go from "does not block" to FIXED.**
+  Rule 6 says these do not block, and that was never the same claim as "unfixable".
+  - ✅ **`Rust - cargo audit`: 4 -> 1**, confirmed by CI: `crossbeam-epoch` 0.9.18->0.9.20,
+    `h2` 0.4.14->0.4.19 (unbounded empty DATA frames), `quinn-proto` 0.11.14->0.11.17 (remote
+    memory exhaustion). 141 other deps untouched. The single survivor is `rsa` RUSTSEC-2023-0071,
+    *"No fixed upgrade is available!"* - the whole of D6's first question.
+  - ✅ **`Go - govulncheck`: GO-2026-6061 was REACHABLE**, not merely present - the trace
+    runs `worker.main` -> `pgxpool.Pool.Close` -> `transport.NewHTTP2Client`. `grpc`
+    v1.81.1 -> v1.82.1 across **12 modules**, all `// indirect`; 24 files, +37/-37, every module
+    builds and vets clean.
+  - 🔴 **And the fix uncovered the next one, in the ecosystem this time:** GO-2026-5970,
+    `golang.org/x/text` v0.29.0 -> v0.39.0, two modules. Also fixed, both build/vet/test clean.
+    The honest read of "1 vulnerability from 1 module" was always "the one it reports FIRST".
+
 - [ ] **R4** — **The 48 unsettled checks.** Not a wait: a row. When they land, triage anything new
   the same way — attribute before fixing, and expect a fix to reveal the next failure rather than
   end the chain. `conformance-ci`, `foundation-ci`, `lint-foundation` and
