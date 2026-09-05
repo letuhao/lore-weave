@@ -364,6 +364,26 @@ that continues.
   and can only shrink. ⚠️ (c) weakens a ratchet without doing the work it exists to force, which
   this repo's own convention warns against; it is listed because a permanently-red check on an
   otherwise-ready merge is its own cost.
+  - ✅ **MEASURED, so the choice does not rest on counts.** `cargo-dylint` is installed
+    locally, so all 16 findings were listed rather than inferred. Every one is the SAME rule:
+    *"`sqlx::PgPool` in `<crate>`: a non-SDK crate must not hold a raw kernel client (DP-R3)"*.
+    **The arithmetic is exact in both crates, and the baseline IS the pre-existing set:**
+
+    | crate | baseline | now | on `main` | NEW on this branch |
+    |---|---|---|---|---|
+    | `world-service` | 5 | 12 | `capacity_glue`, `embedding_queue/live/audit_writer`, `embedding_queue/live/sqlx_writer`, `rebuild/event_source`, `rebuild/writer` | `actor_control_flow`, `actor_registry`, `provision_flow`, `server/db`, `server/state`, `space_view`, `world_seed` |
+    | `commit-service` | 3 | 4 | `manager`, `pg_binding`, `recovery` | `subject` |
+
+    5 on-main files against a baseline of 5, and 3 against 3. Nothing drifted and nothing is
+    mysterious: the branch added **8 files that each hold a pool**, and the ratchet counted them.
+  - **What that says about (b).** The new world-service entries are `server/db.rs` (pool
+    construction), `server/state.rs` (the handle it lives on), `provision_flow.rs` and
+    `world_seed.rs` (which CREATE per-reality shard databases), plus the actor and space-view
+    readers. A service whose job is to provision and own shard databases is either part of the
+    data plane or it is not - and if it is, `dp-crate = true` is a DECLARATION of an existing
+    truth rather than an exemption bought to silence a gate. That is the question to answer;
+    the file list is what makes it answerable.
+
 - [ ] **D6** - **STOP, BUT A MUCH SMALLER ONE: 4 advisory checks -> 2 real questions.**
   "Advisory, so it does not block" was never the same claim as "unfixable", and reading the
   FINDINGS rather than the count separated them. Two of the four are now fixed and pushed.
