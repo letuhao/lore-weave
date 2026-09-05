@@ -324,27 +324,41 @@ that continues.
   and can only shrink. ⚠️ (c) weakens a ratchet without doing the work it exists to force, which
   this repo's own convention warns against; it is listed because a permanently-red check on an
   otherwise-ready merge is its own cost.
-- [ ] **D6** — **STOP. The first release's security posture.** Real advisories in all four
-  ecosystems, none blocking: `rsa` (Marvin Attack, key recovery via timing — **no patched
-  release**), `google.golang.org/grpc` (GO-2026-6061), `h2`, `quinn-proto`, `crossbeam-epoch`, 21
-  JS findings, and `datasets 2.21.0` (PYSEC-2026-3716, fix is a 2.x→5.x major). Three ways:
-  **(a)** bump everything now and take the regression risk on a branch 3,100+ commits ahead;
-  **(b)** only what is cheap and safe — move `datasets` to `requirements-test.txt`, where its own
-  comment says it belongs and which drops ~500MB–1GB from the runtime image; **(c)** accept,
-  record, and schedule the bumps as their own change with their own test cycle.
-
----
-
-## 2. What "cleared" means here
-
-A row closes when its check is **GREEN in CI** — not locally — or when it carries a verdict a
-stranger can audit: a `KNOWN_RED` row naming a tracked deferral, or an accepted-risk note.
-
-🔴 **The two habits that did the work last time, kept.** Every fix was reproduced *before* it was
-written and bitten *after*, restoring byte-exact; and every "obvious cause" was checked against a
-control that could refute it. That is what caught a drift test being pointed at a table its own
-migration drops, a route walk verified against the wrong FastAPI, and a `latest` image that turned
-out to still carry the file it was blamed for losing.
+- [ ] **D6** - **STOP, BUT A MUCH SMALLER ONE: 4 advisory checks -> 2 real questions.**
+  "Advisory, so it does not block" was never the same claim as "unfixable", and reading the
+  FINDINGS rather than the count separated them. Two of the four are now fixed and pushed.
+  - ✅ **`Rust - cargo audit`: 4 -> 1.** Three carried a version and took a targeted
+    `cargo update -p` (141 other deps untouched, lockfile diff 61/22, workspace checks clean):
+    RUSTSEC-2026-0204 `crossbeam-epoch` 0.9.18->0.9.20, RUSTSEC-2026-0258 `h2` 0.4.14->0.4.19
+    (unbounded empty DATA frames), RUSTSEC-2026-0185 `quinn-proto` 0.11.14->0.11.17 (remote
+    memory exhaustion).
+  - ✅ **`Go - govulncheck`: 1 -> 0.** GO-2026-6061 was REACHABLE, not merely present -
+    govulncheck printed the trace (`worker.main` -> `pgxpool.Pool.Close` ->
+    `transport.NewHTTP2Client`). `google.golang.org/grpc` v1.81.1 -> v1.82.1 across **12
+    modules**, every pin `// indirect`. All twelve build and vet clean; 24 files, +37/-37.
+  - 🔴 **`Python - pip-audit`: 1, and it is NOT REACHABLE HERE.** PYSEC-2026-3716,
+    `datasets` 2.21.0: path traversal (CWE-22, CVSS 6.9). The exploit needs a crafted `file_name`
+    in an UNTRUSTED dataset **and** a call to `save_to_disk()` or `push_to_hub()`. Measured in
+    this repo: **0 files call either sink**, and both `load_dataset` sites load the published
+    `tner/conll2003`. The fix is a 2.x -> 5.x MAJOR jump against a pin whose own comment says it
+    exists for reproducibility ("DeepEval especially has rapid API churn"). Left alone
+    deliberately - upgrading blind is the larger risk. **The hygiene point stands separately:**
+    `datasets` is used only in `tests/quality/*`, opt-in via `--run-quality`, yet it is pinned in
+    the RUNTIME `requirements.txt`, so ~500MB-1GB and this advisory ship in the image.
+  - 🔴 **`JS/TS - npm/pnpm audit`: 23 (4 low, 10 moderate, 9 high), and many need
+    `npm audit fix --force`** - semver-major by definition, across frontend AND the gateways,
+    with the bundle-size and typecheck gates behind them. **Not applied.** A breaking sweep of
+    that width is a release-posture call, not a mechanical bump, and it is the one place here
+    where "advisory" and "safe to fix quietly" genuinely part company.
+  - **SO THE DECISION IS NOW TWO QUESTIONS, NOT FOUR CHECKS:**
+    **(1)** RUSTSEC-2023-0071, `rsa` 0.9.10, Marvin Attack - potential key recovery through a
+    timing sidechannel, and cargo audit says outright *"No fixed upgrade is available!"*. Accept
+    it for the first release with a recorded risk note, or replace the dependency?
+    **(2)** The 23 JS findings: run the breaking sweep now and absorb the regression risk on a
+    branch 3,100+ commits ahead of main, or defer with a note and a date?
+    A third, cheap and independent of both: move the eval-framework block (`datasets`, `deepeval`,
+    `seqeval`, `krippendorff`) to `requirements-test.txt`, where that block's own comment already
+    says it belongs.
 
 **RESUME: D7 — `dp-clippy` is the LAST non-advisory red, and it is a STOP, not work**
 
