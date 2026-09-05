@@ -399,6 +399,11 @@ def self_test() -> int:
 
 
 if __name__ == "__main__":
-    if "--selftest" in sys.argv:
-        sys.exit(_selftest())
+    # 🔴 THIS CALLED `_selftest()`, WHICH HAS NEVER EXISTED -- the function is
+    # `self_test()`. Any run with `--selftest` died on `NameError: name '_selftest' is not
+    # defined`, so the self-test this gate is CERTIFIED on could not run through that door.
+    # It was invisible because `main()` already handles BOTH spellings correctly two hundred
+    # lines up and returns `self_test()`, so the branch was redundant as well as broken and
+    # nothing reached it until `gate-teeth-gate --verify-proofs` started calling gates by
+    # their advertised flag. Deleted rather than repaired: one entry point, not two.
     sys.exit(main())

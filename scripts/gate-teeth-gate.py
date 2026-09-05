@@ -504,6 +504,26 @@ def _py_selftest_flag(src: str) -> str | None:
                 and isinstance(body[0].value, ast.Constant) \
                 and isinstance(body[0].value.value, str):
             docstrings.add(id(body[0].value))
+    # 🔴 ANY STRING CONSTANT IS NOT "THE FLAG THIS FILE ACCEPTS", and the docstring
+    # above already says which one is wanted. `gate-wiring-gate.py` carries a TABLE of other
+    # gates' required arguments -- `(["--selftest"], "requires --file or --selftest; ...")` --
+    # and `ast.walk` reaches those strings long before its own
+    # `add_argument("--self-test")` on line 962. So the runner invoked it with a spelling it
+    # does not accept, got `exit 2: unrecognized arguments: --selftest`, and reported a
+    # working self-test as BROKEN. Exactly the failure BDR-75 is cited for one paragraph up,
+    # arriving through a different door: a bad GUESS reading as a broken gate.
+    #
+    # An `add_argument(...)` literal is a DECLARATION of what the parser accepts, so prefer
+    # it. Fall back to any string constant afterwards, which is what files using the
+    # `"--self-test" in sys.argv` idiom need.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "add_argument":
+            for arg in node.args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    m = _FLAG_ONLY.search(arg.value)
+                    if m:
+                        return m.group(0)
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str) \
                 and id(node) not in docstrings:
