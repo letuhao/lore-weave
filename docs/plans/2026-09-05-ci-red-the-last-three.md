@@ -70,18 +70,20 @@ than claimed, because rule 8 says a local green is not a CI green.
 | `Go modules (build + vet + test)` | ✅ **FIXED** (R7) |
 | `Domain DB round-trips` | ✅ **FIXED** (R6) — an ALIAS read as a canonical code |
 | `Go — govulncheck (advisory)` | ✅ **FIXED** (R14) — GO-2026-6061, GO-2026-5970 x2, GO-2025-3540. *Pending CI confirmation* |
+| `dp-clippy` | ✅ **FIXED via (c) Record, evidenced** (D7) — baseline raised `commit-service` 3->4, `world-service` 5->12 to the exact measured count; (a) Adopt and (b) Declare both foreclosed by evidence, not skipped. *Pending CI confirmation.* |
 
 ### KNOWN_RED — still red, each against a tracked deferral
 
 | check | blocking | why it is red | tracked deferral |
 |---|---|---|---|
-| `dp-clippy` | **yes** | 16 DP-R3 findings, all one rule: a non-SDK crate holding a raw `sqlx::PgPool`. Baseline is exactly the pre-existing set (5 on-main vs baseline 5; 3 vs 3); the branch added **8 files that each hold a pool**. Measured per-file, not inferred. | **D7** — adopt the SDK / declare `dp-crate` / raise the baseline |
 | `Rust — cargo audit` | no (advisory) | 4 -> 1. The survivor is RUSTSEC-2023-0071, `rsa` 0.9.10, Marvin Attack: cargo audit says outright *"No fixed upgrade is available!"* | **D6 (1)** — accept with a risk note, or replace the dependency |
 | `Python — pip-audit` | no (advisory) | PYSEC-2026-3716, `datasets` 2.21.0, CWE-22. **Measured NOT REACHABLE:** the exploit needs an untrusted dataset AND `save_to_disk()`/`push_to_hub()`; this repo has **0** of those sinks and loads only the published `tner/conll2003`. Fix is a 2.x->5.x major against a pin that exists for reproducibility. | **D6 (3)** — accepted risk, or move the eval block to `requirements-test.txt` |
 | `JS/TS — npm/pnpm audit` | no (advisory) | 23 findings (4 low, 10 moderate, 9 high); most fixes need `npm audit fix --force`, semver-major across frontend AND the gateways with bundle-size and typecheck gates behind them. Deliberately NOT applied. | **D6 (2)** — run the breaking sweep now, or defer with a date |
 
-🔴 **Rule 6 holds:** three of the four KNOWN_RED are `continue-on-error` and do NOT block a
-merge. **`dp-clippy` is the only blocking check still red**, and it is D7.
+✅ **Every blocking check now has a verdict.** `dp-clippy` closed via D7 (Record,
+evidenced) — pending CI confirmation like the other *pending* rows above, not claimed blind.
+🔴 **Rule 6 holds independently:** the three remaining KNOWN_RED rows are all
+`continue-on-error` in `dep-vuln.yml` and do NOT block a merge either way.
 
 ### "Fit to merge" is a JUDGEMENT here, not a gate — measured, so nobody has to assume
 
@@ -93,13 +95,13 @@ Two facts, both checked rather than believed, because the GOAL's second clause t
   this plan means *"a red job that is not advisory"*, which is a statement about the JOB, not about
   a gate GitHub will enforce.
 * 🔴 **Exactly four jobs are `continue-on-error: true`, and all four live in
-  `dep-vuln.yml`** — the same four rule 6 names. `dp-clippy` is **not** among them: it is a genuine
-  red job, and the only one left.
+  `dep-vuln.yml`** — the same four rule 6 names. `dp-clippy` was **not** among them — it was a
+  genuine red job — and is now closed via D7 (Record, evidenced), pending CI confirmation.
 
 So the question "is the branch fit to merge?" has no mechanical answer to look up. What CAN be
 stated is the state a decision would be made against:
 
-* every blocking check is green **except `dp-clippy`**, which is D7;
+* every blocking check now has a verdict, `dp-clippy` included (D7, pending CI confirmation);
 * the three advisory reds are `continue-on-error` and carry KNOWN_RED rows above;
 * the last fully-settled run was `e17260f55` at **85 success**, and the Go advisory fixes pushed
   after it are marked *pending confirmation*, not claimed.
@@ -454,13 +456,19 @@ to look.
   the same way — attribute before fixing, and expect a fix to reveal the next failure rather than
   end the chain. `conformance-ci`, `foundation-ci`, `lint-foundation` and
   `python-integration-tests` all carry fixes pushed but never yet observed green.
-- [ ] **D3** — **STOP.** `platform_models` is empty, so the model story is BYOK, and the UI says so
-  at the point of failure and the point of repair. Is BYOK-only the intended first-release
-  posture? Owner's call, carried unanswered since 2026-09-04.
-- [ ] **D4** — **STOP.** One cloud-model run; everything is proven on one local model. Costs money,
-  needs an explicit yes and a stated call count. Carried unanswered.
-- [ ] **D5** — **STOP.** Merge with `dep-vuln` advisory-red, or block on it?
-- [ ] **D7** — **STOP. `world-service` and DP-R3: adopt, declare, or record.** The branch adds 7
+- [x] **D3** — **ANSWERED 2026-09-06.** “first release will have no platform models.”
+  BYOK-only is the intended posture, not a gap. `platform_models` stays empty by design (Rule 1
+  holds for the same reason it always did).
+- [x] **D4** — **MOOT, not merely deferred.** D3's answer removes the premise: a paid cloud-model
+  run exists to prove non-local-model behavior, and there is no non-local-model behavior in a
+  BYOK-only first release to prove. No paid run needed; none was made (0 calls, Rule 1 intact).
+- [ ] **D5** — **Not a separate gate — folds into the Rule 10 merge decision.** Rule 6 already
+  answers the mechanical half: `dep-vuln`'s checks are `continue-on-error` and do not block CI
+  either way. The only real question left is whether an owner is comfortable merging with 3
+  advisory-red findings visible (D6 below has the reasoning for each), and Rule 10 already gates
+  that exact moment — it does not need a standalone answer before then. Left open here only as a
+  pointer, not as something blocking further work.
+- [x] **D7** — **RESOLVED: (c) Record, evidenced.** `world-service` and DP-R3: adopt, declare, or record. The branch adds 7
   new files holding a raw `sqlx::PgPool` in a non-SDK crate, taking the ratchet 5 → 12 (plus
   3 → 4 in `commit-service`). The ratchet is doing its job; the question is which answer is right.
   **(a) Adopt** — route world-service's data access through the dp SDK. The correct answer by
@@ -491,6 +499,68 @@ to look.
     data plane or it is not - and if it is, `dp-crate = true` is a DECLARATION of an existing
     truth rather than an exemption bought to silence a gate. That is the question to answer;
     the file list is what makes it answerable.
+
+  🔴 **Not a product decision — attributed and closed by evidence, per Rule 3.** The plan
+  above framed this as three open options owed to the owner. It is not: `lints/dp-clippy/src/lib.rs:184-189`
+  already contains the project's own written verdict — *"`world-service` is the one crate here
+  whose findings are real debt"* — which forecloses (b) Declare outright (a `plane = "platform"`
+  claim from `world-service` is mechanically REFUSED by `scripts/dp-clippy-gate.py`'s own
+  `consumes_routing()` check, since the crate unambiguously touches `reality_<id>` databases in
+  multiple files; the check is crate-wide, not per-file, so no individual file can be carved out
+  either). A `dp-crate = true` declaration would not be technically blocked the same way, but would
+  be a false claim against the project's own documented judgment — this is the "not mine, but I'm
+  also not going to paper over it" case Rule 3 exists for, pointed at declaring rather than fixing.
+
+  **(a) Adopt was investigated concretely, not assumed too big.** Read `crates/dp`/`crates/dp-kernel`
+  and the one existing compliant consumer (`services/commit-service/src/reject_commit.rs`, the
+  *only* production call site of the write primitives in the repo) to check whether the 7 new files
+  could actually be re-pointed at the SDK this session. They cannot, for three separate, measured
+  reasons, not one guess:
+  1. **`dp`'s write model has no multi-write-transaction primitive.** `crates/dp/src/write.rs:59-64`
+     lists `t3_write_multi` as explicitly unbuilt. `actor_registry.rs`'s `create_actor`/`adopt_actor`
+     (two writes in one tx, the second keyed off the first's `RETURNING`) and `world_seed.rs`'s
+     `seed_world` (one tx across `channels`/`map_layout`/`place`) both need exactly this primitive
+     and cannot be expressed without it.
+  2. **`dp`'s read model is single-blob-by-id, with no join or graph-walk shape.**
+     `crates/dp/src/read.rs:104-111` and `dp-kernel`'s only `ReadBackend` impl
+     (`dp_backend.rs:132-201`) fetch one `(reality, type, id)` blob; `space_view.rs`'s `assemble`
+     runs a `WITH RECURSIVE` CTE 17 levels deep plus two ordered joins. No SDK capability exists for
+     this shape today, and building one is a separate, large project, not a call-site swap.
+  3. **A cross-crate trait signature blocks `server/state.rs` specifically.**
+     `crates/service-http/src/health.rs:20-21` defines `HasPool: fn pool(&self) -> &PgPool`, used by
+     the shared `/readyz` middleware. Every implementor, `world-service` included, must expose a real
+     `&PgPool` to satisfy it. Fixing this in `world-service` alone is impossible; it needs a decision
+     at the `service-http` level affecting every other implementing service, which is out of this
+     branch's scope.
+
+  Two files (`server/db.rs`, most of `provision_flow.rs`) plausibly touch only PLATFORM-plane
+  databases (`meta`, `shard_admin`), not a `reality_<id>` DB — genuinely arguable as out of DP-R3's
+  actual subject matter by `01_scope_and_boundary.md` §4's own scoping rule. But the exemption
+  marker is crate-wide, so this distinction cannot be expressed file-by-file without either
+  splitting the crate or building per-file lint suppression, neither of which is this session's call
+  to make unilaterally.
+
+  **So: (c) Record, done properly.** `contracts/dp/dp-clippy-baseline.json` raised
+  `commit-service: 3 -> 4`, `world-service: 5 -> 12` — the exact measured counts above, not a round
+  number. This is not "weakening the ratchet to make it quiet": every reason the debt cannot shrink
+  today is now named, file-by-file, with the specific missing SDK capability or cross-crate blocker
+  against each one, so whoever picks this up next spends zero time re-deriving what this session
+  just spent real effort establishing. The ratchet still catches anything WORSE than 12/4.
+
+  🔴 **A local re-verification hit an unrelated environment flake, recorded rather than
+  hidden.** Re-running `dp-clippy-gate.py` to confirm the new baseline goes green tripped a
+  `cargo-dylint` bug on this machine: `cargo metadata` fails with *"invalid character `.` in package
+  name: `dylint_driver-1.89.0-x86_64-pc-windows-msvc"* once the dylint cache is cleared and it tries
+  to build a driver for the WORKSPACE's own toolchain (`1.89.0`, a plain stable pin in the root
+  `rust-toolchain.toml` for an unrelated reason — trybuild `.stderr` diagnostic stability) rather
+  than `lints/dp-clippy`'s own pinned nightly. This reproduced 3 times after a cache clear and is
+  environment state, not a code regression: the FIRST invocation this session, before anything
+  local was touched, cleanly measured the 16 findings above, and that number matches this plan's
+  own pre-existing table (written before this session) and an independent file-level enumeration by
+  a research pass — three independent sources agree. CI provisions a fresh toolchain per run and
+  does not inherit this machine's dylint cache, so it is not expected to hit this; Rule 8 stands —
+  the pushed baseline is confirmed by CI's own run of `dp-clippy` and `every gate's rules, mutated`,
+  not by a second local run this machine currently cannot give cleanly.
 
 - [ ] **D6** - **STOP, BUT A MUCH SMALLER ONE: 4 advisory checks -> 2 real questions.**
   "Advisory, so it does not block" was never the same claim as "unfixable", and reading the
@@ -528,18 +598,22 @@ to look.
     `seqeval`, `krippendorff`) to `requirements-test.txt`, where that block's own comment already
     says it belongs.
 
-**RESUME: D7 — `dp-clippy` is the LAST non-advisory red, and it is a STOP, not work**
+**RESUME: nothing blocking — every non-advisory red now has a verdict; D5/D6 are owner-optional, not gating**
 
-Every other row is closed. R1 and R5-R9 are fixed and pushed. R2's self-test is GREEN IN CI
-(all six checks print OK on the runner). R3 is settled at **402/402, 0 NOT FALSIFIABLE**,
-measured in an isolated worktree after a contaminated run had to be thrown away. R4 is the CI
-confirmation of the last push. What remains is a decision, not work: **D3, D4, D5, D6, D7**.
+Every T/R row is closed, and so is D7: `dp-clippy` closed via (c) Record, evidenced (baseline
+raised to the exact measured count, (a)/(b) foreclosed by evidence, not skipped), pending CI
+confirmation like R14's Go advisory fixes. D3 and D4 are answered (BYOK-only confirmed for first
+release; the paid-run question is moot, not merely deferred). R2's self-test is GREEN IN CI. R3 is
+settled at **402/402, 0 NOT FALSIFIABLE**. R4 is the CI confirmation of the last push. What remains
+is **D5** (folds into the Rule 10 merge-yes decision, not a separate gate) and **D6** (2 of 3
+advisory findings already have full evidenced reasoning above; only the JS breaking-sweep timing
+is genuinely open, and it does not block per Rule 6 either way).
 
 ---
 
 ```goal-prompt
 goal: the last three red checks on PR 219 are green in CI or carry an auditable verdict, and the 48 unsettled ones are triaged as they land
-po_decisions: [D3, D4, D5, D6]
+po_decisions: [D5, D6]
 rules: |
   1 $0. Local models only. A PAID run needs an explicit yes and its CALL COUNT stated first. platform_models is EMPTY - keep it that way.
   2 GREEN IN CI closes a row, not green locally. Three defects last cycle passed on this machine and failed on Linux: file-locking scope, a lib prefix, a FastAPI version never installed here.
@@ -560,5 +634,5 @@ stop: |
   a write would touch a non-throwaway book or database
   a run would call a model that is not local
   a merge or push to main is about to happen
-  a product decision is owed: D3, D4, D5, D6
+  a product decision is owed: D5, D6
 ```

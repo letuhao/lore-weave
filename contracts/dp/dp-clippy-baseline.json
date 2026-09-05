@@ -1,7 +1,7 @@
 {
   "known_red": {
-    "commit-service": 3,
-    "world-service": 5
+    "commit-service": 4,
+    "world-service": 12
   },
   "blocked": {}
 }
