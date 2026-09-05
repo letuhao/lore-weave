@@ -1250,9 +1250,16 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ('the allowlist shrink arm disabled',
          '            if pref not in allow_used:',
          '            if False:'),
+        # 🔴 THE REPLACEMENT WAS INDENTED 8 AND THE ANCHOR 4, so this mutation produced
+        # `IndentationError: unexpected indent` and the child died of a SYNTAX error rather
+        # than of a case catching it. The harness cannot tell those apart -- it saw a
+        # non-zero exit with no failing case and reported the rule as SURVIVED, i.e. as an
+        # untested guard. It is tested: hand-disabling the floor reds
+        # `a scan that recognises NOTHING is an error, not a pass` (expected 2, got 0).
+        # A mutation that cannot compile measures the mutator, not the gate.
         ('the SUBJECT floor disabled (a restructured route set passes)',
          '    if not staged and subjects == 0:',
-         '        if False:'),
+         '    if False:'),
         # Same reason: the LIST endpoint can no longer be widened by editing a
         # literal. Widening the DERIVED set is staged at the derivation instead --
         # every path collapses to the book prefix, so the covered set swallows the

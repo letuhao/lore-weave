@@ -744,6 +744,92 @@ def selftest() -> int:
           scan_direct_consumers(files=[(commented, "services/c/app/x.py")],
                                 owner_routes=owned), {})
 
+    # ── scan_file's FOUR rules, each driven on a real file ────────────────────────────
+    # 🔴 gate-bite-harness reported 5/475 mutations SURVIVED, and every one of them was
+    # this gate: the owner carve-out could widen to every service or vanish entirely, the
+    # allowlist could stop suppressing, its shrink arm could be disabled, and the SUBJECT
+    # floor could be switched off -- with the self-test still GREEN. The sibling
+    # `knowledge-access-gate` kills all five, so the rules were fine and the PROOF was
+    # missing. A rule no case covers "can be deleted with the suite green", which is this
+    # harness's own wording and exactly the state these were in.
+    #
+    # They survived for a findable reason: `ALLOWLIST_PREFIXES` is EMPTY, so nothing in the
+    # real tree exercises the suppression path at all. `scan_file` takes `prefixes` as a
+    # parameter for precisely this, and the cases below use it rather than editing a
+    # constant to make a test pass.
+    import tempfile  # noqa: PLC0415 — only the selftest builds a synthetic tree
+
+    # The local `check(label, got, want)` above SHADOWS the module-level `check()` — the
+    # real checker — for the whole of this function. Reach it through the module namespace
+    # rather than renaming either: one is used by every existing case, the other by main().
+    full_check = globals()["check"]
+
+    covered_line = 'r = http.get("/internal/books/1/entities/search")' + chr(10)
+    with tempfile.TemporaryDirectory() as td:
+        fx = os.path.join(td, "fx.py")
+        with open(fx, "w", encoding="utf-8") as fh:
+            fh.write(covered_line)
+
+        consumer = "services/some-consumer/app/x.py"
+        v, sub, used = scan_file(fx, consumer, prefixes=())
+        check("a CONSUMER reading a KAL-covered route is a violation", len(v), 1)
+        # The floor's whole job: a covered reference must REGISTER, or a scan that
+        # recognises nothing reads as a clean tree.
+        check("...and it registers as a SUBJECT (the floor's input)", sub, 1)
+        check("...and suppresses nothing when the allowlist is empty", used, set())
+
+        # The carve-out must be NARROW. If it widened to every service the case above
+        # would stop firing; if it vanished, the owner below would start firing.
+        owner = "services/knowledge-service/app/routers/y.py"
+        v_own, sub_own, _ = scan_file(fx, owner, prefixes=())
+        check("the OWNER reading its own route is exempt", v_own, [])
+        check("...and the owner's reference still counts as a subject", sub_own, 1)
+
+        kal = "services/knowledge-gateway/src/federate.ts"
+        check("the KAL -- the sanctioned federator -- is exempt too",
+              scan_file(fx, kal, prefixes=())[0], [])
+
+        # The allowlist arm, driven through the parameter because the real tuple is empty.
+        pref = "services/some-consumer/"
+        v_allow, _, used_allow = scan_file(fx, consumer, prefixes=(pref,))
+        check("an ALLOWLISTED path suppresses the violation", v_allow, [])
+        check("...and REPORTS the prefix it used (what the shrink arm reads)",
+              used_allow, {pref})
+
+    # ── the two whole-run arms, on a synthetic tree ───────────────────────────────────
+    # 🔴 THE FIRST VERSION OF THIS CASE WAS VACUOUS, and the harness said so: it put the
+    # covered line in a CONSUMER file, so `rc == 1` was already true from the violation and the
+    # shrink arm could be deleted with the case still passing. The mutation survived and was
+    # right to. The reference lives in an OWNER file now — exempt, so zero violations — which
+    # leaves an unused allowlist prefix as the ONLY thing that can make this run fail.
+    with tempfile.TemporaryDirectory() as td:
+        d = os.path.join(td, "services", "knowledge-service", "app", "routers")
+        os.makedirs(d)
+        with open(os.path.join(d, "y.py"), "w", encoding="utf-8") as fh:
+            fh.write(covered_line)
+
+        # The control FIRST: with no allowlist at all this tree is clean. If this ever stops
+        # being 0 the case below has gone back to passing for the wrong reason.
+        check("the owner-only tree is clean on its own",
+              full_check(repo_root=td, search_dirs=("services",), prefixes=()), 0)
+
+        # SHRINK ARM: a prefix that suppresses nothing must FAIL, or a dead exemption sits
+        # there exempting every read under its path the day one appears.
+        rc = full_check(repo_root=td, search_dirs=("services",),
+                        prefixes=("services/nobody-lives-here/",))
+        check("an allowlist entry that suppresses NOTHING fails the run", rc, 1)
+
+    # SUBJECT FLOOR: a tree where nothing matches must return 2, not 0. This is the
+    # "changed route shape" case -- every file read, nothing recognised, silence that
+    # looks like compliance.
+    with tempfile.TemporaryDirectory() as td:
+        d = os.path.join(td, "services", "quiet", "app")
+        os.makedirs(d)
+        with open(os.path.join(d, "x.py"), "w", encoding="utf-8") as fh:
+            fh.write("z = 1" + chr(10))
+        check("a scan that recognises NOTHING is an error, not a pass",
+              full_check(repo_root=td, search_dirs=("services",), prefixes=()), 2)
+
     print(f"{chr(10)}  {'all checks passed' if ok else 'SELFTEST FAILED'}")
     return 0 if ok else 1
 
