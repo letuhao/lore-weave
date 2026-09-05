@@ -44,6 +44,10 @@ import sys
 
 import pytest
 
+import sys as _sys, pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+import live_stack  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -159,8 +163,9 @@ def test_a_transport_failure_is_RECORDED_never_swallowed():
     assert any("ConnectionError" in t for t in out["confirm"]["first"])
 
 
-@pytest.mark.skipif(subprocess.run(["docker", "ps"], capture_output=True).returncode != 0,
-                    reason="needs the local stack")
+# 🔴 `docker ps` SUCCEEDS ON EVERY GITHUB RUNNER, so this guard could never skip where
+# there is no stack. `live_stack.up()` probes the anchor gate-wiring-gate already uses.
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 def test_LIVE_the_probe_produces_a_real_verdict_for_the_gated_tool(tmp_path):
     """ANTI-VACUITY that costs a fixture and is worth it: the row's claim is that BOTH diffs
     come back empty. This asserts they do not — a verdict built on two empty diffs is the

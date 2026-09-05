@@ -154,8 +154,17 @@ def test_the_report_separates_the_two_counts():
 # reads it.
 
 def _stack():
-    import subprocess
-    return subprocess.run(["docker", "ps"], capture_output=True).returncode == 0
+    """Is a stack actually answering?
+
+    🔴 THIS RETURNED TRUE ON EVERY CI RUNNER. `docker ps` succeeds wherever docker is
+    installed, which on GitHub is everywhere, so the two skips below never fired and the
+    tests ran against nothing. Ask the probe gate-wiring-gate uses instead — a TCP connect
+    to the store these reads actually go to.
+    """
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    import live_stack
+    return live_stack.up()
 
 
 def test_the_store_reader_reproduces_the_wire_log():

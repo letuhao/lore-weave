@@ -38,6 +38,10 @@ import sys
 
 import pytest
 
+import sys as _sys, pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+import live_stack  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -45,10 +49,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import blind_axes as ba  # noqa: E402
 import store_snapshot as ss  # noqa: E402
 
-pytestmark = pytest.mark.skipif(
-    subprocess.run(["docker", "ps"], capture_output=True).returncode != 0,
-    reason="needs the local stack",
-)
+# 🔴 THE OLD GUARD COULD NOT SKIP IN CI. `(ROOT / "infra").exists()` is true in every
+# checkout (the directory is committed) and `docker ps` succeeds on every GitHub runner, so
+# both proxies were TRUE where there is no stack at all. 22 red-ability proofs ran on the
+# runner and failed with `could not read NEO4J_PASSWORD`, `SnapshotUnavailable`,
+# `httpx.ConnectError` and `psql failed` -- every one of them saying only "no stack here".
+# `live_stack.up()` probes the thing itself, via the anchor gate-wiring-gate already uses.
+pytestmark = pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 
 GUARD_FACT = "zz-blind-axis-guard-fact"
 

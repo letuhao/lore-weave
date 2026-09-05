@@ -38,10 +38,18 @@ import sys
 
 import pytest
 
+import sys as _sys, pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+import live_stack  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LEDGER = json.loads((ROOT / "contracts" / "tool-deep-dive-ledger.json").read_text(
     encoding="utf-8"))
-_STACK = subprocess.run(["docker", "ps"], capture_output=True).returncode == 0
+# 🔴 WAS `docker ps`, WHICH SUCCEEDS ON EVERY GITHUB RUNNER. A guard whose proxy is
+# true wherever there is no stack is not a guard: these tests ran in CI and failed with
+# connection errors that read like defects. `live_stack.up()` probes the anchor
+# gate-wiring-gate already uses, and fails CLOSED if the probe cannot be loaded.
+_STACK = live_stack.up()
 
 
 def _q(db, sql):
@@ -75,7 +83,7 @@ def test_control_caps_is_derived_from_status_and_kind_ALONE():
     assert "book" not in sig and "reachab" not in sig.lower()
 
 
-@pytest.mark.skipif(not _STACK, reason="needs the local stack")
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 def test_the_projection_cannot_identify_the_gated_resource():
     """🔴 THE FINDING, and the reason a local verification is impossible rather than merely
     expensive. If `params` ever starts carrying book_id this changes and DQ-T46 gets a cheaper
@@ -88,7 +96,7 @@ def test_the_projection_cannot_identify_the_gated_resource():
     assert "book_id" not in cols, cols
 
 
-@pytest.mark.skipif(not _STACK, reason="needs the local stack")
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 def test_a_generic_status_list_is_NOT_comparable_across_owners():
     """🔴 THE MISTAKE THAT PRODUCED A FALSE '1 ORPHANED + CONTROLLABLE'. Four owning tables,
     four disjoint vocabularies. Pinned so nobody re-derives the row with a shared list."""
@@ -104,7 +112,7 @@ def test_a_generic_status_list_is_NOT_comparable_across_owners():
     assert not shared, f"the vocabularies now overlap ({shared}) — re-derive the audit"
 
 
-@pytest.mark.skipif(not _STACK, reason="needs the local stack")
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 def test_the_translation_population_that_motivated_the_row_is_CLEARED():
     """The per-batch sweep works: 60 orphaned jobs became 0."""
     books = set(_q("loreweave_book", "SELECT id::text FROM books;").splitlines())

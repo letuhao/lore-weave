@@ -40,13 +40,21 @@ import sys
 
 import pytest
 
+import sys as _sys, pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+import live_stack  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
 
 SRC = (ROOT / "scripts" / "toolloop" / "fe_runner.py").read_text(encoding="utf-8")
-_STACK = subprocess.run(["docker", "ps"], capture_output=True).returncode == 0
+# 🔴 WAS `docker ps`, WHICH SUCCEEDS ON EVERY GITHUB RUNNER. A guard whose proxy is
+# true wherever there is no stack is not a guard: these tests ran in CI and failed with
+# connection errors that read like defects. `live_stack.up()` probes the anchor
+# gate-wiring-gate already uses, and fails CLOSED if the probe cannot be loaded.
+_STACK = live_stack.up()
 BATCH = ROOT / "docs" / "eval" / "toolloop" / "2026-08-14" / "c-passledger1-raw.json"
 
 
@@ -62,7 +70,7 @@ def test_the_runner_records_the_comparison():
     )
 
 
-@pytest.mark.skipif(not _STACK, reason="needs the local stack")
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 def test_an_unreadable_session_is_ABSENCE_not_zero():
     """🔴 A ZERO WOULD CLAIM THE SERVICE PRINTED NOTHING. This loop has already once compared
     against a silently-empty log capture and drawn a conclusion from it, so the reader returns

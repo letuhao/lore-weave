@@ -36,13 +36,21 @@ import sys
 
 import pytest
 
+import sys as _sys, pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+import live_stack  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
 
 SRC = (ROOT / "scripts" / "toolloop" / "fe_runner.py").read_text(encoding="utf-8")
-_STACK = subprocess.run(["docker", "ps"], capture_output=True).returncode == 0
+# 🔴 WAS `docker ps`, WHICH SUCCEEDS ON EVERY GITHUB RUNNER. A guard whose proxy is
+# true wherever there is no stack is not a guard: these tests ran in CI and failed with
+# connection errors that read like defects. `live_stack.up()` probes the anchor
+# gate-wiring-gate already uses, and fails CLOSED if the probe cannot be loaded.
+_STACK = live_stack.up()
 
 
 def test_the_capture_is_AT_BOTH_HANDLERS_INSIDE_send_turn():
@@ -84,7 +92,7 @@ def test_the_backstop_still_exists_and_never_kills_the_run():
     assert "try:" in seg and "except Exception" in seg, seg
 
 
-@pytest.mark.skipif(not _STACK, reason="needs the local stack")
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 def test_an_UNKNOWN_session_is_not_reported_as_a_dead_turn():
     """🔴 PRECISION, AND THE FIRST DRAFT GOT IT WRONG. A session that does not exist has no
     assistant row either, so `"assistant" not in rows` reported the dead-turn signature for a
@@ -95,7 +103,7 @@ def test_an_UNKNOWN_session_is_not_reported_as_a_dead_turn():
     assert d["no_assistant_row"] is False
 
 
-@pytest.mark.skipif(not _STACK, reason="needs the local stack")
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 def test_a_HEALTHY_session_is_not_reported_as_a_dead_turn():
     row = subprocess.run(
         ["docker", "exec", "-i", "infra-postgres-1", "psql", "-U", "loreweave",
@@ -109,7 +117,7 @@ def test_a_HEALTHY_session_is_not_reported_as_a_dead_turn():
     assert d["no_assistant_row"] is False, d["rows_by_role"]
 
 
-@pytest.mark.skipif(not _STACK, reason="needs the local stack")
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 def test_it_really_reads_the_LOG_and_not_just_the_store():
     """ANTI-VACUITY. The store half alone would have been available all along; the log is the
     half that rotates, and it is the half the row could never get."""
@@ -138,7 +146,7 @@ def test_it_reads_STDERR_too():
     assert "p.stdout + p.stderr" in body, body[-400:]
 
 
-@pytest.mark.skipif(not _STACK, reason="needs the local stack")
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 def test_a_store_failure_is_RECORDED_not_swallowed():
     """The capture is best-effort, but best-effort must still leave a trace: a silent empty
     capture is indistinguishable from a session that genuinely wrote nothing."""
