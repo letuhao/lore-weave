@@ -67,8 +67,8 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 			"preview}. scope=user executes immediately as a soft-delete: the row is retained " +
 			"and stops applying, but it KEEPS ITS CODE reserved — so glossary_ontology_upsert " +
 			"CANNOT re-add the same code (it answers \"already exists\"). To undo, use " +
-			"the UI (glossary_user_restore was retired with no tool replacement — do not look for it, "+
-			"and do not tell the user you can undo this yourself). Returns " +
+			"the UI — there is no restore tool to find, so do not go looking for one, and do not " +
+			"tell the user you can undo this yourself. Returns " +
 			"{results} plus a {trashed, already_trashed, failed} summary. Deleting an " +
 			"already-deleted row is a no-op, not an error — counted under already_trashed, " +
 			"never under trashed.",

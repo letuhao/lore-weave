@@ -47,7 +47,7 @@ var (
 	// proven readable — the sixth site of this class found in this loop. A VIEW-granted caller
 	// can already enumerate scenes via book_scene_list, so naming a bad scene_id leaks no
 	// existence oracle either.
-	errSceneNotInBook = errors.New("no active scene with that scene_id in this book — check the scene_id (call book_scene_list for valid ids)")
+	errSceneNotInBook = errors.New("no active scene with that scene_id in this book — check the scene_id against the scenes listed for this book")
 	// errStructureTargetNotInBook is the same reasoning for the STRUCTURE ops, where the missing
 	// thing may be a part or a chapter and the shared mapper cannot tell which (TOOLV2 LOOP
 	// #138). It is still not the book: every one of these paths runs after an EDIT grant has
@@ -292,11 +292,9 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"(part_id, title) · reorder_parts (ordered_part_ids — the full active set, each once) · "+
 			"home_chapter (chapter_id + part_id, or part_id=\"unassigned\" to un-home) · reorder_chapters "+
 			"(chapter_ids — the complete new order for one language track). Every op is reversible (Undo). "+
-			"Deleting a PART has no tool: book_structure_part_archive was retired with no replacement, "+
-			"so do NOT look for it and do NOT claim a part was deleted — tell the user to remove it "+
-			"in the manuscript UI. (Was: \"call the SEPARATE tool book_structure_part_archive\" (soft-delete to "+
-			"trash, restorable — its chapters keep their text and fall to Unassigned). This tool "+
-			"has no archive op.",
+			"Deleting a PART has no tool at all: this tool has no archive op and there is no separate "+
+			"one to find, so do NOT go looking for one and do NOT claim a part was deleted — tell the "+
+			"user to remove it in the manuscript UI.",
 		lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"create part", "add act", "add volume", "rename part", "reorder parts",
 			"move chapter to act", "put chapter in volume", "home chapter", "reorder chapters", "change reading order",

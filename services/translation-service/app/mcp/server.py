@@ -1070,7 +1070,7 @@ async def translation_start_extraction(
     if not cids:
         raise ToolError(
             "chapter_ids must not be empty — name the chapters to extract from. Nothing was "
-            "proposed and nothing was charged. Use book_list_chapters to pick them.")
+            "proposed and nothing was charged. Pick them from the book's chapter list.")
     profile = extraction_profile or {}
     # Estimate for the confirm card — a deterministic token projection over
     # (chapter count × the profile's kinds/attrs). The confirm effect re-runs the
