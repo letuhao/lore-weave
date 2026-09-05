@@ -92,6 +92,26 @@ that continues.
     (`dp::RealityId`) while constructing and holding its own pool, which is the precise question
     DP-R3 asks, and `server/db.rs` is pool construction carrying a connection guard. That is an
     architecture change, not CI triage.
+- [x] **R5** — **DONE. `DB live-smoke` was six suites taking a writer lease on a channel that
+  did not exist.** 23503 on `channel_writer_state_channel_fk`, and the tests were not broken by
+  a test-only detail: they were writing the exact row `0027_channel_writer_state_fk` exists to
+  forbid. It is a `NOT VALID` ratchet — history unscanned, every NEW write enforced — and its
+  own header calls the orphans it found *"the DEFECT the key exists to prevent"*. So: seed the
+  channel, never weaken the key.
+  - 🔴 **A bare `ON CONFLICT DO NOTHING` made the seed a silent no-op, and that was my first
+    attempt.** `channels_root_single` is UNIQUE (reality_id) WHERE parent IS NULL, so a bare
+    clause swallows a *second root in the same reality* — the conflict it eats is not the one
+    you meant. Narrowed to `ON CONFLICT (reality_id, id)`. `failover.rs`'s two multi-channel
+    tests then needed 10 as the root and 11 as its **child**, which is the shape the constraint
+    was telling me about all along.
+  - ✅ **Proven load-bearing, not assumed.** With the four seed calls removed,
+    `epoch-activation` returns the identical 23503 the CI log shows. Restored byte-exact
+    (`cmp`), never with `git checkout --`.
+  - ✅ **`live-suites.py`: 25 passed of 27.** The two not-passed are `world-embedding` and
+    `world-provisioner-reentry`, both failing to apply `0008_pgvector_setup` because the LOCAL
+    postgres image has no pgvector. CI's image does — **not** a CI failure, and the row is not
+    closed on that basis but on CI going green. Pushed as `dbbc7e795`.
+
 - [ ] **R3** — **`lint-foundation` → `agentruntime-falsification`: CI says 13, the harness's own
   run says 2.**
   - 🔴 **I WITHDREW A CORRECT FINDING, AND THE MEASUREMENT PUT IT BACK. Both corrections stand

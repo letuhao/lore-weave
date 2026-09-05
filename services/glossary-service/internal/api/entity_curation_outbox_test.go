@@ -212,10 +212,28 @@ func TestReassignKind_EmitsUpdatedCarryingTheNewKind(t *testing.T) {
 		t.Fatalf("read kind: %v", err)
 	}
 	targetCode, targetID := "", uuid.Nil
-	for code, id := range kinds {
+	for _, id := range kinds {
 		if id != currentKind {
-			targetCode, targetID = code, id
+			targetID = id
 			break
+		}
+	}
+	// 🔴 THE MAP KEY IS NOT THE KIND'S CODE. `loadKindMap` folds `entity_kind_aliases`
+	// into the same map — `m[alias_code] = book_kind_id` — so its keys are a MIXTURE of canonical
+	// `book_kinds.code` and alias codes pointing at the same ids. Go randomises map iteration, so
+	// taking the key as the expected code fails on exactly the runs that land on an alias:
+	//
+	//     want the NEW kind "faction", got "organization"
+	//     want the NEW kind "generic", got "terminology"
+	//
+	// Both are alias → canonical pairs. The re-key was CORRECT in both: the entity moved to the
+	// right kind and the payload carried that kind's canonical code, which is what
+	// `entityEventFieldsSQL` reads (`JOIN book_kinds k ON k.book_kind_id = e.kind_id`, `k.code`).
+	// So resolve the expectation from the ID, never from the key. Reproduced 2 of 25 local runs.
+	if targetID != uuid.Nil {
+		if err := pool.QueryRow(ctx,
+			`SELECT code FROM book_kinds WHERE book_kind_id=$1`, targetID).Scan(&targetCode); err != nil {
+			t.Fatalf("resolve the target kind's canonical code: %v", err)
 		}
 	}
 	if targetID == uuid.Nil {
@@ -228,12 +246,11 @@ func TestReassignKind_EmitsUpdatedCarryingTheNewKind(t *testing.T) {
 	// breaks however it likes. This entity already has earlier `entity_updated` rows (that is
 	// what `before` counts), and the reads below take `LIMIT 1` off that tie.
 	//
-	// It went green here and RED in CI on consecutive runs of the same commit:
-	//
-	//     entity_curation_outbox_test.go:240: payload kind: want the NEW kind "generic",
-	//     got "terminology"
-	//
-	// — the OLD event, read as the newest. `id` is `uuidv7()`, which is time-ordered, so
+	// 🔴 THE FAILURE I FIRST BLAMED ON THIS WAS THE ALIAS ABOVE, NOT THE TIE. The
+	// `want the NEW kind "generic", got "terminology"` red is explained by `loadKindMap` folding
+	// aliases in; it survived this ordering fix and was only closed by resolving the code from
+	// the ID. The tie is real and latent all the same — PG18's `uuidv7()` carries sub-millisecond
+	// precision, so `, id DESC` is a genuine monotonic tiebreaker rather than an arbitrary one —
 	// `, id DESC` is a real monotonic tiebreaker rather than an arbitrary one.
 	// `entity_command_parity_test.go` in this package already orders that way; these three
 	// reads did not.
