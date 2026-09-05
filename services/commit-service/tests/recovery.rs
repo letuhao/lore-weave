@@ -151,26 +151,26 @@ fn strike(input_id: u128) -> Admitted<CombatDomain> {
 /// A ROOT channel (`parent` NULL, `depth` 0) - these tests are about recovery and fencing, not
 /// hierarchy. Mirrors `dp-kernel/tests/integration_dp_channel.rs::seed_channels`.
 /// A CHILD of `parent`, for the one test that needs two channels in one reality.
-async fn seed_child_channel(pool: &PgPool, reality: Uuid, ch: ChannelId, parent: i64) {
+async fn seed_child_channel(pool: &PgPool, reality: Uuid, ch: i64, parent: i64) {
     sqlx::query(
         "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
          VALUES ($1, $2, $3, 'cell', 1, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
     )
     .bind(reality)
-    .bind(ch.get())
+    .bind(ch)
     .bind(parent)
     .execute(pool)
     .await
     .expect("seed child channel");
 }
 
-async fn seed_channel(pool: &PgPool, reality: Uuid, ch: ChannelId) {
+async fn seed_channel(pool: &PgPool, reality: Uuid, ch: i64) {
     sqlx::query(
         "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
          VALUES ($1, $2, NULL, 'reality', 0, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
     )
     .bind(reality)
-    .bind(ch.get())
+    .bind(ch)
     .execute(pool)
     .await
     .expect("seed channel");
@@ -189,7 +189,7 @@ async fn recovery_reads_back_what_the_writer_committed() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = ChannelId::unverified(1);
-    seed_channel(&pool, reality, ch).await;
+    seed_channel(&pool, reality, ch.get()).await;
     let ts = db_now(&pool).await;
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
@@ -224,7 +224,7 @@ async fn a_redelivered_intent_does_not_apply_twice_after_writer_handover() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = ChannelId::unverified(2);
-    seed_channel(&pool, reality, ch).await;
+    seed_channel(&pool, reality, ch.get()).await;
     let ts = db_now(&pool).await;
 
     // Node A commits one resolution, then dies before ACKing the bus.
@@ -287,7 +287,7 @@ async fn recovery_does_not_block_new_intents() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = ChannelId::unverified(3);
-    seed_channel(&pool, reality, ch).await;
+    seed_channel(&pool, reality, ch.get()).await;
     let ts = db_now(&pool).await;
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
@@ -327,8 +327,14 @@ async fn recovery_is_scoped_to_its_own_channel() {
     // permits exactly one parentless row per reality. Seeding both as roots made the second a
     // silent no-op and the test still failed on channel 11 - the neighbour it exists to prove is
     // isolated could not hold writer state at all.
-    seed_channel(&pool, reality, ChannelId::unverified(10)).await;
-    seed_child_channel(&pool, reality, ChannelId::unverified(11), 10).await;
+    // 🔴 `i64`, NOT `ChannelId` — taking the newtype here forced the caller to build TWO
+    // more `ChannelId::unverified(...)`, and channel-id-adoption-gate counts exactly that: it
+    // read 6 against a baseline of 4 and failed the branch. These are row ids being INSERTED
+    // into `channels`; there is no channel to resolve yet, so the newtype buys nothing and
+    // costs the seam. The sibling helpers in failover.rs and epoch_activation_live.rs already
+    // take i64.
+    seed_channel(&pool, reality, 10).await;
+    seed_child_channel(&pool, reality, 11, 10).await;
 
     for (ch, id) in [(10i64, 0x111u128), (11, 0x222)] {
         let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(ch)).await.unwrap();
