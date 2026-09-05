@@ -111,7 +111,10 @@ func TestTheUnknownKindMessageNamesTheKindsTheBookHas(t *testing.T) {
 		}
 	}
 	// And the way to ADD one, because the caller's kind may be legitimately new.
-	if !strings.Contains(got, "glossary_adopt_standards") || !strings.Contains(got, "glossary_propose_kinds") {
+	// 🔴 glossary_propose_kinds is RETIRED and declares its successor,
+	// WithSupersededBy(..., "glossary_propose_batch"). Both satisfiers must still be named;
+	// the custom-kind one is now the batch tool.
+	if !strings.Contains(got, "glossary_adopt_standards") || !strings.Contains(got, "glossary_propose_batch") {
 		t.Errorf("both satisfiers must be named: %q", got)
 	}
 }

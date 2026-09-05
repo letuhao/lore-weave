@@ -296,7 +296,7 @@ func unknownKindMessage(kindCode string, kindMap map[string]uuid.UUID) string {
 		// A different answer, and it must not read like the first: no kind_code could have
 		// worked, so the caller should create categories rather than guess another code.
 		sb.WriteString(". This book has no kinds yet — adopt the system ones with " +
-			"glossary_adopt_standards, or propose custom ones, then retry.")
+			"glossary_adopt_standards, or create custom ones with glossary_propose_batch, then retry.")
 		return sb.String()
 	}
 	shown := have
@@ -308,8 +308,8 @@ func unknownKindMessage(kindCode string, kindMap map[string]uuid.UUID) string {
 	if len(have) > len(shown) {
 		fmt.Fprintf(&sb, " (+%d more)", len(have)-len(shown))
 	}
-	sb.WriteString(". To add a new one, use glossary_adopt_standards (system kinds), or " +
-		"propose a custom one, then retry.")
+	sb.WriteString(". To add a new one, use glossary_adopt_standards (system kinds) or " +
+		"glossary_propose_batch (custom), then retry.")
 	return sb.String()
 }
 

@@ -94,8 +94,15 @@ func TestTheNothingToPlanMessageNamesWhatThePlannerCanDo(t *testing.T) {
 		t.Fatalf("the planner's note must be kept: %q", got)
 	}
 	// ...but it no longer gets the last word about what the SYSTEM can do.
-	if !strings.Contains(got, "glossary_book_patch") {
+	// 🔴 glossary_book_patch is RETIRED. It declares its own successor -
+	// WithSupersededBy(..., "glossary_ontology_upsert") - and naming a tool the model cannot
+	// see sends it hunting for one that is not in its surface. The requirement is unchanged:
+	// name the tool that DOES the single-field edit. That tool is now the upsert.
+	if !strings.Contains(got, "glossary_ontology_upsert") {
 		t.Errorf("the refusal must name the tool that DOES edit a single field: %q", got)
+	}
+	if strings.Contains(got, "glossary_book_patch") {
+		t.Errorf("glossary_book_patch is retired; name its successor instead: %q", got)
 	}
 	if !strings.Contains(got, "color and icon") {
 		t.Errorf("the exact capability the model despaired of must be named: %q", got)
@@ -121,7 +128,7 @@ func TestTheNothingToPlanERROR_CarriesTheVocabulary(t *testing.T) {
 		t.Fatalf("want errPlanNothingActionable, got %v", err)
 	}
 	got := err.Error()
-	if !strings.Contains(got, "glossary_book_patch") {
+	if !strings.Contains(got, "glossary_ontology_upsert") {
 		t.Fatalf("the refusal the CALLER sees must name the tool that does it — an LLM's "+
 			"claim that a GUI is required cannot be the last word: %q", got)
 	}
@@ -158,7 +165,7 @@ func TestTheOpTypeSchemaNamesTheToolThatEditsAnExistingRow(t *testing.T) {
 			t.Errorf("op %q is in the registry but missing from the schema description", op)
 		}
 	}
-	if !strings.Contains(desc, "glossary_book_patch") {
+	if !strings.Contains(desc, "glossary_ontology_upsert") {
 		t.Errorf("the schema must name where a single-field edit actually lives: %q", desc)
 	}
 	if !strings.Contains(desc, "edit_kind") {

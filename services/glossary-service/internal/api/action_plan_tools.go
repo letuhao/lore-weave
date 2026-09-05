@@ -68,7 +68,8 @@ func (s *Server) planVocabularyHint(msg string) string {
 	sort.Strings(ops)
 	return msg + " — the planner can only emit these operations: " + strings.Join(ops, ", ") +
 		". Anything else is not necessarily impossible: a single field on an existing genre, " +
-		"kind or attribute (including color and icon) is edited directly, which needs no plan."
+		"kind or attribute (including color and icon) is edited directly with " +
+		"glossary_ontology_upsert, which needs no plan."
 }
 
 type planToolIn struct {
@@ -151,7 +152,7 @@ type proposeBatchOpIn struct {
 	// it to guess where the capability went; naming the tool here puts that in front of the
 	// model BEFORE it composes the call rather than after. Same correction iteration 77 made to
 	// the planner's own refusal, on the path that bypasses the planner.
-	Type string `json:"type" jsonschema:"op type — one of: adopt_genres, create_kinds, add_attributes, edit_attribute, delete_genre, delete_kind, delete_attribute, merge_candidate, dismiss_candidate. There is NO edit_kind / edit_genre op: to change a field (name, description, color, icon, sort_order) on an EXISTING genre, kind or attribute, edit that one field directly instead — it needs no plan and no confirm."`
+	Type string `json:"type" jsonschema:"op type — one of: adopt_genres, create_kinds, add_attributes, edit_attribute, delete_genre, delete_kind, delete_attribute, merge_candidate, dismiss_candidate. There is NO edit_kind / edit_genre op: to change a field (name, description, color, icon, sort_order) on an EXISTING genre, kind or attribute, call glossary_ontology_upsert instead — it needs no plan and no confirm."`
 	// Params is the op's typed params object. Shapes mirror the planner vocabulary
 	// (see glossary_propose_batch's tool description), e.g. create_kinds →
 	// {"kinds":[{"code","name","description","attributes":[...]}]}.
