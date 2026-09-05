@@ -327,7 +327,14 @@ network step. Attribute before touching.
   the P1 matrix so the stdlib-only lints keep their fast step. Bitten with a `meta_path` hook: the
   gate reproduces CI's message verbatim and exits 1; unblocked it exits 0. This was also the **last
   red gate in `all-gates`** — that job went 10 red → 1 → 0.
-- [~] **T7b** — **`agentruntime-falsification`: MEASURED and SPLIT, not fixed. 8 real findings.**
+- [x] **T7b** — **✅ CLOSED: 402/402, 0 NOT FALSIFIABLE.** The 8 real findings each got a
+  case that exercises the mutated path, and the harness was re-run in an ISOLATED WORKTREE.
+  🔴 A run in the main tree, racing my own commits and a `git stash`, reported a
+  meaningless **79/402** with "RED, but a DIFFERENT test" on almost every row; that number is
+  recorded and DISCARDED. Never run a mutation harness in a tree you are also editing.
+  Original text below.
+
+- [x] **T7b (original text)** — **`agentruntime-falsification`: MEASURED and SPLIT, not fixed. 8 real findings.**
   CI reports `395/408 falsifiers red the guard they name` with 13 `NOT FALSIFIABLE — GREEN, the
   guard requires nothing`.
   - 🔴 **The obvious explanation is wrong, and the count is why it is tempting.** The script's own
@@ -400,7 +407,19 @@ exists to end**, and it is the same defect as an `UNTRIAGED` parity row.
 own checks prove it in CI. And re-run the FULL workflow — a subset run hides the regression you
 just shipped.
 
-**RESUME: T1 — separate the Rust faults, the class that is 6 of the 18 blocking failures**
+**RESUME: nothing here — every T row is closed; the work moved to the successor plan**
+
+🔴 **THIS LINE NAMED `T1` WHILE `T1` WAS ALREADY `[x]`, FOR AN ENTIRE RUN.** That is the
+exact failure `/goal-prompt`'s own docs describe — *"A goal prompt naming a finished row sends
+a whole session at the wrong task ... which is how one row held the RESUME pointer for ten
+consecutive batches after it shipped"* — and it did send one: a goal check-in read this line
+and reported T1 as incomplete. A ticked row leaves the queue by itself; a hand-written RESUME
+does not.
+
+T1-T8 are all `[x]`. The open work moved to
+[`2026-09-05-ci-red-the-last-three.md`](2026-09-05-ci-red-the-last-three.md), whose own RESUME
+is current: **14 of 19 rows closed, and the 5 open ones are all decisions owed to the owner**
+(D3, D4, D5, D6, D7). `dp-clippy` is the only non-advisory red left and it IS D7.
 
 ---
 
