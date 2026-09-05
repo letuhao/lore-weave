@@ -125,8 +125,19 @@ def test_every_such_row_in_the_shipped_ledger_has_paid():
     for name, row in rows.items():
         # The row must still name the question whose answer moved it, so the ruling stays
         # traceable from the row rather than only from this file.
-        blob = " ".join(str(v) for v in row.values())
-        assert "2026-08-31" in blob, f"{name} does not date the ruling that moved it"
+        # 🔴 THE WINDOW MISSED WHERE THE LEDGER ACTUALLY WRITES DATES. This read the
+        # VALUES only, and only the hyphenated form. This ledger dates a development by
+        # naming a KEY for it, with underscores — `unblocked_2026_08_31_round3`,
+        # `currency_extended_to_the_newest_data__2026_08_31` — so two rows that trace the
+        # ruling perfectly well read as undated. Measured over all eight cannot_reproduce
+        # rows: six carry the hyphenated form in a value, and ALL EIGHT carry the ruling in
+        # the row somewhere. Widen the window to the whole row and accept the separator the
+        # file uses; the requirement — the ruling is traceable FROM THE ROW — is unchanged.
+        blob = json.dumps(row)
+        assert "2026-08-31" in blob or "2026_08_31" in blob, (
+            f"{name} does not date the ruling that moved it — a row in this state must "
+            "carry the 2026-08-31 ruling, in a value or in a key, or the ruling is "
+            "traceable only from this test file")
 
 
 def test_the_open_count_no_longer_carries_them():

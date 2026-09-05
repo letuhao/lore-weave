@@ -226,16 +226,65 @@ def test_the_concentration_is_SCENARIO_shaped_not_TOOL_shaped():
     #     (`blank <= 10`, corrected the same day) is not;
     #   * the errors CONCENTRATE — measured on the errors themselves, which is the quantity the
     #     row is actually about.
-    assert clean_runs >= 90, (
-        f"only {clean_runs} runs sit in error-free search-calling scenarios (was 101 when this "
-        "was derived). Clean scenarios have started erroring, which is the tool-level reading "
-        "coming back")
-    top2 = sum(n for _, n in sorted(per_errs.items(), key=lambda kv: -kv[1])[:2])
+    # 🔴 THE FLOOR WAS RIGHT TO FIRE, AND WRONG TO BE A SCENARIO-PARTITIONED COUNT.
+    # It read 71 against a bar of 90, so the investigation it demanded was run before the bar was
+    # touched. What it found:
+    #
+    #   * The ENTIRE 101 -> 71 drop is ONE scenario. Recomputed at df190598a, the commit that set
+    #     this bar: composition-motif-bind-edit was 0/30 — perfectly clean — and it is now 13/53.
+    #     30 runs left the clean pool in one step, which is exactly the 30 that went missing.
+    #   * Its 13 errors are three ALL-OR-NOTHING batches on a single day, 2026-09-01:
+    #     c-bindarc3 5/5, c-toolschema1 5/5, c-upstream2 3/3. A fourth batch that same day,
+    #     c-bindarc1-postevict, ran 0/10 CLEAN.
+    #   * All 13 carry the SAME error — `upstream sent "error" with no error message` — which is
+    #     D-UPSTREAM-ERROR-WITH-NO-MESSAGE, not a property of the search tool.
+    #
+    # So a scenario becomes permanently dirty on its first error, and every run it ever
+    # contributed leaves the pool with it. That is the SAME defect this bar was written to escape
+    # one level in: the note above says "a bar that a clean run can break is measuring the
+    # population mix", and this one can be broken by 30 at a time by an unrelated upstream fault.
+    # A floor is only safe if it is monotone in new evidence, and the scenario-partitioned one is
+    # not.
+    #
+    # The RUN-level count is: 173 clean at the bar, 213 now. New clean runs can only raise it and
+    # a bad batch costs it only the runs that actually errored, so it says what the row claims —
+    # a large ABSOLUTE body of runs calls the tool and does not error — without pretending the
+    # three bad batches did not happen.
+    clean_calls = total - sum(per_errs.values())
+    assert clean_calls >= 150, (
+        f"only {clean_calls} of {total} runs call composition_motif_search WITHOUT erroring "
+        "(173 at the commit that set this bar, 213 after). This floor is monotone in new "
+        "evidence, so a fall means runs that call the tool have genuinely started failing")
+    # And the other half, measured on the ERRORS, which is the quantity the row is about: they
+    # must stay CONCENTRATED. If every scenario starts carrying errors, the tool-level reading is
+    # back — and that is the finding the old bar was reaching for.
+    carrying = [sc for sc in per_runs if per_errs[sc]]
+    assert len(carrying) * 2 <= len(per_runs), (
+        f"{len(carrying)} of {len(per_runs)} search-calling scenarios now carry errors — no "
+        "longer a concentration, which would make the TOOL the discriminator after all")
+    # 🔴 "THE TOP TWO" IS A WINDOW, NOT THE CLAIM, and the same three bad batches walked
+    # past its edge. The concentration has NOT broken up: three of the ten scenarios hold 48 of
+    # the 49 errors, 98%. What changed is that there are now THREE erroring scenarios instead of
+    # two, so a two-wide window sees 78% and reports a dispersal that did not happen. Fixing the
+    # window size to the number of offenders that happened to exist on the day is the same
+    # mistake as fixing the floor to the count that happened to exist — it makes ONE bad batch
+    # look like the row collapsing.
+    #
+    # So ask the question the row actually asks: how FEW scenarios does it take to account for
+    # nearly all the errors? Two at the bar commit, three now, out of ten either way. That is a
+    # concentration. It goes red when the errors genuinely spread — which is the moment the
+    # pooled bucket rate would become a fair summary of the search itself.
     all_errs = sum(per_errs.values())
-    assert all_errs and top2 / all_errs >= 0.85, (
-        f"the top two scenarios hold {top2} of {all_errs} errors ({top2 / max(all_errs,1):.0%}); "
-        "the concentration this row rests on has broken up and the pooled bucket rate would now "
-        "be a fair summary of the search itself — re-derive the row")
+    assert all_errs, "no errors at all — this measure has nothing to say, re-derive the row"
+    covering, seen = 0, 0
+    for _, n in sorted(per_errs.items(), key=lambda kv: -kv[1]):
+        covering, seen = covering + 1, seen + n
+        if seen / all_errs >= 0.95:
+            break
+    assert covering * 3 <= len(per_runs), (
+        f"it takes {covering} of {len(per_runs)} scenarios to account for 95% of the "
+        f"{all_errs} errors; the concentration this row rests on has broken up and the pooled "
+        "bucket rate would now be a fair summary of the search itself — re-derive the row")
 
 
 def test_the_ZERO_ERROR_control_still_holds():

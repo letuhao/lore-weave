@@ -87,9 +87,25 @@ class TestTheDqBacklogIsDerived:
         unknown = hand - derived - set(led["deferred_questions"])
         assert not unknown, (
             f"the frozen list names questions the ledger has never heard of: {sorted(unknown)}")
-        assert derived - hand, (
-            "the derived set adds nothing over the hand-typed list, so the stale list is still "
-            "as good as the generator — which was the original defect")
+        # 🔴 THE SAME ROT, ONE ASSERTION FURTHER DOWN. The relation above was repaired
+        # on 2026-08-28 when two questions were answered; this one assumed the derived set
+        # would always have something LEFT to add, and the owner has now answered or
+        # withdrawn all 68. An empty derived set is the queue finishing, not the generator
+        # failing. Keep the anti-vacuity by CROSS-DERIVING it: if the generator reports
+        # nothing open, the raw ledger must independently say the same.
+        if derived:
+            assert derived - hand, (
+                "the derived set adds nothing over the hand-typed list, so the stale list is "
+                "still as good as the generator — which was the original defect")
+        else:
+            qs = led["deferred_questions"]
+            assert qs, "the ledger holds no questions at all — this read the wrong file"
+            unfinished = sorted(q for q, v in qs.items()
+                                if v.get("state") not in ("answered", "withdrawn"))
+            assert not unfinished, (
+                f"the generator derives NO open questions while {len(unfinished)} are "
+                f"neither answered nor withdrawn: {unfinished[:5]} — the generator and the "
+                "ledger disagree, which is the defect this gate exists to catch")
         assert probs["deferred_questions_backlog"].get("_SUPERSEDED_2026_08_25"), (
             "the hand-typed list must be marked superseded, or someone will edit it and "
             "believe it did something")

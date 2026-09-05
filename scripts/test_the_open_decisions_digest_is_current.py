@@ -110,9 +110,26 @@ class TestTheGuardCanActuallyFail:
         open_qs = _g._open_dq_names(ledger)
         listed = {ln.split("###", 1)[1].split("—")[0].strip()
                   for ln in body.splitlines() if ln.startswith("### DQ-T")}
-        assert open_qs, (
-            "the ledger has NO open questions at all — the generator has nothing to be right "
-            "about, and this guard would pass vacuously")
+        # 🔴 AND NOW THERE ARE NONE — 64 answered, 4 withdrawn, 0 open. The vacuity
+        # worry was right and the floor was the wrong instrument for it: an empty digest
+        # would indeed satisfy `listed == open_qs` for free, but demanding that questions
+        # stay open turns the owner finishing the queue into a red test. So keep the
+        # anti-vacuity and make it CROSS-DERIVED: the generator says nothing is open, and
+        # the raw ledger states must independently agree. If they ever disagree, one of the
+        # two is wrong and that is a real finding rather than an empty pass.
+        if not open_qs:
+            qs = ledger.get("deferred_questions") or {}
+            assert qs, "the ledger holds no questions at all — this read the wrong file"
+            unfinished = sorted(q for q, v in qs.items()
+                                if v.get("state") not in ("answered", "withdrawn"))
+            assert not unfinished, (
+                f"the generator reports NO open questions while {len(unfinished)} are "
+                f"neither answered nor withdrawn: {unfinished[:5]} — the predicate and the "
+                "ledger disagree")
+            assert not listed, (
+                f"the digest still names {sorted(listed)[:5]} as open while the ledger has "
+                "none — the digest is stale, which is the whole point of this guard")
+            return
         assert listed == open_qs, (
             f"the digest and the ledger disagree. Only in the digest: {sorted(listed - open_qs)}; "
             f"only in the ledger: {sorted(open_qs - listed)}")
