@@ -96,6 +96,7 @@ async fn a_declared_verb_reaches_the_log_and_the_wire() -> anyhow::Result<()> {
     let reality = Uuid::new_v4();
     let channel = 1i64;
     let pool = PgPoolOptions::new().max_connections(4).connect(&dsn).await?;
+    seed_channel(&pool, reality, channel).await?;
     let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await?;
     let writer = ChannelWriter::new(Arc::new(pool.clone()), reality, lease);
 
@@ -283,5 +284,27 @@ async fn a_declared_verb_reaches_the_log_and_the_wire() -> anyhow::Result<()> {
     );
     assert_eq!(first["type"].as_str(), Some("acted"));
 
+    Ok(())
+}
+
+/// Seed the `channels` row a writer lease now REQUIRES.
+///
+/// 🔴 `0027_channel_writer_state_fk` enforces `channel_writer_state -> channels` on every
+/// NEW write (it is `NOT VALID`, so history is left unscanned). Its header names the orphans it
+/// found "the DEFECT the key exists to prevent" - a lease taken on a channel that never existed,
+/// which is precisely what this test was writing.
+///
+/// `ON CONFLICT (reality_id, id)`, never a bare `ON CONFLICT DO NOTHING`: `channels_root_single`
+/// is UNIQUE (reality_id) WHERE parent IS NULL, so a bare clause would swallow a second root and
+/// leave the seed a silent no-op.
+async fn seed_channel(pool: &sqlx::PgPool, reality: Uuid, channel: i64) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, NULL, 'reality', 0, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(channel)
+    .execute(pool)
+    .await?;
     Ok(())
 }

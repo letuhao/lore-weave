@@ -79,6 +79,7 @@ async fn the_activation_event_carries_the_unadvanced_turn_number() {
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
+    seed_channel(&pool, reality, channel).await;
     let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
@@ -137,6 +138,7 @@ async fn an_activated_epoch_reaches_the_channel_log() {
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
+    seed_channel(&pool, reality, channel).await;
     let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
@@ -239,6 +241,7 @@ async fn reconciling_again_appends_nothing() {
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
+    seed_channel(&pool, reality, channel).await;
     let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
@@ -283,6 +286,7 @@ async fn a_missed_epoch_is_not_replayed() {
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
+    seed_channel(&pool, reality, channel).await;
     let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
@@ -314,4 +318,26 @@ async fn a_missed_epoch_is_not_replayed() {
     assert_eq!(rows.len(), 1, "one catch-up is one event, not one per skipped epoch");
     assert_eq!(rows[0].1["from_epoch"], 1);
     assert_eq!(rows[0].1["to_epoch"], 3);
+}
+
+/// Seed the `channels` row a writer lease now REQUIRES.
+///
+/// 🔴 `0027_channel_writer_state_fk` enforces `channel_writer_state -> channels` on every
+/// NEW write (it is `NOT VALID`, so history is left unscanned). Its own header calls the
+/// pre-existing orphans "the DEFECT the key exists to prevent": a lease taken on a channel
+/// that does not exist. These tests were writing exactly that row.
+///
+/// `ON CONFLICT (reality_id, id)`, never a bare `ON CONFLICT DO NOTHING` - `channels_root_single`
+/// is UNIQUE (reality_id) WHERE parent IS NULL, so a bare clause would swallow a SECOND root in
+/// the same reality and turn the seed into a silent no-op.
+async fn seed_channel(pool: &sqlx::PgPool, reality: Uuid, channel: i64) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, NULL, 'reality', 0, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(channel)
+    .execute(pool)
+    .await
+    .expect("seed channel");
 }

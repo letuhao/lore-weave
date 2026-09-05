@@ -63,6 +63,42 @@ fn test_channel(n: i64) -> ChannelId {
     ChannelId::unverified(n)
 }
 
+/// Seed the `channels` row a writer lease now REQUIRES.
+///
+/// 🔴 `0027_channel_writer_state_fk` added `channel_writer_state_channel_fk`, and its header
+/// names this very suite in the census it took before choosing `NOT VALID`:
+///
+///     ls_dp_kernel_channel_writer_pg_smoke      8 rows,   8 orphans
+///     ls_dp_kernel_writer_lease_pg_smoke        6 rows,   6 orphans
+///
+/// Those orphans are "the DEFECT the key exists to prevent", in the migration's own words: every
+/// test here acquired a lease on a channel that did not exist. `NOT VALID` leaves the historical
+/// rows alone but enforces on every NEW write, so these suites began failing with `23503 ... Key
+/// (reality_id, channel_id)=(..., 52) is not present in table "channels"` - the ratchet working,
+/// not a regression.
+///
+/// ⚠ `ON CONFLICT (reality_id, id)`, NOT a bare `ON CONFLICT`. `channels` carries
+/// `channels_root_single` - UNIQUE (reality_id) WHERE parent IS NULL - so a bare clause
+/// swallows a SECOND root for the same reality and the seed becomes a silent no-op. That is
+/// how the scoping test below kept failing on channel 11 after this helper "seeded" it.
+/// Narrowed to the primary key: idempotent when the same channel is seeded twice, loud on
+/// anything else.
+///
+/// A ROOT channel: `parent` NULL, `depth` 0. These suites are about the lease and the writer, not
+/// about hierarchy, so the shallowest row that satisfies the key is the honest fixture -
+/// mirroring `integration_dp_channel.rs::seed_channels`, which has been doing this all along.
+async fn seed_channel(pool: &PgPool, reality: Uuid, ch: ChannelId) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, NULL, 'reality', 0, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(ch.get())
+    .execute(pool)
+    .await
+    .expect("seed channel");
+}
+
 /// Allocation is monotonic + gap-free under one lease; rows land in both
 /// `events` (channel columns) and `channel_event_index`.
 /// Kill-mutations: allocator not DB-authoritative · index insert dropped.
@@ -75,6 +111,7 @@ async fn channel_append_allocates_monotonically() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = test_channel(1);
+    seed_channel(&pool, reality, ch).await;
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
@@ -131,6 +168,7 @@ async fn stale_epoch_writer_is_fenced_at_the_db() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = test_channel(7);
+    seed_channel(&pool, reality, ch).await;
 
     let old_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let old_writer = ChannelWriter::new(pool.clone(), reality, old_lease);
@@ -240,6 +278,7 @@ async fn turn_number_starts_at_zero_and_advances_only_on_advance_turn() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = test_channel(21);
+    seed_channel(&pool, reality, ch).await;
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
 
@@ -310,6 +349,7 @@ async fn turn_allocation_survives_writer_handoff_without_duplicating() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = test_channel(22);
+    seed_channel(&pool, reality, ch).await;
 
     let old_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let old = ChannelWriter::new(pool.clone(), reality, old_lease);
@@ -392,6 +432,7 @@ async fn turn_slot_round_trips_and_releases_to_none() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = test_channel(51);
+    seed_channel(&pool, reality, ch).await;
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
 
@@ -432,6 +473,7 @@ async fn a_held_turn_slot_does_not_block_writes() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = test_channel(52);
+    seed_channel(&pool, reality, ch).await;
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
 
@@ -463,6 +505,7 @@ async fn a_stale_writer_cannot_claim_the_turn_slot() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = test_channel(53);
+    seed_channel(&pool, reality, ch).await;
     let old_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let old = ChannelWriter::new(pool.clone(), reality, old_lease);
     let new_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
@@ -512,6 +555,7 @@ async fn a_subscriber_resumes_and_receives_the_committed_turn_boundaries() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = test_channel(16);
+    seed_channel(&pool, reality, ch).await;
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
 

@@ -134,6 +134,48 @@ fn strike(input_id: u128) -> Admitted<CombatDomain> {
     })
 }
 
+/// Seed the `channels` row a writer lease now REQUIRES.
+///
+/// 🔴 `0027_channel_writer_state_fk` enforces `channel_writer_state -> channels` on every NEW
+/// write (`NOT VALID`, so history is untouched). This suite reached it through the commit path. Its header calls the pre-existing
+/// orphans "the DEFECT the key exists to prevent": a lease was being taken on a channel that did
+/// not exist, and nothing said so until the key landed.
+///
+/// ⚠ `ON CONFLICT (reality_id, id)`, NOT a bare `ON CONFLICT`. `channels` carries
+/// `channels_root_single` - UNIQUE (reality_id) WHERE parent IS NULL - so a bare clause
+/// swallows a SECOND root for the same reality and the seed becomes a silent no-op. That is
+/// how the scoping test below kept failing on channel 11 after this helper "seeded" it.
+/// Narrowed to the primary key: idempotent when the same channel is seeded twice, loud on
+/// anything else.
+///
+/// A ROOT channel (`parent` NULL, `depth` 0) - these tests are about recovery and fencing, not
+/// hierarchy. Mirrors `dp-kernel/tests/integration_dp_channel.rs::seed_channels`.
+/// A CHILD of `parent`, for the one test that needs two channels in one reality.
+async fn seed_child_channel(pool: &PgPool, reality: Uuid, ch: ChannelId, parent: i64) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, $3, 'cell', 1, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(ch.get())
+    .bind(parent)
+    .execute(pool)
+    .await
+    .expect("seed child channel");
+}
+
+async fn seed_channel(pool: &PgPool, reality: Uuid, ch: ChannelId) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, NULL, 'reality', 0, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(ch.get())
+    .execute(pool)
+    .await
+    .expect("seed channel");
+}
+
 /// The recovery query reads back what the spine wrote: dedup keys, the DP-A17
 /// turn counter, and the version high-water.
 /// Kill-mutations: ordering by `recorded_at` (a wall clock, ties across nodes)
@@ -147,6 +189,7 @@ async fn recovery_reads_back_what_the_writer_committed() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = ChannelId::unverified(1);
+    seed_channel(&pool, reality, ch).await;
     let ts = db_now(&pool).await;
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
@@ -181,6 +224,7 @@ async fn a_redelivered_intent_does_not_apply_twice_after_writer_handover() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = ChannelId::unverified(2);
+    seed_channel(&pool, reality, ch).await;
     let ts = db_now(&pool).await;
 
     // Node A commits one resolution, then dies before ACKing the bus.
@@ -243,6 +287,7 @@ async fn recovery_does_not_block_new_intents() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ch = ChannelId::unverified(3);
+    seed_channel(&pool, reality, ch).await;
     let ts = db_now(&pool).await;
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
@@ -277,6 +322,13 @@ async fn recovery_is_scoped_to_its_own_channel() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ts = db_now(&pool).await;
+
+    // Two channels in ONE reality, so 10 is the root and 11 is its CHILD: `channels_root_single`
+    // permits exactly one parentless row per reality. Seeding both as roots made the second a
+    // silent no-op and the test still failed on channel 11 - the neighbour it exists to prove is
+    // isolated could not hold writer state at all.
+    seed_channel(&pool, reality, ChannelId::unverified(10)).await;
+    seed_child_channel(&pool, reality, ChannelId::unverified(11), 10).await;
 
     for (ch, id) in [(10i64, 0x111u128), (11, 0x222)] {
         let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(ch)).await.unwrap();

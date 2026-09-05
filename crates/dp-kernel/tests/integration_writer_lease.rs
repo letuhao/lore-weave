@@ -35,6 +35,35 @@ async fn pool(url: &str) -> Arc<PgPool> {
     Arc::new(PgPoolOptions::new().max_connections(2).connect(url).await.expect("connect test PG"))
 }
 
+/// Seed the `channels` row a writer lease now REQUIRES.
+///
+/// 🔴 `0027_channel_writer_state_fk` names this suite in its own census - 6 rows, 6 orphans -
+/// and calls them "the DEFECT the key exists to prevent": every test here claimed a lease on a
+/// channel that did not exist. The key is `NOT VALID`, so history is untouched and every NEW
+/// write is checked; these began failing with `23503 ... is not present in table "channels"`,
+/// which is the ratchet working rather than a regression.
+///
+/// ⚠ `ON CONFLICT (reality_id, id)`, NOT a bare `ON CONFLICT`. `channels` carries
+/// `channels_root_single` - UNIQUE (reality_id) WHERE parent IS NULL - so a bare clause
+/// swallows a SECOND root for the same reality and the seed becomes a silent no-op. That is
+/// how the scoping test below kept failing on channel 11 after this helper "seeded" it.
+/// Narrowed to the primary key: idempotent when the same channel is seeded twice, loud on
+/// anything else.
+///
+/// A ROOT channel (`parent` NULL, `depth` 0) - this suite is about fencing, not hierarchy.
+/// Mirrors `integration_dp_channel.rs::seed_channels`.
+async fn seed_channel(pool: &PgPool, reality: Uuid, ch: ChannelId) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, NULL, 'reality', 0, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(ch.get())
+    .execute(pool)
+    .await
+    .expect("seed channel");
+}
+
 /// A free channel is claimable; a HELD one is not. The second half is the
 /// point: before IMG-A2 every claim succeeded, so a healthy writer could be
 /// evicted mid-encounter by any misconfigured process.
@@ -46,6 +75,7 @@ async fn a_healthy_lease_cannot_be_stolen() {
     };
     let pool = pool(&url).await;
     let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(1));
+    seed_channel(&pool, reality, ch).await;
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held = claim_writer_lease(&pool, reality, ch, a, LEASE_TTL_SECS).await.unwrap();
@@ -64,6 +94,7 @@ async fn an_expired_lease_is_claimable_and_bumps_the_epoch() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
     let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(2));
+    seed_channel(&pool, reality, ch).await;
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held_a = claim_writer_lease(&pool, reality, ch, a, -1).await.unwrap().unwrap();
@@ -88,6 +119,7 @@ async fn a_fenced_holder_cannot_renew() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
     let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(3));
+    seed_channel(&pool, reality, ch).await;
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held_a = claim_writer_lease(&pool, reality, ch, a, -1).await.unwrap().unwrap();
@@ -116,6 +148,7 @@ async fn release_makes_the_channel_immediately_claimable() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
     let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(4));
+    seed_channel(&pool, reality, ch).await;
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held_a = claim_writer_lease(&pool, reality, ch, a, LEASE_TTL_SECS).await.unwrap().unwrap();
@@ -140,6 +173,7 @@ async fn a_stale_holder_cannot_release_someone_elses_lease() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
     let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(5));
+    seed_channel(&pool, reality, ch).await;
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held_a = claim_writer_lease(&pool, reality, ch, a, -1).await.unwrap().unwrap();
@@ -163,6 +197,7 @@ async fn two_claimants_racing_an_expired_lease_resolve_to_exactly_one() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
     let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(6));
+    seed_channel(&pool, reality, ch).await;
 
     // Seed an expired lease, then race N claimants at it concurrently.
     let _ = claim_writer_lease(&pool, reality, ch, Uuid::new_v4(), -1).await.unwrap();
