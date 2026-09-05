@@ -239,6 +239,69 @@ that continues.
     `tests/test_cp0_merge_db.py`" while that file has 20 tests and exactly 5 falsifier rows.
     Reading the note forward closes 8 real findings as environment; reading a truncated log
     backward withdraws them. Header corrected.
+- [x] **R10** - **DONE. `Secret scan (gitleaks)` - and the finding is that the EARLIER GREENS WERE
+  PARTIAL SCANS.**
+  - 🔴 Two consecutive `pull_request` runs on the SAME branch scanned different ranges: the
+    green one narrow, the red one **1,569 commits**. Nothing new was committed - the scanner
+    looked further back. A check that flips because its SCOPE moved, not because the code did.
+  - Both findings sit in old branch history (`021550e46`, `70315044c`), which is also why editing
+    the files at HEAD cannot clear them: gitleaks reads the COMMIT RANGE, not the worktree. An
+    allowlist entry or a history rewrite are the only two options, and a rewrite is destructive
+    and not mine to authorise.
+  - ✅ **Neither is a credential.** One is a composition confirm token in a recorded HTTP 400
+    against `http://localhost:8217` - local dev server, single-use, and **TRUNCATED**: its base64
+    decodes to JSON that ends mid-string at char 118 because the error text cut the URL. The other
+    is two model UUIDs in explanatory PROSE (`llm_model=<uuid>`), matched by the
+    `generic-api-key` heuristic; a model id is a public identifier the catalogue hands out.
+  - Added as **exact literals**, per the rule the config already states - a path entry for
+    `docs/eval/toolloop/` would blind the scanner to a real credential captured in a recorded run
+    tomorrow. Verified none contains a regex metacharacter and each self-matches.
+  - 🔴 **FLAGGED, NOT BURIED:** if the owner reads that truncated localhost token
+    differently, the entry should come out and the token should be scrubbed from history instead.
+
+- [x] **R11** - **DONE. A SKIP GUARD THAT COULD NEVER SKIP. `Foundation lints`, 22 failures.**
+  - 🔴 Every one said only *"there is no stack here"* - `could not read NEO4J_PASSWORD from
+    infra-knowledge-service-1`, `SnapshotUnavailable: loreweave_jobs`, `httpx.ConnectError`,
+    `psql failed`. They ran on the runner because both guards test a PROXY that is TRUE in CI:
+
+        skipif(not (ROOT / "infra").exists())   # `infra/` is COMMITTED - always there
+        skipif(docker ps returncode != 0)       # every GitHub runner HAS docker
+
+    They passed here only because I run the `infra-*` containers - the same environment gap in the
+    opposite direction from the log-window test - and stayed invisible until R7 let the job REACH
+    the step that runs them.
+  - ✅ `scripts/live_stack.py` gives ONE answer and does not invent a second: it imports
+    `gate-wiring-gate.stack_reachable` (a TCP connect to 127.0.0.1:25556, the store those gates
+    default to) and **fails CLOSED**. Its selftest pins that the SSOT is readable, so it cannot rot
+    into "always skip". Eleven files repointed, including two forms the first pass missed.
+  - **BITE, both directions:** probe forced False -> **34 passed, 64 SKIPPED, 0 failed** (34 static
+    assertions still run, so this is not green-by-absence); stack up -> 97 passed. Byte-exact
+    restore, `cmp` clean.
+  - 🔴 **Then 4 survived, and it was the same mistake one layer in.**
+    `test_toolloop_seed_assert_preflight` skipped on `if not bad` - but an unreachable database is
+    NOT silent, it returns `db_query failed ... no such container: infra-postgres-1`. Non-empty,
+    so the skip never fired and the assertions failed for not finding "column" in a message about
+    docker. Guarded on the probe rather than on the error TEXT, because matching a wrapped error
+    by substring is how this class of guard rots. Scoped to the two LIVE classes: the static class
+    must keep running, or the file goes green by absence. BITE: 5 skipped, **2 still passed**.
+
+- [x] **R12** - **DONE. `all-gates`: one missing package, and I had caused it.**
+  `agentruntime-census` copies the tree and runs the chat-service suite to establish a GREEN
+  BASELINE before injecting anything. Without `pytest-asyncio` every async fixture errors at
+  setup - *"requested an async fixture 'conn', with no plugin or hook that handled it"* - and the
+  census reports `SELFTEST FAIL: the suite is not green before any injection`. It is RIGHT to: a
+  verdict measured against an already-red baseline is the vacuous measurement it exists to refuse.
+  - `pytest-asyncio` is declared in `requirements-test.txt`, not `requirements.txt`. The step that
+    installed only the runtime half is one **I added earlier in this same session**. The standalone
+    census job already got this right, and its own comment records the lesson being learned once
+    before: *"requirements.txt HAS NO PYTEST, so the first version of this job could never..."*.
+  - **BITE:** `pytest -p no:asyncio` on that file reproduces CI's sentence verbatim - same test,
+    same fixture, same words. With the plugin: 19 passed.
+  - Also closed the last LOCAL red: the log-window test asserted a 6h container-log read against a
+    stack whose newest chat message was 20.2h old, and reported *"the reader is looking at the
+    wrong stream"* - a defect that is not there. It now asks for the age in the same query and
+    skips saying which it was.
+
 - [ ] **R4** — **The 48 unsettled checks.** Not a wait: a row. When they land, triage anything new
   the same way — attribute before fixing, and expect a fix to reveal the next failure rather than
   end the chain. `conformance-ci`, `foundation-ci`, `lint-foundation` and
