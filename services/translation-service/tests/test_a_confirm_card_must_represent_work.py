@@ -92,7 +92,23 @@ def test_the_message_names_the_missing_input_and_the_way_forward():
     move. The sibling batch tool's message is the standard here."""
     h = _handler()
     assert "name the chapters to extract from" in h
-    assert "book_list_chapters" in h, "point at the tool that supplies the missing ids"
+    # 🔴 TWO GATES WANTED OPPOSITE THINGS, AND BOTH WERE RIGHT. This demanded the
+    # supplier be NAMED; `deprecated-tool-scan` demanded that a live tool stop naming a
+    # RETIRED one, and `book_list_chapters` is retired. Naming a tool the model cannot see
+    # sends it into a discovery loop; naming none leaves it with no move. The way out is
+    # the tool's own declared successor: book_list_chapters carries
+    # `WithSupersededBy(... book_list ...)` and its description reads "DEPRECATED: use
+    # book_list with kind=chapters — the one 'ls' tool, paged + self-terminating."
+    #
+    # So assert the FULL phrase, not the bare name: "book_list" alone is a substring of
+    # "book_list_chapters" and would go green on exactly the retired name this is meant to
+    # keep out. The second assertion is the other half, so the two gates can never drift
+    # apart again in this file.
+    assert "book_list with kind=chapters" in h, (
+        "point at the tool that supplies the missing ids")
+    assert "book_list_chapters" not in h, (
+        "book_list_chapters is RETIRED — naming it sends the agent after a tool it cannot "
+        "see, which is what deprecated-tool-scan exists to stop")
 
 
 def test_it_says_nothing_was_charged():
