@@ -162,10 +162,21 @@ def first_failure_reason(stdout: list[str], stderr: list[str]) -> str:
     whose assertion failed, and reading the first as the second is the
     wrong-reason red this repo keeps paying for.
     """
-    for i, ln in enumerate(stdout):
-        if "panicked at" in ln:
-            msg = stdout[i + 1].strip() if i + 1 < len(stdout) else ""
-            return (msg or ln.strip())[:400]
+    # 🔴 BOTH STREAMS, and the runner's own flags are why. It invokes cargo with `--nocapture`,
+    # which is deliberate — this tree announces skips via `eprintln!` and the comment at the call
+    # site records the bite that proved it. But `--nocapture` also means a panic is written
+    # straight to STDERR rather than replayed into cargo's stdout `failures:` block, and this
+    # scan read stdout ONLY.
+    #
+    # Measured in CI: `dp-kernel-channel-writer` failed 8 of 9 and printed `WHY:` with nothing
+    # after it, for six suites in a row. The panic message was in the buffer the whole time —
+    # which is the exact sentence the comment at the call site uses about the count, one stream
+    # over. The docstring already promised both were covered; only the second loop was.
+    for stream in (stdout, stderr):
+        for i, ln in enumerate(stream):
+            if "panicked at" in ln:
+                msg = stream[i + 1].strip() if i + 1 < len(stream) else ""
+                return (msg or ln.strip())[:400]
     # A `#[test] -> Result` that returns Err prints `Error: …` and never
     # panics. Missing this shape reported `declared_verb_live` as having no
     # reason at all, which sent the diagnosis back to running it by hand.
