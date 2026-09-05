@@ -35,8 +35,23 @@ LEDGER = json.loads(
     (ROOT / "contracts" / "tool-deep-dive-ledger.json").read_text(encoding="utf-8"))
 
 
-def _an_open_row() -> str:
-    return next(k for k, v in LEDGER["defects"].items() if v.get("state") == "open")
+def _an_open_row(led: dict) -> str:
+    """Force one row OPEN in `led` and return its key.
+
+    🔴 THIS BORROWED A REAL OPEN ROW, AND THEN THE INVESTIGATION FINISHED. Every one of
+    the 222 defects is now fixed, withdrawn, cannot_reproduce or superseded, so the `next(...)`
+    that picked a live open row raised StopIteration and took five red-ability proofs down
+    with it — a guard failing because the work it watches was COMPLETED, which is the same
+    shape this file's own sibling test warns about when it refuses to flag a closed row for
+    keeping its history.
+
+    A red-ability proof does not need a row that happens to be open today; it needs the
+    PRECONDITION "an open row". Synthesising it in the deep copy states that precondition
+    outright and keeps the proof honest whether the ledger has open work or none.
+    """
+    row = next(iter(led["defects"]))
+    led["defects"][row]["state"] = "open"
+    return row
 
 
 def _a_closed_dq() -> str:
@@ -57,7 +72,7 @@ class TestTheLedgerIsCleanRightNow:
 class TestTheStaleBlockGuardCanGoRed:
     def test_it_fires_when_an_open_row_points_at_a_closed_question(self):
         led = copy.deepcopy(LEDGER)
-        row, dq = _an_open_row(), _a_closed_dq()
+        row, dq = _an_open_row(led), _a_closed_dq()
         led["defects"][row]["blocked_by_dq"] = dq
         found = gate.stale_dq_blocks(led)
         assert found.get(row) == (dq, led["deferred_questions"][dq]["state"])
@@ -75,7 +90,7 @@ class TestTheStaleBlockGuardCanGoRed:
         """One question, one owner. `dangling_dq_links` already reports this shape, and two
         checks reporting the same row would double-count a single defect."""
         led = copy.deepcopy(LEDGER)
-        row = _an_open_row()
+        row = _an_open_row(led)
         led["defects"][row]["blocked_by_dq"] = "DQ-T99999"
         assert row not in gate.stale_dq_blocks(led)
         assert gate.dangling_dq_links(led).get(row) == "DQ-T99999"
@@ -84,7 +99,7 @@ class TestTheStaleBlockGuardCanGoRed:
 class TestTheEvidenceGuardCanGoRedAndDoesNotCryWolf:
     def test_it_fires_on_a_path_that_is_not_on_disk(self):
         led = copy.deepcopy(LEDGER)
-        row = _an_open_row()
+        row = _an_open_row(led)
         led["defects"][row]["measured_by"] = "docs/eval/toolloop/2026-08-28/does-not-exist.json"
         assert gate.missing_evidence_paths(led).get(row) == [
             "docs/eval/toolloop/2026-08-28/does-not-exist.json"]
@@ -95,14 +110,14 @@ class TestTheEvidenceGuardCanGoRedAndDoesNotCryWolf:
         set, not a path, and a looser pattern reports it as one missing file on every single run.
         An instrument that cries wolf every run is one people learn to skip."""
         led = copy.deepcopy(LEDGER)
-        row = _an_open_row()
+        row = _an_open_row(led)
         led["defects"][row]["note"] = (
             "see docs/eval/toolloop/2026-08-14/c-motiflink10/11/15/16/17/18.json")
         assert row not in gate.missing_evidence_paths(led)
 
     def test_it_does_NOT_fire_on_a_path_that_exists(self):
         led = copy.deepcopy(LEDGER)
-        row = _an_open_row()
+        row = _an_open_row(led)
         led["defects"][row]["note"] = "docs/eval/toolloop/2026-08-28/c-canonrestore3.json"
         assert row not in gate.missing_evidence_paths(led)
 

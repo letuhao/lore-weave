@@ -177,9 +177,24 @@ def test_the_row_carries_the_correction_and_the_split_link():
         assert prior.get("state") == "answered", (
             f"{r['was_blocked_by_dq']} is not answered, yet the row stopped pointing at it")
     else:
-        assert blocker in _open_dq_names(), (
-            f"blocked_by_dq={blocker!r} is not an OPEN question — the row is in limbo, "
-            "pointing at a decision that has already been made")
+        # 🔴 "IN LIMBO" IS TRUE OF AN OPEN ROW AND FALSE OF A CLOSED ONE, and this row
+        # is `withdrawn`. A terminal row keeping the block it carried while it was open is
+        # its HISTORY, not an unfinished pointer — the sibling guard
+        # (test_a_stale_block_and_a_dead_evidence_pointer_are_caught) states that rule
+        # outright and refuses to flag it, "because flagging that would push people to
+        # delete history to quiet an instrument". Moving the link to satisfy this assertion
+        # would be exactly that deletion. So demand an OPEN question only while the row is
+        # itself open; for a closed one, demand only that the link still names a REAL
+        # question, which is what makes this branch bite rather than wave through.
+        import gate  # noqa: PLC0415 — the state vocabulary lives beside the loop
+        if r.get("state") in gate.DEFECT_OPEN_STATES:
+            assert blocker in _open_dq_names(), (
+                f"blocked_by_dq={blocker!r} is not an OPEN question — the row is in limbo, "
+                "pointing at a decision that has already been made")
+        else:
+            assert blocker in LEDGER["deferred_questions"], (
+                f"blocked_by_dq={blocker!r} names no registered question at all — a closed "
+                "row may keep its history, but not a dangling one")
 
 
 def test_the_row_says_WHAT_THE_DQ_DOES_NOT_COVER():

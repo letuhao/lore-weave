@@ -117,7 +117,18 @@ def test_the_probe_found_ZERO_silent_turns():
 def test_both_rows_carry_the_result():
     assert "D-THE-MODEL-CLAIMS-A-BINDING-IT-NEVER-MADE" in LEDGER["defects"]
     new = LEDGER["defects"]["D-THE-MODEL-CLAIMS-A-BINDING-IT-NEVER-MADE"]
-    assert new["state"] == "open"
+    # 🔴 PINNED TO `open`, AND THE ROW MOVED FOR A GOOD REASON. It is
+    # `cannot_reproduce` since 2026-09-01: the false claim ran 5 of 5 at founding and 0 of
+    # 20 across four later arms. What this test actually protects is that nobody credits a
+    # FIX for a defect that simply stopped reproducing — and the ledger row says so itself,
+    # in its own words: "Nothing was built for it before it stopped ... so no fix is
+    # credited and this is not `fixed`." Assert that, which stays true through every honest
+    # state this row can reach, instead of a snapshot that made finishing the run look like
+    # a regression.
+    assert new["state"] != "fixed", (
+        "the row claims a FIX. It stopped reproducing before anything was built for it, so "
+        "`cannot_reproduce` is the honest state; `fixed` would credit work that never "
+        "happened (see test_a_row_that_stopped_reproducing_leaves_open_without_claiming_fixed)")
     # 🔴 PLATFORM, NOT MODEL, and the guard names WHY so the reattribution cannot be undone by
     # someone who only reads this line. c-bindwire1 put the tool on the wire and the claim
     # disappeared — 5/5 -> 0/5 — so the behaviour is a property of the surface, not the model.

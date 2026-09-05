@@ -285,9 +285,22 @@ def test_the_row_is_BLOCKED_on_a_question_that_is_still_OPEN():
         assert prior.get("state") == "answered", (
             f"{r['was_blocked_by_dq']} is not answered, yet the row stopped pointing at it")
     else:
-        assert blocker in _open_dq_names(), (
-            f"blocked_by_dq={blocker!r} is not an OPEN question — the row is in limbo, "
-            "pointing at a decision that has already been made")
+        # 🔴 THE REFERENT MOVED A THIRD TIME, and this time it is the ROW that moved:
+        # it is `withdrawn`, and every question in the ledger has been answered or
+        # withdrawn. "In limbo" describes an OPEN row pointing at a settled decision; a
+        # closed row pointing at one is simply its history, which the sibling guard
+        # (test_a_stale_block_and_a_dead_evidence_pointer_are_caught) protects on purpose
+        # so that nobody deletes history to quiet an instrument. Demand an open question
+        # only while the row is open; otherwise demand the link still names a real one.
+        import gate  # noqa: PLC0415 — the state vocabulary lives beside the loop
+        if r.get("state") in gate.DEFECT_OPEN_STATES:
+            assert blocker in _open_dq_names(), (
+                f"blocked_by_dq={blocker!r} is not an OPEN question — the row is in limbo, "
+                "pointing at a decision that has already been made")
+        else:
+            assert blocker in LEDGER["deferred_questions"], (
+                f"blocked_by_dq={blocker!r} names no registered question at all — a closed "
+                "row may keep its history, but not a dangling one")
 
 
 def test_the_owner_action_the_row_ORIGINALLY_named_was_CARRIED_OUT():

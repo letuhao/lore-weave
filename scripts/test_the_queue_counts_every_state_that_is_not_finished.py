@@ -108,7 +108,19 @@ class TestEveryUnfinishedRowIsQUEUED:
         for k, v in (pinned["defects"] or {}).items():
             if isinstance(v, dict) and v.get("state") in gate.DEFECT_OPEN_STATES:
                 by_state.setdefault(v["state"], set()).add(k)
-        assert by_state, "no row is in ANY non-terminal state — is the ledger really finished?"
+        # 🔴 THE FLOOR OUTLIVED THE BACKLOG A SECOND TIME, and the answer to its own
+        # question is now YES — every one of the defect rows is fixed, withdrawn,
+        # cannot_reproduce or superseded, and `g.rows()` returns nothing. Demanding that
+        # SOMETHING still be open is the same trap the docstring above describes, one level
+        # further out: it makes finishing the work indistinguishable from breaking the
+        # queue. The terminal state has its own invariant, and it is not vacuous — it goes
+        # red if the queue lists anything at all while nothing is non-terminal.
+        if not by_state:
+            assert pinned["defects"], "the pin read a ledger with no defect rows at all"
+            assert not queued, (
+                f"every defect is terminal, yet the queue still lists {len(queued)} row(s): "
+                f"{sorted(queued)[:5]}")
+            return
         for state, names in sorted(by_state.items()):
             missing = sorted(names - queued)
             assert not missing, (
@@ -133,7 +145,18 @@ class TestEveryUnfinishedRowIsQUEUED:
         # prevent, one level up: a non-terminal state added later would be counted by the queue
         # and not by this expectation, and the guard would fail with the queue in the right.
         want = sum(int(prog.get(f"defects_{s}", 0)) for s in gate.DEFECT_OPEN_STATES)
-        assert want > 0, "progress reports no non-terminal defects at all — is that true?"
+        # 🔴 "IS THAT TRUE?" — YES. Both derivations now say zero, which is the finished
+        # state rather than a broken instrument, and the cross-derivation below is what
+        # proves it: `expected` comes from the ledger, `want` from `progress`, and the queue
+        # from `g.rows()`. Three independent readings agreeing on zero is a real assertion;
+        # only a floor demanding work exist would fail here, and it would be wrong.
+        if want == 0:
+            assert not expected, (
+                f"`progress` says no non-terminal defects but the ledger holds "
+                f"{len(expected)}: {sorted(expected)[:5]}")
+            assert not rows, (
+                f"both derivations say zero but the queue holds {len(rows)} row(s)")
+            return
         assert len(expected) == want, (
             f"the queue's non-terminal set is {len(expected)} but `progress` says {want} "
             "(defects_open + defects_proven) — the two derivations disagree")
