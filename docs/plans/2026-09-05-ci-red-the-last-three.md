@@ -83,6 +83,32 @@ than claimed, because rule 8 says a local green is not a CI green.
 🔴 **Rule 6 holds:** three of the four KNOWN_RED are `continue-on-error` and do NOT block a
 merge. **`dp-clippy` is the only blocking check still red**, and it is D7.
 
+### "Fit to merge" is a JUDGEMENT here, not a gate — measured, so nobody has to assume
+
+Two facts, both checked rather than believed, because the GOAL's second clause turns on them:
+
+* 🔴 **`main` has NO branch protection.** `GET /repos/.../branches/main/protection` answers
+  *"Branch not protected"*. GitHub therefore requires **no** status check to merge: nothing is
+  mechanically blocked, and nothing mechanically stops a red check going in either. "Blocking" in
+  this plan means *"a red job that is not advisory"*, which is a statement about the JOB, not about
+  a gate GitHub will enforce.
+* 🔴 **Exactly four jobs are `continue-on-error: true`, and all four live in
+  `dep-vuln.yml`** — the same four rule 6 names. `dp-clippy` is **not** among them: it is a genuine
+  red job, and the only one left.
+
+So the question "is the branch fit to merge?" has no mechanical answer to look up. What CAN be
+stated is the state a decision would be made against:
+
+* every blocking check is green **except `dp-clippy`**, which is D7;
+* the three advisory reds are `continue-on-error` and carry KNOWN_RED rows above;
+* the last fully-settled run was `e17260f55` at **85 success**, and the Go advisory fixes pushed
+  after it are marked *pending confirmation*, not claimed.
+
+🔴 **This does not make the branch mergeable, and it is not an argument that it should be
+merged.** It removes one wrong reason to think the question is already answered — "CI will stop
+us" is false here. Rule 10 stands: the merge is the owner's call and needs an explicit yes.
+
+
 - [x] **R1** — **DONE. TWO tests, not one, and the nil-pointer panic was a red herring.** That
   `panic="runtime error: invalid memory address or nil pointer dereference"` is a *recovered* panic
   logged by an unrelated handler; the actual failures were two assertions. Both are **pre-existing
