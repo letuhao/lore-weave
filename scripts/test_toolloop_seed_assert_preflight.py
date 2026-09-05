@@ -32,6 +32,8 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
+sys.path.insert(0, str(ROOT / "scripts"))
+import live_stack  # noqa: E402
 
 SCENARIOS = sorted((ROOT / "scripts" / "toolloop").glob("scenarios-*.json"))
 
@@ -44,6 +46,22 @@ def _preflight():
         pytest.skip(f"fe_runner unavailable: {exc}")
 
 
+# 🔴 "no database reachable" WAS CHECKED BY `if not bad`, AND AN UNREACHABLE DATABASE
+# IS NOT SILENT. With no container the preflight returns a CONNECTIVITY problem rather than
+# nothing:
+#
+#     synthetic: [loreweave_knowledge] db_query failed (loreweave_knowledge):
+#     error response from daemon: no such container: infra-postgres-1
+#
+# That is non-empty, so the skip never fired, and the assertions then failed for looking for
+# "column" in a message about docker. Guard on the probe instead of on the shape of an error
+# string -- matching a wrapped error by substring is how this class of guard rots. The
+# `if not bad` skips stay: they are the right answer for a database that IS reachable and
+# reports nothing.
+#
+# Scoped to the two LIVE classes. `TestTheRunnerItselfStillRuns` below is static and must keep
+# running where there is no stack, or this file goes green by absence.
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 class TestItCatchesTheFailuresThatCostBatches:
     def test_the_batch_32_typo(self):
         """`id` against a table keyed on `project_id` — 25 runs."""
@@ -85,6 +103,7 @@ class TestItCatchesTheFailuresThatCostBatches:
         assert bad[0].startswith("my-scenario-name:")
 
 
+@pytest.mark.skipif(not live_stack.up(), reason=live_stack.REASON)
 class TestEveryCommittedScenarioPasses:
     def test_no_scenario_file_has_a_broken_seed_assertion(self):
         """The whole corpus, so a past batch's assertion cannot rot unnoticed either."""
