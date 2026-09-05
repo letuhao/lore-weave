@@ -35,6 +35,54 @@ that continues.
 
 ## 1. Board
 
+## VERDICT LEDGER — every red check, and what it carries
+
+The GOAL's bar is *"fixed, or declared with a reason a stranger can audit"*. Rule 5 says what the
+second half means: **a KNOWN_RED row naming a tracked deferral, or an accepted-risk note. Never
+silently.** So the four checks that are still red are recorded here as KNOWN_RED against a named
+decision, which is a verdict; the DECISION itself is still owed to the owner, which is a different
+thing and is not something a session can close for them.
+
+Last fully-settled run: `e17260f55` — **85 success**, 9 skipped, and the failures below. Fixes
+pushed since (three Go advisories, one plan correction) are marked *pending confirmation* rather
+than claimed, because rule 8 says a local green is not a CI green.
+
+### The original 26, by class
+
+| class | checks | blocking | verdict |
+|---|---|---|---|
+| **C1** Rust toolchain + workspace build | 6 | yes | ✅ **FIXED** (T1) — not one class but FOUR unrelated faults; toolchain pin, protoc, cache |
+| **C2** `all-gates` — 10 red gates of 188 | 1 | yes | ✅ **FIXED** (T2, R9, R12) — `gate-wiring-gate`: 188 gates, **0 tracked-red** |
+| **C3** Go modules — glossary-service | 1 | yes | ✅ **FIXED** (T3, R7) |
+| **C4** knowledge-service python, unit + integration | 2 | yes | ✅ **FIXED** (T4) — both failures were PLATFORM, not code |
+| **C5** DB round-trips + live-smoke | 4 | yes | ✅ **FIXED** (T5, R5, R6) — `DB live-smoke` confirmed GREEN IN CI |
+| **C6** conformance-ci | 3 | yes | ✅ **FIXED** (T6) — two `@latest`-shaped causes; note rule 9, it is red on `main` today |
+| **C7** agentruntime falsification + membrane | 2 | yes | ✅ **FIXED** (T7a, T7b) — **402/402, 0 NOT FALSIFIABLE** |
+| **C8** dep-vuln audits | 4 | **no** | 1 fixed, 3 KNOWN_RED below |
+
+### Red checks found AFTER the original 26 (the job could not reach them before)
+
+| check | verdict |
+|---|---|
+| `Foundation lints` | ✅ **FIXED** (R7, R11, R13) — 9 retired-tool names, then 22 unskippable live tests, then 4 more, then the proof runner |
+| `Secret scan (gitleaks)` | ✅ **FIXED** (R10) — the earlier GREENS were partial scans; both findings are false positives, allowlisted as exact literals |
+| `translation-service (pytest, unit)` | ✅ **FIXED** (R7) — my own fix collided with a test demanding the tool be NAMED |
+| `Go modules (build + vet + test)` | ✅ **FIXED** (R7) |
+| `Domain DB round-trips` | ✅ **FIXED** (R6) — an ALIAS read as a canonical code |
+| `Go — govulncheck (advisory)` | ✅ **FIXED** (R14) — GO-2026-6061, GO-2026-5970 x2, GO-2025-3540. *Pending CI confirmation* |
+
+### KNOWN_RED — still red, each against a tracked deferral
+
+| check | blocking | why it is red | tracked deferral |
+|---|---|---|---|
+| `dp-clippy` | **yes** | 16 DP-R3 findings, all one rule: a non-SDK crate holding a raw `sqlx::PgPool`. Baseline is exactly the pre-existing set (5 on-main vs baseline 5; 3 vs 3); the branch added **8 files that each hold a pool**. Measured per-file, not inferred. | **D7** — adopt the SDK / declare `dp-crate` / raise the baseline |
+| `Rust — cargo audit` | no (advisory) | 4 -> 1. The survivor is RUSTSEC-2023-0071, `rsa` 0.9.10, Marvin Attack: cargo audit says outright *"No fixed upgrade is available!"* | **D6 (1)** — accept with a risk note, or replace the dependency |
+| `Python — pip-audit` | no (advisory) | PYSEC-2026-3716, `datasets` 2.21.0, CWE-22. **Measured NOT REACHABLE:** the exploit needs an untrusted dataset AND `save_to_disk()`/`push_to_hub()`; this repo has **0** of those sinks and loads only the published `tner/conll2003`. Fix is a 2.x->5.x major against a pin that exists for reproducibility. | **D6 (3)** — accepted risk, or move the eval block to `requirements-test.txt` |
+| `JS/TS — npm/pnpm audit` | no (advisory) | 23 findings (4 low, 10 moderate, 9 high); most fixes need `npm audit fix --force`, semver-major across frontend AND the gateways with bundle-size and typecheck gates behind them. Deliberately NOT applied. | **D6 (2)** — run the breaking sweep now, or defer with a date |
+
+🔴 **Rule 6 holds:** three of the four KNOWN_RED are `continue-on-error` and do NOT block a
+merge. **`dp-clippy` is the only blocking check still red**, and it is D7.
+
 - [x] **R1** — **DONE. TWO tests, not one, and the nil-pointer panic was a red herring.** That
   `panic="runtime error: invalid memory address or nil pointer dereference"` is a *recovered* panic
   logged by an unrelated handler; the actual failures were two assertions. Both are **pre-existing
