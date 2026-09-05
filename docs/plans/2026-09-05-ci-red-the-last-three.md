@@ -66,7 +66,14 @@ that continues.
   - Evidence: `go -C services/glossary-service test ./internal/api/... -count=1` **exit 0** and
     `go -C services/book-service test ./internal/api/... -count=1` **exit 0** — CI's exact
     commands, each against a fresh throwaway database.
-- [~] **R2** — **the self-test is FIXED and verified under CI's own environment. The step behind it
+- [x] **R2** — **✅ CONFIRMED GREEN IN CI, not merely locally.** The `dp-clippy` job's
+  `run-lint.sh --self-test` step now prints all six OK lines on the runner: it fires on a raw
+  `sqlx::PgPool` import, is silent on a crate with no kernel client, exempts a declared
+  `dp-crate`, reds the SAME crate without the marker, fires on exactly the 3 discards and not
+  the 2 legitimate uses, and loads the library with both lints registered. The job is still
+  red, but one step LATER — at `dp-clippy-gate.py`, which is D7 and a decision.
+
+- [x] **R2 (original text)** — **the self-test is FIXED and verified under CI's own environment. The step behind it
   is a real architectural finding and becomes D7.**
   - 🔴 **The whole difference was ANSI colour.** Every verdict in `run-lint.sh` is a `grep`, and
     the R-6 leg *counts* lines matching `^error: \`.`. The runner exports
@@ -112,7 +119,94 @@ that continues.
     postgres image has no pgvector. CI's image does — **not** a CI failure, and the row is not
     closed on that basis but on CI going green. Pushed as `dbbc7e795`.
 
-- [ ] **R3** — **`lint-foundation` → `agentruntime-falsification`: CI says 13, the harness's own
+- [x] **R6** - **DONE. `Domain DB round-trips` was an ALIAS read as a canonical code, and my
+  first fix was WRONG.** I blamed a `created_at` tie (Postgres `now()` is transaction-start, so
+  rows written in one tx share a byte-identical timestamp) and added `, id DESC`. The red SURVIVED.
+  - 🔴 **The refutation came from LOOPING the test, not from re-reading it.** 2 failures in
+    25 runs, and the second pair named the mechanism: `faction`->`organization` beside
+    `generic`->`terminology`. Both alias->canonical. `loadKindMap` folds `entity_kind_aliases` into
+    the same map, so its keys are a MIXTURE - and **Go randomises map iteration**, so the test
+    failed on exactly the runs that landed on an alias key.
+  - ✅ **Confirmed in the DATABASE, not by reading code:** `organization` and `terminology`
+    are real `book_kinds` rows; `faction` and `generic` exist ONLY in `entity_kind_aliases`. The
+    production path was correct throughout - the entity moved, and the payload carried that kind's
+    canonical code. The expectation resolves from the target ID now: 0 of 30 after. The `, id DESC`
+    stays (the tie is real and latent) but its comment no longer claims to explain this failure.
+
+- [x] **R7** - **DONE. `Foundation lints` was 9 live tool descriptions pointing at RETIRED tools -
+  and fixing it revealed a second gate demanding the OPPOSITE.**
+  - **Attributed first:** the same scan exits 0 against `origin/main`, so all nine arrived with
+    this branch. `DEAD_TO_DEAD_BASELINE` held at exactly 9 throughout.
+  - 🔴 **My first fix replaced the names with PROSE, and six tests went red saying "name the
+    tool".** `Go modules`, `Domain DB round-trips`, `all-gates` and `translation-service (pytest,
+    unit)`. Two gates, opposite demands, and **neither is wrong**: naming a tool the model cannot
+    see sends it into a discovery loop; naming none leaves it with no move.
+  - ✅ **The way out was in the retired tools' own registrations.** Four declare a successor -
+    `book_list_chapters` -> `book_list with kind=chapters`, `glossary_book_patch` ->
+    `glossary_ontology_upsert`, `glossary_propose_kinds` -> `glossary_propose_batch`. Source AND
+    tests moved to the successor, so each assertion keeps its meaning while naming a tool that is
+    actually on the surface.
+  - 🔴 **The scan never told me those successors existed, and that is its own defect.** It
+    reported "NO replacement declared" because its regex stops at the first comma inside a nested
+    `WithSupersededBy(WithVisibility(NewToolMeta(...)), "successor")`. Its own header calls
+    under-reporting *"the dangerous failure for this tool: a missed finding looks exactly like a
+    clean scan"*. **Not fixed - RECORDED.** Every affected site is handled and the scan is green.
+  - 🔴 **One of the nine I got wrong on the merits, and reverted.** `glossary_user_restore`
+    has NO successor, and `ontology_delete_summary_test` carries a MEASURED correction: it revives
+    the row (status `restored`, `deleted_at` cleared) and is the only thing that does. My edit said
+    *"there is no restore tool to find"* - false, and false in the direction that tells a user
+    their delete is permanent when it is not. The description now names it AND says it is
+    DEPRECATED with no successor: true, what the caller needs, and it satisfies the scan through
+    the exemption it ALREADY has for a description carrying its own deprecation pointer. **No gate
+    was modified to make this pass.**
+  - **BITE:** change that one `DEPRECATED` to `retired` and the scan exits 1, naming line 70 /
+    `glossary_user_restore`. Restored byte-exact (`cmp` clean, diff 3/2).
+
+- [x] **R8** - **DONE. The step CI had never REACHED: `gate red-ability proofs`, 19 failures.**
+  Hidden behind the deprecated-tool-scan failure by the job's `set -euo pipefail`. Rule 6 again.
+  - 🔴 **The dominant cause is that the INVESTIGATION FINISHED.** 68 deferred questions: 64
+    answered, 4 withdrawn. 222 defects: 185 fixed, 28 withdrawn, 8 cannot_reproduce, 1 superseded.
+    **Nothing is open** - and nine guards asserted that open work exists. One borrowed a live open
+    row to mutate and its `next(...)` raised `StopIteration`, taking FIVE proofs down with it. Each
+    is re-anchored on its invariant and CROSS-DERIVED so it still cannot pass vacuously: the
+    generator, the raw ledger and the queue must independently agree on zero.
+  - ✅ **A real SDK defect found on the way.** The Python kit registered `task_id: str` bare,
+    so FastMCP advertised a schema with a title and a type and NO description - the model told a
+    value is mandatory and nothing about where to get one. The catalogue shows the split exactly:
+    Go-kit tools carry `description`, Python-kit tools carry `title`. One fix repairs both
+    `composition_task_provide_input` and `translation_task_provide_input`.
+  - 🔴 **The stall bar fired correctly, and I investigated BEFORE touching it.** The whole
+    101->71 drop is ONE scenario: recomputed at `df190598a`, the commit that SET the bar,
+    `composition-motif-bind-edit` was **0/30 - perfectly clean** - and is now 13/53. Its 13 errors
+    are three ALL-OR-NOTHING batches on a single day, 2026-09-01, all carrying the same upstream
+    error, while a fourth batch that same day ran 0/10 clean. The floor was scenario-partitioned,
+    so one bad day deleted 30 clean runs at a stroke; it is RUN-level now (173 at the bar, 213
+    today), monotone in new evidence. Fixing it revealed a second bar sized to "the top TWO"
+    scenarios - the concentration had NOT broken up (3 of 10 hold 48 of 49 errors, 98%), the
+    window was just too narrow.
+  - ✅ **19 -> 1 on an undisturbed tree: 901 passed.** The survivor is LOCAL-ONLY:
+    `test_it_really_reads_the_LOG_and_not_just_the_store` needs a chat session inside a 6h log
+    window and the newest here is 15h52m old. CI has no `infra-postgres-1`, so it SKIPS there.
+  - 🔴 **A measurement I threw away.** A falsification run reporting 79/402 was MY OWN
+    contamination - I ran a mutation harness in the same worktree while committing and stashing.
+    Re-run in an isolated worktree: **402/402, 0 NOT FALSIFIABLE.** The same race invented 20
+    phantom red-ability failures; the clean run has 19, so one of the 20 was pure noise.
+
+- [x] **R9** - **DONE. My own seed helpers widened a seam `all-gates` is closing.**
+  `channel-id-adoption-gate` read 6 `ChannelId::unverified` call sites in `recovery.rs` against a
+  baseline of 4 - mine, because the helpers took `ch: ChannelId` and forced the caller to build two
+  more. The newtype bought nothing: these are row ids being INSERTED into `channels`, so there is
+  no channel to resolve yet. They take `i64` now, matching the siblings in `failover.rs` and
+  `epoch_activation_live.rs`. **A genuine narrowing, not a baseline edit** - back to 4, "matches
+  the baseline exactly", nothing added to any allowlist. `gate-wiring-gate`: OK, 188 gates
+  discovered, all wired or exempted, 0 tracked-red.
+
+- [x] **R3** — **✅ SETTLED at 402/402, 0 NOT FALSIFIABLE.** The 8 real findings each got a
+  case that exercises the mutated path, and the harness was re-run in an ISOLATED WORKTREE
+  (a run in the main tree, racing my own commits, reported a meaningless 79/402 that is
+  recorded and discarded in R8). Original text follows.
+
+- [x] **R3 (original text)** — **`lint-foundation` → `agentruntime-falsification`: CI says 13, the harness's own
   run says 2.**
   - 🔴 **I WITHDREW A CORRECT FINDING, AND THE MEASUREMENT PUT IT BACK. Both corrections stand
     here.** The original reading was *"5 environment and 8 real"*. I withdrew it after the
@@ -189,7 +283,12 @@ control that could refute it. That is what caught a drift test being pointed at 
 migration drops, a route walk verified against the wrong FastAPI, and a `latest` image that turned
 out to still carry the file it was blamed for losing.
 
-**RESUME: R1 — the ledger panic, the only non-advisory red that is not a gate reporting on itself**
+**RESUME: D7 — `dp-clippy` is the LAST non-advisory red, and it is a STOP, not work**
+
+Every other row is closed. R1 and R5-R9 are fixed and pushed. R2's self-test is GREEN IN CI
+(all six checks print OK on the runner). R3 is settled at **402/402, 0 NOT FALSIFIABLE**,
+measured in an isolated worktree after a contaminated run had to be thrown away. R4 is the CI
+confirmation of the last push. What remains is a decision, not work: **D3, D4, D5, D6, D7**.
 
 ---
 
