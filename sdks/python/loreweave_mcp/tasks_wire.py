@@ -28,7 +28,9 @@ drives the full loop.)
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Annotated, Any, Callable
+
+from pydantic import Field
 
 import mcp.types as t
 from mcp.server.fastmcp import Context as MCPContext
@@ -339,8 +341,19 @@ def register_task_endpoints(
         },
     )
     async def task_provide_input(  # noqa: D401 — the input step (interim for tasks/update)
-        ctx: MCPContext, task_id: str, accepted: bool = True,
-        inputs: dict[str, Any] | None = None,
+        ctx: MCPContext,
+        # A REQUIRED OPAQUE ID MUST SAY WHERE IT COMES FROM. A bare `task_id: str`
+        # registers as {"title": "Task Id", "type": "string"} - the model is told the
+        # value is mandatory and nothing about how to obtain one, which is the same
+        # kit-parity gap the description above was written to close: the Go kit's
+        # identical tool already carries `jsonschema:"the taskId returned in the gate
+        # handle"`. Keep the two kits' metadata in step.
+        task_id: Annotated[str, Field(
+            description="the taskId returned in the gate handle")],
+        accepted: Annotated[bool, Field(
+            description="true to run the gated action, false to decline it")] = True,
+        inputs: Annotated[dict[str, Any] | None, Field(
+            description="values the gate asked for, if any")] = None,
     ) -> dict[str, Any]:
         # M2 accept-caller OWNERSHIP CHECK — only the proposing user may drive their gate.
         # `ctx: MCPContext` is INJECTED by FastMCP (not a client arg); it carries the
