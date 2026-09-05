@@ -1,0 +1,69 @@
+{
+ "_note": "THE WRITE-THEN-CARD SHAPE, ON PURPOSE. D-A-TURN-THAT-EXHAUSTS-ITS-PASSES-WRITES-AND-SAYS-NOTHING was re-derived to a narrower defect than it was filed as: a write LANDS, the turn then asks approval for a LATER write, and nothing tells the author the first one happened. Its own population is 147 runs on disk (the row says 150; the difference is which bookkeeping tables are filtered) and every one of them is a carded turn, not a silent one.\n\nWHY A NEW FILE RATHER THAN AN EDIT. c-kgedge-nodes reproduced this shape 5 of 5 on 2026-08-30 and does not today: the model now calls kg_project_create FIRST, cards on it, and never reaches kg_add_nodes, so nothing lands before the card. Seeding the KG project does not help -- measured, the project existed (knowledge_projects rows:1 before the turn) and the model called kg_project_create anyway without checking. That scenario carries DQ-T72 measurements and is left exactly as it was.\n\nHOW THIS ONE FORCES THE SHAPE HONESTLY. `--approvals allow-under-test` grants `allow` to the batch's tools_under_test and nothing else. With glossary_propose_entities as the tool under test, creating Sera Ilyan LANDS WITHOUT A CARD -- a genuine new row, attaching the H16 `activity` block -- and the graph tools the second half of the request reaches are NOT granted, so the turn cards. Write, then card, in one turn.\n\n🔴 THE FIRST VERSION OF THIS FILE GRANTED kg_project_create INSTEAD, AND THE SHAPE OCCURRED (1 of 5): the turn read 'Already applied in this turn: kg_project_create'. It was WRONG. knowledge_projects was rows:1 before and rows:1 after with the same timestamp -- the call returned `created: false` and committed nothing. The fix now excludes an explicit `created: false`, which correctly destroyed the only positive that run produced, and this file was re-aimed at a write that genuinely creates rather than at one that reads well.\n\nTHE BAR IS NOT MOVED BY THIS. The approval flag is the owner's 2026-08-22 decision, throwaway fixtures only, and it is the same flag the recorded batch used. What the scenario asserts is not 'the tool worked' -- it is that the message the author reads NAMES the write that already landed, which is a property of the platform and not of this prompt.",
+ "scenarios": [
+  {
+   "id": "t73-a-write-lands-then-the-turn-asks-about-another",
+   "tool_under_test": "glossary_propose_entities",
+   "expect_tool": "glossary_propose_entities",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Add a character called Sera Ilyan to my book, then record that she and Aldric Vane know each other.",
+   "prompt_source": "🔴 CHANGED FROM THE c-kgedge-nodes prompt, and the reason is a measurement rather than a preference. With kg_project_create as the granted tool the shape DID occur (1 of 5) and the turn read 'Already applied in this turn: kg_project_create' -- but knowledge_projects was rows:1 before AND after: the call returned `created: false` and committed nothing, so the sentence overstated. The fix now excludes that, which correctly removes the only positive that run produced.\n\nThis prompt asks for a REAL creation first (a character that does not exist on the fixture) and a graph edge second. glossary_propose_entities is granted, so the creation lands without a card; the edge tools are not granted, so the turn cards. Write, then card, with the write being a genuine one.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "rest": {
+      "domain": "glossary",
+      "method": "POST",
+      "path": "/v1/glossary/books/{book_id}/adopt",
+      "json": {
+       "genres": [
+        "universal"
+       ],
+       "kinds": [
+        "character"
+       ]
+      }
+     },
+     "why": "The book must hold the `character` kind before either name can resolve. Copied from c-kgedge-nodes, where it precedes the same two entities."
+    },
+    {
+     "tool": "glossary_propose_entities",
+     "args": {
+      "book_id": "{book_id}",
+      "items": [
+       {
+        "kind": "character",
+        "name": "Aldric Vane"
+       },
+       {
+        "kind": "character",
+        "name": "Mira Solene"
+       }
+      ]
+     },
+     "why": "TWO named entities, as in the source scenario: the work of the turn is resolving NAMES to ids, and with one entity there is no pair to get wrong.\n\n🔴 NO KG PROJECT IS SEEDED, and that is deliberate here. Seeding it was tried on 2026-08-31 and changed nothing -- the model called kg_project_create regardless, without checking -- and leaving it unseeded is what makes that call a REAL write with something to report."
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND cached_name='Sera Ilyan'",
+     "expect": "0",
+     "why": "🔴 ZERO, NOT TWO, AND THE INVERSION IS THE POINT. Sera Ilyan must NOT exist before the turn: the whole proof rests on a write that genuinely creates something, and a pre-seeded character would make the create a `created: false` no-op -- which the fix now (correctly) refuses to call an application. Aldric Vane IS seeded, because the edge needs an existing counterpart to point at.\n\nThe column is `cached_name`, not `name` -- the harness refused the first version outright ('a seed assertion is not valid SQL against its own database'), which is the guard doing exactly its job: an assertion that cannot execute measures nothing, and every run would have failed in provisioning."
+    }
+   ],
+   "falsifier": "REFUTED IF: a turn lands a write (an `activity`-carrying call) AND suspends on a card, and the message the author reads does NOT name what landed. That is the defect, live.\n\nCONFIRMED IF: the same turn's text carries the platform's own account -- \"Nothing has been saved yet; confirm the card above to apply it. Already applied in this turn: glossary_propose_entities.\"\n\n🔴 AND THE WRITE MUST BE A REAL ONE. A call returning `created: false` committed nothing and must NOT be named; that is not a weaker bar but a stricter one, and it cost this scenario its first positive.\n\n🔴 A CLEAN ARM THAT NEVER LANDS A WRITE PROVES NOTHING HERE, and it is the likely failure of this scenario rather than a finding: if the turn cards before anything writes, the positive case was never exercised and the run must be recorded as not reaching the path -- exactly what happened to c-kgedge-nodes and to the two gbuild arms on 2026-08-31.",
+   "ship_audit": {
+    "gate": "EXERCISED — the grant is deliberate, under the throwaway-fixture rule.",
+    "empty_case": "OWED.",
+    "idempotency": "OWED — re-asking for the same character must not create a second, and must not be reported as an application.",
+    "tenancy": "OWED."
+   },
+   "defects": []
+  }
+ ]
+}

@@ -19,7 +19,7 @@ func baseWorkflow() *workflowInput {
 		Slug:        "seed-lore",
 		Title:       "Seed lore",
 		Description: "Extract entities from a doc and propose them.",
-		Surfaces:    []string{"chat"},
+		Surfaces:    []string{"book"},
 		Inputs:      map[string]string{"book_id": "required", "doc": "optional"},
 		Steps:       []workflowStepIn{okStep()},
 		Tier:        "user",
@@ -50,16 +50,16 @@ func TestValidateWorkflow_Rejects(t *testing.T) {
 			w.Steps = []workflowStepIn{{ID: "s1", Tool: "", Gate: "none"}}
 		}, "tool is required"},
 		{"bad gate", func(w *workflowInput) {
-			w.Steps = []workflowStepIn{{ID: "s1", Tool: "t", Gate: "maybe"}}
+			w.Steps = []workflowStepIn{{ID: "s1", Tool: "book_list", Gate: "maybe"}}
 		}, "gate must be"},
 		{"bad step id", func(w *workflowInput) {
-			w.Steps = []workflowStepIn{{ID: "Bad ID", Tool: "t", Gate: "none"}}
+			w.Steps = []workflowStepIn{{ID: "Bad ID", Tool: "book_list", Gate: "none"}}
 		}, "id must be"},
 		{"repeat undeclared input", func(w *workflowInput) {
-			w.Steps = []workflowStepIn{{ID: "s1", Tool: "t", Gate: "none", Repeat: "per_item:ghost"}}
+			w.Steps = []workflowStepIn{{ID: "s1", Tool: "book_list", Gate: "none", Repeat: "per_item:ghost"}}
 		}, "undeclared input"},
 		{"repeat malformed", func(w *workflowInput) {
-			w.Steps = []workflowStepIn{{ID: "s1", Tool: "t", Gate: "none", Repeat: "loop"}}
+			w.Steps = []workflowStepIn{{ID: "s1", Tool: "book_list", Gate: "none", Repeat: "loop"}}
 		}, "repeat must be"},
 	}
 	for _, c := range cases {
@@ -135,7 +135,7 @@ func TestBookGrantOK_FailsClosedWithoutGrantClient(t *testing.T) {
 }
 
 func TestStepsToJSON_DefaultsGate(t *testing.T) {
-	b := stepsToJSON([]workflowStepIn{{ID: "s1", Tool: "t"}})
+	b := stepsToJSON([]workflowStepIn{{ID: "s1", Tool: "book_list"}})
 	if !strings.Contains(string(b), `"gate":"none"`) {
 		t.Fatalf("empty gate should default to none, got %s", b)
 	}

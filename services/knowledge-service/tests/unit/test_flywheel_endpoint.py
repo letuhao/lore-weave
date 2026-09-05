@@ -15,7 +15,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 import pytest
 
-from app.db.neo4j_repos.flywheel import FlywheelDelta, FlywheelItem
+from app.db.graph_repos.flywheel import FlywheelDelta, FlywheelItem
 
 _TEST_USER = uuid4()
 _PROJECT_ID = uuid4()
@@ -73,7 +73,7 @@ def test_no_completed_job_returns_has_delta_false():
     assert body["entities_added"] == 0 and body["new_items"] == []
 
 
-@patch("app.routers.public.extraction.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.extraction.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.extraction.get_flywheel_delta", new_callable=AsyncMock)
 def test_maps_latest_completed_job_delta(mock_delta):
     mock_delta.return_value = FlywheelDelta(

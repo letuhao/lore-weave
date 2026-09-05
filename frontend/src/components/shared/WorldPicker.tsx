@@ -10,10 +10,13 @@ import type { World } from '@/features/world/types';
  * `world_id`; an empty selection is VALID. Used by G3 cross-linking ("Add to
  * world") and anywhere a world is chosen by name rather than a UUID.
  *
- * Worlds load once (`worldsApi.listWorlds`) and filter client-side by name —
- * the list endpoint has no `search` param, so this is the same load-once shape
- * as BookPicker. `onCreateNew` (optional) adds an inline "＋ Create new world"
- * row; creation is delegated to the consumer (which owns the modal).
+ * The name filter is the SERVER'S (`worldsApi.listWorlds({ q })`), debounced and
+ * re-fetched. It used to be a client-side `includes()` over one clamped page,
+ * so a world past the ceiling could not be found by typing its name and nothing
+ * said so; `GET /v1/worlds` had no search parameter at all, so `q` was added to
+ * the handler — applied to the page query AND the COUNT.
+ * `onCreateNew` (optional) adds an inline "＋ Create new world" row; creation is
+ * delegated to the consumer (which owns the modal).
  */
 interface Props {
   /** Selected world_id (UUID) or null. */
@@ -30,6 +33,8 @@ interface Props {
 export function WorldPicker({ value, onChange, disabled, placeholder, limit = 200, onCreateNew }: Props) {
   const { accessToken } = useAuth();
   const [worlds, setWorlds] = useState<World[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [selectedWorld, setSelectedWorld] = useState<World | null>(null);
   const [fallback, setFallback] = useState<World | null>(null);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
@@ -45,10 +50,19 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
       return;
     }
     let cancelled = false;
+    // THE NAME FILTER IS THE SERVER'S. It was a client-side `includes()` over
+    // one clamped page, so a world past the ceiling could not be found by
+    // typing its name and nothing said so. `GET /v1/worlds` genuinely had no
+    // search parameter — unlike the projects route, where one existed and this
+    // layer just never sent it — so `q` was added to the handler, applied to
+    // the page query AND the COUNT.
     worldsApi
-      .listWorlds(accessToken, { limit })
+      .listWorlds(accessToken, { limit, ...(debounced.trim() ? { q: debounced.trim() } : {}) })
       .then((res) => {
-        if (!cancelled) setWorlds(Array.isArray(res?.items) ? res.items : []);
+        if (!cancelled) {
+          setWorlds(Array.isArray(res?.items) ? res.items : []);
+          setTotal(typeof res?.total === 'number' ? res.total : (res?.items?.length ?? 0));
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -59,7 +73,7 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     return () => {
       cancelled = true;
     };
-  }, [accessToken, limit]);
+  }, [accessToken, limit, debounced]);
 
   // Debounce the name filter.
   useEffect(() => {
@@ -79,14 +93,27 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  const selected = useMemo(
-    () => (value ? worlds?.find((w) => w.world_id === value) ?? null : null),
-    [worlds, value],
-  );
+  // REMEMBERED, not re-derived from the current page. Deriving it worked while
+  // this held every world; now that the list is a search result the chosen
+  // world is usually absent from it, and re-deriving would blank the picker's
+  // label the moment you typed — then fire the by-id fallback on every keystroke.
+  useEffect(() => {
+    if (!value) {
+      setSelectedWorld(null);
+      return;
+    }
+    const hit = worlds?.find((w) => w.world_id === value);
+    if (hit) setSelectedWorld(hit);
+  }, [worlds, value]);
+  const selected = selectedWorld;
 
   // Resolve a selected-but-unlisted world by id so the chip shows a name.
+  // Reads the LOADED PAGE, not `selected` — see ProjectPicker: `selected` is
+  // set by an effect, so gating on it fires a getWorld for a world already in
+  // hand, once per load and once per keystroke under server-side search.
+  const valueInPage = worlds?.some((w) => w.world_id === value) ?? false;
   useEffect(() => {
-    if (!value || !accessToken || selected || worlds === null) {
+    if (!value || !accessToken || valueInPage || selected || worlds === null) {
       setFallback(null);
       return;
     }
@@ -102,14 +129,10 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     return () => {
       cancelled = true;
     };
-  }, [value, accessToken, selected, worlds]);
+  }, [value, accessToken, selected, worlds, valueInPage]);
 
-  const matches = useMemo(() => {
-    const q = debounced.trim().toLowerCase();
-    const list = worlds ?? [];
-    if (!q) return list.slice(0, 50);
-    return list.filter((w) => w.name.toLowerCase().includes(q)).slice(0, 50);
-  }, [worlds, debounced]);
+  // The server has already applied the name filter; this only caps the render.
+  const matches = useMemo(() => (worlds ?? []).slice(0, 50), [worlds]);
 
   function select(w: World) {
     onChange(w.world_id);
@@ -143,6 +166,13 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     );
   }
 
+  // Kept after search moved server-side: the route still clamps `limit`, so a
+  // search matching more than a page shows a partial list, and a picker that
+  // quietly lists 100 of 140 is indistinguishable from one whose user has 100.
+  // `total` now comes from the SAME filtered query as `items`, so this counts
+  // unshown MATCHES rather than unshown worlds.
+  const notShown = Math.max(0, total - (worlds?.length ?? 0));
+
   return (
     <div ref={rootRef} className="relative">
       <div className="flex items-center gap-2 rounded-md border bg-input px-3 py-2">
@@ -150,6 +180,11 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
         <input
           type="text"
           role="combobox"
+          // Its siblings (`project-picker-input`, `book-picker-input`) carry one and
+          // this did not, so the only handle on it was `role="combobox"` — which is
+          // ambiguous the moment a page renders two pickers. E2E CONVENTIONS §1:
+          // the testid is the language-agnostic contract.
+          data-testid="world-picker-input"
           aria-expanded={open}
           aria-controls="world-picker-list"
           value={query}
@@ -207,6 +242,14 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
                 <Plus className="h-3.5 w-3.5 shrink-0" />
                 <span>Create new world</span>
               </button>
+            </li>
+          )}
+          {notShown > 0 && (
+            <li
+              className="border-t px-3 py-1.5 text-[10px] text-muted-foreground"
+              data-testid="picker-page-full"
+            >
+              {notShown} more match{notShown === 1 ? '' : 'es'} not shown — keep typing to narrow.
             </li>
           )}
         </ul>

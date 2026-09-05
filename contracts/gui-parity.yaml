@@ -1,0 +1,738 @@
+# GUI-parity census — every LIVE write-tier MCP tool, and the manual path to the same effect
+#
+# WHY: owner, 2026-09-04 — "FE should have ability to help user fix llm weakness by edit manually
+# on gui, so we avoid to ship feature that user cannot use and agent is dumb". A capability
+# reachable ONLY through an unreliable agent is a capability that does not work.
+#
+# DENOMINATOR: 314 tools live on the federated catalog (matches ai-gateway's own log line);
+# 118 are visibility=legacy and excluded (deprecated tools are dead); 196 live; of those
+# 118 are tier A or W. That 118 is what this file must cover.
+#
+# VERDICTS
+#   UI            a mounted control achieves the same effect by hand. route + testid REQUIRED.
+#   UI_NO_TESTID  the control exists and is mounted but carries no data-testid, so the record
+#                 cannot be machine-checked. P3 work: add the testid, then promote to UI.
+#   NONE          no manual path. THE GAP THIS FILE EXISTS TO FIND.
+#   AGENT_ONLY    deliberately no manual path — `reason:` is REQUIRED and is reviewed.
+#   UNTRIAGED     not yet adjudicated. NOT a verdict; it is the absence of one, and it never
+#                 counts toward parity.
+#
+# 🔴 A testid alone is not enough — the component must be MOUNTED. LOOM M9 shipped a Publish
+# button gated on a scene status no UI could set; the control existed, nothing rendered it.
+# ── WHAT THE VERDICTS MEASURED, 2026-09-04 (T1-T6) ───────────────────────────────────────────
+#   96  UI             a mounted control, named by route + data-testid, does the same thing by hand
+#   20  UI_NO_TESTID   the control is real and mounted but carries NO testid, so the row cannot be
+#                      machine-checked. A DECLARABILITY gap, not a user-facing one. The largest
+#                      cluster is systemic: ProvidersTab / DefaultModelsCard / ModelOrderCard carry
+#                      no testids at all between them.
+#    2  AGENT_ONLY     deliberately no manual path — see below
+#    0  NONE           no live write tool lacks a manual path
+#    0  UNTRIAGED      every one of the 118 has a real verdict
+#
+# ── THE TWO AGENT_ONLY EXEMPTIONS, AND WHY EACH IS HONEST ────────────────────────────────────
+# Both pass the same test, and it is the test rule 8 exists to force: **"no manual path to this
+# OPERATION" is only acceptable when the manual path to its RESULT exists.**
+#
+#   memory_remember  memory is ACCRUED from use, never hand-authored. The corrective affordance —
+#                    the one this metric actually cares about — is there: a memory the assistant
+#                    got wrong is removed with `memory-forget-*`.
+#   glossary_plan    a one-shot LLM planner; "produce a plan" has no hand equivalent. But every
+#                    EFFECT it proposes is separately doable — adopt-pick-*, create-pick-kind-*,
+#                    add-attr-submit, ontology-edit-* — so a bad plan is repaired by hand.
+#
+# An exemption that could NOT say that would be a NONE wearing a costume, which is the failure
+# this file exists to catch.
+#
+# ── HOW A ROW IS ADJUDICATED, because three matchers were refuted trying to automate it ───────
+# MCP tool -> the api.ts function with the same EFFECT -> the hook that calls it -> the component
+# that renders the control, reading the handler at each end. Never by name similarity: the FE's
+# vocabulary genuinely differs (`book_update_details` is a settings form sharing no token with it).
+#
+# ⚠️ AND NEVER AGAINST A TEST DOUBLE. Three declarations were refused this session for naming a
+# testid that exists only under `__tests__` — `embedding-picker`, `job-controls`, `step-confirm`.
+# Each looked exactly like coverage. The gate's __tests__ exclusion is load-bearing, not hygiene.
+tools:
+  - tool: book_chapter_bulk_create
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books
+    testid: book-import-open-text
+  - tool: book_chapter_create
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: manuscript-chapter-new
+  - tool: book_chapter_restore_revision
+    provider: book
+    tier: A
+    verdict: UI_NO_TESTID
+    route: /books/:id/chapters/:cid
+  - tool: book_chapter_save_draft
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/chapters/:cid
+    testid: chapter-save-button
+  - tool: book_chapter_set_kg_exclude
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/chapters/:cid
+    testid: knowledge-forget-button
+  - tool: book_chapter_update_meta
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/chapters/:cid
+    testid: chapter-title-input
+  - tool: book_index_chapter
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/chapters/:cid
+    testid: knowledge-index-button
+  - tool: book_steering_delete
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: steering-editor
+  - tool: book_steering_set
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: steering-add
+  - tool: book_structure_edit
+    provider: book
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: manuscript-part-new
+  - tool: book_update_details
+    provider: book
+    tier: W
+    verdict: UI
+    route: /books/:id/settings
+    testid: book-title-input
+  - tool: world_create
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds
+    testid: create-world-submit
+  - tool: world_delete
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds
+    testid: world-delete-confirm
+  - tool: world_map_add_marker
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-marker-save
+  - tool: world_map_add_region
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-region-finish
+  - tool: world_map_create
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-new
+  - tool: world_map_delete
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-rail
+  - tool: world_map_remove_marker
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-marker-delete
+  - tool: world_map_remove_region
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-region-delete
+  - tool: world_map_update
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-editor
+  - tool: world_map_update_marker
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-marker-label
+  - tool: world_map_update_region
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds/:id
+    testid: world-map-region-entity
+  - tool: world_move_book
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds
+    testid: world-add-book
+  - tool: world_update
+    provider: book
+    tier: A
+    verdict: UI
+    route: /worlds
+    testid: create-world-name
+  - tool: composition_arc_apply
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: arc-apply-run
+  - tool: composition_arc_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: arc-timeline-editor
+  - tool: composition_arc_extract_template
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: arc-extract-submit
+  - tool: composition_arc_import_analyze
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: deconstruct-run
+  - tool: composition_arc_template_edit
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-editor-save
+  - tool: composition_authoring_run_manage
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: agent-mode-new-run-button
+  - tool: composition_authoring_run_review
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: agent-mode-accept-unit
+  - tool: composition_build_cast_and_graph
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: cast-new-entity
+  - tool: composition_canon_rule_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: composition-canon-submit
+  - tool: composition_conformance_run
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: arc-conf-run-deep-btn
+  - tool: composition_create_derivative
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: divergence-submit
+  - tool: composition_create_work
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: composition-setup-button
+  - tool: composition_decompile_arcs
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: decompile-confirm
+  - tool: composition_derivative_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: divergence-canon-save
+  - tool: composition_entity_override_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: divergence-override-add-save
+  - tool: composition_error_block_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: mark-error-save
+  - tool: composition_generate
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: compose-generate
+  - tool: composition_library_translate
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-translate-btn
+  - tool: composition_motif_adopt
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-adopt-mint
+  - tool: composition_motif_bind_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-suggest-bind
+  - tool: composition_motif_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-editor-save
+  - tool: composition_motif_link_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-graph-add-submit
+  - tool: composition_motif_mine
+    provider: composition
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: motif-mine-run-btn
+  - tool: composition_outline_node_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: composition-add-scene
+  - tool: composition_reference_update
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: references-add-submit
+  - tool: composition_scene_link_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: scene-links-add
+  - tool: composition_structure_template_edit
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: structtpl-save
+  - tool: composition_switch_active_work
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: divergence-switch-*
+  - tool: plan_apply_revision
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-repair-apply
+  - tool: plan_bootstrap_apply
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: bootstrap-apply-btn
+  - tool: plan_bootstrap_propose
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: bootstrap-propose-btn
+  - tool: plan_compile
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-compile-btn
+  - tool: plan_handoff_autofix
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-repair-autofix
+  - tool: plan_interpret_feedback
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-repair-explain
+  - tool: plan_keep_material
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: edit-save
+  - tool: plan_link
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-passes-relink
+  - tool: plan_propose_spec
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: plan-propose-btn
+  - tool: plan_review_checkpoint
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: review-approve
+  - tool: plan_run_pass
+    provider: composition
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: pass-run-confirm
+  - tool: glossary_adopt_standards
+    provider: glossary
+    tier: W
+    verdict: UI
+    route: /books/:id/glossary
+    testid: adopt-pick-*
+  - tool: glossary_book_sync_apply
+    provider: glossary
+    tier: W
+    verdict: UI
+    route: /books/:id/glossary
+    testid: sync-take-*
+  - tool: glossary_create_chapter_link
+    provider: glossary
+    tier: A
+    verdict: UI
+    route: /books/:id/glossary
+    testid: book-links-save
+  - tool: glossary_create_evidence
+    provider: glossary
+    tier: A
+    verdict: UI_NO_TESTID
+  - tool: glossary_deep_research
+    provider: glossary
+    tier: W
+    verdict: UI
+    route: /books/:id/glossary
+    testid: research-submit
+  - tool: glossary_entity_delete
+    provider: glossary
+    tier: W
+    verdict: UI_NO_TESTID
+  - tool: glossary_entity_rename
+    provider: glossary
+    tier: A
+    verdict: UI
+    route: /books/:id/glossary
+    testid: entity-edit-confirm
+  - tool: glossary_entity_restore
+    provider: glossary
+    tier: A
+    verdict: UI_NO_TESTID
+  - tool: glossary_entity_set_attributes
+    provider: glossary
+    tier: A
+    verdict: UI
+    route: /books/:id/glossary
+    testid: add-attr-submit
+  - tool: glossary_ontology_delete
+    provider: glossary
+    tier: W
+    verdict: UI
+    route: /books/:id/glossary
+    testid: ontology-delete-*
+  - tool: glossary_ontology_upsert
+    provider: glossary
+    tier: A
+    verdict: UI
+    route: /books/:id/glossary
+    testid: ontology-edit-*
+  - tool: glossary_plan
+    provider: glossary
+    tier: W
+    verdict: AGENT_ONLY
+    reason: a one-shot LLM PLANNER: it reads the book's ontology and emits ONE typed plan (adopt genres, create kinds, add attributes). There is no hand equivalent of 'produce a plan', and inventing a UI for it would be a worse product. Crucially the user is NOT blocked - every EFFECT the plan proposes is separately doable by hand (adopt-pick-*, create-pick-kind-*, add-attr-submit, ontology-edit-*), so a bad plan is repaired by doing the steps directly.
+  - tool: glossary_propose_aliases
+    provider: glossary
+    tier: A
+    verdict: UI
+    route: /books/:id/glossary
+    testid: entity-edit-aliases
+  - tool: glossary_propose_batch
+    provider: glossary
+    tier: W
+    verdict: UI
+    route: /books/:id/glossary
+    testid: glossary-batch-translate-trigger
+  - tool: glossary_propose_curation
+    provider: glossary
+    tier: W
+    verdict: UI
+    route: /books/:id/glossary
+    testid: merge-confirm-*
+  - tool: glossary_propose_entities
+    provider: glossary
+    tier: A
+    verdict: UI
+    route: /books/:id/glossary
+    testid: glossary-extract-trigger
+  - tool: glossary_propose_translation
+    provider: glossary
+    tier: A
+    verdict: UI
+    route: /books/:id/glossary
+    testid: glossary-translate-trigger
+  - tool: glossary_set_genres
+    provider: glossary
+    tier: A
+    verdict: UI
+    route: /books/:id/glossary
+    testid: entity-add-genre
+  - tool: jobs_cancel
+    provider: jobs
+    tier: A
+    verdict: UI_NO_TESTID
+    note: JobControls' cancel button is real and mounted (JobMonitor, JobRow) but carries no testid; the job-controls id is a TEST MOCK only.
+  - tool: jobs_pause
+    provider: jobs
+    tier: A
+    verdict: UI_NO_TESTID
+    note: same JobControls: a real mounted pause button with no testid.
+  - tool: kg_add_nodes
+    provider: knowledge
+    tier: A
+    verdict: UI
+    route: /knowledge
+    testid: entity-create-confirm
+  - tool: kg_build
+    provider: knowledge
+    tier: W
+    verdict: UI_NO_TESTID
+  - tool: kg_ontology_propose
+    provider: knowledge
+    tier: W
+    verdict: UI
+    route: /books/:id/kg-ontology
+    testid: create-schema-entry
+  - tool: kg_project_create
+    provider: knowledge
+    tier: A
+    verdict: UI
+    route: /knowledge
+    testid: kg-no-project-create-btn
+  - tool: kg_project_set_embedding_model
+    provider: knowledge
+    tier: A
+    verdict: UI_NO_TESTID
+  - tool: kg_propose_edge
+    provider: knowledge
+    tier: A
+    verdict: UI
+    route: /knowledge
+    testid: relation-create-confirm
+  - tool: kg_propose_fact
+    provider: knowledge
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: cast-fact
+  - tool: kg_run_benchmark
+    provider: knowledge
+    tier: A
+    verdict: UI_NO_TESTID
+  - tool: kg_triage_place_edge
+    provider: knowledge
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: triage-map-confirm
+  - tool: kg_triage_resolve
+    provider: knowledge
+    tier: A
+    verdict: UI
+    route: /books/:id/studio
+    testid: kg-triage-item-dismiss
+  - tool: kg_triage_schema_write
+    provider: knowledge
+    tier: W
+    verdict: UI
+    route: /books/:id/studio
+    testid: triage-retarget-confirm
+  - tool: kg_view_edit
+    provider: knowledge
+    tier: A
+    verdict: UI
+    route: /knowledge
+    testid: view-save
+  - tool: memory_forget
+    provider: knowledge
+    tier: A
+    verdict: UI
+    route: /assistant
+    testid: memory-forget-*
+  - tool: memory_remember
+    provider: knowledge
+    tier: A
+    verdict: AGENT_ONLY
+    reason: memory is ACCRUED from use, never hand-authored - the sheet's own copy says so ("Nothing kept yet - end a day to build your memory") and it offers search + forget, no add. The CORRECTIVE affordance the parity metric actually cares about exists: a memory the assistant got wrong is removed with memory-forget-*. Authoring one by hand is deliberately not a product surface, so this is declared rather than counted as a gap.
+  - tool: lore_enrichment_auto_enrich
+    provider: lore_enrichment
+    tier: A
+    verdict: UI
+    route: /books/:id/enrichment
+    testid: enrichment-detect-gaps
+  - tool: registry_propose_skill
+    provider: registry
+    tier: A
+    verdict: UI
+    route: /settings/extensions
+    testid: plugin-import-btn
+    note: no inline skill/workflow EDITOR exists; the manual path is the plugin bundle round-trip (plugin-export -> edit the JSON -> plugin-import), which a bundle really does carry (skills WHERE plugin_id). Recorded so nobody reads this row as "there is an editor".
+  - tool: registry_propose_workflow
+    provider: registry
+    tier: A
+    verdict: UI
+    route: /settings/extensions
+    testid: plugin-import-btn
+    note: no inline skill/workflow EDITOR exists; the manual path is the plugin bundle round-trip (plugin-export -> edit the JSON -> plugin-import), which a bundle really does carry (skills WHERE plugin_id). Recorded so nobody reads this row as "there is an editor".
+  - tool: registry_set_skill_enabled
+    provider: registry
+    tier: A
+    verdict: UI
+    route: /settings/extensions
+    testid: skill-toggle
+  - tool: registry_update_skill
+    provider: registry
+    tier: A
+    verdict: UI
+    route: /settings/extensions
+    testid: plugin-import-btn
+    note: no inline skill/workflow EDITOR exists; the manual path is the plugin bundle round-trip (plugin-export -> edit the JSON -> plugin-import), which a bundle really does carry (skills WHERE plugin_id). Recorded so nobody reads this row as "there is an editor".
+  - tool: registry_update_workflow
+    provider: registry
+    tier: A
+    verdict: UI
+    route: /settings/extensions
+    testid: plugin-import-btn
+    note: no inline skill/workflow EDITOR exists; the manual path is the plugin bundle round-trip (plugin-export -> edit the JSON -> plugin-import), which a bundle really does carry (skills WHERE plugin_id). Recorded so nobody reads this row as "there is an editor".
+  - tool: settings_model_delete
+    provider: settings
+    tier: W
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
+  - tool: settings_model_register
+    provider: settings
+    tier: A
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
+  - tool: settings_model_set_active
+    provider: settings
+    tier: A
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
+  - tool: settings_model_set_default
+    provider: settings
+    tier: A
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
+  - tool: settings_model_set_favorite
+    provider: settings
+    tier: A
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
+  - tool: settings_model_update
+    provider: settings
+    tier: A
+    verdict: UI_NO_TESTID
+    note: the whole model-settings surface carries NO testids - ProvidersTab, DefaultModelsCard and ModelOrderCard all render real, mounted controls with none. Verified live in R1: the Add Provider dialog's four inputs had no testid either. Systemic, not per-tool.
+  - tool: settings_update_profile
+    provider: settings
+    tier: A
+    verdict: UI_NO_TESTID
+    note: the account tab renders a real profile form; only its container c-account carries a testid.
+  - tool: translation_job_control
+    provider: translation
+    tier: W
+    verdict: UI_NO_TESTID
+    note: extraction StepProgress' cancel has no testid.
+  - tool: translation_patch_block
+    provider: translation
+    tier: A
+    verdict: UI
+    route: /books/:id/translation
+    testid: correction-cell-*
+  - tool: translation_retranslate_dirty
+    provider: translation
+    tier: W
+    verdict: UI
+    route: /books/:id/translation
+    testid: translate-retranslate-selected
+  - tool: translation_save_edited_version
+    provider: translation
+    tier: A
+    verdict: UI_NO_TESTID
+    note: useEditTranslation's save control has no testid.
+  - tool: translation_set_active_version
+    provider: translation
+    tier: A
+    verdict: UI_NO_TESTID
+    note: TranslationReviewView renders 12 real buttons, none with a testid.
+  - tool: translation_start_extraction
+    provider: translation
+    tier: W
+    verdict: UI_NO_TESTID
+    note: the extraction wizard's fields carry testids (extraction-strategy, extraction-concurrency) but its SUBMIT does not; step-confirm exists only as a test mock.
+  - tool: translation_start_job
+    provider: translation
+    tier: W
+    verdict: UI
+    route: /books/:id/translation
+    testid: translate-modal-body
+  - tool: translation_update_settings
+    provider: translation
+    tier: A
+    verdict: UI
+    route: /books/:id/translation
+    testid: translate-thinking-toggle

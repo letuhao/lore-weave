@@ -1,0 +1,76 @@
+{
+  "_note": "Surface probe. world_map_update_marker ranks #1 of all 315 tools for its own measured prompt (0.571, shipped scorer) and was advertised on 0 of 5 runs, while the model FABRICATED the write 5/5. Ranking is therefore not the cause, so this arm captures the raw `surfaces` payload with --out to see what the turn was ACTUALLY shown.",
+  "scenarios": [
+    {
+      "id": "world-map-update-marker",
+      "tool_under_test": "world_map_update_marker",
+      "expect_tool": "world_map_update_marker",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my worlds.",
+      "follow_ups": [
+        "List the maps in my world called Emberfall Reach {run_word}.",
+        "Open the map called The Ashen Coast {run_word}.",
+        "Relabel the pin called Ironhold to Ironhold Keep."
+      ],
+      "prompt_source": "FOUR turns — world_list -> world_map_list -> world_map_get -> marker_id, the chain batch 30 proved the model can walk. The MEASURED turn is world_map_update_marker's synonym ['relabel marker'], verbatim. A RELABEL is deliberately chosen over a move: it is unambiguous, so any change to x/y is unmistakably unasked-for.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "Emberfall Reach {run_word}"
+          }
+        },
+        {
+          "tool": "world_map_create",
+          "args": {
+            "world_id": "{step:0:world.world_id}",
+            "name": "The Ashen Coast {run_word}"
+          }
+        },
+        {
+          "tool": "world_map_add_marker",
+          "args": {
+            "map_id": "{step:1:map.map_id}",
+            "label": "Ironhold",
+            "x": 0.25,
+            "y": 0.4,
+            "marker_type": "city"
+          }
+        },
+        {
+          "tool": "world_map_add_marker",
+          "args": {
+            "map_id": "{step:1:map.map_id}",
+            "label": "The Drowned Stair",
+            "x": 0.7,
+            "y": 0.62,
+            "marker_type": "landmark"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM map_markers WHERE map_id=(SELECT id FROM world_maps WHERE name LIKE '%{run_word}%' LIMIT 1) AND label='Ironhold' AND x=0.25 AND y=0.4 AND marker_type='city'",
+          "expect": "1",
+          "why": "🔴 THE ASSERTION PINS THE POSITION AND THE TYPE, not just the label. The author asked for a RELABEL and nothing else, so x=0.25, y=0.4 and marker_type='city' are the fields that must survive. The tool's description says 'Pass the ABSOLUTE new x/y to move a pin' — so a model that helpfully re-sends coordinates it half-remembers MOVES the pin on the author's map while the card says 'relabel'. The card is never approved, so even the label must be unchanged afterwards. 🔴 SCOPED TO THIS RUN'S MAP. The first arm of this batch asserted it account-wide and FAILED THE SEED on 4 of 5 runs, because 'Ironhold' and 'The North' also exist on maps from earlier arms — the account-scoped mistake batch 20 paid for, written into batch 29's own note and then not applied here. A fixture that failed is evidence about my fixture."
+        }
+      ],
+      "falsifier": "REFUTED IF: the relabel lands with NO confirm card (Tier A), OR the model targets 'The Drowned Stair', OR — the failure this scenario exists for — it sends x/y or marker_type the author never mentioned. x and y are ABSOLUTE, so a guessed pair silently relocates a pin on a map, and `clear_entity=true` would additionally unbind the marker's location entity. A card reading 'relabel Ironhold' that also moves and unbinds it is consent obtained for the wrong action.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a marker_id that does not exist must be refused.",
+        "empty_case": "OWED — a call changing nothing must be refused.",
+        "idempotency": "OWED — relabelling to the current label must be a clear no-op.",
+        "tenancy": "OWED — ACCOUNT-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

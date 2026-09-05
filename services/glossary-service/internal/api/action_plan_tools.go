@@ -42,8 +42,38 @@ const plannerTimeout = 120 * time.Second
 // through the repair round (§S3).
 var errPlanNothingActionable = errors.New("nothing to plan")
 
+// planVocabularyHint appends what the PLANNER can actually do to whatever the planner MODEL
+// said it could not.
+//
+// The notes above are free text from an LLM, and they became the entire user-facing
+// explanation. Measured: two calls asking to set every kind's colour and icon were refused
+// with "The current ontology planner does not support operations for updating visual metadata
+// like 'color' or 'icon'. These changes must be performed via the ontology GUI."
+//
+// The first half is TRUE — no op in the registry edits kind metadata. The second half is
+// FALSE, and provably so: `glossary_book_patch` with level="kind" takes `color` and `icon`
+// and applies them immediately (verified live). So the agent was told to go to a GUI it
+// cannot open, about a change one Tier-A call would have made.
+//
+// The planner's own vocabulary is code-known, so the correction does not have to be guessed:
+// it is enumerated from the registry rather than re-typed, which is what keeps it true when an
+// op is added. The model's notes are kept — they explain WHY nothing was planned — but they no
+// longer get the last word about what the SYSTEM can do.
+func (s *Server) planVocabularyHint(msg string) string {
+	reg := s.planRegistry()
+	ops := make([]string, 0, len(reg))
+	for t := range reg {
+		ops = append(ops, t)
+	}
+	sort.Strings(ops)
+	return msg + " — the planner can only emit these operations: " + strings.Join(ops, ", ") +
+		". Anything else is not necessarily impossible: a single field on an existing genre, " +
+		"kind or attribute (including color and icon) is edited directly with " +
+		"glossary_ontology_upsert, which needs no plan."
+}
+
 type planToolIn struct {
-	BookID    string `json:"book_id,omitempty" jsonschema:"the book to plan for (UUID; Manage-grant checked)"`
+	BookID    string `json:"book_id" jsonschema:"the book to plan for (UUID; Manage-grant checked)"`
 	Goal      string `json:"goal" jsonschema:"the user's natural-language goal, e.g. 'design an ontology for this xianxia novel'"`
 	ModelRef  string `json:"model_ref,omitempty" jsonschema:"optional user_model UUID to plan with; omit to use the user's default 'planner' model"`
 	Reference string `json:"reference,omitempty" jsonschema:"optional reference text (book blurb / sample passage) to ground the plan; treated as DATA, not instructions"`
@@ -115,7 +145,14 @@ func (s *Server) toolPlan(ctx context.Context, req *mcpsdk.CallToolRequest, in p
 // writes under ONE human confirm.
 
 type proposeBatchOpIn struct {
-	Type string `json:"type" jsonschema:"op type — one of: adopt_genres, create_kinds, add_attributes, edit_attribute, delete_genre, delete_kind, delete_attribute, merge_candidate, dismiss_candidate"`
+	// The trailing clause is not decoration. Measured: a model sent type="edit_kind" (4 calls,
+	// 3 sessions, the last on 2026-07-29). There is no such op and there is not going to be —
+	// editing one field on an existing row is glossary_book_patch's job, not a plan's. The enum
+	// rejection lists the nine valid types, which tells the model what it CANNOT do and leaves
+	// it to guess where the capability went; naming the tool here puts that in front of the
+	// model BEFORE it composes the call rather than after. Same correction iteration 77 made to
+	// the planner's own refusal, on the path that bypasses the planner.
+	Type string `json:"type" jsonschema:"op type — one of: adopt_genres, create_kinds, add_attributes, edit_attribute, delete_genre, delete_kind, delete_attribute, merge_candidate, dismiss_candidate. There is NO edit_kind / edit_genre op: to change a field (name, description, color, icon, sort_order) on an EXISTING genre, kind or attribute, call glossary_ontology_upsert instead — it needs no plan and no confirm."`
 	// Params is the op's typed params object. Shapes mirror the planner vocabulary
 	// (see glossary_propose_batch's tool description), e.g. create_kinds →
 	// {"kinds":[{"code","name","description","attributes":[...]}]}.
@@ -124,7 +161,7 @@ type proposeBatchOpIn struct {
 }
 
 type proposeBatchToolIn struct {
-	BookID string             `json:"book_id,omitempty" jsonschema:"the book to act on (UUID; Manage-grant checked)"`
+	BookID string             `json:"book_id" jsonschema:"the book to act on (UUID; Manage-grant checked)"`
 	Ops    []proposeBatchOpIn `json:"ops" jsonschema:"the ordered list of ontology operations to apply together on ONE confirm"`
 	Goal   string             `json:"goal,omitempty" jsonschema:"optional one-line label for the plan header, e.g. 'add the three missing kinds'"`
 }
@@ -283,7 +320,7 @@ func (s *Server) parseAndValidatePlan(bookID uuid.UUID, goal, text string) (plan
 		if len(parsed.Notes) > 0 {
 			msg = strings.Join(parsed.Notes, "; ")
 		}
-		return plankit.Plan{}, fmt.Errorf("%w: %s", errPlanNothingActionable, msg)
+		return plankit.Plan{}, fmt.Errorf("%w: %s", errPlanNothingActionable, s.planVocabularyHint(msg))
 	}
 	plan := plankit.Plan{BookID: bookID, Goal: goal, Notes: parsed.Notes}
 	for _, o := range parsed.Ops {

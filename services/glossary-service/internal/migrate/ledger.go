@@ -170,6 +170,98 @@ var chain = []Step{
 	// apply after either history: the migration itself is CREATE INDEX IF NOT
 	// EXISTS, so an existing index is a no-op.
 	{"0061_attr_lookup_index", UpAttrLookupIndex},
+	// D9 / plan T9 — the covering index behind the book-wide `state@as_of` read. Partial on
+	// the slice that read wants (current belief, single-valued) and INCLUDEs value+fact_kind
+	// so the scan is index-ONLY: 281 ms → 79 ms at the 4 000-chapter ceiling. The build is
+	// write-blocking for ~2.8 s at 2.16 M facts because CREATE INDEX CONCURRENTLY cannot run
+	// inside execGuarded's transaction; see entity_facts_asof_index.go for the measurements
+	// and the operator escape hatch.
+	{"0062_entity_facts_asof_index", UpEntityFactsAsOfIndex},
+	// T31 / design D5 — the physical lifecycle ledger. `deleted_at` alone cannot say when,
+	// by whom, or from what: a delete-then-restore leaves it NULL, identical to an entity
+	// nobody touched. See entity_lifecycle_ledger.go.
+	{"0063_entity_lifecycle_ledger", UpEntityLifecycleLedger},
+	// T32 / design D1 — liveness becomes a FACT, not a column. Widens the closed fact-kind
+	// set to admit 'status'. See entity_facts_status_kind.go for why this is a separate step
+	// rather than an edit to the CREATE TABLE block.
+	{"0064_entity_facts_status_kind", UpEntityFactsStatusKind},
+	// T34 / design D7 — write-time dedupe needs somewhere to put the re-assertion. 11.7% of
+	// fact rows carried no new information; they become citations on the open fact instead.
+	{"0065_entity_fact_evidence", UpEntityFactEvidence},
+	// T37c / SPEC §4.2b — roles got two producers (the studio and planforge), and the
+	// plan-time one owes a retraction path. `entity_facts` had no authorship column, so
+	// "close what this plan no longer implies" would have closed the AUTHOR's declarations
+	// too. A producer may only retract facts it can prove it wrote.
+	{"0066_entity_facts_origin", UpEntityFactsOrigin},
+
+	// ── MERGE 2026-09-03 · feat/frontend-tools-mcp-migration ────────────────────────────────
+	//
+	// EVERY ONE OF THE FOUR STEPS BELOW COLLIDED. That branch allocated 0060/0061 and then
+	// 0066/0067; this one had taken 0059-0066 for genre seeding, the as-of index, the lifecycle
+	// ledger and the fact-kind work. Renumbered to 0067-0070, order preserved.
+	//
+	// RENAMING IS NORMALLY FORBIDDEN — ApplyOnce records a step by NAME, so a rename re-runs it
+	// on every database that applied the old one. It is safe for exactly these four because each
+	// is idempotent and says so: the restore is a CREATE OR REPLACE, and the backfill is bounded
+	// to `cached_name IS NULL` rows ("the function is idempotent, so re-running this step's
+	// successor costs nothing"). The cost of the rename is a handful of no-op statements.
+	//
+	// ITS 0059_attr_lookup_index IS DROPPED, not renumbered: it is the SAME migration this
+	// branch already carries at 0061, and both are `CREATE INDEX IF NOT EXISTS`. Registering it
+	// twice would run the same no-op under two names and imply two indexes.
+	//
+	// The 0067/0068 pair is superseded by 0069/0070 — they call the same two functions — and is
+	// kept anyway, because the comment beneath records WHY the first pair failed and a chain
+	// that drops its own history cannot explain itself to the next reader.
+	// D-GLOSSARY-ATTR-LOOKUP-SEQSCAN — (kind_id, code) index on book_attributes. Ten
+	// handler queries resolve an attribute definition by (kind_id, code) with no
+	// book_id, and every prior index leads with book_id, so each evaluation seq-scanned
+	// 441k rows. Live: known-entities 56s -> 0.05s on a 3,187-entity book. The latency
+	// silently timed out knowledge-service's anchor pre-load, which made extraction mint
+	// duplicate entities. See attr_lookup_index.go.
+	//
+	// MERGE 2026-08-02: this shipped as `0056_attr_lookup_index` on
+	// feat/frontend-tools-mcp-migration while main independently took 0056–0058 for the
+	// technique/kind-vote steps. Renumbered to 0059 rather than main's, and the rename —
+	// normally forbidden by the chain rule above — is safe HERE and only here because the
+	// step is a single `CREATE INDEX IF NOT EXISTS`: re-running it on a DB that already
+	// applied it under the old name costs one no-op statement. Renaming main's three would
+	// have re-run kind rewrites and a vote-table build instead.
+	// 🔴 0060/0061 — the RUNNING database had lost the cache+search-aware
+	// recalculate_entity_snapshot that 0028 installs, so glossary_search could not match an
+	// entity by its own name (D-GLOSSARY-READS-RETURN-ok-true-result-null-ON-A-SEEDED-BOOK).
+	// A NEW entry, never an edit to 0028: ApplyOnce records by NAME, so DDL added to an applied
+	// step is a silent no-op on every existing database. The backfill MUST follow the restore —
+	// run first, it would call the broken body and repair nothing while reporting success.
+	{"0067_glossary_recalc_restore", UpGlossaryRecalcRestore},
+	{"0068_backfill_null_cached_name", BackfillNullCachedName},
+
+	// 🔴 0066/0067 — 0060 WAS REVERTED ON THE RUNNING DATABASE and could not be re-applied.
+	// Measured 2026-09-01: the deployed recalculate_entity_snapshot was byte-identical to
+	// 0004's body again (103 lines, zero mentions of cached_name) while schema_migrations
+	// still recorded 0060 as applied on 2026-08-26 — so RunChain skipped it forever and
+	// glossary_search could not match an entity by name. Entities created 2026-08-31 were
+	// 108 of 108 with cached_name NULL.
+	//
+	// WHY IT WAS REVERTED: a test called the step FUNCTIONS directly
+	// (internal/events/revision_consumer_test.go ran {"UpSnapshot", migrate.UpSnapshot} against
+	// GLOSSARY_TEST_DB_URL), which bypasses ApplyOnce and re-executes 0004's SQL. That call site
+	// is now migrate.RunChain, and scripts/test_a_migration_step_reaches_the_db_only_through_
+	// the_ledger.py fails the build if any env-DSN test reaches a step that redefines the
+	// function again.
+	//
+	// A NEW ENTRY, never an edit to 0060 — the same rule 0060 itself was written under, now
+	// applied to the repair of the repair. The FUNCTIONS are reused, not copied: a second copy
+	// of the body is a second thing to drift, and this defect IS two definitions disagreeing.
+	// Restore before backfill: run the other way the backfill calls the broken body and repairs
+	// nothing while reporting success.
+	//
+	// WHAT THIS DOES NOT DO: it does not make the body self-healing. If some other out-of-chain
+	// path re-installs 0004's SQL, this reverts again and needs another new step. Closing that
+	// would mean RunChain verifying the deployed body rather than trusting the ledger, which is
+	// a design change and not this row's documented fix.
+	{"0069_glossary_recalc_restore_2", UpGlossaryRecalcRestore},
+	{"0070_backfill_null_cached_name_2", BackfillNullCachedName},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

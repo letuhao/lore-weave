@@ -69,6 +69,76 @@ def _row(record) -> dict:
     return out
 
 
+# The statuses `uq_glossary_build_active_book` holds -- one in-flight run per book. `draft`
+# is deliberately outside the index (creating a draft is free), so a collision lands on the
+# first real transition instead.
+_ACTIVE_STATUSES = ("planning", "plan_ready", "building", "proposing",
+                    "kg_projecting", "edges_ready")
+
+# What a caller should do NEXT with a run in each of those states. An ACTIVE_RUN refusal that
+# names none of these is a dead end, and it was measured as one.
+_NEXT_OP_FOR_STATUS = {
+    "plan_ready": "approve_plan",
+    "edges_ready": "approve_edges",
+    "planning": "status",
+    "building": "status",
+    "proposing": "status",
+    "kg_projecting": "status",
+}
+
+#: The SENTENCE for each state, in this tool's own `next` idiom. Every op but `status` already
+#: returned one; `status` returned the worklist and said nothing about what to do with it.
+#:
+#: 🔴 WHY THAT IS THE GAP THAT MATTERS. op=start's `next` is "Show the user this worklist; call
+#: op=approve_plan when they agree" -- so approving has a PRECONDITION: the caller must be holding
+#: the worklist. On the confirmation turn the caller is not: chat-service rehydrates history from
+#: `role, content` alone, so turn 1's tool result, worklist and run_id included, does not exist on
+#: turn 2. `op=status` is the one op that can hand it back, and it was the one op that never said
+#: what it was for.
+#:
+#: MEASURED: op=approve_plan has been called ZERO times across 95 calls and 89 sessions; every
+#: recorded call is `start` or a card. Naming the next op in the ACTIVE_RUN refusal alone did not
+#: move it (K=5, no change) -- which is consistent with a caller told to approve something it
+#: cannot show.
+#: 🔴 THE FIRST WORDING WAS WRITTEN FOR TURN 1 AND READ AS "STOP" ON TURN 2. It said "Show it to
+#: the user, then call op='approve_plan' when they agree" — correct when the plan has just been
+#: made, and wrong on the turn that RECOVERS it, because by then the user has already agreed.
+#:
+#: MEASURED (t64-protocol5, K=5): three of five runs reached op=status, received the worklist,
+#: the run_id AND that sentence, and called nothing further. The scenario's turn 2 is literally
+#: "Yes, that worklist is right — go ahead and build them", so the tool was telling the model to
+#: go back and ask for an agreement it was already holding.
+#:
+#: THE INVARIANT: an instruction returned WITH recovered state must be valid for the turn that
+#: recovers it, not only for the turn that created it. The tool cannot know which turn it is on,
+#: so it names both cases instead of assuming the earlier one.
+_NEXT_SENTENCE_FOR_STATUS = {
+    "plan_ready": ("The worklist is in `items` above. If the user has ALREADY approved it, call "
+                   "op='approve_plan' with this run_id NOW — do not ask again. If they have not "
+                   "seen it yet, show it to them and call op='approve_plan' when they agree."),
+    "edges_ready": ("The proposed relationships are in `edges` above. If the user has ALREADY "
+                    "approved them, call op='approve_edges' with this run_id NOW — do not ask "
+                    "again. If they have not seen them yet, show them and call "
+                    "op='approve_edges' when they agree."),
+    "planning": "Still planning — poll op='status' again with this run_id.",
+    "building": "Still building — poll op='status' again with this run_id.",
+    "proposing": "Still proposing — poll op='status' again with this run_id.",
+    "kg_projecting": "Still projecting the graph — poll op='status' again with this run_id.",
+    "done": "This run is finished; nothing further to call.",
+    "cancelled": "This run was cancelled; start a new one with op='start' if you still want it.",
+}
+
+
+def next_sentence_for(status: str) -> str | None:
+    """What the caller does next in `status`, or None when there is nothing true to say.
+
+    One home, so the refusal and the status op cannot drift from each other -- a five-of-six
+    mismatch between two such lists is exactly how a book was stranded for two weeks (see
+    Repo.active_run_for_book).
+    """
+    return _NEXT_SENTENCE_FOR_STATUS.get(str(status or ""))
+
+
 class Repo:
     """Thin asyncpg repo — every query filters by owner_user_id (+ book scope).
 
@@ -89,6 +159,22 @@ class Repo:
         row = await self._pool.fetchrow(
             "SELECT * FROM glossary_build_runs WHERE run_id=$1 AND owner_user_id=$2",
             run_id, owner,
+        )
+        return _row(row) if row else None
+
+    async def active_run_for_book(self, book_id: UUID, owner: UUID) -> dict | None:
+        """The run holding `uq_glossary_build_active_book`, or None.
+
+        Exists so an ACTIVE_RUN refusal can NAME the run it is refusing for. The statuses
+        are the index's own, kept in `_ACTIVE_STATUSES` so this and the refusal cannot
+        drift from each other -- a five-of-six mismatch is exactly how a book was stranded
+        for two weeks (see the cancel() note below).
+        """
+        row = await self._pool.fetchrow(
+            """SELECT * FROM glossary_build_runs
+               WHERE book_id=$1 AND owner_user_id=$2 AND status = ANY($3::text[])
+               ORDER BY updated_at DESC LIMIT 1""",
+            book_id, owner, list(_ACTIVE_STATUSES),
         )
         return _row(row) if row else None
 
@@ -203,6 +289,57 @@ class GlossaryBuildService:
             raise GlossaryBuildError(422, "MISSING_PARAMS", f"params missing: {missing}")
         return await self._repo.create_run(owner=owner, book_id=book_id, params=params)
 
+    async def _active_run_refusal(self, *, run_id: UUID, owner: UUID) -> str:
+        """Name the run that is blocking, and the op that CONTINUES it.
+
+        \U0001f534 THE DEAD END THIS REPLACES, MEASURED LIVE 2026-08-31 (K=5, batch
+        t64-protocol2). On the turn where the author approves the worklist, the model called
+        `op=start` again in 5 of 5 runs and got back only
+
+            ACTIVE_RUN: this book already has a build run in progress
+
+        -- true, and no way forward. `op=approve_plan` has been called ZERO times across 89
+        recorded sessions and 95 calls, every one of them `start`. This file already knew the
+        shape: see cancel()'s note, where the same refusal stranded a book for two weeks.
+
+        THE PLATFORM'S OWN IDIOM, applied here: a refusal that names the id and the exact
+        next call, the way the missing-argument repair says \"YOU ALREADY HAVE IT\".
+
+        Degrade-safe: if the blocking run cannot be read the original sentence is returned
+        unchanged, because a refusal that fails to build is still a refusal that must be sent.
+        """
+        base = "this book already has a build run in progress"
+        try:
+            # The run being REFUSED is a fresh draft; its book is what the index collided on.
+            refused = await self._repo.get_run(run_id, owner)
+            if not refused or not refused.get("book_id"):
+                return base
+            active = await self._repo.active_run_for_book(refused["book_id"], owner)
+        except Exception:  # noqa: BLE001 -- never let the hint break the refusal
+            logger.debug("ACTIVE_RUN hint unavailable", exc_info=True)
+            return base
+        if not active:
+            return base
+        status = str(active.get("status") or "")
+        nxt = _NEXT_OP_FOR_STATUS.get(status)
+        if not nxt:
+            return base
+        # 🔴 POINTING STRAIGHT AT THE NEXT OP WAS NOT ENOUGH, MEASURED. This refusal
+        # already named run_id and the continuing op, and op=approve_plan still went uncalled
+        # (K=5, no change). The reason is a PRECONDITION: approving means showing the worklist
+        # first, and on the confirmation turn the caller no longer holds it. So a state whose
+        # next op needs the run's own data says how to GET it back before naming that op.
+        _restore = ("Call op='status' with that run_id first to read the run's current data, "
+                    "show it to the user, then ")
+        _needs_data = status in ("plan_ready", "edges_ready")
+        return (
+            f"{base}: run_id={active['run_id']} is at status '{status}'. "
+            f"Do NOT call op='start' again -- "
+            + (_restore if _needs_data else "continue that run with ")
+            + f"op='{nxt}' (pass run_id={active['run_id']}), "
+            f"or abandon it with op='cancel'."
+        )
+
     async def plan(self, run_id: UUID, owner: UUID) -> dict:
         """draft → planning → plan_ready. Synchronous (the planner is 1-2 calls)."""
         try:
@@ -213,7 +350,8 @@ class GlossaryBuildService:
             # collision lands HERE, on the first real transition. Map it to a clean
             # 409 instead of letting the raw constraint 500.
             raise GlossaryBuildError(
-                409, "ACTIVE_RUN", "this book already has a build run in progress",
+                409, "ACTIVE_RUN",
+                await self._active_run_refusal(run_id=run_id, owner=owner),
             ) from exc
         if run is None:
             raise GlossaryBuildError(409, "BAD_STATE", "run is not in draft")

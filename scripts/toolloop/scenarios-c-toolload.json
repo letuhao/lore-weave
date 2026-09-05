@@ -1,0 +1,45 @@
+{
+  "_note": "tool_load asked the question P10's invariant is about - what a named TOOL requires - instead of what a character requires. Recorded as a DIFFERENT question, not smuggled in as a re-run of the old one.",
+  "scenarios": [
+    {
+      "id": "tool-load-asks-what-a-TOOL-requires",
+      "tool_under_test": "tool_load",
+      "expect_tool": "tool_load",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+      "prompt_source": "P10's invariant, verbatim: 'When the author asks what a TOOL REQUIRES, the answer must come from the contract, not from a plausible neighbouring read.' The old prompt asked what is needed to add a CHARACTER, which is a domain-ontology question, not a tool-contract one.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the reply lists arguments composition_arc_apply does not declare (invention), OR it answers about what an ARC needs rather than what the TOOL requires (the neighbouring-read failure this problem is about), OR a read-intent turn changes the store.\n\nCONTROL: the required set is read from the live catalogue, not from this file's memory of it - if the schema changes, answer_expect is wrong and must be re-derived rather than the run re-read.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). NOT APPLICABLE by design: it loads TOOL SCHEMAS, which are identical for every caller and contain no user data. Recorded as such rather than as a pass.",
+        "gate": "Tier R, gateway-local."
+      },
+      "needs_prompt": true,
+      "editor_context": false,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the absent case must actually be absent"
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "arc_template_id",
+          "project_id"
+        ],
+        "none_of": [
+          "book_id"
+        ],
+        "why": "composition_arc_apply's input_schema is {project_id, arc_template_id, roster_bindings, replace, idempotency_key} - read from the live tool_load payload. There is NO book_id in it.\n\n🔴 THE FIRST VERSION OF THIS EXPECTATION WAS THEATRE and is replaced. It asked only for 'arc_template_id', which ALL FIVE runs satisfied - including the three that were WRONG. Those three answered 'arc_template_id + book_id' after reading tool_list, which carries no input_schema at all; the string they saw came from a DIFFERENT tool's description (composition_arc_edit: 'op=create mints a saga/arc (needs book_id; optional ... arc_template_id ...)'). An expectation that passes on an answer assembled from the wrong tool is not checking the thing this problem is about.\n\nSo: project_id must appear (only the contract supplies it) and book_id must NOT (only the neighbouring read suggests it)."
+      },
+      "rebuilt_why": "🔴 THE OLD SCENARIO DID NOT TEST THIS PROBLEM'S INVARIANT, and its result was being read as though it did. It asked 'What exactly do you need from me to add a new character to my story bible? Check the real requirements.' Measured 5/5 (c10-run / c-r1-recheck): the model called glossary_list_system_standards - a 'plausible neighbouring read' in the invariant's own words - and ANSWERED CORRECTLY from it, naming the character kind's real requirements (attribute_count 13, name + description). It was right to: what a CHARACTER needs is the ontology's business, not a tool schema's. tool_load loads a TOOL's schema, so the question never had tool_load as its answer and 'called 0/5' measured the prompt.\n\nThis version asks what the invariant says: what does a named TOOL require. composition_arc_apply's real required set is ['project_id', 'arc_template_id'], read from the live catalogue - so a model that guesses from the name, or describes the tool's purpose instead of reading it, is visibly wrong."
+    }
+  ]
+}

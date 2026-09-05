@@ -29,13 +29,16 @@ Dual-run: the bespoke `/v1/jobs` REST API is NOT removed.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
+
+from loreweave_jobs import JobStatus as _SdkJobStatus
 
 from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import Field, ValidationError
 
 from loreweave_mcp import (
+    validation_directive,
     ForbidExtra,
     apply_response_contract,
     build_tool_context,
@@ -68,22 +71,16 @@ mcp_server = make_stateless_fastmcp("jobs")
 # loreweave_mcp kit absorbs it (kit is outside the W0 change surface).
 
 
-def _validation_directive(tool_name: str, exc: ValidationError) -> str:
-    """One line: every failing arg with pydantic's expectation + the sent shape."""
-    parts = []
-    errs = exc.errors(include_url=False)
-    for err in errs[:3]:
-        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
-        msg = err.get("msg", "invalid value")
-        sent = err.get("input")
-        parts.append(f"`{loc}`: {msg} (you sent a {type(sent).__name__})")
-    if len(errs) > 3:
-        parts.append(f"(+{len(errs) - 3} more)")
-    return (
-        f"invalid arguments for {tool_name} — "
-        + "; ".join(parts)
-        + ". Fix the argument and call the tool again."
-    )
+# W0 #4b — the one-line validation directive now lives in the kit as
+# `validation_directive`. It used to be a byte-identical copy in THIS file and in two sibling
+# services, and the copy was wrong in a way none of the three noticed: for a `missing` error
+# pydantic sets `input` to the PARENT object, so every rendering said "(you sent a dict)" about
+# a field that had never been sent. Measured across the corpus: 79 calls, 7 tools, 16 sessions,
+# args `{}` in 100% of them — the clause was false every single time it appeared.
+#
+# The comment that used to sit here said the kit "will absorb the shared copy later". Three
+# copies is how one of them drifts, so it absorbed it.
+_validation_directive = validation_directive
 
 
 def _install_validation_error_rewriter(server) -> None:
@@ -113,6 +110,24 @@ _install_validation_error_rewriter(mcp_server)
 JobStatus = Literal[
     "pending", "running", "paused", "cancelling", "completed", "failed", "cancelled"
 ]
+
+# 🔴 A Literal CANNOT BE DERIVED, SO IT IS GUARDED INSTEAD — DQ-T86 (c), owner ruling
+# 2026-08-31. The other five copies of the status vocabulary now read the SDK at runtime; a
+# `Literal` has to be written out for the type checker and the JSON-schema enum, so the copy is
+# unavoidable here. What IS avoidable is the copy drifting in silence, which is the whole defect
+# this ruling names: add a member to the SDK's JobStatus and this enum would go on advertising
+# the old vocabulary to every model, with nothing anywhere to say so.
+#
+# Fails at IMPORT, deliberately. A mismatch is a contract error, and the alternative is a tool
+# schema that quietly under-reports what a job can be.
+_SDK_STATUSES = frozenset(s.value for s in _SdkJobStatus)
+_ADVERTISED_STATUSES = frozenset(get_args(JobStatus))
+if _ADVERTISED_STATUSES != _SDK_STATUSES:
+    raise RuntimeError(
+        "jobs_mcp JobStatus has drifted from loreweave_jobs.JobStatus (DQ-T86): "
+        f"advertised-only={sorted(_ADVERTISED_STATUSES - _SDK_STATUSES)}, "
+        f"sdk-only={sorted(_SDK_STATUSES - _ADVERTISED_STATUSES)}. Update this Literal."
+    )
 
 
 def _single_value(arg_name: str, value: str | list[str] | None) -> str | None:
@@ -152,7 +167,8 @@ def _with_caps(job: dict[str, Any]) -> dict[str, Any]:
     job["control_caps"] = [
         c.value
         for c in derive_control_caps(
-            job["status"], job["kind"], retryable=_retryable_flag(job)
+            job["status"], job["kind"], retryable=_retryable_flag(job),
+            detail_status=job.get("detail_status"),
         )
     ]
     return job
@@ -259,11 +275,35 @@ async def jobs_list(
     projected, _ = apply_response_contract(
         [_with_caps(j) for j in items], ref_fields=_JOB_REF_FIELDS, detail=detail,
     )
-    return {
+    # 🔴 A PAGE READ AS A TOTAL. MEASURED LIVE 2026-08-14 (batch 7, K=3): asked "What background
+    # jobs do I have running right now?", the model called this tool, received 10 items plus a
+    # next_cursor, and answered "You currently have 10 background jobs running". jobs_summary on
+    # the same account reports 31 active. The payload carried the page signal (`next_cursor`) and
+    # nothing that says the ITEM COUNT is not the total, so the model reported the page size.
+    #
+    # world_list is the control and it is already built this way — it returns
+    # `page: {total, returned, has_more, next_offset}` plus a one-line guidance, and its live
+    # answer on the same day was correct ("You have 28 worlds in total"). Same class as
+    # `always_available` on tool_list and `degraded` on story_search: a response that omits must
+    # SAY it omits, in a field a caller cannot skim past.
+    #
+    # A `total` is deliberately NOT computed here — it would be a second query on every list, and
+    # jobs_summary exists precisely to answer "how many". So the guidance NAMES that tool rather
+    # than guessing a number.
+    out: dict = {
         "items": projected,
+        "returned": len(projected),
         "next_cursor": next_cursor,
         "detail": detail,
     }
+    if next_cursor:
+        out["page"] = {"returned": len(projected), "has_more": True}
+        out["guidance"] = (
+            f"This is ONE PAGE of {len(projected)} job(s), NOT the total — more exist. "
+            "Do not report this number as how many jobs there are. "
+            "Pass `next_cursor` to continue, or call jobs_summary for the counts by status."
+        )
+    return out
 
 
 @mcp_server.tool(
@@ -303,7 +343,7 @@ async def jobs_summary(ctx: MCPContext) -> dict:
     meta=require_meta(
         "R",
         "user",
-        synonyms=["job detail", "job status", "get job", "show job"],
+        synonyms=["job detail", "job status", "get job", "show job", "detail of my job", "my most recent job", "how is the job going", "job cost"],
         tool_name="jobs_get",
     ),
 )
@@ -317,6 +357,9 @@ async def jobs_get(
     job_id: Annotated[str, "The job's id (UUID)."],
 ) -> dict:
     tool_ctx = build_tool_context(ctx, settings.internal_service_token)
+    # jobs_get shares the defect the row filed against cancel/pause — same store call, same
+    # driver error. One cause under three names.
+    job_id = _job_uuid(job_id)
     job = await store.get_job(get_pool(), str(tool_ctx.user_id), service, job_id)
     if job is None:
         # H13 anti-oracle: a non-owner / missing job is indistinguishable. Return a
@@ -346,10 +389,43 @@ async def jobs_get(
 #      service ships no control endpoint.
 
 
+def _job_uuid(value: str, field: str = "job_id") -> str:
+    """Validate a caller-supplied job id, naming the FIELD and echoing what arrived.
+
+    🔴 WITHOUT THIS THE DRIVER ANSWERS, AND IT NAMES NOTHING THE CALLER SENT. Measured 2026-08-26
+    on all three job tools, for an empty string AND for 'not-a-uuid':
+
+        invalid input for query argument $2: '' (invalid UUID '': length must be
+        between 32..36 characters, got 0)
+
+    `$2` is a position in a query the caller never saw. The kit's whole argument-repair story
+    rests on a refusal the model can act on, and this is one layer below where that story reaches.
+    The wording mirrors composition's `_uuid`, deliberately: echoing the value back is what
+    carries information the caller cannot otherwise get — a duplicated or dropped uuid segment is
+    visible in its own string and invisible in "badly formed".
+
+    Returns the string (not a UUID object) because the query casts with `$2::uuid` and every
+    caller here passes a str; converting would change what the store receives for no gain.
+    """
+    from uuid import UUID
+
+    try:
+        UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        raise ValueError(
+            f"{field} must be a UUID — received {value!r}. Get it from jobs_list, which returns "
+            "the service and job_id together; a repeated or dropped group is the usual cause."
+        ) from None
+    return str(value)
+
+
 async def _control(ctx: MCPContext, service: str, job_id: str, action: str) -> dict:
     """Shared owner-scoped control path for `jobs_cancel` / `jobs_pause`."""
     tool_ctx = build_tool_context(ctx, settings.internal_service_token)
     owner = str(tool_ctx.user_id)
+    # Validate BEFORE the store: an unparseable id reaches asyncpg and the caller gets a query
+    # position instead of a named argument. Covers jobs_cancel and jobs_pause, which share this.
+    job_id = _job_uuid(job_id)
     job = await store.get_job(get_pool(), owner, service, job_id)
     if job is None:
         # Anti-oracle: a non-owned OR nonexistent job is indistinguishable. NEVER
@@ -358,7 +434,8 @@ async def _control(ctx: MCPContext, service: str, job_id: str, action: str) -> d
     caps = [
         c.value
         for c in derive_control_caps(
-            job["status"], job["kind"], retryable=_retryable_flag(job)
+            job["status"], job["kind"], retryable=_retryable_flag(job),
+            detail_status=job.get("detail_status"),
         )
     ]
     if action not in caps:
@@ -392,6 +469,10 @@ async def _control(ctx: MCPContext, service: str, job_id: str, action: str) -> d
             "kill job",
             "stop a running job",
             "cancel my task",
+            "stop the translation",
+            "stop it",
+            "cancel it",
+            "stop that one",
         ],
         tool_name="jobs_cancel",
     ),
@@ -429,6 +510,25 @@ async def jobs_cancel(
             "suspend job",
             "pause a running job",
             "pause my task",
+            # 🔴 "pause the translation" WAS REMOVED HERE ON 2026-08-25 AND RESTORED THE SAME DAY,
+            # BY MEASUREMENT. The argument for removing it was clean — a GENERIC tool must not
+            # claim a DOMAIN phrase, and translation_job_control is the tool that actually
+            # understands a translation job. The A/B says otherwise, same scenario, same seed:
+            #
+            #     original wording, build of 2026-07-28   surfaced 5/5   jobs_pause called 5/5
+            #     original wording, after the de-dup      surfaced 2/5   jobs_pause called 0/5
+            #
+            # and translation_job_control did NOT take the calls — 0/5 in both arms. The model
+            # ran jobs_list, jobs_get, jobs_summary and paused nothing. So the phrase move did
+            # not redirect the request to a better tool, it removed the only tool that was
+            # answering it. A tie that has been MEASURED is broken by taking the phrase off the
+            # LOSER; taking it off the winner leaves nobody holding the request. Whether the
+            # domain-specific tool SHOULD win it is DQ-T41, which is the owner's and is not
+            # settled by reverting a regression.
+            "pause the translation",
+            "pause it",
+            "hold it",
+            "pause that one",
         ],
         tool_name="jobs_pause",
     ),

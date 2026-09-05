@@ -50,17 +50,22 @@ Admin changes MUST emit events through the standard event pipeline, not direct `
 
 **Rejected:**
 ```sql
-UPDATE npc_projection SET mood = 'calm' WHERE npc_id = $1;
+UPDATE region_projection SET ambient_state = '{"weather":"calm"}' WHERE region_id = $1;
 ```
 
 **Required:**
 ```go
-AppendEvent(reality_id, "npc", npc_id, nextVersion, "npc.mood_admin_override", {
-    new_mood: "calm",
-    reason: "player reported stuck NPC — ticket LW-1234",
+AppendEvent(reality_id, "region", region_id, nextVersion, "region.ambient_admin_override", {
+    new_ambient: {"weather": "calm"},
+    reason: "storm state stuck after a failed job — ticket LW-1234",
     actor_id: admin_user_id,
 })
 ```
+
+<sub>(The example named `npc_projection` until 2026-08-04. `0017` dropped it — it had
+no producer — so the rule is now illustrated with a table that exists. A policy
+teaching a table name that resolves to nothing teaches the reader to distrust the
+policy.)</sub>
 
 Admin-originated event types carry `admin_` prefix or `_admin_override`/`_admin_reset` suffix to distinguish from organic events.
 

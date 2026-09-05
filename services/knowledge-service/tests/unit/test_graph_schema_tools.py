@@ -319,9 +319,14 @@ async def test_kg_triage_list_default_is_bounded_and_summary():
     from app.tools.graph_schema_tools import TRIAGE_LIMIT_DEFAULT
 
     assert TRIAGE_LIMIT_DEFAULT <= 25  # the OUT-2 page ceiling
+    # `sample_triage_id` was added to the grouped listing by 68464ea9b ("the triage listing told
+    # the agent to place an edge and gave it no id") — the supplier-returns-its-successor's-id
+    # pattern. This fake was never given the field, so the handler raised AttributeError and the
+    # test has been red at HEAD since. The assertions below are unchanged.
     group = SimpleNamespace(
         signature="dup:allies:a->b", item_type="proposed_edge", count=4,
         status="pending", sample_payload={"blob": "x" * 800}, suggested_actions=["map", "drop_edge"],
+        sample_triage_id=uuid4(),
     )
     triage_repo = AsyncMock()
     triage_repo.list_grouped = AsyncMock(return_value=([group], True))  # has_more from the repo
@@ -543,17 +548,17 @@ async def test_propose_fact_queues_into_pending_inbox(monkeypatch):
 def _patch_endpoints_present(monkeypatch, present=("a", "b")):
     """Make kg_propose_edge's WS-4B endpoint precheck see both endpoints as
     existing nodes, so the test exercises the park path (not the fail-fast).
-    Also stubs neo4j_session so no real driver is needed."""
+    Also stubs graph_session so no real driver is needed."""
 
     @asynccontextmanager
     async def _fake_session(**_kwargs):
         yield object()
 
     monkeypatch.setattr(
-        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+        "app.tools.graph_schema_tools.graph_session", _fake_session,
     )
     monkeypatch.setattr(
-        "app.db.neo4j_repos.entities.existing_entity_node_ids",
+        "app.db.graph_repos.entities.existing_entity_node_ids",
         AsyncMock(return_value=set(present)),
     )
 
@@ -649,11 +654,11 @@ async def test_propose_edge_fails_fast_when_endpoint_not_a_node(monkeypatch):
         yield object()
 
     monkeypatch.setattr(
-        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+        "app.tools.graph_schema_tools.graph_session", _fake_session,
     )
     # only "a" exists as a node; "b" is missing.
     monkeypatch.setattr(
-        "app.db.neo4j_repos.entities.existing_entity_node_ids",
+        "app.db.graph_repos.entities.existing_entity_node_ids",
         AsyncMock(return_value={"a"}),
     )
     monkeypatch.setattr(
@@ -673,7 +678,17 @@ async def test_propose_edge_fails_fast_when_endpoint_not_a_node(monkeypatch):
     assert not res.success
     assert res.code == "KG_ENDPOINT_NOT_NODE"
     assert res.detail == {"missing": ["b"]}
-    assert "kg_project_entities_to_nodes" in res.error
+    # D-ENTITY-ID-MEANS-TWO-DIFFERENT-IDS-IN-ADJACENT-TOOLS (2026-08-26) — this asserted
+    # `"kg_project_entities_to_nodes" in res.error`, which PINNED A DEAD TOOL into the
+    # refusal. That tool is visibility=legacy, and since 2026-08-25 drop_superseded_tools
+    # drops every legacy tool from every turn catalogue unconditionally — measured withheld
+    # on 5 of 5 runs of batch c-kgedge3. The BAR is unchanged (the refusal must name the
+    # remedy); only the tool it names has to be one the model can actually call.
+    assert "kg_add_nodes" in res.error
+    assert "from_glossary" in res.error
+    assert "kg_project_entities_to_nodes" not in res.error, (
+        "the refusal names a legacy tool the turn catalogue drops"
+    )
     # never parked — the whole point of fail-fast.
     triage_repo.park.assert_not_awaited()
 
@@ -688,7 +703,7 @@ async def test_project_entities_to_nodes_returns_counts(monkeypatch):
         yield object()
 
     monkeypatch.setattr(
-        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+        "app.tools.graph_schema_tools.graph_session", _fake_session,
     )
     monkeypatch.setattr(
         "app.clients.glossary_client.get_glossary_client",
@@ -703,8 +718,13 @@ async def test_project_entities_to_nodes_returns_counts(monkeypatch):
     ctx = _ctx()  # caller == owner, project_meta → (_OWNER, _BOOK)
     res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
     assert res.success
+    # `nodes` carries the ids the SUCCESSOR needs — kg_propose_edge REQUIRES
+    # source_entity_id/target_entity_id, and returning only counts left the model with nothing to
+    # pass (measured K=5, 2026-08-23: it invented one UUID and used it for BOTH endpoints). Empty
+    # here because this test stubs the projection itself, so ProjectionResult keeps its default.
     assert res.result == {
         "nodes_created": 3, "nodes_existing": 1, "entities_seen": 4, "skipped": 0,
+        "nodes": [],
     }
     kw = proj.await_args.kwargs
     assert kw["user_id"] == str(_OWNER)
@@ -723,7 +743,7 @@ async def test_project_entities_to_nodes_refreshes_stat_cache(monkeypatch):
     async def _fake_session(**_kwargs):
         yield object()
 
-    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr("app.tools.graph_schema_tools.graph_session", _fake_session)
     monkeypatch.setattr(
         "app.clients.glossary_client.get_glossary_client",
         MagicMock(return_value=MagicMock()),
@@ -753,7 +773,7 @@ async def test_project_entities_to_nodes_survives_stat_recount_failure(monkeypat
     async def _fake_session(**_kwargs):
         yield object()
 
-    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr("app.tools.graph_schema_tools.graph_session", _fake_session)
     monkeypatch.setattr(
         "app.clients.glossary_client.get_glossary_client",
         MagicMock(return_value=MagicMock()),
@@ -1269,7 +1289,7 @@ async def test_kg_world_query_unions_partitions_and_reports_unreadable(monkeypat
             model_dump=lambda mode="json": {"nodes": [{"id": "n1"}], "edges": []}
         )
 
-    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+    monkeypatch.setattr("app.db.graph_repos.relations.get_world_subgraph", _fake_subgraph)
 
     class _CM:
         async def __aenter__(self):
@@ -1278,7 +1298,7 @@ async def test_kg_world_query_unions_partitions_and_reports_unreadable(monkeypat
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+    monkeypatch.setattr(gst, "graph_session", lambda: _CM())
 
     ctx = _ctx(user_id=_OWNER, projects_repo=repo, book_client=book)
     res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4()), "limit": 50})
@@ -1314,7 +1334,7 @@ async def test_kg_world_query_surfaces_node_cap_hit_as_meta_truncated(monkeypatc
             "edges": [], "node_cap_hit": True,
         })
 
-    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+    monkeypatch.setattr("app.db.graph_repos.relations.get_world_subgraph", _fake_subgraph)
 
     class _CM:
         async def __aenter__(self):
@@ -1323,7 +1343,7 @@ async def test_kg_world_query_surfaces_node_cap_hit_as_meta_truncated(monkeypatc
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+    monkeypatch.setattr(gst, "graph_session", lambda: _CM())
 
     ctx = _ctx(user_id=_OWNER, projects_repo=repo, book_client=book)
     res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4())})
@@ -1394,7 +1414,7 @@ def _patch_subgraph(monkeypatch, seen: dict):
             model_dump=lambda mode="json": {"nodes": [{"id": "n1"}], "edges": []}
         )
 
-    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+    monkeypatch.setattr("app.db.graph_repos.relations.get_world_subgraph", _fake_subgraph)
 
     class _CM:
         async def __aenter__(self):
@@ -1403,7 +1423,7 @@ def _patch_subgraph(monkeypatch, seen: dict):
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+    monkeypatch.setattr(gst, "graph_session", lambda: _CM())
 
 
 @pytest.mark.asyncio
@@ -1628,9 +1648,9 @@ async def test_kg_create_node_creates_and_returns_endpoint_id(monkeypatch):
     async def _fake_session(**_):
         yield object()
 
-    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr("app.tools.graph_schema_tools.graph_session", _fake_session)
     me = AsyncMock(return_value=SimpleNamespace(id="kg-sha", name="Kai", kind="character"))
-    monkeypatch.setattr("app.db.neo4j_repos.entities.merge_entity", me)
+    monkeypatch.setattr("app.adapters.neo4j_graph_store.merge_entity", me)
 
     res = await execute_tool(ctx, "kg_create_node", {"name": "  Kai  ", "kind": "character"})
     assert res.success
@@ -1667,9 +1687,9 @@ async def test_kg_create_node_resolves_to_owner_not_caller(monkeypatch):
     async def _fake_session(**_):
         yield object()
 
-    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr("app.tools.graph_schema_tools.graph_session", _fake_session)
     me = AsyncMock(return_value=SimpleNamespace(id="kg-1", name="Kai", kind="character"))
-    monkeypatch.setattr("app.db.neo4j_repos.entities.merge_entity", me)
+    monkeypatch.setattr("app.adapters.neo4j_graph_store.merge_entity", me)
 
     res = await execute_tool(ctx, "kg_create_node", {"name": "Kai", "kind": "character"})
     assert res.success
@@ -1750,6 +1770,23 @@ async def test_kg_graph_query_scope_multi_without_project_ids_is_tool_error():
     assert "project_ids" in (res.error or "")
 
 
+class _CountResult(str):
+    """A tag that ALSO answers `.single()`.
+
+    🔴 THE HANDLER STOPPED USING `_records` FOR THE COUNT AND THESE MOCKS DID NOT FOLLOW. The
+    scalar read moved to `await result.single()` because `_records` drains rows as
+    `{k: dict(rec[k])}` and a scalar `count(e)` makes that raise — a defect the LIVE probe caught
+    after a green suite. The follow-up mock update was verified by re-running ONE test file, so
+    these two siblings shipped red and stayed red until the next full run. A subset run hides the
+    regression it was supposed to catch.
+    """
+
+    total: int = 0
+
+    async def single(self):
+        return {"total": self.total}
+
+
 @pytest.mark.asyncio
 async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
     """K37/OUT-5 (2026-07-24) — the graph read's Cypher LIMIT was a SILENT cap. The handler
@@ -1761,9 +1798,23 @@ async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
 
     seen = {}
 
+    # 🔴 RECONCILED 2026-09-03 — BOTH HALVES ARE LOAD-BEARING AND NEITHER SIDE'S FAKE WORKS
+    # ALONE. This branch moved the EDGE read into `graph_repos/graph_views.py` (T17), so the
+    # over-fetch must be asserted at `read_project_graph_edges`; patching `run_read` for it would
+    # patch nothing. The other branch added TWO more reads that still go through `run_read` — the
+    # isolated-node read (D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ) and a cheap COUNT for an
+    # honest `nodes_total` — so `run_read` is still faked, and must DISPATCH ON THE QUERY.
+    # Taking either fake by itself leaves the handler half-mocked and the test green on a shape.
+    async def _fake_read(session, **kw):
+        seen["limit"] = kw.get("limit")       # the over-fetch under test
+        return [_rec(i) for i in range(4)]
+
     async def _fake_run_read(session, cypher, **kw):
-        seen["limit"] = kw.get("limit")
-        return object()
+        if "count(e) AS total" in cypher:
+            tag = _CountResult("total")
+            tag.total = 8                     # the partition is bigger than the slice
+            return tag
+        return "isolated"
 
     # `_records` yields limit+1 (=4) valid edge rows → the cap bites at limit=3.
     def _rec(i):
@@ -1774,15 +1825,20 @@ async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
         }
 
     async def _fake_records(result):
+        # Only the ISOLATED read reaches `_records` now; the count goes through `.single()`
+        # (see `_CountResult`) and the edges never touch it at all.
+        if result == "isolated":
+            return []                      # no isolated nodes in this fixture
         return [_rec(i) for i in range(4)]
 
     @asynccontextmanager
     async def _fake_session(*a, **k):
         yield object()
 
+    monkeypatch.setattr(gst, "read_project_graph_edges", _fake_read)
     monkeypatch.setattr(gst, "run_read", _fake_run_read)
     monkeypatch.setattr(gst, "_records", _fake_records)
-    monkeypatch.setattr(gst, "neo4j_session", _fake_session)
+    monkeypatch.setattr(gst, "graph_session", _fake_session)
     monkeypatch.setattr(gst, "_deprecated_edge_codes", AsyncMock(return_value=[]))
 
     res = await execute_tool(_ctx(), "kg_graph_query", {"limit": 3})
@@ -1803,16 +1859,31 @@ async def test_kg_graph_query_not_truncated_when_within_limit(monkeypatch):
                 "subj": {"id": f"s{i}", "kind": "character"},
                 "obj": {"id": f"o{i}", "kind": "character"}}
 
-    async def _fake_records(result):
+    async def _fake_read(session, **kw):
         return [_rec(i) for i in range(2)]  # < limit
+
+    async def _fake_records(result):
+        if result == "isolated":
+            return []
+        return [_rec(i) for i in range(2)]
 
     @asynccontextmanager
     async def _fake_session(*a, **k):
         yield object()
 
-    monkeypatch.setattr(gst, "run_read", AsyncMock(return_value=object()))
+    # Three reads — edges through the repo seam, isolated + count through `run_read`. See the
+    # reconciliation note in the sibling test above.
+    async def _fake_run_read(session, cypher, **kw):
+        if "count(e) AS total" in cypher:
+            tag = _CountResult("total")
+            tag.total = 4
+            return tag
+        return "isolated"
+
+    monkeypatch.setattr(gst, "read_project_graph_edges", _fake_read)
+    monkeypatch.setattr(gst, "run_read", _fake_run_read)
     monkeypatch.setattr(gst, "_records", _fake_records)
-    monkeypatch.setattr(gst, "neo4j_session", _fake_session)
+    monkeypatch.setattr(gst, "graph_session", _fake_session)
     monkeypatch.setattr(gst, "_deprecated_edge_codes", AsyncMock(return_value=[]))
 
     res = await execute_tool(_ctx(), "kg_graph_query", {"limit": 3})
@@ -1830,23 +1901,23 @@ async def test_kg_entity_edge_timeline_overfetches_and_signals_truncation(monkey
 
     seen = {}
 
-    async def _fake_run_read(session, cypher, **kw):
+    # The read moved to `graph_repos/graph_views.py` (plan T17), and the seam collapsed
+    # with it: one repo call RETURNS the rows, where before it was run_read + _records.
+    # Patching run_read here would patch nothing, and the over-fetch assertion — the whole
+    # point of this test — would silently stop being checked.
+    async def _fake_read(session, **kw):
         seen["limit"] = kw.get("limit")
-        return object()
+        return [_rec(i) for i in range(4)]
 
     def _rec(i):
         return {"rel": {"predicate": "allies", "valid_from": i}, "obj": {"id": f"o{i}", "name": f"O{i}"}}
-
-    async def _fake_records(result):
-        return [_rec(i) for i in range(4)]  # limit+1 → cap bites at limit=3
 
     @asynccontextmanager
     async def _fake_session(*a, **k):
         yield object()
 
-    monkeypatch.setattr(gst, "run_read", _fake_run_read)
-    monkeypatch.setattr(gst, "_records", _fake_records)
-    monkeypatch.setattr(gst, "neo4j_session", _fake_session)
+    monkeypatch.setattr(gst, "read_entity_edge_timeline", _fake_read)
+    monkeypatch.setattr(gst, "graph_session", _fake_session)
     monkeypatch.setattr(gst, "_resolve_entity_project_grant", AsyncMock())
 
     res = await execute_tool(

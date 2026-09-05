@@ -47,7 +47,11 @@ concurrency:
 jobs:
   all-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 25 -> 40: this job now provisions a Rust toolchain and compiles for the
+    # four cargo gates above. The prior run took ~7 min with every one of them
+    # failing instantly on the missing toolchain, so 25 was never measured
+    # against the work actually being done.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,10 +62,52 @@ jobs:
         with:
           python-version: "3.12"
 
+      # SEVEN gates need PyYAML and this job never installed it. Measured on run
+      # 31778713548: `authorable-surface-gate`, `generation-guard-gate`,
+      # `slo-latency-lint`, `live-suite-registry-gate` and three `test_*` gates
+      # all RED, four of them as a bare `Traceback`. They are GREEN on a dev box
+      # because a dev box has it — which is the worst version of this: the local
+      # sweep says 91 GREEN and CI says otherwise, and the sweep is the one that
+      # is wrong. The gates read YAML SoT files (`contracts/**.yaml`); the
+      # dependency is real, not incidental.
+      - name: install the gates' Python dependencies
+        run: python -m pip install --quiet pyyaml
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
           cache: false
+
+      # The PyYAML story above, repeated in Rust — and found the same way.
+      # Measured on run 33881838120: FOUR gates RED in this job, all of them
+      # cargo-dependent and none of them failing for a reason about the code:
+      #
+      #   dp-aggregate-gate.py   error: the 'cargo' binary, normally provided
+      #                          by the 'cargo' component, is not applicable
+      #                          to the '1.89.0-x86_64-...' toolchain
+      #   crate-purity-gate.py   `cargo metadata` failed
+      #   dp-oracle-bite-gate.py / dp-slice5c-bite-gate.py
+      #
+      # `ubuntu-latest` ships rustup, so `cargo` RESOLVES and the gates run —
+      # but `rust-toolchain.toml` pins `1.89.0`, which is not installed here,
+      # so every cargo call dies on the shim. This job had no Rust setup at
+      # all; the three `rust-toolchain@` uses in this file are all in the OTHER
+      # jobs. All four gates pass locally against cargo 1.89.0.
+      #
+      # 🔴 Provision, do not skip. Letting them SKIP without cargo would take
+      # four real static gates out of CI silently, which is the failure the
+      # gate-wiring-gate exists to prevent.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+      - uses: Swatinem/rust-cache@v2
+
+      # `dp-control-plane`'s build.rs compiles `contracts/proto/*.proto` with
+      # tonic-build, which shells out to `protoc`. NO workflow in this repo
+      # installed it, so every job that compiles the workspace died on
+      # `Could not find protoc`. See foundation-ci.yml for the same step.
+      - name: install protoc (dp-control-plane's build.rs needs it)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler
 
       # This job installed NOTHING, and eleven gates were reported FAILED for it.
       # Nine of those eleven were the runner discovering an absent import, not a gate
@@ -78,6 +124,30 @@ jobs:
       - name: gate script dependencies
         run: python -m pip install --upgrade pip && python -m pip install pyyaml pytest
 
+      # 🔴 `agentruntime-membrane-gate` IMPORTS `app.agentruntime` rather than reading it as
+      # text, and that package imports `pydantic_ai` at module scope — a DELIBERATE dependency
+      # the gate itself allowlists. Without chat-service's requirements it fails on its first
+      # line with `ModuleNotFoundError("No module named 'pydantic_ai'")`, and after T2 it was
+      # the LAST red gate left in this job. Same step the lint-foundation matrix and the
+      # agentruntime-census job carry, for the same reason.
+      # 🔴 `requirements-test.txt`, NOT `requirements.txt`, AND THE DIFFERENCE IS ONE
+      # PACKAGE THAT DECIDES A GATE. `agentruntime-census` copies the tree and runs the
+      # chat-service suite to establish a green baseline BEFORE injecting anything. Without
+      # `pytest-asyncio` (declared only in requirements-test.txt) every async fixture errors:
+      #
+      #     ERROR tests/test_cp3_plan_db.py::...::test_A_SECOND_LIVE_PLAN_IS_UNREPRESENTABLE
+      #     - Failed: requested an async fixture 'conn', with no plugin or hook to run it
+      #     SELFTEST FAIL: the suite is not green before any injection
+      #
+      # The census then reports FAIL, and it is right to: it cannot measure an injection
+      # against a baseline that is already red. The suite passes locally and in
+      # `chat-service (pytest, unit)` because BOTH install requirements-test.txt; this job
+      # installed only the runtime half. `-r requirements-test.txt` pulls in
+      # `-r requirements.txt` on its first line, so this is one file, not two.
+      - name: chat-service deps (the gates that IMPORT app.agentruntime)
+        working-directory: services/chat-service
+        run: python -m pip install --quiet -r requirements-test.txt
+
       # The registry has to be honest before its verdicts mean anything: the
       # scope is still a predicate, every exemption carries a reason, every
       # KNOWN_RED row names a deferral, and this runner is wired.
@@ -91,3 +161,132 @@ jobs:
 
       - name: run every gate
         run: python scripts/gate-wiring-gate.py --run-all
+
+      # ...and every gate's OWN self-test, which `--run-all` does not reach: it
+      # invokes each gate with NO ARGUMENTS, so it exercises normal mode only.
+      # A review measured the consequence — the non-vacuity cases these gates
+      # cite as proof that "every rule bites" ran nowhere automatically, so
+      # deleting a case, or one silently starting to fail, reddened nothing.
+      # The pre-commit hook runs this too; CI is what covers a `--no-verify`.
+      #
+      # Discovered, never enumerated: the first remedy named three gates and
+      # reached three of sixteen.
+      - name: every gate's self-test
+        run: python scripts/gate-self-tests.py
+
+      # ...and a self-test's claim that "every rule bites" is a claim like any
+      # other. This mutates each gate's production rules one at a time and
+      # requires the self-test to go RED. It has found a survivor in every round
+      # since it was written, including in its own fixes.
+      #
+      # `--no-cargo` STRIPS the toolchain from the child's environment rather
+      # than assuming this image lacks one. The previous version of this step
+      # asserted "this runner has no Rust toolchain", which is verified by
+      # nothing and is false on `ubuntu-latest` — so its timing justification was
+      # void, and the sibling claim that "CI checks it" would have been the
+      # false branch. The harness now decides the condition. Measured under it:
+      # every gate mutation red in well under a minute.
+      #
+      # NOT in the pre-commit hook: with a toolchain present it takes ~11
+      # minutes, essentially all of it `cargo test` inside the figures gate's
+      # self-test.
+      - name: every gate's rules, mutated
+        run: python scripts/gate-bite-harness.py --no-cargo
+
+  # The Rust half is a SEPARATE job because it needs the opposite environment:
+  # it mutates `crates/actor-hub` in place and asserts that a named test reds,
+  # so it requires a toolchain rather than the absence of one. It was built in
+  # one round and wired in none — "defined, given a parameter, and never wired",
+  # which is the defect that round's own commit message names.
+  rust-mutations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: crates/actor-hub, mutated
+        run: python scripts/gate-bite-harness.py --rust
+
+  # The reality layer's own guards, mutated (W3 + W5).
+  #
+  # SEPARATE from `rust-mutations` because it needs BOTH toolchains: the Go half
+  # mutates `admin reality provision` and the Rust half mutates
+  # `orphan_scan::classify`.
+  #
+  # Wired because it was not. A cold-start review of the W3 commit pointed out
+  # that `scripts/reality-layer-bite-harness.py` appeared in no workflow, hook or
+  # Makefile target — so it proved its ten guards load-bearing exactly once, on
+  # the author's machine, and constrained nothing afterwards. That is the same
+  # defect `gate-bite-harness.py`'s own header records ("the script existed only
+  # in a session scratchpad"), repeated by someone who had just read it.
+  reality-layer-mutations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: reality-layer guards, mutated
+        run: python scripts/reality-layer-bite-harness.py
+
+  # DP-R3 across the workspace (`2F`) — the custom clippy lint, plus the ratchet
+  # that makes its verdict binding.
+  #
+  # ITS OWN JOB, and the reason is a hard constraint rather than tidiness: this
+  # lint is a dylint cdylib, which needs `rustc_private` and therefore a NIGHTLY
+  # toolchain with rustc-dev. The workspace pins 1.89.0 STABLE on purpose —
+  # `crates/dp/tests/ui/*.stderr` record rustc's diagnostic prose verbatim, so a
+  # different rustc rewrites those files. The two toolchains must not meet, and
+  # `lints/dp-clippy/` is outside the workspace with its own rust-toolchain.toml
+  # for the same reason.
+  #
+  # `cargo-dylint`'s version must MATCH the `dylint_linting` the lint links.
+  # 3.1.2 against 3.5.1 fails with `could not find RunCompiler in rustc_driver`
+  # (the driver was compiled against a nightly whose API had moved), so the
+  # version here is pinned to the dependency, not to "latest".
+  dp-clippy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-09-12
+          components: rustc-dev, llvm-tools, rust-src
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            lints/dp-clippy
+
+      # `dp-clippy-gate.py` sweeps DP-R3 across the WORKSPACE, which compiles
+      # `dp-control-plane` and so needs protoc. See foundation-ci.yml.
+      - name: install protoc (dp-control-plane's build.rs needs it)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler
+
+      - name: install cargo-dylint (version pinned to dylint_linting)
+        run: |
+          cargo install cargo-dylint --version 3.5.1 --locked
+          cargo install dylint-link --version 3.5.1 --locked
+
+      # FIRST, and deliberately: prove the lint fires, stays quiet on clean
+      # code, exempts a crate carrying the dp-crate marker, and REDS on the
+      # same crate without it. A workspace sweep by a lint that cannot fire is
+      # the failure this repo has shipped repeatedly; the sweep below means
+      # nothing until this step has passed.
+      - name: the lint, proven non-vacuous
+        run: cd lints/dp-clippy && ./run-lint.sh --self-test
+
+      - name: DP-R3 across the workspace, ratcheted
+        run: python scripts/dp-clippy-gate.py

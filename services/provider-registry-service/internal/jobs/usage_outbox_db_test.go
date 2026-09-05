@@ -296,7 +296,7 @@ func TestDrainOnce_RoutesToStreamsAndMarksPublished(t *testing.T) {
 
 	cols := []string{"id", "request_id", "owner_user_id", "campaign_id", "mcp_key_id", "model_source",
 		"model_ref", "operation", "input_tokens", "output_tokens", "cost_usd",
-		"request_status", "request_payload", "response_payload"}
+		"request_status", "request_payload", "response_payload", "provider_kind"}
 	mcpKey := uuid.NewString()
 	db.ExpectBegin()
 	// campaign_id + mcp_key_id + cost_usd + the #32 status/payload cols scan into *string
@@ -306,12 +306,13 @@ func TestDrainOnce_RoutesToStreamsAndMarksPublished(t *testing.T) {
 	respPay := `{"out":1}`
 	db.ExpectQuery("SELECT").WithArgs(anyArgs(1)...).WillReturnRows(
 		pgxmock.NewRows(cols).
-			AddRow(int64(1), req1, owner, &camp, &mcpKey, "user_model", modelRef, "translation", 10, 5, &cost1, &okStatus, &reqPay, &respPay).
-			AddRow(int64(2), req2, owner, (*string)(nil), (*string)(nil), "user_model", modelRef, "chat", 3, 2, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil)),
+			AddRow(int64(1), req1, owner, &camp, &mcpKey, "user_model", modelRef, "translation", 10, 5, &cost1, &okStatus, &reqPay, &respPay, "lm_studio").
+			// Row 2 keeps provider_kind "" — a row written before the column existed.
+			AddRow(int64(2), req2, owner, (*string)(nil), (*string)(nil), "user_model", modelRef, "chat", 3, 2, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil), ""),
 	)
 
-	f1 := buildUsageFields(req1, owner, camp, mcpKey, "user_model", modelRef, "translation", "0.001", 10, 5, "success", reqPay, respPay)
-	f2 := buildUsageFields(req2, owner, "", "", "user_model", modelRef, "chat", "", 3, 2, "", "", "")
+	f1 := buildUsageFields(req1, owner, camp, mcpKey, "user_model", modelRef, "translation", "0.001", 10, 5, "success", reqPay, respPay, "lm_studio")
+	f2 := buildUsageFields(req2, owner, "", "", "user_model", modelRef, "chat", "", 3, 2, "", "", "", "")
 	// Row 1: usage + campaign. Row 2: usage only. #32 — the campaign stream gets the
 	// payload-STRIPPED fields (campaignFields); the usage stream keeps them.
 	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "u", MaxLen: 10, Approx: true, Values: f1}).SetVal("1-0")

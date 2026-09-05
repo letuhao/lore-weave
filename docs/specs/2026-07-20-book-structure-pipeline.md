@@ -1,8 +1,25 @@
 # Book Structure Pipeline — centralize the scattered manuscript entity model
 
-**Status:** DRAFT v2 — design cycle, 2026-07-20. Adversarially reviewed (3 cold-start reviewers:
-data-flow, business/lifecycle, UI/UX → ~30 grounded findings, folded in below). For final review.
+**Status:** ✅ **SHIPPED** — built 2026-07-20/21 and closed by the audit-fix cycle (`87bdc3853`
+*"all gaps cleared, no debts"*; see also `0d03d4270`, `217652220`, `794ee3ad9`, `0efb73427`). The
+build board is [`docs/plans/2026-07-20-book-structure-pipeline-plan.md`](../plans/2026-07-20-book-structure-pipeline-plan.md),
+which reads **ALL CLEARED**.
+
+> **This line said *"DRAFT v2 — design cycle … For final review. No code in this pass"* for three
+> weeks after the code shipped.** Corrected 2026-08-12, and found by MEASUREMENT rather than by
+> reading: a sweep comparing every spec's declared status against the git history of commits naming
+> it returned exactly one hit across 260 specs, and this was it. Left visible because it is the
+> evidence for `CR-PROSE-CLAIMS` — the gate shipped in `e66eb7d9d` measures figures, and a status
+> line is prose, so nothing in this repo would ever have said so.
+
+<details>
+<summary>The original status line.</summary>
+
+DRAFT v2 — design cycle, 2026-07-20. Adversarially reviewed (3 cold-start reviewers: data-flow,
+business/lifecycle, UI/UX → ~30 grounded findings, folded in below). For final review.
 **No code in this pass.**
+
+</details>
 
 **Origin:** dogfood Bug 4 (a manuscript *Part* vanishes after reload). Root-caused to scattered
 book-structure ownership + an implicit Work-coupling + a **silent read-skip**. Confirmed against the

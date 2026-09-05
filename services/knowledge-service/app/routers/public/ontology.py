@@ -42,8 +42,8 @@ from app.clients.glossary_ontology_client import (
 from app.config import settings
 from app.db.ontology_models import GraphSchema
 from app.clients.llm_client import get_llm_client
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.schema_usage import (
+from app.db.graph import graph_session
+from app.db.graph_repos.schema_usage import (
     count_component_usage,
     observed_components,
     usage_summary,
@@ -442,7 +442,7 @@ async def get_schema_component_usage(
     edge_type (real graph elements); `counted=false` for the fuzzier fact/vocab
     types (the caller shows a plain confirm). Project DELETE only soft-deprecates,
     so this is an informational "N still reference it", not a data-loss gate."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         count = await count_component_usage(
             session, user_id=str(owner), project_id=str(project_id),
             node_type=node_type, code=code,
@@ -458,7 +458,7 @@ async def get_schema_usage_summary(
     """M1 — all node-kind + edge-type usage counts in ONE read (inline "· used by N"
     badges). View-gated. `{node_kind: {code: n}, edge_type: {code: n}}`; an absent
     code = 0 graph elements."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         return await usage_summary(session, user_id=str(owner), project_id=str(project_id))
 
 
@@ -471,7 +471,7 @@ async def get_schema_observed(
     contains (to promote into the schema). View-gated. `{node_kinds:[{code,count}],
     edge_types:[{code,count,source_kinds,target_kinds}]}`. Empty when the project
     hasn't been extracted."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         return await observed_components(session, user_id=str(owner), project_id=str(project_id))
 
 

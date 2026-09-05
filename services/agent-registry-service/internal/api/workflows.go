@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -79,7 +80,7 @@ type proposeWorkflowIn struct {
 	Slug        string            `json:"slug" jsonschema:"lowercase a-z0-9- slug, 2-64 chars (unique per tier)"`
 	Title       string            `json:"title" jsonschema:"human title (one line)"`
 	Description string            `json:"description" jsonschema:"one-line description shown in the L1 menu (required)"`
-	Surfaces    []string          `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate, admin)"`
+	Surfaces    []string          `json:"surfaces,omitempty" jsonschema:"surfaces where this workflow is advertised (book, editor, studio)"`
 	Inputs      map[string]string `json:"inputs,omitempty" jsonschema:"declared inputs: name -> 'required' | 'optional'"`
 	Steps       []workflowStepIn  `json:"steps" jsonschema:"ordered tool steps (C3) — at least one"`
 	NotesMD     string            `json:"notes_md,omitempty" jsonschema:"prose the agent reads (gotchas, plain-language framing) — NOT executed"`
@@ -96,9 +97,9 @@ type updateWorkflowIn struct {
 	Slug        string            `json:"slug" jsonschema:"the slug of the workflow to update (your own, or a book-tier one you can edit)"`
 	Title       string            `json:"title,omitempty" jsonschema:"new title"`
 	Description string            `json:"description,omitempty" jsonschema:"new description"`
-	Surfaces    []string          `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate, admin)"`
+	Surfaces    []string          `json:"surfaces,omitempty" jsonschema:"surfaces where this workflow is advertised (book, editor, studio)"`
 	Inputs      map[string]string `json:"inputs,omitempty" jsonschema:"declared inputs: name -> 'required' | 'optional'"`
-	Steps       []workflowStepIn  `json:"steps" jsonschema:"ordered tool steps (C3) — at least one"`
+	Steps       []workflowStepIn  `json:"steps,omitempty" jsonschema:"ordered tool steps (C3) — omit to keep the current ones"`
 	NotesMD     string            `json:"notes_md,omitempty"`
 	BookID      string            `json:"book_id,omitempty" jsonschema:"set to update a BOOK-tier workflow of that book (needs ≥edit grant); omit to update your own personal workflow"`
 	SessionID   string            `json:"session_id,omitempty"`
@@ -143,8 +144,21 @@ func validateWorkflow(in *workflowInput) (string, bool) {
 	if strings.TrimSpace(in.Description) == "" {
 		return "description is required", false
 	}
-	if bad := invalidSurface(in.Surfaces); bad != "" {
-		return "invalid surface '" + bad + "' — must be one of: chat, compose, translate, admin", false
+	// 🔴 THIS CALLED THE *SKILL* SURFACE CHECKER, AND THE TOOL WAS UNCALLABLE BECAUSE OF IT.
+	// `invalidSurface` tests against validSurfaces — {chat, compose, translate, admin}, the
+	// SKILL vocabulary — while this tool PUBLISHES enumWorkflowSurfaces, which is derived from
+	// validWorkflowSurfaces = {book, editor, studio} and is what the migrations seed. The two
+	// share no members, so registry_propose_workflow could not be called with ANY surfaces
+	// value: a caller obeying the published schema was refused by the validator, and a caller
+	// obeying the validator was refused by the schema. Measured live 2026-09-01 by direct probe.
+	//
+	// The vocabulary was never in doubt — migrate.go seeds '{book,editor,studio}',
+	// TestWorkflowSurfaceVocabularyIsTheSeededOne pins it, and another test already guards
+	// against a skill surface LEAKING INTO the list. What nothing guarded was this call site
+	// using the wrong list entirely.
+	if bad := invalidWorkflowSurface(in.Surfaces); bad != "" {
+		return "invalid surface '" + bad + "' — must be one of: " +
+			strings.Join(validWorkflowSurfaces, ", "), false
 	}
 	for name, req := range in.Inputs {
 		if strings.TrimSpace(name) == "" {
@@ -178,6 +192,17 @@ func validateWorkflow(in *workflowInput) (string, bool) {
 		// such a tool guarantees a broken run. An *unproven* tool only warns (see
 		// livenessWarnings). A tool the model merely fails to SELECT is fine here, because
 		// a workflow step names its tool directly — no selection is involved. See liveness.go.
+		// DQ-T37 (owner 2026-08-31) — reject a name the platform has never heard of, BEFORE
+		// the known-broken check: "does not exist" is a more basic answer than "is broken",
+		// and a hallucinated name would otherwise fall through both gates into the store as
+		// a recipe nobody can run. Measured: 3 of 10 proposed steps named `chapter_compose`.
+		if toolUnknown(st.Tool) {
+			return where + " ('" + st.ID + "'): tool '" + st.Tool + "' does not exist. No " +
+				"federated tool has that name (checked against contracts/tool-names.json). " +
+				"List the real names with tool_list, or registry_list_workflows to copy a " +
+				"step from a workflow that runs. If the tool is NEW, regenerate the contract " +
+				"with scripts/toolloop/tool_names.py.", false
+		}
 		if toolBlocked(st.Tool) {
 			return where + " ('" + st.ID + "'): tool '" + st.Tool + "' is known-broken — it " +
 				"fails when called with valid arguments (liveness gate G3/capability). " +
@@ -246,8 +271,28 @@ func inputsToJSON(m map[string]string) []byte {
 
 // ── MCP tools (registered in mcpHandler) ────────────────────────────────────
 
+// validWorkflowSurfaces is the closed set of surfaces a WORKFLOW advertises itself on.
+// Deliberately NOT skills.go's validSurfaces: a skill lives on chat/compose/translate/
+// admin, a workflow lives on book/editor/studio (see the seeds in migrate.go). The MCP
+// list tool borrowed the skill set, so its `surface` enum offered four values that NO
+// workflow advertises — every filter value matched only the two workflows with an empty
+// (unrestricted) surface list, and the ten that declare one were unreachable.
+var validWorkflowSurfaces = []string{"book", "editor", "studio"}
+
+// invalidWorkflowSurface returns the first surface that is not a WORKFLOW surface, or "".
+// Deliberately separate from `invalidSurface`: the two vocabularies share no members, and the
+// one-word difference between the function names is the whole defect this pair records.
+func invalidWorkflowSurface(surfaces []string) string {
+	for _, s := range surfaces {
+		if !slices.Contains(validWorkflowSurfaces, s) {
+			return s
+		}
+	}
+	return ""
+}
+
 type listWorkflowsIn struct {
-	Surface string `json:"surface,omitempty" jsonschema:"filter to workflows advertised on this surface: chat | compose | translate | admin — omit to see all; do not send an empty string"`
+	Surface string `json:"surface,omitempty" jsonschema:"filter to workflows advertised on this surface: book | editor | studio — omit to see all; do not send an empty string"`
 }
 type workflowMeta struct {
 	Slug        string `json:"slug"`
@@ -441,8 +486,26 @@ func (s *Server) toolUpdateWorkflow(ctx context.Context, _ *mcp.CallToolRequest,
 		Surfaces: in.Surfaces, Inputs: in.Inputs, Steps: in.Steps, NotesMD: in.NotesMD,
 		BookID: in.BookID,
 	}
-	if pIn.Description == "" {
-		_ = s.db.QueryRow(ctx, `SELECT description FROM workflows WHERE workflow_id=$1`, id).Scan(&pIn.Description)
+	// Keep whatever the caller did not mention. The description promises "the new
+	// title/description/inputs/steps", i.e. a PARTIAL update, but only `description` was
+	// back-filled: a title-only update blanked the title it did not send, and `steps` was
+	// required outright, so the caller had to resend the whole step list to fix a typo.
+	// Same shape as registry_update_skill's body_md (#291), fixed the same way.
+	if pIn.Description == "" || pIn.Title == "" || len(pIn.Steps) == 0 {
+		var curDesc, curTitle string
+		var curSteps []workflowStepIn
+		_ = s.db.QueryRow(ctx,
+			`SELECT description, title, steps FROM workflows WHERE workflow_id=$1`, id).
+			Scan(&curDesc, &curTitle, &curSteps)
+		if pIn.Description == "" {
+			pIn.Description = curDesc
+		}
+		if pIn.Title == "" {
+			pIn.Title = curTitle
+		}
+		if len(pIn.Steps) == 0 {
+			pIn.Steps = curSteps
+		}
 	}
 	wfIn, msg := pIn.normalize()
 	if msg != "" {

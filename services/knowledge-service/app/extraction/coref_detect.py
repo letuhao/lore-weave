@@ -28,8 +28,9 @@ import logging
 from dataclasses import dataclass, field
 from itertools import combinations
 
-from app.db.neo4j_helpers import CypherSession, run_read
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from app.db.neo4j_helpers import CypherSession
+from app.db.graph_repos import coref as coref_repo
+from loreweave_extraction.canonical import canonicalize_entity_name
 from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
@@ -437,26 +438,12 @@ async def detect_from_records(
     return await _propose_and_tally(glossary, book_id, candidates)
 
 
-# ── Neo4j loader (thin; live-smoke covered) ────────────────────────────────────
-
-_LOAD_CYPHER = """
-MATCH (e:Entity {user_id: $user_id, kind: $kind})
-WHERE e.project_id = $project_id AND e.glossary_entity_id IS NOT NULL
-OPTIONAL MATCH (e)-[r:RELATES_TO]-(n:Entity)
-  WHERE r.user_id = $user_id AND r.valid_until IS NULL
-WITH e, collect(DISTINCT n.id) AS neighbor_ids
-RETURN e.glossary_entity_id AS gid, e.name AS name, e.aliases AS aliases,
-       e.mention_count AS mentions, neighbor_ids AS neighbor_ids
-ORDER BY mentions DESC
-LIMIT $limit
-"""
-
-
-_KINDS_CYPHER = """
-MATCH (e:Entity {user_id: $user_id})
-WHERE e.project_id = $project_id AND e.glossary_entity_id IS NOT NULL
-RETURN DISTINCT e.kind AS kind
-"""
+# ── Neo4j loaders ─────────────────────────────────────────────────────────────
+#
+# The Cypher moved to `app.db.graph_repos.coref` (plan T12). What stays here is the
+# mapping from a graph row to this module's frozen `CorefEntity` — the domain type the
+# scoring functions take. Keeping the type on THIS side is deliberate: the repo returning
+# it would make `app.db` import `app.extraction`, and the dependency runs the other way.
 
 
 async def load_anchored_kinds(
@@ -464,37 +451,27 @@ async def load_anchored_kinds(
 ) -> list[str]:
     """Distinct kinds of anchored entities in the project — the default scope
     when the detect request omits an explicit `kinds` list."""
-    result = await run_read(session, _KINDS_CYPHER, user_id=user_id, project_id=project_id)
-    kinds: list[str] = []
-    async for row in result:
-        k = row.get("kind")
-        if k:
-            kinds.append(str(k))
-    return kinds
+    return await coref_repo.load_anchored_kinds(
+        session, user_id=user_id, project_id=project_id
+    )
 
 
 async def _load_coref_entities(
     session: CypherSession, *, user_id: str, project_id: str, kind: str, limit: int
 ) -> list[CorefEntity]:
-    result = await run_read(
-        session, _LOAD_CYPHER,
-        user_id=user_id, project_id=project_id, kind=kind, limit=limit,
+    rows = await coref_repo.load_coref_entities(
+        session, user_id=user_id, project_id=project_id, kind=kind, limit=limit,
     )
-    out: list[CorefEntity] = []
-    async for row in result:
-        gid = row.get("gid")
-        if not gid:
-            continue
-        out.append(
-            CorefEntity(
-                entity_id=str(gid),
-                name=row.get("name") or "",
-                aliases=tuple(row.get("aliases") or ()),
-                mention_count=int(row.get("mentions") or 0),
-                neighbor_ids=frozenset(str(n) for n in (row.get("neighbor_ids") or []) if n),
-            )
+    return [
+        CorefEntity(
+            entity_id=row["gid"],
+            name=row["name"],
+            aliases=tuple(row["aliases"]),
+            mention_count=row["mentions"],
+            neighbor_ids=frozenset(row["neighbor_ids"]),
         )
-    return out
+        for row in rows
+    ]
 
 
 async def detect_and_propose(

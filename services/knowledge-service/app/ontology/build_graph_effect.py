@@ -5,11 +5,12 @@ The MCP tool mints a `DESC_BUILD_GRAPH` token (resolves the project's embedding 
 
   * ``preview_build_graph`` — re-renders the human-facing card from CURRENT state: the
     item counts + an estimated cost range (same math as the REST estimate endpoint), plus
-    a warning when the embedding benchmark hasn't passed (so the human doesn't confirm a
-    job the gate will reject).
+    a warning when the embedding benchmark hasn't passed. That warning is INFORMATIONAL:
+    K17.9 has been advisory since 2026-07-27 (see the rationale in extraction.py's start
+    core) and does NOT block the confirm — the card must not imply otherwise.
   * ``apply_build_graph`` — delegates to the SAME ``_start_extraction_job_core`` the REST
-    start endpoint uses (no logic fork), returning the job id. The K17.9 benchmark gate +
-    active-job/scope guards live in that core and surface as HTTPExceptions.
+    start endpoint uses (no logic fork), returning the job id. The active-job/scope guards
+    live in that core and surface as HTTPExceptions; the benchmark only logs.
 
 The heavy deps (jobs/benchmark repos, book client, extraction wake) are injected by the
 confirm/preview routes (FastAPI DI) — the MCP tool never touches them.
@@ -70,7 +71,7 @@ async def apply_build_graph(
     spend_cap_usd: float | None = None,
 ) -> dict:
     """Start the extraction job via the shared core. Returns {job_id, status, scope}.
-    HTTPExceptions from the core (benchmark gate 409, active-job 409, scope 422) propagate
+    HTTPExceptions from the core (active-job 409, scope 422) propagate
     to the confirm route. The owner drives the graph partition (caller=None → owner-paid)."""
     body = StartJobRequest(
         scope=params.scope,
@@ -124,11 +125,19 @@ async def preview_build_graph(
     low = (base * Decimal("0.7")).quantize(Decimal("0.01"))
     high = (base * Decimal("1.3")).quantize(Decimal("0.01"))
 
-    # Benchmark warning (the gate runs at confirm; surface it pre-confirm so the human
-    # doesn't burn the token on a job the core will 409).
+    # Benchmark warning — ADVISORY. The core stopped 409-ing on this on 2026-07-27; the
+    # row stays because "retrieval quality unverified for this model" is worth telling a
+    # human who is about to spend, but it must be worded as a fact, not as a block.
     benchmark_ok = True
     if project.embedding_model:
-        latest = await benchmark_repo.get_latest(owner, project.project_id, project.embedding_model)
+        # MODEL-scoped, not project-scoped. kg_run_benchmark runs on a hidden per-(user, model)
+        # sandbox project (`__benchmark__:<model>`) and records the run under THAT project_id, so
+        # a project-scoped `get_latest(owner, project.project_id, …)` could never match one — the
+        # warning row stayed lit on every preview no matter how many times the user benchmarked.
+        # `get_latest_for_model` is the lookup written for exactly this ("a passing run on the
+        # user's hidden benchmark sandbox unlocks every project using the same model"), and it is
+        # what the extraction-start advisory already uses, so card and core now read one source.
+        latest = await benchmark_repo.get_latest_for_model(owner, project.embedding_model)
         benchmark_ok = latest is not None and latest.passed
 
     chapters_note = "chapter extraction"
@@ -143,7 +152,10 @@ async def preview_build_graph(
     if not benchmark_ok:
         rows.append({
             "label": "⚠ benchmark", "value": "not passing",
-            "note": "run the embedding benchmark in extraction setup first — confirm will be rejected otherwise",
+            "note": "retrieval quality is UNVERIFIED for this embedding model — "
+                    "the build will still run "
+                    "(the benchmark is advisory since 2026-07-27, not a gate); "
+                    "kg_run_benchmark rates it if you want to know before spending",
         })
     return {
         "descriptor": "kg_build_graph",

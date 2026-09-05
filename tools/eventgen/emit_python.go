@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/loreweave/foundation/contracts/events"
@@ -40,6 +41,22 @@ func EmitPython(reg *events.Registry, outDir string) error {
 	for _, l := range initLines {
 		ib.WriteString(l + "\n")
 	}
+	// Event-type NAME constants (T30/OD-1, 2026-08-12) — the Python half of the
+	// same surface `emit_go.go` adds. Without it the three PYTHON consumers of
+	// glossary.* would keep hand-declaring their own literals even after the Go
+	// side stopped, which would leave the parallel-list problem half-solved and
+	// harder to see: the remaining copies would be in a different language from
+	// the owner, so no compiler or linter relates them.
+	//
+	// UPPER_SNAKE with an EVENT_ prefix, mirroring the Go `Event` prefix.
+	ib.WriteString("\n# Event-type name constants, generated from the registry.\n")
+	ib.WriteString("# Import these instead of writing the literal: a rename in the registry\n")
+	ib.WriteString("# changes this file, and a stale import raises ImportError at startup\n")
+	ib.WriteString("# rather than silently matching nothing at dispatch time.\n")
+	for _, n := range reg.EventTypes() {
+		ib.WriteString(fmt.Sprintf("%s = %q\n", pyEventConstName(n), n))
+	}
+
 	ib.WriteString("\n__all__ = [\n")
 	for _, l := range initExports {
 		ib.WriteString(l + "\n")
@@ -61,7 +78,7 @@ func renderPython(e *events.RegistryEntry, v uint32, structName string) string {
 	if len(imports) > 0 {
 		b.WriteString("\n")
 	}
-	b.WriteString("from typing import TypedDict\n\n\n")
+	b.WriteString("from typing import " + strings.Join(typingNames(fieldsForEvent(e.Name, v)), ", ") + "\n\n\n")
 	b.WriteString(fmt.Sprintf("class %s(TypedDict):\n", structName))
 	b.WriteString(fmt.Sprintf("    \"\"\"%s\"\"\"\n", e.Description))
 	for _, f := range fieldsForEvent(e.Name, v) {
@@ -85,4 +102,46 @@ func pythonImports(fields []Field) []string {
 	return out
 }
 
+// typingNames returns the `typing` symbols the rendered module actually uses,
+// always including TypedDict, sorted and de-duplicated.
+//
+// # Why this exists
+//
+// The import line was the literal `from typing import TypedDict`, and the
+// renderer's own comment says "we only import what fields actually need" —
+// which was true of `datetime` and false of everything in `typing`. The first
+// field typed `Any` produced a module that raises
+// `NameError: name 'Any' is not defined` on import, and the package barrel
+// re-exports every module, so importing the package would have failed.
+//
+// It survived because until `channel.turn_boundary` no field used a typing
+// symbol other than TypedDict: the hardcoded line was correct for every input
+// that existed, which is the definition of default-uncovered (`NV-3`). Derived
+// from the fields now, so the next new annotation cannot reintroduce it.
+func typingNames(fields []Field) []string {
+	need := map[string]bool{"TypedDict": true}
+	known := []string{"Any", "Optional", "List", "Dict", "Union", "Literal", "Sequence", "Mapping"}
+	for _, f := range fields {
+		for _, k := range known {
+			// Containment, so `Optional[Any]` pulls in both.
+			if strings.Contains(f.PythonType, k) {
+				need[k] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(need))
+	for k := range need {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // (snake() is defined in emit_rust.go and shared across emitters.)
+
+// pyEventConstName turns an event_type into a module-level Python constant name:
+// "glossary.entity_updated" -> "EVENT_GLOSSARY_ENTITY_UPDATED".
+func pyEventConstName(eventType string) string {
+	repl := strings.NewReplacer(".", "_", "-", "_")
+	return "EVENT_" + strings.ToUpper(repl.Replace(eventType))
+}

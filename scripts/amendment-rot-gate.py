@@ -358,12 +358,87 @@ def selftest() -> int:
         if check_retired_identifiers([upper]):
             failures.append("D: citation matching is case-sensitive — 'WAS' must count as much as 'was'")
 
+    # E - a RETIRED AMENDMENT ROW cited as if live.
+    #
+    # Fixtures come in PAIRS: the declaring doc (which may name its own row
+    # freely) and a citing doc. One file cannot test this, because the
+    # declaring-doc exemption would swallow the citation.
+    with tempfile.TemporaryDirectory() as td:
+        NL = chr(10)
+        decl = Path(td) / "owner.md"
+        decl.write_text(
+            "| ~~**ZZZ-R2**~~ | ~~narrow the field~~ **RETIRED 2026-01-01** |" + NL +
+            "| ~~**ZZZ-R7**~~ | ~~relax the cap~~ **RETIRED 2026-01-01** |" + NL,
+            encoding="utf-8",
+        )
+        if len(discover_retired_rows([decl])) != 2:
+            failures.append("E: discovery did not find both struck rows in the declaring doc")
+
+        live = Path(td) / "cite.md"
+        live.write_text("the field is narrowed to `MapKind` (`ZZZ-R2`)." + NL, encoding="utf-8")
+        if not check_retired_rows([decl, live]):
+            failures.append("E: did NOT red on a retired amendment row cited as current")
+
+        ok = Path(td) / "ok.md"
+        ok.write_text("`ZZZ-R2` was retired before it was applied." + NL, encoding="utf-8")
+        if check_retired_rows([decl, ok]):
+            failures.append("E: reded on a citation that names the retirement (false positive)")
+
+        # THE DISCRIMINATING CASE, and the whole reason the window is
+        # segmented. This is `36_map_architecture.md:147` verbatim in shape: a
+        # LIVE row's retirement word sits ~40 characters from a RETIRED row's
+        # id. A plain +/-160 window PASSES it, which is how the real defect
+        # survived three months. If this assertion ever goes green by default,
+        # the segmentation is disarmed and check E is worth nothing.
+        adjacent = Path(td) / "adjacent.md"
+        adjacent.write_text(
+            "`ChannelTier` is retired (`ZZZ-R1`) and `level_name` is narrowed "
+            "to `MapKind` (`ZZZ-R2`)." + NL,
+            encoding="utf-8",
+        )
+        if not check_retired_rows([decl, adjacent]):
+            failures.append(
+                "E: a NEIGHBOURING live row's retirement word excused a retired "
+                "row - the segmented window is disarmed, which is the exact "
+                "defect check E was written for"
+            )
+
+        # ...and the converse half of the same rule: two RETIRED rows cited
+        # together share one marker legitimately. Clipping between them
+        # produced a false positive on the ownership matrix on the first run.
+        together = Path(td) / "together.md"
+        together.write_text(
+            "twice before (`ZZZ-R2`/REC-93, `ZZZ-R7`/REC-96) a row marked "
+            "verified died on contact with its target." + NL,
+            encoding="utf-8",
+        )
+        if check_retired_rows([decl, together]):
+            failures.append("E: two retired rows sharing one marker reded (false positive)")
+
+        hatched = Path(td) / "hatched.md"
+        hatched.write_text(
+            "the field is narrowed by `ZZZ-R2`.  amendment-rot-gate: ok - quoting "
+            "the superseded text on purpose" + NL,
+            encoding="utf-8",
+        )
+        if check_retired_rows([decl, hatched]):
+            failures.append("E: the `amendment-rot-gate: ok` pragma did not exempt the line")
+
+        # META-BITE: with nothing retired anywhere, the check MUST report that
+        # it cannot fail rather than reporting success.
+        empty = Path(td) / "empty.md"
+        empty.write_text("nothing is retired here" + NL, encoding="utf-8")
+        if not check_retired_rows([empty]):
+            failures.append(
+                "E: an EMPTY retired set returned OK - a vacuous check that "
+                "certifies is worse than a missing one (NV-1)"
+            )
     if failures:
         print("SELFTEST FAILED — a check that cannot fail is not a check (NV-1):")
         for f in failures:
             print(f"  ✗ {f}")
         return 1
-    print("amendment-rot-gate selftest: OK — all 4 checks red on their defect and green without it")
+    print("amendment-rot-gate selftest: OK — all 5 checks red on their defect and green without it")
     return 0
 
 
@@ -537,6 +612,158 @@ def check_retired_identifiers(docs: list[Path]) -> list[str]:
     return out
 
 
+
+# ── check E — a RETIRED AMENDMENT ROW cited as if it were live ────────────────
+#
+# WHY THIS EXISTS, and it is measured rather than anticipated. On 2026-08-22 two
+# sites were found BY HAND that state a retired amendment's change as fact:
+#
+#   36_map_architecture.md:147  "`Channel.level_name: String` is narrowed to
+#                                `MapKind` (`SPG-R2`)"   -- in an AXIOM BODY
+#   MAP_001_map_foundation.md:183  "`SPG-R2` narrows ... and touches a LOCKED
+#                                file, so it carries its own claim"  -- FUTURE
+#                                TENSE, in a `//` comment, three months after
+#                                the row was retired the day it was written.
+#
+# Check D covers a retired IDENTIFIER (`ChannelTier`). An amendment ROW had no
+# equivalent, which is NV-3 -- "the scope never reaches it" -- and the same
+# shape check D's own `_retired_scan_docs()` docstring records being caught in.
+#
+# THREE THINGS MAKE THIS CHECK DIFFERENT FROM D, and each is load-bearing:
+#
+# 1. THE RETIRED SET IS DISCOVERED, NOT HAND-MAINTAINED. `RETIRED_IDENTS` is a
+#    dict someone must remember to update -- acceptable for identifiers, which
+#    are rare, and hopeless for amendment rows, which retire in the ordinary
+#    course of design. So the set is read from the corpus: a row whose id is
+#    struck through on a line that also carries a retirement marker. If that
+#    discovery ever returns EMPTY the check is vacuous, so an empty set is
+#    itself a FINDING (see `_EMPTY_DISCOVERY`), which is the meta-bite.
+#
+# 2. THE CITATION VOCABULARY OMITS `[A-Z]{2,5}-R\d+`. Check D's canonical hatch
+#    is "an amendment id is nearby". Here the SUBJECT is an amendment id, so
+#    reusing that vocabulary would match every occurrence and the check could
+#    never fail. Reusing `_RETIRE_CITATION` here would have shipped a gate that
+#    is green by construction.
+#
+# 3. THE WINDOW IS SEGMENTED BY THE NEIGHBOURING IDS, not merely +/-N chars.
+#    This is the whole reason the gate has teeth on the real defect. Line 147
+#    read:
+#        "`ChannelTier` is retired (`SPG-R1`) and `Channel.level_name: String`
+#         is narrowed to `MapKind` (`SPG-R2`)."
+#    A plain proximity window puts "retired" within 160 characters of `SPG-R2`
+#    and the rot passes. The word belongs to `SPG-R1`. So an occurrence's window
+#    is clipped at the nearest OTHER amendment id on each side: a citation
+#    excuses only the id in whose segment it falls. Bite-tested on that exact
+#    line below.
+_RETIRED_ROW_DECL = re.compile(r"~~\s*\*{0,2}(?P<id>[A-Z]{2,5}-R\d+)\*{0,2}\s*~~")
+_AMENDMENT_ID = re.compile(r"[A-Z]{2,5}-R\d+")
+# Deliberately WITHOUT the amendment-id alternative -- see note 2 above.
+_ROW_RETIRE_MARK = re.compile(
+    r"~~|⛔"
+    r"|retir|supersed|deprecat|absorb|correct|reversed|died|mis-diagnos"
+    r"|\b(?:was|were|had|proposed)\b"
+    # ML-4: the same language-neutral discipline as `_RETIRE_CITATION`. The
+    # canonical hatch here is `~~` or `⛔`, which need no vocabulary at all.
+    r"|khai tử|khai tu|đã bỏ|da bo|đã thay|da thay|thay thế|thay the"  # doc-language-gate: ok - the vocabulary IS the subject matter
+    r"|trước đây|truoc day|廃止|已废弃|已棄用",  # doc-language-gate: ok - ML-4 requires it
+    re.I,
+)
+# An explicit, REASONED hatch, same shape as `doc-language-gate`'s. A bare
+# allowlist would be a gate with no teeth; a pragma forces the author to say why
+# a retired id reads as current on that line.
+_ROW_PRAGMA = re.compile(r"amendment-rot-gate:\s*ok\b")
+# Documents whose SUBJECT IS the history of decisions. Excluding them is the
+# same line check D draws for `_HISTORY_DOCS`, extended by the two registers
+# that exist specifically to record retirements -- a REC register that could not
+# name a retired row would be unable to do its job.
+_ROW_HISTORY_DOCS = _HISTORY_DOCS | {
+    "_boundaries/_LOCK.md",
+    "19_reconciliation_register.md",
+}
+_EMPTY_DISCOVERY = (
+    "check E discovered ZERO retired amendment rows, so it cannot fail. Either "
+    "`_RETIRED_ROW_DECL` no longer matches how a retirement is written, or the "
+    "scan scope stopped reaching the amendment tables. A vacuous check is a "
+    "worse outcome than a missing one, because it certifies."
+)
+
+
+def discover_retired_rows(docs: list[Path]) -> dict[str, str]:
+    """Amendment ids struck through on a line that also cites a retirement."""
+    out: dict[str, str] = {}
+    for p in docs:
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for line in text.splitlines():
+            if not _ROW_RETIRE_MARK.search(line):
+                continue
+            for m in _RETIRED_ROW_DECL.finditer(line):
+                out.setdefault(m.group("id"), p.name)
+    return out
+
+
+def check_retired_rows(docs: list[Path]) -> list[str]:
+    retired = discover_retired_rows(docs)
+    if not retired:
+        return [_EMPTY_DISCOVERY]
+
+    out: list[str] = []
+    for p in docs:
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        try:
+            track_rel = p.relative_to(TRACK).as_posix()
+        except ValueError:
+            track_rel = p.name
+        if track_rel in _ROW_HISTORY_DOCS:
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if _ROW_PRAGMA.search(line):
+                continue
+            ids = [(m.start(), m.end(), m.group(0)) for m in _AMENDMENT_ID.finditer(line)]
+            for k, (a, b, name) in enumerate(ids):
+                if name not in retired:
+                    continue
+                # The declaring document may name its own row freely; that is
+                # where the retirement is recorded.
+                if p.name == retired[name]:
+                    continue
+                # Clip at a NEIGHBOURING ID ONLY IF THAT ID IS NOT ITSELF
+                # RETIRED. The clip exists so one row's marker cannot excuse an
+                # UNRELATED row (the `SPG-R1`/`SPG-R2` case in the docstring).
+                # Two retired rows cited together -- "(`SPG-R2`/REC-93,
+                # `SPG-R7`/REC-96) ... both died on contact" -- legitimately
+                # SHARE one marker, and clipping between them flagged that
+                # sentence in the ownership matrix. Refined after the check's
+                # first real run: the discriminating case is a LIVE neighbour,
+                # and both halves are bite-tested in `--selftest`.
+                def _clip(idx: int, default: int) -> int | None:
+                    if not (0 <= idx < len(ids)):
+                        return default
+                    return None if ids[idx][2] in retired else (
+                        ids[idx][1] if idx < k else ids[idx][0]
+                    )
+
+                lo_edge = _clip(k - 1, 0)
+                hi_edge = _clip(k + 1, len(line))
+                lo = max(lo_edge if lo_edge is not None else 0, a - _CITE_WINDOW)
+                hi = min(hi_edge if hi_edge is not None else len(line), b + _CITE_WINDOW)
+                if _ROW_RETIRE_MARK.search(line[lo:a] + line[b:hi]):
+                    continue
+                out.append(
+                    f"{_rel(p)}:{lineno}: RETIRED amendment row `{name}` "
+                    f"(retired in {retired[name]}) cited as if live — nothing "
+                    f"between it and its neighbouring ids marks it retired, so "
+                    f"it reads as current or pending work:" + chr(10) + "      "
+                    f"{line[max(0, a - 90): b + 90].strip()[:150]}"
+                )
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--selftest", action="store_true", help="prove each check can fail")
@@ -558,6 +785,7 @@ def main() -> int:
         + check_prefix_registration(docs, matrix_text)
         + check_gated_queue(register_text, matrix_text)
         + check_retired_identifiers(_retired_scan_docs())
+        + check_retired_rows(_retired_scan_docs())
     )
 
     if findings:

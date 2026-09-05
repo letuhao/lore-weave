@@ -27,6 +27,8 @@ import time
 import urllib.request
 import uuid as _uuid
 from dataclasses import dataclass
+
+from loreweave_jobs import JobStatus
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -42,10 +44,20 @@ from app.eval.defects import DefectClass, Observation
 #: GATE only needs to know which classes have a seeder.
 _GLOSSARY_ENV = ("GLOSSARY_INTERNAL_URL", "http://glossary-service:8088")
 _KNOWLEDGE_ENV = ("KNOWLEDGE_INTERNAL_URL", "http://knowledge-service:8092")
+_KAL_ENV = ("KNOWLEDGE_GATEWAY_URL", "http://knowledge-gateway:3000")
+
+#: T55/h — a MAPPING, not an if/else. The two-way form returned the knowledge base for every
+#: value that was not "glossary", so adding a third target would have silently sent KAL paths
+#: to knowledge-service and 404'd in a way that reads like a missing route.
+_BASES = {"glossary": _GLOSSARY_ENV, "knowledge": _KNOWLEDGE_ENV, "knowledge_gateway": _KAL_ENV}
 
 
 def _internal_base(which: str) -> str:
-    env, default = _GLOSSARY_ENV if which == "glossary" else _KNOWLEDGE_ENV
+    try:
+        env, default = _BASES[which]
+    except KeyError:                       # fail loudly: a typo must not pick a default host
+        raise ValueError(
+            f"unknown internal target {which!r}; expected one of {sorted(_BASES)}") from None
     return os.environ.get(env) or default
 
 
@@ -199,7 +211,13 @@ class LiveDriver:
             time.sleep(self.poll_interval_s)
             job = _req("GET", f"/v1/composition/jobs/{job_id}", self.token, timeout=60)
             last = job.get("status") or last
-            if last in ("completed", "failed", "cancelled"):
+            # 🔴 DERIVED, NOT RETYPED — DQ-T86 (c), owner ruling 2026-08-31. This read a
+            # hand-written ("completed", "failed", "cancelled"): a second copy of a set whose
+            # own definition in `loreweave_jobs.contract` is annotated "The single source of
+            # truth (no parallel set to drift)". Six places had drifted from it anyway. Here the
+            # silent failure is a HANG — a job that reached a new terminal status would never
+            # match, and this loop would poll it until job_timeout_s.
+            if JobStatus.is_terminal(last):
                 if last != "completed":
                     raise RuntimeError(f"job {job_id} ended {last}: {(job.get('result') or {})}")
                 return job.get("result") or {}
@@ -339,8 +357,11 @@ class LiveDriver:
         # an ERROR with the reason, never a quiet detector.
         if variant == "seeded":
             try:
-                snap = _internal("POST", "knowledge",
-                                 f"/internal/projects/{project}/fact-for-check",
+                # T55/h — the eval driver asks the same question through the same door the
+                # product uses (§8.6). Asking the owning service directly would measure a
+                # path no consumer takes any more.
+                snap = _internal("POST", "knowledge_gateway",
+                                 f"/v1/kal/projects/{project}/fact-for-check",
                                  {"at_order": 2_000_000, "glossary_entity_ids": [gid]})
             except Exception as exc:  # noqa: BLE001
                 return Observation(failed=True, note=f"fact-for-check unavailable: {exc}")

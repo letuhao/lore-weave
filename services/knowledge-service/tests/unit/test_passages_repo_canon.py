@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.db.neo4j_repos.passages import (
+from app.db.graph_repos.passages import (
     delete_passages_for_source,
     find_passages_by_vector,
     get_chapter_index_for_source,
@@ -70,7 +70,7 @@ async def test_upsert_passage_wires_canon_into_write(monkeypatch):
             "text": "t", "canon": kwargs["canon"],
         })
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_write", fake_write)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_write", fake_write)
 
     p = await upsert_passage(
         MagicMock(), user_id="u", project_id="p", source_type="chapter",
@@ -80,7 +80,17 @@ async def test_upsert_passage_wires_canon_into_write(monkeypatch):
     # canon reaches the write …
     assert captured["kwargs"]["canon"] is False
     # … the cypher actually sets it (both ON CREATE and ON MATCH) …
-    assert captured["cypher"].count("p.canon = $canon") == 2
+    # RESTATED (T72): the two branches merged into one unconditional SET (§10.1), so the
+    # assignment appears ONCE and applies on BOTH paths — which is what "wired into both"
+    # meant and is strictly stronger than counting two occurrences. It must NOT be a
+    # coalesce: a re-ingest that flips draft->canon has to take effect.
+    assert "p.canon           = $canon" in captured["cypher"] or (
+        "p.canon = $canon" in captured["cypher"]
+    ), "canon is not assigned at all"
+    assert "coalesce(p.canon" not in captured["cypher"], (
+        "canon is coalesced — a re-ingest flipping draft to canon would silently "
+        "keep the old value"
+    )
     # … and it round-trips onto the projection.
     assert p.canon is False
 
@@ -97,7 +107,7 @@ async def test_upsert_passage_defaults_canon_true(monkeypatch):
             "text": "t", "canon": kwargs["canon"],
         })
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_write", fake_write)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_write", fake_write)
     await upsert_passage(
         MagicMock(), user_id="u", project_id="p", source_type="chapter",
         source_id="s", chunk_index=0, text="t",
@@ -116,7 +126,7 @@ async def test_find_wires_include_drafts_and_canon_clause(monkeypatch, include_d
         captured["kwargs"] = kwargs
         return _EmptyRead()
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_read", fake_read)
 
     await find_passages_by_vector(
         MagicMock(), user_id="u", project_id="p",
@@ -143,7 +153,7 @@ async def test_get_chapter_index_resolves_and_scopes(monkeypatch):
         captured["kwargs"] = kwargs
         return _SingleRead({"chapter_index": 42})
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_read", fake_read)
 
     idx = await get_chapter_index_for_source(
         MagicMock(), user_id="u", project_id="p", chapter_id="ch-1",
@@ -164,7 +174,7 @@ async def test_get_chapter_index_none_when_no_passages(monkeypatch):
     async def fake_read(session, cypher, **kwargs):
         return _SingleRead(None)
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_read", fake_read)
     idx = await get_chapter_index_for_source(
         MagicMock(), user_id="u", project_id="p", chapter_id="ch-x",
     )
@@ -177,7 +187,7 @@ async def test_get_chapter_index_none_when_index_null(monkeypatch):
     async def fake_read(session, cypher, **kwargs):
         return _SingleRead({"chapter_index": None})
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_read", fake_read)
     idx = await get_chapter_index_for_source(
         MagicMock(), user_id="u", project_id="p", chapter_id="ch-1",
     )
@@ -249,7 +259,7 @@ async def test_delete_passages_for_source_scopes_canon(monkeypatch, canon):
         captured["kwargs"] = kwargs
         return _SingleRead({"deleted": 0})
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_write", fake_write)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_write", fake_write)
 
     await delete_passages_for_source(
         MagicMock(), user_id="u", source_type="chapter", source_id="ch",
@@ -269,7 +279,7 @@ async def test_delete_passages_for_source_defaults_to_both_buckets(monkeypatch):
         captured["kwargs"] = kwargs
         return _SingleRead({"deleted": 0})
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_write", fake_write)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_write", fake_write)
     await delete_passages_for_source(
         MagicMock(), user_id="u", source_type="chapter", source_id="ch",
     )
@@ -289,7 +299,7 @@ async def test_get_source_ingest_state_scopes_canon(monkeypatch, canon):
         captured["kwargs"] = kwargs
         return _SingleRead(None)  # cache miss
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_read", fake_read)
     await get_source_ingest_state(
         MagicMock(), user_id="u", source_type="chapter", source_id="ch",
         canon=canon,

@@ -591,3 +591,200 @@ func TestPlainTextToTiptapJSON(t *testing.T) {
 		}
 	})
 }
+
+// The library search's SQL fragment. The bug this replaces was not a crash: the
+// page asked for no limit, took the endpoint's default of 20, filtered those 20
+// in the browser, and displayed `total` from the server. A user with 83 books was
+// shown 83 and searched 20, so a book at rank 32 could not be found by name at
+// all — recorded for six days as a Vietnamese diacritic defect. The encoding was
+// never involved: the DB stores NFC and `title ILIKE '%Đế%'` matches. // doc-language-gate: ok -- the corpus span the bug was reported against
+func TestAppendTitleSearchFilter(t *testing.T) {
+	owner, lifecycle := "u1", "active"
+
+	t.Run("no query leaves the args and the SQL untouched", func(t *testing.T) {
+		frag, args := appendTitleSearchFilter("", []any{owner, lifecycle})
+		if frag != "" {
+			t.Fatalf("empty query must add no SQL, got %q", frag)
+		}
+		if len(args) != 2 {
+			t.Fatalf("empty query must append no args, got %d", len(args))
+		}
+	})
+
+	t.Run("the placeholder names the position the pattern lands at", func(t *testing.T) {
+		frag, args := appendTitleSearchFilter("Mị Đế", []any{owner, lifecycle}) // doc-language-gate: ok -- the corpus span the bug was reported against
+		if frag != " AND b.title ILIKE $3" {
+			t.Fatalf("fragment = %q, want $3 (after owner, lifecycle)", frag)
+		}
+		if len(args) != 3 {
+			t.Fatalf("args = %d, want 3", len(args))
+		}
+		// $3 must BE the pattern. An off-by-one here binds the lifecycle string
+		// as the search term and silently returns nothing.
+		if got, want := args[2], "%Mị Đế%"; got != want { // doc-language-gate: ok -- the corpus span the bug was reported against
+			t.Fatalf("args[2] = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("the pattern survives multi-byte input verbatim", func(t *testing.T) {
+		// escapeLikePattern only rewrites \, %% and _; a byte-oriented escaper
+		// would corrupt these and the miss would look like a diacritic problem
+		// rather than a mangled pattern.
+		for _, q := range []string{"Đế", "Mị Đế", "封神演義", "Winds"} { // doc-language-gate: ok -- the corpus span the bug was reported against
+			_, args := appendTitleSearchFilter(q, []any{owner, lifecycle})
+			if got, want := args[2], "%"+q+"%"; got != want {
+				t.Fatalf("q=%q produced %v, want %v", q, got, want)
+			}
+		}
+	})
+
+	t.Run("LIKE metacharacters are escaped, not honoured", func(t *testing.T) {
+		_, args := appendTitleSearchFilter("100%_x", []any{owner, lifecycle})
+		if got, want := args[2], `%100\%\_x%`; got != want {
+			t.Fatalf("args[2] = %v, want %v", got, want)
+		}
+	})
+
+	// The half that keeps `total` honest: the COUNT is built from the SAME
+	// fragment and a prefix of the SAME args. If the count query were given the
+	// unfiltered arg list, `total` would describe the library while `items`
+	// described the search — the original defect wearing different clothes.
+	t.Run("count args are a prefix of the page args", func(t *testing.T) {
+		frag, args := appendTitleSearchFilter("Đế", []any{owner, lifecycle}) // doc-language-gate: ok -- the corpus span the bug was reported against
+		countArgs := append([]any{}, args...)
+		pageArgs := append(args, 20, 0)
+
+		if len(countArgs) != 3 {
+			t.Fatalf("count args = %d, want 3 (owner, lifecycle, pattern)", len(countArgs))
+		}
+		if len(pageArgs) != 5 {
+			t.Fatalf("page args = %d, want 5 (+limit, offset)", len(pageArgs))
+		}
+		for i := range countArgs {
+			if countArgs[i] != pageArgs[i] {
+				t.Fatalf("arg %d diverges: count=%v page=%v", i, countArgs[i], pageArgs[i])
+			}
+		}
+		// And the fragment the count uses must be the same string.
+		if frag != " AND b.title ILIKE $3" {
+			t.Fatalf("fragment = %q", frag)
+		}
+	})
+}
+
+// ── the library list's WIRING, not its helper (L5) ──────────────────────────
+//
+// `TestAppendTitleSearchFilter` above has a subtest named "count args are a prefix of the
+// page args", and it demonstrates that by calling `appendTitleSearchFilter` twice and
+// comparing the results to each other. It never reaches the handler. Measured on the worlds
+// equivalent, which had the identical shape: deleting the predicate from the COUNT left every
+// such subtest GREEN, because the pure function they drive was untouched.
+//
+// These drive `buildBookListQueries`, which builds both. A predicate that reaches one query
+// and not the other is now visible.
+func TestBuildBookListQueries(t *testing.T) {
+	t.Parallel()
+	owner := "u1"
+
+	t.Run("with a query, the title predicate reaches BOTH the page and the count", func(t *testing.T) {
+		pageSQL, pageArgs, countSQL, countArgs := buildBookListQueries(owner, "active", "Đế", true, 20, 0) // doc-language-gate: ok -- the corpus span the bug was reported against
+		if !strings.Contains(pageSQL, "b.title ILIKE") {
+			t.Fatalf("page query lost the title predicate:\n%s", pageSQL)
+		}
+		// THE REGRESSION THIS EXISTS FOR: an unfiltered COUNT reports `total` over the
+		// whole library beside `items` from the search, so the UI says "12 of 340" for a
+		// query that matched 12 and the user hunts for 328 books that are not missing.
+		if !strings.Contains(countSQL, "b.title ILIKE") {
+			t.Fatalf("COUNT is not filtered — total would describe the library while items "+
+				"describe the search:\n%s", countSQL)
+		}
+		if len(countArgs) != 3 {
+			t.Fatalf("count args = %d, want 3 (owner, lifecycle, pattern)", len(countArgs))
+		}
+		if len(pageArgs) != 5 {
+			t.Fatalf("page args = %d, want 5 (+limit, offset)", len(pageArgs))
+		}
+		for i := range countArgs {
+			if countArgs[i] != pageArgs[i] {
+				t.Fatalf("arg %d diverges: count=%v page=%v", i, countArgs[i], pageArgs[i])
+			}
+		}
+	})
+
+	t.Run("without a query, neither carries a predicate", func(t *testing.T) {
+		pageSQL, pageArgs, countSQL, countArgs := buildBookListQueries(owner, "active", "", true, 20, 0)
+		if strings.Contains(pageSQL, "ILIKE") || strings.Contains(countSQL, "ILIKE") {
+			t.Fatal("an empty q must add no predicate to either query")
+		}
+		if len(countArgs) != 2 || len(pageArgs) != 4 {
+			t.Fatalf("args = count %d / page %d, want 2 and 4", len(countArgs), len(pageArgs))
+		}
+	})
+
+	// EGRESS GUARD #7 rides the same accessFilter. A guard that reached the page and not
+	// the count would leak through `total` — a smaller leak than a row, and still a number
+	// about books the caller may not see.
+	t.Run("the egress guards reach the COUNT, not just the page", func(t *testing.T) {
+		for _, shared := range []bool{true, false} {
+			_, _, countSQL, _ := buildBookListQueries(owner, "active", "", shared, 20, 0)
+			if !strings.Contains(countSQL, "b.is_bible=false") {
+				t.Fatalf("includeShared=%v: COUNT does not hide bible containers:\n%s", shared, countSQL)
+			}
+			if !strings.Contains(countSQL, "b.kind<>'diary'") {
+				t.Fatalf("includeShared=%v: COUNT does not hide diaries:\n%s", shared, countSQL)
+			}
+		}
+	})
+
+	t.Run("includeShared widens BOTH queries the same way", func(t *testing.T) {
+		pageSQL, _, countSQL, _ := buildBookListQueries(owner, "active", "", true, 20, 0)
+		for _, sql := range []string{pageSQL, countSQL} {
+			if !strings.Contains(sql, "book_collaborators") {
+				t.Fatalf("includeShared did not reach a query:\n%s", sql)
+			}
+		}
+		ownedPage, _, ownedCount, _ := buildBookListQueries(owner, "active", "", false, 20, 0)
+		for _, sql := range []string{ownedPage, ownedCount} {
+			if strings.Contains(sql, "EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND") {
+				t.Fatalf("owned-only leaked the shared access filter:\n%s", sql)
+			}
+		}
+	})
+
+	t.Run("LIMIT/OFFSET follow the search pattern, not precede it", func(t *testing.T) {
+		// With a search the pattern takes $3, so the page binds $4/$5. An off-by-one here
+		// pages by the search pattern and returns nothing at all.
+		withQ, _, _, _ := buildBookListQueries(owner, "active", "Đế", true, 20, 0) // doc-language-gate: ok -- the corpus span the bug was reported against
+		if !strings.Contains(withQ, "LIMIT $4 OFFSET $5") {
+			t.Fatalf("expected LIMIT $4 OFFSET $5 with a search present:\n%s", withQ)
+		}
+		noQ, _, _, _ := buildBookListQueries(owner, "active", "", true, 20, 0)
+		if !strings.Contains(noQ, "LIMIT $3 OFFSET $4") {
+			t.Fatalf("expected LIMIT $3 OFFSET $4 with no search:\n%s", noQ)
+		}
+	})
+
+	t.Run("lifecycle is BOUND, never interpolated into either query", func(t *testing.T) {
+		// It is a server-chosen literal today ("active"/"trashed"), which is exactly the
+		// kind of value that gets interpolated "because it is safe" and then stops being.
+		//
+		// The needle is the QUOTED literal `'trashed'`, not the bare word: the page SQL
+		// selects `b.trashed_at` and `b.purge_eligible_at`, so a bare `Contains("trashed")`
+		// matches a COLUMN NAME and fails on correct code. It did, on the first run of this
+		// subtest — a test asserting something adjacent to what it meant.
+		for _, sql := range func() []string {
+			p, args, c, _ := buildBookListQueries(owner, "trashed", "", false, 20, 0)
+			if args[1] != "trashed" {
+				t.Fatalf("lifecycle is not args[1]: %v", args)
+			}
+			return []string{p, c}
+		}() {
+			if strings.Contains(sql, "'trashed'") {
+				t.Fatalf("lifecycle reached the SQL text instead of the args:\n%s", sql)
+			}
+			if !strings.Contains(sql, "b.lifecycle_state=$2") {
+				t.Fatalf("lifecycle is not bound at $2:\n%s", sql)
+			}
+		}
+	})
+}

@@ -24,6 +24,24 @@ import (
 	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
+// The world/map family is UUID-only: every tool here takes an id and none accepts a name.
+// The only suppliers are world_list (world_id) and world_map_list (map_id), and batch 29 of the
+// tool deep-dive measured what happens when a refusal does not say so: across 25 live runs the
+// model was asked about a world BY NAME, passed the name (or a token out of it) as the id, was
+// refused with a bare "world not found", and stopped. It never chained to the supplier once,
+// and it never invented a UUID either — it simply had nowhere to go.
+//
+// So these name the supplier, the way this service's best refusal already does:
+// book_chapter_update_meta answers "check the chapter_id (call book_list kind=chapters for
+// valid ids)". They stay owner-scoped and identical for "not yours" and "no such row", so
+// neither becomes an existence oracle. The leading "not found" is retained deliberately:
+// six existing tests assert that exact vocabulary as the uniform-refusal contract, and
+// naming the supplier is an ADDITION to that contract rather than a replacement for it.
+var (
+	errNoSuchWorld = errors.New("world not found — check the world_id (call world_list for valid ids)")
+	errNoSuchMap   = errors.New("map not found — check the map_id (call world_map_list for valid ids)")
+)
+
 // createWorldCore inserts the world + its hidden bible book + the sort_order-0
 // bible chapter inside an open tx, returning the three ids. Shared by the HTTP
 // createWorld handler and the world_create MCP tool so the substrate is provisioned
@@ -153,7 +171,7 @@ WHERE w.id=$1 AND w.owner_user_id=$2`, worldID, ownerID))
 }
 
 type worldGetIn struct {
-	WorldID string `json:"world_id" jsonschema:"the world to fetch (UUID)"`
+	WorldID string `json:"world_id" jsonschema:"the world to fetch (UUID). NOT a name — if you have the world's NAME, call world_list first and match it to get the id"`
 }
 type worldGetOut struct {
 	World worldToolDetail `json:"world"`
@@ -171,7 +189,7 @@ func (s *Server) toolWorldGet(ctx context.Context, _ *mcp.CallToolRequest, in wo
 	d, err := scanWorldDetail(s.pool.QueryRow(ctx, worldSelectSQL+`
 WHERE w.id=$1 AND w.owner_user_id=$2`, worldID, ownerID))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, worldGetOut{}, errors.New("world not found") // owner-scoped: no existence oracle
+		return nil, worldGetOut{}, errNoSuchWorld // owner-scoped: no existence oracle
 	}
 	if err != nil {
 		return nil, worldGetOut{}, errors.New("failed to get world")
@@ -230,17 +248,32 @@ LIMIT $2 OFFSET $3`, ownerID, limit, offset)
 	worlds := make([]worldToolDetail, 0)
 	for rows.Next() {
 		d, err := scanWorldDetail(rows)
-		if err == nil {
-			worlds = append(worlds, d)
+		if err != nil {
+			// #312: skipping the row was worse here than anywhere else -- the pagination
+			// envelope below is built from len(worlds), so a dropped row misreports `returned`
+			// against a `total` that came from a separate COUNT, and a caller paging on
+			// next_offset would step straight over the missing record.
+			return nil, worldListOut{}, errors.New("failed to list worlds")
 		}
+		worlds = append(worlds, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, worldListOut{}, errors.New("failed to list worlds")
 	}
 	env, g := listPage("worlds", len(worlds), total, offset, "world_list")
 	return nil, worldListOut{Worlds: worlds, Total: total, Page: env, Guidance: g}, nil
 }
 
 type worldMoveBookIn struct {
-	WorldID string `json:"world_id" jsonschema:"the world to move the book INTO (UUID; you must own it)"`
-	BookID  string `json:"book_id" jsonschema:"the book to move (UUID; you must own it)"`
+	// #318: world_id is no longer REQUIRED, because there was no way to undo this tool. It called
+	// itself "Reversible" while the reverse operation did not exist on the MCP surface: world_id
+	// had to parse as a UUID, so null, omitted and "" were all rejected, and a book moved into a
+	// world could never be returned to standalone. REST has had the capability all along
+	// (removeBookFromWorld sets world_id=NULL); only the agent surface lacked it. `clear_world`
+	// mirrors the `clear_entity` idiom the map tools already use for the same absent-vs-null need.
+	WorldID    string `json:"world_id,omitempty" jsonschema:"the world to move the book INTO (UUID; you must own it). Omit and set clear_world=true to remove the book from its world instead."`
+	BookID     string `json:"book_id" jsonschema:"the book to move (UUID; you must own it)"`
+	ClearWorld bool   `json:"clear_world,omitempty" jsonschema:"true = remove the book from whatever world it is in, making it standalone again (the reverse of a move)"`
 }
 type worldMoveBookOut struct {
 	Moved bool `json:"moved"`
@@ -251,40 +284,73 @@ func (s *Server) toolWorldMoveBook(ctx context.Context, _ *mcp.CallToolRequest, 
 	if !ok {
 		return nil, worldMoveBookOut{}, errMissingIdentity
 	}
-	worldID, err := uuid.Parse(in.WorldID)
-	if err != nil {
-		return nil, worldMoveBookOut{}, errors.New("world_id must be a UUID")
-	}
 	bookID, err := uuid.Parse(in.BookID)
 	if err != nil {
 		return nil, worldMoveBookOut{}, errors.New("book_id must be a UUID")
 	}
-	// The caller must OWN the target world (no existence oracle otherwise). Capture
-	// the query error and distinguish it from not-owned: a transient DB failure must
-	// surface as a retryable error, not masquerade as "world not found" (which would
-	// tell the agent the world is gone → duplicate-create). Mirrors requireWorldOwner.
-	var exists bool
-	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM worlds WHERE id=$1 AND owner_user_id=$2)`, worldID, ownerID).Scan(&exists); err != nil {
-		return nil, worldMoveBookOut{}, errors.New("failed to resolve world")
+	if in.WorldID == "" && !in.ClearWorld {
+		return nil, worldMoveBookOut{}, errors.New(
+			"provide world_id to move the book into a world, or clear_world=true to remove it from its world")
 	}
-	if !exists {
-		return nil, worldMoveBookOut{}, errors.New("world not found")
+	if in.WorldID != "" && in.ClearWorld {
+		return nil, worldMoveBookOut{}, errors.New(
+			"pass either world_id or clear_world=true, not both — they ask for opposite things")
+	}
+	// target is the new world_id: a real world when moving in, NULL when clearing.
+	var target any
+	if !in.ClearWorld {
+		worldID, perr := uuid.Parse(in.WorldID)
+		if perr != nil {
+			return nil, worldMoveBookOut{}, errors.New("world_id must be a UUID")
+		}
+		// The caller must OWN the target world (no existence oracle otherwise). Capture
+		// the query error and distinguish it from not-owned: a transient DB failure must
+		// surface as a retryable error, not masquerade as "world not found" (which would
+		// tell the agent the world is gone → duplicate-create). Mirrors requireWorldOwner.
+		var exists bool
+		if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM worlds WHERE id=$1 AND owner_user_id=$2)`, worldID, ownerID).Scan(&exists); err != nil {
+			return nil, worldMoveBookOut{}, errors.New("failed to resolve world")
+		}
+		if !exists {
+			return nil, worldMoveBookOut{}, errNoSuchWorld
+		}
+		target = worldID
 	}
 	// Move only a real (non-bible) book the caller owns; a hidden bible book can
 	// never be re-homed (guards the single-bible invariant).
-	tag, err := s.pool.Exec(ctx, `
+	//
+	// The self-join to `old` returns the book's PREVIOUS world_id from the same statement, which
+	// is what the undo hint below replays — no second read, so the value reported as "prior"
+	// cannot already be someone else's move. `b.world_id` and `old.world_id` are both qualified:
+	// books is joined twice here, and an unqualified reference makes Postgres reject the whole
+	// statement, which no Go test can see (the #315 lesson).
+	var priorWorld *uuid.UUID
+	err = s.pool.QueryRow(ctx, `
 -- WS-1.2 · EGRESS (review-impl): the agent-callable world_move_book must also refuse a
 -- diary — a world is shareable, so moving a diary into one is a back-door share.
-UPDATE books SET world_id=$1, updated_at=now()
-WHERE id=$2 AND owner_user_id=$3 AND is_bible=false AND kind<>'diary' AND lifecycle_state!='purge_pending'`,
-		worldID, bookID, ownerID)
+UPDATE books b SET world_id=$1, updated_at=now()
+FROM books old
+WHERE b.id=old.id AND b.id=$2 AND b.owner_user_id=$3
+  AND b.is_bible=false AND b.kind<>'diary' AND b.lifecycle_state!='purge_pending'
+RETURNING old.world_id`,
+		target, bookID, ownerID).Scan(&priorWorld)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, worldMoveBookOut{}, errors.New("book not found or not movable")
+	}
 	if err != nil {
 		return nil, worldMoveBookOut{}, errors.New("failed to move book")
 	}
-	if tag.RowsAffected() == 0 {
-		return nil, worldMoveBookOut{}, errors.New("book not found or not movable")
+	// Undo hint (#318): the reverse of a move is a move BACK — or a clear, when the book was
+	// standalone before. That second case is why clear_world had to exist at all: replaying
+	// world_id alone can never express "it belonged to no world", and omitting it would leave the
+	// book in the world this call just put it in.
+	undoArgs := map[string]any{"book_id": bookID.String()}
+	if priorWorld != nil {
+		undoArgs["world_id"] = priorWorld.String()
+	} else {
+		undoArgs["clear_world"] = true
 	}
-	return nil, worldMoveBookOut{Moved: true}, nil
+	return undoResult("world_move_book", undoArgs), worldMoveBookOut{Moved: true}, nil
 }
 
 // ── internal: world → bible resolution (for world-native lore authoring) ──────
@@ -340,7 +406,7 @@ func (s *Server) registerWorldTools(srv *mcp.Server) {
 	addTool(srv, "world_get",
 		"Fetch one world you own by id: name, description, book_count, and its bible "+
 			"handle (bible_book_id / bible_chapter_id) for authoring lore into it.",
-		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, []string{"world detail", "open world", "show world"}),
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, []string{"world detail", "open world", "show world", "the world called", "world called"}),
 		s.toolWorldGet)
 
 	addTool(srv, "world_create",
@@ -352,8 +418,10 @@ func (s *Server) registerWorldTools(srv *mcp.Server) {
 		s.toolWorldCreate)
 
 	addTool(srv, "world_move_book",
-		"Move a book you own INTO a world you own (groups it under that world). Reversible. "+
-			"A hidden bible book cannot be moved.",
+		"Move a book you own INTO a world you own (groups it under that world), or pass "+
+			"clear_world=true instead of world_id to take it back OUT and make it standalone. "+
+			"Reversible either way — the result's undo_hint replays the book's previous world, or "+
+			"clears it if it had none. A hidden bible book cannot be moved.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"move book into world", "group book", "add book to world"}),
 		s.toolWorldMoveBook)
 

@@ -216,6 +216,18 @@ mod tests {
     }
 
     impl ProvEffects for FakeProvEffects {
+        fn seed_world_structure(
+            &mut self,
+            _db_name: &str,
+            _reality_id: Uuid,
+            _world: &[crate::world_seed::NodeDecl],
+        ) -> Result<bool, ProvisionerError> {
+            // The deprovisioner's fixture provisions a reality only so it has
+            // something to tear down; it declares no world, and `false` is the
+            // same answer the live path gives an empty declaration.
+            Ok(false)
+        }
+
         fn register_pending(
             &mut self,
             _reality_id: Uuid,
@@ -232,7 +244,7 @@ mod tests {
         ) -> Result<bool, ProvisionerError> {
             Ok(true)
         }
-        fn apply_initial_migration(
+        fn apply_migrations(
             &mut self,
             _: &crate::capacity_planner::ShardId,
             _: &str,

@@ -1,0 +1,111 @@
+# The knowledge vector Postgres (plan T22). A LAYER, not part of the default stack.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.knowledge-pg.yml up -d knowledge-pg
+#
+# WHY IT IS NOT IN docker-compose.yml YET
+# ---------------------------------------
+# Phase 3 ships in order: T22 builds the image, T23 writes the adapter, T24 dual-writes and
+# measures recall, T25 cuts over. Adding a second Postgres to everyone's default `up` before
+# anything reads from it costs ~600 MB and a port for no benefit, and — worse — it would look
+# like the cutover had happened. It joins the default stack at T25, with the Neo4j vector
+# indexes dropped in the same change.
+#
+# WHY IT IS A SEPARATE INSTANCE AND NOT THE EXISTING `postgres` SERVICE
+# --------------------------------------------------------------------
+# The dev stack's `postgres` is `postgres:18-alpine` and hosts every service's database.
+# This image is bookworm (glibc) because pgvectorscale ships glibc binaries — see the
+# Dockerfile. Swapping the shared instance for this one would put every service's data on an
+# image whose CVE cadence we now own, to serve one service's vectors. Whether production
+# consolidates them is a deployment decision, deliberately not forced by the dev compose.
+
+services:
+  knowledge-pg:
+    build:
+      context: ./postgres-knowledge
+      # Pins live in the Dockerfile as ARGs with defaults; override here for a security bump
+      # and re-run scripts/postgres-knowledge-image-smoke.sh before trusting it.
+      args:
+        PG_MAJOR: "18"
+    image: loreweave/postgres-knowledge:18
+    # ⚠️ NO `container_name`. It used to pin `infra-knowledge-pg-1`, which is byte-identical
+    # to what compose derives for the default project (`<project>-<service>-1`) and therefore
+    # bought nothing — while making this layer UNUSABLE by any second project, because a
+    # container name is global to the daemon. None of the 42 services in docker-compose.yml
+    # pins one, which is exactly why the isolated stack works for them and not for this.
+    # Measured 2026-08-21 (T25g): lw-iso could not resolve `knowledge-pg` at all, so its
+    # dual-write logged `secondary_failed = 9` on BOTH scopes — eighteen rows the primary
+    # accepted and no secondary ever received.
+    environment:
+      POSTGRES_USER: loreweave
+      POSTGRES_PASSWORD: loreweave_dev
+      POSTGRES_DB: loreweave_knowledge_vectors
+    ports:
+      # NOT 5432: the shared dev postgres already owns it, and a collision here would be
+      # silently "the other database" rather than a failure to start.
+      #
+      # Overridable because a published host port is ABSOLUTE — the one thing an isolated
+      # project cannot solve by itself (see gen-isolated-compose.py's own opening). lw-iso
+      # sets 25556, matching the +20000 convention every other service follows.
+      - "${KNOWLEDGE_PG_PORT:-5556}:5432"
+    volumes:
+      # ⚠️ `/var/lib/postgresql`, NOT `/var/lib/postgresql/data`. The postgres 18+ images
+      # store the cluster in a MAJOR-VERSION subdirectory (`PGDATA=/var/lib/postgresql/18/
+      # docker`) so `pg_upgrade --link` can work across a single mount point. A volume
+      # mounted at `/data` is therefore not the data directory at all: the entrypoint sees
+      # it as a stray mount, prints "there appears to be PostgreSQL data in
+      # /var/lib/postgresql/data (unused mount/volume)" and REFUSES TO START — a crash loop,
+      # not a warning. The shared dev `postgres` service already mounts it correctly; this
+      # layer had it wrong from the day it was written and nobody noticed, because the layer
+      # is opt-in and OD-2 (2026-08-12) is the first time anyone started it.
+      - knowledge_pg_data:/var/lib/postgresql
+    healthcheck:
+      # `pg_isready` alone answers "is the server up", which is not the question. The
+      # extensions are the reason this image exists, so the check asks for them — an image
+      # that starts without pgvectorscale is not healthy for this purpose.
+      # T42b: `age` joins that list. The matrix is now graph + vectors in ONE engine, so an
+      # image missing AGE is exactly as unhealthy as one missing vectorscale — and the count
+      # is asserted (=2) rather than the rows merely being non-empty, because `grep -q 1`
+      # against a two-row result passes when only ONE of them is present.
+      test: ["CMD-SHELL", "pg_isready -U loreweave -d loreweave_knowledge_vectors && [ \"$$(psql -U loreweave -d loreweave_knowledge_vectors -tAc \"SELECT count(*) FROM pg_available_extensions WHERE name IN ('vectorscale','age')\")\" = 2 ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── THE SWITCH: layering this file IS choosing the AGE engine ──────────────────────────
+  #
+  # Until 2026-08-31 this overlay started a database and told nobody. `KNOWLEDGE_AGE_DB_URL`
+  # defaults to EMPTY in `docker-compose.yml`, so `-f docker-compose.knowledge-pg.yml up` gave
+  # you a running AGE instance that `knowledge-service` had no address for — you also had to
+  # know to edit `.env`. Two half-switches that had to agree, and the failure when they did
+  # not was silent in the usual way: an unaddressed AGE database reads exactly like a book
+  # with no knowledge in it.
+  #
+  # Pointing the service at the instance this same file starts makes the engine choice ONE
+  # action, and it composes with the resolver rather than fighting it: setting this DSN is
+  # itself the evidence `db.graph_backend.resolve_unset_backend` reads, so a stack that layers
+  # this file lands on `age` without anyone naming a backend, and a stack that does not layer
+  # it keeps Neo4j. That is the whole switch:
+  #
+  #     docker compose up -d                                          -> Neo4j (unchanged)
+  #     docker compose -f docker-compose.yml \
+  #                    -f docker-compose.knowledge-pg.yml up -d       -> Apache AGE
+  #
+  # `${KNOWLEDGE_AGE_DB_URL:-...}` and not a bare literal, so an operator who already set the
+  # variable — pointing at a managed Postgres, say — still wins. This supplies a default for
+  # the instance above; it does not seize the setting.
+  #
+  # ⚠️ NOT a backend PIN. This file deliberately does not set `KNOWLEDGE_GRAPH_BACKEND`:
+  # layering the AGE database is evidence, not a command, and someone dual-running during a
+  # migration must be able to keep reads on Neo4j while AGE fills. Pin it in `.env` when you
+  # want the choice stated rather than inferred.
+  knowledge-service:
+    environment:
+      KNOWLEDGE_AGE_DB_URL: ${KNOWLEDGE_AGE_DB_URL:-postgresql://loreweave:loreweave_dev@knowledge-pg:5432/loreweave_knowledge_vectors}
+    depends_on:
+      knowledge-pg:
+        condition: service_healthy
+
+volumes:
+  knowledge_pg_data:

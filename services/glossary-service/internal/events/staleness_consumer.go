@@ -14,6 +14,7 @@ package events
 import (
 	"context"
 	"encoding/json"
+	events "github.com/loreweave/foundation/contracts/events/generated"
 	"log/slog"
 	"os"
 	"time"
@@ -27,11 +28,14 @@ const (
 	chapterStream  = "loreweave:events:chapter"
 	stalenessGroup = "wiki-staleness"
 
-	evEntityUpdated   = "glossary.entity_updated"
-	evEntityMerged    = "glossary.entity_merged"
-	evChapterPub      = "chapter.published"
-	evChapterDeleted  = "chapter.deleted"
-	evChapterTrashed  = "chapter.trashed"
+	// ⚠️ From the contract (T30/OD-1): these were hand-mirrored literals, and a producer
+	// rename left them compiling and silently matching nothing. Now a rename in
+	// `contracts/events/_registry.yaml` is a compile error right here.
+	evEntityUpdated  = events.EventGlossaryEntityUpdated
+	evEntityMerged   = events.EventGlossaryEntityMerged
+	evChapterPub     = "chapter.published"
+	evChapterDeleted = "chapter.deleted"
+	evChapterTrashed = "chapter.trashed"
 	// A chapter's prose came BACK — a bulk book RESTORE un-trashes its chapters (spec §4.6). The
 	// articles were hard-broken on the trash; the ground truth returning is a re-grounding trigger
 	// (content severity, like a re-publish), not another hard break. Closed-set, so it must be named.

@@ -41,8 +41,22 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 			"items; each item succeeds or fails independently. (For a human-confirmed proposal " +
 			"of a single new attribute instead, use glossary_propose_batch.)",
 		InputSchema: ontologyUpsertSchema(),
+		// 🔴 DECLARE THE USER'S WORD, NOT THE SCHEMA'S. Measured live 2026-08-14, K=3: "I want to
+		// start tracking the factions in this world. Add Factions as a new category alongside
+		// characters and items." surfaced this tool on 0 of 3 runs. Every phrase above says
+		// "kind" — the column name — and the author said "category", which is what the UI calls
+		// it and what a person types. With nothing on the wire the model ran
+		// glossary_adopt_standards instead and adopted an entire genre pack: kinds 4->5,
+		// attributes 29->36, genres 1->3, kind_genres 4->13, from a request to add ONE category.
+		//
+		// "category" is not a synonym of "kind" in the abstract; it is the word this product's
+		// own users use for this concept. The same fix on glossary_curation_list took it from
+		// surfaced 0/3 to called 3/3 with a correct answer.
 		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"add a kind", "add a genre", "add an attribute", "edit a kind", "rename a kind", "new entity type",
+			"add a category", "new category", "add category", "another category", "categories",
+			"start tracking", "track a new kind of thing", "add a type", "new type of entity",
+			"rename a category", "edit a category",
 		}),
 	}, s.toolOntologyUpsert)
 
@@ -50,9 +64,15 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 		Name: "glossary_ontology_delete",
 		Description: "Delete book- or user-tier ontology row(s). scope=book mints a confirm " +
 			"token — a human must approve before the delete executes; returns {confirm_token, " +
-			"preview}. scope=user executes immediately as a reversible soft-delete (undo via " +
-			"glossary_ontology_upsert to re-add); returns {results}. Deleting an already-deleted row is a " +
-			"no-op, not an error.",
+			"preview}. scope=user executes immediately as a soft-delete: the row is retained " +
+			"and stops applying, but it KEEPS ITS CODE reserved — so glossary_ontology_upsert " +
+			"CANNOT re-add the same code (it answers \"already exists\"). To undo, use " +
+			"the UI, or glossary_user_restore — DEPRECATED and hidden from the default list, but " +
+			"still callable BY NAME and the only thing that actually revives the row; it has no " +
+			"successor, so there is nothing newer to migrate to). Returns " +
+			"{results} plus a {trashed, already_trashed, failed} summary. Deleting an " +
+			"already-deleted row is a no-op, not an error — counted under already_trashed, " +
+			"never under trashed.",
 		InputSchema: ontologyDeleteSchema(),
 		// _meta.tier is ONE value covering two behaviorally-different branches (book=confirm-
 		// gated, user=direct) — pick the more cautious bucket (W) uniformly; the actual
@@ -111,7 +131,7 @@ type ontologyUpsertItemIn struct {
 
 type ontologyUpsertToolIn struct {
 	Scope  string                 `json:"scope" jsonschema:"REQUIRED: book | user — which tenancy tier to write to"`
-	BookID string                 `json:"book_id,omitempty" jsonschema:"required when scope=book; omit when scope=user"`
+	BookID string                 `json:"book_id" jsonschema:"required when scope=book; omit when scope=user"`
 	Items  []ontologyUpsertItemIn `json:"items" jsonschema:"1-50 items; each independently created or updated by base_version presence"`
 }
 
@@ -428,7 +448,7 @@ type ontologyDeleteItemIn struct {
 
 type ontologyDeleteToolIn struct {
 	Scope  string                 `json:"scope" jsonschema:"book | user"`
-	BookID string                 `json:"book_id,omitempty" jsonschema:"required when scope=book"`
+	BookID string                 `json:"book_id" jsonschema:"required when scope=book"`
 	Items  []ontologyDeleteItemIn `json:"items"`
 }
 
@@ -440,8 +460,9 @@ type ontologyDeleteItemResult struct {
 }
 
 type ontologyDeleteSummary struct {
-	Trashed int `json:"trashed"`
-	Failed  int `json:"failed"`
+	Trashed        int `json:"trashed"`
+	AlreadyTrashed int `json:"already_trashed"`
+	Failed         int `json:"failed"`
 }
 
 // ontologyDeleteOut's shape genuinely differs by `scope` (CAT-2: a merge across
@@ -483,9 +504,17 @@ func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest,
 		for _, it := range in.Items {
 			res := s.deleteOneUserOntologyItem(ctx, userID, it)
 			results = append(results, res)
-			if res.Status == "error" {
+			// TOOLV2 LOOP #237 — count by STATUS. The else-branch counted an `already_trashed`
+			// row as `trashed`, so deleting five codes of which four were typos reported
+			// {trashed: 5, failed: 0}: a summary that always reads "done" no matter how much
+			// work happened. The per-row status already distinguished them; only the summary
+			// flattened it. With the third counter the three now reconcile against len(items).
+			switch res.Status {
+			case "error":
 				summary.Failed++
-			} else {
+			case "already_trashed":
+				summary.AlreadyTrashed++
+			default:
 				summary.Trashed++
 			}
 		}

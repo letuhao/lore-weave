@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 import {
+  DOMAIN_EVENT_TYPES,
+  REFUSAL_REASONS,
   projectTurnOutcome,
   toU64String,
   type CommittedEvent,
@@ -26,6 +28,8 @@ const schema = JSON.parse(
   $defs: {
     TurnOutcome: { properties: { kind: { enum: OutcomeKind[] } } };
     DiscardDetail: { properties: { reason: { enum: string[] } } };
+    DomainEventType: { enum: string[] };
+    RefusalReason: { enum: string[] };
   };
 };
 
@@ -38,6 +42,32 @@ test('kind values are exactly the schema enum — the Rust producer emits the sa
   // Kill-mutation: add a 4th TS kind (or rename one) without touching the
   // schema — this reds, and so does the Rust side's mirror of it.
   assert.equal(allowed.length, 3);
+});
+
+test('domain-event types are exactly the schema enum — the Rust CombatEvent emits the same set', () => {
+  // FATAL-1. This assertion did not exist while a comment on `DomainEvent`
+  // claimed it did, and under that comment the two sides drifted to 8 Rust
+  // variants against 6 TypeScript ones. Kill-mutation: drop `encounter_ended`
+  // from DOMAIN_EVENT_TYPES (or from the schema) and this reds — as does the
+  // Rust-side mirror in commit-service/src/domain/payload.rs.
+  const allowed = schema.$defs.DomainEventType.enum;
+  assert.deepEqual([...DOMAIN_EVENT_TYPES].sort(), [...allowed].sort());
+  assert.equal(allowed.length, 10, 'CombatEvent has TEN variants since M2 (acted, refused)');
+});
+
+test('refusal reasons are exactly the schema enum — CMD-5 carries a reason ordinal', () => {
+  // `M2`. The refusal is the half of `CMD-5` most easily lost: a substrate that
+  // only commits its happy path proves half of it, and a consumer that cannot
+  // name a reason cannot branch on one. Mirrored against the CONTRACT, never
+  // against the Rust enum -- joining the two languages to each other with no
+  // contract between them is what produced the 8-against-6 drift above.
+  //
+  // Kill-mutation: drop a member from REFUSAL_REASONS or from the schema; this
+  // reds, and so does `refusal_reasons_match_the_schema_enum` in
+  // commit-service/src/domain/payload.rs.
+  const allowed = schema.$defs.RefusalReason.enum;
+  assert.deepEqual([...REFUSAL_REASONS].sort(), [...allowed].sort());
+  assert.equal(allowed.length, 6, 'RefusalReason has SIX members since the silent-path fix');
 });
 
 test('discard reasons are exactly the 5-variant sim-core set', () => {

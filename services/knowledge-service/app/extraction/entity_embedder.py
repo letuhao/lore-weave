@@ -38,12 +38,11 @@ from uuid import UUID
 
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.clients.glossary_client import GlossaryClient
+from app.adapters.vector_store_provider import get_vector_store
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import (
-    SUPPORTED_VECTOR_DIMS,
-    find_entities_needing_embedding,
-    set_entity_embedding,
-)
+from app.domain.passage_contract import SUPPORTED_VECTOR_DIMS
+from app.db.graph_repos.entities import find_entities_needing_embedding
+from app.ports.vector_store import EntityVectorRecord
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +178,8 @@ async def embed_project_entities(
         return result
 
     # 5. Stamp each entity (per-entity failure is isolated).
+    # T25a — the store is resolved ONCE for the batch, not per entity.
+    store = await get_vector_store(session)
     for (e, _text), vector in zip(work, embed_result.embeddings):
         if len(vector) != embedding_dim:
             logger.warning(
@@ -188,15 +189,18 @@ async def embed_project_entities(
             result.skipped += 1
             continue
         try:
-            ok = await set_entity_embedding(
-                session,
+            # T25a — through the VectorStore port. The `ok is False` branch below is the
+            # port's documented missing-target return, unchanged: on Neo4j it comes from
+            # `MATCH … SET` matching nothing; with the secondary configured, the composition
+            # root supplies the existence oracle that `PgVectorStore` refuses to guess at.
+            ok = await store.upsert(EntityVectorRecord(
                 user_id=str(user_id),
                 entity_id=e.id,
                 embedding=vector,
                 embedding_dim=embedding_dim,
                 embedding_model=embedding_model,
                 embedding_version=e.version,
-            )
+            ))
             if ok:
                 result.embedded += 1
             else:

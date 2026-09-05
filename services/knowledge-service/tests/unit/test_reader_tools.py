@@ -182,7 +182,7 @@ async def test_non_grantee_gets_anti_oracle_refusal():
 # ── fail-closed facts: lore_entity passes an INT cutoff, never None, project-scoped
 @pytest.mark.asyncio
 async def test_entity_facts_windowed_with_int_cutoff_never_none():
-    with patch("app.tools.reader_tools.neo4j_session", new=lambda: _noop_session()), \
+    with patch("app.tools.reader_tools.graph_session", new=lambda: _noop_session()), \
          patch("app.tools.reader_tools.resolve_kg_entity_id_by_glossary_id",
                new_callable=AsyncMock) as resolve, \
          patch("app.tools.reader_tools.list_facts_for_entity", new_callable=AsyncMock) as facts, \
@@ -215,7 +215,7 @@ async def test_entity_facts_windowed_with_int_cutoff_never_none():
 async def test_entity_with_no_kg_anchor_returns_empty_not_wrong_active():
     # A canon entity with no KG anchor (or an id outside this project) → resolve None
     # → no KG reads at all, honest empty result (NOT a silent wrong 'active'/[]).
-    with patch("app.tools.reader_tools.neo4j_session", new=lambda: _noop_session()), \
+    with patch("app.tools.reader_tools.graph_session", new=lambda: _noop_session()), \
          patch("app.tools.reader_tools.resolve_kg_entity_id_by_glossary_id",
                new_callable=AsyncMock) as resolve, \
          patch("app.tools.reader_tools.list_facts_for_entity", new_callable=AsyncMock) as facts, \

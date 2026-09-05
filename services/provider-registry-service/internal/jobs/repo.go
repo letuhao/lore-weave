@@ -378,8 +378,12 @@ func insertUsageOutbox(
 INSERT INTO usage_outbox
   (request_id, owner_user_id, campaign_id, mcp_key_id, model_source, model_ref,
    operation, input_tokens, output_tokens, cost_usd,
-   request_status, request_payload, response_payload)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+   request_status, request_payload, response_payload, provider_kind)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+  COALESCE(CASE WHEN $5 = 'user_model'
+                THEN (SELECT provider_kind FROM user_models     WHERE user_model_id     = $6)
+                ELSE (SELECT provider_kind FROM platform_models WHERE platform_model_id = $6)
+           END, ''))
 `, jobID, ownerUserID, campaignID, mcpKeyID, modelSource, modelRef,
 		operationLabel, inTok, outTok, cost,
 		nullIfEmpty(requestStatus), nullIfEmpty(reqPayload), nullIfEmpty(respPayload))
@@ -875,12 +879,19 @@ WHERE ctid IN (
 // pricing makes the estimator fail closed with a 402).
 func (r *Repo) ModelPricing(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (billing.Pricing, bool, error) {
 	var raw []byte
+	// endpointBaseURL feeds billing.DecodePricing, which prices a LOCALLY-served
+	// model at $0 whatever its stored table says. A platform_model has no credential,
+	// so it stays "" — treated as remote, i.e. billable.
+	var endpointBaseURL string
 	var err error
 	switch modelSource {
 	case "user_model":
-		err = r.pool.QueryRow(ctx,
-			`SELECT pricing FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
-			modelRef, ownerUserID).Scan(&raw)
+		err = r.pool.QueryRow(ctx, `
+SELECT um.pricing, COALESCE(pc.endpoint_base_url,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2`,
+			modelRef, ownerUserID).Scan(&raw, &endpointBaseURL)
 	case "platform_model":
 		err = r.pool.QueryRow(ctx,
 			`SELECT pricing FROM platform_models WHERE platform_model_id=$1`,
@@ -894,11 +905,9 @@ func (r *Repo) ModelPricing(ctx context.Context, modelSource string, ownerUserID
 	if err != nil {
 		return billing.Pricing{}, false, fmt.Errorf("model pricing lookup: %w", err)
 	}
-	var p billing.Pricing
-	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return billing.Pricing{}, true, fmt.Errorf("decode pricing: %w", err)
-		}
+	p, derr := billing.DecodePricing(raw, endpointBaseURL)
+	if derr != nil {
+		return billing.Pricing{}, true, fmt.Errorf("decode pricing: %w", derr)
 	}
 	return p, true, nil
 }
@@ -912,12 +921,17 @@ func (r *Repo) ModelPricing(ctx context.Context, modelSource string, ownerUserID
 func (r *Repo) EstimateModelInfo(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (billing.Pricing, string, bool, error) {
 	var raw []byte
 	var providerKind string
+	// See ModelPricing: "" for a platform_model means remote/billable.
+	var endpointBaseURL string
 	var err error
 	switch modelSource {
 	case "user_model":
-		err = r.pool.QueryRow(ctx,
-			`SELECT pricing, provider_kind FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
-			modelRef, ownerUserID).Scan(&raw, &providerKind)
+		err = r.pool.QueryRow(ctx, `
+SELECT um.pricing, um.provider_kind, COALESCE(pc.endpoint_base_url,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2`,
+			modelRef, ownerUserID).Scan(&raw, &providerKind, &endpointBaseURL)
 	case "platform_model":
 		err = r.pool.QueryRow(ctx,
 			`SELECT pricing, provider_kind FROM platform_models WHERE platform_model_id=$1`,
@@ -931,11 +945,9 @@ func (r *Repo) EstimateModelInfo(ctx context.Context, modelSource string, ownerU
 	if err != nil {
 		return billing.Pricing{}, "", false, fmt.Errorf("model estimate-info lookup: %w", err)
 	}
-	var p billing.Pricing
-	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return billing.Pricing{}, providerKind, true, fmt.Errorf("decode pricing: %w", err)
-		}
+	p, derr := billing.DecodePricing(raw, endpointBaseURL)
+	if derr != nil {
+		return billing.Pricing{}, providerKind, true, fmt.Errorf("decode pricing: %w", derr)
 	}
 	return p, providerKind, true, nil
 }

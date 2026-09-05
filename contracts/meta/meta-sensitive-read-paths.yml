@@ -18,11 +18,17 @@
 
 version: 1
 paths:
-  - id: player_index_cross_user
-    description: "SELECT * FROM player_character_index WHERE user_ref_id != $caller_user"
+  - id: actor_binding_cross_user
+    description: "SELECT * FROM actor_control_binding WHERE user_ref_id != $caller_user"
     tables:
-      - player_character_index  # ships in cycle 8 (L1.A-2); listed early so the path id is stable
-    rationale: "Cross-user PC visibility — identity-manipulation surface (L1.A §2.4 risk)"
+      - actor_control_binding  # migration 034 (SEALED-BINDING)
+    # Renamed from `player_index_cross_user` when 035 dropped
+    # `player_character_index`. The RISK is unchanged and is the reason the path
+    # survives the table swap: "who drives which actor" is the answer an
+    # impersonation attempt needs, and it is the surface `012`'s own header named
+    # (identity-manipulation -> cross-user data leak). What changed is only that
+    # the table no longer carries a name or a presence status alongside it.
+    rationale: "Cross-user visibility of who drives which actor — identity-manipulation surface"
     reviewers:
       - security-team
 

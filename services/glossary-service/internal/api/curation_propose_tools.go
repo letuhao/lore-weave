@@ -77,6 +77,51 @@ type proposeCurationToolIn struct {
 	LoserIDs []string `json:"loser_ids,omitempty" jsonschema:"for merge — the entities to merge away (UUIDs; same kind as the winner)"`
 }
 
+// coalesceCurationEntityRef reconciles the singular/plural entity reference the FLAT SUPERSET
+// makes it possible to confuse. It is pure so it can be tested without a Server or a database.
+//
+// 🔴 MEASURED, and it is this tool's entire genuine-failure population. Of 70 recorded calls,
+// 42 are input_required suspensions (already typed `deferred` — not failures at all) and 26,
+// across 15 sessions, sent `entity_id` — ONE syntactically valid UUID — alongside
+// op=status_change, which reads only `entity_ids`. The schema ACCEPTS `entity_id`: it is a
+// declared field OF THIS TOOL. Dispatch then silently drops it, and the core replies
+// "at least one valid entity_id is required" — naming the exact field the caller DID send.
+//
+// A clearer sentence is NOT the fix. Three separate defects in this runtime shipped a correct,
+// complete, actionable message and failed anyway (101 placeholder ids, 88 unknown kinds, 266
+// missing arguments). The caller is not confused about intent; the DISPATCH is what narrows a
+// pair of fields that mean the same thing, so the repair belongs where the narrowing happens.
+//
+// The reverse arm — a plural for a singular op — has ZERO measured occurrences and is written
+// anyway because it is the same defect wearing the other shoe. It is gated to EXACTLY ONE
+// element: a multi-element array for restore_revision/reassign_kind has no single coherent
+// reading, and must keep refusing rather than pick one.
+//
+// Nothing is disguised (a repair that emits parseable-but-wrong output would need a
+// post-condition): every op here MINTS A CONFIRM CARD whose preview states the entity count,
+// and a human approves it before anything is written. The coalesced reading is shown before it
+// can act.
+func coalesceCurationEntityRef(in proposeCurationToolIn) proposeCurationToolIn {
+	singular := strings.TrimSpace(in.EntityID)
+	plural := make([]string, 0, len(in.EntityIDs))
+	for _, raw := range in.EntityIDs {
+		if v := strings.TrimSpace(raw); v != "" {
+			plural = append(plural, v)
+		}
+	}
+	switch strings.TrimSpace(in.Op) {
+	case "status_change":
+		if len(plural) == 0 && singular != "" {
+			in.EntityIDs = []string{singular}
+		}
+	case "restore_revision", "reassign_kind":
+		if singular == "" && len(plural) == 1 {
+			in.EntityID = plural[0]
+		}
+	}
+	return in
+}
+
 func (s *Server) toolProposeCuration(ctx context.Context, req *mcp.CallToolRequest, in proposeCurationToolIn) (*mcp.CallToolResult, any, error) {
 	// Ambient book (studio context binding) + the uniform Manage gate all four ops require —
 	// resolved ONCE here, then dispatched to the op's shared core.
@@ -84,6 +129,7 @@ func (s *Server) toolProposeCuration(ctx context.Context, req *mcp.CallToolReque
 	if err != nil {
 		return nil, confirmCardOut{}, err
 	}
+	in = coalesceCurationEntityRef(in)
 	switch strings.TrimSpace(in.Op) {
 	case "status_change":
 		return s.curationStatusChangeCore(ctx, req, userID, bookID, in.Status, in.EntityIDs)

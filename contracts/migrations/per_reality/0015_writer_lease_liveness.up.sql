@@ -16,6 +16,8 @@
 -- exist, and a NULL expiry reads as "unheld, claimable" rather than making
 -- them permanently unownable.
 
+BEGIN;
+
 ALTER TABLE channel_writer_state
     ADD COLUMN IF NOT EXISTS holder_id        UUID,
     ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
@@ -32,3 +34,5 @@ COMMENT ON COLUMN channel_writer_state.lease_expires_at IS
 -- scan as channel count grows.
 CREATE INDEX IF NOT EXISTS channel_writer_state_expiry_idx
     ON channel_writer_state (lease_expires_at);
+
+COMMIT;

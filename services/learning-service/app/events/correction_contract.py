@@ -36,12 +36,20 @@ payload — the learning-side handler is ready.
 
 from __future__ import annotations
 
+from loreweave_events import (
+    EVENT_GLOSSARY_ENTITY_MERGED,
+    EVENT_GLOSSARY_ENTITY_UPDATED,
+    EVENT_GLOSSARY_NAME_CONFIRMED,
+)
+
 CORRECTION_EVENT_TYPES: frozenset[str] = frozenset(
     {
-        # glossary
-        "glossary.entity_updated",
-        "glossary.entity_merged",
-        "glossary.name_confirmed",
+        # glossary — from the contract (T30/OD-1). This set is checked against the
+        # dispatcher's registered types at startup, so a name that drifted from the
+        # producer used to fail HERE, one layer away from the cause; now it cannot drift.
+        EVENT_GLOSSARY_ENTITY_UPDATED,
+        EVENT_GLOSSARY_ENTITY_MERGED,
+        EVENT_GLOSSARY_NAME_CONFIRMED,
         # knowledge (entity/relation/event/fact corrections share one handler)
         "knowledge.entity_corrected",
         "knowledge.relation_corrected",

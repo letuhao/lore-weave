@@ -9,6 +9,7 @@
 // which the browser cannot reach → silently broke chat/stats/media/import when
 // VITE_API_BASE was unset).
 import { beginOperation } from '@/lib/operationTracker';
+import { currentTraceId } from '@/lib/traceId';
 
 const base = () => import.meta.env.VITE_API_BASE || '';
 
@@ -136,6 +137,11 @@ export async function apiJson<T>(
     'Content-Type': 'application/json',
     // Prevent installFetchTracker from counting this bounded apiJson request twice.
     'X-LW-Operation-Tracked': '1',
+    // Correlation. Every Python service already READS this header and reuses a well-formed
+    // value (middleware/trace_id.py); nothing was ever sending one, so a browser action could
+    // only be found in the logs by guessing a time window across a dozen containers. Spread
+    // BEFORE `init.headers` so an explicit per-call id still wins.
+    'x-trace-id': currentTraceId(),
     ...(init.headers as Record<string, string>),
   };
   if (init.token) {

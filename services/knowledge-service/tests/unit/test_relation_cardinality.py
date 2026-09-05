@@ -12,10 +12,12 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from app.db.cypher_dialect import render
+
 import pytest
 
-from app.db.neo4j_repos import relations as m
-from app.db.neo4j_repos.relations import create_relation
+from app.db.graph_repos import relations as m
+from app.db.graph_repos.relations import create_relation
 
 _TEST_USER = uuid4()
 _SUBJ = "ent-subj-1"
@@ -52,17 +54,21 @@ def test_close_cypher_is_user_scoped_and_open_only():
     assert "rp.user_id = $user_id" in cy
     assert "rp.valid_until IS NULL" in cy
     assert "rp.id <> $relation_id" in cy
-    assert "SET rp.valid_until = datetime()" in cy
-    # the new-edge MERGE must NOT touch valid_until on ON MATCH (F5 invariant
-    # preserved — auto-close is a SEPARATE query, not folded into create).
-    create_on_match = m._CREATE_RELATION_CYPHER.split("ON MATCH SET")[1]
-    assert "valid_until" not in create_on_match
+    assert "SET rp.valid_until = {NOW}" in cy
+    # F5, RESTATED for the merged form (T71): AGE has no ON MATCH SET, so "must not touch
+    # valid_until on match" is now "must not assign valid_until AT ALL" — an absent property
+    # IS null on create, and any assignment here would fire on match too and resurrect a
+    # relation an author had invalidated. Auto-close stays a SEPARATE query.
+    assert "r.valid_until" not in m._CREATE_RELATION_CYPHER, (
+        "create_relation assigns valid_until — on a re-extraction that would resurrect an "
+        "edge the author closed. It must not be set here at all."
+    )
 
 
 # ── single_active fires the close before the create ─────────────────
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_single_active_closes_prior_then_creates(mock_run):
     # first call = close (returns count result), second = the MERGE create
     mock_run.side_effect = [
@@ -85,7 +91,7 @@ async def test_single_active_closes_prior_then_creates(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_multi_active_does_not_close(mock_run):
     mock_run.return_value = _make_result(_created_record(predicate="pursues"))
     rel = await create_relation(
@@ -100,7 +106,7 @@ async def test_multi_active_does_not_close(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_none_cardinality_is_legacy_no_close(mock_run):
     """Default (cardinality=None) is byte-identical to the legacy path — exactly
     one query, the create."""

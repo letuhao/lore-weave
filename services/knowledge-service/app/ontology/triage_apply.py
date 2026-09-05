@@ -38,7 +38,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol, runtime_checkable
 
-from app.db.neo4j_repos.relations import create_relation
+from app.db.graph_repos.relations import create_relation
 from app.db.ontology_models import TriageItem
 from app.db.repositories.triage import (
     GLOSSARY_HANDOFF_ACTIONS,

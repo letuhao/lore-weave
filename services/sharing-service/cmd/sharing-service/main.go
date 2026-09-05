@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/loreweave/sharing-service/internal/api"
 	"github.com/loreweave/sharing-service/internal/config"
+	"github.com/loreweave/sharing-service/internal/events"
 	"github.com/loreweave/sharing-service/internal/migrate"
 )
 
@@ -69,6 +71,26 @@ func main() {
 		slog.Error("migrate", "error", err)
 		os.Exit(1)
 	}
+	// DQ-T38 residue (owner ruling 2026-09-02) — drop a sharing policy whose book is gone.
+	// 57 of 58 policy rows were orphans when this was measured, because nothing propagated a
+	// book delete into this store. book-service has emitted book.lifecycle_changed all along;
+	// sharing simply never listened.
+	//
+	// Started best-effort: a bad REDIS_URL logs and the service runs without the cleanup, which
+	// is the pre-existing behaviour rather than a new way to fail to boot.
+	consumerCtx, stopConsumer := context.WithCancel(context.Background())
+	defer stopConsumer()
+	if blc, cerr := events.NewBookLifecycleConsumer(cfg.RedisURL, pool, &events.HTTPBookReader{
+		BaseURL:       strings.TrimRight(cfg.BookServiceInternalURL, "/"),
+		InternalToken: cfg.InternalServiceToken,
+	}); cerr != nil {
+		slog.Warn("book-lifecycle consumer disabled", "error", cerr)
+	} else if blc != nil {
+		go blc.Run(consumerCtx)
+	} else {
+		slog.Info("book-lifecycle consumer not configured (REDIS_URL unset)")
+	}
+
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,

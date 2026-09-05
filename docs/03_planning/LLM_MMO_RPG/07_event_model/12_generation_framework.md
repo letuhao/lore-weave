@@ -3,7 +3,36 @@
 > **Status:** LOCKED Phase 6 (Option C closure follow-up, 2026-04-25 late evening). Per [EVT-A12 extensibility framework](02_invariants.md#evt-a12--extensibility-framework-new-2026-04-25) extension point (f) "new generation rule", this file specifies the **systematic management framework** for event-emitting logic — registry, trigger source taxonomy, cycle detection, capacity governance, coordinator service spec, extension procedure.
 > **Stable IDs:** EVT-G1..EVT-G6. New prefix `EVT-G*` reserved 2026-04-25 (registered in [`../_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md)).
 > **Why a new file post-closure:** the original Phase 5 closure noted "all Phase deferrals resolved", but user identified a **systematic management gap** for event generation that the existing axiom layer (EVT-A9 + EVT-A12) implicitly required but didn't operationalize. Phase 6 fills that gap at framework level (no new service binary; coordinator is logical role).
-> **Realizes original goal #4** ("generate event theo điều kiện + xác suất") at systematic level.
+> **Addresses original goal #4** (generating an event by condition and probability) at the systematic level.
+
+> ## 🔴 2026-08-02 — READ BEFORE CITING THIS FILE: **it is a DESIGN, not a mechanism.**
+>
+> Honest statement of what this file achieved: **the trigger vocabulary is resolved; the generation
+> mechanism is designed and unbuilt.** Everything below is worth keeping as design. **Nothing below is
+> evidence that anything runs.** Measured across `crates/` + `contracts/` + `services/`, every absence
+> re-established with `grep -rIn` (`rg` has been observed under-reporting in this repo, and
+> `.claude/worktrees/` inflates naive greps ~4×):
+>
+> | rot | claim in this file | measured |
+> |---|---|---|
+> | **`E-7`** | the whole `EventModelError` taxonomy — `GeneratorRateLimited` (`:156`), `GeneratorCycleDetected` (`:173`), `generator_capacity_budgets.yaml` + its CI gate (`:279-303`) | **`EventModelError` 0 · `GeneratorRateLimited` 0 · `GeneratorCycleDetected` 0 · `generator_capacity_budgets` 0 · `registry_uuid` 0 · `cascade_depth` 0** |
+> | **`E-3`** | `dp::deterministic_rng(channel_id, channel_event_id)` (`:266`), the answer to failure mode 3 above | **0 occurrences.** The named function does not exist |
+> | **`E-5`** | `dp::subscribe_channel_events_durable` (`:85-89`) — **four of `EVT-G2`'s five trigger kinds rest on it** | **0 occurrences** |
+> | **`E-8`** | `EVT-G1`/`EVT-G6` require every generator to declare `registry_uuid` + `capacity_ceiling` in a *"Generator-rows section"* of the ownership matrix | the matrix row exists (`_boundaries/01_feature_ownership_matrix.md:158`, `:162`) — **there is no such section**, and **not one registered generator carries either mandatory field** |
+> | **`E-21`** | *"generators **ALREADY run** in-process per DP-Ch26 (existing bubble-up aggregator runtime)"* (`:186-215`) | **false.** No aggregator runtime, no coordinator, no generator trait exists. The deployment argument may still be right; its stated evidence is not — this is `D-57`'s shape, *a presence claim about code must cite code* |
+> | **`E-17`** | `EVT-G3` runtime cycle detection, hard cap **16** | **three uncoordinated cascade bounds now exist**: this 16 · `33_trigger_group_order.md`'s `TRG-A1..A18` group/wave law (**SEALED 2026-07-28**, three months newer, **never referenced by this folder**) · `D-79`'s wave depth **8** with `on_exceeded` engine-fixed to `Refuse`. **One bound, one owner** — and `TRG` is the one with six named swap-tests behind it |
+>
+> **What genuinely survives and should be inherited rather than re-derived:** **`EVT-G2`'s five-kind
+> closed trigger taxonomy** (`CommittedEventOf` / `StateThresholdOn` / `FictionTimeMarker` /
+> `OtherGeneratorOutput` / `LifecycleMarker`) — **the only place in this corpus that enumerates what can
+> cause an event** — and `EVT-G3`'s static topological sort at registration, which is a real design.
+>
+> **What this framework does not address at all:** a reaction that *intervenes before a fact exists*.
+> Its only reaction primitive is `EVT-G2` kind (d), a generator subscribing to a generator. The
+> propose→adjudicate→apply seam with its two subscription points has no counterpart here, and its
+> load-bearing event — `StatusProposed` — **cannot be classified by any active `EVT-T*` category**.
+>
+> Full ledger: §7 of [`docs/specs/2026-08-02-event-causality.md`](../../../specs/2026-08-02-event-causality.md).
 
 ---
 

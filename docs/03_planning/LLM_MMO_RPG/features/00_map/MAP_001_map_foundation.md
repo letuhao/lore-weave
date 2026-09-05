@@ -1,5 +1,12 @@
 # MAP_001 — Map Foundation
 
+> **📐 THIS IS DESIGN. For what is BUILT, read [`docs/standards/world-and-map.md`](../../../../standards/world-and-map.md) FIRST.**
+> The space graph, its validator, its seeder, the spawn path and the read model are shipped,
+> constrained and wired to a browser against a real reality. This document is richer than that
+> code, which is exactly why an agent reading it alone concludes nothing runs and rebuilds it.
+> The inventory there marks every capability **BUILT · HOLLOW · ABSENT**, names the symbol that
+> owns each one, and says where to attach.
+
 > **⚠ SCOPE SUPERSEDED 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md) (`SPG-*`):**
 > **§3.1 `ChannelTier` (`Continent | Country | District | Town | Cell`) is RETIRED** and replaced by the
 > closed **`MapKind`** set plus a **containment matrix** validated on write (`SPG-A3`, amendment row
@@ -180,9 +187,20 @@ pub struct MapPosition {
 // structure becomes an `owner_*` ATTRIBUTE on a node, so territory changes hands
 // by rebinding an ownership relation instead of restructuring the tree.
 //
-// See doc 36 §3 for the set and the matrix. `SPG-R2` narrows `DP-Ch1`'s
+// See doc 36 §3 for the set and the matrix.
+//
+// ⚠ CORRECTED 2026-08-02. These lines used to read "`SPG-R2` narrows `DP-Ch1`'s
 // `level_name: String` to `MapKind` and touches a LOCKED file, so it carries its
-// own claim.
+// own claim" — future tense, describing work that must NOT happen. `SPG-R2` was
+// RETIRED the day it was written (doc 36 §7, REC-93): `DP-A13` makes the data
+// plane deliberately agnostic to level semantics, so a reality can keep calling
+// its levels `phủ` (a prefecture) or `châu` (a province).  doc-language-gate: ok — the two words ARE the
+// subject matter: the rule being stated is that a reality keeps its own level vocabulary, so glossing
+// them away would delete the example. Glossed inline; identical usage in doc 36 §3 and in DP-A13.
+// Two fields, two jobs — `level_name` is the
+// reality's word; `MapKind` lives here, on the FEATURE aggregate. The retirement
+// is already stated at :233 of this file, 50 lines away and in another block,
+// which is precisely why the stale line read as current.
 pub enum MapKind {                                        // SPG-A3 — closed; legality from the matrix, not from order
     Universe,
     World,

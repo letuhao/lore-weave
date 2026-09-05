@@ -94,16 +94,37 @@ class CanonRulesRepo:
             )
         return _row_to_rule(row)
 
-    async def list_active(self, project_id: UUID) -> list[CanonRule]:
+    async def list_active(
+        self, project_id: UUID, *, as_of: int | None = None,
+    ) -> list[CanonRule]:
         """Enforceable rules only (active AND NOT archived) — the M6 critic's
-        source of truth at critique time. Uses idx_canon_rule_project."""
+        source of truth at critique time. Uses idx_canon_rule_project.
+
+        🔴 **`as_of` exists because the window columns had NO READER (QC-5 C42).**
+        `canon_rule.from_order` / `until_order` have been on the table throughout, and this
+        query ignored them, so every rule was handed to the critic as true from chapter 1 —
+        including a rule that states a REVEAL. Measured on the acceptance book: the betrayal
+        rule is cited on **7 of 8** clean drafts, and dropping it takes the clean arm from
+        **7/8 to 4/8**. Prose in a chapter before the reveal is not contradicting canon; the
+        rule is simply ahead of the story, and a critic told otherwise flags conforming prose.
+
+        `None` keeps every caller's existing behaviour — the management and authoring reads
+        want the whole enforceable set, and only a read anchored to a chapter can honestly
+        window. A NULL bound stays open, so an un-windowed rule is unaffected either way.
+        """
+        where = "project_id = $1 AND active AND NOT is_archived"
+        args: list = [project_id]
+        if as_of is not None:
+            args.append(as_of)
+            where += (" AND (from_order IS NULL OR from_order <= $2)"
+                      " AND (until_order IS NULL OR until_order > $2)")
         query = f"""
         SELECT {_SELECT_COLS} FROM canon_rule
-        WHERE project_id = $1 AND active AND NOT is_archived
+        WHERE {where}
         ORDER BY created_at, id
         """
         async with self._pool.acquire() as c:
-            rows = await c.fetch(query, project_id)
+            rows = await c.fetch(query, *args)
         return [_row_to_rule(r) for r in rows]
 
     async def list_all(

@@ -26,12 +26,50 @@ import logging
 from uuid import UUID
 
 from loreweave_jobs import BaseTerminalConsumer
+# ⚠️ Event names come from the CONTRACT (T30/OD-1, 2026-08-12): generated into
+# `loreweave_events` from contracts/events/_registry.yaml. These were hand-written
+# literals, and a producer rename left them registering handlers for a name nothing
+# emits — valid Python forever, every mocked test still green, the handler simply
+# never running. A rename is now an ImportError at startup instead.
+from loreweave_events import (
+    EVENT_GLOSSARY_ENTITY_DELETED,
+    EVENT_GLOSSARY_ENTITY_PURGED,
+    EVENT_GLOSSARY_ENTITY_RESTORED,
+    EVENT_GLOSSARY_ENTITY_STATUS_CHANGED,
+    EVENT_GLOSSARY_ENTITY_UPDATED,
+)
 
 log = logging.getLogger(__name__)
 
 STREAM = "loreweave:events:glossary"
 GROUP_NAME = "translation-staleness"
-GLOSSARY_CHANGE_EVENT = "glossary.entity_updated"
+GLOSSARY_CHANGE_EVENT = EVENT_GLOSSARY_ENTITY_UPDATED
+
+# The ENTITY LIFECYCLE events (plan T27/T28) belong here too, and their absence was a live,
+# reproduced defect rather than a design choice — QC-4's smoke trashed a real entity through
+# the real route and found the translation flag untouched, while the same row still flipped on
+# `entity_updated` (so the consumer was alive; only the event type was unhandled).
+#
+# WHY A DELETE MUST FLAG A TRANSLATION STALE
+# ------------------------------------------
+# Every consumer that READS the glossary sees a delete immediately, because those reads filter
+# `deleted_at IS NULL`. A finished translation is different: it is not a read, it is stored
+# TEXT that already contains the term. Nothing re-reads the glossary on its behalf, so without
+# a flag the chapter keeps rendering a name the glossary no longer has, and nothing anywhere
+# reports it. The flag is the only mechanism that reaches already-produced output.
+#
+# All four are handled, not just delete, because the pairs are what make the state converge:
+# a restore that did not flag would leave a chapter permanently missing a term it should carry,
+# and `entity_status_changed` decides whether the term feeds the translation glossary at all.
+# The flag only flips false -> true, so an entity that is deleted and then purged flags once
+# and the second event is a cheap no-op.
+GLOSSARY_LIFECYCLE_EVENTS = (
+    EVENT_GLOSSARY_ENTITY_DELETED,
+    EVENT_GLOSSARY_ENTITY_RESTORED,
+    EVENT_GLOSSARY_ENTITY_PURGED,
+    EVENT_GLOSSARY_ENTITY_STATUS_CHANGED,
+)
+GLOSSARY_STALENESS_EVENTS = (GLOSSARY_CHANGE_EVENT, *GLOSSARY_LIFECYCLE_EVENTS)
 MAX_RETRIES = 3
 
 # M6b /review-impl MED-HIGH: the event's language_code (glossary) and the
@@ -82,8 +120,16 @@ async def handle_glossary_event(pool, event_type: str, payload: dict) -> bool:
     - **Language:** ``target_language`` set (a translation-specific change) ⇒ only
       that language; absent (a name/structural change) ⇒ all languages.
     - **No entity anchor** (a legacy event) ⇒ coarse book-level (the old path).
+
+    Handles ``glossary.entity_updated`` **and** the four lifecycle events
+    (``entity_deleted`` / ``entity_restored`` / ``entity_purged`` /
+    ``entity_status_changed``). The lifecycle payloads are deliberately thin and carry
+    no ``target_language``, which lands them on the "absent ⇒ all languages" branch —
+    correct, because a lifecycle change is structural rather than
+    translation-specific. They do carry ``glossary_entity_id``, so they keep the M6b
+    precision path rather than falling back to coarse book-level flagging.
     """
-    if event_type != GLOSSARY_CHANGE_EVENT:
+    if event_type not in GLOSSARY_STALENESS_EVENTS:
         return False
     book_id = payload.get("book_id")
     if not book_id:

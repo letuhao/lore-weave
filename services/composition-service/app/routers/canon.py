@@ -28,6 +28,8 @@ from app.db.repositories.structure_templates import (
 from app.db.repositories.works import WorksRepo
 from app.deps import (get_canon_rules_repo, get_grant_client_dep,
                       get_structure_templates_repo, get_works_repo)
+from app.clients.kal_client import KalClient
+from app.deps import get_kal_client_dep
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_current_user
@@ -360,3 +362,92 @@ async def restore_template(
     if t is None:
         raise HTTPException(status_code=404, detail="no archived structure template with that id")
     return t.model_dump(mode="json")
+
+
+# ── T37b — the author declares a role (SPEC §4.2b) ────────────────────────────
+
+#: The KG's reading axis. **NOT** composition's `STORY_ORDER_CHAPTER_STRIDE`, which is
+#: **1000** — three orders of magnitude smaller, for the outline's own ordering.
+#:
+#: ⚠️ Getting this wrong is silent and looks like success. A role written at
+#: `chapter × 1000` lands 1000x too early on the KG axis; every as-of read at the real
+#: position then misses it, the canon check sees no role, and the book reports "this
+#: character has no ties" rather than "the write used the wrong scale". T36 measured the
+#: live axis at 1 000 000 -> 20 000 000 for chapters 1..20, which is what pins this value.
+KG_EVENT_ORDER_CHAPTER_STRIDE = 1_000_000
+
+
+class RoleDeclaration(BaseModel):
+    """One authored role: SUBJECT --predicate--> object, in force from a chapter onward."""
+
+    subject_entity_id: UUID
+    predicate: str
+    object: str
+    from_chapter_sort_order: int
+    #: Optional. An author declaring a role is not citing a chapter — and the column
+    #: carries an FK to `episodes`, so a minted id is a 500 rather than a provenance
+    #: gap. Absent is the honest value.
+    source_episode_id: UUID | None = None
+
+    @field_validator("predicate", "object")
+    @classmethod
+    def _non_empty(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("must not be empty")
+        return v
+
+    @field_validator("from_chapter_sort_order")
+    @classmethod
+    def _positive(cls, v: int) -> int:
+        # A role in force "from chapter 0" is almost always an un-resolved position rather
+        # than a prologue claim, and it would be in force for the whole book.
+        if v < 1:
+            raise ValueError("from_chapter_sort_order must be >= 1")
+        return v
+
+
+@router.post("/works/{project_id}/roles", status_code=201)
+async def declare_role(
+    project_id: UUID,
+    body: RoleDeclaration,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    kal: KalClient = Depends(get_kal_client_dep),
+) -> dict[str, Any]:
+    """T37 — the author declares a role, and it becomes a `fact_kind='relation'` fact.
+
+    The studio half of SPEC §4.2b. Roles are *plan-authored, not extracted*, and this is the
+    surface where an author says so directly; the planforge half writes the roles a plan
+    implies (§4.2c).
+
+    **The endpoint takes a CHAPTER, never an ordinal.** The conversion to the KG's axis
+    happens here, once, against a named constant — because composition's own
+    `STORY_ORDER_CHAPTER_STRIDE` is 1000 and the KG's is 1 000 000, and a caller that passed
+    a raw ordinal would sooner or later pass one on the wrong scale. That failure is silent:
+    the fact is written, no error is raised, and every as-of read at the real position misses
+    it, so the canon check reports a character with no ties rather than a bad write.
+
+    EDIT grant, gated before the write — a role is a canon claim the guard will enforce
+    against every later draft, so it is not a VIEW-level act.
+    """
+    await _require_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    work = await works.get(project_id)
+    valid_from_ordinal = body.from_chapter_sort_order * KG_EVENT_ORDER_CHAPTER_STRIDE
+    fact = await kal.append_role_fact(
+        work.book_id,
+        subject_entity_id=body.subject_entity_id,
+        predicate=body.predicate,
+        object_value=body.object,
+        valid_from_ordinal=valid_from_ordinal,
+        source_episode_id=body.source_episode_id,
+        user_id=user_id,
+    )
+    return {
+        "fact": fact,
+        # Echoed so a caller can SEE the axis it landed on without a second read. The scale
+        # bug this guards against is invisible in a 201 that says nothing.
+        "valid_from_ordinal": valid_from_ordinal,
+        "from_chapter_sort_order": body.from_chapter_sort_order,
+    }

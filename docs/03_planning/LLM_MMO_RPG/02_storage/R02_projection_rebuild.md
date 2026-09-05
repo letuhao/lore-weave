@@ -8,6 +8,30 @@ generated_by: scripts/chunk_doc.py
 
 ## 12B. Projection Rebuild & Integrity (R2 mitigation)
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #9 + write-freeze).** Projections are not consulted on the write path (CS-A3), so §12B.5's catastrophic-rebuild step “all writes for this reality rejected with 503” must not freeze gameplay — the island keeps serving from memory while the sink rebuilds; and `region_projection` naming is stale (`region` → `place`/`actor_core` per the 52-row ownership matrix). Current design: [`15_commit_service.md`](../15_commit_service.md) CS-A3. Status markers below predate the island/commit-service model.
 
 Event sourcing requires the ability to rebuild projections from events. This is rare but load-bearing: schema changes, corruption recovery, and catastrophic restore all depend on it. Multiverse isolation + snapshots from §6 already solve most normal cases; the layers below address edge cases.

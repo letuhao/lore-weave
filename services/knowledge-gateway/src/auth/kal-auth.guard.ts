@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { loadConfig } from '../config/config.js';
 import { verifyHs256 } from './jwt.js';
-import { hasBookAccess } from './grants.js';
+import { hasBookAccess, hasProjectAccess } from './grants.js';
 
 /**
  * Dual-auth for the KAL READ surface — two trusted caller classes:
@@ -44,12 +44,26 @@ export class KalAuthGuard implements CanActivate {
     if (!userId) {
       throw new UnauthorizedException('valid X-Internal-Token or Bearer JWT required');
     }
+    // T55/h — the route's SCOPE, which is a book for most reads and a project for the ones
+    // whose callers hold no book id (spec §8.6/§8.7). ONE guard rather than a second one that
+    // re-derives the JWT check and the anti-spoof pin: the identity half is identical and only
+    // the authority differs, so duplicating it would be two readers of one concept.
+    //
+    // ⚠️ A route with NEITHER param still fails CLOSED. That is the whole reason this reads
+    // params instead of taking a constructor flag: a new controller cannot accidentally
+    // inherit a guard that then has nothing to check and waves it through.
     const bookId = req.params?.bookId;
-    if (!bookId) {
-      throw new UnauthorizedException('book scope required');
-    }
-    if (!(await hasBookAccess(bookId, userId))) {
-      throw new ForbiddenException('no grant on this book');
+    const projectId = req.params?.projectId;
+    if (bookId) {
+      if (!(await hasBookAccess(bookId, userId))) {
+        throw new ForbiddenException('no grant on this book');
+      }
+    } else if (projectId) {
+      if (!(await hasProjectAccess(projectId, userId))) {
+        throw new ForbiddenException('no grant on this project');
+      }
+    } else {
+      throw new UnauthorizedException('book or project scope required');
     }
     // Pin the downstream identity to the JWT (anti-spoof). ctxFromReq prefers this.
     req.kalUserId = userId;

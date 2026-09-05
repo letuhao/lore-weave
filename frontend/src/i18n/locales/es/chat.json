@@ -214,6 +214,8 @@
     "feedback_error": "No se pudieron guardar los comentarios",
     "incomplete_error": "Error: respuesta incompleta",
     "incomplete_interrupted": "Interrumpido: respuesta incompleta",
+    "empty_turn": "No se generó ninguna respuesta: no se ha cambiado nada. Inténtalo de nuevo.",
+    "orphaned_turn": "No se generó ninguna respuesta para este mensaje: no se ha cambiado nada. Inténtalo de nuevo.",
     "insert_into_chapter": "Insertar en el capítulo"
   },
   "tools": {
@@ -566,5 +568,12 @@
     "done": "Confirmado ✓",
     "error": "No se pudo confirmar",
     "label": "Confirmar"
+  },
+  "disambiguation": {
+    "label": "¿A cuál te refieres?",
+    "empty": "No se encontraron opciones.",
+    "unnamed": "(sin nombre)",
+    "truncated": "Mostrando {{shown}} de {{total}} — acota tu búsqueda para ver otras.",
+    "cancel": "Ninguna de estas"
   }
 }

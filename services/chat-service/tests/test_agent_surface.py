@@ -20,7 +20,7 @@ from app.services.agent_surface import (
     server_key_for_tool,
     servers_for_names,
 )
-from app.services.frontend_tools import frontend_tool_defs
+from tests._v1_tool_fixtures import frontend_tool_defs
 from app.services.stream_service import _stream_with_tools
 from tests.conftest import TEST_MODEL_REF, TEST_SESSION_ID, TEST_USER_ID
 from tests.test_stream_tools import (

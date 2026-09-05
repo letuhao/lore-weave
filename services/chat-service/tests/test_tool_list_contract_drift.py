@@ -21,6 +21,12 @@ renamed tools en masse. The blast radius is discovery itself.
 Same structural bug as K10 (`propose_edit`'s description drifting from ai-gateway's copy),
 so it gets the same guard: read the TS source directly, because the JSON contract file pins
 only the frontend tools' args and would never have seen this.
+
+T7-D1 (2026-08-13) — AND THE FIRST VERSION OF THIS FILE GUARDED THE WRONG HANDLER. `tool_list`
+is dispatched consumer-locally by `stream_service.py` on a chat turn; `handleToolList` runs
+only for a raw MCP caller. Asserting the advertisement against ai-gateway alone let the chat
+dispatch keep `True` and reported green. Both handlers are now asserted, and the chat one
+behaviourally rather than by regex. See `test_tool_list_default_hides_deprecated.py`.
 """
 from __future__ import annotations
 
@@ -54,8 +60,32 @@ def test_ts_source_is_present():
     assert "TOOL_LIST_TOOL" in _ts_source()
 
 
-def test_include_deprecated_default_matches_the_executing_handler():
-    """The EXECUTED default lives in handleToolList, not in the tool definition."""
+def test_include_deprecated_default_matches_the_handler_that_runs_for_a_CHAT_turn():
+    """T7-D1 — `tool_list` has TWO executing handlers, and this guard used to watch only the
+    one a chat turn never reaches.
+
+    A chat turn dispatches `tool_list` CONSUMER-LOCALLY in `stream_service.py`; ai-gateway's
+    `handleToolList` serves only a raw MCP caller. This test asserted chat's advertisement
+    against ai-gateway's handler, called that "the executing handler", and stayed green while
+    the chat dispatch defaulted the arg the opposite way for three weeks — measured live
+    2026-08-13 as 116 deprecated tools in a 307-tool listing the model never asked for.
+
+    Behavioural, not a regex: the dispatch's default is now read by CALLING it.
+    """
+    from app.services.stream_service import _tool_list_include_deprecated
+
+    advertised = _chat_tool_list()["include_deprecated"]["default"]
+    assert _tool_list_include_deprecated({"category": "all"}) is advertised, (
+        f"chat-service advertises include_deprecated default={advertised!r} but its own "
+        "consumer-local dispatch — the handler that runs for every chat turn — applies the "
+        "opposite. The model is being told the opposite of what happens, on the primary "
+        "discovery tool."
+    )
+
+
+def test_include_deprecated_default_matches_the_handler_that_runs_for_a_RAW_MCP_caller():
+    """The other executing handler. Kept because both must agree with the advertisement —
+    two handlers behind one advertised contract is exactly how K22 and T7-D1 both happened."""
     handlers = (
         pathlib.Path(__file__).resolve().parents[2]
         / "ai-gateway" / "src" / "mcp" / "handlers.ts"

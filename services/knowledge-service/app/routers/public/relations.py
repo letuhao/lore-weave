@@ -22,13 +22,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
 
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.relations import (
-    Relation,
-    get_relation,
-    invalidate_relation,
-    recreate_relation,
-)
+from app.db.graph import graph_session
+# T17 A4 — through the GraphStore PORT. This router asks nothing Neo4j-specific: it
+# fetches, invalidates and recreates edges, all three of which the port grew in A1
+# BY THIS ROUTER'S DEMAND. Binding it to the concrete layer bought nothing and cost
+# substitutability — T43 picks the engine on measurement, and an operation reachable
+# only through `graph_repos` produces no shadow observations to measure.
+from app.adapters.graph_store_provider import get_graph_store
+from app.domain.graph_models import Relation
 from app.events.outbox_emit import (
     RELATION_CORRECTED,
     emit_correction,
@@ -53,8 +54,9 @@ async def get_relation_endpoint(
 ) -> Relation:
     """Fetch a single relation by id (for the FE correction dialog). 404 on
     cross-user / missing."""
-    async with neo4j_session() as session:
-        rel = await get_relation(session, user_id=str(user_id), relation_id=relation_id)
+    async with graph_session() as session:
+        store = get_graph_store(session)
+        rel = await store.get_relation(user_id=str(user_id), relation_id=relation_id)
     if rel is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="relation not found")
     return rel
@@ -67,10 +69,11 @@ async def invalidate_relation_endpoint(
 ) -> Relation:
     """User marks a relation wrong → soft-invalidate (set valid_until). Emits a
     `spurious-drop` correction (after=null). Idempotent."""
-    async with neo4j_session() as session:
-        before = await get_relation(session, user_id=str(user_id), relation_id=relation_id)
-        invalidated = await invalidate_relation(
-            session, user_id=str(user_id), relation_id=relation_id,
+    async with graph_session() as session:
+        store = get_graph_store(session)
+        before = await store.get_relation(user_id=str(user_id), relation_id=relation_id)
+        invalidated = await store.invalidate_relation(
+            user_id=str(user_id), relation_id=relation_id,
         )
     if invalidated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="relation not found")
@@ -112,9 +115,10 @@ async def correct_relation_endpoint(
     (resurrecting `valid_until` if that tuple was previously invalidated, F5).
     Emits a `predicate-fix` correction. `after` is read POST-write so it
     reflects the live (resurrected) edge, not the request payload."""
-    async with neo4j_session() as session:
-        before = await get_relation(
-            session, user_id=str(user_id), relation_id=body.old_relation_id,
+    async with graph_session() as session:
+        store = get_graph_store(session)
+        before = await store.get_relation(
+            user_id=str(user_id), relation_id=body.old_relation_id,
         )
         if before is None:
             raise HTTPException(
@@ -124,8 +128,7 @@ async def correct_relation_endpoint(
         # we 409 and leave the OLD edge intact — never a half-applied state
         # (old-invalidated-but-no-replacement). Only invalidate once the
         # replacement exists.
-        new_rel = await recreate_relation(
-            session,
+        new_rel = await store.recreate_relation(
             user_id=str(user_id),
             subject_id=body.subject_id,
             predicate=body.predicate,
@@ -140,12 +143,12 @@ async def correct_relation_endpoint(
         # is a no-op that maps onto the same id, in which case skip — recreate
         # already revived it).
         if new_rel.id != body.old_relation_id:
-            await invalidate_relation(
-                session, user_id=str(user_id), relation_id=body.old_relation_id,
+            await store.invalidate_relation(
+                user_id=str(user_id), relation_id=body.old_relation_id,
             )
         # Re-read so `after` reflects the live edge (F3 — not the request).
-        after = await get_relation(
-            session, user_id=str(user_id), relation_id=new_rel.id,
+        after = await store.get_relation(
+            user_id=str(user_id), relation_id=new_rel.id,
         )
     await emit_correction(
         event_type=RELATION_CORRECTED,
@@ -176,6 +179,12 @@ class CreateRelationRequest(BaseModel):
     subject_id: str = Field(min_length=1, max_length=200)
     object_id: str = Field(min_length=1, max_length=200)
     predicate: str = Field(min_length=1, max_length=100)
+    # T36 — the STORY position this relation holds from, on the `event_order`
+    # axis (chapter ordinal × 1_000_000), the same axis extraction stamps and
+    # the canon check windows on. OPTIONAL and defaulting to None so existing
+    # callers are unchanged — but omitting it makes the edge invisible to every
+    # as-of read, which is the defect this field exists to let a caller avoid.
+    valid_from_ordinal: int | None = Field(default=None, ge=0)
 
 
 @relations_router.post(
@@ -200,21 +209,33 @@ async def create_relation_endpoint(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="subject_id and object_id must differ",
         )
-    async with neo4j_session() as session:
-        rel = await recreate_relation(
-            session,
+    async with graph_session() as session:
+        store = get_graph_store(session)
+        rel = await store.recreate_relation(
             user_id=str(user_id),
             subject_id=body.subject_id,
             predicate=body.predicate,
             object_id=body.object_id,
+            valid_from_ordinal=body.valid_from_ordinal,
         )
     if rel is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="subject or object entity not found for this user",
         )
+    if body.valid_from_ordinal is None:
+        # T36 — not an error, but worth saying once per write: a positionless
+        # edge is excluded from every as-of read, so it will never reach the
+        # canon check. Silence here is what let a whole book's author-declared
+        # roles sit invisible to the guard that most needed them.
+        logger.info(
+            "T2.5: relation created WITHOUT a story position — it will not "
+            "appear in any as-of read (user_id=%s %s -[%s]-> %s)",
+            user_id, body.subject_id, body.predicate, body.object_id,
+        )
     logger.info(
-        "T2.5: user created relation user_id=%s %s -[%s]-> %s",
+        "T2.5: user created relation user_id=%s %s -[%s]-> %s @%s",
         user_id, body.subject_id, body.predicate, body.object_id,
+        body.valid_from_ordinal,
     )
     return rel

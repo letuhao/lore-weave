@@ -16,6 +16,46 @@ mechanisms accumulated since 2026-06-10, **one retirement**, no composition, and
 that assigns a tool to a skill. Measured: 16 producers, 18 filters (13 silent), 8 answers to "is this
 tool available", 3 workflow selectors, 4 mutually inconsistent tool counts.
 
+### 1.0 The root cause, closed by experiment *(POC, 2026-08-04 — [`poc/`](poc/P1-P2-findings.md))*
+
+A DESIGN-phase POC drove the real frontend, autopsied 7,442 production tool calls, and ran
+single-variable experiments against the target model. **The loop has one root cause and it is now
+reproducible:**
+
+> The model is handed a tool list that **no longer contains the answer**, told the list is
+> **complete and callable**, and **instructed to choose from it**. It complies. Everything downstream —
+> the invented identifier, the repeat calls, the breaker messages, the `interrupted` turn — follows
+> from **one silent deletion**.
+
+Five arms, identical task, tool sets built from the real catalog:
+
+| arm | tool set | result |
+|---|---|---|
+| A | 1 tool (`book_list`) | ✅ 1/1 |
+| B | fixed envelope; schema delivered **in the conversation** | ✅ 1/1 |
+| C | all 35 `book_*` — **19 retired**, 7,921 tokens | ✅ **3/3** |
+| D | 16 current-only | ✅ 3/3 |
+| **E** | **exactly the 7 the token budget left** | ❌ **0/3** |
+
+**The only variable between 3/3 and 0/3 is whether the correct tool was on the wire.**
+`budget_names_by_tokens` dropped it — with no log, no note, no telemetry — and the F18 auto-load then
+announced *"these are now LOADED and callable — call one of them now."*
+
+**Hypotheses rejected by measurement, several of them this spec's own:**
+
+| claim | verdict |
+|---|---|
+| the model is too weak for this surface | ❌ correct in A, B, C, D |
+| too many tools to select from | ❌ 3/3 at 35 tools / 7,921 tokens |
+| deprecated tools drown the signal (this spec's earlier reading) | ❌ C and D identical — **OQ5's "label, don't hide" is vindicated** |
+| the budget systematically favours retired tools | ❌ 1.07×, indistinguishable from noise |
+| the context budget is exhausted | ❌ median utilisation **14.4%**; the P2b analysis was withdrawn |
+| **a silent filter removed the answer** | ✅ **confirmed, reproducible** |
+
+Two production numbers frame everything else: **57% of real tool errors are the model unable to name
+a thing** (and 57% of the surface demands a caller-supplied id), and **58% of "errors" are our own
+breaker messages** rather than tool failures.
+
 ### 1.1 PO decisions (2026-08-03) — sealed
 
 | # | Decision | Consequence |
@@ -42,6 +82,116 @@ So the invariant is **lane-scoped** (§2.3): every tool declares a lane; workflo
 and ratcheted on the FSM lane only. The owner gets what they actually asked for — *nothing exists
 unplanned, and the plan is machine-checkable* — without a gate that must be switched off to keep
 working.
+
+---
+
+### 1.3 Constraints (PO, 2026-08-03) — these invalidate assumptions, not just add scope
+
+| # | Constraint | What it invalidates |
+|---|---|---|
+| **C1** | **The catalog is expected to reach thousands of tools.** Today 312. | The discovery triad was designed for ~200 and **structurally cannot survive 3,000** — see below. R14. |
+| **C2** | **This repo is maintained for years.** Adding or renaming an MCP tool must be routine, not an event. | Today a rename must be hand-propagated to `GROUP_DIRECTORY` ×3, two prefix maps, `TOOL_POLICY`, 43 intent regexes, skill prose and `workflows.steps[].tool` — **none of them compiler-checked**. R13. |
+
+**C1, measured directly.** DESIGN pulled the live federated catalog from ai-gateway (`tools/list`,
+2026-08-03): **315 tools, ~130k tokens of schema, 413 tokens per tool** — higher than the ~375 this
+section first estimated from the 2026-07-06 whole-domain figure.
+
+| catalog | full schemas | name+description index | tools per group (17 flat) |
+|---|---|---|---|
+| 315 (today, measured) | **130k tok** | 16k tok | 19 |
+| 1,000 | 413k tok | 50k tok | 59 |
+| **3,000** | **1,239k tok** | **150k tok** | **176** |
+
+**And the distribution is already lopsided today**, which matters more than the totals:
+
+| level-1 prefix | tools |
+|---|---|
+| `composition` | **107** — a third of the whole catalog |
+| `glossary` | 54 |
+| `book` | 35 |
+| `kg` | 31 |
+| `world` | 17 |
+| …12 more | ≤16 each |
+
+**17 level-1 prefixes exist; `GROUP_DIRECTORY` declares 14.** Three are already unaccounted for — the
+same silent-drop class the audit found, visible in the live data.
+
+Three things break, in order:
+
+1. **`tool_list(category)` returns a whole category.** At 214 tools per group that is not a listing,
+   it is a context dump — and the F18 loop-breaker's "re-list ⇒ auto-load the category" behaviour
+   becomes an instant window overflow.
+2. **A flat 14-group taxonomy has no room.** `GROUP_DIRECTORY` is a ~15-line prompt block today; the
+   grouping must become hierarchical, which is precisely what SEP-1300 deferred and therefore has no
+   standard to inherit.
+3. **The catalog itself exceeds the window.** At 3,000 tools even a bare name+description index is
+   150k tokens, so *"list everything and let the model pick"* stops being an option at any level.
+
+**C1 is why local patching cannot save this.** Every mechanism in the audit's thirteen is a
+*constant-factor* improvement on an approach whose cost is linear in catalog size. The budget trims
+harder, the breakers fire sooner — but nothing changes the exponent.
+
+---
+
+### 1.4 The original mistake — and the four shapes that remain *(PO, 2026-08-04)*
+
+**MCP's native architecture is "load the catalog once, into the system prompt."** That is coherent at
+the scale it was designed for: a few dozen tools against a ~20K system-prompt budget, which is what
+the mainstream chat clients actually ship. **We could not do that** — 315 tools at 413 tokens each is
+130K — **and we adopted the architecture anyway, then spent thirteen mechanisms compensating.**
+
+> Importing an architecture without importing its scale assumption is the root mistake. Everything in
+> `AUDIT.md` §5's timeline is downstream of it.
+
+That reframes this spec's job. It is not to fix the compensations; it is to **choose a shape that is
+sound at our scale** and rebuild on it. There are four, and they are the whole space:
+
+| # | shape | system prompt | tool surface | cost |
+|---|---|---|---|---|
+| **1** | **Fixed per use-case** — a surface declares its tool set up front and it never changes | static | static per surface | the set must be right up front; the long tail is unreachable |
+| **2** | **Lazy load** — accept dynamic context in both the system prompt and the state machine | **volatile** | volatile | **this is today.** Measured: 74% repeat calls, 72% organic failure, cache prefix destroyed |
+| **3** | **User-curated** — the person picks the tools for the session | static | static per session, human-chosen | needs a UI, and the user must know what they will need |
+| **4** | **State machine in the conversation** — system prompt fixed (or varying only with mode ask/write/plan), capability and guidance arrive as messages | **fixed** | fixed core; the rest arrives in-conversation | the inner call's schema validation must be recovered elsewhere |
+
+**Shape 2 is the one we have, and the POC is its measured failure.** Shapes 1 and 3 are real and
+already half-present (curated pins are shape 3; `surface_hot_domains` is a weak shape 1).
+
+### The POC changed which shape leads
+
+**Shape 1 was assumed impractical because the fixed set would have to be large. A fifth idea removes
+that reason** (PO, 2026-08-04): **drop the atomic edit tools.** Keep search tools plus a handful of
+coarse capabilities that take a **plain-text instruction** and run a whole job to completion through a
+sub-agent — PlanForge end-to-end, world setup, glossary build.
+
+Measured support:
+
+- **57% of current tools require a caller-supplied id**, and **57% of real errors are id-resolution
+  failures.** A capability taking *text* does not have that failure mode — **eliminated by
+  construction, not mitigated.**
+- **118 of 198** current tools are writes that collapse into coarse capabilities.
+- A 16-tool surface routed a real multi-step request correctly **3/3** on the target model.
+- ~20 tools is inside the measured comfort zone (arms A and C: 1 and 35 both perfect).
+- The sub-agent boundary already exists: `subagent_runtime.py`'s `tool_scope` is **the only place in
+  this repo where a capability genuinely owns a tool whitelist**, enforced at advertise *and* execute.
+
+Its two costs, both measured and both addressable:
+
+- **Prose-instead-of-action is the native failure mode** — 0/3 without a hard anti-prose directive,
+  3/3 with one. This is the `co_write` incident (*6,948 characters, zero tool calls*) reproduced on
+  demand, so the directive must be a **gate, not a hope**.
+- **The 39 id-requiring reads must also collapse** to text-in/references-out, or the 57% class
+  survives the refactor. That is a universal search — sound, and its choking risk is **not intrinsic**:
+  p50 result size is 171 tokens, and the hazard is concentrated in the **18 of 36 read tools that have
+  no `limit` parameter at all**, whose rule (OUT-2) is already written and already gated, with **14
+  offenders grandfathered as FLIP-PENDING**.
+
+**The leading design is therefore 1 + 4, with 3 as an explicit override:** a small static core
+(one search per domain + coarse capabilities) — cache-stable, id-free, measured to work — plus
+**arrival-in-conversation** for the long tail, plus **user curation** where the person wants it.
+**Shape 2 is retired.**
+
+**Still not decided:** how far the reads consolidate (whether ~20 is reachable), and whether
+sub-agents hold correctness when handed free text. Those are DESIGN's remaining POCs.
 
 ---
 
@@ -153,7 +303,13 @@ order: **R1** manifest · **R2** group/lane at registration · **R3** skills dec
 **R4** one explained surface · **R5** guards register · **R6** coverage ratchets · **R9** the three
 layers · **R8a** durable-vs-session state · **R8b** zero-result post-conditions · **R7** one surface
 vocabulary · **R10** the tool error contract · **R11** retry budget + uncontaminated retry ·
+**R13** the contract migration chain · **R14** discovery that does not scale with the catalog ·
 **R12** evals in CI. Execution order is §5's phase table, which differs again.
+
+**Two requirements exist because of the §1.3 constraints and nothing else.** R13 answers C2 (*"adding
+an MCP tool is a nightmare"*) and R14 answers C1 (*"thousands of tools"*). They are the reason this is
+a re-architecture rather than a cleanup: every other requirement improves a constant factor, and those
+two change what the cost is a function of.
 
 **Three of these are net-negative by design** and that is the point: R10 retires six orchestrator
 breakers, R2 deletes five hand-maintained tables, R9 deletes `pinned_legacy_tools`. A requirement that
@@ -509,6 +665,221 @@ action space. The principled version is to isolate or branch the retry context. 
 `excluded_by` (R4) is what lets us tell the difference between *"withheld to break a loop"* and
 *"withheld because you may not have it."*
 
+### R15–R20 — the POC-derived requirements *(see [`poc/P1-P2-findings.md`](poc/P1-P2-findings.md))*
+
+Six requirements came from measurement rather than reasoning, and **R20 is the spine the rest hang
+from.** Full evidence in the POC document; stated here so the spec is self-contained.
+
+| id | requirement | measured basis |
+|---|---|---|
+| **R20** | **One arrival channel** — a capability and its guidance are delivered as one unit, at the same moment, in the same place | on 2 of 3 surfaces **zero skills are injected while tools are seeded**; `GROUP_DIRECTORY` advertises `plan` every turn on surfaces where no `plan` tool is reachable |
+| **R19** | The advertised tool block is **cache-prefix state**: chosen once per session shape, never mutated mid-turn | a changed tool block costs **+65% uncached tokens** and drops hit rate by a sixth |
+| **R18** | The prompt is a **projection** of state, never a parallel authoring surface. Prose may teach; it may not claim | lifecycle state and description prose agree **36%** of the time; 9 of 12 rails disagree with their own `notes_md` |
+| **R17** | **Guidance is a gate** — a tool without effective guidance does not register | **60%** of tools require an id and never name its producer; 20% are legacy with no `superseded_by` |
+| **R16** | **One deterministic loop detector**, over the stream, that **terminates** | 14 function-local counters, none aware of the others; the observed turn ended `interrupted`, not `stop` |
+| **R15** | A **surface must be able to complete what it advertises** | `/chat` has no book binding and no book hot-seed, yet accepts "list my books" |
+| **R21** | **A waiver carries an expiry, not only a reason** | the same pattern three times: `_EXEMPT_SKILL_CODES` hid the `co_write` defect; `KNOWN_RED` rows outlive their deferrals; **14 FLIP-PENDING allows are measurably the choking hazard** |
+
+**R21 is the operating rule the POC kept re-discovering.** Three times today the shape was identical:
+*the correct rule was written, the gate was built, an exemption was granted so as not to block
+progress — and the exemption became permanent and then became the defect.* A waiver without an expiry
+is not a waiver; it is a silent amendment to the rule. Every allow-list in this spec (R6's ratchet,
+R17's 189 existing violations, OUT-2's 14) ships with a date, and passing it reds.
+
+**R20 subsumes the old framing.** R3 (skills declare tools) becomes *how R20 is checked*; R15 is R20 at
+the surface level; R19's cache argument becomes a *consequence* of R20 rather than a motivation. The
+requirements below (R1–R14) are what make R20 mechanically enforceable — a manifest to name
+capabilities, a migration chain to change them safely, a bounded discovery to deliver them.
+
+**R10 is re-scoped, and the spec was wrong about it.** P2 measured that **58% of "errors" are our own
+breaker messages**, not tool failures — so R10's error contract addresses **42% of error volume and is
+not the loop fix**. The loop fix is R16 plus R4/R5 (withhold, do not argue). R10 still matters: an
+unactionable error guarantees the next iteration is uninformed (**R10.2a** — name the remedy, not only
+the violated constraint).
+
+**R14 is re-justified.** It was written as the budget fix; the budget claim was retracted (P2b). R14
+stands on C1 (scale) and on **selection accuracy** — `tool_list` returning 35 entries in a 3,393-token
+payload of which **54% are retired tools** is the measured failure.
+
+### R13 — The tool-contract migration chain *(C2 — "adding an MCP tool is a nightmare")*
+
+The PO's framing: **build this the way Entity Framework builds schema change.** That analogy is exact,
+and it decomposes into mechanisms we can adopt one at a time. EF's power is not that it prevents
+schema change — it is that **the diff is generated, not hand-written**, so a change is cheap to make
+and impossible to forget.
+
+| EF Core | What it buys | Here |
+|---|---|---|
+| POCO model + fluent config | schema is *derived*, never typed twice | typed I/O + `_meta` at the registration chokepoint — **partly present**, see R13.1 |
+| `ModelSnapshot` | a committed file stating current schema truth | `contracts/mcp-tool-catalog.json` — **R1** |
+| `migrations add` | computes the diff **for you**; you cannot forget it | **R13.2 — missing, and it is the ergonomic unlock** |
+| migration history ledger | what has been applied, in order | **R13.2** |
+| LINQ over the model | rename ⇒ **compile error** | **R13.3 — missing entirely** |
+| provider/consumer edges (Backstage) | find who breaks *before* you break them | **R13.4 — missing entirely** |
+
+#### R13.1 — One registration path per language; the SDK generates the schema
+
+Both SDKs in use are the official ones — `modelcontextprotocol/go-sdk v1.7.0-pre.3` and
+`mcp[cli]==1.28.1` (`mcp.server.fastmcp`) — and **both already derive a tool's JSON schema from its
+type**. The problem is not a missing capability; it is that the repo has **five registration patterns**
+and, in Go, hand-built `InputSchema` overrides (`closedSetSchemaFor`, `relaxAdditionalProps`) that
+*replace* what the SDK derived. Hand-written schema is the drift source.
+
+Collapse to one path per language, schema always derived, closed sets expressed **in the type** rather
+than patched onto the schema afterwards. The TS surface — which today has **no registration validator
+at all** ([audits/04](audits/04-mcp-servers-federation.md) §2, variant E) — is the worst offender and
+must join the same discipline.
+
+> **Migration landmine, already visible.** `services/*/requirements*.txt` records that
+> **`mcp==2.0.0b2` removes `mcp.server.fastmcp`** — the module all five Python providers are built on.
+> That break is coming for ~180 tools at once. R1's snapshot is the difference between *"upgrade and
+> see what shatters"* and *"the gate names every tool whose shape changed."*
+
+#### R13.2 — Generated migrations, not hand-maintained lists
+
+A `mcp-migrations add <name>` step that:
+
+1. boots the providers, reads the live `tools/list`;
+2. diffs it against the committed snapshot from R1;
+3. **classifies every change** — `added` · `removed` · `renamed` (same shape, new name) ·
+   `additive` (optional field added) · `breaking` (required field added, type changed, enum narrowed);
+4. writes an ordered, committed migration entry with that classification;
+5. rewrites the snapshot.
+
+CI then enforces one rule: **live catalog ≠ snapshot and no migration entry ⇒ red.** That single gate
+converts every one of the audit's silent drifts into a build failure at the moment it is introduced.
+
+The point is the ergonomics, and it is the whole reason EF scales: **the developer never writes the
+diff.** Change the tool, run one command, review what it generated. Today the equivalent is to
+remember eight places by hand.
+
+#### R13.3 — Generated typed clients, because the agent is an untyped client
+
+The industry statement of why types help: *"a typed client breaks the build the moment an API contract
+changes underneath it — that is the whole point of types: they turn a silent mismatch into a loud
+compile error before it ships."*
+
+**Our problem is the exact inverse: the LLM is a client that can never fail to compile.** No amount of
+typing inside a provider makes a caller break loudly, because the caller passes a *string*. And it is
+not only the model — every in-repo reference to a tool is a bare string too: `GROUP_DIRECTORY` ×3, the
+prefix maps, `ALWAYS_HOT_WRITES`, `_STICKY_DOMAIN_IGNORE`, `INTENT_GATED_SETUP_TOOLS`, 43 intent
+regexes, and `workflows.steps[].tool`. **Nothing is compiler-checked. That is why a rename breaks the
+repo silently.**
+
+Generate typed clients from the snapshot for every in-repo consumer (chat-service, the workflow
+resolver, the public-edge policy). A rename then breaks *their* build. The model still cannot be
+type-checked — which is exactly why the failure has to move to CI (R13.2), where it can.
+
+#### R13.4 — Reference edges, so a rename knows who it breaks
+
+Register every string reference to a tool as a **consumer edge** in the snapshot: workflow steps,
+skill declarations (R3), policy rows, intent maps, prompt directories. A migration that renames or
+retires a tool then reports **every broken edge by name**.
+
+This is the Backstage discipline — *"when v2 launches, identify v1 consumers directly from the catalog
+and coordinate deprecation"* — and it is what makes C2 tractable. It also answers the PO's *"workflows
+collapse whenever an MCP tool changes"*: today `workflows.steps[].tool` is a free string validated at
+**four consecutive layers, none of which check it**
+([audits/05](audits/05-workflows-registry.md) §4.2). With edges, a workflow referencing a renamed tool
+is a red migration, not a rail that silently stops working.
+
+#### R13.5 — Rename becomes a lifecycle operation, not a find-and-replace
+
+The three previous points make this possible; state it as the rule:
+
+> **You never rename a tool. You add the new name, mark the old one `deprecated` with
+> `superseded_by` + a sunset trigger (R9), and the edge report tells you when nothing references the
+> old name any more — that is when it may be removed.**
+
+Exactly EF's `add column → backfill → drop column`, applied to a tool. It converts the current
+all-at-once, silently-breaking rename into a bounded, observable sequence — and R9.6's usage counters
+are what make *"nothing references it any more"* a fact rather than a hope.
+
+#### R13.6 — The codegen boundary: generate the CONTRACT, never the PROSE
+
+**Where the EF analogy stops, and it stops at the most important point.** EF's generated artifact is
+code read by a compiler, so verbosity is free. **Ours is partly prompt text read by an LLM on every
+turn, where every generated token is paid N times, forever.** A naive copy of EF therefore fails in a
+specific way the PO named: *bad codegen does not merely fail to improve things — it is worse than the
+hand-written version*, because a human at least compresses.
+
+The rule, and it is not negotiable in either direction:
+
+| Target | Read by | Optimise for | Verbosity |
+|---|---|---|---|
+| snapshot · migrations · typed clients · gates · the group tree | compiler / CI | completeness, explicitness | **free** |
+| skill bodies · rail text · tool descriptions · the group directory block | **the LLM, every turn** | token economy | **paid N×** |
+
+**The audit supports the split.** What is broken in the skill layer is the *binding* — a regex
+scraping backticks out of prose — not the prose itself, which is pedagogically good and
+human-compressed. So: **generate the binding, keep the prose.** R3 already draws this line
+(`allowed_tools` is data, the body is prose); R13.6 generalises it to every generated artifact.
+
+**Tooling, by class — and the class decides the tool:**
+
+- **Code (typed clients, models): do not string-template.** The standing critique is that mixing text
+  blocks with control logic *"reduces readability, expressiveness, reusability, and analyzability"*,
+  and practice has moved toward model/AST-based emitters. Use `datamodel-code-generator`
+  (JSON Schema → Pydantic v2 / dataclass / TypedDict) on the Python side and `quicktype` where a
+  cross-language model is wanted. On the Go side the official SDK **already derives schema from the
+  type**, so what we generate there is the *client*, not the model.
+- **Small, stable text artifacts** (the group tree block, gate stubs): a template engine is fine, and
+  here a **logic-less** one (Mustache/Handlebars) is preferable to Jinja — when the output lands in a
+  token budget, an engine that *constrains logic* is a feature. Go `text/template` covers the Go side.
+- **Prompt prose: not generated at all.** Hand-written, gate-checked against the manifest (R3).
+
+**And the gate that keeps this honest — R13.6.1.** Every generated artifact that enters a prompt
+carries a **token-budget assertion in CI**. The repo already measures (the group directory at ~188
+tokens live, `HOT_SEED_TOKEN_BUDGET`, the W1 frontend/MCP schema-token split); what is missing is the
+red. Without it, codegen bloat is invisible until someone reads a transcript — which is precisely how
+the 24,000-token-per-turn tax survived for weeks.
+
+Two assembly disciplines from the prompt-bloat literature map directly onto what we already do, and
+should be named so they stop being accidental:
+
+- **Task-relevant projection** — project metadata to what the task is likely to reference. This *is*
+  the hot-seed. It was right.
+- **Priority-ordered composition** — a prompt is typed blocks of differing marginal value, assembled
+  greedily under a fixed budget. This is the shape R4's `ToolSurface` should converge on, and it is
+  what turns the three separate budgets (§R7 context) into one ordered ceiling.
+
+### R14 — Discovery cost must not scale with the catalog *(C1 — thousands of tools)*
+
+The discovery triad is a **constant-factor** optimisation over an approach that is **linear in catalog
+size**. At 3,000 tools the constants stop mattering (§1.3). Three changes make the cost independent of
+how big the catalog gets:
+
+**R14.1 — Every discovery result is hard-bounded.** No call may return "the whole category". A bound
+(≈20 entries) with an explicit `more: N` and a narrowing hint replaces it. This also removes the F18
+auto-load-the-category behaviour, which at 214 tools per group is a window overflow rather than a
+loop-breaker.
+
+**R14.2 — Groups become hierarchical.** A flat 14-way taxonomy cannot index thousands. `tool_list` at
+any level returns **children, not leaves** — domains, then subgroups, then tools — so a single call is
+O(branching factor), never O(catalog). SEP-1300 deferred hierarchical nesting, so this is ours to
+define; R2's `group` becomes a path (`glossary/ontology`, `composition/arcs`) rather than a flat token.
+
+**R14.3 — Retrieval for the tail, enumeration for the tree — and this reconciles F17.** F17 retired
+`find_tools` because fuzzy top-K *cannot enumerate*. True, and at 3,000 tools **enumeration cannot
+enumerate either.** The two are not competitors; they answer different questions at different levels:
+
+| Level | Mechanism | Property needed |
+|---|---|---|
+| the tree (domains, subgroups) | deterministic enumeration | complete, reproducible, small |
+| the leaves within a subgroup | **retrieval** — semantic + metadata filter | recall over a bounded candidate set |
+
+Reported elsewhere for retrieval-filtered selection: tool-selection accuracy **13.62% → 43.13%**, and
+a semantic router over 741 tools cutting **127,315 → 1,084 tokens**. The production shape is layered
+and *ordered*: intent classifier → metadata filter → semantic search → scoring → the model chooses
+from a small clean set. **LoreWeave already owns all five pieces** — the intent router, hot-domain
+filtering, embeddings, budget scoring, and the model. They are simply unordered and unlabelled, which
+is R4. R14 is what R4's ordering must converge on once the catalog is large.
+
+**Consequence for the spec:** `find_tools` is not resurrected as-is — its unbounded retry bias was a
+real defect — but *retrieval* returns as a first-class, bounded stage inside `tool_list`/`tool_load`,
+rather than as a competing third tool. §8 must record this as an amendment to F17 rather than a
+reversal, or the next reader will read it as the fourteenth swing of the pendulum.
+
 ### R12 — Evals in CI — the regression net, and the answer to maintenance fatigue
 
 The stated pain is that maintenance is exhausting. The mechanism behind that is precise: **there is no
@@ -557,13 +928,15 @@ handler; chat never routes `tool_list` there) and `test_tool_list_load.py:64-66`
 | Phase | Delivers | Done when |
 |---|---|---|
 | **0** | §4 — six fixes + two vacuous-test repairs | each fix's proof pasted into VERIFY evidence (§9); full suites green in the 5 touched services |
-| **1** | **R12 evals in CI** · R1 manifest · R2 `_meta` group/lane + R9.5 namespacing + cache hints · R7 enum | the four existing harnesses run in CI against a versioned golden set and block a PR on regression; manifest generated in CI; registration panics on a missing group in all 3 languages; `_meta` keys namespaced; catalog version hashes description + `_meta`; `GROUP_DIRECTORY`/prefix maps deleted as authored artifacts and derived — the ×3 and ×2 copies **gone**, not synced |
+| **1** | **R12 evals in CI** · R1 manifest · R2 `_meta` group/lane + R9.5 namespacing + cache hints · R7 enum · **R13.1 one registration path per language** | the four existing harnesses run in CI against a versioned golden set and block a PR on regression; manifest generated in CI; registration panics on a missing group in all 3 languages; schema is SDK-derived everywhere and hand-built `InputSchema` overrides are gone; `_meta` keys namespaced; catalog version hashes description + `_meta`; `GROUP_DIRECTORY`/prefix maps deleted as authored artifacts and derived — the ×3 and ×2 copies **gone**, not synced |
+| **1b** | **R13.2–R13.6 the migration chain** — generated diffs, typed clients, reference edges, rename-as-lifecycle, the codegen boundary | `mcp-migrations add` generates and classifies the diff; **CI reds on live-catalog ≠ snapshot with no migration entry**; in-repo consumers build against generated clients; a rename reports every broken edge by name. **No prose is generated, and every generated artifact entering a prompt carries a CI token-budget assertion (R13.6.1)**. Proof: rename one real tool and show the gate naming its consumers *before* anything breaks at runtime; and show the budget gate redding on a deliberately bloated generated block |
 | **2** | **R10 tool error contract** (+ retire the breakers it obsoletes) | every tool result carries a closed-set classification decided in the wrapper; `terminal_permanent` names what to do instead; the `isError`/`outputSchema` envelope is specified and proven against a **strict** client; **at least four of the six orchestrator breakers deleted**, with the eval suite green across the deletion |
 | **3** | R3 skills declare tools — `allowed_tools` (policy) **and** reachability — + the three hard coverage gates | 100% of tools have exactly one group; every group owned by exactly one skill; the 30 orphans (incl. 17 `world_*`) either assigned or waived with a reason; user-skill frontmatter accepts both fields; the prose scraper is an assertion, not a mechanism |
 | **4** | **R9 layers** — artifact lifecycle fields + the declared policy mapping · R9.6 counters | every tool carries `lifecycle_state` + `owner`; tools gain versions/revisions like skills and workflows already have; **one** place maps artifact state → availability, and the seven `is_legacy_tool` filter sites read it instead of the flag; `pinned_legacy_tools` deleted; usage counters written and `sort=last_triggered` demonstrably works |
 | **5** | R4 `ToolSurface` · R5 guards register · **R11 retry budget + uncontaminated retry** · R8a state-axis sweep | the 18 filters reachable only through `excluded_by`, each carrying its `layer`; retry budgeted in tokens and money with per-tool retry-ratio telemetry; a retry no longer re-sends the failed attempts verbatim; the cross-mechanism invariant test **passes**: *"for every step of a pinned rail, availability is never Withheld"* — the test the project itself named as *the test that fails today* |
-| **6** | R6 workflow-coverage ratchet · lane declaration complete · FSM/chat boundary enforced · R8b post-conditions | every tool carries a lane; the ratchet baseline is recorded and CI-enforced; a Run affordance exists for the FSM lane (closes the no-click-handler gap) |
-| **7** | §8 retirement | every superseded doc carries a banner naming this spec |
+| **6** | **R14 discovery that does not scale with the catalog** — bounded results, hierarchical groups, retrieval for the tail | no discovery call can return more than the bound; `group` is a path and `tool_list` returns children not leaves; retrieval is a bounded stage inside `tool_list`/`tool_load`, not a third tool. Proof: a **synthetic 3,000-tool catalog** in the eval harness, on which discovery token cost and hop count stay flat versus 312 — the only honest way to test C1 before it arrives |
+| **7** | R6 workflow-coverage ratchet · lane declaration complete · FSM/chat boundary enforced · R8b post-conditions | every tool carries a lane; the ratchet baseline is recorded and CI-enforced; a Run affordance exists for the FSM lane (closes the no-click-handler gap) |
+| **8** | §8 retirement | every superseded doc carries a banner naming this spec |
 
 **Why R12 goes first.** Everything after it deletes something — five hand-maintained tables, six
 breakers, `pinned_legacy_tools`, 114 legacy tools, thirteen documents. **Without a regression net, none
@@ -615,10 +988,16 @@ further boundary refinement.
 | **R10 becomes the seventh breaker** | a taxonomy is easy to add and the six existing breakers are load-bearing today; leaving them is the path of least resistance | Phase 2 does not close until ≥4 of the 6 are **deleted** and the eval suite is green across the deletion. Net-negative is in the DoD, not the prose |
 | **The error taxonomy is assigned by guesswork** | ten services, ~334 tools, and this repo already guesses from names in four places (12-verb async list, 43 intent regexes, read-verb substrings, prefix maps) | classification is set where the failure is *raised*, never mapped from a message string downstream. A wrapper that cannot classify returns `terminal_permanent` — the fail-safe direction, since a wrong "retryable" is what causes the loop |
 | **R12 lands as a green rubber stamp** | four harnesses currently pass; wiring passing tests into CI proves nothing and reads as coverage | the baseline is recorded from a run that **includes known-failing cases**, and Phase 1 does not close until one deliberately injected regression is shown to block a PR |
+| **The migration chain becomes another hand-maintained list** | the repo has already produced seven of those (`ALWAYS_HOT_WRITES`, prefix maps, `TOOL_POLICY`, …), every one added after an incident | the diff is **generated or it does not exist**. A migration entry a human typed is the failure mode, not the feature. Phase 1b's proof is a real rename whose consumer list the tool produced unaided |
+| 🔴 **Codegen makes the context problem WORSE** | EF's output is free; ours is partly prompt text paid on every turn. A generated skill body or a templated tool-description block would be more verbose than the hand-compressed prose it replaced, and the cost is per-turn and permanent — the single most likely way this spec does net harm | R13.6 forbids generating prose at all, and **R13.6.1 puts a token-budget assertion in CI on every generated artifact that enters a prompt**. If a codegen change grows the prompt, the build reds. This risk is the reason that gate exists rather than being a nice-to-have |
+| **R14 is designed for a catalog we do not have** | 312 tools today; "thousands" is a projection, and building for imagined scale is its own classic mistake | do not guess — **test it**: the Phase 6 DoD is a synthetic 3,000-tool catalog in the eval harness. If discovery cost stays flat there, the design holds; if it cannot be built, that is the finding |
+| **F17 reads as reversed rather than amended** | retrieval returning after `find_tools` was retired looks like the pendulum swinging back, which is how this domain got thirteen layers | R14.3 states the distinction explicitly (enumeration for the tree, retrieval for the leaves) and §8 records it as an amendment with the reason. A reversal nobody explains becomes the fourteenth layer |
+| 🔴 **The spec's own reasoning keeps being wrong in the same direction** | measured this session: **R14's justification had to be corrected three times**; P2b was withdrawn entirely; OQ5 was declared falsified and then vindicated; four of my own measurements were errors, **every one from reading a proxy instead of the artifact the consumer receives** | no requirement may rest on reasoning alone where a measurement is available. Each requirement in §3 now carries its measured basis, and where it has none it says so. This is NV-2 applied to the spec itself |
+| **The refactor is too large to land** | 21 requirements, 9 phases, 5 services, 3 languages, ~198 tools to re-home | Phases 0–1 are independently valuable and independently shippable: the six lies, the eval net, the manifest. **If the effort stops after Phase 1 the repo is still measurably better off** — that is the test each phase boundary must meet |
 
 ---
 
-## 8 · Retirement (R8) — mandatory, Phase 7
+## 8 · Retirement (R8) — mandatory, Phase 8
 
 Each gets a status banner naming this spec, in the style
 `2026-07-21-eager-tool-index-mode.md` used correctly:
@@ -630,6 +1009,12 @@ Each gets a status banner naming this spec, in the style
 - `2026-07-09-agent-discoverability-and-workflow/` — C1/C2/C3/C6 re-issued against R1; **that spec's
   own Phase 5 ("retire mandatory semantic search") never ran and no doc says so** — record that. Not
   to be confused with this spec's Phase 5
+- **F17 (`find_tools` hidden from the LLM) — AMENDED, not reversed, and the banner must say which.**
+  F17's finding stands: fuzzy top-K cannot enumerate, and an unbounded retry bias produced a
+  40-iteration / 53.8s / zero-length answer. R14.3 changes only the *scope* of that conclusion — at
+  thousands of tools enumeration cannot enumerate either, so retrieval returns as a **bounded stage
+  inside** `tool_list`/`tool_load` for the leaves, never as a competing third tool with its own retry
+  loop. Anyone reading F17 alone will otherwise build the wrong thing, in either direction
 - `2026-07-30-chat-service-control-plane-refactor.md` — **absorbed whole** as R4/R5; its 7 DEBT rows
   close against Phases 3–4
 - [`../2026-08-03-tool-reachability-ssot.md`](../2026-08-03-tool-reachability-ssot.md) — **absorbed,
@@ -680,6 +1065,174 @@ in this domain are mechanised — one row is in a table, ~10 live as prose in a 
 
 ## 10 · Open questions for DESIGN
 
+### 10.0 Audit of this list *(2026-08-04, post-POC)*
+
+**The POC did not merely answer questions — it made several obsolete**, because the leading design
+moved from shape 2 (lazy-load, volatile surface) to **1 + 4** (small static core of search + coarse
+capabilities, long tail arriving in the conversation). Questions written *about* the old architecture
+do not survive it.
+
+| status | questions | why |
+|---|---|---|
+| **MOOT or much smaller under 1+4** | 3, 5, 15, 16, 17, 18 | if the advertised set is ~20 tools and the system prompt is static, group granularity, a 312-tool `_meta.group` sweep, hierarchy depth, the group-directory block and its budget all shrink drastically. **Hierarchy and retrieval do not disappear — they move from the advertised surface to the search index**, which is a different and easier problem |
+| **ANSWERED by POC** | **10**, **14** | below |
+| **STILL LIVE, unchanged** | 1, 2, 6, 7, 8, 9, 11, 12, 13 | none depends on which shape wins |
+| **NEW, created by the POC** | N1, N2, N3 | below |
+
+#### Q14 — ANSWERED, and the answer invalidates R13.5's model
+
+Measured on the live catalog: **54 tools declare `superseded_by`, pointing at only 17 distinct
+targets — a 3.2 : 1 ratio.** The largest: six tools collapse into `composition_arc_edit`, five into
+`composition_authoring_run_manage`, five into `composition_outline_node_edit`.
+
+> **Renames here are not renames. They are many-to-one CONSOLIDATIONS.**
+
+R13.5 assumed 1:1 (*add the new name, deprecate the old, same capability*) and proposed a stable
+`tool_id` to carry identity across it. **That model does not survive six capabilities merging into
+one — which `tool_id` continues?** The corrected model:
+
+- a tool's `tool_id` is **its own** and never transfers;
+- `superseded_by` is a **many-to-one edge**, not an identity continuation;
+- **usage history aggregates along the edge** (R9.6's retire criterion sums the sources into the
+  target), it does not follow an id;
+- and the primary migration operation to design for is **consolidation**, not rename — which is also
+  exactly what shape 1+4 does at scale (118 writes → ~8 capabilities).
+
+Also measured: only **54 of 117** retired tools (46%) declare any replacement at all, so 63 have no
+edge — matching R17/G2's count exactly.
+
+#### Q10 — PARTIALLY answered; the ranking is measured, the list is not yet complete
+
+Breaker fires in production, by pattern:
+
+| fires | breaker |
+|---|---|
+| 595 | repeated-read |
+| 263 | noop-write (`created=false`) |
+| 157 | `find_tools` blank-intent *(historical — `find_tools` is de-advertised)* |
+| 122 | blank-args cap |
+| 26 | repeated-failure |
+
+**This inventory is incomplete and must not be treated as final**: the pattern set used here missed
+the `tool_list` category cap, which a separate measurement counted at **1,180 fires — the largest of
+all**. The ranking above is sound; the totals are not. Complete the inventory from the emitting call
+sites, not by matching message text, before Phase 2 names the deletions.
+
+What the data already shows: `noop_write_counts` (263) catches a **successful** call that changed
+nothing — an R8b post-condition, not an error, so R10's taxonomy cannot absorb it. `repeated-read`
+(595) and the `tool_list` cap (1,180) are both *"you already have this answer"* — precisely what R16's
+deterministic detector subsumes.
+
+#### New questions created by the POC
+
+- **N1 — how far do the reads consolidate?** Shape 1+4 needs ~20 advertised tools. 80 reads exist, 39
+  requiring ids. Does one search per domain (~12) plus coarse capabilities (~8) actually cover real
+  usage, or does the tail reappear?
+- **N2 — do sub-agents hold correctness when handed free text?** The coarse design *moves* the problem
+  behind `subagent_runtime.py`'s `tool_scope`; it does not delete it.
+- **N3 — what is the anti-prose gate?** Measured 0/3 without a hard directive and 3/3 with one. The
+  directive works; it must be enforced and regression-tested, because the identical failure already
+  shipped once as the `co_write` incident.
+
+---
+
+### 10.1 Cleared, in order *(2026-08-04, after the red team, the eight module interrogations, and the plan decision)*
+
+Read [`ARCHITECTURE.md`](ARCHITECTURE.md) §0.3–§0.11 first — most of these are dissolved by the
+membrane (the new runtime starts empty, so there is no sweep to plan) or by plan/execute separation.
+
+| Q | verdict | why |
+|---|---|---|
+| **1** lane for a `both` tool | **WITHDRAWN as a field** | a workflow is a plan *template*, not a rail (§0.4); **any** declaration can be a step, so a per-declaration `lane` enum has no consumer. The real ordering fact is the `accepts`/`emits` DAG (C-4/C-6). D1 stands — two runtimes — but a *declaration* no longer carries a lane. **Deletes a required registration field** |
+| **2** R4 in chat-service or shared SDK | **ANSWERED — neither: share the DATA** | three assemblers in two languages (chat-service Py, ai-gateway TS, public gateway TS) and Pydantic AI is Python-only, so a shared *code* primitive covers 1 of 3. **Fork the assembler, share the manifest.** The anti-fork clause (§2.3) binds the policy, and the policy becomes data |
+| **3** group granularity (`composition` = 53) | **LIVE, now decidable by data** | not taste: **a group boundary is where the `accepts`/`emits` DAG is sparse.** Decide per admission, not in a sweep |
+| **4** the 17 `world_*` orphans | **DISSOLVED** | one-at-a-time admission — a declaration is given its group when it is admitted. There is no orphan population to triage |
+| **5** `_meta.group` rollout over 312 tools | **WITHDRAWN** | the new runtime starts empty and the old one keeps its prefix inference. **There is no backfill sweep.** One of the membrane's largest savings |
+| **6** who is `owner` | **MUST DECIDE NOW — it bites at brick 1** | S7-M1: M4 gates on C-1…C-12, none of which requires an identity, so *the first admitted declaration has no id*. **Recommendation: the owning service plus a CODEOWNERS entry**, on a single-maintainer project. Adopted as **C-0** |
+| **7** sunset window | **REFRAMED — two windows, because two populations** | agents need a *usage* gate; third-party keys need a *calendar*. Neither is implementable today: **zero `Sunset`/`Deprecation` headers repo-wide, unversioned `/mcp`, and `_meta` has no `deprecated_at`, so 114 tools have no t=0.** The prerequisite is a clock, not a number |
+| **8** where the policy mapping lives | **ANSWERED — a generated contract** | follows Q2. Three hosts, two languages: a resolver in one SDK cannot be imported by the other two |
+| **9** retire or re-home the 114 legacy | **DISSOLVED — they are the same operation** | re-homing *is* re-declaring under the new contract, which *is* admission. Until then they stay on the old runtime **as the control group** (§7) |
+| **10** which four breakers R10 deletes | **ANSWERED — none. All six are CONVERTED** | §0.5: a guardrail's output becomes a plan-state transition, and its **fire-rate becomes the property-3 metric**. Q10's own instinct was right — `noop_write_counts` is a C-8 post-condition, not an error. **The net-negative is real but comes from elsewhere:** rail gating, the 43 intent regexes, mid-turn mutation, the `lane` field, and the Q5 sweep |
+| **11** where error classification lives | **ANSWERED — a shared result builder** | as Q11 itself proposed, and now carrying more: S1 showed the contract defines *failure* and never defines *success*, so the envelope carries a **typed outcome enum**, not just an error class |
+| **12** does R11 change what we persist | **ANSWERED by §0.11** | the artifact holds full fidelity outside the context; the projection is what the model sees. **The audit trail and the model's view are now different objects by construction** |
+| **13** live stack or static scan | **BOTH, live authoritative** — as guessed | but the finding is larger: **the liveness generator runs nowhere in CI**, and the only test is byte-equality across its three copies. *The repo tests that its manifest is consistently copied, never that it is current* |
+| **14** identity across a rename | **ANSWERED, and extended** | renames here are **many-to-one consolidations** — re-measured today: **53 edges → 16 targets (3.3:1), and 61 of 114 declare no successor at all.** S7-M6 adds: consolidation targets dispatch on an `op`, so `superseded_by` **must be structured, not a string** |
+| **15** group hierarchy depth | **WITHDRAWN** | measured: two-level disclosure never recovered its gain and collapsed one configuration **0.9126 → 0.6398** (BUILD-VS-BUY §1). Flat only |
+| **16** retrieval backend, in the request path | **LIVE, with a gate attached** | the buy covers it (`DeferredLoadingToolset` + `ToolSearch`), **but** its non-Anthropic fallback is semantic top-K — what F17 retired — and the published gains were **"absent on Chinese"**. Must be measured on our own CJK corpus before adoption |
+| **17** group-directory block generated or hand-written | **WITHDRAWN** | the hierarchy is gone (Q15) and the new runtime starts empty. There is no such block at brick 1 |
+| **18** which prompt artifacts get a budget | **ANSWERED in scope** | **the working-memory projection** (§0.11) is the artifact that enters the prompt every turn, so it is the one that needs a budget on day one — plus the §0.11 requirement that it be **stable between plan events**. Note the existing numbers are wrong: the group block was cited at ~188 tokens and **measured at 392** |
+| **N1** how far reads consolidate | **DISSOLVED** | A2 is dead (the honest decomposition is **76**, not ~20) and admission is one at a time, so no target count is needed |
+| **N2** sub-agent correctness on free text | **WITHDRAWN with A4** | the mechanism is one row — `lore-scout`, two read tools — and production says the opposite in a comment: *"NEVER mixing kinds in a call (that is the E2 collapse)"* |
+| **N3** the anti-prose gate | **ANSWERED** | `tool_choice` is plumbed to LM Studio but chat hardcodes `"auto"`; and `commit-service` proves `required` is **advisory** — its real gate is a **deterministic non-LLM fallback**. The gate is a fallback, never a directive |
+
+### 10.2 The last four, settled *(2026-08-04)*
+
+**Q6 — `owner`. DECIDED, and it unblocks brick 1.**
+Verified: there is **no CODEOWNERS file in this repo** and **no `owner` key in the meta builders**.
+The field is genuinely absent.
+
+> **`owner` = the owning service, DERIVED from the manifest, never authored.** The human link lives in
+> **one** new `CODEOWNERS` file mapping service → person.
+
+R9.4 required *"a person or a rotation, never a wiki row"* for accountability. On a single-maintainer
+project the person is constant, so as a *person* the field carries no information — as a *service* it
+tells you where the code is, and it is checkable. When the project grows, **CODEOWNERS is the one place
+that changes, not 315 declarations.** Adopted as part of **C-0**.
+
+**Q7 — sunset. DECIDED for agents, BLOCKED for third parties.**
+Measured over tools with ≥5 calls (n=70), the largest gap between consecutive uses:
+
+| max gap | tools |
+|---|---|
+| 0–10 days | 37 |
+| 10–20 days | 26 |
+| 20–30 days | 5 |
+| 45 days | 1 |
+| 57 days | 1 |
+
+> **Agent population: retire after 90 days with no use.** At N=30 this wrongly retires **2 of 70
+> actively-used tools (2.9%)**; at N=60, zero.
+
+**The limit must travel with the number: the corpus spans ~126 days, so it cannot observe a gap longer
+than itself.** The 57-day observation sits near that ceiling; nothing beyond ~120 days is validated,
+and **N must be revisited as the corpus lengthens.**
+
+**Third-party population: still blocked, and not on a number.** There is no clock and no channel —
+**zero `Sunset`/`Deprecation` headers repo-wide, an unversioned `/mcp`, and no `deprecated_at` in
+`_meta`, so 114 retired tools have no t=0.** Picking a window before those exist would be a calendar we
+cannot honour, which Q7 itself rules out.
+
+**Q3 — group granularity. NOT DECIDABLE TODAY, and it does not need to be.**
+The evidence is insufficient and §0.12 forbids manufacturing a verdict from it: **18 of 53 composition
+tools have ever been called**, across 33 sessions, and the strongest co-occurring pair appears in
+**5 sessions**.
+
+> The question answers itself as a byproduct: under one-at-a-time admission a declaration receives its
+> group **when it is admitted**, and C-4/C-6 make the `accepts`/`emits` DAG exist **by construction**.
+> By the time enough declarations are admitted for the boundary to matter, the graph that decides it
+> will be there. **Measure then; do not guess now.**
+
+*(Also recorded: 35 of 53 composition tools have never been called — further evidence for the A9
+steel-man, and for retire-by-data once the counters cover all three lanes.)*
+
+**Q16 — retrieval. DECIDED structurally, GATED behaviourally.**
+
+> **Reuse, do not rebuild:** `tool_discovery.py` already caches tool vectors and provider-registry
+> already resolves an embedding model. **But it does not enter the request path** until it is measured
+> on our own CJK corpus.
+
+The published gains for this class of mechanism were **"absent on Chinese"**, and the bought
+component's non-Anthropic fallback is semantic top-K — precisely what F17 retired after a 40-iteration,
+53.8-second, zero-length answer. Adopting it unmeasured would repeat that incident with an imported
+justification.
+
+---
+
+**All 18 questions plus N1–N3 are now cleared. Q3 and Q7's third-party half are deferred with a stated
+mechanism and a trigger, not left open.**
+
+### The questions themselves
+
 1. **Where does `lane` live for a tool that is both?** `both` is expected to dominate; does the FSM
    lane's coverage ratchet count a `both` tool, or only `fsm`-exclusive ones? (Affects the day-1
    baseline materially.)
@@ -710,3 +1263,28 @@ in this domain are mechanised — one row is in a table, ~10 live as prose in a 
 12. **Does R11's context isolation change what we persist?** Dropping failed attempts from the re-sent
     context is not the same as dropping them from `chat_messages`. The audit trail must survive what the
     model is shown — decide the split before touching the tool loop.
+13. **Does the migration snapshot come from a live stack or a static scan?** Live `tools/list` is
+    truthful about federation but needs a booted stack in CI; the static scan runs anywhere but cannot
+    see what federation drops. EF has no equivalent of a provider that silently omits a table — this
+    one is ours. Probably both, with the live run authoritative and the static one a pre-commit guard.
+14. **What is a tool's identity across a rename?** R13.5 says add-new + deprecate-old, which only works
+    if the two are known to be the same capability. EF uses the property name; we would need a stable
+    `tool_id` distinct from the wire name — a real schema decision with a migration of its own.
+15. **How deep does the group hierarchy go, and who decides a tool's path?** R14.2 makes `group` a path.
+    Two levels probably suffice at 3,000; the author declares it at registration, but the *taxonomy*
+    itself needs an owner or it drifts the way the flat one already did (`world` and `meta` rejected by
+    a registry that had 12 of the 14 groups).
+16. **Which retrieval backend, and does it need to be in the request path?** R14.3 needs embeddings over
+    the catalog. Provider-registry already resolves an embedding model, and `tool_discovery.py` already
+    caches tool vectors — but that machinery was built for the de-advertised `find_tools`. Reuse or
+    rebuild is a real fork.
+17. **Is the group-directory prompt block generated or hand-written?** It is the one artifact sitting
+    exactly on R13.6's line: its *content* is derived from the manifest (so it should be generated and
+    can never drift), but it is *read by the model every turn* (so every generated token is paid). If
+    generated, it needs R13.6.1's budget assertion from day one; if hand-written, it needs a gate that
+    it still matches the manifest. Both are defensible; drifting between them is not.
+18. **Which prompt artifacts get a budget, and what is the number?** R13.6.1 needs a ceiling per
+    artifact, not a global one. The repo has measured values to start from (group directory ~188 tok,
+    `HOT_SEED_TOKEN_BUDGET` 2000) but no others — and a budget picked without a measurement is the
+    same mistake as `ROUTER_CONFIDENCE_THRESHOLD = 0.35`, which the code itself records as *"NOT yet
+    empirically tuned"*.

@@ -64,6 +64,22 @@ class RosterEntry:
 
 
 @dataclass(frozen=True)
+class CastEntry:
+    """T38 — the DETAIL projection `roster` deliberately strips.
+
+    `aliases` defaults to an empty tuple rather than None: a caller iterating surface forms
+    must not have to special-case a book whose entities have none.
+    """
+
+    entity_id: str
+    name: str = ""
+    cached_name: str = ""
+    kind: str = ""
+    aliases: tuple[str, ...] = ()
+    short_description: str = ""
+
+
+@dataclass(frozen=True)
 class KalFact:
     fact_id: str
     entity_id: str
@@ -165,6 +181,56 @@ class KalClient:
             if not cursor:
                 break
         return out
+
+    async def cast(
+        self,
+        *,
+        book_id: UUID,
+        user_id: UUID | str | None = None,
+        limit: int = 200,
+    ) -> tuple[list[CastEntry], bool]:
+        """Drain the KAL `cast` detail read. Returns `(rows, truncated)`.
+
+        ⚠️ **`truncated` is reported, not swallowed.** This client drains to a safety cap, and
+        hitting that cap means the answer is INCOMPLETE — which is exactly the failure this
+        endpoint exists to end. `_list_entities_glossary`'s own docstring records the shape:
+        *"a single page would only carry the FIRST ~100-200 entities' fields — leaving the tail
+        of a large cast with empty kind/description (the silent-truncation gap that
+        re-introduces the bug the roster drain fixed: complete cast, but incomplete fields)."*
+        Returning a bare list would let a caller treat a capped drain as the whole cast.
+        """
+        out: list[CastEntry] = []
+        cursor: str | None = None
+        truncated = False
+        for _ in range(_MAX_ROSTER_PAGES):
+            params: dict[str, str] = {"limit": str(limit)}
+            if cursor:
+                params["cursor"] = cursor
+            resp = await self._get(
+                f"{self._base}/v1/kal/books/{book_id}/cast",
+                headers=self._headers(user_id),
+                params=params,
+            )
+            data = resp.json()
+            for r in _items(data):
+                aliases = r.get("aliases")
+                out.append(
+                    CastEntry(
+                        entity_id=str(r.get("entity_id") or r.get("id") or ""),
+                        name=str(r.get("name") or ""),
+                        cached_name=str(r.get("cached_name") or r.get("name") or ""),
+                        kind=str(r.get("kind") or ""),
+                        aliases=tuple(str(a) for a in aliases) if isinstance(aliases, list) else (),
+                        short_description=str(r.get("short_description") or ""),
+                    )
+                )
+            cursor = data.get("next_cursor") if isinstance(data, dict) else None
+            if not cursor:
+                break
+        else:
+            # The for-loop ran the full cap without the cursor going null: more pages exist.
+            truncated = True
+        return out, truncated
 
     # ── get_facts — latest-valid (or valid-at-N) facts ───────────────────────
 

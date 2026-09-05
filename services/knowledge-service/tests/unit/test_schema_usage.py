@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.db.neo4j_repos import schema_usage
+from app.db.graph_repos import schema_usage
 
 
 class _FakeResult:

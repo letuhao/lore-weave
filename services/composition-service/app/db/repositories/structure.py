@@ -68,6 +68,12 @@ _THREAD_COLS = (
 )
 
 
+# Depth levels a single move may cascade through. The saga→arc→sub-arc cap makes 2 the real
+# maximum; this is the loop's termination bound, deliberately larger so a future cap change
+# does not silently truncate the cascade the way the single-statement version did.
+_MAX_SUBTREE_LEVELS = 10
+
+
 class StructureConflictError(Exception):
     """Raised when a structure_node write violates the depth/cycle/cross-book DB
     trigger (`structure_node_depth_guard`, ERRCODE `check_violation`) — depth>2,
@@ -679,24 +685,37 @@ class StructureRepo:
                         node_id, new_parent_id, new_rank,
                     )
 
-                    # Recompute the WHOLE moved subtree's depth in the same tx: one
-                    # UPDATE touches every descendant; the trigger recomputes each
-                    # row's depth from its (now-correct) parent and REJECTS a
-                    # resulting depth>2 (a subtree that no longer fits) with
-                    # check_violation, rolling the move back. UNION terminates on a
-                    # malformed cycle.
-                    await c.execute(
-                        """
-                        WITH RECURSIVE sub AS (
-                          SELECT id FROM structure_node WHERE parent_id = $1
-                          UNION
-                          SELECT n.id FROM structure_node n JOIN sub s ON n.parent_id = s.id
+                    # Recompute the moved subtree's depth LEVEL BY LEVEL, in the same tx.
+                    #
+                    # This was ONE recursive UPDATE touching every descendant at once, relying on
+                    # the BEFORE trigger to recompute each row's depth from its parent. Within a
+                    # single statement the trigger fires per row in an UNSPECIFIED order, so a
+                    # grandchild could be processed before its parent's new depth was written and
+                    # computed its own depth from the STALE value (TOOLV2 LOOP #150).
+                    #
+                    # Measured live: moving an arc from root to depth 1 left its grandchild
+                    # recording depth 2 while its parent was also 2. The row was then genuinely at
+                    # depth 3 — past the saga→arc→sub-arc cap this move is supposed to enforce —
+                    # and the trigger never objected, because the depth it validated was the wrong
+                    # one. A silent cap breach is worse than the refusal it replaced.
+                    #
+                    # One statement per level: each completes, and its triggers run, before the
+                    # next begins, so every parent is correct when its children are recomputed.
+                    # The loop is bounded rather than hardcoded to the current cap of 2, and
+                    # terminates when a level touches nothing.
+                    parent_ids = [node_id]
+                    for _ in range(_MAX_SUBTREE_LEVELS):
+                        rows = await c.fetch(
+                            """
+                            UPDATE structure_node SET updated_at = now()
+                            WHERE parent_id = ANY($1::uuid[])
+                            RETURNING id
+                            """,
+                            parent_ids,
                         )
-                        UPDATE structure_node SET updated_at = now()
-                        WHERE id IN (SELECT id FROM sub)
-                        """,
-                        node_id,
-                    )
+                        if not rows:
+                            break
+                        parent_ids = [r["id"] for r in rows]
 
                     return await self.get(node_id, conn=c)
         except asyncpg.exceptions.CheckViolationError as exc:

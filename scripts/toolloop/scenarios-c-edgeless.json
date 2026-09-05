@@ -1,0 +1,46 @@
+{
+  "_note": "D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ through the real chat path. The node is SEEDED so the turn arrives at a project whose store holds an entity and whose graph has no edges — the ordinary state of 440 of the 455 projects on this instance.",
+  "scenarios": [
+    {
+      "id": "graph-read-sees-an-edgeless-node",
+      "tool_under_test": "kg_graph_query",
+      "expect_tool": "kg_graph_query",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show the graph — what is in this project's knowledge graph?",
+      "prompt_source": "kg_graph_query's OWN declared synonyms, verbatim: 'show the graph' + 'knowledge graph'.",
+      "needs_target": false,
+      "approve": null,
+      "approve_why": "READ intent, Tier-R tool under test. Approving a write on a turn that only asked to look would make the harness the thing that wrote.",
+      "seed": [
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Vaskir Thorne",
+            "kind": "character"
+          },
+          "why": "🔴 THE NODE MUST BE EDGELESS, AND IT CANNOT BE ANYTHING ELSE. kg_add_nodes mode=manual creates ONE node and placing an edge needs an approved confirm card, so every node this fixture can make is isolated — which is the defect's own precondition, not a contrivance. Seeded rather than created by the turn so the model arrives holding nothing."
+        }
+      ],
+      "falsifier": "REFUTED IF: kg_graph_query returns nodes: [] for a project whose store holds this entity, OR meta.nodes_total is 0, OR the model reports that the graph/project is empty or that nothing has been established — the false-absence relay this defect produces. Store check: the graph is a READ, so the entity count must stay at 1 and no edge may appear.",
+      "ship_audit": {
+        "gate": "N/A — Tier R, no confirm card.",
+        "absent_case": "a project with no entities at all must still return nodes: [] with nodes_total 0 — that zero is TRUE and is not what this measures.",
+        "idempotency": "N/A — a read.",
+        "tenancy": "the isolated read binds user_id + project_id and skips archived, the same partition predicates as the edge read; unit-guarded."
+      },
+      "defects": [],
+      "_problem": "D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ",
+      "answer_expect": {
+        "all_of": [
+          "Vaskir"
+        ],
+        "why": "The name can only have come from the graph read — it is not in the prompt. A reply that discusses the graph in the abstract proves nothing, which is why the bar is the entity's own name."
+      }
+    }
+  ]
+}

@@ -3,7 +3,6 @@
 // Per-reality compensating L3 event applied (force-propagate side-effect). Audit-distinguishable from canon.entry.updated; L5.J classifies as force_propagate.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminCanonOverrideCompensatingV1 {

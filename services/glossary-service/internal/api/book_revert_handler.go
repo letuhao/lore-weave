@@ -137,7 +137,7 @@ func (s *Server) handleBookRevert(w http.ResponseWriter, r *http.Request, idPara
 // ── MCP: glossary_book_revert (class C) ──────────────────────────────────────────
 
 type bookRevertToolIn struct {
-	BookID    string `json:"book_id,omitempty" jsonschema:"the book whose row to revert (UUID)"`
+	BookID    string `json:"book_id" jsonschema:"the book whose row to revert (UUID)"`
 	Level     string `json:"level" jsonschema:"what to revert: genre | kind | attribute"`
 	Code      string `json:"code" jsonschema:"the code of the genre/kind, or (for level=attribute) the attribute's own code"`
 	KindCode  string `json:"kind_code,omitempty" jsonschema:"for level=attribute: the kind code the attribute belongs to"`

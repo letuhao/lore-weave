@@ -28,6 +28,7 @@ from app.db.repositories.extraction_pending import (
 )
 from app.events.dispatcher import EventData
 from app.events.gating import may_extract_chat_turn, should_extract
+from app.mirror.predicate import is_mirrorable
 
 __all__ = [
     "handle_chat_turn",
@@ -40,6 +41,10 @@ __all__ = [
     "handle_chapter_deleted",
     "handle_glossary_entity_updated",
     "handle_glossary_entity_merged",
+    "handle_glossary_entity_deleted",
+    "handle_glossary_entity_restored",
+    "handle_glossary_entity_purged",
+    "handle_glossary_entity_status_changed",
 ]
 
 logger = logging.getLogger(__name__)
@@ -397,7 +402,7 @@ async def _ingest_published_passages(
 
     from app.clients.book_client import get_book_client
     from app.clients.embedding_client import get_embedding_client
-    from app.db.neo4j import neo4j_session
+    from app.db.graph import graph_session
     from app.extraction.passage_ingester import ingest_chapter_passages
 
     book_client = get_book_client()
@@ -409,7 +414,7 @@ async def _ingest_published_passages(
     chapter_index = sort_orders.get(chapter_uuid)
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             await ingest_chapter_passages(
                 session,
                 book_client,
@@ -496,7 +501,7 @@ async def handle_translation_published(event: EventData, *, pool: asyncpg.Pool) 
     from app.clients.book_client import get_book_client
     from app.clients.embedding_client import get_embedding_client
     from app.clients.translation_client import get_translation_client
-    from app.db.neo4j import neo4j_session
+    from app.db.graph import graph_session
     from app.extraction.passage_ingester import ingest_chapter_passages
 
     # Fetch the ACTIVE translated text for this language.
@@ -517,7 +522,7 @@ async def handle_translation_published(event: EventData, *, pool: asyncpg.Pool) 
     chapter_index = sort_orders.get(chapter_uuid)
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             await ingest_chapter_passages(
                 session,
                 book_client,
@@ -597,10 +602,10 @@ async def handle_chapter_unpublished(event: EventData, *, pool: asyncpg.Pool) ->
 
     # Demote — do NOT delete. The index request survives an editorial unpublish.
     try:
-        from app.db.neo4j import neo4j_session
-        from app.db.neo4j_repos.passages import set_canon_for_source
+        from app.db.graph import graph_session
+        from app.db.graph_repos.passages import set_canon_for_source
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             demoted = await set_canon_for_source(
                 session,
                 user_id=str(user_id),
@@ -701,10 +706,10 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
 
     # Graph retract (independent; failure recorded, not swallowed).
     try:
-        from app.db.neo4j import neo4j_session
-        from app.db.neo4j_repos.provenance import remove_evidence_for_natural_key
+        from app.db.graph import graph_session
+        from app.db.graph_repos.provenance import remove_evidence_for_natural_key
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             # CM3b-RETRACT-FIX: retract by NATURAL KEY. The prior call passed the
             # raw chapter_id to `remove_evidence_for_source`, which matches the
             # HASHED ExtractionSource id — so it removed ZERO edges and unpublish
@@ -744,10 +749,10 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
     # Passage retract (INDEPENDENT: a graph-retract failure above must NOT suppress this,
     # else the user's retracted prose lingers in the semantic index — R3-WARN#2).
     try:
-        from app.db.neo4j import neo4j_session
-        from app.db.neo4j_repos.passages import delete_passages_for_source
+        from app.db.graph import graph_session
+        from app.db.graph_repos.passages import delete_passages_for_source
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             deleted = await delete_passages_for_source(
                 session,
                 user_id=str(user_id),
@@ -824,21 +829,38 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
         try:
             from app.config import settings
             if settings.neo4j_uri:
-                from app.db.neo4j import neo4j_session
+                from app.db.graph import graph_session
                 from app.extraction.passage_ingester import (
                     delete_chapter_passages,
                 )
+                from app.db.graph_repos.provenance import delete_source_cascade
+
                 chapter_uuid = _uuid(chapter_id)
-                async with neo4j_session() as session:
-                    # Delete extraction source and cascade
-                    await session.run(
-                        """
-                        MATCH (s:ExtractionSource {source_id: $source_id})
-                        WHERE s.user_id = $user_id AND s.project_id = $project_id
-                        DETACH DELETE s
-                        """,
-                        source_id=chapter_id,
+                async with graph_session() as session:
+                    # Delete the extraction source THROUGH the provenance repo (plan T12).
+                    #
+                    # This replaces an inline Cypher statement that matched the
+                    # ExtractionSource by natural key and detach-deleted it — wrong in a
+                    # way the move exposed (the query text is not quoted here, so T16's
+                    # no-cypher-outside-adapters gate cannot trip on the explanation): it
+                    # dropped the EVIDENCED_BY edges without DECREMENTING the
+                    # `evidence_count` those edges maintain. Every entity, event and fact
+                    # the chapter evidenced therefore kept an inflated counter — so it
+                    # stayed visible to the `evidence_count >= 1` reads (the chapter's
+                    # canon survived its own deletion) and could never reach zero for
+                    # `cleanup_zero_evidence_nodes` to collect. Only the offline K11.9
+                    # reconciler repaired it, whenever it next ran.
+                    #
+                    # `delete_source_cascade` resolves the natural key, decrements each
+                    # edge, then deletes the node — the same three steps the SIBLING
+                    # `chapter.kg_excluded` handler already performed correctly. Deleting
+                    # a chapter is a stronger action than excluding it and was doing less.
+                    # Idempotent on a missing source (returns 0), so a redelivery is safe.
+                    removed_edges = await delete_source_cascade(
+                        session,
                         user_id=str(user_id),
+                        source_type="chapter",
+                        source_id=str(chapter_id),
                         project_id=str(project_id),
                     )
                     # D-K18.3-01: drop the chapter's passages too.
@@ -852,8 +874,8 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
                         passage_count = 0
                     logger.info(
                         "K14.7: chapter deleted cascade: chapter=%s project=%s "
-                        "passages_deleted=%d",
-                        chapter_id, project_id, passage_count,
+                        "evidence_edges_removed=%d passages_deleted=%d",
+                        chapter_id, project_id, removed_edges, passage_count,
                     )
         except Exception:
             logger.warning(
@@ -1001,7 +1023,10 @@ async def handle_glossary_entity_updated(
     # re-emits, at which point the MERGE (keyed on glossary_entity_id)
     # creates/updates the node. This is correct at-least-once behaviour,
     # not a dropped event.
-    if not name or not kind:
+    # ⚠️ The skip rule is `app.mirror.predicate.is_mirrorable`, not an inline condition.
+    # The mirror DETECTOR has to apply the identical rule to tell "not yet nameable" from
+    # "lost in delivery"; two copies of it would drift into an alarm nobody can clear.
+    if not is_mirrorable(name, kind):
         logger.debug(
             "glossary.entity_updated for %s has empty name/kind (op=%s) — "
             "skipping until a populated event arrives",
@@ -1026,6 +1051,14 @@ async def handle_glossary_entity_updated(
     project_id = project_row["project_id"]
     user_id = project_row["user_id"]
 
+    # T39 — the entity set just changed, so the anchor automaton describing it is stale
+    # NOW, not in up to 300 seconds. Invalidated BEFORE the sync, not after: the sync can
+    # fail, and a cache still holding the pre-edit dictionary after a failed write is the
+    # worse of the two states. Invalidating a cache that did not need it costs one reload.
+    from app.context.anchors import invalidate_anchor_cache
+
+    invalidate_anchor_cache(str(user_id), str(project_id))
+
     # Neo4j must be configured to sync. In Track 1 mode there is no graph
     # to write — skip without error (canonical data is safe in Postgres).
     from app.config import settings
@@ -1047,13 +1080,13 @@ async def handle_glossary_entity_updated(
     # handlers at startup before the Neo4j driver is wired) — same pattern
     # as _ingest_published_passages. Kept OUTSIDE the try/except so an
     # ImportError crashes loud rather than being masked as a transient failure.
-    from app.db.neo4j import neo4j_session
+    from app.db.graph import graph_session
     from app.extraction.glossary_sync import sync_glossary_entity_to_neo4j
 
     # Let exceptions propagate to the consumer's DLQ/retry path (K14.8):
     # a transient Neo4j outage SHOULD redeliver, not silently drop the
     # propagation. The MERGE keeps redelivery idempotent.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         result = await sync_glossary_entity_to_neo4j(
             session,
             user_id=str(user_id),
@@ -1094,7 +1127,7 @@ async def index_glossary_entity_passage(
     from app.clients.embedding_client import get_embedding_client
     from app.clients.glossary_client import get_glossary_client
     from app.config import settings
-    from app.db.neo4j import neo4j_session
+    from app.db.graph import graph_session
     from app.extraction.glossary_passage import (
         render_glossary_passage,
         sync_glossary_entity_passage,
@@ -1123,7 +1156,7 @@ async def index_glossary_entity_passage(
         )
         lang = next((a.lang for a in ent.attributes if a.lang), "unknown")
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             outcome = await sync_glossary_entity_passage(
                 session, get_embedding_client(),
                 user_id=str(user_id), project_id=str(project_id),
@@ -1213,9 +1246,9 @@ async def handle_glossary_entity_merged(
         )
         return
 
-    from app.db.neo4j import neo4j_session
-    from app.db.neo4j_repos.canonical import canonicalize_entity_name
-    from app.db.neo4j_repos.entities import (
+    from app.db.graph import graph_session
+    from loreweave_extraction.canonical import canonicalize_entity_name
+    from app.db.graph_repos.entities import (
         MergeEntitiesError,
         get_entity_by_glossary_id,
         link_to_glossary,
@@ -1238,7 +1271,7 @@ async def handle_glossary_entity_merged(
         uid = str(user_id)
         pid = str(project_id)
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             loser = await get_entity_by_glossary_id(
                 session, user_id=uid, project_id=pid,
                 glossary_entity_id=str(loser_gid),
@@ -1287,7 +1320,7 @@ async def handle_glossary_entity_merged(
                 # anti-resurrection). Re-link the loser so redelivery retries
                 # cleanly. Use a fresh session (the merge's own tx is unwound).
                 try:
-                    async with neo4j_session() as relink_session:
+                    async with graph_session() as relink_session:
                         await link_to_glossary(
                             relink_session, user_id=uid, canonical_id=loser_id,
                             glossary_entity_id=str(loser_gid), name=loser_name,
@@ -1346,3 +1379,270 @@ def _uuid(val: str | None) -> UUID | None:
         return UUID(val)
     except (ValueError, AttributeError):
         return None
+
+
+# ── glossary entity LIFECYCLE (plan T27) ──────────────────────────────────────
+#
+# Delete, restore and purge were SILENT in glossary-service: each mutated
+# `glossary_entities` and emitted nothing, so the KG mirror never learned about any of
+# them. The machinery to act on them already existed here — `archive_entity`,
+# `restore_entity` — unused, because nothing ever told it.
+#
+# The restore half is the one that mattered most. A deleted-then-restored entity stayed
+# ARCHIVED in the KG forever while the glossary showed it live, and no retry converged that,
+# because the corrective event did not exist.
+
+
+async def _resolve_kg_project(pool: asyncpg.Pool, book_id) -> tuple | None:
+    """(project_id, user_id) for a book, or None when the book has no KG project.
+
+    None is the expected cold-start answer for most books, not an error — the same
+    convention `handle_glossary_entity_updated` uses.
+    """
+    row = await pool.fetchrow(
+        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+        book_id,
+    )
+    return (row["project_id"], row["user_id"]) if row else None
+
+
+async def _lifecycle_preamble(event: EventData, pool: asyncpg.Pool, kind: str):
+    """Shared parse + project resolve + Track-1 guard.
+
+    Returns (project_id, user_id, glossary_id) or None.
+
+    It used to drop `project_id` on the floor after resolving it, and every lifecycle handler
+    was written against that shape. `get_entity_by_glossary_id` REQUIRES the project
+    (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: the FK is unique per (user, project), so the same glossary
+    entity can have one node in each of the user's projects) — so every archive raised
+    TypeError, retried three times, and went to the DLQ. Not one test saw it: the handler tests
+    mock the repo, and a mock accepts any signature. The live replay found it on its first run.
+    """
+    payload = event.payload
+    book_id = _uuid(payload.get("book_id"))
+    glossary_entity_id = _uuid(payload.get("glossary_entity_id")) or _uuid(event.aggregate_id)
+    if book_id is None or glossary_entity_id is None:
+        logger.warning(
+            "glossary.entity_%s missing book_id/glossary_entity_id: %s", kind, event.message_id,
+        )
+        return None
+
+    resolved = await _resolve_kg_project(pool, book_id)
+    if resolved is None:
+        logger.debug("No knowledge project for book %s — skipping %s", book_id, kind)
+        return None
+
+    from app.config import settings
+
+    if not settings.neo4j_uri:
+        logger.debug(
+            "glossary.entity_%s: NEO4J_URI unset (Track 1) — skipping %s", kind, glossary_entity_id,
+        )
+        return None
+    project_id, user_id = resolved
+    return project_id, user_id, glossary_entity_id
+
+
+async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`glossary.entity_deleted` → archive the KG node.
+
+    Archive rather than delete, because the glossary delete is SOFT: the entity can come
+    back, and `archive_entity` leaves evidence, relations and timeline intact so a restore
+    is a flag flip rather than a re-extraction.
+    """
+    resolved = await _lifecycle_preamble(event, pool, "deleted")
+    if resolved is None:
+        return
+    project_id, user_id, glossary_entity_id = resolved
+
+    # T39 — same rule as the update handler: a DELETE changes the entity set, so the
+    # anchor dictionary is stale immediately. Without this the deleted name stays
+    # anchorable for up to the TTL, which is the worse direction of the two: an anchor
+    # onto an entity the author just removed.
+    from app.context.anchors import invalidate_anchor_cache
+
+    invalidate_anchor_cache(str(user_id), str(project_id))
+
+    from app.adapters.graph_store_provider import get_graph_store
+    from app.db.graph import graph_session
+    from app.db.graph_repos.entities import get_entity_by_glossary_id
+
+    # Exceptions propagate to the consumer's retry path: a transient Neo4j outage SHOULD
+    # redeliver rather than silently drop the propagation. Archiving is idempotent.
+    async with graph_session() as session:
+        # T17 — `archive_entity` goes through the port; `get_entity_by_glossary_id` does NOT
+        # and stays a direct repo call. The port has no anchor-keyed lookup, and inventing
+        # one to make this module "fully migrated" would grow the port by convenience rather
+        # than by demand — which the port's own docstring rules out ("a port grows by demand,
+        # not by inventory"). So this module keeps ONE concrete import and the ceiling does
+        # not fall for it. A partial migration recorded honestly beats a port method added to
+        # make a number move.
+        entity = await get_entity_by_glossary_id(
+            session, user_id=str(user_id), project_id=str(project_id),
+            glossary_entity_id=str(glossary_entity_id),
+        )
+        if entity is None:
+            logger.debug(
+                "glossary.entity_deleted: no KG node for %s — nothing to archive",
+                glossary_entity_id,
+            )
+            return
+        await get_graph_store(session).archive_entity(
+            user_id=str(user_id), canonical_id=entity.id, reason="glossary_deleted",
+        )
+    logger.debug("glossary.entity_deleted archived KG entity %s", glossary_entity_id)
+
+
+async def handle_glossary_entity_restored(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`glossary.entity_restored` → un-archive the KG node.
+
+    Matches on the archive BREADCRUMB as well as the live anchor: `archive_entity` clears
+    `glossary_entity_id`, so after a delete there is no anchor left to match — which is why
+    this uses `restore_entity_by_glossary_id` rather than the id-keyed `restore_entity`.
+    Written the other way it would find nothing, do nothing, and report success.
+    """
+    resolved = await _lifecycle_preamble(event, pool, "restored")
+    if resolved is None:
+        return
+    project_id, user_id, glossary_entity_id = resolved
+
+    from app.db.graph import graph_session
+    from app.db.graph_repos.entities import restore_entity_by_glossary_id
+
+    async with graph_session() as session:
+        # T28 scope: a recycle-bin restore undoes a `glossary_deleted` archive only. A node
+        # archived because its status is `rejected` stays archived — the trash and the status
+        # axis retire an entity for different reasons, and neither may silently undo the other.
+        entity = await restore_entity_by_glossary_id(
+            session, user_id=str(user_id), project_id=str(project_id),
+            glossary_entity_id=str(glossary_entity_id),
+            reason_prefix="glossary_deleted",
+        )
+    if entity is None:
+        logger.debug(
+            "glossary.entity_restored: no KG node for %s — nothing to restore",
+            glossary_entity_id,
+        )
+        return
+    logger.debug("glossary.entity_restored un-archived KG entity %s", glossary_entity_id)
+
+
+async def handle_glossary_entity_purged(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`glossary.entity_purged` → hard-delete the KG node and its edges.
+
+    The one lifecycle transition that is not reversible. A Postgres purge does not cascade
+    to Neo4j on its own, so without this the node outlives the entity that justified it and
+    keeps answering RAG queries about something the author permanently removed.
+    """
+    resolved = await _lifecycle_preamble(event, pool, "purged")
+    if resolved is None:
+        return
+    project_id, user_id, glossary_entity_id = resolved
+
+    from app.db.graph import graph_session
+    from app.db.graph_repos.entities import purge_entity_by_glossary_id
+
+    async with graph_session() as session:
+        deleted = await purge_entity_by_glossary_id(
+            session, user_id=str(user_id), project_id=str(project_id),
+            glossary_entity_id=str(glossary_entity_id),
+        )
+    logger.debug(
+        "glossary.entity_purged removed %d KG node(s) for %s", deleted, glossary_entity_id,
+    )
+
+
+async def handle_glossary_entity_status_changed(
+    event: EventData, *, pool: asyncpg.Pool,
+) -> None:
+    """`glossary.entity_status_changed` → archive or un-archive the KG node (plan T28).
+
+    In glossary-service `status` is a LIVENESS predicate, not a label: every consumer-facing
+    read filters `status = 'active'` alongside `deleted_at IS NULL`. Retiring an entity to
+    `inactive` or `rejected` therefore removes it from the glossary's own canon reads — and it
+    emitted nothing, so the KG mirror kept the node and kept answering RAG queries about an
+    entity the author had retired. The same split brain T27 removed for delete/restore,
+    reached by a different verb.
+
+    Archive rather than delete, for the same reason the delete handler archives: a status
+    change is trivially reversible, and `archive_entity` leaves evidence, relations and
+    timeline intact so the way back is a flag flip rather than a re-extraction.
+
+    The `reason` records WHICH status retired the node, because a KG node archived by a
+    rejection and one archived by a glossary delete are different facts to whoever is later
+    asking why the graph is missing something — and, since the restore paths are scoped by
+    that reason, it is also what keeps the two axes from undoing each other.
+    """
+    resolved = await _lifecycle_preamble(event, pool, "status_changed")
+    if resolved is None:
+        return
+    project_id, user_id, glossary_entity_id = resolved
+
+    payload = event.payload or {}
+    status = str(payload.get("status") or "").strip()
+    if not status:
+        # A status-change event with no status cannot be acted on either way. Warn rather than
+        # guess: silently choosing "archive" would retire nodes on a malformed producer, and
+        # silently choosing "restore" would resurrect them.
+        logger.warning(
+            "glossary.entity_status_changed: no status in payload for %s — skipping",
+            glossary_entity_id,
+        )
+        return
+
+    from app.db.graph import graph_session
+    from app.db.graph_repos.entities import (
+        get_entity_by_glossary_id,
+        restore_entity_by_glossary_id,
+        user_archive_entity,
+    )
+
+    # Exceptions propagate to the consumer's retry path — a transient Neo4j outage SHOULD
+    # redeliver rather than silently drop the propagation. Both directions are idempotent.
+    if status == "active":
+        async with graph_session() as session:
+            entity = await restore_entity_by_glossary_id(
+                session, user_id=str(user_id), project_id=str(project_id),
+                glossary_entity_id=str(glossary_entity_id),
+                reason_prefix="glossary_status_",
+            )
+        if entity is None:
+            logger.debug(
+                "glossary.entity_status_changed: no KG node for %s — nothing to restore",
+                glossary_entity_id,
+            )
+            return
+        logger.debug(
+            "glossary.entity_status_changed un-archived KG entity %s (%s → active)",
+            glossary_entity_id, payload.get("prior_status"),
+        )
+        return
+
+    async with graph_session() as session:
+        entity = await get_entity_by_glossary_id(
+            session, user_id=str(user_id), project_id=str(project_id),
+            glossary_entity_id=str(glossary_entity_id),
+        )
+        if entity is None:
+            logger.debug(
+                "glossary.entity_status_changed: no KG node for %s — nothing to archive",
+                glossary_entity_id,
+            )
+            return
+        # `user_archive_entity`, NOT `archive_entity` — and the difference is load-bearing,
+        # not stylistic. `archive_entity` is the §3.4.F glossary-DELETED path: it nulls
+        # `glossary_entity_id` because the glossary entry itself is gone. A retired entity's
+        # entry is not gone, and severing the anchor here would be actively wrong: the KG
+        # sync MERGEs on (user_id, project_id, glossary_entity_id), so the next content edit
+        # to a still-editable `rejected` entity would fail to match the anchorless archived
+        # node and CREATE A SECOND, UN-ARCHIVED TWIN of it. `user_archive_entity` keeps the
+        # anchor (and the anchor score, so a reinstated entity ranks correctly at once
+        # instead of at the next recompute pass).
+        await user_archive_entity(
+            session, user_id=str(user_id), canonical_id=entity.id,
+            reason=f"glossary_status_{status}",
+        )
+    logger.debug(
+        "glossary.entity_status_changed archived KG entity %s (%s → %s)",
+        glossary_entity_id, payload.get("prior_status"), status,
+    )

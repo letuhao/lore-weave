@@ -1,0 +1,186 @@
+{
+  "_note": "Batch 33 — five knowledge tools. Two are re-derived from batch 32 because they have no ledger row, and both come back with a CHANGED design rather than a re-run.\n\nkg_ontology_propose: batch 32 asked it to ADD an edge type to a fresh project and got a correct precondition refusal — 'this project has no adopted ontology to edit'. Adopting one is Tier W either way (kg_adopt_template, or this tool's own op='adopt_template'), so its happy path sat behind ANOTHER tool's card and no card is ever approved. The way out is not a card: op='adopt_template' is one of this tool's OWN three ops, needs only a source_schema_id from kg_list_templates, and is exactly what an author would ask for on a project with no ontology. So the scenario now asks for the adoption instead of the edit — a real supplier chain (kg_list_templates -> source_schema_id), reachable without approving anything.\n\nkg_entity_edge_timeline: unchanged in shape, but its batch-32 write-up was CORRECTED first. The model's 'the connection map is currently empty' was TRUE — kg_graph_query projects nodes FROM EDGES (`MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)`), so an edgeless node is structurally invisible to it, and every node this fixture can create is edgeless because placing an edge needs an approved card. The answer_expect below is therefore rewritten: it no longer demands the model claim knowledge of a node the graph cannot show it.\n\n🔴 WHAT THIS BATCH CANNOT DO, STATED UP FRONT: nothing here can put an EDGE in the graph, because every path to one is confirm-gated. So the graph reads empty throughout, and no scenario is allowed to depend on a populated graph. Two of the five are built on the triage queue instead, which the seed CAN populate — proven end-to-end in batch 32.",
+  "scenarios": [
+    {
+      "id": "kg-view-edit",
+      "tool_under_test": "kg_view_edit",
+      "expect_tool": "kg_view_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Save a graph view called allies that shows only the allied_with edge type.",
+      "prompt_source": "meta.synonyms['save a graph view'] + ['create a lens'], verbatim, plus the view's code and content so both are the author's.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "query_note": "Deliberately asserts the PROJECT, not a view count: kg_view_edit is scope=USER, so its views live on the caller and a headcount would drift with every other run on this account — the batch-20 lesson.",
+          "why": "The project exists and the caller has no view by this code. op=upsert 'creates/replaces it WHOLE', so a view is attributable to this turn; the card is never approved, so none must exist afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: a view is saved with NO confirm card (Tier A), OR the op chosen is `delete` when the author said save — the enum offers only upsert|delete, so a wrong op destroys a lens instead of creating one — OR the model invents edge-type codes the author did not name. NOTE the replace semantics: upsert writes the view WHOLE, so if a view named `allies` already existed, a partial arg list would silently drop the codes it omitted.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "empty_case": "OWED — an upsert with no codes at all must be refused rather than saving an empty lens.",
+        "absent_case": "OWED — deleting a view code that does not exist must be refused.",
+        "idempotency": "OWED — upserting the same view twice must replace, not duplicate.",
+        "tenancy": "OWED — scope=USER: another owner's view must never be readable or writable."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-ontology-propose",
+      "tool_under_test": "kg_ontology_propose",
+      "expect_tool": "kg_ontology_propose",
+      "intent": "write",
+      "tier": "W",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What graph ontology templates can I adopt for this project?",
+      "follow_ups": [
+        "Adopt the Fantasy ontology template for this project."
+      ],
+      "prompt_source": "Turn 1 is kg_list_templates' synonym ('what templates can i adopt'); the MEASURED turn is kg_ontology_propose's synonym ['adopt a graph template'], verbatim, naming the template the author wants. Two turns because op=adopt_template needs a source_schema_id and kg_list_templates is its only supplier — the tool's own description says so.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "A fresh project with NO adopted ontology — probed directly: edge_types=[]. That is what makes ADOPT the right ask here and the EDIT the wrong one: batch 32 asked for an edit and got a correct refusal naming this exact precondition. The card is never approved, so the project must still have no adopted ontology afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: the ontology changes with NO confirm card (Tier W, and the tool's own description calls it High-impact), OR the model invents a source_schema_id rather than reading one out of turn 1's list — the templates are real rows with stable schema_ids, so a fabricated one is visible — OR it picks the `drama` template when the author said Fantasy. The op must be `adopt_template`; `schema_edit` would be refused on the precondition, which is a correct refusal and therefore NOT evidence about this scenario.",
+      "ship_audit": {
+        "gate": "OWED — Tier W and high-impact.",
+        "empty_case": "OWED — op=adopt_template with no source_schema_id must be refused (probed: it is).",
+        "absent_case": "OWED — a source_schema_id that does not exist must be refused.",
+        "idempotency": "OWED — adopting the same template twice must not duplicate the ontology.",
+        "tenancy": "OWED — project-scoped, and batch 32 could NOT establish this: the cross-tenant probe died in validation before the ownership check ran."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-triage-resolve",
+      "tool_under_test": "kg_triage_resolve",
+      "expect_tool": "kg_triage_resolve",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the graph triage queue.",
+      "follow_ups": [
+        "Drop the proposed rival_of edge — it is wrong."
+      ],
+      "prompt_source": "Turn 1 is kg_triage_list's synonym ('graph triage'); the MEASURED turn is kg_triage_resolve's synonyms ['drop this edge'] + ['fix the triage'], verbatim. Two turns because `signature` is REQUIRED and kg_triage_list is its only supplier.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {"tool": "kg_add_nodes", "args": {"project_id": "{project_id}", "mode": "manual", "name": "Aldric Vane", "kind": "character"}},
+        {"tool": "kg_add_nodes", "args": {"project_id": "{project_id}", "mode": "manual", "name": "Mira Solene", "kind": "character"}},
+        {"tool": "kg_propose_edge", "args": {"project_id": "{project_id}", "source_entity_id": "{step:0:entity_id}", "target_entity_id": "{step:1:entity_id}", "edge_type": "allied_with", "valid_from": 1}},
+        {"tool": "kg_propose_edge", "args": {"project_id": "{project_id}", "source_entity_id": "{step:1:entity_id}", "target_entity_id": "{step:0:entity_id}", "edge_type": "rival_of", "valid_from": 3}}
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "TWO parked edges with DIFFERENT types, and the measured turn names one of them — `rival_of` — so dropping the wrong signature is visible. The seed chain is the one proven end-to-end in batch 32: kg_propose_edge returns parked:true with a triage_id and kg_triage_list then shows the group. The card is never approved, so both must still be pending afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: a triage group is resolved with NO confirm card (Tier A), OR the model drops the `allied_with` signature when the author named rival_of, OR the action chosen is not `drop_edge` — the enum also offers map, re_target, close_previous and dismiss, and `dismiss` merely hides the item rather than rejecting the edge, which is a different outcome the author did not ask for. CONTROL: this tool explicitly handles only the LOW-IMPACT reversible actions; a schema-changing one belongs to kg_triage_schema_write, so a model reaching for add_to_vocab here is reaching for the wrong tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a signature that is not in the queue must be refused.",
+        "idempotency": "OWED — resolving an already-resolved group must refuse or be a clear no-op.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-triage-schema-write",
+      "tool_under_test": "kg_triage_schema_write",
+      "expect_tool": "kg_triage_schema_write",
+      "intent": "write",
+      "tier": "W",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the graph triage queue.",
+      "follow_ups": [
+        "Add the allied_with edge type to the schema so that proposal fits."
+      ],
+      "prompt_source": "Turn 1 is kg_triage_list's synonym; the MEASURED turn is kg_triage_schema_write's synonyms ['add this value to the schema'] + ['resolve triage by changing the schema'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {"tool": "kg_add_nodes", "args": {"project_id": "{project_id}", "mode": "manual", "name": "Aldric Vane", "kind": "character"}},
+        {"tool": "kg_add_nodes", "args": {"project_id": "{project_id}", "mode": "manual", "name": "Mira Solene", "kind": "character"}},
+        {"tool": "kg_propose_edge", "args": {"project_id": "{project_id}", "source_entity_id": "{step:0:entity_id}", "target_entity_id": "{step:1:entity_id}", "edge_type": "allied_with", "valid_from": 1}}
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "ONE parked edge, and the project has NO adopted ontology (edge_types=[], probed directly). So `add_to_schema` here is a real schema mutation and may well be refused on the same precondition kg_ontology_propose hit in batch 32 — that refusal, if it comes, is the tool being correct, and the falsifier says so rather than scoring it as a failure."
+        }
+      ],
+      "falsifier": "REFUTED IF: the schema changes with NO confirm card (Tier W), OR the action chosen is not `add_to_schema` when the author asked to add an edge TYPE — `add_to_vocab` adds a controlled-vocabulary VALUE and `widen_target_kinds` loosens which node kinds an edge may point at, both of which are different changes to the author's ontology — OR the model invents a signature. 🔴 A PRECONDITION REFUSAL IS NOT A FAILURE: this project has no adopted ontology, so 'there is nothing to add to' is a correct answer, and it must be recorded as the tool working rather than as the tool broken.",
+      "ship_audit": {
+        "gate": "OWED — Tier W and schema-mutating.",
+        "absent_case": "OWED — a signature that is not in the queue must be refused.",
+        "empty_case": "OWED — an action with no value to add must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-entity-edge-timeline",
+      "tool_under_test": "kg_entity_edge_timeline",
+      "expect_tool": "kg_entity_edge_timeline",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the knowledge graph for this book.",
+      "follow_ups": [
+        "How did Aldric Vane's relationships change over time?"
+      ],
+      "prompt_source": "Turn 1 is kg_graph_query's synonym ('show the graph'); the MEASURED turn is kg_entity_edge_timeline's synonyms ['how did their relationship change'] + ['relationship over time'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {"tool": "kg_add_nodes", "args": {"project_id": "{project_id}", "mode": "manual", "name": "Aldric Vane", "kind": "character"}},
+        {"tool": "kg_add_nodes", "args": {"project_id": "{project_id}", "mode": "manual", "name": "Mira Solene", "kind": "character"}},
+        {"tool": "kg_propose_edge", "args": {"project_id": "{project_id}", "source_entity_id": "{step:0:entity_id}", "target_entity_id": "{step:1:entity_id}", "edge_type": "allied_with", "valid_from": 1}}
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "🔴 THE NODE EXISTS AND THE GRAPH READ CANNOT SHOW IT, and that is now a MEASURED fact rather than an assumption. kg_add_nodes returns 'node ready'; kg_graph_query returns nodes_total 0; kg_entity_edge_timeline on the real entity_id returns instances:[] rather than 'entity not found', which is how we know the node is there. The graph read is `MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)` — it projects nodes FROM EDGES, so an edgeless node is structurally invisible, and every node this fixture creates is edgeless because placing an edge needs an approved card. Named D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ."
+        }
+      ],
+      "answer_expect": {
+        "none_of": ["their relationship deepened", "over the course of", "by chapter"],
+        "why": "🔴 REWRITTEN AFTER BATCH 32's DIAGNOSIS WAS CORRECTED. The earlier version demanded the model NOT say it lacked a record of Aldric Vane — but the graph read genuinely shows nothing, so that sentence was TRUE and the bar was punishing an honest answer. What must not happen is the opposite: narrating a relationship ARC that does not exist. These needles are the shape of an invented chronology."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply narrates how the relationship CHANGED — there are no placed edges at all, so any arc is fabricated. Reporting that nothing is in the graph is CORRECT and must not be scored as a failure. The open question this arm actually measures is whether the tool is advertised at all: it surfaced 0/5 in batch 32 with find_tools_call_count 0, which is D-LAZY-TAIL-UNUSED rather than anything about this tool.",
+      "ship_audit": {
+        "empty_case": "EXERCISED by direct probe — a real entity with no placed edges returns instances:[] with total 0, distinct from the 'entity not found' an invented id gets.",
+        "absent_case": "EXERCISED by direct probe — an unknown entity_id is refused 'entity not found'.",
+        "tenancy": "EXERCISED by direct probe — another owner's project gives the same 'entity not found', so it is no oracle."
+      },
+      "defects": []
+    }
+  ]
+}

@@ -314,6 +314,32 @@ class PlanRunsRepo:
             row = await c.fetchrow(query, run_id, book_id, kind)
         return _row_artifact(row) if row else None
 
+    async def list_artifacts(
+        self,
+        book_id: UUID,
+        run_id: UUID,
+        kind: PlanArtifactKind,
+    ) -> list[PlanArtifact]:
+        """EVERY artifact of `kind` for this run, OLDEST FIRST.
+
+        `latest_artifact` is the wrong read whenever a kind is emitted more than once per run, and
+        `package` is exactly that: `_autocompile_rules_run` calls `compile(arc_id=…)` once PER ARC,
+        and each compile saves its own arc-scoped `package`. A bare latest read therefore sees only
+        the LAST arc. The same trap is already called out one file over for `link_report` ("BY
+        TARGET, not `latest link_report`") — this is the read that lets a caller do that.
+
+        Oldest-first because that is compile order, i.e. the author's arc order.
+        """
+        query = f"""
+        SELECT {_SELECT_ARTIFACT} FROM plan_artifact a
+        JOIN plan_run r ON r.id = a.run_id
+        WHERE a.run_id = $1 AND r.book_id = $2 AND a.kind = $3
+        ORDER BY a.created_at ASC
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, run_id, book_id, kind)
+        return [_row_artifact(r) for r in rows]
+
     async def artifacts_by_ids(
         self, book_id: UUID, run_id: UUID, ids: list[UUID | str],
     ) -> dict[str, PlanArtifact]:

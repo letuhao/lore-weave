@@ -1,19 +1,49 @@
 //! `Actor` — the per-combatant state, and the only thing that crosses an
 //! island boundary (`Domain::extract`/`install`).
+//!
+//! ## What `M1` deleted, and why deletion rather than migration
+//!
+//! This struct held `hp`, `max_hp`, `av`, `stats` and `snapshot`. All five are
+//! gone, and the PO's instruction was explicit that they should be **deleted,
+//! not ported**:
+//!
+//! > *"`hp` and friends are old src, rubbish too. Back then we only built to
+//! > prove the kernel and the SDK could work, so dealing with them is right."*
+//!
+//! The distinction is load-bearing. A port keeps the old vocabulary in a new
+//! container — `quantity[0] = "hp"` would have satisfied every structural check
+//! and changed nothing, because the engine would still be the thing naming the
+//! noun. **What is here instead is a hub actor whose numbers this file cannot
+//! name**: the laws ask [`crate::domain::HubBinding`] for a ROLE and get an
+//! ordinal, and the reality supplies both the name and the value.
+//!
+//! | was | is |
+//! |---|---|
+//! | `hp: i64` | the pool bound to `EngineRole::Vital` |
+//! | `max_hp: i64` | that pool's declared `CeilingBinding` |
+//! | `av: i64` | the pool bound to `EngineRole::Initiative` |
+//! | `turn_slots: i64` | the pool bound to `EngineRole::ActionBudget` |
+//! | `stats: CombatStats` | `RealityRules::archetype` — **one per reality**, not one per actor |
+//! | `snapshot: StatSnapshot` | **nothing.** Written twice, read nowhere, by its own doc-comment's admission |
+//!
+//! What did NOT move is as deliberate: `defending`, `stance`, `fled`,
+//! `knocked_out` and `status` are the `StatusPropose` door, measured at HEAD as
+//! **prose with zero implementation**. Making them quantities would invent that
+//! door's shape from a milestone that is not about it.
 
-use game_rules::combat::{action_value, AvStatus, CombatStats, Side};
-use game_rules::stats::StatSnapshot;
-use ruleset_core::Ruleset;
+use actor_hub::WriteError;
+use game_rules::combat::{AvStatus, Side};
+use sim_core::EntityId;
 
+use super::binding::RealityRules;
 use super::payload::Stance;
 
-// PartialEq only: `StatBlock` carries f64 (accuracy/dodge/crit), and floats
-// have no total equality. Deriving Eq here would be a lie the compiler
-// happens to catch.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Actor {
-    pub hp: i64,
-    pub max_hp: i64,
+    /// **Items 1-4 of the hub's five**: identity, intrinsic quantities,
+    /// existence, attachment. Private, so no caller can reach a quantity except
+    /// through a role.
+    hub: actor_hub::Actor,
     pub defending: bool,
     pub stance: Option<Stance>,
     pub fled: bool,
@@ -21,72 +51,60 @@ pub struct Actor {
     /// actor with no side could never be counted and the encounter could
     /// never end.
     pub side: Side,
-    /// DF07 §8.1 — the block RESOLVED AT ENCOUNTER START, not read live.
-    ///
-    /// A progression tick or manifest reload mid-encounter would otherwise
-    /// retroactively change how earlier rounds *should* have resolved,
-    /// breaking replay of the encounter as a unit. And that is the normal
-    /// case, not an exotic one: striking trains swordsmanship, and PROG_001
-    /// trains on Action.
-    pub snapshot: StatSnapshot,
-    /// The combat-facing projection of `snapshot.stats` (DF07 §8.1 table).
-    pub stats: CombatStats,
-    /// HSR action value. LOWEST acts; reset on act (COMB_001 §4).
-    pub av: i64,
     pub status: AvStatus,
     /// COMB_001: KO is REVIVABLE for a bounded number of rounds — it is not
     /// death. `Some(n)` counts rounds remaining before it becomes permanent.
     pub knocked_out: Option<u8>,
-    /// IAS-D6 — the turn economy, as a RESOURCE rather than a timestamp.
-    ///
-    /// One slot per actor per turn; an action consumes it and `EndTurn`
-    /// refills it. A resource works where a cooldown timestamp cannot: the
-    /// domain never sees the clock, so "has it been long enough?" is not a
-    /// question it can answer, while "do you still have your action?" is.
-    ///
-    /// This is the layer-3 defence of doc 22 §5 and the one that actually
-    /// stops action spam. Layers 1-2 (transport rate limit, in-flight cap)
-    /// shape traffic; only this one enforces the RULES of play, which is why
-    /// it binds NPCs exactly as it binds players (IAS-A9).
-    pub turn_slots: i64,
 }
 
 // QTY-A12 (doc 35 §6.4) — see the rationale on `StatBlock` in `stats.rs`.
 //
 // `Actor` is THE dense per-actor struct: one per combatant, cloned across every
-// `Domain::extract`/`install` island handoff. 80 of these 192 bytes are
-// `snapshot: StatSnapshot`, which is written at construction and read nowhere
-// outside tests today — it is pre-wired for the Q2/Q4 progression slices, and
-// if those land without consuming it, it must go rather than stay as a shape
-// with no consumer.
-const _: () = assert!(core::mem::size_of::<Actor>() <= 192);
+// `Domain::extract`/`install` island handoff.
+//
+// REPIN LOG
+// * <= 192, 2026-08-02. 80 of those bytes were `snapshot: StatSnapshot`, noted
+//   at the time as "written at construction and read nowhere outside tests".
+// * <= 160, 2026-08-06 (`M1`). The five deleted fields freed 8 + 8 + 8 + 64 + 80
+//   = 168 bytes and the hub's 144 replaced them, so this went DOWN despite
+//   gaining a 128-byte quantity array. The array is the honest cost: it is
+//   `MAX_DECLARED_QUANTITIES` wide whether a reality declares three pools or
+//   thirty, which QTY-A6.1 accepts as the price of ONE ordinal space.
+//
+// Non-vacuity: every field is inline (a 144-byte hub struct, three one-byte
+// enums, two `Option`s of one byte). Adding a field or widening
+// MAX_DECLARED_QUANTITIES moves this number. Boxing the hub to keep it small
+// would make the assertion 16 bytes for every n and is forbidden for the reason
+// `QTY-A6 ⊥ QTY-A12` gives.
+//
+// **`<=` became `==` after a cold-start reviewer measured the slack.** The
+// comment above claimed "adding a field moves this number"; the NUMBER moves,
+// the ASSERTION did not — used bytes are 144 + 1 + 1 + 1 + 1 + 3 + 2 = 153 in
+// 160 allocated, so up to SEVEN bytes of new field slid in green. The hub's own
+// assertion next door is `== 144` and survives every attack; this one is now the
+// same shape, and the cost of exactness is one repin per deliberate change.
+const _: () = assert!(core::mem::size_of::<Actor>() == 160);
 
 impl Actor {
-    /// Slice-1 constructor: a melee archetype at `max_hp`, on side B.
-    /// `with_side` is the one to use when the side matters.
+    /// Spawn a combatant into a reality: attach the feature, and take every
+    /// quantity's opening value from that reality's own declarations.
     ///
-    /// F1 added the `rules` parameter: an actor's opening stats are the
-    /// reality's melee archetype resolved through the DF07 path, and there is
-    /// no such thing as an archetype without a ruleset to read it from.
-    pub fn new(rules: &Ruleset, max_hp: i64) -> Self {
-        Self::with_side(rules, max_hp, Side::B)
-    }
-
-    pub fn with_side(rules: &Ruleset, max_hp: i64, side: Side) -> Self {
-        let stats = CombatStats::archetype_melee(&rules.stats, max_hp);
+    /// **There is no `max_hp` parameter, and its absence is the milestone.** An
+    /// actor's opening vital is `ResourceDecl::base`, which is content; before
+    /// `M1` it was a `i64` a caller passed in, so the same reality produced
+    /// actors whose ceiling nothing had declared.
+    pub fn spawn(rules: &RealityRules, id: EntityId, side: Side) -> Self {
+        let mut hub = actor_hub::Actor::new(id);
+        hub.attach(rules.hub().registry(), rules.hub().plugin())
+            .expect("the combat feature is declared by construction in RealityRules::resolve");
         Self {
-            hp: max_hp,
-            max_hp,
+            hub,
             defending: false,
             stance: None,
             fled: false,
             side,
-            snapshot: StatSnapshot::default(),
-            stats,
-            av: action_value(&rules.combat, stats.speed, AvStatus::default(), false),
             status: AvStatus::default(),
             knocked_out: None,
-            turn_slots: 1,
         }
     }
 
@@ -94,44 +112,152 @@ impl Actor {
     /// no domain rows must still be able to depart, and this is the portable
     /// that encodes "there was nothing here".
     ///
-    /// It takes no `rules` on purpose, and that is the whole point of splitting
-    /// it out of `Actor::new`. `extract` has no rules parameter (the kernel's
-    /// trait gives it none), so building a placeholder from an *archetype*
-    /// would mean reaching for an ambient `Ruleset::engine_default()` — exactly
-    /// the ambient-configuration reach RLS-A12 added the `Rules` seam to
-    /// prevent. A fabricated actor is not an archetype instance; it is a hole,
-    /// and it now looks like one.
+    /// It takes no `rules`, and that is now enforced by the type rather than by
+    /// a comment: a hub actor with **nothing attached** has ABSENT quantities,
+    /// not zeroed ones. The old version fabricated `hp = 0`, `max_hp = 0` and a
+    /// zeroed stat block — numbers that read as a real actor at death's door.
+    /// This one cannot be mistaken for an actor, because it has no numbers at
+    /// all.
     ///
-    /// Zeroed is behaviour-preserving here: the initiative queue filters on
-    /// [`Actor::alive`] before it ever reads `av`, and `hp = 0` keeps this out
-    /// of it either way.
-    ///
-    /// **Pre-existing hazard, now visible and NOT fixed here:** installing this
-    /// on the arrival island materialises a side-B actor at 0 HP, which
-    /// `outcome_of` counts as *present but not standing* — i.e. an empty-case
-    /// handoff can read as a Victory. That is a sim-core handoff-semantics
-    /// question, out of F1's scope; tracked as `D-EMPTY-PORTABLE-SIDE`.
-    pub fn absent() -> Self {
+    /// **Pre-existing hazard, still NOT fixed here:** installing this on the
+    /// arrival island materialises a side-B actor, which `outcome_of` counts as
+    /// *present but not standing* — i.e. an empty-case handoff can read as a
+    /// Victory. Tracked as `D-EMPTY-PORTABLE-SIDE`.
+    pub fn absent(id: EntityId) -> Self {
         Self {
-            hp: 0,
-            max_hp: 0,
+            hub: actor_hub::Actor::new(id),
             defending: false,
             stance: None,
             fled: false,
             side: Side::B,
-            snapshot: StatSnapshot::default(),
-            stats: CombatStats::from_block(&crate::stats::StatBlock::zeroed()),
-            av: 0,
             status: AvStatus::default(),
             knocked_out: None,
-            turn_slots: 0,
         }
+    }
+
+    pub fn id(&self) -> EntityId {
+        self.hub.id()
+    }
+
+    /// The pool an engine law reads, by ROLE. `None` when the quantity is
+    /// ABSENT — which for a hub actor means *the feature is not attached*, the
+    /// empty-portable case above.
+    fn role_value(&self, rules: &RealityRules, q: actor_hub::QuantityOrdinal) -> Option<i32> {
+        self.hub.quantity(rules.hub().registry(), q)
+    }
+
+    /// **The vital.** `0` for an absent actor, which is the same answer the old
+    /// zeroed portable gave and keeps `alive()` total.
+    pub fn vital(&self, rules: &RealityRules) -> i64 {
+        self.role_value(rules, rules.hub().vital()).unwrap_or(0) as i64
+    }
+
+    /// The vital's ceiling — the reality's, not the actor's.
+    pub fn vital_ceiling(&self, rules: &RealityRules) -> i64 {
+        rules.hub().vital_ceiling() as i64
+    }
+
+    /// **Initiative.** LOWEST acts; reset on act (COMB_001 §4).
+    pub fn initiative(&self, rules: &RealityRules) -> i64 {
+        self.role_value(rules, rules.hub().initiative()).unwrap_or(0) as i64
+    }
+
+    /// **The action budget.** IAS-D6's turn economy, as a declared pool rather
+    /// than a field: one slot per actor per turn, spent by an action and
+    /// refilled at the round boundary.
+    pub fn action_budget(&self, rules: &RealityRules) -> i64 {
+        self.role_value(rules, rules.hub().action_budget()).unwrap_or(0) as i64
+    }
+
+    /// Read any declared quantity by ORDINAL — the general form the role
+    /// accessors specialise.
+    ///
+    /// **A declared verb may name any quantity the reality declares**, not only
+    /// the three an engine law reads. Without this the substrate could only move
+    /// numbers that happen to have a role bound, which would make a verb's reach
+    /// depend on the engine's needs rather than on the author's declaration —
+    /// exactly the coupling `M2` exists to remove.
+    pub fn quantity_by_ordinal(
+        &self,
+        rules: &RealityRules,
+        q: actor_hub::QuantityOrdinal,
+    ) -> Option<i64> {
+        self.role_value(rules, q).map(i64::from)
+    }
+
+    /// The write half. Silent on refusal, because the hub already RECORDS it and
+    /// `apply` is TOTAL: a cross-island substitute arrives with no preconditions
+    /// and must never panic.
+    pub fn set_quantity_by_ordinal(
+        &mut self,
+        rules: &RealityRules,
+        q: actor_hub::QuantityOrdinal,
+        v: i64,
+    ) {
+        let _ = self.set_role(rules, q, v);
+    }
+
+    /// Write a role's pool. **The FEATURE decides the number; the hub carries
+    /// it** — see `actor_hub::Actor::set_quantity`.
+    ///
+    /// An absent actor (the empty portable) refuses every write, and the caller
+    /// treats that as "nothing to do" rather than as an error, because
+    /// `Domain::apply` is TOTAL: a cross-island substitute arrives with no
+    /// preconditions and must never panic.
+    fn set_role(
+        &mut self,
+        rules: &RealityRules,
+        q: actor_hub::QuantityOrdinal,
+        v: i64,
+    ) -> Result<(), WriteError> {
+        self.hub.set_quantity(
+            rules.hub().registry(),
+            rules.hub().plugin(),
+            q,
+            v.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+        )
+    }
+
+    pub fn set_vital(&mut self, rules: &RealityRules, v: i64) {
+        let _ = self.set_role(rules, rules.hub().vital(), v);
+    }
+
+    pub fn set_initiative(&mut self, rules: &RealityRules, v: i64) {
+        let _ = self.set_role(rules, rules.hub().initiative(), v);
+    }
+
+    pub fn set_action_budget(&mut self, rules: &RealityRules, v: i64) {
+        let _ = self.set_role(rules, rules.hub().action_budget(), v);
+    }
+
+    /// **Item 5 — the fold**, reached from the consumer side.
+    ///
+    /// Aggregate this actor's stored quantities with whatever contributions are
+    /// submitted, and answer with the resolved view.
+    ///
+    /// **Why the hot path does not call this, and why that is not a dodge.**
+    /// `QTY-A4` places a pool's `current` on the ACTOR — it is stored state, not
+    /// a derived value — so [`Self::vital`] reading the stored slot is the
+    /// design rather than a shortcut around it. What the fold is for is
+    /// CONTRIBUTIONS: an equipment bonus, a realm raising a ceiling, a status
+    /// scaling a number. `M1` declares no contribution rows, so this returns the
+    /// stored values, which is the fold's identity case and is what it is
+    /// specified to do with an empty submission. It is exposed now because it is
+    /// the door `M2`'s `Delta` primitive walks through, and a door with no
+    /// caller is the shape this project already has a gate for.
+    pub fn resolved(
+        &self,
+        rules: &RealityRules,
+        modifiers: &[actor_hub::ModifierRow],
+        derivations: &[actor_hub::DerivationRow],
+    ) -> actor_hub::FoldReport {
+        self.hub.fold(rules.hub().registry(), modifiers, derivations)
     }
 
     /// Able to act. A knocked-out actor is NOT alive for this purpose even
     /// though its KO is revivable — it holds a place in the encounter without
     /// holding a turn.
-    pub fn alive(&self) -> bool {
-        self.hp > 0 && !self.fled && self.knocked_out.is_none()
+    pub fn alive(&self, rules: &RealityRules) -> bool {
+        self.vital(rules) > 0 && !self.fled && self.knocked_out.is_none()
     }
 }

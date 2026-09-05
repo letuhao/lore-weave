@@ -23,40 +23,22 @@ from fastapi import status as status_codes  # C8: alias — the list_entities ro
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
-from app.db.neo4j import neo4j_session
+from app.adapters.vector_store_provider import get_vector_store
+from app.ports.vector_store import VectorFilter
+from app.adapters.graph_store_provider import get_graph_store
+from app.db.graph import graph_session
 from app.db.neo4j_helpers import run_read
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
-from app.db.neo4j_repos.entities import (
-    AUTHORABLE_KINDS,
-    ENTITIES_MAX_LIMIT,
-    ENTITY_SORT_KEYS,
-    ENTITY_STATUSES,
-    SUPPORTED_VECTOR_DIMS,
-    Entity,
-    EntityDetail,
-    MergeEntitiesError,
-    user_archive_entity,
-    restore_entity,
-    find_entities_by_vector,
-    find_gap_candidates,
-    get_entity,
-    get_entity_with_relations,
-    link_to_glossary,
-    list_entities_filtered,
-    list_user_entities,
-    merge_entities,
-    merge_entity,
-    unlock_entity_user_edited,
-    update_entity_fields,
-)
-from app.db.neo4j_repos.entity_status import statuses_detail_at_order
-from app.db.neo4j_repos.facts import (
+from loreweave_extraction.canonical import canonicalize_entity_name
+from app.domain.passage_contract import SUPPORTED_VECTOR_DIMS
+from app.db.graph_repos.entities import AUTHORABLE_KINDS, ENTITIES_MAX_LIMIT, ENTITY_SORT_KEYS, ENTITY_STATUSES, Entity, EntityDetail, MergeEntitiesError, find_alias_collision, find_gap_candidates, get_entities_by_ids, get_entity, get_entity_with_relations, link_to_glossary, list_entities_filtered, list_user_entities, merge_entities, merge_entity, unlock_entity_user_edited, update_entity_fields, user_archive_entity
+from app.db.graph_repos.entity_status import statuses_detail_at_order
+from app.db.graph_repos.facts import (
     Fact,
     FactType,
     list_facts_for_entity,
     merge_fact,
 )
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos.relations import (
     SUBGRAPH_MAX_HOPS,
     SUBGRAPH_MAX_NODE_CAP,
     Subgraph,
@@ -83,7 +65,8 @@ from app.deps import (
     get_glossary_client,
     get_projects_repo,
 )
-from app.spoiler_window import resolve_before_order
+from app.db.graph_repos.temporal import ORDINAL_OPEN_CEILING
+from app.spoiler_window import REVEAL_ALL, parse_reveal_at, resolve_before_order
 from app.events.outbox_emit import (
     ENTITY_CORRECTED,
     emit_correction,
@@ -170,7 +153,7 @@ async def list_user_entities_endpoint(
     on the next chat turn rather than UI restore (matches existing
     `archive_entity` semantics).
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         rows = await list_user_entities(
             session,
             user_id=str(user_id),
@@ -202,7 +185,7 @@ async def archive_user_entity(
     and a fresh `archive_reason`. Callers (the FE panel) should
     treat 204 + 404 symmetrically as "entity is now hidden".
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # Phase B: read the pre-archive snapshot first (for the correction
         # event). archive is idempotent + op=delete → diff_class=spurious-drop
         # regardless of `before` content, so a read-before-write here is
@@ -274,9 +257,12 @@ async def restore_user_entity(
     documented, not a bug: the row is visible and anchored immediately; only its
     ranking weight lags one pass.
     """
-    async with neo4j_session() as session:
-        result = await restore_entity(
-            session,
+    async with graph_session() as session:
+        # T17 — through the port. `restore_entity` is a 1:1 match; the sibling
+        # `user_archive_entity` above is NOT (it carries `reason='user_archived'` and its own
+        # semantics distinct from the port's `archive_entity`), so it stays a direct repo
+        # call rather than being bent to fit.
+        result = await get_graph_store(session).restore_entity(
             user_id=str(user_id),
             canonical_id=entity_id,
         )
@@ -386,10 +372,21 @@ async def list_entities(
     ),
     limit: int = Query(50, ge=1, le=ENTITIES_MAX_LIMIT),
     offset: int = Query(0, ge=0),
+    reveal_at: str | None = Query(
+        default=None,
+        description=(
+            "Q8 — the REVEAL POSITION. A book chapter UUID restricts the list to "
+            "entities the reader has met by that chapter; `all` is the explicit "
+            "whole-cast editor view. NOTE the default differs from the facts read: "
+            "omitting BOTH this and `before_chapter_id` leaves the list UNFILTERED "
+            "(the editor view), because that is what this surface has always meant. "
+            "Send `reveal_at=all` to say so explicitly."
+        ),
+    ),
     before_chapter_id: UUID | None = Query(
         default=None,
         description=(
-            "W11 reader SPOILER WINDOW. When set, the list is restricted to "
+            "DEPRECATED — use `reveal_at`. W11 reader SPOILER WINDOW. When set, the list is restricted to "
             "entities the reader has actually MET — those with at least one "
             "fact established by this chapter. FAIL-CLOSED: an unresolvable "
             "chapter returns an EMPTY list, never the full cast. Omit for the "
@@ -463,11 +460,21 @@ async def list_entities(
     # resolve_before_order FAILS CLOSED — an omitted/unresolvable chapter → -1, so the
     # windowed query keeps nothing. before_order stays None ONLY when the caller did not
     # ask for a window (editor/curation), which the repo reads as "unfiltered".
+    # Q8 — one POSITION vocabulary, but this surface keeps its own meaning for ABSENT,
+    # and that difference is a product decision rather than a parsing one:
+    #   facts / statuses (reader-facing)  absent → FAIL-CLOSED
+    #   this list (editor-facing)         absent → UNFILTERED, the whole-cast view
+    # Collapsing those two would either empty every editor cast list or leak later
+    # characters into every reader one. `parse_reveal_at` returns `None` for absent
+    # precisely so each caller can answer this for itself.
+    mode, chapter = parse_reveal_at(
+        reveal_at, before_chapter_id=before_chapter_id, curation=False)
     before_order: int | None = None
-    if before_chapter_id is not None:
-        before_order, _ = await resolve_before_order(book_client, before_chapter_id)
+    if mode == "chapter":
+        before_order, _ = await resolve_before_order(book_client, chapter)
+    # mode is REVEAL_ALL (explicit whole-cast) or None (legacy omission) → unfiltered.
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         rows, total = await list_entities_filtered(
             session,
             user_id=str(user_id),
@@ -554,20 +561,50 @@ async def _semantic_search_entities(
     query_vector = embed_result.embeddings[0]
 
     try:
-        async with neo4j_session() as session:
-            hits = await find_entities_by_vector(
-                session,
+        # T25 (3) — through the PORT, and it is SEARCH-THEN-FETCH rather than a straight swap.
+        # The port returns ranked ids plus `attributes`, and the port's own design note says
+        # those attributes carry what a RANKER needs, not a caller's response model: this
+        # endpoint returns full `Entity` rows with a computed `status`, which `attributes`
+        # deliberately does not carry. So the port ranks and `get_entities_by_ids` loads.
+        #
+        # THE WEIGHTING MOVED HERE ON PURPOSE. `find_entities_by_vector` re-ranked by
+        # `score * anchor_score` inside the repo; the port returns `score` and the anchor in
+        # `attributes` because *"a backend that had to reproduce a scoring formula to be
+        # swappable would not be swappable"*. Same ordering, computed by the caller that owns
+        # the policy.
+        async with graph_session() as session:
+            store = await get_vector_store(session)
+            # Oversample so post-filtering by kind/status doesn't starve the page: ask for
+            # limit*N candidates, then trim after the Python-side filters.
+            vhits = await store.search(
+                scope="entity",
                 user_id=str(user_id),
-                project_id=str(project_id),
-                query_vector=query_vector,
+                embedding=query_vector,
                 dim=project.embedding_dimension,
-                embedding_model=project.embedding_model,
-                # Oversample so post-filtering by kind/status doesn't
-                # starve the page: ask for limit*N candidates, then
-                # trim after the Python-side filters.
-                limit=limit * 5,
-                include_archived=(status == "archived"),
+                k=limit * 5,
+                filter=VectorFilter(
+                    project_id=str(project_id),
+                    embedding_model=project.embedding_model,
+                    include_archived=(status == "archived"),
+                ),
             )
+            ranked = sorted(
+                vhits,
+                key=lambda h: h.score * (h.attributes.get("anchor_score") or 1.0),
+                reverse=True,
+            )
+            by_id = {
+                e.id: e
+                for e in await get_entities_by_ids(
+                    session,
+                    user_id=str(user_id),
+                    ids=[h.record_id for h in ranked],
+                    include_archived=(status == "archived"),
+                )
+            }
+            # Re-apply the ranking the fetch does not preserve, and drop ids the fetch did
+            # not return (archived//deleted between the two reads) rather than emitting None.
+            hits = [by_id[h.record_id] for h in ranked if h.record_id in by_id]
     except ValueError as exc:
         logger.warning(
             "C8: semantic entity search dim mismatch project=%s stored=%s live=%s",
@@ -581,7 +618,7 @@ async def _semantic_search_entities(
             },
         )
 
-    rows = [h.entity for h in hits]
+    rows = list(hits)
     # Post-filter by kind + derived status (the vector index is global;
     # these dimensions aren't expressible in the Cypher vector call). Use
     # the model's own `status` computed field rather than re-deriving — one
@@ -627,8 +664,16 @@ async def list_entity_statuses(
     before_chapter_id: UUID | None = Query(
         default=None,
         description=(
-            "Spoiler-window the status THROUGH this book chapter (resolved "
-            "server-side). Omitted / unresolvable → fail-closed (all 'active')."
+            "DEPRECATED — use `reveal_at`. Spoiler-window the status THROUGH this book "
+            "chapter. Omitted / unresolvable → fail-closed (all 'active')."
+        ),
+    ),
+    reveal_at: str | None = Query(
+        default=None,
+        description=(
+            "Q8 — the REVEAL POSITION. A book chapter UUID reads through that chapter; "
+            "`all` is the unbounded author read. Omitted (and no legacy flag) → "
+            "fail-closed: every entity reads 'active' rather than leaking a death."
         ),
     ),
     kind: str | None = Query(default=None, max_length=100),
@@ -636,10 +681,25 @@ async def list_entity_statuses(
     book_client: BookClient = Depends(get_book_client),
 ) -> EntityStatusesResponse:
     """T2.1 — batch `:EntityStatus` (`active|gone`) for a project's cast, windowed
-    to `before_chapter_id`. Project-scoped (not a client id list) to avoid URL-length
+    to the reveal position. Project-scoped (not a client id list) to avoid URL-length
     blowups on large casts. Multi-tenant: `user_id` from JWT scopes both reads."""
-    before_order, available = await resolve_before_order(book_client, before_chapter_id)
-    async with neo4j_session() as session:
+    # Q8 — same one-concept resolution as the facts read. `curation` has no meaning on a
+    # STATUS read (there is no unplaced status to rescue — a status without a position is
+    # 'active' by definition), so only the two positional states are offered here.
+    mode, chapter = parse_reveal_at(
+        reveal_at, before_chapter_id=before_chapter_id, curation=False)
+    if mode == REVEAL_ALL:
+        # NOT None here, unlike the facts read, and the difference is real:
+        # `statuses_detail_at_order` takes `at_order: int` and compares
+        # `from_order <= at_order`, so a null ceiling matches NOTHING and every
+        # entity would silently read 'active' — a fail-OPEN dressed as an author
+        # view. Every status carries a position (there is no unplaced status to
+        # rescue), so "unbounded" is genuinely +∞ here: the same
+        # ORDINAL_OPEN_CEILING the temporal chain already uses for an open interval.
+        before_order, available = ORDINAL_OPEN_CEILING, True
+    else:
+        before_order, available = await resolve_before_order(book_client, chapter)
+    async with graph_session() as session:
         rows, _total = await list_entities_filtered(
             session,
             user_id=str(user_id),
@@ -691,7 +751,7 @@ async def get_entity_detail(
     C9: ETag header handed back so the FE can send `If-Match: W/"N"`
     on the next PATCH.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         detail = await get_entity_with_relations(
             session,
             user_id=str(user_id),
@@ -727,12 +787,20 @@ async def list_entity_facts(
     curation: bool = Query(
         default=False,
         description=(
-            "S-05 — AUTHOR-facing whole-book read (the studio entity-detail curation "
-            "view, NOT the reader codex). Skips spoiler-windowing so every known fact "
-            "shows regardless of chapter position — including user-authored facts that "
-            "carry no chapter `from_order`. Without it the fail-closed window (before_"
-            "order=-1) hides EVERY fact, so the curation list renders empty. When true, "
-            "`before_chapter_id` is ignored. Reader surfaces MUST NOT set this."
+            "DEPRECATED — use `reveal_at=all`. S-05 AUTHOR-facing whole-book read (the "
+            "studio entity-detail curation view, NOT the reader codex). Still accepted "
+            "and mapped onto the reveal position; `reveal_at` wins when both are given."
+        ),
+    ),
+    reveal_at: str | None = Query(
+        default=None,
+        description=(
+            "Q8 — the REVEAL POSITION, one parameter for what `before_chapter_id` and "
+            "`curation` said between them. A book chapter UUID reads through that "
+            "chapter; `all` is the unbounded author read and is the only mode that "
+            "includes facts carrying no story position at all. Omitted (and no legacy "
+            "flag) → fail-closed, no facts: a reader whose position is unknown sees "
+            "nothing rather than everything."
         ),
     ),
     user_id: UUID = Depends(get_current_user),
@@ -750,14 +818,19 @@ async def list_entity_facts(
         NULL `from_order`) is visible. This is what makes `POST /entities/{id}/facts`
         actually operable: an authored fact appears at once instead of being hidden
         by the fail-closed window."""
-    if curation:
-        # No spoiler window for the author view: before_order=None makes the
-        # projection's `($before_order IS NULL OR …)` branch pass every fact.
+    # Q8 — resolve ONE reveal position, then read. The two legacy flags are mapped
+    # rather than branched on, so the precedence rule lives in one function with tests
+    # instead of in an `if` here and a sentence in a docstring there.
+    mode, chapter = parse_reveal_at(
+        reveal_at, before_chapter_id=before_chapter_id, curation=curation)
+    if mode == REVEAL_ALL:
+        # before_order=None makes the projection's `($before_order IS NULL OR …)`
+        # branch pass every fact, INCLUDING the unplaced ones.
         before_order: int | None = None
         available = True
     else:
-        before_order, available = await resolve_before_order(book_client, before_chapter_id)
-    async with neo4j_session() as session:
+        before_order, available = await resolve_before_order(book_client, chapter)
+    async with graph_session() as session:
         facts = await list_facts_for_entity(
             session,
             user_id=str(user_id),
@@ -820,7 +893,7 @@ async def create_entity_fact(
     `:ABOUT` edge so `list_facts_for_entity` (which matches on that edge) returns it.
     Idempotent on (user, project, type, normalized content) — re-authoring the same
     fact returns the same node, not a duplicate."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         entity = await get_entity(
             session, user_id=str(user_id), canonical_id=entity_id
         )
@@ -882,7 +955,7 @@ async def project_entities_from_glossary(
     # twin and the tool behave identically on a sloppy client payload.
     raw_ids = body.entity_ids if body else None
     entity_ids = [e.strip() for e in raw_ids if e and e.strip()] if raw_ids else None
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         result = await project_glossary_entities_to_nodes(
             session, glossary, user_id=str(owner), project_id=str(project_id),
             book_id=book_id, entity_ids=entity_ids or None,
@@ -892,10 +965,25 @@ async def project_entities_from_glossary(
         # the projection itself is the contract, so a recount hiccup never fails it.
         try:
             from app.jobs.stats_updater import reconcile_project_stats
-            await reconcile_project_stats(projects_repo._pool, session, owner, project_id)
+            await reconcile_project_stats(  # T17 A10 — through the port
+                projects_repo._pool, get_graph_store(session), owner, project_id)
         except Exception:  # pragma: no cover — advisory cache, never blocks the projection
             logger.warning("from-glossary: stat recount failed (project=%s)", project_id, exc_info=True)
-    return dataclasses.asdict(result)
+    # 🔴 EXPLICIT, NOT `dataclasses.asdict`. This body is a public REST contract with its own
+    # snapshot test, and asdict() meant that ANY field added to ProjectionResult silently changed
+    # it. That fired on 2026-08-23: `nodes` was added so the MCP tool could hand its successor the
+    # ids it requires (kg_propose_edge needs source_entity_id/target_entity_id and the projection
+    # returned only counts), and it would have appeared here too — up to 50 entity ids on an
+    # endpoint that never asked for them. Listing the fields keeps a fix for one surface from
+    # rewriting another.
+    return {
+        "created": result.created,
+        "existing": result.existing,
+        "seen": result.seen,
+        "skipped": result.skipped,
+        "truncated": result.truncated,
+        "conflicted": result.conflicted,
+    }
 
 
 # ── C10 (C10-gap-report) — GET /projects/{id}/gaps ───────────────────
@@ -957,7 +1045,7 @@ async def get_project_gaps(
     never accepts a user_id field, so a caller can't read another user's
     gaps.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         gaps = await find_gap_candidates(
             session,
             user_id=str(user_id),
@@ -1038,7 +1126,7 @@ async def get_project_subgraph_endpoint(
     Read-only: returns raw nodes + edges, no server-side layout. Editing
     reuses the existing entity/relation dialogs (C19).
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         subgraph = await get_project_subgraph(
             session,
             user_id=str(user_id),
@@ -1102,7 +1190,7 @@ async def get_world_subgraph_endpoint(
             detail="world membership unavailable",
         )
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         return await get_world_subgraph(
             session,
             user_id=str(user_id),
@@ -1209,7 +1297,7 @@ class EntityUpdate(BaseModel):
 # ── T2.5 World Map — manual entity authoring ──────────────────────────
 
 # S7-1 — the human create path gates ``kind`` to ``AUTHORABLE_KINDS`` (the
-# ONE home, defined in neo4j_repos/entities.py). The old local set used the
+# ONE home, defined in graph_repos/entities.py). The old local set used the
 # ``faction`` misnomer and omitted ``organization``/``item`` — a create form
 # built to the 7-value browse filter silently 422'd 4 of them. The set is now
 # shared with the agent gate (KgCreateNodeArgs) so create == agent (INV-parity).
@@ -1252,10 +1340,9 @@ async def create_entity_endpoint(
     returns the same node (no duplicate places). ``source_type='manual'`` +
     confidence 1.0 mark it user-asserted.
     """
-    async with neo4j_session() as session:
-        entity = await merge_entity(
-            session,
-            user_id=str(user_id),
+    async with graph_session() as session:
+        entity = await get_graph_store(session).resolve_or_merge_entity(  # T17
+                        user_id=str(user_id),
             project_id=str(body.project_id),
             name=body.name.strip(),
             kind=body.kind,
@@ -1300,7 +1387,7 @@ async def patch_entity(
             detail="If-Match header required — GET the entity first to obtain an ETag",
         )
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         try:
             updated, before = await update_entity_fields(
                 session,
@@ -1381,7 +1468,7 @@ async def unlock_entity(
 
     Cross-user / missing id collapses to 404 per KSA §6.4.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         updated = await unlock_entity_user_edited(
             session,
             user_id=str(user_id),
@@ -1479,7 +1566,7 @@ async def promote_entity(
     """
     user_id_str = str(user_id)
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         entity = await get_entity(
             session, user_id=user_id_str, canonical_id=entity_id,
         )
@@ -1623,26 +1710,6 @@ _MERGE_ERROR_HTTP_STATUS: dict[str, int] = {
 }
 
 
-# C17 — collision pre-check. For each alias on source, verify NO other
-# live entity in the same scope+kind already claims that canonical_name.
-# If hit, the merge is ambiguous (a third entity already exists with
-# that identity); refuse with 409 alias_collision so the user resolves
-# the third entity first.
-_C17_COLLISION_PRECHECK_CYPHER = """
-UNWIND $candidate_canonicals AS ca
-MATCH (e:Entity)
-WHERE e.user_id = $user_id
-  AND coalesce(e.project_id, '') = coalesce($project_id, '')
-  AND e.kind = $kind
-  AND e.canonical_name = ca
-  AND e.id <> $source_id
-  AND e.id <> $target_id
-  AND e.archived_at IS NULL
-RETURN e.id AS id, e.name AS name, ca AS conflicting_alias
-LIMIT 1
-"""
-
-
 @entities_router.post(
     "/entities/{entity_id}/merge-into/{other_id}",
     response_model=EntityMergeResponse,
@@ -1698,7 +1765,7 @@ async def merge_entity_into(
             },
         )
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # C17 step 1 — capture source pre-merge so we can write
         # alias-map rows after surgery (the source node is gone by
         # then). get_entity already enforces user-id ownership; if
@@ -1721,9 +1788,11 @@ async def merge_entity_into(
             if source.canonical_name and source.canonical_name not in candidate_canonicals:
                 candidate_canonicals.append(source.canonical_name)
             if candidate_canonicals:
-                collision_result = await run_read(
+                # The query moved to `graph_repos/entities.py` (plan T17); the 409 and its
+                # message stay here, because "what the API says when a merge is ambiguous"
+                # is a routing decision, not a storage one.
+                collision_row = await find_alias_collision(
                     session,
-                    _C17_COLLISION_PRECHECK_CYPHER,
                     user_id=user_id_str,
                     project_id=source.project_id,
                     kind=source.kind,
@@ -1731,7 +1800,6 @@ async def merge_entity_into(
                     source_id=entity_id,
                     target_id=other_id,
                 )
-                collision_row = await collision_result.single()
                 if collision_row is not None:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
@@ -1770,7 +1838,7 @@ async def merge_entity_into(
             )
 
     # C17 step 4 — alias-map writes + chain re-point. Outside the
-    # neo4j_session block because Postgres I/O is independent. The
+    # graph_session block because Postgres I/O is independent. The
     # Neo4j surgery is already committed; alias-map writes are
     # best-effort per ADR §5.4. Review-impl HIGH-2: wrap in try so
     # a transient Postgres failure doesn't surface as 500 (which

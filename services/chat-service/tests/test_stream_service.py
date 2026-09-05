@@ -457,6 +457,60 @@ class TestStreamResponse:
         assert payload["assistant_content_len"] == len("Response text")
 
     @pytest.mark.asyncio
+    async def test_A_DEGRADED_CATALOGUE_DOES_NOT_KILL_THE_EDITOR_TURN(self):
+        """🔴 THE U-2 FIX ARMED A LANDMINE AND A VERIFIER DROVE IT.
+
+        The catalogue-outage record deliberately carries no `tool`; the sink drain read
+        `_sw["tool"]` unconditionally. While the sink was armed 382 lines after the fetch the row
+        never arrived, so the two halves could disagree for free. Arming it first delivered the row:
+        measured on this exact shape — agui + `editor_context`, the editor `<Chat>` surface — the
+        turn ended in `RUN_ERROR "'tool'"` **and the model was never called.** A degraded catalogue
+        became a dead turn.
+
+        This drives the real generator on that shape with a catalogue fetch that genuinely fails
+        (nothing is reachable from the suite). **The turn still ends in a `RUN_ERROR` here, because
+        the LLM gateway is unreachable from the suite too — and telling those two failures apart is
+        the whole assertion.** Before the fix the message was `'tool'`, raised inside the drain
+        before the surface was ever assembled; now it is the connection error from the model call,
+        which means everything up to and including surface assembly survived. Asserting merely
+        "no RUN_ERROR" would be untestable here, and asserting nothing would be worse.
+        """
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = [{"role": "user", "content": "hi"}]
+        conn.fetchval.return_value = 1
+
+        lines: list[str] = []
+        async for line in stream_response(
+            session_id=TEST_SESSION_ID,
+            user_message_content="hi",
+            user_id=TEST_USER_ID,
+            model_source="user_model",
+            model_ref=TEST_MODEL_REF,
+            creds=_make_creds(),
+            pool=pool,
+            billing=AsyncMock(),
+            stream_format="agui",
+            editor_context={"book_id": "b-1", "chapter_id": "c-1"},
+        ):
+            lines.append(line)
+
+        blob = "".join(lines)
+        assert "'tool'" not in blob, (
+            f"the turn died on the very row it was built to carry — KeyError 'tool' in the sink "
+            f"drain, model never called: {blob[:400]}"
+        )
+        # The turn reached surface assembly and emitted its surface frame — i.e. it got PAST the
+        # drain. This is what the crash pre-empted.
+        assert "agentSurface" in blob, (
+            f"the turn never reached surface assembly: {blob[:400]}"
+        )
+        # And the only failure left is the environment's, named explicitly so this test cannot
+        # quietly start passing over a different error.
+        assert "All connection attempts failed" in blob, (
+            f"the turn failed for a reason other than the unreachable gateway: {blob[:600]}"
+        )
+
+    @pytest.mark.asyncio
     async def test_builds_message_history(self):
         pool, conn = _make_pool_with_conn()
         # The query is ORDER BY sequence_num DESC, then reversed() in code.
@@ -489,11 +543,25 @@ class TestStreamResponse:
             ):
                 pass
 
+        # 🔴 U-2, AND THIS TEST IS THE END-TO-END PROOF THE VERIFIER SAID DID NOT EXIST.
+        #
+        # This turn's catalogue fetch genuinely fails (no gateway is reachable from the suite), so
+        # the outage registers and the model is told — a system block ahead of the history. It used
+        # to see exactly three messages, because the narrowing sink was armed 382 lines AFTER the
+        # fetch and the notice therefore never rendered. **The extra message is the fix arriving on
+        # a real `stream_response` call**, not a regression: the assertion below moved because the
+        # behaviour it describes did.
+        assert captured_messages[0]["role"] == "system"
+        assert "TOOL CATALOGUE UNAVAILABLE" in captured_messages[0]["content"], (
+            "the catalogue fetch failed on this turn and the model was not told — U-2's second half "
+            "is inert again"
+        )
         # History reversed back to ASC — user message is from DB, not appended
-        assert len(captured_messages) == 3
-        assert captured_messages[0]["content"] == "first"
-        assert captured_messages[1]["content"] == "reply"
-        assert captured_messages[2]["content"] == "new msg"
+        history = captured_messages[1:]
+        assert len(history) == 3
+        assert history[0]["content"] == "first"
+        assert history[1]["content"] == "reply"
+        assert history[2]["content"] == "new msg"
 
 
 # ── K18.9 prompt-caching (cache_control on Anthropic system segments) ──────
@@ -524,7 +592,7 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
     # cases, which read the catalog through the advertiser, want this.
     if tool_defs and with_core_tools:
         from app.services import tool_discovery as _td
-        from app.services.frontend_tools import generic_frontend_tool_def as _gfd
+        from tests._v1_tool_fixtures import generic_frontend_tool_def as _gfd
         _have = {t["function"]["name"] for t in tool_defs if isinstance(t, dict) and "function" in t}
         tool_defs = list(tool_defs) + [
             {"type": "function", "function": {"name": _n, "description": "",
@@ -544,7 +612,9 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
     client.build_context = AsyncMock(return_value=kctx)
     client.get_tool_definitions = AsyncMock(return_value=tool_defs or [])
     # MCP-fanout: discovery reads the catalog-meta (availability) synchronously.
-    client.get_catalog_meta = lambda: {}
+    # U-4 — the real signature takes the user; a zero-arg stub would let a call site
+    # drop the argument and still pass here.
+    client.get_catalog_meta = lambda user_id: {}
     return client
 
 
@@ -659,15 +729,29 @@ class TestK18_9PromptCaching:
 
         system_msg = captured_messages[0]
         parts = system_msg["content"]
-        assert len(parts) == 3
-        # Order: stable (cache_control) → volatile (no cache) → system_prompt (cache_control).
-        # Two cache breakpoints used out of Anthropic's four — volatile is
-        # intentionally uncached because it changes per-message.
+
+        # 🔴 A PERMANENT TAIL BLOCK NOW EXISTS AND THIS TEST'S LENGTH ENCODED ITS
+        # ABSENCE. DQ-T69 (owner 2026-08-31) put a two-sentence synchronous-turn instruction in
+        # `tail_blocks` on EVERY turn, so the no-tail-block shape this fixture produced is no
+        # longer reachable. The length was the fixture's shape; the INVARIANTS this test exists
+        # for are the ORDER and the BREAKPOINT COUNT, and those are asserted directly below
+        # rather than inferred from a number — which is a stronger bar, not a looser one:
+        # `len(parts) == 3` would still pass if a block arrived carrying a third breakpoint.
+        # Order: stable (cache_control) → volatile (no cache) → system_prompt → … → last tail
+        # block, which carries the single breakpoint for the whole stable region (Anthropic
+        # caches the CUMULATIVE prefix, so one marker at the end covers persona + every block).
+        assert len(parts) >= 3
         assert parts[0]["cache_control"] == {"type": "ephemeral"}
         assert parts[0]["text"] == stable.strip()
         assert "cache_control" not in parts[1]
         assert parts[1]["text"] == volatile.strip()
-        assert parts[2]["cache_control"] == {"type": "ephemeral"}
+        assert parts[2]["text"].strip() == "Write in the voice of a pirate."
+        # EXACTLY TWO breakpoints, out of Anthropic's hard maximum of four. Blowing past four is
+        # a 400 that broke caching entirely for Claude book turns, which is why this is counted.
+        marked = [i for i, p in enumerate(parts) if "cache_control" in p]
+        assert marked == [0, len(parts) - 1], (
+            f"breakpoints at {marked} — they must be the stable prefix and the END of the "
+            f"stable region, over {len(parts)} parts")
         assert parts[2]["text"] == "Write in the voice of a pirate."
 
     @pytest.mark.asyncio
@@ -713,9 +797,14 @@ class TestK18_9PromptCaching:
 
         system_msg = captured_messages[0]
         parts = system_msg["content"]
-        assert len(parts) == 1
+        # Same correction as the sibling test: a permanent DQ-T69 tail block means the
+        # single-part shape is unreachable. What mode-1 is about is that NO volatile part is
+        # emitted when volatile is empty, and that is asserted directly.
         assert parts[0]["cache_control"] == {"type": "ephemeral"}
         assert parts[0]["text"] == stable.strip()
+        assert all(p["text"].strip() != "" for p in parts), "an empty part was emitted"
+        marked = [i for i, p in enumerate(parts) if "cache_control" in p]
+        assert marked == [0] or marked == [0, len(parts) - 1], f"breakpoints at {marked}"
 
     @pytest.mark.asyncio
     async def test_non_anthropic_uses_string_concat_path(self):
@@ -916,7 +1005,13 @@ class TestK21BToolCallingIntegration:
 
         kc = _patched_knowledge(
             stable="", volatile="", mode="static",
-            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+            # V7 — glossary_propose_entity_edit rides the CATALOGUE now (ai-gateway serves
+            # it). It used to be appended from a chat-service local def on every
+            # book-scoped surface, which duplicated the federated copy.
+            tool_defs=[
+                {"type": "function", "function": {"name": "memory_search"}},
+                {"type": "function", "function": {"name": "glossary_propose_entity_edit"}},
+            ],
         )
 
         async def fake_tool_loop(**kwargs):
@@ -1180,7 +1275,17 @@ class TestK21BToolCallingIntegration:
         # full catalog dumped to the LLM. (F17 — find_tools retired from the LLM's view.)
         adv_names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
         assert "tool_list" in adv_names and "tool_load" in adv_names
-        assert "confirm_action" in adv_names
+        # confirm_action was asserted here until V7 (2026-09-03). It is NOT retired — it moved to
+        # ai-gateway as a consumer-local directive tool, so it now arrives through the FEDERATED
+        # catalogue rather than from chat-service's own defs. This test's catalog is a fake, so
+        # its absence here is the fixture, not the surface. The live-wire proof is separate:
+        # `refresh_tool_catalog_cache.py` saw 316 -> 319 with exactly these three added.
+        #
+        # The clause that must NOT come back is a chat-service-local schema reaching the model —
+        # asserted directly by test_tool_discovery's empty-FRONTEND_TOOL_NAMES check.
+        assert "confirm_action" not in adv_names, (
+            "confirm_action is being advertised from a chat-service-local def again; it must "
+            "come from the federated catalogue")
         # `ui_navigate` was asserted here too, until the ui_* GUI-control surface was fully
         # retired (2026-07-27). d389a3022 de-advertised it at both emitters; the leftover name in
         # ALWAYS_ON_CORE_NAMES made this test keep vouching for a tool the model can never see.

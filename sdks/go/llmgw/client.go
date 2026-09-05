@@ -208,13 +208,13 @@ func (c *Client) GenerateImage(ctx context.Context, req GenerateImageRequest) (*
 func decodeImageGenResult(result map[string]any) (*ImageGenResult, error) {
 	raw, err := json.Marshal(result)
 	if err != nil {
-		return nil, newErrorFromCode("LLM_DECODE_ERROR",
-			"image_gen result re-marshal failed: "+err.Error(), 0)
+		return nil, newTransportError("LLM_DECODE_ERROR",
+			"image_gen result re-marshal failed: "+err.Error(), 0, err)
 	}
 	var out ImageGenResult
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, newErrorFromCode("LLM_DECODE_ERROR",
-			"image_gen result decode failed: "+err.Error(), 0)
+		return nil, newTransportError("LLM_DECODE_ERROR",
+			"image_gen result decode failed: "+err.Error(), 0, err)
 	}
 	if len(out.Data) == 0 {
 		return nil, newErrorFromCode("LLM_UPSTREAM_ERROR",
@@ -340,13 +340,13 @@ func (c *Client) GenerateAudio(ctx context.Context, req GenerateAudioRequest) (*
 func decodeAudioGenResult(result map[string]any) (*AudioGenResult, error) {
 	raw, err := json.Marshal(result)
 	if err != nil {
-		return nil, newErrorFromCode("LLM_DECODE_ERROR",
-			"audio_gen result re-marshal failed: "+err.Error(), 0)
+		return nil, newTransportError("LLM_DECODE_ERROR",
+			"audio_gen result re-marshal failed: "+err.Error(), 0, err)
 	}
 	var out AudioGenResult
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, newErrorFromCode("LLM_DECODE_ERROR",
-			"audio_gen result decode failed: "+err.Error(), 0)
+		return nil, newTransportError("LLM_DECODE_ERROR",
+			"audio_gen result decode failed: "+err.Error(), 0, err)
 	}
 	if len(out.Data) == 0 {
 		return nil, newErrorFromCode("LLM_UPSTREAM_ERROR",

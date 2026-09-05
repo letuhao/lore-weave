@@ -19,10 +19,10 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import merge_entity
-from app.db.neo4j_repos.events import merge_event
-from app.db.neo4j_repos.facts import merge_fact
-from app.db.neo4j_repos.provenance import add_evidence, upsert_extraction_source
+from app.db.graph_repos.entities import merge_entity
+from app.db.graph_repos.events import merge_event
+from app.db.graph_repos.facts import merge_fact
+from app.db.graph_repos.provenance import add_evidence, upsert_extraction_source
 from app.jobs.reconcile_evidence_count import (
     RECONCILE_LABELS,
     ReconcileResult,

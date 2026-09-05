@@ -51,7 +51,7 @@
 | `feature_flags` | SR05 §12AH | Operational | all services | admin-cli via MetaWrite | `feature_flag.*` |
 | `deploy_audit` | SR05 §12AH | 1y | sre-dashboard | deploy pipeline via MetaWrite | `deploy.*` |
 | `publisher_heartbeats` | R06 §12F | Ephemeral (24h rolling) | sre + meta-worker | publisher service via MetaWrite | (none — heartbeat) |
-| `player_character_index` | 04_player_character §A | Operational | world-service, gateway | world-service via MetaWrite | `pc.index.*` |
+| `player_character_index` | _superseded/04_player_character §A | Operational | world-service, gateway | world-service via MetaWrite | `pc.index.*` |
 | `reality_close_audit` | R09 §12I | 7y compliance | none (compliance only) | world-service via MetaWrite + AttemptStateTransition | `reality.close.*` |
 | `reality_migration_audit` | R04 / SR05 | 1y | migration-orchestrator | migration-orchestrator via MetaWrite | `migration.*` |
 | `archive_verification_log` | R09 §12I | 7y compliance | world-service (close flow) | world-service via MetaWrite | `archive.verified` |

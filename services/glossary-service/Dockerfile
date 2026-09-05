@@ -27,6 +27,13 @@ COPY contracts/adminjwt /src/contracts/adminjwt
 # contracts/platformjwt — shared HS256 platform-user JWT verifier; its replace
 # (=> ../../contracts/platformjwt) must resolve inside the container.
 COPY contracts/platformjwt /src/contracts/platformjwt
+# contracts/events (T30 / OD-1) — the event-name SSOT. glossary-service stopped
+# hand-mirroring the wire names and took a module dependency on the generated
+# constants; its replace (=> ../../contracts/events) must resolve inside the container.
+# ⚠️ Missing this line does not fail any test — `go build` on a developer machine
+# resolves the replace against the real path, so T30 shipped green while the IMAGE
+# could not be built at all. Found by the first `docker compose build` after it.
+COPY contracts/events /src/contracts/events
 COPY services/glossary-service /src/services/glossary-service
 
 WORKDIR /src/services/glossary-service

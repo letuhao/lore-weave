@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from app.clients.llm_client import LLMClient
 from app.config import settings
 from app.db.pool import get_pool
+from app.services.bootstrap_service import folded_package_across_arcs
 from app.services.plan_link_service import LinkError, PlanLinkService
 from app.services.plan_pass_service import PACKAGE_KIND, derive_view
 from app.db.models import CompositionWork, GenerationJob, PlanRun
@@ -83,6 +84,41 @@ def _hard_rules_pass(rules_out: list[dict[str, Any]]) -> bool:
         # not have would otherwise block a compile over another novel's variable.
         if r.get("tier", "hard") == "hard" and r.get("applicable", True)
     )
+
+
+def _compile_blocked_message(rules_out: list[dict[str, Any]]) -> str:
+    """Name the rules that actually blocked the compile.
+
+    🔴 **THE REASONS WERE COMPUTED AND THROWN AWAY.** `run_rules` returns a verdict per rule --
+    `{rule, pass, detail, tier, applicable}` -- and `compile()` used to discard the whole list and
+    raise only *"validation failed -- compile blocked"*. Measured: 3 calls in one session, each
+    answered with that sentence and nothing else. There is no move a caller can make from it. It
+    names no rule, no field, and nothing that would be legal instead (C-12: *the rejection names
+    what WOULD be legal*).
+
+    This is not a reworded message. It is the SAME information the function already had, stopped
+    from being deleted on the way out -- the failure-side twin of a call that reports "completed"
+    while discarding its own signal.
+
+    Only rules that actually BLOCKED are named. An advisory rule and an inapplicable one do not
+    gate the compile (`_hard_rules_pass`), so listing them would accuse the author of failing
+    checks that stopped nothing -- the same dishonesty `validate.py`'s own comment calls out about
+    a vacuous check mark.
+    """
+    blocking = [
+        r for r in rules_out
+        if not r["pass"] and r.get("tier", "hard") == "hard" and r.get("applicable", True)
+    ]
+    if not blocking:
+        # `_hard_rules_pass` said no while nothing is both hard, applicable and failing: a
+        # contradiction inside this module. Saying so is more useful than the old sentence, which
+        # was indistinguishable from it.
+        return ("validation failed — compile blocked, but no hard applicable rule reports a "
+                "failure; this is a validator inconsistency, not something the spec can fix")
+    named = "; ".join(
+        f"{r['rule']}" + (f" ({r['detail']})" if r.get("detail") else "") for r in blocking
+    )
+    return f"validation failed — compile blocked by {len(blocking)} hard rule(s): {named}"
 
 
 def _work_project_id(work: CompositionWork) -> UUID:
@@ -847,8 +883,20 @@ class PlanForgeService:
         if spec_art is None:
             raise ValueError("no spec to validate")
         spec = spec_art.content
-        pkg_art = await self._runs.latest_artifact(book_id, run_id, "package")
-        package = pkg_art.content.get("planning_package") if pkg_art else None
+        # 🔴 EVERY package, not the latest — a run emits ONE PER ARC.
+        # DQ-T85 (a), owner 2026-08-31. Measured in the live store: 16 runs hold more than
+        # one ARC (34 hold more than one artifact, but 18 of those are re-compiles of a
+        # single arc, which the fold collapses). On those 16, the latest read carried 21 of
+        # 64 chapters — 32.8% — so refine() was asked to revise a plan while shown one arc
+        # of it, with whole stretches absent rather than thinned.
+        #
+        # THIS SITE'S OWN EXPOSURE IS NIL and it is fixed anyway, on the ruling's terms:
+        # run_rules touches the package for ONE rule (premise_max, a length check) and
+        # never reads chapters, and 0 of the runs have any arc premise over 4000. It is
+        # fixed because leaving one of two identical reads unfixed is how the sibling
+        # observation sat unfiled inside another row's prose for weeks.
+        pkg_arts = await self._runs.list_artifacts(book_id, run_id, "package")
+        package = folded_package_across_arcs(pkg_arts)
         rules_out = run_rules(spec, package)
         passed_rules = _hard_rules_pass(rules_out)
         fidelity_score = None
@@ -900,8 +948,32 @@ class PlanForgeService:
             created_by, run_id, "validation_report", report,
         )
         report["fidelity_report_id"] = str(art.id)
-        if all_pass:
-            await self._runs.update_run(book_id, run_id, status="validated")
+        # ── DQ-T45 · VALIDATE RECORDS. IT DOES NOT AUTHORISE. ─────────────────────────────────
+        # A passing lint used to `update_run(status="validated")` here, and `validated` is a
+        # status the authoring start-gate accepts as APPROVAL:
+        #
+        #     authoring_run_service._APPROVED_PLAN_STATUSES = ("validated", "compiled")
+        #
+        # so a Tier-R read — a linter, declared and documented as one — could put a plan into
+        # the state that authorises a cost-bearing drafting run. Nothing else had to happen.
+        #
+        # 🔴 THE GATE IS NOT THE THING THAT WAS WRONG, AND THAT IS WHY THE FIX IS HERE. It
+        # accepts `validated` because `validated` is ALSO what `review_checkpoint(approved=True)`
+        # stamps — a human looking at the plan and approving it. Its own comment says exactly
+        # that ("`validated` is what review_checkpoint(approved=True) stamps") and does not know
+        # this second writer existed. Narrowing the gate to `compiled` would have de-authorised
+        # every plan a person actually approved, to close a hole one line above.
+        #
+        # Measured before the change, over the live store: of the 37 plan runs sitting at
+        # `validated`, only 3 carry a `validation_report` artifact at all — and this method
+        # saves that artifact BEFORE it ever stamped the status, so a run without one cannot
+        # have been stamped here. 34 of 37 came from the human path and keep their approval
+        # untouched; no existing run is de-authorised by this change.
+        #
+        # The verdict is not lost, only demoted from an authorisation to a record: it is in the
+        # returned `report` and in the persisted `validation_report` artifact above, which is
+        # where a Tier-R read's output belongs. Advancing to `compiled` remains `plan_compile`'s
+        # job, on the path that packages the plan.
         return report
 
     async def refine(
@@ -927,8 +999,18 @@ class PlanForgeService:
             rev["focus_paths"] = focus_paths
         analyze_art = await self._runs.latest_artifact(book_id, run_id, "analyze")
         analyze = analyze_art.content if analyze_art else None
-        pkg_art = await self._runs.latest_artifact(book_id, run_id, "package")
-        package = pkg_art.content.get("planning_package") if pkg_art else None
+        # 🔴 EVERY package, not the latest — a run emits ONE PER ARC.
+        # DQ-T85 (a), owner 2026-08-31. Measured in the live store: 16 runs hold more than
+        # one ARC (34 hold more than one artifact, but 18 of those are re-compiles of a
+        # single arc, which the fold collapses). On those 16, the latest read carried 21 of
+        # 64 chapters — 32.8% — so refine() was asked to revise a plan while shown one arc
+        # of it, with whole stretches absent rather than thinned.
+        #
+        # refine() takes no arc parameter and its focus_paths select within the SPEC,
+        # which is a single un-split artifact — so nothing about its interface says it
+        # is working on a part. It was simply handed one.
+        pkg_arts = await self._runs.list_artifacts(book_id, run_id, "package")
+        package = folded_package_across_arcs(pkg_arts)
 
         if not rev:
             return "sync", {
@@ -1366,6 +1448,23 @@ class PlanForgeService:
                 try:
                     out = extract_json_object(content)
                     out.setdefault("version", 1)
+                    # The model's focus_paths were used VERBATIM. They feed
+                    # plan_apply_revision(focus_paths=...), so a path that does not resolve
+                    # focuses a refine on nothing. Measured on this run: "mechanics.magic_system"
+                    # (the spec keeps mechanics under `layers`, with no top-level key of that
+                    # name) and "events[act_2]" / "layers.characters[act_2]" (string subscripts
+                    # into arrays). `interpret_rules` — the fallback three lines below — already
+                    # filters its own paths; the LLM branch skipped the guard standing next to it.
+                    #
+                    # Validate against the SAME index this branch already built for the prompt.
+                    # If nothing the model named is real, fall back to the index's own top hits
+                    # rather than to an empty focus: the refine still needs somewhere to look.
+                    real_paths = {e["path"] for e in index if e.get("path")}
+                    proposed = [p for p in (out.get("focus_paths") or []) if isinstance(p, str)]
+                    kept = [p for p in proposed if p in real_paths]
+                    if proposed and not kept:
+                        kept = [h["path"] for h in hits[:2] if h.get("path")]
+                    out["focus_paths"] = kept
                 except Exception:
                     out = rules_result
         else:
@@ -1799,7 +1898,23 @@ class PlanForgeService:
         spec = spec_art.content
         rules_out = run_rules(spec)
         if not _hard_rules_pass(rules_out):
-            raise ValueError("validation failed — compile blocked")
+            # 🔴 **THE REASONS WERE COMPUTED AND THROWN AWAY.** `run_rules` returns a verdict per
+            # rule — `{rule, pass, detail, tier, applicable}` — and this raise used to discard the
+            # whole list and say only *"validation failed — compile blocked"*. Measured: 3 calls
+            # in one session, each answered with that sentence and nothing else. There is no move
+            # a caller can make from it: it names no rule, no field, and nothing that would be
+            # legal instead (C-12).
+            #
+            # This is not a reworded message. It is the SAME information the function already
+            # has, stopped from being deleted on the way out — the failure half of the pattern
+            # this runtime keeps finding on the success side, where a call reports "completed"
+            # while discarding its own signal.
+            #
+            # Only the rules that actually BLOCKED are named. An advisory rule and an
+            # inapplicable one do not gate the compile (see `_hard_rules_pass`), so listing them
+            # here would accuse the author of failing checks that did not stop anything — the
+            # same dishonesty `validate.py`'s own comment calls out about a vacuous ✓.
+            raise ValueError(_compile_blocked_message(rules_out))
 
         # GENRE (PF-15) — the open sub-question this comment used to name is now ANSWERED.
         #

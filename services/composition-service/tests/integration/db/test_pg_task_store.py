@@ -17,7 +17,7 @@ import asyncpg
 import pytest
 
 from app.db.migrate import run_migrations
-from app.mcp.pg_task_store import PgTaskStore
+from loreweave_mcp.pg_task_store import PgTaskStore
 from loreweave_mcp.tasks import (
     CANCELLED,
     COMPLETED,

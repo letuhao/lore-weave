@@ -1,5 +1,40 @@
 # PF_001 — Place Foundation
 
+> **⚠ AMENDED 2026-08-22 — `SPG-R14` APPLIED. This doc was written in a vocabulary that was retired on
+> 2026-07-30 and nobody told it.**
+>
+> `ChannelTier` (`Continent | Country | District | Town | Cell`) was retired by
+> [`SPG-R1`](../../36_map_architecture.md) and replaced by the closed **`MapKind`** set plus a
+> **containment matrix**. Doc 36 corrected nine feature docs and **missed this one** — the doc that owns
+> the `place.*` namespace and is where an actor comes into existence.
+>
+> | was | reads as | why |
+> |---|---|---|
+> | `Continent` · `Country` · `District` | **`Region`**, nesting | `MapKind::Region` is **recursive**; these were three *depths*, not three kinds — and `Country` was never geography, since political structure is an `owner_*` **attribute** on a node |
+> | `Town` | **`Locale`** | `SPG-R9` — `Locale` carries the tilemap |
+> | `Cell` | **`Domain`** | `SPG-R5` · `CSC_001` owns the interior · `TMP-A1` excludes it from `tilemap_view` |
+>
+> **So §5's V1 invariant reads: A PLACE IS 1:1 WITH A `Domain`.** This doc's own examples confirm the
+> reading rather than strain it — a pavilion, a tea house and a market are interiors.
+>
+> **What did NOT change, and each is deliberate:**
+> - **`PlaceId(pub ChannelId)` is untouched and needed no change.** This doc keyed a place to a channel
+>   row in **April**; [`SDF-A31`](../../41_space_dataflow.md) reached the same rule from the id side four
+>   months later. **Two tiers, one answer, arrived at independently.**
+> - **Reject-rule ids are untouched**, including `place.invalid_place_type_for_channel_tier`. They are
+>   **registered V1 machine contracts** that reach clients. An id is a contract; the words inside it are
+>   not. Renaming one to fix its prose costs compatibility for no semantic gain and needs its own
+>   `_boundaries` claim. Its *description* is corrected below; the naming debt is recorded, not paid.
+> - **No V1 surface, aggregate, invariant or acceptance criterion changed.** This is a **vocabulary**
+>   amendment. CANDIDATE-LOCK status is preserved.
+>
+> **⚠ NOT A FULL SWEEP, and saying so is the point.** The **definitional** sites are rewritten (§2
+> `PlaceId`, §3.1 invariants, §5, §9, AC-PF-2). **Illustrative channel ids in the body still read
+> `cell:yen_vu_lau` and `town:hangzhou`** — under this mapping those are `domain:` and `locale:`. They are
+> examples, not contracts, and rewriting 40-odd of them inside a CANDIDATE-LOCK doc in the same pass that
+> changes its vocabulary is how a half-application gets recorded as a full one — the defect
+> [REC-97](../../19_reconciliation_register.md) exists to remember (*"applied at 2 of ~72 sites"*).
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
 > TMP_001 V1+30d **co-exists** with PF_001's V1 cell-only invariant (§5 strict 1:1). TMP renders non-cell tiers from `tilemap_template` + `map_layout` tier metadata — it does NOT require non-cell `place` rows to exist. If PF_001 V1+ reopens for non-cell place rows (PF-D4 multi-place-per-cell or a sibling deferral covering non-cell semantic identity), the two layers compose cleanly: PF supplies semantic identity at the non-cell tier; TMP supplies the procedural tile-render layer underneath. NO PF_001 V1 surface change — the §5 cell-only-V1 invariant remains. Annotation only. See §17 row for cross-reference.
 
@@ -39,7 +74,7 @@ PF_001 owns the semantic foundation; consumer features (PCS_001 / NPC_001 / futu
 
 | Concept | Maps to | Notes |
 |---|---|---|
-| **PlaceId** | Newtype `pub struct PlaceId(pub ChannelId)` — V1 1:1 with cell channels | Place identity = the cell channel ID. Higher-tier channels (continent/country/district/town) DO NOT have place rows V1 (aggregation tiers, not in-fiction places). V1+ multi-place-per-cell deferred (PF-D4). |
+| **PlaceId** | Newtype `pub struct PlaceId(pub ChannelId)` — V1 1:1 with **`Domain`-kind** nodes (`SPG-R14`; was "cell channels") | Place identity = the cell channel ID. Higher-tier channels (continent/country/district/town) DO NOT have place rows V1 (aggregation tiers, not in-fiction places). V1+ multi-place-per-cell deferred (PF-D4). |
 | **PlaceType** | Closed enum 10 V1 kinds (see §4) | `Residence \| Tavern \| Marketplace \| Temple \| Workshop \| OfficialHall \| Road \| Crossroads \| Wilderness \| Cave`. V1+ reservations (PF-D1): `Dungeon \| Battlefield \| Vehicle \| ShipDeck \| DreamRealm \| etc.` |
 | **StructuralState** | Closed enum 4-state — `Pristine \| Damaged \| Destroyed \| Restored` | "Restored" explicitly distinct from Pristine — preserves audit precision (rebuilt-after-destruction differs from original-untouched). Forbidden transitions enforced at write-time (§7). |
 | **NarrativeDrift** | Freeform `serde_json::Value` field on `place` | Per-reality drift accumulator: "the front door is now red", "scratch marks on table". Distinguished from StructuralState (closed enum) for queryability — operators ask "is tavern operational?" via StructuralState; LLM ingests drift JSON for descriptive flavor. |
@@ -141,9 +176,9 @@ pub struct SeedUid(pub Uuid);                         // computed; never author-
 ```
 
 **Rules:**
-- One row per `place_id` (= one row per cell channel V1). Primary key conflict = `place.duplicate_place`.
-- Every cell channel MUST have a `place` row at bootstrap. Cells without place reject runtime ops with `place.missing_decl` (validated at first-use, not at channel creation — channel can exist briefly during bootstrap before place lands).
-- Higher-tier channels (continent/country/district/town) MUST NOT have place rows V1. Validated by `place_id.0` resolving to a cell-tier channel per DP channel-tree query.
+- One row per `place_id` (= one row per **`Domain`** node V1). Primary key conflict = `place.duplicate_place`.
+- Every **`Domain`** node MUST have a `place` row at bootstrap. Cells without place reject runtime ops with `place.missing_decl` (validated at first-use, not at channel creation — channel can exist briefly during bootstrap before place lands).
+- Nodes of any kind **other than `Domain`** (`Region` at any nesting depth, `Locale`, `World`, `Universe`) MUST NOT have place rows V1. Validated by `place_id.0` resolving to a `Domain`-kind node per DP channel-tree query.
 - `canon_ref` is REQUIRED. Author-created places use `BookCanonRef::AuthorCreated { reality_id, fiction_time, reason }` (PF-D12 watchpoint: BookCanonRef is a shared schema; ownership/registration deferred to future boundary cleanup).
 - `connections[].to_place` MUST resolve to existing place row (~~validated at write~~ validated **end-of-batch within bootstrap phase 3; at write for runtime single-row writes** — REC-19, see note below); orphan connections reject `place.connection_target_unknown`.
 - `connections[].to_place` MUST NOT equal the place's own `place_id` (no self-loops); rejects `place.self_referential_connection`.
@@ -200,7 +235,7 @@ These defaults are HINTS for LLM prompt assembly + scene narration; they don't c
 
 ## §5 Place ↔ Channel mapping
 
-**V1 strict 1:1 invariant:** every cell-tier channel has exactly one place row; every place row references exactly one cell-tier channel.
+**V1 strict 1:1 invariant (`SPG-R14`):** every **`Domain`-kind** node has exactly one place row; every place row references exactly one `Domain` node. *(Was stated as "cell-tier channel" throughout; `Cell` is the retired `ChannelTier` rung that `SPG-R5` renamed to `Domain`.)*
 
 ```
 DP channel tree (cell-tier and below):
@@ -222,7 +257,7 @@ DP channel tree (above cell-tier):
 **Bootstrap order at RealityManifest ingestion:**
 1. DP creates channel hierarchy from `root_channel_tree` (existing PL_001 §16)
 2. PF_001 creates `place` rows from `places: Vec<PlaceDecl>` (RealityManifest extension §9)
-3. Validation: every cell-tier channel from step 1 has a corresponding place from step 2; mismatch rejects bootstrap with `place.missing_decl` listing offending channel ids
+3. Validation: every **`Domain`** node from step 1 has a corresponding place from step 2; mismatch rejects bootstrap with `place.missing_decl` listing offending channel ids
 4. EnvObject canonical instantiation: for each place's `fixture_seed`, RealityBootstrapper creates EnvObject entities (deterministic ids via UUID v5 from `(place_id, seed_uid)`) and writes `entity_binding` rows with `location: InCell { cell_id: place_id.0 }` (or `Embedded { parent: <gate_seed_uid envobject>, slot }` for sub-fixtures)
 5. NPC + PC canonical seeds (PL_001 §16 + NPC_001) place actors at cells whose place rows are now valid
 
@@ -437,7 +472,7 @@ pub struct RealityManifest {
     // ... existing Continuum-owned + WA + NPC fields ...
 
     // ─── PF_001 Place Foundation extension (added 2026-04-26) ───
-    pub places: Vec<PlaceDecl>,           // REQUIRED V1; one per cell-tier channel
+    pub places: Vec<PlaceDecl>,           // REQUIRED V1; one per `Domain`-kind node (SPG-R14)
 }
 
 pub struct PlaceDecl {
@@ -479,7 +514,7 @@ pub enum PlaceDestructionReason {
 
 | rule_id | Trigger | Vietnamese reject copy V1 | Soft-override eligible |
 |---|---|---|---|
-| `place.missing_decl` | cell-tier channel exists without `place` row at runtime | "Vị trí chưa được định nghĩa." | No (bootstrap invariant) |
+| `place.missing_decl` | a **`Domain`** node exists without a `place` row at runtime | "Vị trí chưa được định nghĩa." | No (bootstrap invariant) |  <!-- doc-language-gate: ok - the quoted string is a `RejectReason.user_message` I18nBundle VALUE: localised text shown to a player, which is the gate's named i18n exemption. It is the artifact under discussion, not prose about it - replacing it with English would delete the thing the column specifies. -->
 | `place.duplicate_place` | second write attempt for `place_id` that already has a row | "Vị trí này đã được đăng ký." | No (write-time invariant) |
 | `place.invalid_structural_transition` | aggregate-owner attempts forbidden transition (§7) | "Chuyển đổi trạng thái cấu trúc không hợp lệ." | No (write-time validator) |
 | `place.unknown_place` | `PlaceId` resolves to no `place` row | "Không tìm thấy vị trí." | No (always reject) |
@@ -489,7 +524,7 @@ pub enum PlaceDestructionReason {
 | `place.connection_hidden` | Travel attempt through undiscovered Hidden connection (V1: visible to all so does not fire; V1+30d when discovery flags land) | "Không nhìn thấy lối đi nào ở đây." | Yes (Examine-the-area can hint per V1+ discovery feature) |
 | `place.no_reverse_connection` | Travel attempt to reverse a OneWay connection | "Không thể quay lại đường này." | No |
 | `place.fixture_seed_uid_collision` | duplicate `slot_id` in same place's fixture_seed list (rule_id name preserved for namespace stability; collision detected via slot_id since seed_uid is computed) | "Trùng định danh thiết bị nội thất." | No (bootstrap invariant) |
-| `place.invalid_place_type_for_channel_tier` | place row attempted on non-cell-tier channel (continent/country/district/town) | "Loại kênh không hợp lệ cho vị trí." | No (V1 cell-only invariant) |
+| `place.invalid_place_type_for_channel_tier` *(id unchanged — a registered contract; see the amendment note)* | place row attempted on a node whose **`MapKind` is not `Domain`** | "Loại kênh không hợp lệ cho vị trí." | No (V1 cell-only invariant) |  <!-- doc-language-gate: ok - the quoted string is a `RejectReason.user_message` I18nBundle VALUE: localised text shown to a player, which is the gate's named i18n exemption. It is the artifact under discussion, not prose about it - replacing it with English would delete the thing the column specifies. -->
 | `place.self_referential_connection` | ConnectionDecl `to_place == place.place_id` (self-loop); validated at write-time | "Kết nối không thể trỏ về chính nó." | No (write-time invariant) |
 
 **V1+ rule_id reservations** (additive per I14):
@@ -648,7 +683,7 @@ LLM next-turn AssemblePrompt sees updated drift; players in cell observe changed
 10 V1-testable scenarios (AC-PF-1..10):
 
 1. **AC-PF-1 — RealityManifest places extension required:** RealityManifest with `places: []` (empty) but cell-tier channels declared in `root_channel_tree` rejects bootstrap with `place.missing_decl { offending_channels: [...] }`. Tests §5 invariant + §9 bootstrap order.
-2. **AC-PF-2 — Cell-tier 1:1 invariant:** RealityManifest with `places[i].place_id = town:hangzhou` (non-cell-tier channel) rejects bootstrap with `place.invalid_place_type_for_channel_tier`. Tests §5.
+2. **AC-PF-2 — `Domain` 1:1 invariant (`SPG-R14`):** RealityManifest with `places[i].place_id` naming a node whose `MapKind` is **not `Domain`** — e.g. the `Locale` that `town:hangzhou` becomes — rejects bootstrap with `place.invalid_place_type_for_channel_tier`. Tests §5.
 3. **AC-PF-3 — PlaceType variant exhaustiveness (compile-time):** Rust unit test that uses `match place_type` without arms for all 10 V1 variants fails to compile with `error[E0004]: non-exhaustive patterns`. CI lint (unified across all closed-enum exhaustiveness ACs — see EF_001 AC-EF-1 + future closed-enum features) flags `_ =>` arms outside designated catch-all sites with `// CLOSED-ENUM-EXEMPT: <reason>` annotation. Annotation namespace is repo-wide (NOT feature-prefixed) since multiple closed enums share the same exhaustiveness discipline; per-feature prefixes would fragment the convention as new closed enums are added (StatusFlag / RoleKind / LexConfigKind / etc.).
 4. **AC-PF-4 — Forbidden StructuralState transitions reject:** attempting `Destroyed → Pristine` (or `Destroyed → Damaged` or `Restored → Pristine`) rejects `place.invalid_structural_transition`. Tests §7.
 5. **AC-PF-5 — Connection target validation:** writing place row with `connections[i].to_place` pointing to non-existent PlaceId rejects `place.connection_target_unknown`. Bootstrap-time validation; runtime author-edit also validates.
@@ -718,7 +753,7 @@ LLM next-turn AssemblePrompt sees updated drift; players in cell observe changed
 - [x] Domain concepts table covers PlaceId / PlaceType / StructuralState / NarrativeDrift / ConnectionDecl / ConnectionKind / EnvObjectSeedDecl + EnvObjectSeed (split: author-declared vs materialized) / EnvObjectKind / PlaceDecl / PlaceDestroyed cascade-trigger
 - [x] Aggregate inventory: 1 aggregate (`place` primary; T2/Channel-cell scope); PlaceId newtype with From/Into ChannelId for ergonomic conversion (Phase 3 cleanup)
 - [x] PlaceType 10 V1 closed enum + per-type ambient cue + fixture-kind hints
-- [x] Place ↔ Channel 1:1 invariant explicit (cell-tier only)
+- [x] Place ↔ Channel 1:1 invariant explicit (**`Domain`-kind only** — `SPG-R14`; was "cell-tier only")
 - [x] Connection graph: hybrid (DP hierarchy implicit + Vec<ConnectionDecl> explicit horizontal); 5 V1 ConnectionKinds; bidirectional flag HINT-ONLY V1 (Phase 3 cleanup); travel-connection-resolver helper signature explicit
 - [x] StructuralState 4-state machine with allowed/forbidden transitions; cascade into EF_001 §6.1 — cascade-only-on-Destroyed scope explicit (Phase 3 cleanup); cascade order specified (Place delta → PlaceDestroyed signal → consumer cascades → cell-resident cascade)
 - [x] Fixture seed model: deterministic UUID v5 instantiation (computed by world-service); 11 V1 EnvObjectKinds + per-kind affordance defaults; author-declared form vs materialized form split (Phase 3 cleanup)

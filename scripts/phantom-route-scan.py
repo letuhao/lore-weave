@@ -24,6 +24,21 @@ template it cannot resolve, is REPORTED — not skipped. A gate that silently un
 worse than no gate, because it certifies what it never looked at; this repo learned that twice in
 one day from the atom-delete contract, which shipped green while blind to 8 of 14 families.
 
+GT8 · WHAT THIS GATE LACKED. Its ORACLE self-check (below, in --probe) is the best
+vacuity guard in this repo — it proves both arms on every run and refuses to report
+anything if routing stops preceding auth. What it had no proof of was the EXTRACTOR:
+`extract()` is a pure function of file text, and everything downstream is a claim
+about what it found. A `--self-test` now drives it over synthetic TypeScript.
+
+Two numbers it printed but did not enforce are now ratchets: UNPARSED call sites
+(measured 0 of 74 modules — the blind spot the header calls "the gate's own coverage
+gap") and the route count (719). A blind spot that only grows, and a corpus that can
+quietly empty, are both ways this scan reports success over less than it did before.
+
+AND ITS STRUCTURAL LIMIT, stated: without `--probe` nothing is verified against a
+backend, so the exit code says only that extraction ran. The self-test is what makes
+that green mean anything.
+
 USAGE
     python scripts/phantom-route-scan.py                      # extract + report coverage only
     python scripts/phantom-route-scan.py --probe              # probe against localhost:3123
@@ -53,11 +68,19 @@ BOGUS_TOKEN = "phantom.route.scan.invalid.token"
 SERVED = {401, 403}
 PHANTOM = {404, 405}
 
+#: Call sites the extractor could not parse. This IS the gate's blind spot, and the
+#: header already said so — it just never changed colour. Measured 2026-08-12: 0 of
+#: 74 modules. May only fall.
+UNPARSED_CEIL = 0
+
+#: Distinct (method, path) pairs discovered. A corpus that empties reports "0
+#: phantoms" over nothing. Measured 2026-08-12: 719.
+ROUTE_FLOOR = 500
+
 # `apiJson<T>(url, { method: 'X' })` — the single helper every FE api module goes through.
 _CALL = re.compile(r"apiJson\s*(?:<[^(]*?>)?\s*\(\s*", re.S)
 # A file-scope `const NAME = '/v1/...'`, which is how each module names its prefix.
 _CONST = re.compile(r"^\s*const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*['\"]([^'\"]*)['\"]\s*;", re.M)
-_METHOD = re.compile(r"method\s*:\s*['\"]([A-Z]+)['\"]")
 _INTERP = re.compile(r"\$\{[^}]*\}")
 
 
@@ -123,31 +146,69 @@ def _read_url_literal(src: str, i: int, consts: dict[str, str]) -> tuple[str, in
     file-scope const — `apiJson<World>(WORLDS, …)` is a real call site, not an unparsed one, and
     counting it as blind spot would overstate the gap as surely as hiding it would understate it.
     """
-    while i < len(src) and src[i] in " \t\r\n":
-        i += 1
-    if i >= len(src):
-        raise Unparsed("end of file after apiJson(")
-    if src[i] not in "`'\"":
-        ident = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*,", src[i:])
-        if ident and ident.group(1) in consts:
-            return consts[ident.group(1)], i + ident.end()
-        raise Unparsed("first argument is not a string literal or a known const")
-    quote, j, depth = src[i], i + 1, 0
-    while j < len(src):
-        c = src[j]
-        if c == "\\":
-            j += 2
+    def _ws(k: int) -> int:
+        while k < len(src) and src[k] in " \t\r\n":
+            k += 1
+        return k
+
+    def _one_term(k: int) -> tuple[str, int]:
+        """One `+`-joined term: a string literal, or a bare identifier naming a const."""
+        k = _ws(k)
+        if k >= len(src):
+            raise Unparsed("end of file after apiJson(")
+        if src[k] not in "`'\"":
+            # A COMPLETE term only: the identifier must be followed by `+` or the comma that ends
+            # the argument. Without that, `actionsBase(domain)` would match `actionsBase` and
+            # leave `(domain)` behind — a misparse dressed as a resolution, which is worse than
+            # the blind spot it would be hiding.
+            ident = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*(?=[+,])", src[k:])
+            if not ident:
+                raise Unparsed("first argument is not a string literal or a known const")
+            name = ident.group(1)
+            if name in consts:
+                return consts[name], k + ident.end()
+            # An unknown identifier is a RUNTIME value — `BASE + '/books/' + bookId + '/x'`.
+            # Handed to `_resolve` as an interpolation so it takes the SAME decision it already
+            # takes for `${bookId}` in a template literal: a placeholder segment after a `/`, a
+            # dropped suffix otherwise, and a refusal in first position. Writing that rule a
+            # second time here is how the two spellings would drift apart.
+            return "${" + name + "}", k + ident.end()
+        quote, j, depth = src[k], k + 1, 0
+        while j < len(src):
+            c = src[j]
+            if c == "\\":
+                j += 2
+                continue
+            if quote == "`" and c == "$" and j + 1 < len(src) and src[j + 1] == "{":
+                depth += 1
+                j += 2
+                continue
+            if depth and c == "}":
+                depth -= 1
+            elif not depth and c == quote:
+                return src[k + 1:j], j + 1
+            j += 1
+        raise Unparsed("unterminated string literal")
+
+    # 🔴 `+` CONCATENATION, which is the third way this codebase writes a URL and the one the
+    # extractor could not read. `glossary/api.ts` builds every path as `BASE + '/kinds'`, and the
+    # identifier branch demanded `IDENT` followed immediately by a comma — so three live call
+    # sites landed in the blind-spot list, which is ratcheted at 0, and `Foundation lints` failed
+    # on them. The gate's own error says the honest options are "teach the extractor, or raise
+    # UNPARSED_CEIL with a reason"; the paths are perfectly static, so there is no reason to
+    # raise.
+    #
+    # Each term is a literal or a known const, joined left to right. A term that is neither still
+    # raises, so a genuinely dynamic first argument stays in the blind spot where it belongs —
+    # widening this to accept anything would trade a visible gap for an invisible one.
+    text, i = _one_term(i)
+    while True:
+        j = _ws(i)
+        if j < len(src) and src[j] == "+":
+            more, i = _one_term(j + 1)
+            text += more
             continue
-        if quote == "`" and c == "$" and j + 1 < len(src) and src[j + 1] == "{":
-            depth += 1
-            j += 2
-            continue
-        if depth and c == "}":
-            depth -= 1
-        elif not depth and c == quote:
-            return src[i + 1:j], j + 1
-        j += 1
-    raise Unparsed("unterminated string literal")
+        return text, i
 
 
 def _resolve(url: str, consts: dict[str, str]) -> str:
@@ -293,13 +354,158 @@ def probe(method: str, path: str, base_url: str, timeout: float) -> tuple[int | 
     return status, "unknown"
 
 
+def check_coverage(routes, unparsed, dynamic, *, unparsed_ceil=None, route_floor=None,
+                   known_dynamic=None) -> list[str]:
+    """The two ratchets and the shrink arm, as a pure function of what extract()
+    returned — so a case can drive them without a frontend tree."""
+    unparsed_ceil = UNPARSED_CEIL if unparsed_ceil is None else unparsed_ceil
+    route_floor = ROUTE_FLOOR if route_floor is None else route_floor
+    known_dynamic = _KNOWN_DYNAMIC if known_dynamic is None else known_dynamic
+    problems: list[str] = []
+
+    if len(unparsed) > unparsed_ceil:
+        problems.append(
+            f"{len(unparsed)} unparsed call site(s), ratchet is {unparsed_ceil}. This is the "
+            f"gate's blind spot; it may shrink, not grow. Teach the extractor, or raise "
+            f"UNPARSED_CEIL with a reason.")
+    elif len(unparsed) < unparsed_ceil:
+        problems.append(
+            f"{len(unparsed)} unparsed call site(s), but the ratchet still says "
+            f"{unparsed_ceil}. Set UNPARSED_CEIL={len(unparsed)}.")
+
+    if len(routes) < route_floor:
+        problems.append(
+            f"only {len(routes)} route(s) extracted, floor is {route_floor}. A corpus that "
+            f"emptied reports '0 phantoms' over nothing (BDR-82).")
+
+    # ── SHRINK ARM (GT-F5) on _KNOWN_DYNAMIC. Each row excuses one file's
+    # unresolvable call sites; a row whose file no longer HAS any is excusing
+    # nothing, and would excuse the next unresolvable thing that appears there.
+    seen_files = {d.split(":", 1)[0] for d in dynamic}
+    for f in sorted(known_dynamic):
+        if f not in seen_files:
+            problems.append(
+                f"_KNOWN_DYNAMIC names {f!r}, which has no unresolvable call site in this "
+                f"tree — the row excuses nothing and would excuse the next one unasked.")
+    return problems
+
+
+# ── SELF-TEST ────────────────────────────────────────────────────────────────
+def self_test() -> int:
+    import tempfile
+
+    failures = 0
+
+    def case(name: str, want_routes, src: str, *, want_unparsed=0, want_dynamic=0,
+             declared=False):
+        nonlocal failures
+        # INSIDE the repo: extract() computes `relative_to(ROOT)` for its report,
+        # so a fixture in the system temp dir raises ValueError before any rule runs.
+        with tempfile.TemporaryDirectory(dir=ROOT, prefix=".phantom-selftest-") as d:
+            f = pathlib.Path(d) / "api.ts"
+            f.write_text(src, encoding="utf-8")
+            rel = f.relative_to(ROOT).as_posix()
+            # `declared` puts the fixture in _KNOWN_DYNAMIC for one case, which is
+            # the only way to exercise the DYNAMIC branch: an unresolvable call in
+            # an UNDECLARED file is UNPARSED (loud) by design, and conflating the
+            # two would have hidden exactly the blind spot this gate advertises.
+            added = declared and rel not in _KNOWN_DYNAMIC
+            if added:
+                _KNOWN_DYNAMIC[rel] = "self-test fixture"
+            try:
+                routes, unparsed, dynamic = extract([f])
+            except Exception as e:  # noqa: BLE001
+                failures += 1
+                print(f"  FAIL {name}: raised {type(e).__name__}: {e}")
+                return
+            finally:
+                if added:
+                    _KNOWN_DYNAMIC.pop(rel, None)
+        got = sorted(routes)
+        ok = (got == sorted(want_routes)
+              and len(unparsed) == want_unparsed
+              and len(dynamic) == want_dynamic)
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}: {got} "
+              f"(+{len(unparsed)} unparsed, {len(dynamic)} dynamic)")
+
+    def rc_case(name: str, want: int, routes, unparsed, dynamic, **kw):
+        nonlocal failures
+        problems = check_coverage(routes, unparsed, dynamic, **kw)
+        got = 1 if problems else 0
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}: {len(problems)} problem(s) "
+              f"(want {'some' if want else 'none'})")
+
+    print("phantom-route-scan --self-test")
+
+    # ── the extractor
+    case("a literal GET is extracted", [("GET", "/v1/a")],
+         'apiJson("/v1/a");\n')
+    case("an explicit method is read", [("POST", "/v1/a")],
+         'apiJson("/v1/a", { method: "POST" });\n')
+    case("a const-referenced path resolves", [("GET", "/v1/base/x")],
+         'const B = "/v1/base";\napiJson(`${B}/x`);\n')
+    case("an id interpolation becomes a template segment",
+         [("GET", "/v1/books/00000000-0000-4000-8000-000000000000/x")],
+         'apiJson(`/v1/books/${id}/x`);\n')
+    case("two methods on one path are two routes",
+         [("DELETE", "/v1/a"), ("GET", "/v1/a")],
+         'apiJson("/v1/a");\napiJson("/v1/a", { method: "DELETE" });\n')
+    case("a commented-out call is ignored", [],
+         '// apiJson("/v1/ghost");\n')
+    case("a call inside a block comment is ignored", [],
+         '/* apiJson("/v1/ghost"); */\n')
+    # An unresolvable call in an UNDECLARED file is UNPARSED — reported as the
+    # gate's blind spot, never dropped. That distinction is the header's whole
+    # argument ("a gate that silently under-discovers … certifies what it never
+    # looked at"), so both halves get a case.
+    case("an unresolvable base in an UNDECLARED file is UNPARSED, not dropped", [],
+         'apiJson(`${base(x)}/v1/a`);\n', want_unparsed=1)
+    case("a non-literal first argument in an UNDECLARED file is UNPARSED", [],
+         'apiJson(path, { method: "GET" });\n', want_unparsed=1)
+    case("...but in a DECLARED-dynamic file the same call is dynamic, not unparsed", [],
+         'apiJson(`${base(x)}/v1/a`);\n', want_dynamic=1, declared=True)
+
+    # ── the ratchets + shrink arm
+    many = {("GET", f"/v1/r{i}"): "x" for i in range(600)}
+    rc_case("a healthy extraction is clean", 0, many, [], [], known_dynamic={})
+    rc_case("an unparsed call site trips the ratchet", 1, many, ["a.ts:1"], [],
+            known_dynamic={})
+    rc_case("...and the ratchet reds when unparsed FALLS below it", 1, many, [], [],
+            unparsed_ceil=1, known_dynamic={})
+    rc_case("a shrunken corpus trips the route floor", 1,
+            {("GET", "/v1/a"): "x"}, [], [], known_dynamic={})
+    rc_case("a _KNOWN_DYNAMIC row with no dynamic site fails", 1, many, [], [],
+            known_dynamic={"frontend/src/gone.ts": "why"})
+    rc_case("...and passes when that file does have one", 0, many, [],
+            ["frontend/src/gone.ts:12  (unresolvable)"],
+            known_dynamic={"frontend/src/gone.ts": "why"})
+
+    if failures:
+        print(f"phantom-route-scan --self-test: {failures} rule(s) did not behave")
+        return 2
+    print("phantom-route-scan --self-test: every rule bites, and none cries wolf")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--probe", action="store_true", help="probe each route against a running stack")
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL)
     ap.add_argument("--timeout", type=float, default=10.0)
     ap.add_argument("--json", dest="json_out", help="write the full result to this file")
+    ap.add_argument("--self-test", "--selftest", dest="self_test", action="store_true",
+                    help="prove the extractor and the ratchets bite, over synthetic sources")
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
+    rc = self_test()
+    if rc:
+        return rc
+    print()
 
     if not FRONTEND.is_dir():
         print(f"ERROR: {FRONTEND} not found — run from the repo root", file=sys.stderr)
@@ -312,6 +518,13 @@ def main() -> int:
     routes, unparsed, dynamic = extract(files)
 
     print(f"scanned {len(files)} api modules → {len(routes)} distinct (method, path) pairs")
+
+    problems = check_coverage(routes, unparsed, dynamic)
+    if problems:
+        for pr in problems:
+            print(f"ERROR: {pr}", file=sys.stderr)
+        return 2
+
     if unparsed:
         # Loud on purpose. This number IS the gate's blind spot; a gate that hides its own
         # coverage gap is the failure mode this file exists to avoid.
@@ -329,7 +542,9 @@ def main() -> int:
             print(f"    · {f}: {why}")
 
     if not args.probe:
-        print("\n(no --probe: extraction only, nothing verified against a backend)")
+        print("\n(no --probe: extraction only, NOTHING verified against a backend — this "
+              "exit code says extraction ran, not that any route is served. The self-test "
+              "above is what makes it mean something.)")
         return 0
 
     # ── ORACLE SELF-CHECK ──────────────────────────────────────────────────────────────────────

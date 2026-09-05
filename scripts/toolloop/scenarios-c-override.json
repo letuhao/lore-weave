@@ -1,0 +1,94 @@
+{
+  "_note": "composition_entity_override_edit re-run to MEASURE a fix I shipped and never measured. Its recorded cause: the model calls glossary_propose_entity_edit with entity_id='Aldric Vane' — a NAME — and is refused.\n\nThe platform now hands a dropped name back as the query to search with: 'You passed a NAME where an id is required (entity_id='Aldric Vane'). That is not missing — it is the wrong kind of value, and the name is what you search WITH.' Before, the refusal said only that the argument was MISSING, so the follow-up search went out blank.\n\nNothing about the scenario changes — same prompt, same seed. Only the platform moved.\n\nWHAT WOULD REFUTE IT: still 0/5, or the follow-up search still going out with blank arguments. Then handing the name back is not what the model needed.",
+  "scenarios": [
+    {
+      "id": "composition-entity-override-edit-on-a-derivative",
+      "tool_under_test": "composition_entity_override_edit",
+      "expect_tool": "composition_entity_override_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+      "prompt_source": "The tool's declared synonym ('override entity field') plus the SCOPE the tool actually operates at, which the old prompt named wrongly.\n\n🔴 THE OLD PROMPT ASKED FOR THE SIBLING'S JOB, and the model was right to use it. It read 'in THIS BOOK Aldric Vane should be a cartographer', and 'in this book' is BOOK scope - which is exactly what glossary_entity_set_attributes does. Measured 5/5, the model called that tool and the store moved; I recorded it as a SIBLING-WINS failure and as the model 'writing the SHARED entity rather than a book-scoped override'. Both readings were wrong.\n\nThe store settles it. glossary_entities carries book_id - 7,523 entities across 563 books - so an entity belongs to ONE book and nothing 'shared' was touched. composition_entity_override_edit's row keys on work_id (entity_override: project_id, book_id, work_id, target_entity_id), and a book can hold several Works - measured maximum 4. So the tool's scope is ONE WORK inside a book, and the sibling's is the whole book.\n\nThis prompt asks for the narrower scope in the words the tool's own description uses ('per-Work entity override'), and says explicitly that the glossary entry should be left alone - so choosing the sibling is now visibly the wrong answer rather than a defensible one.\n\n🔴 SHARPENED AGAIN once the derivative existed: 'in this WORK only' was right about scope but vague about WHICH Work, and the book now has two. 'in the what-if derivative only' names the one the seed created, in the words the tool's own description uses.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        },
+        {
+          "tool": "composition_create_derivative",
+          "args": {
+            "project_id": "{project_id}",
+            "name": "What-if: the cartographer"
+          },
+          "why": "🔴 OVERRIDES EXIST ONLY ON A DERIVATIVE, and the fixture built a book with its canonical Work alone. Measured 5/5 before this step: the tool was CALLED on every run and every one answered 'NOT_A_DERIVATIVE — overrides exist only on a dị bản'. So the runs were measuring the fixture, not the tool.\n\nThis tool PROPOSES the derivative and mints a confirm token; the next step redeems it. Without the redemption the seed would report success and create nothing - the same trap kg_adopt_template sets."
+        },
+        {
+          "rest": {
+            "domain": "composition",
+            "method": "POST",
+            "path": "/v1/composition/actions/confirm?token={step:2:confirm_token}"
+          },
+          "why": "Redeem the derive token. The COMPOSITION confirm convention is a query parameter (?token=), NOT the knowledge one (POST /v1/kg/actions/confirm with a JSON confirm_token body) - this loop has two conventions and using the wrong one 404s. Verified by hand first: it answers 200 with {'outcome': 'action_accepted', 'descriptor': 'composition.derive', 'derivative': {'project_id': ...}}."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist — the tool takes a target_entity_id and the model has to resolve the NAME to it, which is the step that has failed repeatedly in this loop."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM entity_override WHERE project_id='{project_id}'",
+          "expect": "0",
+          "why": "ZERO overrides before, so any override is attributable to this turn — and, the card never being approved, the count must still be 0 afterwards."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT (count(*) > 0)::text FROM composition_work WHERE book_id = '{book_id}' AND source_work_id IS NOT NULL",
+          "expect": "true",
+          "why": "A NON-CANONICAL Work must exist, or the tool refuses NOT_A_DERIVATIVE and the run measures the fixture again. Keyed on is_canonical=false rather than on a row count: the book always has its canonical Work, so counting works would pass on the state that blocked every earlier run.\n\n🔴 THE COLUMN IS source_work_id, NOT is_canonical. The preflight caught my first version - 'column \"is_canonical\" does not exist' - and it was right to: is_canonical is a field the LIST TOOL computes, not one the table stores. composition_work holds source_work_id, which is NULL on the canonical Work and set on a derivative. Reading a response shape as a schema is the same mistake the tool_load defect is about, made by me against a database."
+        }
+      ],
+      "falsifier": "REFUTED IF: the BOOK-level glossary entity changes (glossary_entities / entity_revisions move) - that is the sibling's write and the prompt explicitly forbids it - OR an override lands with no confirm card (Tier A).\n\nCONTROL: the override's own table is loreweave_composition.entity_override, keyed on work_id. A run that moves THAT and leaves the glossary alone is the tool doing its job; a run that moves the glossary is the sibling winning, which is the thing being measured.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a target_entity_id or override_id that does not exist must be refused.",
+        "idempotency": "OWED — deleting an already-deleted override must refuse, not report a second success. Checked deliberately: that is the exact shape of the arc_template archive defect found in batch 15.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION",
+      "approve_why": "Tier A. The target is this run's OWN throwaway book and the entity its own seed created, torn down after."
+    }
+  ]
+}

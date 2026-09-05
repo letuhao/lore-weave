@@ -30,7 +30,7 @@ Two operational gaps clustered here because they share a common audience — fea
 pub struct CausalityToken {
     pub(crate) reality_id: RealityId,
     pub(crate) scope: TokenScope,
-    pub(crate) event_id: u64,         // channel_event_id for Channel scope; event_log id for Reality scope
+    pub(crate) event_id: u64,         // channel_event_id for Channel scope; events id for Reality scope
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -97,7 +97,11 @@ A new per-reality DB table tracks the projection-applier's progress:
 ```sql
 CREATE TABLE projection_apply_state (
     reality_id              UUID NOT NULL,
-    channel_id              UUID,                            -- NULL = reality-scoped
+    -- ⚠ AMENDED 2026-08-08 (1b7gap-M3): was UUID. REC-103/REC-102a settled
+    -- ChannelId as i64. This table is NOT shipped — the amendment is to the
+    -- specification only, recorded because a spec that would not join against
+    -- `channels` is the state 0019 was written from.
+    channel_id              BIGINT,                          -- NULL = reality-scoped
     last_applied_event_id   BIGINT NOT NULL DEFAULT 0,
     last_applied_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (reality_id, channel_id)

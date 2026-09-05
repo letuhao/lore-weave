@@ -15,19 +15,27 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// These three take `pgxRWQuerier` rather than `*pgxpool.Pool` so a caller can adopt and
+// look up INSIDE its own transaction. `*pgxpool.Pool` satisfies the interface, so every
+// existing call site is unchanged; what it buys is `facts_test.go`, whose whole contract
+// is "mutations happen in one tx we roll back — no persisted test data". Before this, the
+// only way to get an adopted book was to write one through the pool, which persists, so
+// those tests hunted for rows somebody else had left instead — and SKIPPED when they found
+// none. A helper that cannot join the caller's transaction is what made "seed it yourself"
+// look impossible.
 
 // adoptTestBook copies the System standards into the book tier for bookID:
 // every system genre (incl. 'universal'), all of them activated, every system
 // kind, the system kind↔genre links, and every system attribute (remapped to the
 // book ids by code). Pure SQL — no grant check, no HTTP. Idempotent.
-func adoptTestBook(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID) {
+func adoptTestBook(t *testing.T, q pgxRWQuerier, bookID uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 
 	// 1) genres (all system genres, incl. universal).
-	if _, err := pool.Exec(ctx, `
+	if _, err := q.Exec(ctx, `
 		INSERT INTO book_genres (book_id, code, name, icon, color, sort_order, source_ref, source_hash)
 		SELECT $1, sg.code, sg.name, sg.icon, sg.color, sg.sort_order, 'system:'||sg.genre_id::text, sg.content_hash
 		FROM system_genres sg
@@ -35,14 +43,14 @@ func adoptTestBook(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID) {
 		t.Fatalf("adoptTestBook genres: %v", err)
 	}
 	// 2) activate every adopted genre.
-	if _, err := pool.Exec(ctx, `
+	if _, err := q.Exec(ctx, `
 		INSERT INTO book_active_genres (book_id, genre_id)
 		SELECT $1, bg.genre_id FROM book_genres bg WHERE bg.book_id=$1
 		ON CONFLICT DO NOTHING`, bookID); err != nil {
 		t.Fatalf("adoptTestBook active-genres: %v", err)
 	}
 	// 3) kinds (all system kinds).
-	if _, err := pool.Exec(ctx, `
+	if _, err := q.Exec(ctx, `
 		INSERT INTO book_kinds (book_id, code, name, description, icon, color, sort_order, is_hidden, source_ref, source_hash)
 		SELECT $1, sk.code, sk.name, sk.description, sk.icon, sk.color, sk.sort_order, sk.is_hidden,
 		       'system:'||sk.kind_id::text, md5(sk.code||'|'||sk.name||'|'||coalesce(sk.description,''))
@@ -51,7 +59,7 @@ func adoptTestBook(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID) {
 		t.Fatalf("adoptTestBook kinds: %v", err)
 	}
 	// 4) kind↔genre links, remapped to book ids by code.
-	if _, err := pool.Exec(ctx, `
+	if _, err := q.Exec(ctx, `
 		INSERT INTO book_kind_genres (book_id, kind_id, genre_id)
 		SELECT $1, bk.book_kind_id, bg.genre_id
 		FROM system_kind_genres skg
@@ -63,7 +71,7 @@ func adoptTestBook(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID) {
 		t.Fatalf("adoptTestBook kind-genres: %v", err)
 	}
 	// 5) attributes, remapped to book ids by (kind, genre) code.
-	if _, err := pool.Exec(ctx, `
+	if _, err := q.Exec(ctx, `
 		INSERT INTO book_attributes
 		  (book_id, kind_id, genre_id, code, name, description, field_type, is_required,
 		   sort_order, options, auto_fill_prompt, translation_hint, source_ref, source_hash, merge_strategy)
@@ -82,10 +90,10 @@ func adoptTestBook(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID) {
 
 // bookKindID returns the book_kinds.book_kind_id for (bookID, code). Fails the test
 // if absent (the book wasn't adopted, or the code doesn't exist as a system kind).
-func bookKindID(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID, code string) uuid.UUID {
+func bookKindID(t *testing.T, q pgxRWQuerier, bookID uuid.UUID, code string) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
-	if err := pool.QueryRow(context.Background(),
+	if err := q.QueryRow(context.Background(),
 		`SELECT book_kind_id FROM book_kinds WHERE book_id=$1 AND code=$2`,
 		bookID, code).Scan(&id); err != nil {
 		t.Fatalf("bookKindID(%s): %v", code, err)
@@ -97,10 +105,10 @@ func bookKindID(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID, code string)
 // preferring the universal-genre row when multiple genres carry the same code (the
 // seed lifts every kind's attrs into (kind, universal), so the universal row is the
 // extraction/entity attribute). Fails the test if absent.
-func bookAttrID(t *testing.T, pool *pgxpool.Pool, bookID, bookKindID uuid.UUID, code string) uuid.UUID {
+func bookAttrID(t *testing.T, q pgxRWQuerier, bookID, bookKindID uuid.UUID, code string) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
-	if err := pool.QueryRow(context.Background(), `
+	if err := q.QueryRow(context.Background(), `
 		SELECT ba.attr_id
 		FROM book_attributes ba
 		JOIN book_genres g ON g.genre_id = ba.genre_id

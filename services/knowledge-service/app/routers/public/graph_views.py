@@ -44,8 +44,11 @@ from app.clients.book_client import BookClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.glossary_ontology_client import GlossaryOntologyClient
 from app.clients.grant_client import GrantClient
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_helpers import run_read
+from app.db.graph import graph_session
+from app.db.graph_repos.graph_views import (
+    read_entity_edge_timeline,
+    read_project_graph_edges,
+)
 from app.db.ontology_models import GraphView
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
@@ -178,10 +181,16 @@ def _slugify(name: str) -> str:
 def _coerce_ordinal(value: Any) -> int | None:
     """Coerce a Neo4j temporal-ordinal property to an int (or None).
 
-    `valid_from`/`valid_to` are chapter ordinals stored as ints. A legacy
-    edge may still carry a datetime in `valid_until` (the pre-ontology
-    timestamp model) — that is NOT an ordinal, so we coerce only int-like
-    values and treat anything non-int as None (invariant / open)."""
+    `valid_from_ordinal`/`valid_to_ordinal` are chapter ordinals stored as
+    ints. A legacy edge may still carry a datetime in `valid_until` (the
+    pre-ontology timestamp model) — that is NOT an ordinal, so we coerce only
+    int-like values and treat anything non-int as None (invariant / open).
+
+    NOTE (#249-adjacent, measured 2026-08-11): the bare `valid_from` property is
+    a wall-clock datetime on every one of the 1142 RELATES_TO edges in this
+    instance — zero are int-like. Passing it here returns None unconditionally,
+    which is exactly the bug this function's callers used to have. Feed it the
+    `*_ordinal` properties, never the bare ones."""
     if value is None:
         return None
     if isinstance(value, bool):  # bool is an int subclass — exclude it
@@ -191,30 +200,6 @@ def _coerce_ordinal(value: Any) -> int | None:
     if isinstance(value, float) and value.is_integer():
         return int(value)
     return None
-
-
-# Graph-read Cypher: every active :RELATES_TO edge in the (owner, project)
-# partition, with its temporal props + both endpoint nodes. Multi-tenant:
-# binds $user_id (K11.4) AND $project_id on every node. valid_until IS NULL
-# keeps superseded (user-corrected) edges out; the chapter-ordinal temporal
-# filter (valid_from/valid_to) is applied in PYTHON via edge_visible_at so the
-# predicate is pure + unit-tested. predicate IS the edge_type code.
-_GRAPH_READ_CYPHER = """
-MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
-WHERE subj.user_id = $user_id
-  AND obj.user_id = $user_id
-  AND subj.project_id = $project_id
-  AND obj.project_id = $project_id
-  AND r.user_id = $user_id
-  AND r.valid_until IS NULL
-  AND subj.archived_at IS NULL
-  AND obj.archived_at IS NULL
-RETURN properties(r) AS rel,
-       properties(subj) AS subj,
-       properties(obj) AS obj
-ORDER BY r.predicate ASC, subj.id ASC, obj.id ASC
-LIMIT $limit
-"""
 
 
 def _node_dict(props: dict[str, Any]) -> GraphNode:
@@ -233,14 +218,25 @@ def build_graph_slice(
     as_of_chapter: int | None,
     deprecated_edge_codes: list[str],
     view_code: str | None,
+    isolated: list[dict[str, Any]] | None = None,
 ) -> GraphSlice:
     """Pure assembly of a `GraphSlice` from raw `{rel, subj, obj}` records.
 
     Applies BOTH filters: the view lens (edge-type + node-kind allow-sets;
-    empty facet = identity) and the temporal as-of predicate. A node only
-    appears if it is the endpoint of at least one surviving edge AND passes
-    the node-kind facet. Extracted from the handler so the filter logic is
-    unit-testable without a live Neo4j.
+    empty facet = identity) and the temporal as-of predicate. A node appears
+    if it is the endpoint of at least one surviving edge — or if it is passed
+    in `isolated` — AND passes the node-kind facet. Extracted from the handler
+    so the filter logic is unit-testable without a live Neo4j.
+
+    🔴 `isolated` DEFAULTS TO NONE SO THE REST CALLER IS UNTOUCHED, and that is a decision about
+    two consumers with genuinely different needs rather than laziness. This function serves the
+    FE's graph VIEW and the agent's graph READ. A picture of 3,172 unconnected dots is not a
+    useful drawing; an agent told `nodes_total: 0` about a project that holds 3,172 entities has
+    been told something FALSE. The MCP handler passes them; the router does not.
+
+    Isolated nodes still pass the node-kind facet — a lens that excludes a kind must exclude it
+    however the node was reached — and are deduped against edge endpoints, so a node that IS
+    connected can never arrive twice.
     """
     scope = build_view_scope(view)
     edges: list[GraphEdge] = []
@@ -276,6 +272,13 @@ def build_graph_slice(
         on = _node_dict(obj)
         nodes.setdefault(sn.id, sn)
         nodes.setdefault(on.id, on)
+    for props in isolated or []:
+        if not scope.allows_node_kind(str(props.get("kind", ""))):
+            continue
+        n = _node_dict(props)
+        # `setdefault`, not assignment: an edge endpoint already placed above wins, and a node
+        # that turned out to be connected must never appear twice.
+        nodes.setdefault(n.id, n)
     warnings = deprecated_edge_warnings(view, deprecated_edge_codes)
     return GraphSlice(
         as_of_chapter=as_of_chapter,
@@ -286,21 +289,6 @@ def build_graph_slice(
     )
 
 
-# Timeline Cypher: every instance (active OR superseded) of one edge_type from
-# one entity, ordered by the temporal opening ordinal. We do NOT filter
-# valid_until here — the timeline is the FULL arc, including closed instances
-# (that is the point: revenge→seek_dao→transcendence). Predicate is bound as a
-# parameter (never interpolated). Multi-tenant via $user_id (K11.4).
-_TIMELINE_CYPHER = """
-MATCH (subj:Entity {id: $entity_id})-[r:RELATES_TO]->(obj:Entity)
-WHERE subj.user_id = $user_id
-  AND obj.user_id = $user_id
-  AND r.user_id = $user_id
-  AND r.predicate = $edge_type
-RETURN properties(r) AS rel, properties(obj) AS obj
-ORDER BY coalesce(r.valid_from, 2147483647) ASC, obj.id ASC
-LIMIT $limit
-"""
 
 
 def build_timeline(
@@ -317,8 +305,13 @@ def build_timeline(
             TimelineInstance(
                 target_id=str(obj.get("id", "")),
                 target_label=obj.get("name"),
-                valid_from=_coerce_ordinal(rel.get("valid_from")),
-                valid_to=_coerce_ordinal(rel.get("valid_to")),
+                # F3's ordinal model (see neo4j_repos/temporal.py): the NARRATIVE interval
+                # lives in `valid_from_ordinal` / `valid_to_ordinal` (null ⇒ open). The bare
+                # `valid_from` is a wall-clock datetime and `valid_to` is not a property at
+                # all — reading those coerced every instance to None, which is why a timeline
+                # of 13 closed and 1 open instances rendered as 14 undated open ones.
+                valid_from=_coerce_ordinal(rel.get("valid_from_ordinal")),
+                valid_to=_coerce_ordinal(rel.get("valid_to_ordinal")),
                 evidence_chapter_id=rel.get("source_chapter"),
                 schema_version=_coerce_ordinal(rel.get("schema_version")),
                 target_glossary_entity_id=obj.get("glossary_entity_id"),
@@ -439,9 +432,9 @@ async def _resolve_entity_project_grant(
     timeline for an entity in book A, but CANNOT reach an entity whose project
     book they hold no grant on (404).
     """
-    from app.db.neo4j_repos.entities import get_entity_by_id_any_owner
+    from app.db.graph_repos.entities import get_entity_by_id_any_owner
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         ent = await get_entity_by_id_any_owner(session, entity_id)
     if ent is None or not ent.project_id or not ent.user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity not found")
@@ -639,15 +632,10 @@ async def read_graph(
         if selected_view is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="view not found")
 
-    async with neo4j_session() as session:
-        result = await run_read(
-            session,
-            _GRAPH_READ_CYPHER,
-            user_id=str(owner),
-            project_id=project_str,
-            limit=limit,
+    async with graph_session() as session:
+        records = await read_project_graph_edges(
+            session, user_id=str(owner), project_id=project_str, limit=limit,
         )
-        records = await _records(result)
 
     deprecated = await _deprecated_edge_codes(schemas_repo, project_str)
     graph = build_graph_slice(
@@ -731,16 +719,11 @@ async def read_edge_timeline(
     # owner-scoped, so a grantee correctly reads the owner's arc (mirrors the
     # graph-read route). Binding the caller here would re-introduce the 404 the
     # lane fixes (caller != owner ⇒ no rows).
-    async with neo4j_session() as session:
-        result = await run_read(
-            session,
-            _TIMELINE_CYPHER,
-            user_id=str(owner),
-            entity_id=entity_id,
-            edge_type=edge_type,
-            limit=limit,
+    async with graph_session() as session:
+        records = await read_entity_edge_timeline(
+            session, user_id=str(owner), entity_id=entity_id,
+            edge_type=edge_type, limit=limit,
         )
-        records = await _records(result)
     timeline = build_timeline(entity_id, edge_type, records)
 
     # KG-ML M5 (C7) — localize the predicate + target names for the reader. The

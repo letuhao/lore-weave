@@ -33,8 +33,15 @@ from __future__ import annotations
 
 import ast
 import os
+import pathlib
+import re
 import subprocess
 import sys
+
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+GIT_TIMEOUT_S = 60
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -48,6 +55,40 @@ LIMIT_CEIL = 25
 # 150-edge graph — my earlier "graph justifies a conscious 60" was disproven by that data; 60
 # was still 14.7 KB, over warn). A NEW list tool must comply or earn an explicit reason here.
 ALLOW: dict[str, str] = {
+    # ── DQ-T52 SEED, 2026-08-30 ────────────────────────────────────────────────────────
+    # The owner: "TRIGGER ON LIST SHAPE, seed today's offenders as a flip-pending ALLOW,
+    # and EXTEND TO THE GO REGISTRATIONS — the same pattern K37 used for its 14 offenders."
+    # BUILD NOTE (theirs): "the allow-list may only SHRINK. That is this loop's standing
+    # rule and it is what stops a seeded baseline from becoming a place to hide new
+    # violations." Enforced by scripts/test_the_out2_allow_list_only_shrinks.py, which
+    # fails on any key that is not in the recorded baseline.
+    #
+    # These are DEBT, not exemptions. Each is a list-shaped tool with no small-shape
+    # selector at all — the case the old trigger EXEMPTED by skipping it. They are seeded
+    # so the widened lint can go green on today's tree and RED on the next new one.
+    "agent-registry-service::registry_list_skills": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "agent-registry-service::registry_list_workflows": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_arc_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_arc_template_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_authoring_run_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_list_canon_rules": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_list_derivatives": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_motif_link_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_motif_search": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "composition-service::composition_reference_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_curation_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_ai_suggestions": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_chapter_links": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_entity_revisions": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_merge_candidates": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_system_standards": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_list_unknown_entities": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_search": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "glossary-service::glossary_web_search": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "knowledge-service::kg_list_templates": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+    "knowledge-service::kg_project_list": "K52 SEED — list-shaped with no detail/limit selector. FLIP-PENDING: drop this row when the tool grows a summary default + a bounded limit, with its own by-effect test.",
+
+    # ── historical K37 notes, kept ──
     # (empty — no conscious exceptions remain; every detail-selector LIST tool defaults to
     # summary + a bounded, signalled limit ≤25.)
     # kg_entity_edge_timeline: DRAINED (K37) — a FLAT temporal chain, so limit 500→25 (≤ ceiling)
@@ -65,6 +106,102 @@ ALLOW: dict[str, str] = {
     # true total and reports `truncated` — a bounded default page, never a silent drop. Removed
     # from ALLOW → lint-enforced.
 }
+
+
+#: DQ-T52, owner 2026-08-28: "TRIGGER ON LIST SHAPE, seed today's offenders as a flip-pending
+#: ALLOW, and EXTEND TO THE GO REGISTRATIONS."
+#:
+#: 🔴 THE OLD TRIGGER EXEMPTED A TOOL FOR BEING **MORE** NON-COMPLIANT. It fired only when a
+#: tool already had BOTH `detail` and `limit`, so a list tool that never implemented either fell
+#: through a `continue` and was never looked at. Measured: of 41 list-shaped tools the lint
+#: inspected 8 — recall 20% — while docs/standards/mcp-tool-io.md cited it as the coverage that
+#: "blocks NEW violations".
+#:
+#: WHY A NAME PATTERN IS ACCEPTABLE **HERE** and nowhere near the runtime. This repo deleted a
+#: name classifier (CP-4.d) for inferring a tool's read/write LANE from fragments of its
+#: identifier — that decision gated real actions and got them wrong. This is a LINT: its failure
+#: mode is a FLAG a human reads, its false positives are recorded in ALLOW with a reason, and
+#: nothing it decides reaches a user. The cost of a wrong guess is a review, not a wrong write.
+_LIST_SHAPED = re.compile(r"(?:^|_)(?:list|search)(?:$|_)")
+
+
+def is_list_shaped(tool_name: str) -> bool:
+    """Does this tool's NAME declare it returns many rows? (lint heuristic — see above.)"""
+    return bool(_LIST_SHAPED.search(tool_name or ""))
+
+
+#: A Go MCP registration: `Name: "glossary_list_unknown_entities"`. The Go services register
+#: tools with a struct literal, so the name is a plain string field.
+_GO_TOOL_NAME = re.compile(r'Name:\s*"([a-z][a-z0-9_]+)"')
+#: A json tag on a Go input-struct field: `Detail string \`json:"detail,omitempty"\``
+_GO_JSON_FIELD = re.compile(r'json:"([a-z_]+)')
+
+
+def scan_go_file(path: str) -> tuple[list[str], list[str]]:
+    """OUT-2 over a Go MCP registration file. Returns `(problems, subjects)`.
+
+    🔴 SUBJECTS ARE RETURNED, MERGE 2026-09-03, AND THE MERGE IS WHY. The shrink arm in
+    `check` calls an ALLOW row dead when no scanned tool bears its name. Its subject list was
+    built from the PYTHON scan only, and the other branch brought nine ALLOW rows for
+    GO services — so on the merged tree every one of them read as an exemption that exempts
+    nothing, and the honest-looking fix was to delete nine live exemptions. Neither branch
+    had this defect; combining them produced it. A shrink arm blind to half the catalogue
+    does not shrink it, it corrupts it.
+
+    THE GO HALF IS THE POINT, and the owner said so: "a lint that only reads Python misses most
+    of this catalogue (of 316 live tools the majority are registered in Go), so a Python-only
+    version would report a clean bill of health over a minority of the population." Measured: 32
+    Go files register MCP tools and NONE was ever inspected.
+
+    Deliberately regex and not a Go parser. The question asked is narrow — does a list-shaped
+    registration declare `detail` and `limit` anywhere in the file? — and a parser for a second
+    language is a large dependency for a lint whose whole job is to notice an omission. The
+    coarseness is stated rather than hidden: this checks PRESENCE per file, so it cannot tell
+    which struct a tag belongs to, and it is why every Go finding is seeded as reviewable DEBT
+    rather than asserted as a violation.
+    """
+    try:
+        src = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [], []
+    fields = set(_GO_JSON_FIELD.findall(src))
+    svc = _service_of(path)
+    out: list[str] = []
+    seen: list[str] = []
+    for name in sorted(set(_GO_TOOL_NAME.findall(src))):
+        if not is_list_shaped(name):
+            continue
+        key = f"{svc}::{name}"
+        seen.append(key)          # a SUBJECT whether or not it is exempt
+        if key in ALLOW:
+            continue
+        if "detail" not in fields or "limit" not in fields:
+            missing = [f for f in ("detail", "limit") if f not in fields]
+            out.append(
+                f"  {key}: list-shaped and its file declares no {'/'.join(missing)} — OUT-2 asks "
+                f"a list tool to default to the SMALL shape, and a tool with no selector cannot. "
+                f"{path}"
+            )
+    return out, seen
+
+
+def iter_go_files() -> list[str]:
+    """Go files that register MCP tools. Located by CONTENT (a `Name: \"tool_name\"` literal
+    beside an mcp registration) rather than by directory, because the Go services do not share
+    the Python `/mcp/` convention — glossary keeps them in `internal/api/`."""
+    found = []
+    for root, _dirs, names in os.walk(os.path.join(REPO_ROOT, "services")):
+        for n in names:
+            if not n.endswith(".go") or n.endswith("_test.go"):
+                continue
+            fp = os.path.join(root, n)
+            try:
+                head = pathlib.Path(fp).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if "RegisterTool" in head or "mcpsdk.Tool{" in head:
+                found.append(fp)
+    return found
 
 
 def _service_of(path: str) -> str:
@@ -155,12 +292,26 @@ def _default_map(fn: ast.AST) -> dict[str, ast.expr]:
     return out
 
 
-def scan_file(path: str) -> list[str]:
+def scan_file(path: str, allow: dict[str, str] | None = None,
+              limit_ceil: int | None = None):
+    """Returns (problems, subjects, unnecessary_exemptions).
+
+    `subjects` is every LIST tool this file contributed — the gate's REACH. A
+    scan that found no `detail`+`limit` pair has not found compliance; it has
+    found nothing, and the two are byte-identical without this count (BDR-82).
+
+    `unnecessary_exemptions` is the second death an ALLOW row can die: the tool
+    it names now COMPLIES, so the row is waiving a rule the code already keeps —
+    and it will go on waiving it the day the code stops (GT-F5)."""
+    allow = ALLOW if allow is None else allow
+    limit_ceil = LIMIT_CEIL if limit_ceil is None else limit_ceil
+    subjects: list[str] = []
+    unnecessary: list[str] = []
     try:
         src = open(path, encoding="utf-8").read()
         tree = ast.parse(src)
     except (OSError, SyntaxError):
-        return []
+        return [], subjects, unnecessary
     # module-level int constants for named-limit resolution
     module_ints: dict[str, int] = {}
     for node in tree.body:
@@ -173,8 +324,22 @@ def scan_file(path: str) -> list[str]:
     problems: list[str] = []
 
     def _check_pair(key: str, det_node, lim_node, lineno: int) -> None:
-        if key in ALLOW:
+        subjects.append(key)
+        # The rule is evaluated FIRST and the exemption applied to the RESULT, so
+        # an ALLOW row that suppresses nothing can be detected. Returning early on
+        # `key in ALLOW` made the two indistinguishable.
+        found: list[str] = []
+        _eval_pair(key, det_node, lim_node, lineno, found)
+        if key in allow:
+            if not found:
+                unnecessary.append(
+                    f"  ALLOW['{key}'] suppresses nothing — the tool already complies. "
+                    f"Delete the row, or it keeps waiving the rule the day the code stops "
+                    f"keeping it. (reason on file: {allow[key][:60]!r})")
             return
+        problems.extend(found)
+
+    def _eval_pair(key: str, det_node, lim_node, lineno: int, problems: list[str]) -> None:
         det = det_node.value if isinstance(det_node, ast.Constant) else None
         if det != "summary":
             problems.append(
@@ -188,7 +353,7 @@ def scan_file(path: str) -> list[str]:
         if isinstance(lim_node, ast.Constant) and lim_node.value is None:
             problems.append(
                 f"  {key}: limit defaults to None (UNBOUNDED — no cap) — a LIST tool must default "
-                f"to a bounded page (<= {LIMIT_CEIL}); None returns every row. {path}:{lineno}"
+                f"to a bounded page (<= {limit_ceil}); None returns every row. {path}:{lineno}"
             )
         if isinstance(lim_node, ast.Constant) and isinstance(lim_node.value, int):
             lim = lim_node.value
@@ -197,11 +362,11 @@ def scan_file(path: str) -> list[str]:
             if lim is None:
                 problems.append(
                     f"  {key}: limit default `{lim_node.id}` could not be resolved to an int in-file "
-                    f"— cannot verify it's <= {LIMIT_CEIL}. {path}:{lineno}"
+                    f"— cannot verify it's <= {limit_ceil}. {path}:{lineno}"
                 )
-        if isinstance(lim, int) and lim > LIMIT_CEIL:
+        if isinstance(lim, int) and lim > limit_ceil:
             problems.append(
-                f"  {key}: limit defaults to {lim} (> {LIMIT_CEIL}) — a default page that big crowds "
+                f"  {key}: limit defaults to {lim} (> {limit_ceil}) — a default page that big crowds "
                 f"the caller's context (OUT-2). {path}:{lineno}"
             )
 
@@ -220,6 +385,25 @@ def scan_file(path: str) -> list[str]:
             continue
         params = {a.arg for a in fn.args.args + fn.args.kwonlyargs}
         if "detail" not in params or "limit" not in params:
+            # DQ-T52 — a list-shaped tool that lacks the machinery is the case the old trigger
+            # EXEMPTED. It is now flagged, not skipped: `continue` here is what let a tool be
+            # excused for being more non-compliant, not less.
+            if is_list_shaped(fn.name):
+                # 🔴 RECORD THE SUBJECT BEFORE THE EXEMPTION, MERGE 2026-09-03. The ALLOW check
+                # used to gate this whole branch, so an EXEMPTED tool was never counted as a
+                # subject — and the shrink arm below, which calls a row dead when no scanned
+                # tool bears its name, then declared every such exemption dead. Three live
+                # FLIP-PENDING rows read as deletable on the merged tree. The bug was latent on
+                # this branch (no row here named a selectorless tool) and the other branch's
+                # rows exposed it; `scan_go_file` carried the identical defect.
+                subjects.append(f"{svc}::{fn.name}")
+                if f"{svc}::{fn.name}" not in ALLOW:
+                    missing = [f for f in ("detail", "limit") if f not in params]
+                    problems.append(
+                        f"  {svc}::{fn.name}: list-shaped and declares no {'/'.join(missing)} — "
+                        f"OUT-2 asks a list tool to default to the SMALL shape, and a tool with "
+                        f"no selector cannot. {path}:{fn.lineno}"
+                    )
             continue
         defaults = _default_map(fn)
         _check_pair(f"{svc}::{fn.name}", defaults.get("detail"), defaults.get("limit"), fn.lineno)
@@ -241,18 +425,28 @@ def scan_file(path: str) -> list[str]:
                 _field_default(fields["detail"]), _field_default(fields["limit"]), cls.lineno,
             )
 
-    return problems
+    return problems, subjects, unnecessary
 
 
-def iter_files(staged: bool) -> list[str]:
+def iter_files(staged: bool, services_root: str | None = None) -> list[str]:
+    services_root = services_root or os.path.join(REPO_ROOT, "services")
     if staged:
-        out = subprocess.run(
-            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-            cwd=REPO_ROOT, capture_output=True, text=True,
-        ).stdout.split()
+        try:
+            out = subprocess.run(
+                ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+                cwd=REPO_ROOT, capture_output=True, text=True,
+                timeout=GIT_TIMEOUT_S,
+            ).stdout.split()
+        except subprocess.TimeoutExpired:
+            # NOT an empty list: that would make this gate scan nothing and
+            # print PASS over a commit it never read.
+            print(f"CANNOT RUN — `git diff --cached` did not return within "
+                  f"{GIT_TIMEOUT_S}s; refusing to report a verdict on a file list "
+                  f"that was never read.", file=sys.stderr)
+            raise SystemExit(2)
         return [os.path.join(REPO_ROOT, f) for f in out if "/mcp/" in f.replace("\\", "/") and f.endswith(".py")]
     files = []
-    for root, _dirs, names in os.walk(os.path.join(REPO_ROOT, "services")):
+    for root, _dirs, names in os.walk(services_root):
         r = root.replace("\\", "/")
         if "/mcp" not in r or "__pycache__" in r:
             continue
@@ -260,21 +454,232 @@ def iter_files(staged: bool) -> list[str]:
     return files
 
 
-def main() -> int:
-    staged = "--staged" in sys.argv
+def _staged_paths() -> list[str]:
+    """Absolute paths of the staged files — the Go half's `--staged` arm needs them, and
+    `iter_files` cannot answer it because it only ever yields MCP Python files."""
+    # Same spawn as `iter_files`'s `--staged` arm above, and it lost that arm's
+    # two safeguards on the way across: a `timeout=`, and a handler that refuses
+    # rather than returning []. `gate-bite-harness --self-test` names this rule
+    # "a child nothing can interrupt" — a `git` that never answers hangs the
+    # gate forever, and an empty list would make it scan nothing and print PASS
+    # over a commit it never read.
+    try:
+        out = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+            timeout=GIT_TIMEOUT_S,
+        ).stdout.split()
+    except subprocess.TimeoutExpired:
+        print(f"CANNOT RUN — `git diff --cached` did not return within "
+              f"{GIT_TIMEOUT_S}s; refusing to report a verdict on a file list "
+              f"that was never read.", file=sys.stderr)
+        raise SystemExit(2)
+    return [os.path.join(REPO_ROOT, f) for f in out]
+
+
+def check(staged: bool = False, services_root: str | None = None,
+          allow: dict[str, str] | None = None, limit_ceil: int | None = None) -> int:
+    """The REAL checker, parameterised so `--self-test` can drive it over a
+    synthetic tree instead of re-implementing its rules."""
+    allow = ALLOW if allow is None else allow
+    limit_ceil = LIMIT_CEIL if limit_ceil is None else limit_ceil
+
+    files = iter_files(staged, services_root)
     problems: list[str] = []
-    for f in iter_files(staged):
-        problems.extend(scan_file(f))
-    if problems:
-        print("✗ context-budget-defaults-lint: LIST tool(s) default to a context-crowding shape:\n")
-        print("\n".join(problems))
-        print(
-            "\nFix: default `detail=\"summary\"` and `limit <= %d`; `detail=\"full\"` / a larger limit are "
-            "explicit opt-ins the caller narrows UP to (OUT-2). A deliberate exemption gets a row in "
-            "ALLOW with a reason." % LIMIT_CEIL
-        )
+    subjects: list[str] = []
+    unnecessary: list[str] = []
+    for f in files:
+        p, s, u = scan_file(f, allow, limit_ceil)
+        problems.extend(p)
+        subjects.extend(s)
+        unnecessary.extend(u)
+
+    # ── DQ-T52, THE GO HALF. MERGE 2026-09-03 — PORTED INTO `check`, NOT LEFT BESIDE IT.
+    #
+    # This arrived on the other branch inside its own `main()`, and this branch had already
+    # replaced that entry point with `check()` + `self_test()`. Resolving the conflict either
+    # way alone was wrong: taking theirs gives the file TWO `main()` definitions, the second
+    # silently shadowing the first; taking ours leaves `scan_go_file` and `iter_go_files`
+    # DEFINED AND NEVER CALLED — the Go registrations stop being scanned and nothing says so.
+    # PR #219 shipped exactly that hybrid in `knowledge-http-surface-gate.py`, where the gate
+    # "reported a clean scan of nothing" and the suite stayed green.
+    #
+    # `services_root` is the self-test's synthetic tree; the Go scan is repo-wide and has no
+    # synthetic equivalent, so it is skipped there rather than made to scan the real repo from
+    # inside a fixture.
+    if services_root is None:
+        go_files = (iter_go_files() if not staged
+                    else [f for f in _staged_paths() if f.endswith(".go")])
+        for gf in go_files:
+            gp, gs = scan_go_file(gf)
+            problems.extend(gp)
+            subjects.extend(gs)   # so the shrink arm can see a Go exemption's tool
+
+    # ── REACH FLOORS (GT-F3). Only on a full scan: a staged run over a commit
+    # touching no MCP file legitimately sees nothing.
+    #
+    # There is deliberately NO separate `not files` clause. Zero MCP files implies
+    # zero subjects, so it would be strictly shadowed by the floor below and could
+    # never produce a finding the sibling does not — deletable with the suite
+    # green, which is the defect this whole board removes (`GTD-7`). The bite is
+    # what said so: the arm disabling it still went red, on the other rule.
+    if not staged:
+        if not subjects:
+            # The rule's SUBJECT is the `detail`+`limit` pair. If that convention is
+            # renamed, this gate finds zero LIST tools and reports success in the same
+            # bytes as full compliance. Measured 2026-08-12: 16 subjects across 14 files.
+            print(f"✗ context-budget-defaults-lint: {len(files)} MCP file(s) scanned and "
+                  f"NOT ONE declares a `detail`+`limit` pair. The rule has no subject, so "
+                  f"its silence proves nothing — the convention was renamed, or the tools "
+                  f"moved.", file=sys.stderr)
+            return 2
+
+        # ── SHRINK ARM (GT-F5), death #1: the row names a tool that no longer exists.
+        # (Death #2 — the tool now complies — is `unnecessary`, raised in scan_file.)
+        seen = set(subjects)
+        for key in sorted(set(allow) - seen):
+            unnecessary.append(
+                f"  ALLOW['{key}'] names no LIST tool in this tree — it exempts nothing "
+                f"today and would exempt that tool again the day the name returns.")
+
+    if problems or unnecessary:
+        if problems:
+            print("✗ context-budget-defaults-lint: LIST tool(s) default to a context-crowding shape:\n")
+            print("\n".join(problems))
+            print(
+                "\nFix: default `detail=\"summary\"` and `limit <= %d`; `detail=\"full\"` / a larger limit are "
+                "explicit opt-ins the caller narrows UP to (OUT-2). A deliberate exemption gets a row in "
+                "ALLOW with a reason." % limit_ceil
+            )
+        if unnecessary:
+            print("✗ context-budget-defaults-lint: dead ALLOW row(s):\n")
+            print("\n".join(unnecessary))
         return 1
+
+    print(f"context-budget-defaults-lint: OK — {len(subjects)} LIST tool(s) across "
+          f"{len(files)} MCP file(s) default to summary + limit <= {limit_ceil}; "
+          f"{len(allow)} exemption(s).")
     return 0
+
+
+# ── SELF-TEST ────────────────────────────────────────────────────────────────
+# Every probe tree carries one COMPLIANT list tool, so the two reach floors stay
+# quiet and each case below tests exactly one rule.
+CLEAN_TOOL = (
+    'async def things_list(detail: str = "summary", limit: int = 10):\n'
+    '    return []\n'
+)
+
+
+def self_test() -> int:
+    import contextlib
+    import io
+    import tempfile
+
+    failures = 0
+
+    def probe(name: str, want: int, body: str | None, *, allow=None, limit_ceil=25,
+              rel="svc/app/mcp/tools.py", seed_clean=True) -> None:
+        nonlocal failures
+        with tempfile.TemporaryDirectory() as d:
+            services = os.path.join(d, "services")
+            # `seed_clean` is independent of `body`. An earlier draft wrote the
+            # clean tool whenever a body was given, so the "no detail+limit pair
+            # anywhere" probe silently got one and never reached its own fixture.
+            if seed_clean:
+                clean = os.path.join(services, "svc", "app", "mcp", "clean.py")
+                os.makedirs(os.path.dirname(clean), exist_ok=True)
+                with open(clean, "w", encoding="utf-8") as fh:
+                    fh.write(CLEAN_TOOL)
+            if body is not None:
+                full = os.path.join(services, *rel.split("/"))
+                os.makedirs(os.path.dirname(full), exist_ok=True)
+                with open(full, "w", encoding="utf-8") as fh:
+                    fh.write(body)
+            os.makedirs(services, exist_ok=True)
+            try:
+                with contextlib.redirect_stdout(io.StringIO()), \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    got = check(False, services, allow or {}, limit_ceil)
+            except Exception as e:  # noqa: BLE001 - a crash is what this asserts against
+                failures += 1
+                print(f"  FAIL {name}: raised {type(e).__name__}: {e} — it must return a code")
+                return
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}: rc={got} (want {want})")
+
+    print("context-budget-defaults-lint --self-test")
+
+    probe("a summary+small-limit list tool passes", 0, CLEAN_TOOL)
+
+    # the rule, both halves
+    probe("detail defaulting to full fails", 1,
+          'async def t(detail: str = "full", limit: int = 10):\n    return []\n')
+    probe("a limit above the ceiling fails", 1,
+          'async def t(detail: str = "summary", limit: int = 50):\n    return []\n')
+    probe("...and the ceiling is what decides it", 0,
+          'async def t(detail: str = "summary", limit: int = 50):\n    return []\n',
+          limit_ceil=50)
+    probe("an UNBOUNDED limit=None fails", 1,
+          'async def t(detail: str = "summary", limit=None):\n    return []\n')
+    probe("a single-item tool (detail, no limit) is exempt", 0,
+          'async def t(detail: str = "full"):\n    return {}\n')
+
+    # named constants
+    probe("a named limit constant over the ceiling fails", 1,
+          'CAP = 500\nasync def t(detail: str = "summary", limit: int = CAP):\n    return []\n')
+    probe("...but a small one passes", 0,
+          'CAP = 10\nasync def t(detail: str = "summary", limit: int = CAP):\n    return []\n')
+    probe("an UNRESOLVABLE named limit fails rather than passing silently", 1,
+          'async def t(detail: str = "summary", limit: int = MYSTERY):\n    return []\n')
+
+    # the request-MODEL blind spot (K38)
+    probe("a pydantic request model with detail=full fails", 1,
+          'class Args:\n    detail: str = "full"\n    limit: int = 10\n')
+    probe("...including one using Field(default=...)", 1,
+          'class Args:\n    detail: str = Field(default="full")\n    limit: int = Field(default=10)\n')
+    # The case above reds whether or not `Field(default=…)` is unwrapped — an
+    # un-unwrapped Call is not the constant "summary" either, so it violates for
+    # the wrong reason. THIS is the case that isolates the unwrapping: a
+    # COMPLIANT Field model must come back clean, and does not without it.
+    probe("...and a COMPLIANT Field(default=...) model does not cry wolf", 0,
+          'class Args:\n    detail: str = Field(default="summary")\n    limit: int = Field(default=10)\n')
+
+    # ALLOW + both shrink-arm deaths
+    probe("an ALLOW row suppresses a real violation", 0,
+          'async def t(detail: str = "full", limit: int = 10):\n    return []\n',
+          allow={"svc::t": "tracked debt"})
+    probe("an ALLOW row for a COMPLIANT tool fails (reason expired)", 1,
+          'async def t(detail: str = "summary", limit: int = 10):\n    return []\n',
+          allow={"svc::t": "tracked debt"})
+    probe("an ALLOW row naming no tool at all fails (subject gone)", 1, CLEAN_TOOL,
+          allow={"svc::vanished": "tracked debt"})
+
+    # scope + reach
+    probe("a tool OUTSIDE an mcp/ directory is not scanned", 0,
+          'async def t(detail: str = "full", limit: int = 99):\n    return []\n',
+          rel="svc/app/routers/things.py")
+    probe("no MCP files at all is misuse (the subject floor catches it)", 2, None,
+          seed_clean=False)
+    probe("MCP files with NO detail+limit pair is misuse, not a pass", 2,
+          'async def t(limit: int = 10):\n    return []\n', seed_clean=False)
+
+    if failures:
+        print(f"context-budget-defaults-lint --self-test: {failures} rule(s) did not behave")
+        return 2
+    print("context-budget-defaults-lint --self-test: every rule bites, and none cries wolf")
+    return 0
+
+
+def main() -> int:
+    if "--self-test" in sys.argv or "--selftest" in sys.argv:
+        return self_test()
+    rc = self_test()
+    if rc:
+        return rc
+    print()
+    return check("--staged" in sys.argv)
 
 
 if __name__ == "__main__":

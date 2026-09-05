@@ -8,6 +8,27 @@ authors.workspace = true
 license.workspace = true
 publish.workspace = true
 
+# OUT OF `DP-R3`'s SCOPE — platform plane, not the game plane.
+#
+# `01_scope_and_boundary.md` §4 (LOCKED) defines the scope by the DATABASE:
+# "if a service reads or writes any aggregate in a per-reality database
+# (`reality_<id>_db`), it is a game-layer service and uses the DP SDK." This
+# crate's `db::init` documents itself as the opposite, and did so long before
+# the lint existed: "the per-service-DB pattern for LoreWeave Rust services (a
+# normal platform-plane DB like `loreweave_chat`, NOT the kernel services'
+# per-reality sidecar `.sql` model)".
+#
+# The two `sqlx::PgPool` sites are pool CONSTRUCTION (`db::init`) and a
+# `SELECT 1` liveness probe (`health::readyz`). Neither reads an aggregate, so
+# neither can defeat `DP-A1`, which is what `DP-R3` exists to protect.
+#
+# NOT `dp-crate = true` — that would claim this crate IS the data plane, which
+# is false. Silencing a true positive of the wrong rule with a false statement
+# in a manifest is how an exemption channel starts.
+[package.metadata.dp]
+plane = "platform"
+reason = "shared axum/health/db-bootstrap kit; db::init opens platform-plane per-service DBs (its own module doc says so) and health::readyz pings SELECT 1 — no per-reality aggregate access, and it consumes no reality routing"
+
 [lib]
 name = "service_http"
 path = "src/lib.rs"

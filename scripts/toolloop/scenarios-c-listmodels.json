@@ -1,0 +1,34 @@
+{
+  "_note": "D-SETTINGS-LIST-MODELS-HAS-NO-DETAIL-SELECTOR-AND-A-10KB-DEFAULT. The default reply was 10,382 bytes / ~2,595 tokens for 18 models x 15 fields, with no detail selector and no limit. This asks the plainest possible question so the DEFAULT shape is what reaches the model.",
+  "scenarios": [
+    {
+      "id": "what-models-do-i-have",
+      "tool_under_test": "settings_list_models",
+      "expect_tool": "settings_list_models",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Which of my registered models can do tool calling?",
+      "prompt_source": "A plain user question that needs the DEFAULT shape and one of the fields the summary deliberately KEEPS (capability_flags). It does not name the tool, and it does not ask for pricing or timestamps - so if the summary dropped something load-bearing, the answer degrades here rather than in a test I wrote to pass.",
+      "needs_target": false,
+      "approve": "as-is",
+      "approve_why": "Tier R, user-scoped, no write at any point - this is the read the Context Budget Law exists to protect.",
+      "seed": [],
+      "falsifier": "REFUTED IF: the model cannot name a tool-calling model from the reply (the summary dropped a field the question needs); OR it calls settings_list_models more than twice (the page/limit made it thrash); OR it reaches for detail=full to answer a question the summary should already answer.",
+      "ship_audit": {
+        "gate": "NONE - Tier R read.",
+        "absent_case": "an account with no models is not covered here.",
+        "idempotency": "n/a, read.",
+        "tenancy": "user-scoped by envelope; the tool takes no user argument."
+      },
+      "defects": [],
+      "_problem": "D-SETTINGS-LIST-MODELS-HAS-NO-DETAIL-SELECTOR-AND-A-10KB-DEFAULT",
+      "answer_expect": {
+        "any_of": ["Gemma", "gemma", "tool"],
+        "why": "Deliberately loose on wording. The real assertion is the TRACE: the call must succeed, and the reply the model summarised must be the small shape."
+      },
+      "_no_seed_assert_why": "Nothing is seeded - the tool reads the caller's own registered models, which already exist. A seed here would be inventing substrate for a read that has real substrate."
+    }
+  ]
+}

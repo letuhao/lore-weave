@@ -1,0 +1,906 @@
+{
+  "registry_version": 1,
+  "tool_contract_version": "1.0.0",
+  "_why": "CP-5.2 rung 2. The contract's END state is the tool's own `_meta`, published by the owning service (CP-5.md §4). This file is the INTERIM home so a contract is authorable without waiting on another team — the same correction §3a/W1 already took for the ref/resolver map: 'a registry row, authored once and later pushed upstream into _meta when the owning service catches up'. `_meta` WINS wherever a service supplies it, and `Completeness.source` records which one answered so an owner-published contract and one we wrote never merge into one indistinguishable row.",
+  "contracts": {
+    "book_list": {
+      "identifier_resolution": {
+        "book_id": "an opaque id; resolve a book NAME with book_search before calling. No resolver is declared for it yet — 5.3 builds the ref/resolver map, and until it does a name here is refused rather than guessed.",
+        "chapter_id": "an opaque id obtained from this same tool with kind=chapters."
+      },
+      "argument_supplier": {
+        "kind": "model — the caller chooses what to list",
+        "book_id": "context | plan — the ambient book when the surface is book-bound (`_meta.scope: book`), otherwise a plan-bound value",
+        "chapter_id": "plan — emitted by a prior kind=chapters listing",
+        "limit": "model",
+        "offset": "plan — the runtime advances it while paging"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "A repeat MAY be served from cache to remove its cost. It is still COUNTED and the breaker still escalates — removing a repeat's signal is what turned a 393-call loop into 393 silent successes (§3)."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "not_found",
+          "permission_denied"
+        ],
+        "message": "required on every failure; a failure carrying no message is unrepresentable",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "POLYMORPHIC on `kind` - { kind, page, guidance, total, books: [...] } | { kind, page, guidance, chapters: [...] } | { kind, page, guidance, revisions: [...] }",
+        "emit_paths": [
+          "books[0].book_id"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=160 successes: `total` 160, `kind`/`page`/`guidance` 128, `books` 119, `chapters` 28, `revisions` 9.",
+        "_THE_FIRST_DRAFT_CALLED_THIS_A_SINGLE_SHAPE": "It was declared `{books, total}` from ONE recorded result. This tool answers three different questions and says which in `kind` - 37 of 160 recorded successes return `chapters` or `revisions` and carry NO `books` key at all. CP-3's emit path `books[0].book_id` is therefore valid only on the books arm, and a plan step emitting it against a chapters listing resolves to null - which §3a already types as a FAILED step rather than a null bound forward.",
+        "_the_discriminator": "kind"
+      },
+      "result_completeness": {
+        "fields": [
+          "page.total",
+          "page.returned",
+          "page.is_complete"
+        ],
+        "surface": "The runtime must surface is_complete=false to the model. A truncated page read as the whole answer is the quiet failure this member exists for — it appears in no error bucket."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "not advertised; the withholding is recorded",
+        "note": "kind=chapters|revisions|scenes additionally require book_id; kind=revisions requires chapter_id."
+      },
+      "closed_vocabulary": {
+        "kind": [
+          "books",
+          "chapters",
+          "revisions",
+          "scenes"
+        ]
+      }
+    },
+    "book_read": {
+      "identifier_resolution": {
+        "book_id": "an opaque id; resolve a book NAME with book_search before calling.",
+        "chapter_id": "an opaque id from book_list kind=chapters.",
+        "scene_id": "an opaque id from book_list kind=scenes."
+      },
+      "argument_supplier": {
+        "book_id": "context | plan — the ambient book when the surface is book-bound, otherwise plan-bound",
+        "chapter_id": "plan — emitted by a prior listing",
+        "scene_id": "plan — emitted by a prior listing",
+        "offset": "plan — the runtime advances it while paging a chapter body",
+        "limit": "model"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "Cached repeats are still counted and still escalate the breaker."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "not_found",
+          "permission_denied"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "POLYMORPHIC - { book, read, guidance } | { chapter, body, page, read, guidance }",
+        "emit_paths": [
+          "book.book_id"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=101 successes: `guidance`/`read` 101, `book` 89, `chapter`/`body`/`page` 12.",
+        "_ALSO_POLYMORPHIC": "12 of 101 successes return a CHAPTER and its body rather than the book record, and carry no `book` key. Same correction as book_list: one sampled result named one arm as the whole contract."
+      },
+      "result_completeness": {
+        "fields": [
+          "page.total",
+          "page.returned",
+          "page.is_complete"
+        ],
+        "surface": "A chapter body is block-paged; a partially read chapter must not read as the whole chapter."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "not advertised; the withholding is recorded",
+        "note": "book_id is required; chapter_id/scene_id are optional and select a deeper read."
+      }
+    },
+    "tool_list": {
+      "_why": "THE most-repeated tool in the corpus: 1,180 repeat-breaker firings across 3 sessions, worst session 566. Its repeat_semantics member is where section 3's rule is most load-bearing.",
+      "identifier_resolution": {
+        "_none": "takes no ref-shaped input; nothing to resolve."
+      },
+      "argument_supplier": {
+        "category": "model — the caller chooses which namespace to list",
+        "include_deprecated": "model"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "The breaker short-circuits before dispatch, so the COST is already gone. The repeat is still COUNTED (repeat_count) and the breaker still ESCALATES; the call records call_outcome=refused, never a silent success. Serving it quietly would turn 566 loud repeats into 566 invisible ones — the metric laundering section 3 exists to refuse."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ count: int, tools: [...], category?: string, categories?: [...], note?: string, loaded_tools?: [...], listed_before?: [...], reason?: string, incomplete?: bool, unavailable_providers?: [...] }",
+        "emit_paths": [
+          "tools"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=641 successes: `count` 641, `category` 636, `tools` 616, and six further optional keys down to `incomplete` at 1.",
+        "_incomplete_is_the_outage_signal": "`incomplete` + `unavailable_providers` appear once each and are how a degraded catalogue announces itself - the U-2 state 5.10's name check must fail OPEN on. Declared so a reader can act on it rather than discover it."
+      },
+      "closed_vocabulary": {
+        "category": [
+          "book",
+          "catalog",
+          "composition",
+          "glossary",
+          "jobs",
+          "knowledge",
+          "meta",
+          "plan",
+          "registry",
+          "research",
+          "settings",
+          "story",
+          "translation",
+          "world",
+          "all"
+        ]
+      }
+    },
+    "tool_load": {
+      "_why": "The other half of discovery. 100% success across 34 sessions — the pair works.",
+      "identifier_resolution": {
+        "_none": "a tool NAME is not an opaque id; it is the registry key."
+      },
+      "argument_supplier": {
+        "name": "model — the tool the caller wants loaded",
+        "names": "model",
+        "category": "model"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "A repeat is counted and escalates exactly as tool_list's does."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "terminal_permanent"
+        ],
+        "message": "required — and it must NAME the unknown tool, because the measured failure is a model loading a name that does not exist (5.10)",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ tools: [...], note?: string, truncated?: bool, not_found?: [...] }",
+        "emit_paths": [
+          "tools"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=57 successes: `tools` 57, `note` 22, `truncated` 21, `not_found` 4.",
+        "_truncated_is_declared_completeness": "unlike glossary_search, this tool DOES report truncation, so CP-5.6 believes it rather than compensating - which is what declaring it buys."
+      },
+      "closed_vocabulary": {
+        "category": [
+          "book",
+          "catalog",
+          "composition",
+          "glossary",
+          "jobs",
+          "knowledge",
+          "meta",
+          "plan",
+          "registry",
+          "research",
+          "settings",
+          "story",
+          "translation",
+          "world",
+          "all"
+        ]
+      }
+    },
+    "glossary_search": {
+      "_why": "The search tool the PO named, AND the tool CP-5.3's resolver runs on — so its contract is load-bearing for identifier resolution, not just for its own 21 calls.",
+      "identifier_resolution": {
+        "book_id": "an opaque id, not a name. This tool is itself the RESOLVER for EntityRef (see contracts/agent-runtime-ref-resolvers.json); it does not consume entity names in id fields."
+      },
+      "argument_supplier": {
+        "book_id": "context | plan — the book whose glossary to search; the ambient book on a book-bound surface, otherwise supplied by the plan step that scoped the search",
+        "query": "model — the text to search for; only the caller knows what it is looking for",
+        "limit": "model"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "A repeated identical search is counted and escalates; it is never served silently."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "permission_denied",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ entities: [{entity_id, cached_name, cached_aliases, kind_code, tier, rank_score}] }",
+        "emit_paths": [
+          "entities[0].entity_id"
+        ],
+        "match_quality": "`tier` is a MATCH-QUALITY signal, not a score: `exact` means the name or an alias matched exactly after normalisation. CP-5.3 keys the resolver on it.",
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=173 successes; `entities` is the sole top-level key in all 173 - genuinely monomorphic."
+      },
+      "result_completeness": {
+        "declared_fields": [],
+        "_KNOWN_GAP": "🔴 THIS TOOL DOES NOT REPORT COMPLETENESS, and the contract records that rather than claiming a field that does not exist. Measured 2026-08-10: of 36 tools declaring paging, five never report it, and this is one of them — it returns at most `limit` rows with no is_complete, so a full page is indistinguishable from a truncated one.",
+        "runtime_compensation": "CP-5.3 treats a page whose EXACT matches fill it as `truncated` and REFUSES rather than substituting, because 'exactly one match' is only true if the list was whole.",
+        "closes_when": "glossary-service returns page{total,returned,is_complete}; the resolver then believes it and this gap entry is deleted."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "not advertised; the withholding is recorded",
+        "note": "book_id resolves from the ambient book on a book-bound surface; without either it fails closed."
+      }
+    },
+    "compose_prose": {
+      "_why": "The co-writer step the PO named as the point of the journey — CHAT-SERVICE'S OWN tool, and the row CP-5's exit was blocked on. It was underivable for weeks because it declared no `_meta` at all, so the essential set could name it and rung 2 could never admit it.",
+      "argument_supplier": {
+        "instructions": "model — what to write, or how to rewrite the source text. Only the caller knows this; there is no runtime value to fall back on.",
+        "source_text": "model — the existing text being transformed; omitted for fresh generation"
+      },
+      "repeat_semantics": {
+        "kind": "non_idempotent_generative",
+        "cost_removable": false,
+        "signal_retained": "🔴 A repeat is NOT cost-removable here and must never be served from a cache: this tool calls a MODEL, so two identical calls legitimately return different prose, and answering the second from the first would silently replace a generation the author asked for. §3's rule cuts the other way for a generative tool — remove the SIGNAL of a loop, never the generation."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "upstream_unavailable",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": true,
+        "_why_retryable": "Unlike every other member here, the failure mode is a model call: an upstream timeout is genuinely transient. Declared explicitly rather than defaulted, because C-7's fail-closed answer is `terminal_permanent` and this is the one tool where that would be wrong."
+      },
+      "output_contract": {
+        "shape": "{ prose: string }",
+        "emit_paths": [
+          "prose"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, n=4 successes: `prose` is the sole key in all 4. A small n and it is stated - this tool has only ever been called 4 times, so the shape is as verified as it can be and no more."
+      }
+    },
+    "glossary_propose_entity_edit": {
+      "_why": "🔴 THE LARGEST 0%-SUCCESS TOOL IN THE CORPUS — 101 calls / 12 sessions, every one refused. It is a CHAT-SERVICE FRONTEND tool whose NAME sits in glossary-service's namespace, so it was doubly invisible: absent from the federated snapshot, and misattributed by the name-prefix owner table. Admitting it is what lets it declare the members that address its own failure.",
+      "identifier_resolution": {
+        "entity_id": "an opaque id, NEVER a name and never a placeholder. Resolvable from a name via EntityRef (contracts/agent-runtime-ref-resolvers.json); the correct source is a prior `glossary_get_entity` or `glossary_search`.",
+        "book_id": "an opaque id; the ambient book on a book-bound surface"
+      },
+      "argument_supplier": {
+        "book_id": "context — the runtime supplies the ambient book; not the model's to invent",
+        "entity_id": "model — but OBTAINED, not authored. 🔴 MEASURED 2026-08-10: 89 of the 101 recorded calls sent a model-invented placeholder (`placeholder_id_1` x60, `placeholder_id` x29, `new_entity_id_placeholder`). The value exists only in a prior read; there is nothing for the model to compose it from.",
+        "base_version": "model — obtained, not authored: the entity's `updated_at` from the same prior read, which is what makes the edit conflict-safe",
+        "changes": "model — the actual CONTENT of the edit, and the one argument here that genuinely is the model's"
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope",
+        "requires_prior_read": "🔴 THE PRECONDITION THIS TOOL ACTUALLY FAILS ON, and it is not a scope: two of its four required arguments (`entity_id`, `base_version`) can only come from a prior `glossary_get_entity`. Its own description has said so since 2026-07-22 and the measured compliance is 0 of 101."
+      },
+      "consent": {
+        "required": true,
+        "mechanism": "The turn SUSPENDS and the browser renders a diff card; the user Applies or dismisses. Nothing is written by calling this tool — which is why its tier is W and why a failure here costs a round trip rather than data."
+      },
+      "effect_and_undo": {
+        "effect": "proposes an atomic multi-field edit to one existing entity; the write happens only on the user's Apply",
+        "undo": "dismissing the card is the undo before the fact; after Apply, the entity's revision history (`glossary_list_entity_revisions` / `glossary_propose_restore_revision`) is the reversal path"
+      },
+      "partial_outcome": {
+        "atomic": true,
+        "note": "All `changes[]` apply TOGETHER or not at all — declared because the resume vocabulary (`applied_saved` / `applied_conflict` / `applied_error` / `dismissed`) has no per-change arm, so a partial result is not merely unwanted, it is unrepresentable."
+      },
+      "repeat_semantics": {
+        "kind": "propose_write",
+        "cost_removable": true,
+        "signal_retained": "🔴 The measured shape is a LOOP on the same rejected arguments — 4 calls / 1 distinct args in a single turn appears in the corpus. The repeat is short-circuited before the wire and counted; the count is what escalates."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false,
+        "_measured": "🔴 ALL 101 recorded failures carry `result: null` and an `error` that is CHAT-SERVICE'S OWN VALIDATION PROSE — the tool never ran. They are a runtime REFUSAL recorded as a tool failure, the same conflation as 5.5's suspensions, 5.4's owed arguments and 5.7's breakers. Typing the outcome is what separates them."
+      },
+      "output_contract": {
+        "shape": "SUSPENDS — the call returns no result; the turn resumes with an `outcome` of `applied_saved` | `applied_conflict` | `applied_error` | `dismissed`",
+        "emit_paths": [],
+        "_KNOWN_GAP": "🔴 NO SUCCESSFUL CALL EXISTS TO VERIFY AGAINST — 0 of 101. The shape above is read from the tool's own description and the resume contract, and is explicitly NOT marked `_verified_against`, because a shape checked against nothing is the lie that looks like a contract. It becomes verifiable the first time this tool succeeds.",
+        "closes_when": "one recorded `applied_saved` resume exists; the shape is then confirmed or corrected against it."
+      }
+    },
+    "book_chapter_create": {
+      "_why": "The essential set's WRITE role, and the healthiest member of it - 129 sessions at 99.5%. Admitted alongside the others so the set is uniform: a contract written only for the tools that fail would be a defect log rather than a declaration.",
+      "identifier_resolution": {
+        "book_id": "an opaque id, not a name. Resolvable from the ambient book on a book-bound surface."
+      },
+      "argument_supplier": {
+        "book_id": "context - the runtime supplies the ambient book",
+        "title": "model - the chapter's title",
+        "original_language": "model - ISO code of the prose being written; required, and the model is the only party that knows what language it just wrote in",
+        "sort_order": "model - where the chapter sits; omitted appends",
+        "body": "model - the prose itself"
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope"
+      },
+      "effect_and_undo": {
+        "effect": "creates one chapter and returns its id",
+        "undo": "no delete is exposed on this path; the chapter is archived through the book studio. Declared as a KNOWN ASYMMETRY rather than claimed reversible.",
+        "auto_commits": "tier A - this writes with no human confirm step, which is why the id it returns is the only receipt."
+      },
+      "repeat_semantics": {
+        "kind": "non_idempotent_create",
+        "cost_removable": false,
+        "signal_retained": "A repeat CREATES A SECOND CHAPTER, so it must never be short-circuited or served from a cache: suppressing the call would hide a duplicate the author then has to find. The breaker counts and escalates; it does not answer."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "not_found",
+          "permission_denied",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ chapter_id: string }",
+        "emit_paths": [
+          "chapter_id"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=192 successes; `chapter_id` is the sole key in all 192 - the one shape in this set that a single sample would have got right.",
+        "_live": "CONFIRMED on the deployed image 2026-08-10 by a real turn."
+      }
+    },
+    "book_chapter_save_draft": {
+      "_why": "THE WORST-PERFORMING ESSENTIAL TOOL AT 40.6% OVER 122 SESSIONS - and the measurement says most of that is not the tool. Of its recorded failures, 93 are OUR OWN BREAKER PROSE (5.7) and ~16 are missing arguments (5.4). The genuine, tool-specific defect is one argument: body.",
+      "identifier_resolution": {
+        "book_id": "an opaque id; the ambient book on a book-bound surface",
+        "chapter_id": "an opaque id, obtained from book_list_chapters or book_chapter_create's own return. Measured: 2 calls sent a non-UUID."
+      },
+      "argument_supplier": {
+        "book_id": "context - the runtime supplies the ambient book",
+        "chapter_id": "model - OBTAINED from a prior listing or create, never authored",
+        "base_version": "model - OPTIONAL and best omitted. The tool's own description says the backend uses the chapter's current version when it is absent, so passing it buys conflict control at the cost of a pre-read. Measured: 3 failures for a MISSING base_version, i.e. the model treating an optional argument as required.",
+        "body": "model - the prose. THE tool-specific defect lives here; see closed_vocabulary.",
+        "commit_message": "model"
+      },
+      "closed_vocabulary": {
+        "field": "body_format",
+        "values": [
+          "plain",
+          "markdown",
+          "json"
+        ],
+        "default": "plain",
+        "source": "declared in the tool's own inputSchema enum",
+        "_measured": "~25 recorded failures are body SHAPE, and they are the largest genuine class this tool has. body is declared type:string - prose - and the model sent a ProseMirror node array, a whole doc {type:doc}, a QUILL DELTA {ops:[...]}, an empty object, and bare prose wrapped in a list. Four different structures where a string is declared, which is a VOCABULARY failure rather than a typo: the model knows an editor format is involved and guesses which one. body_format:json is the single arm that accepts a structure, and nothing points at it from the failure."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope",
+        "requires_a_chapter": "A SECOND PRECONDITION THAT IS NOT A SCOPE, measured at 4 failures: 'this book has no chapters yet - create one first with book_chapter_create'. The book can be in scope and the tool still have no target."
+      },
+      "effect_and_undo": {
+        "effect": "saves a new DRAFT revision of one chapter and returns the new version",
+        "undo": "the previous draft survives as a revision (snapshot_revision_id in the result), so this is genuinely reversible - the one write in this set that is",
+        "auto_commits": "tier A"
+      },
+      "repeat_semantics": {
+        "kind": "non_idempotent_write",
+        "cost_removable": false,
+        "signal_retained": "Each save mints a new draft version, so a repeat is a real second write and must not be suppressed. The breaker counts it."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "not_found",
+          "permission_denied",
+          "conflict",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false,
+        "_conflict_is_real": "a stale base_version stops the write; that is a genuine conflict class and not an invalid argument."
+      },
+      "output_contract": {
+        "shape": "{ chapter_id: string, new_draft_version: int, snapshot_revision_id: string, word_count?: int, chapter_title?: string, chapter_number?: int }",
+        "emit_paths": [
+          "chapter_id",
+          "snapshot_revision_id"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=100 successes; the three core keys appear in all 100, the three optional ones in 2.",
+        "_live": "CONFIRMED on the deployed image 2026-08-10 by a real turn: all six keys present."
+      }
+    },
+    "plan_propose_spec": {
+      "_why": "The PLAN role the PO named explicitly - 142 sessions at 97.4%. It is also the only essential-set member that is both ASYNC and PAID, and neither fact was in any contract before.",
+      "identifier_resolution": {
+        "book_id": "an opaque id; the ambient book",
+        "model_ref": "an opaque id - a MODEL id, not a model NAME. Supplied by the runtime from the session's planner pin, never by the model."
+      },
+      "argument_supplier": {
+        "book_id": "context - the runtime supplies the ambient book",
+        "source_markdown": "model - the document to turn into a spec; the actual CONTENT and genuinely the model's",
+        "mode": "model - but it has a default; see closed_vocabulary",
+        "model_ref": "context - THE RUNTIME OWNS THIS AND OVERRIDES THE MODEL. The session's planner pin wins, and a model-supplied ref is stripped when there is no pin. Declared because a value the model may send and never controls is exactly the case 5.4 was built for.",
+        "ground_on_existing": "model"
+      },
+      "closed_vocabulary": {
+        "field": "mode",
+        "values": [
+          "rules",
+          "llm"
+        ],
+        "default": "llm",
+        "source": "declared in the tool's own inputSchema enum",
+        "note": "rules is a heading matcher that only fits documents already written in its vocabulary; llm reads the document. The default is the general arm, so an omitted mode is the safe one."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope"
+      },
+      "effect_and_undo": {
+        "effect": "STARTS AN ASYNC JOB and returns a run in status 'pending' - the spec does not exist when this returns. _meta.async:true says so and nothing consumed it.",
+        "undo": "the run is cancellable through the jobs surface; the artifacts it produces are drafts until adopted",
+        "paid": "_meta.paid:true - CALLING THIS SPENDS REAL MONEY. The only essential-set member for which a retry has a price, which is what makes its repeat semantics load-bearing rather than tidy."
+      },
+      "repeat_semantics": {
+        "kind": "non_idempotent_job",
+        "cost_removable": false,
+        "signal_retained": "A repeat starts a SECOND PAID JOB. It must never be short-circuited (the first job's result is not ready, so a cache would answer with nothing) and never silently retried. Poll the returned run; do not re-propose."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "permission_denied",
+          "upstream_unavailable",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": true,
+        "_why_retryable": "the failure mode includes an LLM call, so an upstream timeout is genuinely transient - the same exception compose_prose carries, and the reason C-7's fail-closed terminal_permanent is declared away here deliberately."
+      },
+      "output_contract": {
+        "shape": "{ async: true, job_id: string, run_id: string, run: { id, status, mode, book_id, model_ref, arcs: [], artifacts: [{kind, artifact_id}], created_at } }",
+        "emit_paths": [
+          "run_id",
+          "job_id"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=152 successes; all four top-level keys appear in all 152.",
+        "_the_first_draft_named_the_WRONG_LEVEL": "I declared only `{run: {...}}` and an emit path of `run.id`. The result carries `run_id` and `job_id` AT THE TOP LEVEL, and `async: true` beside them - the async-honesty signal this contract's own effect_and_undo describes, which I then failed to declare where it actually lives. A shape verified from one sample can be right about a nested field and blind to the level above it.",
+        "_status_is_not_success": "`run.status: 'pending'` is what a SUCCESSFUL call returns, and `async: true` says so in the envelope. Reading this result as the finished spec is the trap `_meta.async` exists to prevent."
+      }
+    },
+    "glossary_book_ontology_read": {
+      "_why": "THE BROADEST REPEAT CASE IN THE CORPUS - 5.7 measured one repeat in each of 23 separate sessions, a different shape from the pathological loops (tool_list at 566 in one session) and the reason the honest denominator is sessions. 203 sessions, 389 calls. It is also the tool that ANSWERS glossary_propose_entities' largest failure.",
+      "identifier_resolution": {
+        "book_id": "an opaque id. _meta.ambient_book:true - the runtime fills it from the book in scope, which is why the parameter has no required entry at all."
+      },
+      "argument_supplier": {
+        "book_id": "context - _meta.ambient_book declares the runtime supplies it; the model should send nothing"
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope",
+        "note": "an EMPTY ontology is a valid answer, not an unmet precondition - a new book legitimately has no kinds yet."
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "THIS IS THE MEMBER'S FLAGSHIP CASE. A second identical read in one turn returns the same ontology, so the cost is removable - but the repeat is COUNTED and escalates, because 23 sessions repeating it once each is a signal about the prompt, not about any one session. Remove the cost, never the signal.",
+        "_measured": "1 repeat in each of 23 sessions (5.7)."
+      },
+      "error_contract": {
+        "classes": [
+          "not_found",
+          "permission_denied",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ ontology: { book_id, kinds: [], genres: [], attributes: [], kind_genres: [], note?: string } }",
+        "emit_paths": [
+          "ontology.book_id"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=319 successes; `ontology` is the sole top-level key in all 319.",
+        "_this_is_the_vocabulary": "ontology.kinds IS the closed vocabulary glossary_propose_entities fails against - 44+ recorded 'unknown kind' failures. The two contracts name each other so the repair path is declared rather than left to prose.",
+        "_live": "CONFIRMED on the deployed image 2026-08-10; the live result also carries a `note` explaining a compact view, hence the optional key."
+      }
+    },
+    "glossary_propose_entities": {
+      "_why": "62.3% BY THE ok FLAG, AND THE ok FLAG IS WRONG. Measured over 184 ok:true calls: 46 CREATED NOTHING - 34 entirely skipped as duplicates, and 12 where every item FAILED while the envelope said success. Genuine effect lands on 138 of 293 calls, 47.1%. A sixth instance of the ok:bool conflation, and the first where ok:TRUE is the one hiding a null effect.",
+      "identifier_resolution": {
+        "book_id": "an opaque id; the ambient book on a book-bound surface"
+      },
+      "argument_supplier": {
+        "book_id": "context - the runtime supplies the ambient book",
+        "items": "model - the entities to propose. Each item's kind is NOT free text; see preconditions and the ontology tool."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope",
+        "requires_the_ontology": "THE PRECONDITION THIS TOOL ACTUALLY FAILS ON, and it is not a scope: every kind must already exist in THIS BOOK's ontology. Measured: 44+ failures reading 'unknown kind: character', 'unknown kind: place' - ordinary words that are simply not kinds in that book. The tool's own item description already says 'see glossary_book_ontology_read', and the 44 are what that instruction's compliance measures."
+      },
+      "partial_outcome": {
+        "atomic": false,
+        "per_item": "each item returns {name, status, error} and the batch returns summary {created, skipped, failed}",
+        "_measured": "46 of 184 ok:true CALLS CREATED ZERO ENTITIES - 34 all-skipped (the entity already existed: a legitimate no-op) and 12 where every item failed and the call still reported success. C-14 has the words for both and they were never written: an all-skipped batch is `empty`, an all-failed batch is `failed`, and only a mixed one is `partial`.",
+        "the_flag_is_not_the_effect": "A caller must read summary.created, never ok. This member exists so that is a declaration rather than folklore.",
+        "_why_this_member_was_invisible": "partial_outcome's trigger is_batch compared type == 'array' and this tool declares type: ['null','array'], so the member did not apply to the tool its own subject lives in. Fixed 2026-08-10 - the trigger selected 3 tools where 16 qualify."
+      },
+      "effect_and_undo": {
+        "effect": "creates 0..n glossary entities in one call; the count is in summary.created and is NOT implied by the ok flag",
+        "undo": "glossary_entity_delete / glossary_entity_restore per entity; there is no batch reversal, so a 30-item call is 30 undos",
+        "auto_commits": "tier A"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_by_name",
+        "cost_removable": false,
+        "signal_retained": "A repeat is SAFE here, and that is exactly why it must not be silenced: the duplicate is skipped rather than created (34 measured all-skipped calls), so the call looks successful while doing nothing. Suppressing the repeat would remove the only evidence that the model is re-proposing what already exists."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "permission_denied",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false,
+        "_note": "an 'unknown kind' is invalid_argument and is NOT retryable - retrying the same kind hits the same closed vocabulary. The repair is to read the ontology, or propose the kind first."
+      },
+      "output_contract": {
+        "shape": "{ results: [{name, status, error}], summary: {created, skipped, failed}, guidance?: string }",
+        "emit_paths": [
+          "summary.created"
+        ],
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=184 successes; `results` and `summary` in all 184, `guidance` in 5."
+      }
+    },
+    "plan_compile": {
+      "_why": "MEASURED LIVE 2026-08-12 (journey autonomous-drafting, book 019ff497): the model called this with run_id='run_12345_placeholder' and was refused 'run_id must be a UUID' — correct about the TYPE and silent about the thing that matters. run_id is a PLAN value emitted by plan_propose_spec; it is not the model's to invent, and until this row existed nothing could say so.",
+      "identifier_resolution": {
+        "run_id": "an opaque id emitted by plan_propose_spec; there is no name to resolve it from.",
+        "book_id": "an opaque id; the ambient book."
+      },
+      "argument_supplier": {
+        "run_id": "plan — emitted by a prior plan_propose_spec step; the model has no way to know it",
+        "book_id": "context — the runtime supplies the ambient book",
+        "arc_id": "model — which arc to compile is genuinely the caller's choice"
+      }
+    },
+    "plan_bootstrap_apply": {
+      "_why": "The same shape one step earlier in the autonomous-drafting rail: the workflow's own inputs_map binds proposal_id to preview-chapters.proposal_id, which IS the definition of a plan-supplied argument.",
+      "identifier_resolution": {
+        "proposal_id": "an opaque id emitted by plan_bootstrap_propose."
+      },
+      "argument_supplier": {
+        "proposal_id": "plan — emitted by the preceding plan_bootstrap_propose step",
+        "book_id": "context — the runtime supplies the ambient book"
+      }
+    }
+  },
+  "argument_emitters": {
+    "_why": "D-FJ-12 — WHICH TOOL EMITS A PLAN-SUPPLIED ID, as DATA. The emitter was already written in identifier_resolution's prose ('an opaque id emitted by plan_propose_spec') and the refusal threw it away, so a model told 'not yours to invent' had nowhere to go and retried the same tool twice. Declared structurally rather than parsed out of that explanation, because deciding behaviour from prose is exactly what declared_supplier refuses to do.",
+    "plan_compile": {
+      "run_id": "plan_propose_spec"
+    },
+    "plan_bootstrap_apply": {
+      "proposal_id": "plan_bootstrap_propose"
+    },
+    "book_read": {
+      "chapter_id": "book_list"
+    },
+    "glossary_create_evidence": {
+      "attr_value_id": "glossary_get_entity",
+      "entity_id": "glossary_search"
+    },
+    "composition_arc_apply": {
+      "arc_template_id": "composition_arc_template_list"
+    },
+    "_added_2026_08_23": "TWO DECLARATIONS ADDED, EACH A VERIFIED FACT ABOUT THE CODE rather than a routing preference. R1 answerability was made transitive over this map the same day, so a missing entry here is now the difference between a tool the model can complete and one it cannot.\n\n  glossary_create_evidence.attr_value_id <- glossary_get_entity\n      Verified in services/glossary-service/internal/api/entity_handler.go, which returns `AttrValueID string \\`json:\"attr_value_id\"\\`` (lines 59 and 77). It is the ONLY tool in the 315-tool catalogue that returns one, and it was advertised in 0 of 130 surface snapshots while create_evidence was advertised 5/5 and failed 4/4 on exactly this argument. get_entity requires only entity_id, which the model demonstrably already holds - it passed a correct one.\n\n  composition_arc_apply.arc_template_id <- composition_arc_template_list\n      Verified by calling it: it returns arc_templates: [{id: ...}]. It requires NO arguments, so forcing it onto the wire costs the model nothing to use. Measured 2026-08-23: arc_apply was on the wire and the list was on no pass, and the model passed a NAME where arc_id was required and then guessed composition_arc_suggest.\n\nBoth were read from the code or the live tool before being written down. A declaration that is merely plausible would put the wrong tool on every matching turn's wire, which is worse than the gap it fills.",
+    "composition_authoring_run_manage": {
+      "plan_run_id": "plan_propose_spec"
+    },
+    "_added_2026_08_23_second": "composition_authoring_run_manage.plan_run_id <- plan_propose_spec. Verified: plan_propose_spec returns {'run_id': ...} and the authoring run stores it as plan_run_id (server.py line ~3014 emits \"plan_run_id\": str(run.plan_run_id)). It is the same id plan_compile takes as run_id.\n\n🔴 THIS ONE ALONE CANNOT UNBLOCK THE TOOL, and that is worth saying beside the entry. op=create also requires budget_usd and pause_after_each_unit, and those have NO supplier by nature - they are the author's decisions. The declaration removes one of three obstacles; the other two are answered by the argument DESCRIPTIONS added the same day, which tell the model to ask rather than guess.",
+    "composition_entity_override_edit": {
+      "project_id": "composition_list_derivatives"
+    },
+    "composition_build_cast_and_graph": {
+      "model_ref": "settings_list_models"
+    },
+    "_added_2026_08_23_third": "composition_build_cast_and_graph.model_ref <- settings_list_models. Verified by calling it: each row carries user_model_id, and that IS a model_ref (the harness's own model_ref 019ebb72-27a2-72f3-a42d-d2d0e0ded179 resolves in user_models.user_model_id).\n\nDQ-T35 is the same argument seen from the other side: 16 of 19 model_ref properties across the catalogue are OPTIONAL with a server-resolved default, and only three are required - composition_generate, composition_library_translate and kg_build_wiki. This declaration makes the required one REACHABLE; it does not settle whether it should have been required at all, which is the owner's call.",
+    "settings_provider_inventory": {
+      "provider_credential_id": "settings_list_models"
+    },
+    "_added_2026_08_23_fourth": "settings_provider_inventory.provider_credential_id <- settings_list_models. Verified by calling it: every row carries provider_credential_id (e.g. 019dc738-53b1-75ea-b5d5-6aca0eed3cd8).\n\nMeasured 2026-08-23: the model already called settings_list_models three or four times per run and therefore HELD this id, so the declaration is not what was missing - it makes the chain explicit and puts the supplier on the wire from the first pass rather than by luck.",
+    "composition_generate": {
+      "model_ref": "settings_list_models"
+    },
+    "_added_2026_08_24": "composition_generate.model_ref <- settings_list_models. 🔴 THE NOTE ABOVE ALREADY NAMED THIS TOOL AND THE ENTRY WAS NEVER WRITTEN. _added_2026_08_23_third says 'only three are required — composition_generate, composition_library_translate and kg_build_wiki. This declaration makes the required one REACHABLE' — and the declaration it added was composition_build_cast_and_graph's. composition_generate, the tool the sentence names first, had NO entry at all (declared_emitter returned None for model_ref and for every other required argument of it, checked against the deployed registry).\n\nVERIFIED BY CALLING IT, not read from the note above: settings_list_models returns rows carrying user_model_id, and the first row's user_model_id is 019ebb72-27a2-72f3-a42d-d2d0e0ded179 — the exact model_ref the scenarios pass. With model_source='user_model' that field IS the model_ref; the tool's own description has said so in prose since 2026-08-14 ('list the caller's models with settings_list_models and pass the model_ref from there') while declaring it nowhere.\n\nWHY IT IS THE BLOCKER AND NOT A VOCABULARY TIE. The control arm composition-generate-named-chapter calls this tool 5 of 5 and suspends on its card 5 of 5, and the model's own answer names what stops it: 'I don't have a specific model reference (the unique ID of an AI model)'. The tool is chosen; it cannot be completed. R1 answerability is transitive over THIS map, so the entry is what puts the supplier on the wire — the reason a missing row here is a silent dead end rather than a preference.\n\nThis does NOT settle DQ-T35 (whether model_ref should have been required at all) and does not touch DQ-T41 (ranking). It makes a required argument obtainable, which is the difference between a tool that refuses and a tool that cannot be used.",
+    "composition_motif_adopt": {
+      "motif_id": "composition_motif_search"
+    },
+    "_added_2026_08_24_second": "composition_motif_adopt.motif_id <- composition_motif_search. VERIFIED BY CALLING IT, not read from a description: composition_motif_search{scope:'system'} returns motifs[] whose rows carry `id` (e.g. e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f, 'A Grudge Older Than the Holder'), and composition_motif_adopt declares required=['motif_id'] with NO emitter — declared_emitter returned None against the deployed registry.\n\nThe model ALREADY calls the supplier unprompted: on turn A of the p4-confirm scenario it ran composition_motif_search on every run and listed the built-in motifs. So this declaration is not teaching it a new step; it is making the id it just read usable by the tool that needs it, and arming the supplier when the tool refuses for want of one.\n\nSame shape as the model_ref declaration two cycles earlier, where the tool was chosen, refused for a missing required id, and could not recover because nothing named where the id comes from.",
+    "translation_job_control": {
+      "job_id": "jobs_list"
+    },
+    "_added_2026_08_24_third": "translation_job_control.job_id <- jobs_list. VERIFIED BY CALLING IT: jobs_list takes no required argument and returns items[] carrying job_id for service='translation', each with control_caps ['cancel'].\n\n🔴 AND I DO NOT EXPECT THIS TO UNBLOCK THE TOOL — the prediction is recorded before the run that tests it. The declaration works where a tool is CHOSEN and then refused for want of an id it cannot obtain (composition_generate, composition_motif_adopt). This tool is not being chosen: measured against the deployed matcher, 'Cancel that job.' makes BOTH translation_job_control and jobs_cancel answerable, and the model takes the generic one. Arming jobs_list helps a model that has already picked the tool; it says nothing about which of two cancel tools owns the request. That is DQ-T41.",
+    "jobs_cancel": {
+      "job_id": "jobs_list",
+      "service": "jobs_list"
+    },
+    "jobs_get": {
+      "job_id": "jobs_list",
+      "service": "jobs_list"
+    },
+    "jobs_pause": {
+      "job_id": "jobs_list",
+      "service": "jobs_list"
+    },
+    "_added_2026_08_24_fourth": "jobs_cancel / jobs_get / jobs_pause — job_id AND service <- jobs_list. VERIFIED BY CALLING IT: jobs_list takes no required argument and returns items[] carrying service, job_id, status and control_caps, which is both of the fields each of these three requires.\n\nWHY IT MATTERS, measured: asked to cancel a translation job that genuinely existed, the model chose jobs_cancel and then told the author 'I cannot cancel the job because I don't have a valid job ID to target', on a run where a pending job was seeded and asserted. The whole family required two ids and declared a supplier for neither. The domain tool (translation_job_control) got its declaration in cycle 17; its generic siblings did not, and the generic ones are what the model picks.\n\nDeclared for all three rather than only the tool that was measured: the gap is identical in jobs_get and jobs_pause and fixing one would leave the same hole beside it.",
+    "kg_build": {
+      "llm_model": "settings_list_models",
+      "model_ref": "settings_list_models",
+      "project_id": "kg_project_list"
+    },
+    "kg_project_set_embedding_model": {
+      "embedding_model": "settings_list_models"
+    },
+    "_added_2026_08_24_fifth": "kg_build.llm_model, kg_build.model_ref and kg_project_set_embedding_model.embedding_model <- settings_list_models. All three are model refs by their own descriptions ('the extraction LLM model ref', 'the wiki-generation LLM model ref', 'provider-registry user_model UUID of an embedding model you own') and all three declared NO supplier.\n\nVERIFIED BY CALLING THE SUPPLIER: settings_list_models returns rows carrying user_model_id plus capability_flags, so both the chat case and the EMBEDDING case are answerable from the one list (bge-m3 carries embedding: true). Same declaration that unblocked composition_generate, composition_motif_adopt and composition_build_cast_and_graph's own model_ref.\n\nMEASURED HARM it addresses: in c-gbuild3 the model wrote entities and graph nodes, then looped on these three preconditions until the turn hit its pass cap and ended SILENT — the author saw nothing while their book had changed.",
+    "_added_2026_08_24_sixth": "kg_build.project_id <- kg_project_list. Added AFTER the previous cycle's declarations were measured and refuted: I had declared the model-ref arguments, and the run showed the chain dies earlier, on 'kg_build works inside a knowledge PROJECT and there is none in scope' (4 of 7 failures, and first every time).\n\nkg_build declares scope='project', is not ambient_project, and takes an optional project_id. kg_project_list needs no arguments and returns the caller's projects. Measured: the model called kg_project_list, received a project, then called kg_build WITHOUT project_id — it had the id and nothing said that argument is where it goes.",
+    "composition_arc_template_archive": {
+      "arc_id": "composition_arc_template_list"
+    },
+    "composition_arc_template_get": {
+      "arc_id": "composition_arc_template_list"
+    },
+    "composition_arc_template_restore": {
+      "arc_id": "composition_arc_template_list"
+    },
+    "composition_arc_template_update": {
+      "arc_id": "composition_arc_template_list"
+    },
+    "composition_find_references": {
+      "entity_id": "glossary_search"
+    },
+    "composition_motif_archive": {
+      "motif_id": "composition_motif_search"
+    },
+    "composition_motif_bind": {
+      "motif_id": "composition_motif_search"
+    },
+    "composition_motif_get": {
+      "motif_id": "composition_motif_search"
+    },
+    "composition_motif_link_list": {
+      "motif_id": "composition_motif_search"
+    },
+    "composition_motif_patch": {
+      "motif_id": "composition_motif_search"
+    },
+    "composition_motif_restore": {
+      "motif_id": "composition_motif_search"
+    },
+    "glossary_create_chapter_link": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_deep_research": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_entity_delete": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_entity_get_genres": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_entity_rename": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_entity_restore": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_entity_set_attributes": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_entity_set_genres": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_get_entity": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_get_entity_evidence": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_list_chapter_links": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_list_entity_revisions": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_propose_reassign_kind": {
+      "entity_id": "glossary_search"
+    },
+    "glossary_propose_restore_revision": {
+      "entity_id": "glossary_search"
+    },
+    "kg_world_query": {
+      "world_id": "world_list"
+    },
+    "settings_model_delete": {
+      "user_model_id": "settings_list_models"
+    },
+    "settings_model_set_active": {
+      "user_model_id": "settings_list_models"
+    },
+    "settings_model_set_favorite": {
+      "user_model_id": "settings_list_models"
+    },
+    "settings_model_update": {
+      "user_model_id": "settings_list_models"
+    },
+    "translation_job_status": {
+      "job_id": "jobs_list"
+    },
+    "world_delete": {
+      "world_id": "world_list"
+    },
+    "world_get": {
+      "world_id": "world_list"
+    },
+    "world_map_add_marker": {
+      "map_id": "world_map_list"
+    },
+    "world_map_add_region": {
+      "map_id": "world_map_list"
+    },
+    "world_map_create": {
+      "world_id": "world_list"
+    },
+    "world_map_delete": {
+      "map_id": "world_map_list"
+    },
+    "world_map_get": {
+      "map_id": "world_map_list"
+    },
+    "world_map_list": {
+      "world_id": "world_list"
+    },
+    "world_map_update": {
+      "map_id": "world_map_list"
+    },
+    "world_update": {
+      "world_id": "world_list"
+    },
+    "_added_2026_08_25": "_added_2026_08_25 — SEVEN ARGUMENT NAMES, 42 DECLARATIONS, EACH VERIFIED BY CALLING THE SUPPLIER OR BY READING THE STRUCT THAT SERIALISES THE FIELD.\n\nMEASURED FIRST: of the required, non-ambient, non-context opaque ids in the 315-tool catalogue, 96% declared NO emitter. The mechanism was built on 2026-08-23 and wired into R1 the same day, then left with eleven entries — so for almost every id the refusal still said nothing and R1 still forced nothing. The gaps carry only a few dozen DISTINCT argument names, which is what makes this tractable: one verified decision retires a whole family.\n\nVERIFIED BY CALLING IT (result read in the session, never from a description):\n  settings_list_models           -> models[].user_model_id\n  composition_arc_template_list  -> arc_templates[].id\n  composition_motif_search       -> motifs[].id\n  world_list                     -> worlds[].world_id\n  jobs_list                      -> items[].job_id\nVERIFIED FROM THE STRUCT, because every throwaway fixture returned an empty list and an empty list cannot show a row's shape (the standard the attr_value_id entry already used):\n  glossary_search  -> entities[] of glossaryEntityForContext, first field `EntityID string \\`json:\"entity_id\"\\`` (glossary-service select_for_context_handler.go:105)\n  world_map_list   -> Maps []worldMapDetail, whose MapID is `json:\"map_id\"` (book-service/internal/api/mcp_maps.go:77 and :395)\n\n🔴 A SHARED ARGUMENT NAME IS NOT A SHARED ID, so every rule carries a predicate over the tool name rather than being applied catalogue-wide. `project_id` is a composition WORK in composition_* and a knowledge PROJECT in kg_*; declaring one owner for both would put a supplier that cannot supply on the wire for every matching turn — a model walked to a dead supplier has been actively misled, which is worse than the gap.\n\n🔴 book_id / chapter_id / project_id ARE DELIBERATELY NOT DECLARED, AND A FIRST PASS GOT THIS WRONG. It added 143 such declarations and four chat-service tests went red, each correctly:\n  * book_read's refusal stopped saying \"NOT yours to invent: the runtime supplies it from the current context\" and started saying \"Call book_list first\" — reversing a deliberate position. The contract itself classifies book_read.book_id as `context`, on the measurement that it is 78 calls over 46 sessions and the runtime simply has none outside a book studio.\n  * composition_list_outline.project_id had no emitter ON PURPOSE. stream_service records that dropping a cross-wired project_id there made the failure WORSE — the run looped on the repeat-breaker — and that drop is GATED ON AN EMITTER EXISTING. Declaring one re-armed it.\nThese three are the exact ids `_fill_context_args` backfills on every call. They are owed by the RUNTIME, so no tool emits them, and the declarations were withdrawn. The three pre-existing context-id entries (book_read.chapter_id, composition_entity_override_edit.project_id, kg_build.project_id) are untouched.\n\n🔴 LEFT UNDECLARED because a plausible guess is what this registry's bar forbids: fact_id (memory_search returned no hits, so a hit row's shape is unproven), node_id (composition_arc_list returned an empty nodes[]), run_id on the 16 PlanForge tools (nothing LISTS plan runs — composition_authoring_run_list is a different noun — so this is a missing READER, not a missing declaration), kg_propose_edge / kg_entity_edge_timeline entity_id (KG-graph ids; whether they are the ids glossary_search returns is unverified), and plan_compile.arc_id (its own description says \"the arc to compile (e.g. 'arc_2')\" — a SPEC arc, not an arc_template).",
+    "composition_motif_link_edit": {
+      "from_motif_id": "composition_motif_search",
+      "to_motif_id": "composition_motif_search"
+    },
+    "composition_motif_bind_edit": {
+      "motif_id": "composition_motif_search"
+    },
+    "_added_2026_08_25_second": "_added_2026_08_25_second — composition_motif_link_edit.from_motif_id / .to_motif_id and composition_motif_bind_edit.motif_id <- composition_motif_search.\n\nSAME VERIFIED FACT as composition_motif_adopt.motif_id, which has named this emitter since 2026-08-24: composition_motif_search returns motifs[] whose rows carry `id`, confirmed by calling it in this session. from_motif_id and to_motif_id are the SAME kind of id under two role names — the endpoints of one edge — which is why the earlier rule keyed on the exact name `motif_id` did not reach them.\n\nWHY IT MATTERS HERE SPECIFICALLY: these three tools are flat-superset op-dispatch, so their per-op requirement is invisible to every repair path above the dispatch and the SERVER refuses with \"op=create requires from_motif_id, to_motif_id, and kind\" — a sentence naming no tool, which armed nothing. With these entries the runtime can answer it, and naming composition_motif_search in the appended sentence is also what ARMS it.\n\n`kind` is deliberately NOT declared: it is an enum the model picks (composed_of | precedes | variant_of), not a value any tool returns, so it falls to the ASK-or-choose arm rather than being given a supplier that cannot supply it.",
+    "composition_reference_update": {
+      "reference_id": "composition_reference_list"
+    },
+    "_added_2026_08_25_third": "_added_2026_08_25_third — composition_reference_update.reference_id <- composition_reference_list, a tool that DID NOT EXIST until this entry was written.\n\nEvery other row in this map points at a supplier that was already there and merely undeclared. This one is the class's strongest form: reference_id was required by exactly one tool and mentioned by NO tool in the 315-tool catalogue, so no declaration could have fixed it — the reader had to be BUILT. The data was never missing; GET /works/{project_id}/references has served the same shelf to the FE all along.\n\nVERIFIED BY CALLING THE NEW TOOL: composition_reference_list{project_id} returns references[] whose rows carry `reference_id` verbatim (the projection renames the row's `id` to the name the consumer needs, so there is no naming mismatch to resolve). Bodies are not projected.",
+    "composition_authoring_run_accept_unit": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_close": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_gate": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_get": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_pause": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_reject_unit": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_resume": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_revert_all": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_review": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_start": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "plan_apply_revision": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_bootstrap_propose": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_find_missing_material": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_get_missing_material": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_handoff_autofix": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_interpret_feedback": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_keep_material": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_link": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_pass_status": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_review_checkpoint": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_run_pass": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_self_check": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_validate": {
+      "run_id": "composition_package_tree"
+    },
+    "composition_authoring_run_create": {
+      "plan_run_id": "composition_package_tree"
+    },
+    "_added_2026_08_26": "THE run_id FAMILY — 24 declarations, the single largest argument class on the platform and 29% of the whole undeclared-emitter baseline. This is not new capability: both emitters were already shipped tools, and the composition server's OWN refusal already told the model to read a plan run from composition_package_tree's runs.recent. The map is what the runtime reads, so an undeclared supplier is an ABSENT one twice over — the refusal cannot name it and R1 cannot put it on the wire.\n\nWHAT IT WAS SAYING INSTEAD. With plan_run_id undeclared, the dispatch-refusal ask-path built for D-A-PER-OP-REFUSAL-NAMES-ARGUMENTS-AND-NO-MOVE emitted 'No tool supplies plan_run_id ... ASK THE AUTHOR for it'. That is FALSE, and it sends the model to ask a human for a UUID no human has — worse than the 'do NOT guess' it replaced, because it manufactures an impossible request out of a value the platform could have fetched.\n\nVERIFIED BY CALLING THEM, 2026-08-26, not read off a description:\n  * composition_authoring_run_list returns run_id AND plan_run_id verbatim (10 items on a real book), and composition_authoring_run_get ACCEPTS the run_id it returned.\n  * composition_package_tree returns runs.recent[].run_id, and plan_pass_status and plan_validate both ACCEPT it (throwaway book, seeded plan run, torn down). The same value is what an authoring run carries as its plan_run_id — checked across both tools on one book.\n  * The package_tree field was spelled `id` until this change and is now `run_id`, so the consumer has no rename to perform on a value it must reproduce exactly.\n\nplan_compile KEEPS plan_propose_spec. Compile follows propose in the same breath and that chain is proven live; package_tree is the answer for a run that ALREADY exists, which is the case this family had no answer for.",
+    "memory_forget": {
+      "fact_id": "memory_search"
+    },
+    "_added_2026_08_26_second": "memory_forget.fact_id <- memory_search, and the emitter DID NOT EXIST as a supplier until the same day. memory_remember returns a fact_id, but that id is gone by the next turn, and memory_search — the only route a later turn has — returned {snippet, source_type, score, text} and NO id at either detail level. So the emitter map was empty here for the honest reason: nothing emitted one.\n\nTwo changes made the claim true, in this order: memory_search gained a FACT leg (it read chapters and :Passage nodes, never a :Fact), and its hits now project `fact_id`, spelled the way memory_forget spells it. Verified by calling it — a search hit carries the same id a direct memory_remember returned, and memory_forget accepts it.",
+    "kg_propose_edge": {
+      "source_entity_id": "kg_add_nodes",
+      "target_entity_id": "kg_add_nodes"
+    },
+    "_added_2026_08_30": "composition_arc_get.node_id <- composition_arc_list. VERIFIED THREE WAYS before writing it down, because a declaration that is merely plausible puts a dead supplier on every matching turn's wire:\n  * the schema — composition_arc_get declares node_id as 'The arc/saga (structure_node) id. (a UUID)';\n  * a real payload — composition_arc_list returns {\"nodes\": [{\"id\": \"01a0214c-47c6-...\", \"kind\": \"arc\", \"title\": \"Arc I — The Hollow Keep\"}]}, i.e. structure_node rows carrying id beside title;\n  * the emitter is CALLABLE — composition_arc_list(book_id=None, include_archived=False) has NO required argument, so arming it gives the model a call it can always make. That is the property the 2026-08-25 note said was missing when it left node_id undeclared: 'node_id (composition_arc_list returned an empty nodes[])'. An empty list on a throwaway fixture is not evidence of the row's shape; a populated one from the live store is.\n\nMEASURED HARM: composition_arc_get is 93 calls, 0 ok, 0 carded, every failure 'missing required argument(s): [node_id]'. On those 93 turns composition_package_tree was advertised 93 of 93 and returns arcs as PLAIN STRINGS ('arc \"The Shifting Tide\" · outline') with no id of any kind, while composition_arc_list was advertised 0 of 93. Its own description already points at arc_list in prose — and prose does not ARM.\n\n🔴 THE CRITERION THIS ADDS, learned from the six tools that ALREADY declare an emitter and still never succeed: a declaration only closes the chain if the EMITTER ITSELF is callable from ambient context. world_map_delete declares map_id <- world_map_list, and world_map_list needs a world_id that nothing on its surface produces — so the chain is broken one link further up and the declaration buys nothing. arc_list needs nothing.",
+    "composition_arc_get": {
+      "node_id": "composition_arc_list"
+    },
+    "_added_2026_09_02": "composition_arc_get.node_id stays the BARE TOOL NAME, and the {tool, field} form it briefly carried was reverted. The mapping form is supported end to end (emitter_tool_and_field, declared_emitter reads both shapes, decide_absent takes the field) because a supplier often returns the id under another key -- composition_arc_list returns nodes[].id, not node_id, VERIFIED against a recorded result.\n\nWHY NO LIVE ENTRY USES IT YET. Upgrading this pair breaks four deliberate guards that read the raw JSON expecting a string (test_arc_get_names_the_tool_that_holds_its_node_id, test_a_declared_emitter_is_nameable_without_a_contract_row). Their invariant -- the emitter names a REAL CATALOGUE TOOL, not prose -- still holds through declared_emitter, so they are re-aimable rather than wrong. But the failure they guard has collapsed: missing-id failures ran 3.96-7.61% of tool calls on 2026-08-25..08-29 and are 0.18% / 0.16% on 08-31 / 09-01 at comparable traffic (544 and 620 calls). Churning four guards for a pair now failing about once a day is not a trade worth making; the mechanism waits until a measured pair needs it.",
+    "glossary_propose_entity_edit": {
+      "entity_id": "glossary_search"
+    }
+  }
+}

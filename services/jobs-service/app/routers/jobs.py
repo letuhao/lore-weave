@@ -39,7 +39,8 @@ def _retry_blocked(job: dict) -> bool:
 def _with_caps(job: dict) -> dict:
     job["control_caps"] = [
         c.value for c in derive_control_caps(
-            job["status"], job["kind"], retryable=_retryable_flag(job))
+            job["status"], job["kind"], retryable=_retryable_flag(job),
+            detail_status=job.get("detail_status"))
     ]
     if _retry_blocked(job) and "retry" in job["control_caps"]:
         job["control_caps"].remove("retry")
@@ -196,8 +197,17 @@ async def control_job(
     job = await store.get_job(db, user_id, service, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
+    # 🔴 THIS IS THE GATE, NOT THE DISPLAY, and it nearly missed the new argument because its
+    # indentation differed from the other four call sites. The list surfaces offer caps; this
+    # one DECIDES whether an action runs, so a row whose owner lost the job must be refused
+    # here even if some caller believed otherwise.
     caps = [c.value for c in derive_control_caps(
-        job["status"], job["kind"], retryable=_retryable_flag(job))]
+        job["status"], job["kind"], retryable=_retryable_flag(job),
+        detail_status=job.get("detail_status"))]
+    # Both guards are needed and they answer different questions: `detail_status` suppresses
+    # every cap on a row whose owner no longer has it, while `_retry_blocked` withdraws just
+    # `retry` on a row the owner still has but cannot re-run. Keeping one would silently drop
+    # the other's case.
     if _retry_blocked(job) and "retry" in caps:
         caps.remove("retry")
     if action not in caps:

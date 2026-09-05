@@ -925,6 +925,18 @@ def main() -> int:
         print(f"  adaptive signal: {carrying}/{len(signal_sites)} budget calls carry one that "
               f"their KIND reads · {len(inert_sites)} declared signal_inert "
               f"(nothing can size them) · {len(no_signal)} held at baseline.")
+
+    # ── the RATCHET prints on EVERY run, pass or fail ────────────────────────────────────
+    # `gate-number-visibility-gate` reported `NO_SIGNAL_BASELINE = 14 never reaches the
+    # output`, and the first fix put it on the PASS line — which never executes, because
+    # this gate is currently red for an unrelated reason. That is the defect one level up:
+    # **a ratchet visible only on success is invisible exactly while something is wrong**,
+    # which is when drift is most likely and least noticed.
+    #
+    # The number IS the mechanism (that gate's own words): printed every run, a slow
+    # regression shows up as a diff commit by commit instead of turning up in an audit.
+    print(f"  NO_SIGNAL_BASELINE {len(no_signal)}/{NO_SIGNAL_BASELINE} — a SHRINK-ONLY "
+          f"ratchet; lower it in the commit that lowers the count (rule 5).")
     return rc
 
 

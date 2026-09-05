@@ -15,7 +15,22 @@ x-build-labels: &build-labels
 services:
   postgres:
     restart: unless-stopped
-    image: postgres:18-alpine
+    # Postgres 18 + pgvector, built from THIS image's own pg_config.
+    #
+    # Was `postgres:18-alpine`, which has no pgvector — so `0008_pgvector_setup`
+    # could not apply, and once the provisioner began applying the whole manifest
+    # it died at migration 8 of 15 on every new reality (`1b14-05`).
+    #
+    # NOT `pgvector/pgvector:pg18`, which is Debian/glibc: this data directory is
+    # a persistent volume holding 139 databases created by a MUSL build, and
+    # Postgres resolves text collation through libc. Swapping the libc under an
+    # existing PGDATA changes the sort order behind every text index without
+    # changing the data — indexes stop matching and raise nothing. See
+    # `postgres-pgvector.Dockerfile` for why the Alpine package is not it either.
+    build:
+      context: .
+      dockerfile: postgres-pgvector.Dockerfile
+    image: loreweave/postgres-pgvector:18
     # The local stack has 22 per-service databases and its steady-state pools
     # already consume about 90 client slots. Keep enough headroom for a cold
     # Compose start rather than falling back to Postgres's 100-slot default.
@@ -30,6 +45,24 @@ services:
       PGDATA: /var/lib/postgresql/18/docker
     ports:
       - "5555:5432"
+    # SHARD IDENTITY. `reality_registry.db_host` records which Postgres server a
+    # reality's database lives on, and its CHECK requires
+    # `^pg-shard-[0-9]+\.(internal|prod|staging)$`. The dev host is `postgres`,
+    # so the registry rejected the only environment that exists.
+    #
+    # An ALIAS rather than a widened constraint: `pg-shard-0.internal` genuinely
+    # RESOLVES inside the compose network, so `db_host` stays a real connectable
+    # host and the constraint stays honest. Dev then has the same shape as prod
+    # with one shard instead of many.
+    #
+    # Sharding is RESERVED, not built (PO 2026-08-08): one reality lives in one
+    # database on one server today. `ShardId`, `shard_utilization` and
+    # `capacity_planner::pick_shard` already model the multi-shard future; this
+    # is simply its first and only member.
+    networks:
+      default:
+        aliases:
+          - pg-shard-0.internal
     volumes:
       - loreweave_pg:/var/lib/postgresql
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
@@ -92,6 +125,167 @@ services:
     ports:
       - "1148:1025"
       - "8148:8025"
+
+  # ── META BRIDGE ──────────────────────────────────────────────────────────
+  # The Rust->Go meta-write bridge. `reality_registry` may only be written
+  # through Go MetaWrite so the `meta_write_audit` row lands in the SAME
+  # transaction (I8) -- world-service states it as a rule: "Rust cannot write
+  # reality_registry directly."
+  #
+  # Added 2026-08-08. It had no Dockerfile and appeared in no compose file, so
+  # the provisioner's FIRST step could never run -- which is why zero realities
+  # have ever existed in this stack.
+  # W5-CRON — something that actually runs the reality reaper.
+  #
+  # The row it closes reads "nothing schedules the scanner -- it is a binary
+  # nobody runs", and notes that a detector nobody invokes is the scaffold
+  # problem one level up. So this is a running container, not a schedule
+  # document.
+  #
+  # It RECORDS findings into orphan_scan_finding through the bridge; it never
+  # drops a database. Reclaiming a reality stays a double-approval admin
+  # command (R13 §12L.5).
+  orphan-scanner:
+    build:
+      context: ..
+      dockerfile: services/world-service/Dockerfile.orphan-scanner
+    image: loreweave/orphan-scanner:0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meta-bridge:
+        condition: service_healthy
+    environment:
+      ORPHAN_META_DSN: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      ORPHAN_SHARD_ADMIN_DSN: postgres://loreweave:loreweave_dev@postgres:5432/postgres?sslmode=disable
+      ORPHAN_SHARD_HOST: pg-shard-0.internal
+      ORPHAN_BRIDGE_URL: http://meta-bridge:8090
+      ORPHAN_BRIDGE_TOKEN: ${METAWORKER_BRIDGE_TOKEN:-loreweave_local_dev_bridge_token}
+      # Hourly in dev. R04 §12D.7 specifies a NIGHTLY cron in production; an
+      # hour here means a developer who breaks a provision sees it the same
+      # session instead of the next day.
+      ORPHAN_SCAN_INTERVAL_SECONDS: "3600"
+    restart: unless-stopped
+
+  # ── `G1` (2026-08-21) — the publisher: committed event → the wire.
+  #
+  # `pkg/redisemit` XADDs to `lw.events.<reality_id>`, which is exactly the
+  # stream `ChannelRoom.streamFor()` consumes. It had no Dockerfile and no
+  # compose entry, so the room subscribed to a stream with no writer and a
+  # browser rendered an empty roster with nothing anywhere reporting why.
+  # `Dockerfile.bridge` records the identical defect one service over.
+  #
+  # SHARD_DB_SSLMODE=disable is REQUIRED here and not a preference: the default
+  # is `require`, and the dev postgres image serves no TLS, so a publisher
+  # without this line connects to nothing and says only that it could not.
+  #
+  # PUBLISHER_SHARD_HOST_OVERRIDE exists because `reality_registry.db_host` is a
+  # LOGICAL shard name — a CHECK pins it to `pg-shard-N.internal` — so dialling
+  # the column verbatim resolves nothing. Same trap `E5` hit from the other
+  # side, where a real hostname in that column was refused by the constraint.
+  publisher:
+    build:
+      context: ..
+      dockerfile: services/publisher/Dockerfile
+      labels: *build-labels
+    environment:
+      PUBLISHER_ID: dev-publisher-0
+      SHARD_HOST: pg-shard-0.internal
+      # `host=HOST:PORT`, and the port is NOT optional even though the parser
+      # accepts it missing: `resolveHostPort` returns this value VERBATIM as the
+      # dial target and never consults SHARD_DB_PORT on the override path. So
+      # `…=postgres` parses cleanly and dials a host with no port. Written out
+      # after reading the consumer, not the parser.
+      PUBLISHER_SHARD_HOST_OVERRIDE: pg-shard-0.internal=postgres:5432
+      META_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      SHARD_DB_USER: loreweave
+      SHARD_DB_PASSWORD: loreweave_dev
+      SHARD_DB_PORT: "5432"
+      SHARD_DB_SSLMODE: disable
+      PUBLISHER_HTTP_ADDR: ":8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: on-failure:5
+    ports:
+      # 8091, not 8081. The first choice collided with a non-Docker listener on
+      # the dev box (`chaos-backend` on 0.0.0.0:8081), and the failure mode is
+      # worth the comment: Docker bound the mapping anyway, so `docker ps`
+      # showed `0.0.0.0:8081->8080` while host requests reached the OTHER
+      # process and came back 404. The container was healthy the whole time —
+      # `wget /healthz` inside it returns `ok` — so every signal pointed at the
+      # publisher being broken except the one that mattered.
+      - "8091:8080"
+    profiles:
+      - game
+      - full
+
+  # ── `F2` (2026-08-21) — world-service's HTTP surface.
+  #
+  # It was absent from this file entirely, which meant the one service that
+  # answers "which actor does this user drive" could not be reached by anything
+  # in the stack: `game-server` had nowhere to send the lookup, and both of the
+  # player-edge phase's live proofs started world-service from source. A
+  # control-plane route nothing in the stack can call is reachable only by
+  # whoever remembers the incantation.
+  #
+  # Same profiles as game-server, because that is its only caller here.
+  world-service:
+    build:
+      context: ..
+      dockerfile: services/world-service/Dockerfile
+      labels: *build-labels
+    environment:
+      WORLD_HTTP_BIND: "0.0.0.0:7120"
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      PROVISION_META_DSN: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      PROVISION_SHARD_ADMIN_DSN: postgres://loreweave:loreweave_dev@postgres:5432/postgres?sslmode=disable
+      PROVISION_BRIDGE_URL: http://meta-bridge:8090
+      PROVISION_BRIDGE_TOKEN: ${METAWORKER_BRIDGE_TOKEN:-loreweave_local_dev_bridge_token}
+      # Where the per-reality databases actually live. NOT `db_host` from
+      # `reality_registry` — that column is a LOGICAL shard name pinned by a
+      # CHECK to `pg-shard-N.internal`, and `open_reality_pool` builds its
+      # connection from this value instead. Measured during E5, by putting a
+      # real hostname in that column and watching the constraint refuse it.
+      PROVISION_SHARD_HOSTPORT: postgres:5432
+      PROVISION_PG_USER: loreweave
+      PROVISION_PG_PASSWORD: loreweave_dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meta-bridge:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7120/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: on-failure:5
+    ports:
+      - "7120:7120"
+    profiles:
+      - game
+      - full
+
+  meta-bridge:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: services/meta-worker/Dockerfile.bridge
+      labels: *build-labels
+    environment:
+      META_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      METAWORKER_BRIDGE_TOKEN: ${METAWORKER_BRIDGE_TOKEN:-loreweave_local_dev_bridge_token}
+      METAWORKER_BRIDGE_ADDR: "0.0.0.0:8090"
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   auth-service:
     restart: unless-stopped
@@ -669,6 +863,12 @@ services:
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
       # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
       KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
+      # T38 B4 — the KAL base URL. translation-service defaults this to EMPTY in its own
+      # config, and its KAL client treats unset as "feature off, return nothing" — so an
+      # unconfigured var here is a silently disabled read, not an error. It was set for NO
+      # service in this file; lore-enrichment only reached the gateway because its config
+      # hard-defaults the URL. Consumers read entity knowledge through the KAL (INV-KAL).
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -813,6 +1013,11 @@ services:
       # Phase 4c-α: SDK install. Same host as legacy URL.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
+      # T38 B4 — the WORKER is where mention_backfill runs, so it needs the KAL URL too.
+      # Setting it on translation-service alone would have left the migrated read refusing
+      # in the only process that calls it — the same class as "iso.sh build the service but
+      # not its worker", one layer up in the stack.
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
       KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
@@ -1008,15 +1213,49 @@ services:
       # oneshot-deadvertise (2026-07-25) — how a completed one-shot create (kg_project_create
       # once its project exists) is kept off the agent surface: off|existence|session|per_turn.
       # MEASURED winner = session (57→1 attempts, ~5x fewer tokens; see config.py).
+      # DQ-T90 arm (e). Defaults TRUE so the shipped path is unchanged; set to 0/false to run a
+      # turn with the Intent→Skill Router's preload OFF (base/pinned skills + the L1 index, and
+      # the model pulls a body with `load_skill`). A lever with no way to reach the container is
+      # not a lever — the A/B needs to flip it WITHOUT a rebuild, so the two arms differ by this
+      # and nothing else.
+      SKILL_ROUTER_PRELOAD: "${SKILL_ROUTER_PRELOAD:-true}"
+      # DQ-T90 arms (b) and (a). Both default to the shipped behaviour so the CONTROL is
+      # unchanged; each arm is one env var so the three runs differ by one thing at a time.
+      SKILL_CONTRASTIVE_DESC: "${SKILL_CONTRASTIVE_DESC:-true}"
+      # DQ-T88 (a) — replay prior turns' tool RESULTS into the turn, bounded (2 kB/result,
+      # 16 kB/turn, ids preserved through the trim). DEFAULT FALSE: the owner's correction
+      # is that results are not stored BECAUSE they are large, so the bound makes replay
+      # affordable without making it right. Adopt only on an A/B, the way
+      # SKILL_CONTRASTIVE_DESC above was adopted.
+      #
+      # 🔴 IT IS HERE SO THE ARM CAN BE SET ON THE REAL SERVICE. A previous attempt used
+      # `docker compose run --service-ports`, which puts the container on the network but
+      # does NOT take over the compose service name the gateway routes to — so that batch
+      # measured the STOPPED service and produced 3 errors and zero replay log lines.
+      REPLAY_PRIOR_TOOL_RESULTS: "${REPLAY_PRIOR_TOOL_RESULTS:-false}"
+      ROUTER_MAX_ADDITIONS: "${ROUTER_MAX_ADDITIONS:-0}"
       ONESHOT_DEADVERTISE_MODE: "${ONESHOT_DEADVERTISE_MODE:-session}"
       RAIL_ACTION_GATE_MODE: "${RAIL_ACTION_GATE_MODE:-done_suppress}"
       T5_INTENT_GATE_ENABLED: "${T5_INTENT_GATE_ENABLED:-false}"
+      # CP-2.7 / CP-3 — which runtime serves a turn. `false` is the LEGACY arm, which is this
+      # effort's CONTROL GROUP (spec §7): with it off the advertise chokepoint returns before it
+      # reads anything new, and every row is byte-identical to before the arm existed.
+      #
+      # 🔴 It had no compose entry at all until 2026-08-09, which means the new arm had **no
+      # deployment path** — the flag existed in `config.py` and nothing could set it. A switch
+      # nobody can reach is the same shape as a function nobody calls.
+      AGENTRUNTIME_ARM: "${AGENTRUNTIME_ARM:-false}"
       # Context Budget Law T4 (story_state Core Memory Block) + T6/D13a (reversible
       # dup-read collapse). Default OFF; flip on (with T5) for the compaction A/B —
       # T4's degraded-safety-net only fires when T5 gates grounding to empty, D13a only
       # fires on a compaction pass. See docs/eval/context-budget/.
       STORY_STATE_BLOCK_ENABLED: "${STORY_STATE_BLOCK_ENABLED:-false}"
       COMPACT_COLLAPSE_DUPLICATES_ENABLED: "${COMPACT_COLLAPSE_DUPLICATES_ENABLED:-false}"
+      # DQ-T56 — the whole-turn ceiling, in seconds. The default matches app/config.py; it is
+      # surfaced here so an operator can widen it (a deployment whose model legitimately thinks
+      # longer than 15 minutes) or disable it with 0, without a rebuild. NOT the idle-read cap:
+      # LLM_STREAM_IDLE_READ_TIMEOUT_S stays 0 deliberately and is a different mechanism.
+      LLM_TURN_CEILING_S: "${LLM_TURN_CEILING_S:-900}"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
@@ -1175,6 +1414,8 @@ services:
       dockerfile: services/knowledge-service/Dockerfile
       labels: *build-labels
     environment:
+      # T38 B8 — entity knowledge is read through the KAL (INV-KAL).
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       PORT: "8092"
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       GLOSSARY_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_glossary
@@ -1205,6 +1446,70 @@ services:
       NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-loreweave_dev_neo4j}
+      # T25a / OD-2 — the vector secondary's DSN. DEFAULT-OFF ON PURPOSE, and the default
+      # is byte-identical to the old behaviour: unset, `get_vector_store()` returns a plain
+      # `Neo4jVectorStore` and the service never opens a second database. Setting it turns
+      # on DUAL-WRITE ONLY (writes both, reads the primary) — the read cutover is T25 and is
+      # a separate, evidenced decision.
+      #
+      # It stays `${...:-}` rather than hardcoded because the secondary lives in an OPT-IN
+      # compose layer (docker-compose.knowledge-pg.yml). Hardcoding a DSN for a container
+      # most `docker compose up` invocations never start would move the failure from
+      # "feature is off" to "vector writes fail at runtime" for every self-hoster.
+      #
+      #   docker compose -f docker-compose.yml -f docker-compose.knowledge-pg.yml up -d knowledge-pg
+      #   KNOWLEDGE_VECTOR_DB_URL=postgresql://loreweave:loreweave_dev@knowledge-pg:5432/loreweave_knowledge_vectors
+      KNOWLEDGE_VECTOR_DB_URL: ${KNOWLEDGE_VECTOR_DB_URL:-}
+      # T25 ③ step 2 — the vector READ cutover, a DEPLOY CEILING (rule 4). One migration
+      # state for one deployment: per-book would make two books' results incomparable and
+      # `vector_shadow_read_overlap` meaningless, and a run param would let one request cut
+      # over and the next one back.
+      #
+      # `postgres` moves the PASSAGE scope only. Entity reads stay on Neo4j because
+      # `PgVectorStore` omits `anchor_score` by design (D-T25B-PG-ANCHOR-SCORE) and entity
+      # reads RANK by it — see vector_store_provider.py, where the scope set is built.
+      #
+      # ⚠️ `:-neo4j`, NOT `:-` like KNOWLEDGE_VECTOR_DB_URL above. The provider validates this
+      # against ("neo4j", "postgres") and RAISES on anything else, so the empty-string idiom
+      # would take knowledge-service down on the next restart — the failure the
+      # KNOWLEDGE_MIRROR_AUTO_REPAIR comment below records, in a field that cannot absorb it.
+      # Defaulting to the pre-cutover value also means adding this line changes no behaviour,
+      # which is the property T25c wanted and did not have: that variable defaulted to empty,
+      # a container was recreated without it two days later, and the soak stopped silently.
+      KNOWLEDGE_VECTOR_READ_PRIMARY: ${KNOWLEDGE_VECTOR_READ_PRIMARY:-neo4j}
+      # T54 — the AGE graph. SAME instance as the vector DSN above: knowledge-pg runs
+      # loreweave/postgres-knowledge:18, which T42b built to carry both `age` and `vector`.
+      KNOWLEDGE_AGE_DB_URL: ${KNOWLEDGE_AGE_DB_URL:-}
+      # §8.1 made AGE the code default; `infra/.env` PINS it for the shared stack, so the
+      # backend is STATED rather than inherited (§8.1: "code default + env pin on dev").
+      #
+      # ⚠️ The fallback here is EMPTY, not `age`, and that is the difference between a safe
+      # upgrade and a broken one. `:-age` passed an EXPLICIT `age` into the container for
+      # every deployment that never chose — including an installation that has only ever run
+      # Neo4j and has no `KNOWLEDGE_AGE_DB_URL` at all. An explicit value beats the service's
+      # own provisioning check, so it would have been told it is an AGE deployment, served an
+      # EMPTY graph, and logged one warning: an unprovisioned store and a store with no rows
+      # are the same bytes to everything downstream.
+      #
+      # Empty means "the operator did not choose", which is what `${VAR:-}` means everywhere
+      # else too; `db.graph_backend.configured_backend` then resolves it from what the
+      # deployment has actually provisioned. Set it in your `.env` to pin one.
+      KNOWLEDGE_GRAPH_BACKEND: ${KNOWLEDGE_GRAPH_BACKEND:-}
+      # D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER — the scheduled mirror sweep always
+      # DETECTS (see knowledge_glossary_mirror_missing); this decides whether it also
+      # CLOSES what it finds by re-emitting through glossary-service's outbox.
+      #
+      # Default off, and not because repair is risky — it is idempotent and writes no
+      # graph. An always-on repairer MASKS the breakage that caused the drift: a handler
+      # dropping every third event looks exactly like a healthy system with a diligent
+      # janitor. Turn it on WITH `knowledge_glossary_mirror_repaired_total` watched —
+      # a healthy system converges to zero repairs per sweep, so sustained repair volume
+      # is the real alarm.
+      # ⚠️ `:-false`, NOT `:-` like KNOWLEDGE_VECTOR_DB_URL above. That idiom passes an
+      # EMPTY STRING when the variable is unset, which a `str` field accepts and a `bool`
+      # field does not: pydantic raises `bool_parsing` on "" and the service refuses to
+      # start. Copied blindly, this line took knowledge-service down on the next restart.
+      KNOWLEDGE_MIRROR_AUTO_REPAIR: ${KNOWLEDGE_MIRROR_AUTO_REPAIR:-false}
       # Pass-2 precision filter — NO env config (D-WX-PRECISION-FILTER-MODEL-ARCH).
       # Was a hardcoded env UUID of one user's model, submitted as user_model scoped
       # to the request's user → 404 for every other user → decoupled fold stall (D-WX
@@ -1519,6 +1824,8 @@ services:
       # with every other service's GLOSSARY_*_URL=:8088. NOT a model backend (a
       # plain service-to-service internal URL); auth reuses X-Internal-Token.
       GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      # T38 B6 — entity knowledge is read through the KAL (INV-KAL).
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       # Phase 4b-γ: SDK posts to provider-registry's internal LLM
       # gateway for entity/relation/event/fact extraction jobs.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
@@ -2087,6 +2394,24 @@ services:
       # origin :5176 (was :5174 until it collided with the main `frontend`).
       LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       NODE_ENV: production
+      # ── `F2`/`F1` — what ChannelRoom needs to serve a real subject ────────
+      #
+      # Until now this block configured EchoRoom only, and ChannelRoom was
+      # registered but unreachable: `onCreate` throws without a reality id, so a
+      # `channel` join failed before auth. That is why deleting the env actor
+      # map in `E4` broke nothing here — there was nothing to break.
+      LW_WORLD_SERVICE_URL: http://world-service:7120
+      LW_CHANNEL_REDIS_URL: redis://redis:6379
+      LW_CHANNEL_REALITY_ID: ${LW_CHANNEL_REALITY_ID:-}
+      LW_CHANNEL_ID: ${LW_CHANNEL_ID:-1}
+      # The dev identity, and it has NO default on purpose (`F1`). It used to be
+      # invented from four characters of the shared token, so every session on
+      # the box was one "user" — and after E3 it was not a `user_ref_id` at all,
+      # so the subject lookup refused it. Supply a real one, or dev auth fails
+      # closed; the binding still comes from the control plane, so a dev user
+      # with no grant drives nobody.
+      LW_WS_DEV_ALLOW_STATIC: ${LW_WS_DEV_ALLOW_STATIC:-}
+      LW_WS_DEV_USER_REF_ID: ${LW_WS_DEV_USER_REF_ID:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:2567/livez"]
       interval: 10s

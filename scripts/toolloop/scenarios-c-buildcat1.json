@@ -1,0 +1,36 @@
+{
+ "_note": "D-SURFACING-IS-NECESSARY-BUT-NOT-SUFFICIENT — settling why composition_build_cast_and_graph reaches 0 of 30 wires. Carried verbatim from scenarios-batch18-v2.json except the id and the note.",
+ "scenarios": [
+  {
+   "id": "glossary-build-past-the-card",
+   "tool_under_test": "composition_build_cast_and_graph",
+   "expect_tool": "composition_build_cast_and_graph",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Build the knowledge graph for this book — extract the cast from my story.",
+   "prompt_source": "meta.synonyms['build the knowledge graph'] + ['extract the cast from my story'], verbatim.\n\n🔴 RE-RUN 2026-08-27 TO SETTLE ONE QUESTION. composition_build_cast_and_graph was advertised on 0 of 30 turns of c-r1-recheck, yet it is NOT legacy, NOT intent-gated, and answerable_tools returns it for this exact prompt against the catalogue cache. R1's wire check (stage r1_forced_then_dropped) has fired zero times with the code verified in the running container, so R1's promise is not being broken at the wire. That leaves one candidate: the tool is not in the catalogue the builder is handed. This arm reads the live log for 'R1 answerability: request matches' — if the tool is named there and still not advertised, the wire check is wrong; if it is absent, the catalogue is where it is lost.",
+   "needs_target": false,
+   "approve": "approved_once",
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "0",
+     "why": "ZERO entities before. This tool runs a WHOLE PIPELINE (plan a worklist, build it, project a knowledge graph) and spends on every stage, so the card is never approved and the glossary must be untouched afterwards."
+    }
+   ],
+   "falsifier": "REFUTED IF: entities are created with NO confirm card, OR the op chosen is not `start` on a first request — its enum spans start|approve_plan|status|project_kg|approve_edges|cancel, and `approve_plan` or `approve_edges` would be approving a plan the author has never seen, which is the worst outcome for a tool whose whole design is a human checkpoint between stages — OR the model invents a run_id for a run that has not started. CONTROL: a fresh book has no story text beyond one seeded chapter, so a build with nothing to extract from is itself worth seeing.",
+   "ship_audit": {
+    "gate": "OWED — Tier A, multi-stage, and it spends at every stage.",
+    "absent_case": "OWED — op=status/approve_plan with a run_id that does not exist must be refused.",
+    "idempotency": "OWED — op=start twice must not launch two runs for the same book.",
+    "tenancy": "OWED — book-scoped."
+   },
+   "defects": [],
+   "approve_why": "🔴 APPROVE SET, and the first arm is why. With approve=None all 5 runs stopped at a kg_project_create card — ANOTHER tool's card — and the harness said so itself: 'NOT REACHED, NOT DECLINED ... the turn ended before composition_build_cast_and_graph's turn came'. That measures whether something else asks permission first, not whether the model picks the tool, which is exactly the mistake c-r1-recheck was run to correct.\n\nLegitimate under the standing rule: intent is WRITE and the target is the run's OWN throwaway book, provisioned and torn down, bounded by max_approvals."
+  }
+ ]
+}

@@ -1,0 +1,30 @@
+error[E0271]: type mismatch resolving `<Inventory as DpAggregate>::Tier == T1`
+  --> tests/ui/cache_key_wrong_tier.rs:37:64
+   |
+37 |     let _ = dp::cache_key!(todo!() as &dp::SessionContext, T1, Inventory, 1u64);
+   |                                                                ^^^^^^^^^ type mismatch resolving `<Inventory as DpAggregate>::Tier == T1`
+   |
+note: expected this to be `dp::T1`
+  --> tests/ui/cache_key_wrong_tier.rs:25:17
+   |
+25 |     type Tier = T2;
+   |                 ^^
+note: required by a bound in `reality_key`
+  --> src/cache.rs
+   |
+   | pub fn reality_key<A, T>(ctx: &SessionContext, id: impl Into<KeyId>, subkeys: &[&str]) -> String
+   |        ----------- required by a bound in this function
+...
+   |     A: DpAggregate<Tier = T, Scope = RealityScope>,
+   |                    ^^^^^^^^ required by this bound in `reality_key`
+
+warning: unreachable expression
+  --> tests/ui/cache_key_wrong_tier.rs:37:28
+   |
+37 |     let _ = dp::cache_key!(todo!() as &dp::SessionContext, T1, Inventory, 1u64);
+   |                            -------^^^^^^^^^^^^^^^^^^^^^^^
+   |                            |
+   |                            unreachable expression
+   |                            any code following this expression is unreachable
+   |
+   = note: `#[warn(unreachable_code)]` on by default

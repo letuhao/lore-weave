@@ -46,7 +46,43 @@ _CRITIC_DIMS = ("coherence", "voice_match", "pacing", "canon_consistency")
 
 
 def _empty_critic(err: str = "critic_error") -> dict[str, Any]:
-    return {**{d: None for d in _CRITIC_DIMS}, "violations": [], "error": err}
+    """The degrade shape, which must carry EVERY key the success shape does.
+
+    `craft_notes` was added to `normalize_critique` by the C11 channel fix and not here, so a
+    consumer reading `critic["craft_notes"]` worked on a healthy judge and raised `KeyError`
+    the moment one degraded — the failure mode a degrade path exists to prevent. The paired
+    test compares the two key sets rather than asserting this literal, so the next field added
+    to the critic cannot drift the same way.
+    """
+    return {
+        **{d: None for d in _CRITIC_DIMS},
+        "violations": [],
+        "craft_notes": [],
+        # ⚠️ These four are stamped by `judge_prose`, NOT by `normalize_critique`, and that is
+        # why they were missing here for so long: the paired test compared the degrade shape
+        # against `normalize_critique` — the case `craft_notes` came from — so every key the
+        # judge adds AFTER normalisation was outside what it could see. Measured 2026-08-21:
+        # a consumer reading `critic["violations_dropped"]` worked on a healthy judge and
+        # raised KeyError on a degrade, which is the exact bug this function documents itself
+        # as preventing. The test now drives the real `judge_prose`.
+        "violations_dropped": 0,
+        "violations_raw_count": 0,
+        "violations_dropped_labels": [],
+        # QC-5 C46 — the attribution channel gate stamps these on every healthy
+        # critique, so the degrade shape carries them too. Caught by the paired test
+        # in the same commit that added them, which is the arrangement working.
+        "canon_violations_suppressed": True,
+        "violations_withheld_count": 0,
+        # QC-5: the verification pass adds a FIFTH, for the same reason and caught by the
+        # same paired test — which is the point of comparing key SETS rather than a
+        # literal. A consumer reading `violations_unverified` on a healthy judge would
+        # otherwise raise KeyError the moment one degraded.
+        "violations_unverified": 0,
+        "violations_unverified_reasons": [],
+        "active_rule_count": 0,
+        "present_fact_count": 0,
+        "error": err,
+    }
 
 
 def _empty_threads(err: str = "threads_error") -> dict[str, Any]:

@@ -120,7 +120,7 @@ type usageRow struct {
 // key is here, all values string-encoded (stream values are strings); empty
 // string for a null campaign_id / cost_usd. Pure + unit-tested so a key rename
 // or a dropped field is caught without a live stack.
-func buildUsageFields(requestID, ownerID, campaign, mcpKey, modelSource, modelRef, operation, cost string, inTok, outTok int, requestStatus, requestPayload, responsePayload string) map[string]any {
+func buildUsageFields(requestID, ownerID, campaign, mcpKey, modelSource, modelRef, operation, cost string, inTok, outTok int, requestStatus, requestPayload, responsePayload, providerKind string) map[string]any {
 	// #32 — request_status is now carried from the row (success | failed | cancelled),
 	// no longer hardcoded; the traced request/response payloads ride along (empty when
 	// unpopulated, e.g. legacy rows). usage-billing's parseUsageEvent reads these.
@@ -143,6 +143,10 @@ func buildUsageFields(requestID, ownerID, campaign, mcpKey, modelSource, modelRe
 		"request_status":   status,
 		"request_payload":  requestPayload,
 		"response_payload": responsePayload,
+		// D-BILL-PROVIDER-KIND — without this key usage-billing writes '' and spend
+		// cannot be attributed to a provider. Empty only for a row written before the
+		// usage_outbox column existed.
+		"provider_kind": providerKind,
 	}
 }
 
@@ -178,7 +182,7 @@ func (r *UsageRelay) drainOnce(ctx context.Context) (int, error) {
 SELECT id, request_id::text, owner_user_id::text, campaign_id::text, mcp_key_id::text,
        model_source, model_ref::text, operation,
        input_tokens, output_tokens, cost_usd::text,
-       request_status, request_payload, response_payload
+       request_status, request_payload, response_payload, provider_kind
 FROM usage_outbox
 WHERE published_at IS NULL
 ORDER BY id
@@ -195,10 +199,11 @@ FOR UPDATE SKIP LOCKED
 		var requestID, ownerID, modelSource, modelRef, operation string
 		var campaignID, mcpKeyID, costUSD *string       // nullable
 		var reqStatus, reqPayload, respPayload *string  // nullable (#32)
+		var providerKind string                        // NOT NULL DEFAULT ''
 		var inTok, outTok int
 		if err := rows.Scan(&id, &requestID, &ownerID, &campaignID, &mcpKeyID, &modelSource,
 			&modelRef, &operation, &inTok, &outTok, &costUSD,
-			&reqStatus, &reqPayload, &respPayload); err != nil {
+			&reqStatus, &reqPayload, &respPayload, &providerKind); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -224,7 +229,7 @@ FOR UPDATE SKIP LOCKED
 			id:       id,
 			campaign: camp,
 			fields: buildUsageFields(requestID, ownerID, camp, mcpKey, modelSource, modelRef, operation, cost, inTok, outTok,
-				deref(reqStatus), deref(reqPayload), deref(respPayload)),
+				deref(reqStatus), deref(reqPayload), deref(respPayload), providerKind),
 		})
 	}
 	// Must drain+close the cursor BEFORE issuing further queries on this tx.

@@ -326,7 +326,7 @@ mod tests {
     use crate::engine::treasure_pool::engine_treasure_pool;
     use crate::engine::treasure_select::compose_pile;
     use crate::seed::TilemapSeed;
-    use crate::types::channel::{ChannelId, ChannelTier};
+    use crate::types::channel::{ChannelId, MapKind};
     use crate::types::object::TilemapObjectPlacement;
     use crate::types::template::{TilemapTemplateId, ZoneSpec};
     use crate::types::tile::{TerrainKind, TileCoord};
@@ -874,7 +874,7 @@ mod tests {
             place_tilemap(
                 &tmpl,
                 ChannelId("ch".to_string()),
-                ChannelTier::Country,
+                MapKind::Region,
                 grid,
                 TilemapSeed(11),
             )

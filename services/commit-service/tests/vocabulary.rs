@@ -3,6 +3,13 @@
 use commit_service::{CombatPayload, Stance, Vocabulary, COMBAT_V1_JSON};
 use sim_core::EntityId;
 
+/// The shipped reality's declared verbs. `M2` resolves a declared name to an
+/// ordinal HERE, before the tool manifest, so a test passing `EMPTY` would
+/// exercise a path no deployment has.
+fn verbs() -> ruleset_core::VerbTable {
+    commit_service::RealityRules::proving_ground().rules().verbs
+}
+
 fn vocab() -> Vocabulary {
     Vocabulary::from_json(COMBAT_V1_JSON).expect("contract file parses")
 }
@@ -32,7 +39,7 @@ fn fallback_tool_is_in_the_closed_set() {
 #[test]
 fn unknown_tool_rejects() {
     let err = vocab()
-        .validate(EntityId(1), "cast_meteor", "{}", &candidates())
+        .validate(EntityId(1), "cast_meteor", "{}", &candidates(), &verbs())
         .unwrap_err();
     assert!(err.to_string().contains("cast_meteor"));
 }
@@ -48,6 +55,7 @@ fn strike_target_must_be_offered() {
         "strike",
         r#"{"target":"hostile-2 (healthy)"}"#,
         &candidates(),
+        &verbs(),
     );
     assert_eq!(ok.unwrap(), CombatPayload::Strike { attacker: EntityId(1), target: EntityId(2) });
 
@@ -56,6 +64,7 @@ fn strike_target_must_be_offered() {
         "strike",
         r#"{"target":"the-king"}"#,
         &candidates(),
+        &verbs(),
     );
     assert!(err.is_err(), "unoffered target must reject");
 }
@@ -66,10 +75,10 @@ fn strike_target_must_be_offered() {
 fn move_stance_enum_is_closed() {
     let v = vocab();
     assert_eq!(
-        v.validate(EntityId(1), "move", r#"{"stance":"kite"}"#, &candidates()).unwrap(),
+        v.validate(EntityId(1), "move", r#"{"stance":"kite"}"#, &candidates(), &verbs()).unwrap(),
         CombatPayload::Move { actor: EntityId(1), stance: Stance::Kite }
     );
-    assert!(v.validate(EntityId(1), "move", r#"{"stance":"teleport"}"#, &candidates()).is_err());
+    assert!(v.validate(EntityId(1), "move", r#"{"stance":"teleport"}"#, &candidates(), &verbs()).is_err());
 }
 
 /// Zero-arg tools accept an EMPTY arguments string (providers often stream
@@ -78,11 +87,11 @@ fn move_stance_enum_is_closed() {
 fn zero_arg_tools_accept_empty_arguments() {
     let v = vocab();
     assert_eq!(
-        v.validate(EntityId(1), "defend", "", &candidates()).unwrap(),
+        v.validate(EntityId(1), "defend", "", &candidates(), &verbs()).unwrap(),
         CombatPayload::Defend { actor: EntityId(1) }
     );
     assert_eq!(
-        v.validate(EntityId(1), "flee", "", &candidates()).unwrap(),
+        v.validate(EntityId(1), "flee", "", &candidates(), &verbs()).unwrap(),
         CombatPayload::Flee { actor: EntityId(1) }
     );
 }
@@ -91,7 +100,7 @@ fn zero_arg_tools_accept_empty_arguments() {
 #[test]
 fn malformed_arguments_reject() {
     assert!(vocab()
-        .validate(EntityId(1), "strike", r#"{"target": "#, &candidates())
+        .validate(EntityId(1), "strike", r#"{"target": "#, &candidates(), &verbs())
         .is_err());
 }
 

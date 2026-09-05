@@ -6,40 +6,184 @@
 # files importing `contracts/meta` AND has a go.mod (or Cargo.toml), it must
 # appear in the matrix.
 #
-# Exit 0 = clean; 1 = violations.
+# Exit 0 = clean; 1 = violations; 2 = misuse / selftest failure.
+#
+# RED-ABILITY PROOF (`GATE-TEETH`). Added 2026-08-12; this gate was one of 43
+# CI-invoked gates with no demonstration that it could fail. TWO predicates are
+# extracted, because this gate has two and only proving one would be half a
+# proof: `has_entry` (is the service in the matrix) and `writes_meta` (does the
+# service have a meta-write surface at all). The second is the dangerous one —
+# if it stops matching, every service is silently exempt and the gate passes
+# over an empty subject, which is `NV-3` and looks exactly like a clean tree.
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+# ── selftest — the red-ability proof (gate-teeth-gate) ──────────────────────
+# Same shape as role-grant-validator.sh: a copy of this script under $tmp/scripts/
+# makes `repo_root` resolve to the fixture tree, so the production path stays
+# unparameterised.
+#
+# The two exit-0 cases carry the weight. This gate is a HEURISTIC — it skips
+# services with no toolchain file and services with no meta surface — and both
+# skips are silent. A future edit that dropped either condition would flag every
+# stub directory in `services/`, the noise would get the gate muted or its
+# condition inverted, and the real check would die by relaxation rather than by
+# deletion. These cases pin the skips as intended behaviour, not accidents.
+if [[ "${1:-}" == "--selftest" ]]; then
+  st_fail=0
+  st_run() {  # st_run <expected-exit> <name> <toolchain?> <meta-surface?> <in-matrix?>
+    local want="$1" name="$2" toolchain="$3" meta="$4" listed="$5" t rc base
+    base="$(basename "$0")"
+    t="$(mktemp -d)"
+    mkdir -p "$t/scripts" "$t/services/svc-a" "$t/services/svc-ctl" "$t/contracts/service_acl"
+    cp "$0" "$t/scripts/$base"
+    # THE CONTROL SERVICE, and why the fixture cannot work without one.
+    #
+    # This gate carries two non-vacuity floors: it exits 2 when ZERO services have a
+    # toolchain file ("the walk reached nothing") and when ZERO of the services it walked
+    # match the meta-write surface ("both make every service vacuously exempt"). Both are
+    # right about the real tree. But two cases below build a tree whose entire SUBJECT is
+    # "nothing matched" -- a stub dir with no toolchain, and a service with no meta
+    # surface -- so the floor fired on the fixture and both cases returned 2 where they
+    # wanted 0. The gate was reporting its own fixture rather than the rule under test.
+    #
+    # svc-ctl satisfies both floors in every case: a toolchain, a meta-write surface, and
+    # an ACL entry so it is never itself the violation. That leaves each case's subject
+    # exactly as it was -- svc-a is still the only thing any case asserts about.
+    echo 'module svc-ctl' > "$t/services/svc-ctl/go.mod"
+    echo 'import "github.com/lw/contracts/meta"' > "$t/services/svc-ctl/main.go"
+    [[ "$toolchain" == "yes" ]] && echo 'module svc-a' > "$t/services/svc-a/go.mod"
+    if [[ "$meta" == "yes" ]]; then
+      echo 'import "github.com/lw/contracts/meta"' > "$t/services/svc-a/main.go"
+    else
+      echo 'package main' > "$t/services/svc-a/main.go"
+    fi
+    { echo 'version: 1'; echo 'services:'; echo '  - name: svc-ctl'; } > "$t/contracts/service_acl/matrix.yaml"
+    [[ "$listed" == "yes" ]] && echo '  - name: svc-a' >> "$t/contracts/service_acl/matrix.yaml"
+    rc=0
+    bash "$t/scripts/$base" >/dev/null 2>&1 || rc=$?
+    if [[ "$rc" != "$want" ]]; then
+      echo "  FAIL — $name: exit $rc, expected $want"
+      st_fail=1
+    fi
+    rm -rf "$t"
+  }
+
+  #      want name                                                       tool meta listed
+  st_run 0 "a meta-writing service WITH an ACL entry passes"              yes  yes  yes
+  st_run 1 "a meta-writing service with NO ACL entry is refused"          yes  yes  no
+  st_run 0 "a stub dir (no go.mod/Cargo.toml/pyproject) is skipped"       no   yes  no
+  st_run 0 "a service with no meta write surface needs no entry"          yes  no   no
+
+  if [[ $st_fail -eq 0 ]]; then
+    echo "[service-acl-matrix] SELFTEST PASS — a missing ACL entry reds, and both"\
+         "documented skips (stub dir, no meta surface) stay green (non-vacuous)"
+    exit 0
+  fi
+  echo "[service-acl-matrix] SELFTEST FAIL"
+  exit 1
+fi
+
 matrix="$repo_root/contracts/service_acl/matrix.yaml"
 
-if [[ ! -f "$matrix" ]]; then
-  echo "[service-acl-matrix] FAIL — matrix.yaml missing"
-  exit 1
-fi
+# PREDICATE 1 — membership. $1 = service, $2 = matrix file.
+has_entry() {
+  grep -qE "^[[:space:]]*-[[:space:]]*name:[[:space:]]*$1[[:space:]]*\$" "$2"
+}
 
-violations=0
+# PREDICATE 2 — does this text carry a meta-write surface?
+writes_meta() {
+  printf '%s' "$1" | grep -qE '(contracts/meta|MetaWrite\(|AttemptStateTransition\()'
+}
 
-for svc_dir in "$repo_root"/services/*/; do
-  svc=$(basename "$svc_dir")
-  # Skip stub dirs (no toolchain file)
-  if [[ ! -f "$svc_dir/go.mod" ]] && [[ ! -f "$svc_dir/Cargo.toml" ]] && [[ ! -f "$svc_dir/pyproject.toml" ]]; then
-    continue
+run_lint() {
+  if [[ ! -f "$matrix" ]]; then
+    echo "[service-acl-matrix] FAIL — matrix.yaml missing"
+    exit 1
   fi
-  # Does service import contracts/meta or call MetaWrite?
-  has_meta=$(grep -rE '(contracts/meta|MetaWrite\(|AttemptStateTransition\()' "$svc_dir" 2>/dev/null | head -1 || true)
-  if [[ -z "$has_meta" ]]; then
-    continue   # no meta write surface; matrix entry not required
-  fi
-  if ! grep -qE "^[[:space:]]*-[[:space:]]*name:[[:space:]]*${svc}[[:space:]]*$" "$matrix"; then
-    echo "[service-acl-matrix] FAIL — service $svc imports/calls meta but no ACL matrix entry"
-    violations=$((violations + 1))
-  fi
-done
 
-if [[ $violations -gt 0 ]]; then
-  echo "[service-acl-matrix] FAIL — $violations service(s) missing ACL entry (I11 / S11 §12AA)"
-  exit 1
-fi
-echo "[service-acl-matrix] PASS"
-exit 0
+  local violations=0 considered=0 with_meta=0 svc surface
+  for svc_dir in "$repo_root"/services/*/; do
+    svc=$(basename "$svc_dir")
+    # Skip stub dirs (no toolchain file)
+    if [[ ! -f "$svc_dir/go.mod" ]] && [[ ! -f "$svc_dir/Cargo.toml" ]] && [[ ! -f "$svc_dir/pyproject.toml" ]]; then
+      continue
+    fi
+    considered=$((considered + 1))
+    surface=$(grep -rE '(contracts/meta|MetaWrite\(|AttemptStateTransition\()' "$svc_dir" 2>/dev/null | head -1 || true)
+    if [[ -z "$surface" ]]; then
+      continue   # no meta write surface; matrix entry not required
+    fi
+    with_meta=$((with_meta + 1))
+    if ! has_entry "$svc" "$matrix"; then
+      echo "[service-acl-matrix] FAIL — service $svc imports/calls meta but no ACL matrix entry"
+      violations=$((violations + 1))
+    fi
+  done
+
+  # REACH FLOORS, both of them. `considered` guards the service walk; `with_meta`
+  # guards the surface detector. A tree where the detector silently stopped
+  # matching produces zero findings and exit 0 — identical to compliance.
+  if [[ $considered -lt 1 ]]; then
+    echo "[service-acl-matrix] FAIL — ZERO services had a toolchain file; the walk reached nothing"
+    exit 2
+  fi
+  if [[ $with_meta -lt 1 ]]; then
+    echo "[service-acl-matrix] FAIL — ZERO of $considered services matched the meta-write"
+    echo "                     surface. Either the detector broke or the invariant moved;"
+    echo "                     both make every service vacuously exempt"
+    exit 2
+  fi
+
+  if [[ $violations -gt 0 ]]; then
+    echo "[service-acl-matrix] FAIL — $violations service(s) missing ACL entry (I11 / S11 §12AA)"
+    exit 1
+  fi
+  echo "[service-acl-matrix] PASS — $with_meta of $considered service(s) write meta, all in the matrix"
+  exit 0
+}
+
+selftest() {
+  local tmp
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' RETURN
+
+  printf 'services:\n  - name: alpha\n    reads: [x]\n  - name: beta\n' > "$tmp"
+  if ! has_entry alpha "$tmp"; then
+    echo "[service-acl-matrix] SELFTEST FAIL — did NOT match a service that IS in the matrix (cry-wolf)"; exit 2
+  fi
+  if has_entry gamma "$tmp"; then
+    echo "[service-acl-matrix] SELFTEST FAIL — matched a service NOT in the matrix (vacuous)"; exit 2
+  fi
+  printf 'services:\n  - name: alpha-extra\n' > "$tmp"
+  if has_entry alpha "$tmp"; then
+    echo "[service-acl-matrix] SELFTEST FAIL — \`alpha\` matched \`alpha-extra\`; membership is a PREFIX test"; exit 2
+  fi
+
+  # PREDICATE 2, all three spellings it claims to recognise plus the negative.
+  if ! writes_meta 'import "github.com/x/contracts/meta"'; then
+    echo "[service-acl-matrix] SELFTEST FAIL — missed a \`contracts/meta\` import"; exit 2
+  fi
+  if ! writes_meta 'err := MetaWrite(ctx, row)'; then
+    echo "[service-acl-matrix] SELFTEST FAIL — missed a \`MetaWrite(\` call"; exit 2
+  fi
+  if ! writes_meta 'AttemptStateTransition(ctx, id)'; then
+    echo "[service-acl-matrix] SELFTEST FAIL — missed an \`AttemptStateTransition(\` call"; exit 2
+  fi
+  if writes_meta 'package main
+func main() { fmt.Println("no meta here") }'; then
+    echo "[service-acl-matrix] SELFTEST FAIL — flagged a file with no meta surface (cry-wolf)"; exit 2
+  fi
+
+  echo "[service-acl-matrix] SELFTEST PASS — membership matches a listed service, refuses an"
+  echo "                     unlisted one and a prefix; the meta-write detector catches all"
+  echo "                     three surfaces and passes a file with none (non-vacuous both ways)"
+}
+
+case "${1:-}" in
+  --selftest) selftest ;;
+  --lint)     run_lint ;;
+  "")         selftest; run_lint ;;
+  *)          echo "usage: $0 [--selftest | --lint]"; exit 2 ;;
+esac

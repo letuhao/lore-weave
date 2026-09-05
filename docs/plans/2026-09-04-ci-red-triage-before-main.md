@@ -1,0 +1,451 @@
+# CI red, case by case — the 26 checks standing between this branch and `main`
+
+Reconciles: Non-Vacuity (NV-1..6) · Foundation Lint Catalog (L1.K) — every row here ends in a
+gate's verdict, and the failures it triages are mostly gates that reported a colour they had
+not earned; L1.K is the catalogue those gates belong to.
+
+PR [#219](https://github.com/letuhao1994/lore-weave/pull/219) · base `main` · head `refactor/kal-and-mcp-runtime`
+· `mergeable: MERGEABLE` (no conflicts) · **`mergeStateStatus: UNSTABLE`**
+
+Follows [`2026-09-04-gui-parity-triage-loop.md`](2026-09-04-gui-parity-triage-loop.md), whose board is
+closed. This is the last thing before the merge.
+
+---
+
+## 0. The correction this plan opens with
+
+I reported earlier that *"none of the failures appear to be mine"*. That was scoped to **this
+session's commits** (`742fd34b0..HEAD`), where it is true — zero Rust, zero knowledge-service files.
+
+Scoped to **the branch**, it is false, and the branch is what merges:
+
+| failing area | files changed vs merge-base `df18e9049` |
+|---|---:|
+| `scripts/` | **616** |
+| `services/knowledge-service/` | **414** |
+| `crates/` | **166** |
+| `services/glossary-service/` | **103** |
+| `services/world-service/` | 64 |
+| `services/meta*` | 20 |
+| `crates/meta-rs/` | 12 |
+| `crates/dp-control-plane/` | 7 |
+
+**3,768 files** changed in total. And the three gates that crash inside `all-gates` —
+`event-order-collision-gate.py`, `test_a_measured_turn_reaches_its_tool_gate.py`,
+`test_synonym_spelling_variants_gate.py` — are all **files this branch added**. The branch owns them.
+
+🔴 **`main`'s green is not a baseline.** Its last successful run for 7 of these 8 workflows is
+**2026-08-09**, nearly a month ago against a tree 3,118 commits behind. "It was green on main" cannot
+attribute anything here. The one workflow with a fresh main run — `conformance-ci`, 2026-09-04
+11:59 — is **failing on main too**, which is the only pre-existing verdict that is actually measured.
+
+---
+
+## 1. What is red, measured 2026-09-04 from run `2a5cd293b`
+
+**106 checks: 69 SUCCESS · 26 FAILURE · 11 SKIPPED.** The 26 are **22 distinct jobs** — the `gates`
+workflow runs twice (push + pull_request), so its 4 failures are counted 8 times.
+
+⚠️ **4 of the 26 do not block.** `dep-vuln`'s four audit jobs are `continue-on-error`: their checks
+read FAILURE while the workflow conclusion is SUCCESS. **18 blocking job failures** is the real number.
+
+| # | class | checks | blocking |
+|---|---|---:|---|
+| **C1** | Rust toolchain + workspace build | 6 (10 w/ dup) | yes |
+| **C2** | `all-gates` — 10 red gates of 188 | 1 (2 w/ dup) | yes |
+| **C3** | Go modules — glossary-service | 1 | yes |
+| **C4** | knowledge-service python, unit + integration | 2 | yes |
+| **C5** | DB round-trips + live-smoke | 4 | yes |
+| **C6** | conformance-ci | 3 | yes |
+| **C7** | agentruntime falsification + membrane | 2 | yes |
+| **C8** | dep-vuln audits | 4 | **no — advisory** |
+
+---
+
+## 2. The evidence already in hand, so no row starts from zero
+
+**C1 — one root cause may account for the whole class.** `rust-toolchain.toml` pins `1.89.0`; the
+`gates` job reports:
+
+    error: the 'cargo' binary, normally provided by the 'cargo' component,
+    is not applicable to the '1.89.0-x86_64-...' toolchain
+
+That is a **runner provisioning fault, not code** — and it is why `dp-aggregate-gate` and
+`crate-purity-gate` (`cargo metadata` failed) are red. But `dp-clippy` installs
+`nightly-2025-09-12` separately, and `foundation-ci`'s `cargo build --workspace` dies on something
+else entirely:
+
+    error: failed to run custom build command for `dp-control-plane v0.1.0`
+
+**So C1 is at least two faults, not one.** Prove which checks share a cause before fixing any of them.
+
+**C2 — the 10 named red gates**, out of 188 discovered (`gate-wiring-gate: OK — 188 gate(s)
+discovered, 6 exempt, 0 tracked-red`):
+
+| gate | first line of its failure | reading |
+|---|---|---|
+| `dp-aggregate-gate.py` | cargo not applicable to 1.89.0 | C1 |
+| `crate-purity-gate.py` | `cargo metadata` failed | C1 |
+| `dp-oracle-bite-gate.py` | doc/code pair, broken | likely C1 |
+| `dp-slice5c-bite-gate.py` | gRPC guards, each removed | likely C1 |
+| `gate-number-visibility-gate.py` | `MAX_COLLIDING_PAIRS = 51 never reaches the output` | **one-line fix** |
+| `test_a_measured_turn_reaches_its_tool_gate.py` | `Traceback` | **branch-added, crashes** |
+| `test_synonym_spelling_variants_gate.py` | `Traceback` | **branch-added, crashes** |
+| `agentruntime-membrane-gate.py` | selftest OK, then fails | real finding |
+| `phase0-reconcile-gate.py` | SELFTEST PASS, then fails | real finding |
+| `graph-tenancy-coupling-gate.py` | `traversal_filters_project=False` | real finding |
+
+⚠️ **A crashing gate is not a passing gate and not a failing one** — it is a gate with no verdict.
+Two of them are this branch's own files, which makes them the same defect class as `UNTRIAGED`.
+
+⚠️ `gate-number-visibility-gate` fails over **`event-order-collision-gate.py`**, also branch-added:
+its ratchet `MAX_COLLIDING_PAIRS = 51` is never printed on the pass path. Print it or declare it in
+`SILENT_BY_DESIGN` — the same ratchet-visibility rule this branch has already applied twice.
+
+**C3 — the one that looks like a genuine merge regression.** `go module failed:
+./services/glossary-service`, on two separate points:
+
+    entity_lifecycle_ledger_test.go:154: the chokepoint no longer writes the ledger
+    recalc_restore_test.go:43: chain has no step "0060_glossary_recalc_restore"
+
+The first is **the exact hazard the merge plan predicted** — `executor.py:632 silently disables FE's
+P7 chokepoint`. The second says a migration step vanished from the chain, which on this repo is the
+`DDL-in-an-applied-ledger-step` family. Neither is infra. Treat C3 as the highest-severity row even
+though it is one check.
+
+**C6 is red on `main` today.** Its `S7/F2 perf micro-bench gate` fails at `install benchstat` — a
+network step. Attribute before touching.
+
+---
+
+## 3. Board
+
+- [x] **T1** — **DONE. C1 was never one class: it was FOUR unrelated faults, and one member is not
+  even Rust.** Rule 7 earned its place on the first row.
+  - **A — `protoc` is installed by NO workflow in this repo.** `crates/dp-control-plane` is a
+    workspace member whose build.rs runs tonic-build, so `cargo build --workspace` died at BUILD and
+    everything downstream of it was dark, not passing. Added to `foundation-ci/rust` and `dp-clippy`.
+  - **B — `all-gates` had no Rust toolchain at all.** The three `rust-toolchain@` uses in gates.yml
+    are all in the *other* jobs; `ubuntu-latest` ships rustup, so cargo resolved and then died on the
+    `1.89.0` pin. All four cargo gates pass locally against 1.89.0 — pure provisioning. Provisioned
+    rather than skipped, so four real static gates stay in CI.
+  - **C — `lints/dp-clippy/run-lint.sh` was mode `100644` in git.** `./run-lint.sh` → Permission
+    denied, exit 126. One `git update-index --chmod=+x`.
+  - **D — `rust-mutations` and `reality-layer-mutations` were not infra, and the second is Go.**
+    Both were reporting *dead pointers as findings about the code*:
+    - `rust-mutations`: 1 of 26 survived — `NOTEST … selected nothing`. The row named
+      `actor::tests::existence_…` with `--lib`, but the test is an INTEGRATION test in
+      `tests/hub.rs`. Now `26/26 RED, 0 NOTEST`, exit 0.
+    - `reality-layer-mutations`: 4 bites unproven — one anchor matching **2x**, one matching **0x**
+      (the code was refactored out from under it), and two naming tests **that do not exist anywhere
+      in this repository**. Now `all 37 guards proved load-bearing (15 go + 16 rust + 6 meta)`.
+  - 🔴 **The mechanism defect behind D, which is the real finding.** `go test -run <nonexistent>`
+    exits **0** and prints `[no tests to run]`, so the harness reported a missing test as
+    `[VACUOUS] … stayed GREEN with the guard broken` — *the guard is weak* — when the truth was
+    *the bite never ran*. The Rust branch of that same file has guarded against this since it was
+    written; the Go branches never got it. Carried across as `[NOTEST]`, and three GDPR erasure
+    obligations that had read as measured for their whole existence now have tests
+    (`scrubber_obligations_test.go`).
+- [x] **T2** — **DONE for 9 of 10; the 10th (`agentruntime-membrane-gate`) is adjudicated in T7,
+  where its other CI home is.** Not one of the nine was "a gate finding a bug in the code". Every
+  one was a gate reporting a colour it had not earned, and **four of them were GREEN on a dev box
+  and RED in CI** — the shape gates.yml's own PyYAML comment already warns about.
+  - **Four (`dp-aggregate`, `crate-purity`, `dp-oracle`, `dp-slice5c`)** were T1's fault B. All pass
+    locally against cargo 1.89.0; `dp-oracle` 19/19 bitten, `dp-slice5c` 7/7.
+  - 🔴 **Two `Traceback`s exposed a much larger hole.** `gate-wiring-gate` invokes gates as
+    `python <file>`, and a pytest module has no `__main__` — so the call **defines its test
+    functions and exits 0 having asserted nothing**. Seven were in the run list; **21** were being
+    invoked this way in total. Four reported **GREEN over 29 assertions that never ran**. The two
+    REDs were the only honest ones, and only by accident: they end their import guard with
+    `pytest.skip(..., allow_module_level=True)`, which raises outside a pytest run. The file's own
+    comment already said these "get EXEMPT rows" — two of twenty-one had one. Now COMPUTED from the
+    structure (`test_*.py` with no `__main__`), not listed, so a pytest gate written tomorrow is
+    exempt the day it lands and one that grows a `__main__` returns to scope. Their real home is
+    foundation-ci's `gate red-ability proofs` step, which runs all of them properly.
+  - **`gate-number-visibility-gate` was the wrong diagnosis, not a one-line fix.** It reported
+    `MAX_COLLIDING_PAIRS = 51 never reaches the output` for a gate that is in `NEEDS_STACK` — CI has
+    no AGE store, so it never printed anything, while a dev box runs it and the finding evaporates.
+    The repair it demanded would have fixed nothing. Live-stack gates are now reported **UNVERIFIED**
+    on both paths (2 of them, incl. `causal-coverage-gate`, which was also passing on an
+    unsupportable verdict), reading `NEEDS_STACK` from gate-wiring-gate as the SSOT.
+  - **`graph-tenancy-coupling-gate` had stopped calling the function it exists to call.**
+    `id_is_project_scoped=None` in CI, `True` locally: importing `loreweave_extraction.canonical`
+    runs the package `__init__`, which pulls httpx, pydantic, bs4 and three opentelemetry
+    distributions. Now falls back to a package-init-free load (both modules are stdlib-only), so CI
+    calls the real function instead of degrading to `None`.
+  - **`phase0-reconcile-gate` was right, and I was one of the four offenders.** All four plan docs
+    missing a `Reconciles:` line were written in this session; the fifth failure was a wrapped
+    `Reconciles:` whose continuation line became a phantom row. Now 61 specs checked, all green.
+- [x] **T3** — **DONE, and the severity call was wrong in the safest direction.** I ranked this
+  highest because `the chokepoint no longer writes the ledger` reads like the merge hazard the
+  merge plan predicted at `executor.py:632`. It is not a regression: **both failures are stale
+  tests, and the production code is correct and better than what the tests describe.** Worth
+  saying plainly — the alarm was loud, specific, and wrong, and only reading the code showed it.
+  - **The migration three** named `0060_glossary_recalc_restore`. Nothing was lost: the merge
+    **renumbered** the pair to `0067`/`0068` (`0060` is now `0060_seed_genre_kind_attributes` from
+    the other side), and a second repair pair `0069`/`0070` was added when 0067 turned out to have
+    been reverted on the running database. Renumbering on merge is this ledger's normal practice —
+    it carries three MERGE notes saying so. Re-anchored on the **function and the order** instead
+    of the number, so the next renumber cannot break them *or* hide a real removal. Bitten both
+    ways.
+  - 🔴 **The chokepoint test was reading a 214-character alias through a 3,000-character window.**
+    T28 moved the SQL and its `glossary.entity_status_changed` emission together into
+    `setEntityStatusCore`; `bulkSetEntityStatusCore` survives as a wrapper that "deliberately holds
+    no SQL of its own". The old guard read `src[i : i+3000]` from the wrapper, found nothing, and
+    reported a lost audit trail. The guarantee is now the same **TRANSACTION** rather than the same
+    **STATEMENT** — stronger, and enforced in a signature: `appendLifecycleLedgerTx` takes a
+    `pgx.Tx` and no pool, so its row cannot commit independently. Every property the old test
+    asserted still holds (`FOR UPDATE` kept; `IS DISTINCT FROM` is now the Go `continue`).
+  - ⚠️ **Two guard-shape defects fixed while here**, both of which fail quietly: the fixed-size
+    window (it measures the file's layout, not the function, and reads the *next* function's code
+    when the target shrinks), and CRLF. This package is **mixed** — `entity_handler.go` is
+    1780/1780 CRLF while the other two files are pure LF — so a source guard that is not
+    line-ending agnostic silently covers whichever half it was written on.
+  - Evidence: `go test ./...` in glossary-service — **10 packages ok, 0 FAIL**. Five bites, each
+    red for its own reason and none via a build failure, all restored byte-exact.
+
+- [x] **T1b** — **the two follow-ons the first CI re-run exposed.** Fixing a check does not always
+  make it green; sometimes it just lets it fail further along, and that is progress worth naming.
+  - **`dp-clippy` got past `Permission denied` and died on the next line.**
+    `BUILD PRODUCED NO CDYLIB: nothing matched target/debug/dp_clippy.{dll,so,dylib}` — that is the
+    **Windows** spelling, and the only platform this script had ever run on. Linux emits
+    `libdp_clippy.so`. The `lib` prefix is now carried through to the destination too, because
+    dylint builds the name it searches for from the platform convention and a library it cannot
+    see fails as `No libraries were found.` with **exit 0** — the exact silent pass `assert_loaded`
+    exists to refuse.
+  - 🔴 **`Secret scan (gitleaks)` went red, and it is NOT one of the original 26.** It was SUCCESS
+    at `2a5cd293b`. **All 10 findings are false positives and none is from this session** (commits
+    dated 2026-08-05 … 2026-08-23): a self-describing test JWT
+    (`test_secret_at_least_32_chars_long_xx`, ×3 spec files), a `dev_internal_token` header shown
+    against `http://localhost:28216` in the isolated-stack runbook, and — four times over, once per
+    agent-config directory — **a security checklist's own counter-example**,
+    `const API_KEY = "sk_live_abc123";` sitting under the heading *"❌ Secrets in code"*.
+    Allowlisted as three **exact literals**, never by path: a path entry for
+    `services/knowledge-gateway/test/` or `.claude/skills/` would blind the scanner to a real
+    secret committed there tomorrow.
+- [x] **T4** — **DONE. Three faults, and the two test failures were both PLATFORM, not code.**
+  **2 of 5,048** unit tests failed, and both passed on my machine.
+  - 🔴 **The Kuzu single-writer test could only ever pass on Windows.** `Failed: DID NOT RAISE
+    Exception` on Linux — *not* version drift: kuzu is 0.11.3 in both places, which is also the
+    latest on PyPI. It is **file-locking scope**. Windows locks are handle-scoped, so a second
+    `Database()` in the same process is refused; POSIX advisory locks are PROCESS-scoped, so a
+    process may re-acquire its own lock. The test took both handles in one process. Its docstring
+    calls this "the fact that decides whether Kuzu can be the engine at all" and names the risk as
+    **`--workers 4`** — which is by definition several *processes*. It now takes the second handle
+    in a **subprocess**: platform-independent, and the stronger claim. Control: the probe exits 3
+    while the lock is held and 0 after `close_kuzu`.
+  - **`app.routes` is not a flat list of things with `.path`.** `AttributeError: '_IncludedRouter'
+    object has no attribute 'path'` — CI resolved an `fastapi>=0.111` floor to a version newer than
+    the local 0.136.1, which has no such class. The property is *"this path is served"*, so the
+    walk now descends into nested `routes` and skips entries without one. ⚠️ My first anti-vacuity
+    check was `len(paths) > 5` — a **guessed constant**, and the fixture is a bare `FastAPI()` with
+    one router, so it collected exactly 5 and went red on my own guess. Re-anchored on
+    `/openapi.json`, which is there by construction.
+  - **The integration job never ran a test** — it died building the image at
+    `COPY --from=age .../age--1.7.0.sql: not found`. The stage was `FROM apache/age:latest`, in a
+    file that forbids "a silent `latest`" six lines below. ⚠️ **I could not reproduce the obvious
+    story**: pulled a day later, `latest` *does* carry that file, so the trigger was whatever it
+    resolved to on that runner — and that is the argument, not a footnote. The tag is now DERIVED
+    as `release_PG${PG_MAJOR}_${AGE_VERSION}` from the two variables that already name the copied
+    file, so they cannot disagree.
+  - Evidence: `pytest tests` → **5000 passed, 848 skipped, 0 failed** (CI had 4998 + 2). Image
+    built locally and smoked: `age 1.7.0`, `vector 0.8.6`, `vectorscale 0.9.0` all created, and AGE
+    exercised through a real cypher write/read round-trip.
+- [x] **T5** — **DONE. No single cause; six defects across four jobs, and two are real production
+  bugs rather than test debt.** Every one reproduced against a throwaway Postgres in Docker and was
+  re-verified after the fix. 🔴 **Three of the six only bite a FRESH database** — invisible on any
+  developer's machine and on any long-lived environment, fatal on a new deployment.
+  - 🔴 **`ALTER TABLE usage_outbox` ran ~60 lines BEFORE its `CREATE TABLE`.** `schemaSQL` is one
+    ordered `pool.Exec`, so on a fresh DB Postgres hit the ALTER first and aborted the whole
+    migration: `relation "usage_outbox" does not exist (SQLSTATE 42P01)`. **No new deployment could
+    migrate.** A static scan found exactly one such violation; a new test
+    (`schema_order_test.go`) now fails the build on any ALTER-before-CREATE, and it was bitten by
+    restoring the defect verbatim — it reproduces the shipped error text.
+  - 🔴 **The `create meta smoke DB` step's own seed row was incomplete.** It named six columns while
+    `session_max_pcs/_npcs/_total` are `INT NOT NULL` with no default. It is the last line of a step
+    whose migrations emit pages of NOTICEs, so it read like a migration failure — every migration
+    applied cleanly. Proven both ways against a fresh DB: the old INSERT reproduces the error, the
+    new one inserts the row.
+  - **`errors.Is`, not `!=`.** The expiry path wraps the sentinel (`%w — it EXPIRED …`) on purpose;
+    identity comparison cannot see through it. Bitten: reverting one site reproduces CI exactly.
+  - **The drift test built a schema that has not existed for a long time.** It applied `0007` (ten
+    projections) and stopped; `0017` narrowed to three and `0018` to one. ⚠️ I first "fixed" this by
+    switching to `world_kv_projection` — a table `0018` **drops** — and the command's own allowlist
+    refuted me in one run. `canon_projection` was right all along; the schema was wrong. The seed
+    now asserts `RowsAffected() == 1`, so a silent no-op can never masquerade as a reader bug again.
+  - 🔴 **A fixture placeholder that acquired a meaning.** `seedPricedModel` seeds
+    `http://127.0.0.1:1` — picked as a *dead* address — and `billing.DecodePricing` later gave
+    loopback semantics: `IsLocalEndpoint(url) → FreePricing()`. Every model those guardrail tests
+    seeded was silently a **free local** model, so the unpriced guard never fired and the cap
+    arithmetic had no price to cap. Three tests, one cause. Only the pricing assertions now rewrite
+    the endpoint; the dispatch-failure tests keep loopback, which refuses instantly where an
+    unroutable public IP would hang.
+  - **Two 402s were split on purpose** — `LLM_MODEL_UNPRICED` vs `LLM_QUOTA_EXCEEDED`, because
+    "no price table" and "budget spent" are opposite problems and one shared code made the
+    author-facing message wrong for one of them every time. The tests still asserted the old code.
+  - **The strict default-model lookup was RECONCILED, not reverted.** It grew an embedding fallback,
+    and removing it would break `knowledge-service`'s embedding clients, which call
+    `/internal/default-models/embedding` directly — while this repo's own note records that **zero
+    accounts** ever set an explicit embedding default. The fallback stays; what is pinned now is
+    that it SAYS SO (`source: embedding_fallback`) and that it is embedding-only.
+  - Evidence: provider-registry `go test ./...` exit 0 · admin-cli exit 0 (fresh DB *and* an
+    already-migrated one) · book-service `internal/api` + `internal/migrate` green in isolation.
+    ⚠️ Two book-service backfill tests deadlocked under my single shared DB; they are green on an
+    isolated one and appear **nowhere** in the CI log — my environment, not a defect.
+- [x] **T6** — **DONE. Two causes, both `@latest`-shaped, and my "probably not ours" guess about
+  benchstat was wrong in the way that matters.**
+  - 🔴 **An incomplete removal took out FIVE conformance cases and the DST leg.** Commit
+    `5d09f376b` — *"remove pc/npc — and add the Phase 0 that would have caught them"* — deleted
+    `crates/projections/{pc,npc}` alongside migration `0017`, and left
+    `tests/sim/Cargo.toml` depending on `../../crates/projections/pc`. The whole sim crate could
+    not build (`failed to load manifest for dependency projections-pc`), so every case that shells
+    into it reported `setup error: exit 101`: `kernel-sim-{atomicity,cas,convergence,skeleton}`
+    **and** `tilemap-determinism`. The Phase 0 that commit added did not catch its own last
+    consumer.
+  - **Ported to `projections-canon`** — the projection that *survived* that cleanup, and the one
+    `0018` keeps "with a real producer". ⚠️ **A naive swap would have been vacuous**:
+    `CanonProjection.apply_event` returns `vec![]` for any envelope whose `aggregate_type` is not
+    `"canon"`, so a wrong string would have made both live and replay project *nothing*, compared
+    equal, and reported convergence over an empty table — the exact failure this file's own bite
+    arm names. Two anti-vacuity tests pin the script **by its effect**, and the bite fires on a
+    wrong `aggregate_type` with the diagnostic that says so.
+  - **The oracle keeps its teeth**, which is the whole point: `bite_global_order_dependent_
+    projection_diverges` ✅ and `real_projection_converges_across_interleavings` ✅. All five cases
+    now PASS locally, and both `--bite` arms still fire.
+  - **`go install …/benchstat@latest` — the same defect as `apache/age:latest` in T4.** Upstream
+    raised its floor (`requires go >= 1.26.0; running go 1.25.14; GOTOOLCHAIN=local`) and this job
+    pins Go 1.25 deliberately for reproducible numbers. Both cannot float. Pinned to a
+    pseudo-version declaring `go 1.18`, verified by installing it under go1.25.1 and running the
+    gate: `bite fired — REGRESSION PerfGateBite-32 +195.77% (p=0.000 n=10)`.
+  - ⚠️ Rule 9 said conformance-ci is red on `main` too, and it is — **but not for a reason that
+    excuses it.** Both causes are unpinned-upstream and incomplete-removal, and both are the
+    branch's to carry.
+- [x] **T7a** — **DONE. `agentruntime-membrane-gate` — the gate IMPORTS the package it guards.**
+  It runs `build`/`validate_document` rather than reading source, so it needs `pydantic_ai` — a
+  DELIBERATE dependency the gate itself allowlists. The two jobs that run it installed `pyyaml`
+  (and `pytest`) and nothing else. Both now install chat-service's requirements, conditionally in
+  the P1 matrix so the stdlib-only lints keep their fast step. Bitten with a `meta_path` hook: the
+  gate reproduces CI's message verbatim and exits 1; unblocked it exits 0. This was also the **last
+  red gate in `all-gates`** — that job went 10 red → 1 → 0.
+- [x] **T7b** — **✅ CLOSED: 402/402, 0 NOT FALSIFIABLE.** The 8 real findings each got a
+  case that exercises the mutated path, and the harness was re-run in an ISOLATED WORKTREE.
+  🔴 A run in the main tree, racing my own commits and a `git stash`, reported a
+  meaningless **79/402** with "RED, but a DIFFERENT test" on almost every row; that number is
+  recorded and DISCARDED. Never run a mutation harness in a tree you are also editing.
+  Original text below.
+
+- [x] **T7b (original text)** — **`agentruntime-falsification`: MEASURED and SPLIT, not fixed. 8 real findings.**
+  CI reports `395/408 falsifiers red the guard they name` with 13 `NOT FALSIFIABLE — GREEN, the
+  guard requires nothing`.
+  - 🔴 **The obvious explanation is wrong, and the count is why it is tempting.** The script's own
+    note says *"THE 13 ROWS FROM `tests/test_cp0_merge_db.py`… are DB-gated: without a real
+    Postgres they SKIP, and a skip is not a failure"*. Thirteen rows, thirteen findings — but they
+    are **not the same thirteen**. Only **5** live in `test_cp0_merge_db.py`; the other 8 are in
+    `test_cp5_{calloutcome,localtools,supplier}` and `test_cp6_vocabulary`, which have **no skip
+    mechanism at all**. A matching count is not a matching population.
+  - **The 8 reproduce locally**, on a machine where the DB-gated ones pass. Running their own
+    falsifier edits through the script's own `_apply`/`_run_one`: 8 stay GREEN, 1 reds. And
+    `_apply` **raises** `ANCHOR STALE` when an edit does not apply, so these are not silent
+    no-ops — the edits landed and the guards did not notice.
+  - **So: 5 environment, 8 real.** The 5 are the documented DB-gated case and belong in the
+    unproven backlog rather than `FALSIFIERS` (a fix commit, `73b3189a8`, added falsifier rows for
+    them — exactly what that note says produces "a lie about a guard that works"). The 8 are guards
+    that do not require what they claim to, and each needs its own analysis of what it should
+    assert — which is test-quality work, not CI triage. **Left open deliberately rather than
+    papered over.**
+- [x] **T8** — **TRIAGED, not fixed — and the fixing is a security-posture call, so it is D6.**
+  These four are `continue-on-error` and do not block the merge. They are also the only red checks
+  whose content is *real findings about shipped dependencies* rather than harness defects, which is
+  why they get a written record instead of a shrug.
+  - ⚠️ **Two of them read as clean and are not.** `pip-audit` and `govulncheck` print
+    *"No known vulnerabilities found"* dozens of times and exit 1, because each loops over every
+    requirements file / `go.mod` and only the FAILING iterations matter. Reading the tail of that
+    log is how a real finding gets dismissed.
+
+  | audit | finding | fix |
+  |---|---|---|
+  | Python | `datasets 2.21.0` — PYSEC-2026-3716 (knowledge-service) | 5.0.1 — a **major** jump |
+  | Go | `google.golang.org/grpc` — GO-2026-6061, xDS RBAC + HTTP/2 transport | upstream bump |
+  | Rust | **4**: `rsa` (Marvin Attack, key recovery via timing), `h2` (unbounded empty DATA frames), `quinn-proto` (remote memory exhaustion), `crossbeam-epoch` — plus 2 allowed warnings | mostly transitive; `RUSTSEC-2023-0071` has no patched release |
+  | JS/TS | **21** across frontend + gateways | mixed |
+
+  - **The Python one is lower exposure than it looks, and I got it wrong once.** I first read
+    `datasets` as never imported; it *is* imported — lazily, inside
+    `tests/quality/anchor_runner.py`, which an indented-import grep missed. Its own requirements
+    comment says *"Used only in tests/quality/* and only opt-in via --run-quality"*. So it is
+    test-only and opt-in — but it sits in `requirements.txt`, not `requirements-test.txt`, so it
+    ships in the runtime image (~500MB–1GB by that same comment's estimate). That placement is
+    worth fixing on its own merits, separately from the CVE.
+  - 🔴 **Not fixed here, deliberately.** Every one is a dependency bump: a 2.x→5.x major, three
+    transitive Rust crates, an unpatched advisory, and 21 JS findings. Bumping dependencies across
+    four ecosystems at the end of a long session — with no test cycle behind it — would trade a
+    known, non-blocking, advisory red for an unknown blocking one. **D6.**
+- [ ] **D3** — **STOP.** `platform_models` is empty, so the model story is BYOK. Is BYOK-only the
+  intended first-release posture? Owner's call, carried over unanswered.
+- [ ] **D4** — **STOP.** One cloud-model run; everything so far is proven on one local model. Costs
+  money, needs an explicit yes and a stated call count. Carried over unanswered.
+- [ ] **D5** — **STOP.** Merge with C8 advisory-red, or block on it? Owner's call.
+- [ ] **D6** — **STOP. The security posture for the first release.** T8 found real advisories in
+  all four ecosystems (table above), none of them blocking. Three ways to go, and it is a risk
+  call rather than an engineering one: **(a)** bump everything now and take the regression risk on
+  a branch that is already 3,100+ commits ahead; **(b)** fix only what is cheap and safe — move
+  `datasets` to `requirements-test.txt` (it is test-only by its own comment and is ~500MB–1GB of
+  runtime image), leave the transitive ones; **(c)** accept and record, and schedule the bumps as
+  their own change with its own test cycle. ⚠️ `rsa`'s Marvin Attack advisory has **no patched
+  release**, so no option makes that one green.
+
+---
+
+## 4. What "resolved" means, so the row cannot be ticked cheaply
+
+A row closes when every check in its class is **GREEN**, or **declared** with a reason a stranger can
+audit: a `KNOWN_RED` row naming a tracked deferral, an advisory job's accepted-risk note, or a
+measured attribution to runner infrastructure. **A red check with no verdict is the failure this plan
+exists to end**, and it is the same defect as an `UNTRIAGED` parity row.
+
+🔴 **Re-run before believing a fix.** A green local run proves the fix compiles here; only the PR's
+own checks prove it in CI. And re-run the FULL workflow — a subset run hides the regression you
+just shipped.
+
+**RESUME: nothing here — every T row is closed; the work moved to the successor plan**
+
+🔴 **THIS LINE NAMED `T1` WHILE `T1` WAS ALREADY `[x]`, FOR AN ENTIRE RUN.** That is the
+exact failure `/goal-prompt`'s own docs describe — *"A goal prompt naming a finished row sends
+a whole session at the wrong task ... which is how one row held the RESUME pointer for ten
+consecutive batches after it shipped"* — and it did send one: a goal check-in read this line
+and reported T1 as incomplete. A ticked row leaves the queue by itself; a hand-written RESUME
+does not.
+
+T1-T8 are all `[x]`. The open work moved to
+[`2026-09-05-ci-red-the-last-three.md`](2026-09-05-ci-red-the-last-three.md), whose own RESUME
+is current: **14 of 19 rows closed, and the 5 open ones are all decisions owed to the owner**
+(D3, D4, D5, D6, D7). `dp-clippy` is the only non-advisory red left and it IS D7.
+
+---
+
+```goal-prompt
+goal: every one of the 26 red checks on PR 219 carries a verdict - fixed, or declared with a reason a stranger can audit - and the branch is fit to merge to main
+po_decisions: [D3, D4, D5]
+rules: |
+  1 $0. Local models only. A PAID run needs an explicit yes and its CALL COUNT stated first. platform_models is EMPTY - keep it that way.
+  2 main's green is NOT a baseline: its last pass for 7 of 8 workflows is 2026-08-09, 3118 commits behind. Never attribute by "it was green on main".
+  3 Attribute a red thing BEFORE fixing it. The branch changed 3768 files and touches every failing area, so "not mine" needs the BRANCH diff, not the session diff.
+  4 A crashing gate (Traceback) has NO verdict - neither pass nor fail. Same defect class as UNTRIAGED.
+  5 A check that stays red leaves with a KNOWN_RED row naming a tracked deferral, or an accepted-risk note. Never silently.
+  6 dep-vuln's 4 checks are continue-on-error and do NOT block. 18 blocking failures is the real number; do not pool the 26.
+  7 Two Rust errors that look alike may be different faults. Prove a shared root cause before applying one fix to a class.
+  8 Re-run the FULL workflow to confirm a fix. A local green proves it compiles here, not in CI; a subset run hides the regression you shipped.
+  9 conformance-ci is red on main TODAY - the only measured pre-existing verdict. Everything else needs its own attribution.
+  10 Never merge or push to main without an explicit yes. Merging is outward-facing and the owner's call.
+discipline: |
+  A pipe to head/tail reports the PIPE's exit, not the command's. Capture to a file when the exit code matters.
+  sed -i rewrites every line ending on this repo's CRLF files - edit with Python or Edit, and check cmp AND git diff --stat after a bite.
+  Verify the pointer before declaring evidence missing, and grep for the route before blaming a service.
+  A falsification verdict can be vacuous - check what its bar actually asserts before believing either colour.
+  Numerator and denominator must measure the same population - stratify before pooling.
+stop: |
+  a write would touch a non-throwaway book or database
+  a run would call a model that is not local
+  a merge or push to main is about to happen
+  a product decision is owed: D3, D4, D5
+```

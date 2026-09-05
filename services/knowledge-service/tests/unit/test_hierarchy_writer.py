@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.db.neo4j_helpers import ensure_summary_indexes, summary_index_name
+from app.db.graph_repos.vector_indexes import ensure_summary_indexes, summary_index_name
 from app.extraction.hierarchy_writer import HierarchyPaths, upsert_for_chapter
 
 

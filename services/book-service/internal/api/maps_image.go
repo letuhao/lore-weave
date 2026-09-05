@@ -21,6 +21,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -123,10 +124,15 @@ func (s *Server) uploadWorldMapImageCore(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	// A format change (png→jpg) changes the deterministic key, orphaning the prior
-	// object — sweep it best-effort (never fail the upload; the row already points at
-	// the new key).
+	// object — remove it best-effort (never fail the upload; the row already points at
+	// the new key), but LOG a failure rather than discarding it (#310): nothing sweeps
+	// orphaned media, so a swallowed error here leaks the old object permanently and
+	// invisibly. Same reasoning as the two map-delete paths.
 	if oldKey != nil && *oldKey != "" && *oldKey != objectKey {
-		_ = s.minio.RemoveObject(ctx, mediaBucket, *oldKey, minio.RemoveObjectOptions{})
+		if rerr := s.minio.RemoveObject(ctx, mediaBucket, *oldKey, minio.RemoveObjectOptions{}); rerr != nil {
+			slog.WarnContext(ctx, "map image upload: orphaned previous base image (upload succeeded, old blob remains)",
+				"map_id", mapID.String(), "object_key", *oldKey, "error", rerr)
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"image_object_key": objectKey,

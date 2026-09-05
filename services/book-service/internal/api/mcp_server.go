@@ -42,6 +42,17 @@ var (
 	// into thinking they lost book access (the observed failure: a mistranscribed chapter_id read
 	// as "no book access", so the agent gave up instead of fixing the id).
 	errChapterNotInBook = errors.New("no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)")
+	// errSceneNotInBook is the same reasoning one level down (TOOLV2 LOOP #132). The scene read
+	// returned errBookNotAccessible for a missing scene_id, on a book the same call had just
+	// proven readable — the sixth site of this class found in this loop. A VIEW-granted caller
+	// can already enumerate scenes via book_scene_list, so naming a bad scene_id leaks no
+	// existence oracle either.
+	errSceneNotInBook = errors.New("no active scene with that scene_id in this book — check the scene_id against the scenes listed for this book")
+	// errStructureTargetNotInBook is the same reasoning for the STRUCTURE ops, where the missing
+	// thing may be a part or a chapter and the shared mapper cannot tell which (TOOLV2 LOOP
+	// #138). It is still not the book: every one of these paths runs after an EDIT grant has
+	// passed, so "book not accessible" was false on all of them.
+	errStructureTargetNotInBook = errors.New("no active part or chapter with that id in this book — check the id (call book_structure_read for the current structure)")
 )
 
 // mcpUserID lifts the caller's user id from the kit identity context (set by
@@ -98,6 +109,14 @@ func (s *Server) newMCPServer() *mcp.Server {
 	// (docs/specs/2026-07-22-book-tools-redesign.md Part C/D). `kind` selects the set; default
 	// "books" keeps the prior behavior backward-compatible (.books + .total still present).
 	// Supersedes book_list_chapters / book_list_revisions / book_scene_list (now legacy).
+	//
+	// CP-4 brick 2, 2026-08-09: that sentence used to be the ONLY record of the edge. Measured
+	// across the frozen 315-tool baseline, 54 tools carry _meta.superseded_by and every one of them
+	// is composition_* -> composition_*; not one book_* tool carried a pointer, so book_list -- the
+	// declaration this whole effort was founded on -- superseded three tools that named it nowhere a
+	// consumer could read. WithSupersededBy has existed in the kit the entire time. The three call
+	// sites below now carry it, and mcp_supersession_test.go asserts the edge from THIS registry so
+	// a fourth folded-in read cannot be documented in a comment alone.
 	addToolClosedSet(srv, "book_list",
 		"List REFERENCES only (the 'ls') — never bodies. `kind` selects what: books (default; the "+
 			"caller's library), chapters (needs book_id), revisions (needs book_id + chapter_id), or "+
@@ -115,14 +134,15 @@ func (s *Server) newMCPServer() *mcp.Server {
 		"Fetch one book's full detail (title, description, language, summary, "+
 			"genre tags, chapter count, lifecycle) by id. "+
 			"DEPRECATED: use book_read with book_id alone — the one 'cat' tool for book/chapter/scene.",
-		lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"book detail", "open book", "show book"}), lwmcp.VisibilityLegacy),
+		lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"book detail", "open book", "show book"}), lwmcp.VisibilityLegacy), "book_read"),
 		s.toolBookGet)
 
 	addTool(srv, "book_list_chapters",
 		"List a book's chapters (title, sort order, language, editorial status, "+
 			"draft revision count, lifecycle). Use to see a book's structure. "+
 			"DEPRECATED: use book_list with kind=chapters — the one 'ls' tool, paged + self-terminating.",
-		lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"chapters", "table of contents", "toc"}), lwmcp.VisibilityLegacy),
+		// CP-4 brick 2 — the supersession edge is DATA, not the prose above. See book_list.
+		lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"chapters", "table of contents", "toc"}), lwmcp.VisibilityLegacy), "book_list"),
 		s.toolBookListChapters)
 
 	addTool(srv, "book_get_chapter",
@@ -131,14 +151,14 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"full plain-text prose in `body` when include_body=true (use that to READ a "+
 			"chapter after story_search locates it; the body can be large). "+
 			"DEPRECATED: use book_read with book_id + chapter_id — the one 'cat' tool, same block-paging.",
-		lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"chapter detail", "open chapter", "read chapter text"}), lwmcp.VisibilityLegacy),
+		lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"chapter detail", "open chapter", "read chapter text"}), lwmcp.VisibilityLegacy), "book_read"),
 		s.toolBookGetChapter)
 
 	addTool(srv, "book_list_revisions",
 		"List a chapter's saved draft revisions (id, created_at, author, message, "+
 			"body size), newest first. Use before restoring a revision. "+
 			"DEPRECATED: use book_list with kind=revisions.",
-		lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"revisions", "history", "versions"}), lwmcp.VisibilityLegacy),
+		lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"revisions", "history", "versions"}), lwmcp.VisibilityLegacy), "book_list"),
 		s.toolBookListRevisions)
 
 	addTool(srv, "book_scene_list",
@@ -148,7 +168,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"go-to-prose), or q (heading/prose substring). Read-only: authoring writes go "+
 			"to the composition outline, not here. "+
 			"DEPRECATED: use book_list with kind=scenes.",
-		lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"scenes", "scene index", "go to prose"}), lwmcp.VisibilityLegacy),
+		lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"scenes", "scene index", "go to prose"}), lwmcp.VisibilityLegacy), "book_list"),
 		s.toolBookSceneList)
 
 	addTool(srv, "book_scene_get",
@@ -156,7 +176,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"(leaf_text), content hash, and source_scene_id (the composition spec "+
 			"back-link). Read-only. "+
 			"DEPRECATED: use book_read with book_id + scene_id.",
-		lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"scene detail", "open scene", "read scene"}), lwmcp.VisibilityLegacy),
+		lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"scene detail", "open scene", "read scene"}), lwmcp.VisibilityLegacy), "book_read"),
 		s.toolBookSceneGet)
 
 	addTool(srv, "book_steering_list",
@@ -174,7 +194,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"chapter), limit/offset. Returns matching chapters/blocks with highlighted "+
 			"snippets + has_more. For meaning-alike / semantic passages use story_search "+
 			"instead — this one only finds the exact characters you pass.",
-		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"grep", "find text", "exact phrase", "literal search", "where in the book does it say"}),
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"grep", "find exact text", "exact phrase", "literal search", "where in the book does it say"}),
 		s.toolBookSearch)
 
 	// book_read — the unified "cat": read the full content of ONE addressed item
@@ -214,17 +234,25 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"provided fields change.",
 		lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{
 			"rename book", "edit book", "edit book details", "update book details", "book blurb",
-			"set genre", "set description", "update description", "change the description",
+			"set genre", "set description", "update description",
+			// DQ-T41 (owner, 2026-08-27): a synonym collision is a CATALOGUE defect, not a
+			// ranking problem -- "if they have different purpose and role, change description
+			// to avoid duplicated". The bare "change the description" named no object, so it
+			// claimed "Change the description of the GLOSSARY SKILL" as readily as a book's.
+			// Measured over 281 corpus turns: naming the object costs book_update_details
+			// exactly one turn -- registry_update_skill's, which was never its to answer.
+			"change the book description",
 			"update the book description", "set summary", "update summary", "set blurb",
 			"set synopsis", "write the book description"}),
 		s.toolBookUpdateMeta)
 
 	addTool(srv, "book_chapter_create",
-		"Create a new chapter — a unit of manuscript PROSE (the story text itself) — from plain text "+
-			"(or empty). Returns the new chapter_id. For the book's own description / summary / blurb "+
+		"Create a new chapter — a unit of manuscript PROSE (the story text itself). PASS THE PROSE IN "+
+			"body: a create without body makes an EMPTY chapter (0 words) that the author cannot read, "+
+			"and it stays empty until a later book_chapter_save_draft fills it. Returns the new chapter_id. For the book's own description / summary / blurb "+
 			"(the book's own details, not chapter prose), use book_update_details instead — do NOT create a chapter for it. "+
 			"Reverse: trashing a chapter is a manual UI action — tell the user, do not look for a tool.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new chapter", "add chapter", "write a chapter"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new chapter", "add chapter"}),
 		s.toolChapterCreate)
 
 	addTool(srv, "book_chapter_bulk_create",
@@ -256,7 +284,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"part_id=<id> (or part_id=\"unassigned\"): that group's chapters, paged — every result carries "+
 			"page.is_complete + a `guidance` line telling you when to STOP. Use this to see where chapters "+
 			"live before reorganizing with book_structure_edit.",
-		lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"manuscript structure", "parts overview", "table of contents", "where do chapters live", "book outline"})),
+		lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"manuscript structure", "parts overview", "where do chapters live", "book outline"})),
 		s.toolBookStructureRead)
 
 	addToolClosedSet(srv, "book_structure_edit",
@@ -264,7 +292,9 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"(part_id, title) · reorder_parts (ordered_part_ids — the full active set, each once) · "+
 			"home_chapter (chapter_id + part_id, or part_id=\"unassigned\" to un-home) · reorder_chapters "+
 			"(chapter_ids — the complete new order for one language track). Every op is reversible (Undo). "+
-			"To DELETE a part, use this same tool's archive op — there is no separate delete tool.",
+			"Deleting a PART has no tool at all: this tool has no archive op and there is no separate "+
+			"one to find, so do NOT go looking for one and do NOT claim a part was deleted — tell the "+
+			"user to remove it in the manuscript UI.",
 		lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"create part", "add act", "add volume", "rename part", "reorder parts",
 			"move chapter to act", "put chapter in volume", "home chapter", "reorder chapters", "change reading order",
@@ -291,7 +321,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 		"DEPRECATED: use book_structure_edit op=home_chapter. Move a chapter into / out of / between "+
 			"manuscript parts. part_id = the target part, or null to un-home it into the flat manuscript. "+
 			"Reverse: book_chapter_set_part with the chapter's prior part_id.",
-		lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"move chapter to act", "put chapter in volume", "home chapter", "un-home chapter"}), lwmcp.VisibilityLegacy),
+		lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"move chapter to act", "put chapter in volume", "home chapter", "un-home chapter"}), lwmcp.VisibilityLegacy), "book_structure_edit"),
 		s.toolChapterSetPart)
 
 	// S-07 §3 — reorder was REST-only; this gives the agent reading-order parity with the human.
@@ -299,7 +329,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 		"DEPRECATED: use book_structure_edit op=reorder_chapters. Set the reading order of a book's "+
 			"chapters. Pass chapter_ids as the COMPLETE list of the book's active chapters (one language "+
 			"track) in the new order — each exactly once. Reverse: book_chapter_reorder with the prior order.",
-		lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"reorder chapters", "reorder manuscript", "change reading order", "move chapter"}), lwmcp.VisibilityLegacy),
+		lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"reorder chapters", "reorder manuscript", "change reading order", "move chapter"}), lwmcp.VisibilityLegacy), "book_structure_edit"),
 		s.toolChapterReorder)
 
 	addTool(srv, "book_chapter_restore_revision",
@@ -320,7 +350,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"new version, word_count) so you know exactly what landed. This is NOT for the book's own "+
 			"description / summary / blurb (those are the book's DETAILS — use book_update_details; never write "+
 			"prose there). Reverse: book_chapter_restore_revision.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter prose", "write the chapter", "draft the scene"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"save draft", "edit chapter text", "write chapter prose", "save the chapter draft", "save the scene draft"}),
 		map[string][]any{"body_format": {"plain", "markdown", "json"}},
 		s.toolChapterSaveDraft)
 

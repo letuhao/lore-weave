@@ -65,7 +65,10 @@ _HANDLERS = {
 
 @router.get("")
 async def reconcile_jobs(
-    since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
+    since: datetime | None = Query(
+        None, description="ISO-8601 — rows updated at/after this (the delta sweep)"),
+    ids: list[UUID] | None = Query(
+        None, description="ask about THESE rows; absence from the result means gone"),
     limit: int = Query(1000, ge=1, le=5000, description="page cap — the sweeper's _PAGE_LIMIT"),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
@@ -73,11 +76,39 @@ async def reconcile_jobs(
     updated since `since` (oldest-first, capped at `limit`), in canonical `JobEvent` payload
     shape, for the jobs-service sweep to upsert. Internal-token (router dep); ALL owners. A
     transient `estimating` row (canonical None) is skipped — it has no canonical JobStatus."""
-    rows = await pool.fetch(
-        "SELECT job_id, user_id, status, error_message, updated_at FROM enrichment_job "
-        "WHERE updated_at >= $1 ORDER BY updated_at ASC LIMIT $2",
-        since, limit,
-    )
+    # 🔴 EXACTLY ONE MODE PER CALL (owner ruling 2026-08-31, DQ-T65). `since` is the
+    # DELTA sweep; `ids` is the EXISTENCE question, and the caller reads ABSENCE from
+    # the result. A delta can only ever ADD -- a row that stopped changing, or was
+    # deleted, never appears in another `?since=` window, which is why the projection
+    # kept 28 rows at running/pending for up to 74 days.
+    #
+    # Both together would make an empty result ambiguous: "gone" and "not changed
+    # since" are different answers and must not share a response.
+    # 🔴 THESE TESTS CALL THE ENDPOINT DIRECTLY, so FastAPI never resolves the defaults and
+    # an omitted parameter arrives as the `Query(...)` object itself, not None. The
+    # exactly-one-mode guard below then sees two "supplied" arguments and 422s a perfectly
+    # ordinary delta call. Normalising by TYPE rather than by identity keeps the function
+    # callable both ways, which is how every other test in this file drives it.
+    since = since if isinstance(since, datetime) else None
+    ids = ids if isinstance(ids, list) else None
+    if (since is None) == (ids is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "JOBS_BAD_QUERY",
+                    "message": "pass exactly one of `since` (delta) or `ids` (existence)"},
+        )
+    _cols = "job_id, user_id, status, error_message, updated_at"
+    if ids is not None:
+        rows = await pool.fetch(
+            f"SELECT {_cols} FROM enrichment_job WHERE job_id = ANY($1::uuid[])",
+            ids,
+        ) if ids else []
+    else:
+        rows = await pool.fetch(
+            f"SELECT {_cols} FROM enrichment_job "
+            "WHERE updated_at >= $1 ORDER BY updated_at ASC LIMIT $2",
+            since, limit,
+        )
     out = []
     for r in rows:
         cstatus = canonical_status(r["status"])

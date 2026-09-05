@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos.relations import (
     SUBGRAPH_MAX_HOPS,
     SUBGRAPH_MAX_NODE_CAP,
     get_project_subgraph,
@@ -101,8 +101,11 @@ async def test_binds_both_user_and_project():
     assert "$user_id" in session.last_cypher
     assert "$project_id" in session.last_cypher
     # every Entity match in the project-wide path is scoped to both keys
-    assert "n.user_id = user_id" in session.last_cypher
-    assert "n.project_id = project_id" in session.last_cypher
+    # T82 dropped the `CALL { }` wrapper, so the seed MATCH reads the parameter directly
+    # instead of a subquery-rebound alias. The rule is unchanged: both keys are bound on
+    # the seed node, not just the project.
+    assert "n.user_id = $user_id" in session.last_cypher
+    assert "n.project_id = $project_id" in session.last_cypher
 
 
 # ── cap IN the query, deterministic order ────────────────────────────

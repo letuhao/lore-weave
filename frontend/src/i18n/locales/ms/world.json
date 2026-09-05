@@ -9,7 +9,15 @@
     "description": "Cipta dunia pertama anda untuk mula menulis lore — tidak perlu bab."
   },
   "card": {
-    "books": "{{count}} buku"
+    "books": "{{count}} buku",
+    "delete": "Padam dunia",
+    "delete_blocked": "Alihkan dahulu {{count}} buku dari dunia ini",
+    "delete_title": "Padam dunia ini?",
+    "delete_description": "Memadam \"{{name}}\" tidak boleh dibatalkan. Lore, peta dan garis masanya turut hilang.",
+    "delete_hint": "Dunia yang mengandungi buku tidak boleh dipadam — alihkan dahulu.",
+    "delete_cancel": "Batal",
+    "delete_confirm": "Padam kekal",
+    "delete_done": "Dunia dipadam"
   },
   "create": {
     "cta": "Dunia baru",

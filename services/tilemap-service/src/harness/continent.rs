@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::engine::{place_tilemap_with_timings, PlacementStageTimings};
 use crate::seed::derive_seed;
-use crate::types::channel::{ChannelId, ChannelTier};
+use crate::types::channel::{ChannelId, MapKind};
 use crate::types::template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
 use crate::types::tilemap::{GridSize, TilemapView};
 use crate::types::treasure::TreasureTierSpec;
@@ -128,7 +128,7 @@ fn continent_seed(template: &TilemapTemplate) -> crate::seed::TilemapSeed {
 /// the live measurement can reuse it.
 pub fn measure_offline() -> crate::Result<(TilemapView, OfflineMeasurement)> {
     let template = continent_template();
-    let grid = GridSize::CONTINENT_DEFAULT;
+    let grid = GridSize::ZOOM_256;
     let seed = continent_seed(&template);
 
     // Single-pass timed placement. `place_tilemap_with_timings` returns the
@@ -141,7 +141,7 @@ pub fn measure_offline() -> crate::Result<(TilemapView, OfflineMeasurement)> {
     let (tilemap, stage) = place_tilemap_with_timings(
         &template,
         ChannelId("continent_channel".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         grid,
         seed,
     )?;
@@ -315,7 +315,7 @@ mod tests {
             place_tilemap(
                 &template,
                 ChannelId("continent_channel".to_string()),
-                ChannelTier::Country,
+                MapKind::Region,
                 grid,
                 seed,
             )
@@ -334,7 +334,7 @@ mod tests {
         let tilemap = place_tilemap(
             &template,
             ChannelId("continent_channel".to_string()),
-            ChannelTier::Country,
+            MapKind::Region,
             grid,
             continent_seed(&template),
         )

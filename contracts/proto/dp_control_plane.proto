@@ -1,0 +1,254 @@
+// dp_control_plane.proto — `DP-C3`, the control plane's gRPC surface.
+//
+// CONTRACT-FIRST. This file is the contract; the Rust server and client in
+// `crates/dp-control-plane` are generated from it, so the two sides cannot
+// disagree about a field the way two hand-written structs can.
+//
+// ── SCOPE: the NON-CHANNEL surface ──────────────────────────────────────────
+//
+// `DP-C3` specifies 26 RPCs in 10 groups. The four CHANNEL groups — channel
+// tree, channel writer binding, bubble-up aggregator registry, and channel
+// lifecycle/pause — are 12 of those RPCs and are NOT here: they are slice `5D`,
+// which is what first produces a `ChannelId`. Declaring them now would put 12
+// method names in a contract with no type to carry their key.
+//
+// The remaining SIX groups (14 RPCs) are below. The run-state row for `5C` says
+// "the four non-channel RPC groups"; the spec has six, and this file covers all
+// of them — a superset, stated rather than silently reconciled.
+//
+// ── WHAT IS DECLARED HERE AND NOT IMPLEMENTED, AND WHY THAT IS NOT A LIE ────
+//
+// A contract may declare more than today's server can serve; a MODEL may not.
+// Four of the six groups read state that does not exist in this repo — measured,
+// not assumed:
+//
+//   tier_policy      ABSENT from every migration   -> GetTierPolicy, StreamTierPolicyUpdates
+//   tier_capability  ABSENT                        -> (the authorization table; see DP-C8's amendment)
+//   npc_binding      ABSENT                        -> GetNpcNode
+//   schema_version   ABSENT                        -> GetSchemaVersion, Announce*
+//
+// The server returns `UNIMPLEMENTED` for each, names the missing table in the
+// status message, and a test asserts exactly which methods do that — so the
+// list is a fact under test rather than a comment that rots. Serving a
+// plausible default from a table that does not exist would be worse than the
+// error: it would be an answer.
+//
+// ── AUTH ────────────────────────────────────────────────────────────────────
+//
+// `DP-C3`: gRPC over mTLS between CP and game services. That makes this an
+// INTERNAL, service-to-service surface — `I1` (the gateway invariant) governs
+// PUBLIC traffic and is enforced by security groups exposing only
+// `api-gateway-bff` and `game-server`, so this surface neither amends nor
+// violates it. The invariant that DOES apply is `I11`: every inter-service RPC
+// needs an ACL row naming its allowed callers and its principal mode.
+//
+// The `service_identity` fields below are what the peer certificate's subject
+// populates. Until the transport terminates mTLS they are the caller's own
+// assertion — see `dp::ServiceIdentity`, which says the same thing in Rust.
+
+syntax = "proto3";
+
+package loreweave.dp.controlplane.v1;
+
+// ── Group F: health ─────────────────────────────────────────────────────────
+
+message Empty {}
+
+message HealthReport {
+  // Can the control plane reach the state it serves from?
+  bool healthy = 1;
+  // Free text for an operator. Never a machine-readable contract.
+  string detail = 2;
+}
+
+// ── Group A: session + capability lifecycle ─────────────────────────────────
+
+message VerifyRealityRequest {
+  string reality_id = 1;
+}
+
+message VerifyRealityResponse {
+  // Does the reality exist AND accept commands? `DP-C8`'s issuance flow checks
+  // both, and the second is the one worth having: a frozen or archived reality
+  // is a perfectly real row.
+  bool bindable = 1;
+  // The registry status, lowercase, as stored. Empty when the reality is absent.
+  string status = 2;
+}
+
+message BindSessionRequest {
+  string reality_id = 1;
+  // The node the session pins to (`GetSessionNode` answers from this).
+  string node_id = 2;
+  // WHO is asking. Attribution, not authorization — `DP-C4`'s tier_capability
+  // is the authorization table and has no producer yet.
+  string service_identity = 3;
+}
+
+message BindSessionResponse {
+  string reality_id = 1;
+  string session_id = 2;
+  // The bearer secret, returned ONCE. The control plane keeps only its SHA-256
+  // (migration 039), so this value cannot be recovered from the store.
+  //
+  // Amended from `DP-C8`'s signed JWT — see the amendment block on DP-C8 in
+  // 05_control_plane_spec.md for what ships, what it costs, and what reverses
+  // it.
+  string capability_secret = 3;
+  // Unix EPOCH milliseconds. The epoch is part of the contract: the control
+  // plane stamps this and a different process compares it, and two processes
+  // cannot compare readings from an arbitrary epoch at all.
+  uint64 expires_at_ms = 4;
+}
+
+message RefreshCapabilityRequest {
+  // The secret already held. It is not re-issued — the expiry moves forward on
+  // the stored row, so the secret does not travel a second time.
+  string capability_secret = 1;
+}
+
+message RefreshCapabilityResponse {
+  string reality_id = 1;
+  string session_id = 2;
+  uint64 expires_at_ms = 3;
+}
+
+// ── Group B: tier policy ────────────────────────────────────────────────────
+
+message GetTierPolicyRequest {
+  // Empty = the whole snapshot.
+  string aggregate_type = 1;
+}
+
+message TierPolicyEntry {
+  string aggregate_type = 1;
+  string declared_tier = 2;
+  uint32 schema_version = 3;
+  string feature_owner = 4;
+}
+
+message TierPolicySnapshot {
+  repeated TierPolicyEntry entries = 1;
+  uint64 snapshot_version = 2;
+}
+
+message StreamTierPolicyRequest {
+  uint64 since_version = 1;
+}
+
+message TierPolicyDelta {
+  TierPolicyEntry entry = 1;
+  bool removed = 2;
+  uint64 snapshot_version = 3;
+}
+
+// ── Group C: reality registry ───────────────────────────────────────────────
+
+message ResolveRealityRequest {
+  string reality_id = 1;
+}
+
+message RealityEndpoints {
+  string reality_id = 1;
+  string db_host = 2;
+  string db_name = 3;
+  string status = 4;
+  string locale = 5;
+  // 0..=99. Range-checked on decode rather than cast: an out-of-range value
+  // wrapped by `as u8` would arrive as cohort 0, the one that gets every canary
+  // first.
+  uint32 deploy_cohort = 6;
+}
+
+message StreamRealityTransitionsRequest {
+  // Empty = every reality.
+  repeated string reality_ids = 1;
+}
+
+message RealityTransition {
+  string reality_id = 1;
+  string from_status = 2;
+  string to_status = 3;
+  uint64 at_ms = 4;
+}
+
+// ── Group D: session stickiness + NPC binding ───────────────────────────────
+
+message GetSessionNodeRequest {
+  string session_id = 1;
+}
+
+message NodeAssignment {
+  string node_id = 1;
+  // False when nothing is bound — distinct from an empty node id, which would
+  // read as "assigned to the node named ''".
+  bool assigned = 2;
+}
+
+message GetNpcNodeRequest {
+  string reality_id = 1;
+  string npc_id = 2;
+}
+
+message ReportNodeHandoffRequest {
+  string session_id = 1;
+  string from_node_id = 2;
+  string to_node_id = 3;
+}
+
+// ── Group E: schema + migration ─────────────────────────────────────────────
+
+message GetSchemaVersionRequest {
+  string reality_id = 1;
+}
+
+message SchemaVersion {
+  uint32 version = 1;
+  bool migration_in_progress = 2;
+}
+
+message AnnounceMigrationStartRequest {
+  string reality_id = 1;
+  uint32 to_version = 2;
+}
+
+message AnnounceMigrationCompleteRequest {
+  string reality_id = 1;
+  uint32 at_version = 2;
+  bool succeeded = 3;
+}
+
+// ── The service ─────────────────────────────────────────────────────────────
+
+service DpControlPlane {
+  // Group A — session + capability lifecycle. IMPLEMENTED.
+  rpc VerifyReality (VerifyRealityRequest) returns (VerifyRealityResponse);
+  rpc BindSession (BindSessionRequest) returns (BindSessionResponse);
+  rpc RefreshCapability (RefreshCapabilityRequest) returns (RefreshCapabilityResponse);
+
+  // Group B — tier policy. UNIMPLEMENTED: `tier_policy` does not exist.
+  rpc GetTierPolicy (GetTierPolicyRequest) returns (TierPolicySnapshot);
+  rpc StreamTierPolicyUpdates (StreamTierPolicyRequest) returns (stream TierPolicyDelta);
+
+  // Group C — reality registry. ResolveReality IMPLEMENTED;
+  // StreamRealityTransitions UNIMPLEMENTED: nothing publishes transitions to
+  // subscribe to.
+  rpc ResolveReality (ResolveRealityRequest) returns (RealityEndpoints);
+  rpc StreamRealityTransitions (StreamRealityTransitionsRequest) returns (stream RealityTransition);
+
+  // Group D — session stickiness + NPC binding. GetSessionNode IMPLEMENTED
+  // (migration 039 gave it a column); the other two UNIMPLEMENTED:
+  // `npc_binding` does not exist, and a handoff has nowhere to be recorded.
+  rpc GetSessionNode (GetSessionNodeRequest) returns (NodeAssignment);
+  rpc GetNpcNode (GetNpcNodeRequest) returns (NodeAssignment);
+  rpc ReportNodeHandoff (ReportNodeHandoffRequest) returns (Empty);
+
+  // Group E — schema + migration. UNIMPLEMENTED: `schema_version` does not
+  // exist.
+  rpc GetSchemaVersion (GetSchemaVersionRequest) returns (SchemaVersion);
+  rpc AnnounceMigrationStart (AnnounceMigrationStartRequest) returns (Empty);
+  rpc AnnounceMigrationComplete (AnnounceMigrationCompleteRequest) returns (Empty);
+
+  // Group F — health. IMPLEMENTED.
+  rpc Health (Empty) returns (HealthReport);
+}

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.db.neo4j_repos.passages import (
+from app.db.graph_repos.passages import (
     PASSAGE_CJK_FT_INDEX,
     find_passages_by_fulltext,
     lucene_escape,
@@ -65,7 +65,7 @@ async def test_find_passages_by_fulltext_wires_query_and_filters(monkeypatch):
                    "source_lang": "zh"}, "raw_score": 4.2},
         ])
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_read", fake_read)
 
     hits = await find_passages_by_fulltext(
         MagicMock(), user_id="u", project_id="p", query="天剑+峰",
@@ -93,7 +93,7 @@ async def test_find_passages_by_fulltext_blank_query_no_call(monkeypatch):
         called["n"] += 1
         return _Rows([])
 
-    monkeypatch.setattr("app.db.neo4j_repos.passages.run_read", fake_read)
+    monkeypatch.setattr("app.db.graph_repos.passages.run_read", fake_read)
 
     # whitespace-only and all-special (escapes to empty after strip) → no query
     assert await find_passages_by_fulltext(MagicMock(), user_id="u", project_id="p", query="   ") == []

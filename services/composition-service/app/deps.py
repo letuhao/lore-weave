@@ -297,8 +297,10 @@ async def get_glossary_client_dep() -> GlossaryClient:
 
 
 async def get_kal_client_dep() -> KalClient:
-    """The KAL (knowledge-gateway) read boundary — the planner's roster source
-    (INV-KAL). Overridable in tests."""
+    """The KAL (knowledge-gateway) read boundary — the planner's cast source (INV-KAL).
+    Serves BOTH cast reads: `state@as_of` (what was true at a story position, the canon
+    bible's input) and `roster` (the untimed catalogue — see `_cast_roster` in
+    routers/plan.py for which callers legitimately want which). Overridable in tests."""
     return get_kal_client()
 
 

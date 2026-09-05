@@ -1,6 +1,6 @@
 """K21.2/7/8 — unit tests for the memory tool executor.
 
-Every repo call + `neo4j_session` is patched, so these are pure-logic
+Every repo call + `graph_session` is patched, so these are pure-logic
 tests of dispatch, result projection, the memory_remember guardrails
 (confidence / source tag / rate limit / fail-open), and the
 tool-error vs. infra-error split.
@@ -15,8 +15,10 @@ from uuid import uuid4
 
 import pytest
 
+from app.ports.vector_store import VectorHit
 from app.tools.executor import (
     TOOL_FACT_CONFIDENCE,
+    _empty_story_search_note,
     TOOL_FACT_SOURCE_TYPE,
     ToolContext,
     execute_tool,
@@ -57,14 +59,14 @@ class _BrokenRedis:
 
 @pytest.fixture(autouse=True)
 def _patch_neo4j_session(monkeypatch):
-    """Every handler opens `async with neo4j_session()`; the repo calls
+    """Every handler opens `async with graph_session()`; the repo calls
     inside are themselves patched, so the session is just a stand-in."""
 
     @asynccontextmanager
     async def _fake():
         yield MagicMock()
 
-    monkeypatch.setattr("app.tools.executor.neo4j_session", _fake)
+    monkeypatch.setattr("app.tools.executor.graph_session", _fake)
 
 
 def _ctx(*, project_id=_PROJECT, project_owner=_USER, book_id=_BOOK, redis=None,
@@ -129,20 +131,28 @@ def _remember_ctx(monkeypatch, *, redis=None, memory_remember_confirm=False,
 
 
 def _hit(text: str, score: float = 0.9, source_type: str = "chapter"):
-    return SimpleNamespace(
-        passage=SimpleNamespace(text=text, source_type=source_type),
-        raw_score=score,
+    """A `VectorHit`, not a repo row. T25 (3) moved this reader onto the port, and the double
+    has to move with it: a stub shaped like `find_passages_by_vector`'s return would keep
+    passing while the real call returns something else entirely — the fake agreeing with the
+    old code instead of the new contract."""
+    return VectorHit(
+        record_id=f"p-{abs(hash(text)) % 10_000}",
+        score=score,
+        scope="passage",
+        attributes={"text": text, "source_type": source_type},
     )
 
 
 def _search_ctx(monkeypatch, hits, *, project=None):
-    """Wire a memory_search-ready context: project lookup + embed +
-    find_passages_by_vector all stubbed."""
-    monkeypatch.setattr(
-        "app.tools.executor.find_passages_by_vector",
-        AsyncMock(return_value=hits) if not isinstance(hits, Exception)
-        else AsyncMock(side_effect=hits),
-    )
+    """Wire a memory_search-ready context: project lookup + embed + the VECTOR STORE stubbed.
+
+    Patching `get_vector_store` rather than the repo function is the point: it is the seam the
+    production code now goes through, so a future engine swap is exercised here instead of
+    being invisible to the suite."""
+    store = AsyncMock()
+    store.search = (AsyncMock(return_value=hits) if not isinstance(hits, Exception)
+                    else AsyncMock(side_effect=hits))
+    monkeypatch.setattr("app.tools.executor.get_vector_store", AsyncMock(return_value=store))
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=project or _project())
     embedding_client = AsyncMock()
@@ -232,10 +242,16 @@ async def test_memory_search_truncates_long_snippets(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_memory_search_forwards_limit_and_source_type(monkeypatch):
-    """/review-impl LOW#3 — lock that limit + source_type actually
-    reach the repo, so a future refactor can't silently drop them."""
-    repo = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.tools.executor.find_passages_by_vector", repo)
+    """/review-impl LOW#3 — lock that limit + source_type actually reach the STORE, so a
+    future refactor cannot silently drop them.
+
+    T25 (3): the assertion moved from the repo's `limit=`/`source_type=` kwargs to the port's
+    `k=` and `VectorFilter.source_type`. That is not cosmetic — had it kept asserting on the
+    old kwargs it would have gone green against a mock nobody calls, which is the exact shape
+    this test exists to prevent."""
+    store = AsyncMock()
+    store.search = AsyncMock(return_value=[])
+    monkeypatch.setattr("app.tools.executor.get_vector_store", AsyncMock(return_value=store))
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=_project())
     embedding_client = AsyncMock()
@@ -247,9 +263,12 @@ async def test_memory_search_forwards_limit_and_source_type(monkeypatch):
         "memory_search",
         {"query": "x", "limit": 7, "source_type": "chat"},
     )
-    kwargs = repo.await_args.kwargs
-    assert kwargs["limit"] == 7
-    assert kwargs["source_type"] == "chat"
+    kwargs = store.search.await_args.kwargs
+    assert kwargs["k"] == 7, f"limit must reach the port as k=, got {kwargs.get('k')!r}"
+    assert kwargs["filter"].source_type == "chat", (
+        f"source_type must ride VectorFilter, got {kwargs['filter']!r}"
+    )
+    assert kwargs["scope"] == "passage"
 
 
 @pytest.mark.asyncio
@@ -287,8 +306,9 @@ async def test_memory_search_chat_source_skips_manuscript_leg(monkeypatch):
     chapter-only) — even with the manuscript engine wired."""
     hybrid = AsyncMock()
     monkeypatch.setattr("app.search.retriever.run_hybrid_search", hybrid)
-    repo = AsyncMock(return_value=[_hit("a past chat turn", source_type="chat")])
-    monkeypatch.setattr("app.tools.executor.find_passages_by_vector", repo)
+    store = AsyncMock()
+    store.search = AsyncMock(return_value=[_hit("a past chat turn", source_type="chat")])
+    monkeypatch.setattr("app.tools.executor.get_vector_store", AsyncMock(return_value=store))
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=SimpleNamespace(
         embedding_model="bge-m3", embedding_dimension=1024, book_id=_BOOK,
@@ -312,7 +332,8 @@ async def test_memory_search_chat_source_skips_manuscript_leg(monkeypatch):
 async def test_memory_recall_entity_happy(monkeypatch):
     entity = SimpleNamespace(
         id="e1", name="Kai", canonical_name="kai", kind="character",
-        aliases=["the swordsman"], confidence=0.9,
+        aliases=["the swordsman"], confidence=0.9, project_id=str(_PROJECT),
+        anchor_score=1.0,
     )
     detail = SimpleNamespace(
         entity=entity,
@@ -322,8 +343,8 @@ async def test_memory_recall_entity_happy(monkeypatch):
         relations_truncated=False,
         total_relations=1,
     )
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[entity]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[entity])))
     monkeypatch.setattr("app.tools.executor.get_entity_with_relations",
                         AsyncMock(return_value=detail))
     res = await execute_tool(_ctx(), "memory_recall_entity", {"entity_name": "Kai"})
@@ -335,9 +356,63 @@ async def test_memory_recall_entity_happy(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_THE_OTHER_MATCHES_LIST_DISTINGUISHES_THE_MATCHES_IT_LISTS(monkeypatch):
+    """`other_matches` must carry what tells the matches APART, not the name they share.
+
+    They are found BY name, so the name is the one field guaranteed to be identical across
+    every row — measured on the corpus, all 13 calls that populated this field returned
+    five entries with exactly one distinct value. The live probe behind this test found 5
+    listed out of 47 matches, every one in a different project, with `entity` an arbitrary
+    one of them and nothing in the payload admitting either fact.
+    """
+    def _e(pid: str, conf: float) -> SimpleNamespace:
+        return SimpleNamespace(id=f"e-{pid}", name="Lâm Uyên", canonical_name="lam uyen",
+                               kind="character", aliases=[], confidence=conf,
+                               project_id=pid, anchor_score=1.0)
+
+    matches = [_e(f"p{i}", 1.0 - i / 100) for i in range(9)]
+    detail = SimpleNamespace(entity=matches[0], relations=[],
+                             relations_truncated=False, total_relations=0)
+    # T17 — the name lookup moved behind the graph-store port, so it is patched THERE, the way
+    # every sibling in this file does. Patching a module attribute that no longer exists raised
+    # AttributeError rather than quietly passing, which is the good failure.
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=matches)))
+    monkeypatch.setattr("app.tools.executor.get_entity_with_relations",
+                        AsyncMock(return_value=detail))
+    res = await execute_tool(_ctx(), "memory_recall_entity", {"entity_name": "Lâm Uyên"})
+    assert res.success
+    others = res.result["other_matches"]
+
+    # THE defect, stated so the red says what regressed: a row that is a bare NAME
+    # carries the one field every match shares, and is not a disambiguation at all.
+    assert all(isinstance(o, dict) for o in others), (
+        f"other_matches rows must be objects that can be told apart, got {others!r} — "
+        "a list of names cannot disambiguate matches that were found BY name")
+    assert len({o["project_id"] for o in others}) == len(others), (
+        f"every listed match must be distinguishable, got {others}")
+
+    # `project_id` specifically, because it is an ARGUMENT of this tool — the model can act
+    # on it by re-calling scoped to one project. A field it cannot act on is decoration.
+    assert set(others[0]) >= {"name", "kind", "project_id", "confidence", "anchor_score"}
+
+    # The tiebreak is real but lives in the Cypher (anchor_score DESC, confidence DESC).
+    # Returning both sort keys is what makes the pick legible instead of arbitrary-looking.
+    assert {"anchor_score", "confidence"} <= set(res.result["entity"])
+    assert "project_id" in res.result["entity"], (
+        "the CHOSEN match must say which one it is, or the caller cannot tell that a pick "
+        "was made at all")
+
+    # Truncation must be visible, the way `relations_truncated` next to it already is —
+    # and the total is DERIVED from the match list (the Cypher has no LIMIT), never typed.
+    assert len(others) == 5 and res.result["other_matches_total"] == len(matches) - 1
+    assert res.result["other_matches_total"] > len(others)
+
+
+@pytest.mark.asyncio
 async def test_memory_recall_entity_not_found(monkeypatch):
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     res = await execute_tool(_ctx(), "memory_recall_entity", {"entity_name": "Nobody"})
     assert res.success
     assert res.result["found"] is False
@@ -366,8 +441,8 @@ async def test_memory_timeline_unknown_entity_returns_empty(monkeypatch):
     """An entity_name with no match must pass participant_candidates=[]
     (not None) so the timeline is empty rather than unfiltered — and
     "this entity doesn't exist" is never leaked."""
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     lef = AsyncMock(return_value=([], 0))
     monkeypatch.setattr("app.tools.executor.list_events_filtered", lef)
     res = await execute_tool(_ctx(), "memory_timeline", {"entity_name": "Ghost"})
@@ -655,8 +730,8 @@ async def test_memory_tools_reject_unowned_project(monkeypatch, tool, args):
     # Patch the repos so that, if the gate ever let execution through, the call
     # would 'succeed' — proving the rejection comes from the owner gate, not a
     # downstream empty result.
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     monkeypatch.setattr("app.tools.executor.list_events_filtered",
                         AsyncMock(return_value=([], 0)))
     monkeypatch.setattr("app.tools.executor.merge_fact",
@@ -671,8 +746,8 @@ async def test_memory_tools_reject_unowned_project(monkeypatch, tool, args):
 async def test_memory_recall_no_project_skips_owner_gate(monkeypatch):
     """A no-project (global personal memory) call is inherently self-owned, so the
     owner gate is a no-op and the tool runs against the caller's own user_id."""
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     res = await execute_tool(_ctx(project_id=None), "memory_recall_entity",
                              {"entity_name": "Nobody"})
     assert res.success
@@ -700,7 +775,8 @@ async def test_hi_project_id_arg_supplies_scope_for_public_call(monkeypatch):
     project_id ARG supplies the scope, the owner gate validates it (owned), and
     the handler runs against THAT project."""
     fe = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=fe))
     arg_pid = uuid4()
     ctx = _ctx(project_id=None, project_owner=_USER)  # owner gate will pass
     res = await execute_tool(ctx, "memory_recall_entity",
@@ -714,7 +790,8 @@ async def test_hi_envelope_project_wins_over_arg(monkeypatch):
     """First-party: the trusted envelope project is authoritative — a project_id
     arg cannot redirect the call to a different project (D3 preserved)."""
     fe = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=fe))
     ctx = _ctx(project_id=_PROJECT, project_owner=_USER)  # envelope set
     res = await execute_tool(ctx, "memory_recall_entity",
                              {"entity_name": "Kai", "project_id": str(uuid4())})
@@ -748,8 +825,8 @@ async def test_hi_memory_search_arg_owner_checked_via_get():
 async def test_hi_project_id_arg_for_unowned_project_rejected(monkeypatch):
     """The owner gate still applies to an arg-supplied project — a public agent
     can only address a project it owns (H-U + OD-8 hold over the H-I path)."""
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     ctx = _ctx(project_id=None, project_owner=_OTHER_USER)  # arg project not owned
     res = await execute_tool(ctx, "memory_recall_entity",
                              {"entity_name": "Kai", "project_id": str(uuid4())})
@@ -966,7 +1043,8 @@ async def test_memory_recall_entity_excludes_diary_projects_when_projectless(mon
     # THE leak test: a projectless (novel-writing) session recalling an entity must pass the user's
     # assistant project ids as exclude_project_ids, so a work-diary entity can't be resolved.
     fe = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=fe))
     ctx = _ctx(project_id=None)
     ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
     res = await execute_tool(ctx, "memory_recall_entity", {"entity_name": "Sarah"})
@@ -983,7 +1061,8 @@ async def test_memory_timeline_excludes_diary_projects_when_projectless(monkeypa
     # to the events read, or diary events leak into a novel-writing session.
     lef = AsyncMock(return_value=([], 0))
     monkeypatch.setattr("app.tools.executor.list_events_filtered", lef)
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name", AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     ctx = _ctx(project_id=None)
     ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
     res = await execute_tool(ctx, "memory_timeline", {"limit": 10})
@@ -1010,15 +1089,57 @@ async def test_memory_search_projectless_never_searches_across_projects(monkeypa
 # yet silently reopen the diary→novel leak (the mocked-client-hides-server-filters bug class).
 
 def test_find_entities_cypher_carries_the_diary_exclusion_predicate():
-    from app.db.neo4j_repos import entities as em
+    from app.db.graph_repos import entities as em
     for cypher in (em._FIND_BY_NAME_CYPHER_ACTIVE, em._FIND_BY_NAME_CYPHER_ALL):
         assert "exclude_project_ids" in cypher
-        assert "NOT coalesce(e.project_id, '') IN exclude_project_ids" in cypher
+        # T81 collapsed `CALL { … UNION … }` into one MATCH with an OR, so the predicate reads
+        # the PARAMETER directly instead of a subquery-local alias. The rule is unchanged and
+        # is now easier to hold: it appeared TWICE before, once per arm, and a diary exclusion
+        # present in one arm and missing from the other was invisible to a containment check.
+        assert "NOT coalesce(e.project_id, '') IN $exclude_project_ids" in cypher
 
 
 def test_events_filter_cypher_carries_the_diary_exclusion_predicate():
     # audit HIGH-1 regression: memory_timeline reads through _LIST_EVENTS_FILTER_WHERE — it MUST carry the
     # same exclusion, or a projectless timeline leaks diary events even though entity-resolution is guarded.
-    from app.db.neo4j_repos import events as ev
+    from app.db.graph_repos import events as ev
     assert "exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
     assert "NOT coalesce(e.project_id, '') IN $exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
+
+
+# ── story_search's empty-result advice (TOOLV2 LOOP #67) ──────────────
+
+
+class TestTheEmptyNoteNeverRecommendsALegThatDidNotRun:
+    """S1 row 12, and it happened 9 times on 2026-07-15: an empty result carrying
+    `degraded: {"semantic": "not_indexed"}` was followed by the note "try mode='semantic'".
+    The tool said the semantic leg could not run and recommended it in the next key.
+
+    The model has no way to know the advice is void, so it spends its next call on the one
+    thing guaranteed to fail — and gets the same note back."""
+
+    def test_A_NOT_INDEXED_PROJECT_IS_NOT_TOLD_TO_TRY_SEMANTIC(self):
+        note = _empty_story_search_note("hybrid", {"semantic": "not_indexed"})
+        assert "mode='semantic'" not in note, (
+            f"the leg that just failed must not be the recommendation: {note!r}")
+        assert "no indexed passages" in note
+        # And it names what would CLEAR the obstacle, not just what the obstacle is.
+        assert "kg_project_set_embedding_model" in note
+
+    def test_A_SEMANTIC_QUERY_IS_NOT_TOLD_TO_TRY_SEMANTIC(self):
+        """The same dead end in a smaller form: recommending the mode already in use."""
+        note = _empty_story_search_note("semantic", {})
+        assert "mode='semantic'" not in note, note
+        assert "mode='exact'" in note
+
+    def test_AN_UNKNOWN_DEGRADED_LEG_IS_NAMED_RATHER_THAN_IGNORED(self):
+        """A leg this function has no special case for must still be surfaced — silently
+        giving the default advice would hide that the search was incomplete."""
+        note = _empty_story_search_note("hybrid", {"rerank": "unavailable"})
+        assert "rerank" in note and "unavailable" in note, note
+
+    def test_THE_ORDINARY_EMPTY_RESULT_KEEPS_ITS_ORIGINAL_ADVICE(self):
+        """Nothing degraded and an exact query — semantic IS the useful next step, and the
+        fix must not cost the case that always worked."""
+        note = _empty_story_search_note("exact", {})
+        assert "mode='semantic'" in note, note

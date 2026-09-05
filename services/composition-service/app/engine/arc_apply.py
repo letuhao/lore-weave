@@ -598,8 +598,16 @@ async def arc_extract_template(
             continue
         ann = app.annotations or {}
         thread = str(ann.get("thread") or "")
-        motif_code = str(ann.get("motif_code") or (app.motif_id or ""))
-        key = (motif_code, thread)
+        # TOOLV2 LOOP #146 — this used to fall back to the motif UUID, which put an id in a
+        # field named `motif_code` and produced a template that resolves in no other book,
+        # silently. Rows written before the fix above still carry no code, so the fallback
+        # cannot go away — but it must not DISGUISE itself as a code. The id is still used to
+        # keep distinct motifs in distinct groups (an empty key would merge two motifs sharing
+        # a thread); it just never becomes the emitted code. `motif_id` is preserved either
+        # way, and apply prefers a pinned motif_id over a code, so such a placement still
+        # resolves inside the owner's own library.
+        motif_code = str(ann.get("motif_code") or "")
+        key = (motif_code or f"id:{app.motif_id}", thread)
         g = groups.get(key)
         if g is None:
             groups[key] = {
@@ -815,8 +823,52 @@ async def apply_arc_to_spec(
     applied = 0
     if not created.get("replay") and flat_app_rows:
         scene_ids = [UUID(s) for s in created["scene_ids"]]
-        ledger_rows = [{**row, "outline_node_id": str(node_id)}
-                       for row, node_id in zip(flat_app_rows, scene_ids)]
+        # TOOLV2 LOOP #146 — pin the arc and the motif CODE on every ledger row.
+        #
+        # Both writes existed already, in `arc_apply` above, which production never calls:
+        # the MCP tool and the REST route both come through THIS function, and only the
+        # integration test calls the other one. So the BA5 mechanism had never run. Measured:
+        # 0 of 47 motif_application rows carried structure_node_id or annotations.motif_code,
+        # including the rows a successful apply had just written.
+        #
+        # structure_node_id is the first-class arc link that arc conformance reads
+        # (`WHERE structure_node_id = $arc`); with it NULL everywhere, that query matches
+        # nothing. motif_code is what lets arc_extract_template rebuild a PORTABLE layout —
+        # without it the extract falls back to the motif UUID, and a library template whose
+        # placements name uuids resolves in no other book, which is the entire point of one.
+        arc_id_str = str(created["arc_id"])
+        # TOOLV2 LOOP #147 — stamp the TEMPLATE this arc came from.
+        #
+        # composition_arc_template_drift answers "did this arc drift from the template it came
+        # from (its pinned arc_template_id + template_version)?" -- and apply, the only thing
+        # that creates an arc FROM a template, never wrote either. Measured: 1 of 137 arcs in the
+        # database carries an arc_template_id, so the drift tool had essentially nothing to
+        # answer about, and composition_arc_get reported arc_template_id:null for an arc it had
+        # just built from a template.
+        #
+        # Best-effort and deliberately NOT inside the commit transaction: the provenance is
+        # metadata about a tree that is already correct, and failing the whole apply over it
+        # would trade a real outline for a label. expected_version=None skips OCC — nothing else
+        # has touched this node yet, it was created moments ago in the same call.
+        try:
+            from app.db.repositories.structure import StructureRepo as _StructureRepo
+            await _StructureRepo(pool).update(
+                UUID(arc_id_str),
+                {"arc_template_id": arc_template.id, "template_version": arc_template.version},
+                expected_version=None,
+            )
+        except Exception:  # noqa: BLE001 — provenance must never fail a committed apply
+            logger.warning("arc materialize: could not stamp template provenance on %s", arc_id_str)
+        code_by_id = {str(m.id): m.code for m in resolved if m is not None}
+        ledger_rows = []
+        for row, node_id in zip(flat_app_rows, scene_ids):
+            r = {**row, "outline_node_id": str(node_id), "structure_node_id": arc_id_str}
+            ann = dict(r.get("annotations") or {})
+            mid = r.get("motif_id")
+            if mid is not None and str(mid) in code_by_id:
+                ann["motif_code"] = code_by_id[str(mid)]
+            r["annotations"] = ann
+            ledger_rows.append(r)
         if ledger_rows:
             try:
                 await MotifApplicationRepo(pool).insert_many(

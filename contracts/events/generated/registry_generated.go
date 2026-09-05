@@ -35,15 +35,51 @@ var EventDispatch = map[string]map[uint32]string{
 	"canon.entry.updated": {
 		1: "CanonEntryUpdatedV1",
 	},
+	"channel.turn_boundary": {
+		1: "TurnBoundaryV1",
+	},
+	"glossary.entity_deleted": {
+		1: "GlossaryEntityDeletedV1",
+	},
+	"glossary.entity_merged": {
+		1: "GlossaryEntityMergedV1",
+	},
+	"glossary.entity_purged": {
+		1: "GlossaryEntityPurgedV1",
+	},
+	"glossary.entity_restored": {
+		1: "GlossaryEntityRestoredV1",
+	},
+	"glossary.entity_status_changed": {
+		1: "GlossaryEntityStatusChangedV1",
+	},
+	"glossary.entity_updated": {
+		1: "GlossaryEntityUpdatedV1",
+	},
+	"glossary.name_confirmed": {
+		1: "GlossaryNameConfirmedV1",
+	},
 	"npc.said": {
 		1: "NpcSaidV1",
 		2: "NpcSaidV2",
+	},
+	"proposal.rejected": {
+		1: "ProposalRejectedV1",
 	},
 	"reality.created": {
 		1: "RealityCreatedV1",
 	},
 	"ruleset.epoch_activated": {
 		1: "RulesetEpochActivatedV1",
+	},
+	"turn.buffered": {
+		1: "TurnResolvedV1",
+	},
+	"turn.discarded": {
+		1: "TurnResolvedV1",
+	},
+	"turn.resolved": {
+		1: "TurnResolvedV1",
 	},
 	"world.tick": {
 		1: "WorldTickV1",
@@ -68,10 +104,58 @@ var EventTypesGenerated = []string{
 	"canon.entry.decanonized",
 	"canon.entry.promoted",
 	"canon.entry.updated",
+	"channel.turn_boundary",
+	"glossary.entity_deleted",
+	"glossary.entity_merged",
+	"glossary.entity_purged",
+	"glossary.entity_restored",
+	"glossary.entity_status_changed",
+	"glossary.entity_updated",
+	"glossary.name_confirmed",
 	"npc.said",
+	"proposal.rejected",
 	"reality.created",
 	"ruleset.epoch_activated",
+	"turn.buffered",
+	"turn.discarded",
+	"turn.resolved",
 	"world.tick",
 	"xreality.canon.promoted",
 	"xreality.user.erased",
 }
+
+// Event-type name constants, generated from the registry.
+//
+// Import these instead of writing the literal. A rename in the registry
+// then becomes a COMPILE error at every use site — the property a string
+// literal can never give you, because the old spelling stays valid Go
+// forever and the handler simply stops running.
+const (
+	EventAdminCanonOverrideCompensating = "admin.canon.override.compensating"
+	EventAdminCanonOverrideConsented = "admin.canon.override.consented"
+	EventAdminCanonOverrideRequested = "admin.canon.override.requested"
+	EventAdminCanonOverrideVetoed = "admin.canon.override.vetoed"
+	EventCanonChangeRecorded = "canon.change.recorded"
+	EventCanonEntryCreated = "canon.entry.created"
+	EventCanonEntryDecanonized = "canon.entry.decanonized"
+	EventCanonEntryPromoted = "canon.entry.promoted"
+	EventCanonEntryUpdated = "canon.entry.updated"
+	EventChannelTurnBoundary = "channel.turn_boundary"
+	EventGlossaryEntityDeleted = "glossary.entity_deleted"
+	EventGlossaryEntityMerged = "glossary.entity_merged"
+	EventGlossaryEntityPurged = "glossary.entity_purged"
+	EventGlossaryEntityRestored = "glossary.entity_restored"
+	EventGlossaryEntityStatusChanged = "glossary.entity_status_changed"
+	EventGlossaryEntityUpdated = "glossary.entity_updated"
+	EventGlossaryNameConfirmed = "glossary.name_confirmed"
+	EventNpcSaid = "npc.said"
+	EventProposalRejected = "proposal.rejected"
+	EventRealityCreated = "reality.created"
+	EventRulesetEpochActivated = "ruleset.epoch_activated"
+	EventTurnBuffered = "turn.buffered"
+	EventTurnDiscarded = "turn.discarded"
+	EventTurnResolved = "turn.resolved"
+	EventWorldTick = "world.tick"
+	EventXrealityCanonPromoted = "xreality.canon.promoted"
+	EventXrealityUserErased = "xreality.user.erased"
+)

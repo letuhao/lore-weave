@@ -19,7 +19,7 @@ have() { grep -Fq "$2" "$1" || fail "$3"; }
 
 echo "[verify-cycle-18] running CI gate"
 
-REPO="$KS/app/db/neo4j_repos/relations.py"
+REPO="$KS/app/db/graph_repos/relations.py"
 ROUTER="$KS/app/routers/public/entities.py"
 
 [ -f "$REPO" ] || fail "relations.py repo not found"

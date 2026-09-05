@@ -109,7 +109,6 @@
       "authentication": "Аутентификация",
       "authNone": "Отсутствует",
       "authBearer": "Bearer-токен",
-      "authOauth": "OAuth 2.1",
       "noAuthHint": "Аутентификация не требуется — этот сервер открыт. Продолжите, чтобы зарегистрировать и просканировать его.",
       "bearerLabel": "Bearer-токен (сохранен в хранилище; больше не будет показан)",
       "bearerPlaceholder": "вставьте токен",
@@ -124,9 +123,10 @@
       "runScan": "Проверить состояние и просканировать",
       "refresh": "Обновить",
       "continue": "Продолжить",
-      "authKind": "auth: {{kind}}",
       "enable": "Включить для моих сессий",
-      "done": "Готово"
+      "done": "Готово",
+      "authOauth": "OAuth 2.1",
+      "authKind": "auth: {{kind}}"
     }
   },
   "commands": {

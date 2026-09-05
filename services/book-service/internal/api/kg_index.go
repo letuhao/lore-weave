@@ -305,7 +305,13 @@ func (s *Server) toolBookIndexChapter(ctx context.Context, _ *mcp.CallToolReques
 		case errors.Is(err, errActionBadState):
 			return nil, indexChapterOut{}, errors.New("the chapter has no prose to index")
 		case errors.Is(err, errActionTargetGone):
-			return nil, indexChapterOut{}, errBookNotAccessible
+			// errActionTargetGone means the CHAPTER is gone. The grant check above already
+			// passed, so the book is accessible by definition and errBookNotAccessible states
+			// something false — the same defect iteration 86 fixed on proposeChapterAction, at
+			// two more call sites in this file. Measured live (TOOLV2 LOOP #129): indexing an
+			// absent chapter in a book being read successfully all session answered "book not
+			// accessible".
+			return nil, indexChapterOut{}, errChapterNotInBook
 		}
 		return nil, indexChapterOut{}, errors.New("failed to index chapter")
 	}
@@ -358,7 +364,9 @@ func (s *Server) toolBookSetKGExclude(ctx context.Context, _ *mcp.CallToolReques
 	}
 	if err := s.setChapterKGExclude(ctx, bookID, chID, in.KGExclude); err != nil {
 		if errors.Is(err, errActionTargetGone) {
-			return nil, setKGExcludeOut{}, errBookNotAccessible
+			// Same correction as the index path above: the grant check passed, so the book is
+			// reachable and only the CHAPTER is missing.
+			return nil, setKGExcludeOut{}, errChapterNotInBook
 		}
 		return nil, setKGExcludeOut{}, errors.New("failed to set kg_exclude")
 	}

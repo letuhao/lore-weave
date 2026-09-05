@@ -86,13 +86,26 @@ func TestDoLlmStream_UnpricedModel_402(t *testing.T) {
 	stub := newBillingStub(t, reserveReply{http.StatusOK, map[string]any{"reservation_id": uuid.New()}})
 	srv, pool := guardrailServer(t, stub)
 	userID, modelID := seedStreamModel(t, srv, pool, `{}`) // empty pricing → unpriced
+	// 🔴 ...and NOT a free LOCAL endpoint. This file seeds `http://127.0.0.1:1` as a dead
+	// address so a dispatch fails fast; `billing.DecodePricing` later gave loopback a
+	// meaning — `IsLocalEndpoint(url) -> FreePricing()` — so the "unpriced" model was
+	// silently an explicitly-FREE one and this returned 200 instead of 402. Only the
+	// pricing assertions rewrite it; the dispatch-failure tests below keep the dead
+	// loopback, which refuses immediately where an unroutable public IP would hang.
+	if _, err := pool.Exec(context.Background(), `
+UPDATE provider_credentials SET endpoint_base_url = 'https://api.openai.com/v1'
+ WHERE owner_user_id = $1`, userID); err != nil {
+		t.Fatalf("make endpoint billable: %v", err)
+	}
 
 	rr := callStream(t, srv, userID, modelID.String())
 	if rr.Code != http.StatusPaymentRequired {
 		t.Fatalf("expected 402, got %d (%s)", rr.Code, rr.Body.String())
 	}
-	if c := errorCode(t, rr); c != "LLM_QUOTA_EXCEEDED" {
-		t.Fatalf("expected LLM_QUOTA_EXCEEDED, got %q", c)
+	// LLM_MODEL_UNPRICED, not LLM_QUOTA_EXCEEDED — the two 402s were split on purpose
+	// (stream_billing.go); "no price table" and "budget spent" need opposite messages.
+	if c := errorCode(t, rr); c != "LLM_MODEL_UNPRICED" {
+		t.Fatalf("expected LLM_MODEL_UNPRICED, got %q", c)
 	}
 	if stub.reserveCalls != 0 {
 		t.Fatal("reserve must not be called for an unpriced model")

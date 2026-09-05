@@ -294,9 +294,15 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 
 ```rust
 // Rule: in feature crates, detect direct calls to `dp::t2_*`, `dp::t3_*`,
-// `dp::read_projection`, `dp::query_scoped` not lexically wrapped by the
+// `dp::read_projection_*`, `dp::query_scoped_*` not lexically wrapped by the
 // `dp::instrumented!` macro. Warn level (not error — tight loops opt out
 // with `#[allow(dp::missing_instrumentation)]` + aggregated metrics).
+//
+// AMENDED 2026-08-07 (REC-101b): the two matchers said `read_projection` /
+// `query_scoped`, the pre-Phase-4 names. 04b + DP-K12 define the scope-split
+// four, so the bare names match NOTHING and the lint would have been vacuous
+// on every call site the moment it was written from this skeleton — a lint
+// rule and a worked example being exactly what an implementer lifts verbatim.
 ```
 
 ---
@@ -307,7 +313,7 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 |---|---:|---|
 | Core types | 10 | `RealityId`, `ChannelId`, `SessionId`, `NodeId`, `Tier`, `Aggregate`, `T0/T1/T2/T3Aggregate` traits, `RealityScoped`/`ChannelScoped` traits, `Predicate`, `CausalityToken` (Phase 4) |
 | Session | 3 | `SessionContext`, `bind_session`, `refresh_capability` |
-| Error | 1 | `DpError` (21 variants — see [04a DP-K3](04a_core_types_and_session.md#dp-k3--dperror-enum)) |
+| Error | 1 | `DpError` — **22 declared**, of which **17 are implemented** in `crates/dp/src/error.rs` and 5 are deferred with the unbuilt type each waits on (`NodeId`, `Timestamp`, `ActorId`, `CausalityToken`). See [04a DP-K3](04a_core_types_and_session.md#dp-k3--dperror-enum). *This cell said 21, and had been wrong since `REC-102b` adopted `ResumeTokenExpired` + `AggregatorStuck` on 2026-08-07 — 20 + 2 = 22. Nothing noticed because nothing could: `design-lint` compares a claim against a real Rust enum, and there was no enum until slice 3.* |
 | Read | 4 | `read_projection_reality`, `read_projection_channel`, `query_scoped_reality`, `query_scoped_channel` |
 | Write | 5 | `t0_write`, `t1_write`, `t2_write`, `t3_write`, `t3_write_multi` |
 | Subscription | 4 | `subscribe_invalidation` (pub/sub) · `subscribe_broadcast<T1>` (pub/sub) · `subscribe_channel_events_durable<S>` (Streams + DB catchup, Phase 4) · `subscribe_session_channels<S>` (multiplex, Phase 4) |

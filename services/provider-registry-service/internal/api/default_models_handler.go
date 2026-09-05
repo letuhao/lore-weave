@@ -38,6 +38,21 @@ var defaultModelCapabilities = map[string]bool{
 	// A ROLE validated against 'chat' (like planner/distill); evaluate.py resolves it + refuses to
 	// score when it equals the actor.
 	"critic": true,
+	// "composer" (DQ-T89 (b), owner ruling 2026-09-02) — the model that WRITES PROSE.
+	//
+	// 🔴 WHY A NEW CAPABILITY RATHER THAN BORROWING 'chat'. composition_generate resolves its
+	// model from the Work, and MEASURED 2026-09-01: 0 of 664 Works carry the `model_roles` map
+	// and 13 carry the legacy scalar — so the Work tier answers ~2% of books. On the other 98%
+	// the tool refused, the model retried, the loop breaker tripped, and the turn wrote prose
+	// through book_chapter_save_draft instead. The tool was never reached.
+	//
+	// Falling back to 'chat' was the cheap option and the owner did not take it: choosing a
+	// model for conversation is not consent to spend it on a long prose generation, which is the
+	// most expensive call on this platform. Naming the role is what makes that consent explicit.
+	//
+	// A ROLE, not a model flag — validated against 'chat' below, exactly like planner/distill/
+	// critic, so every chat model the picker offers is assignable.
+	"composer": true,
 }
 
 // defaultModelCapQuery is THE capability-validation rule for assigning a
@@ -57,7 +72,10 @@ func defaultModelCapQuery(capability string) (query, capJSON, validateCap string
 	validateCap = capability
 	// planner + distill + critic are ROLES that run as a chat call → validated against the 'chat' flag, so
 	// the picker's chat models are all assignable (WS-3.0 adds distill; WS-5.10 adds critic; D-PLAN-PLANNER-DEFAULT-FE added planner).
-	if capability == "planner" || capability == "distill" || capability == "critic" {
+	// DQ-T89 (b) adds "composer" to the same family: prose generation runs as a chat call, so the
+	// role is validated against the 'chat' flag and every model the picker offers is assignable.
+	if capability == "planner" || capability == "distill" || capability == "critic" ||
+		capability == "composer" {
 		validateCap = "chat"
 	}
 	capJSON = fmt.Sprintf(`{"%s":true}`, validateCap)
@@ -296,4 +314,65 @@ LIMIT 1`, userID).Scan(&modelID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user_model_id": modelID.String(), "model_source": "user_model", "source": "chat_fallback"})
+}
+
+// internalResolveEmbeddingModel — GET /internal/embedding-model?user_id= (X-Internal-Token).
+//
+// D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE. chat-service's intent-skill router
+// (skill_router.route_additional_skills) is the ONLY path that injects a domain skill when
+// `lazy_skill_bodies` is on (the default) and the turn has no explicit pin — and it needs an
+// embedding model to vectorize the turn's intent. It called the STRICT `internalGetDefaultModel`
+// for capability="embedding", which 404s whenever the user has not explicitly set one.
+//
+// MEASURED 2026-08-28: not one account on this deployment has EVER set an explicit 'embedding'
+// default (0 of every user_default_models row, across every capability that table holds), while
+// 7 active user_models across the platform DO carry {"embedding": true} — including two on the
+// account this row's own live batches ran against. So the router has never fired for anyone, on
+// any turn, not because no embedding-capable model exists, but because nothing ever picked one.
+//
+// Same fallback SHAPE as internalResolvePlannerModel just above, for the same reason (MED-6): an
+// explicit default is a power-user override, and its absence must not mean "no capability", only
+// "no preference stated" — fall back to the best ACTIVE model that actually carries the
+// capability flag.
+func (s *Server) internalResolveEmbeddingModel(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "DEFAULT_MODELS_VALIDATION", "invalid user_id")
+		return
+	}
+	// 1. Explicit 'embedding' default (a power user pinned a specific model).
+	var modelID uuid.UUID
+	err = s.pool.QueryRow(r.Context(), `
+SELECT d.user_model_id
+FROM user_default_models d
+JOIN user_models um ON um.user_model_id = d.user_model_id AND um.is_active = true
+WHERE d.owner_user_id = $1 AND d.capability = 'embedding'`, userID).Scan(&modelID)
+	if err == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"user_model_id": modelID.String(), "model_source": "user_model", "source": "embedding_default"})
+		return
+	}
+	if err != pgx.ErrNoRows {
+		writeError(w, http.StatusInternalServerError, "DEFAULT_MODELS_QUERY_FAILED", "failed to resolve embedding default")
+		return
+	}
+	// 2. Fallback: the user's best active embedding-capable model. Deterministic tie-break by id
+	// (no "prefer X" signal exists for embedding the way tool_calling does for planner).
+	err = s.pool.QueryRow(r.Context(), `
+SELECT user_model_id
+FROM user_models
+WHERE owner_user_id = $1 AND is_active = true
+  AND capability_flags @> '{"embedding":true}'::jsonb
+ORDER BY user_model_id
+LIMIT 1`, userID).Scan(&modelID)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "EMBEDDING_MODEL_NONE", "no active embedding-capable model for this user")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DEFAULT_MODELS_QUERY_FAILED", "failed to resolve an embedding model")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user_model_id": modelID.String(), "model_source": "user_model", "source": "embedding_fallback"})
 }

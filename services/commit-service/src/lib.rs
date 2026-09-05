@@ -15,6 +15,10 @@
 //! `panic_canary` test guards the runtime behavior.
 
 pub mod admission;
+pub mod dedup;
+pub mod proposal;
+pub mod demo_encounter;
+pub mod subject;
 pub mod bus;
 pub mod domain;
 /// Q0b B3c — the lease-holding writer transcribing an epoch switch into its own
@@ -32,6 +36,11 @@ pub mod manager;
 /// `ruleset-loader` so the game-logic tier keeps its three dependencies.
 pub mod pg_binding;
 pub mod producer;
+/// `DF1b-ii` — the admission refusal, committed through the data-plane SDK.
+/// The FIRST production caller of a `dp` tier primitive.
+pub mod reject_commit;
+pub mod reality_bind;
+pub mod spine_args;
 pub mod recovery;
 /// How a node gets the rules it runs (RLS-A3 at startup). Split from
 /// `bin/spine.rs` when `--meta-url` pushed that file past its IMP-D3 ceiling.
@@ -40,7 +49,8 @@ pub mod vocabulary;
 pub mod wire;
 
 pub use domain::{
-    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState, Stance,
+    Actor, BindingError, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState,
+    HubBinding, RealityRules, RefusalReason, Stance,
 };
 // S2 — the laws moved to `crates/game-rules` (IMP-A5). Re-exported under their
 // original paths so every `commit_service::combat::…` / `::stats::…` import

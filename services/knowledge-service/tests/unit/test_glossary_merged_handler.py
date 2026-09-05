@@ -14,11 +14,11 @@ from uuid import uuid4
 import pytest
 
 import app.config as config_mod
-import app.db.neo4j as neo4j_mod
-import app.db.neo4j_repos.canonical as canon_mod
-import app.db.neo4j_repos.entities as entities_mod
+import app.db.graph as neo4j_mod
+import app.db.graph_repos.canonical as canon_mod
+import app.db.graph_repos.entities as entities_mod
 import app.db.repositories.entity_alias_map as alias_mod
-from app.db.neo4j_repos.entities import MergeEntitiesError
+from app.db.graph_repos.entities import MergeEntitiesError
 from app.events.handlers import handle_glossary_entity_merged
 
 BOOK = uuid4()
@@ -59,7 +59,7 @@ def _pool(project_found=True, projects=None):
 def _wire(monkeypatch, *, loser, winner, merge_exc=None):
     """Patch the inline-imported deps so the handler runs without infra."""
     monkeypatch.setattr(config_mod.settings, "neo4j_uri", "bolt://x", raising=False)
-    monkeypatch.setattr(neo4j_mod, "neo4j_session", lambda: _FakeSession())
+    monkeypatch.setattr(neo4j_mod, "graph_session", lambda: _FakeSession())
     monkeypatch.setattr(canon_mod, "canonicalize_entity_name", lambda s: (s or "").lower().strip())
 
     async def fake_get(session, *, user_id, project_id, glossary_entity_id):
@@ -199,7 +199,7 @@ async def test_absent_nodes_in_one_project_does_not_block_the_other(monkeypatch)
     calls: list = []
 
     monkeypatch.setattr(config_mod.settings, "neo4j_uri", "bolt://x", raising=False)
-    monkeypatch.setattr(neo4j_mod, "neo4j_session", lambda: _FakeSession())
+    monkeypatch.setattr(neo4j_mod, "graph_session", lambda: _FakeSession())
     monkeypatch.setattr(canon_mod, "canonicalize_entity_name", lambda s: (s or "").lower().strip())
 
     project_b = uuid4()

@@ -1,0 +1,68 @@
+{
+ "_note": "D-PROPOSE-EDIT-ACTS-ON-EDITOR-STATE-THE-TURN-CANNOT-SEE. propose_edit's replace_selection presupposes a selection the turn never carried; EditorContext now carries has_selection/selected_text, additive, sent by the FE at message-send time. This harness drives no editor (no DOM, no TiptapEditorHandle), so the fact is stated directly via editor_context_extra -- exactly the shape context/editorBridge.ts's getEditorTarget().handle.getSelection() would report from a live browser. Same prompt as scenarios-c-propose.json, the row's own original instance.",
+ "scenarios": [
+  {
+   "id": "propose-edit-told-no-selection",
+   "tool_under_test": "propose_edit",
+   "expect_tool": "propose_edit",
+   "intent": "write",
+   "tier": "R",
+   "scope": "none",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Make the opening line of this chapter darker \u2014 show me the change before it goes in.",
+   "prompt_source": "CONTROL for propose-edit-told-a-selection-exists. Same prompt, same seed, has_selection=False instead of True.",
+   "needs_target": false,
+   "editor_context": true,
+   "editor_context_extra": {
+    "has_selection": false
+   },
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_write_prose",
+     "args": {
+      "project_id": "{project_id}",
+      "chapter_id": "{chapter_id}",
+      "body": {
+       "type": "doc",
+       "content": [
+        {
+         "type": "paragraph",
+         "content": [
+          {
+           "type": "text",
+           "text": "It was a bright and sunny morning."
+          }
+         ]
+        }
+       ]
+      },
+      "expected_draft_version": 0,
+      "commit_message": "seed opening line"
+     },
+     "why": "The chapter needs a real opening line matching the selected_text told to the model, or the model has nothing concrete to rewrite and the scenario tests nothing."
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_book",
+     "query": "SELECT count(*)::text FROM chapter_drafts WHERE chapter_id='{chapter_id}'",
+     "expect": "1",
+     "why": "The seeded draft must exist before the turn, or the model would be rewriting nothing and any propose_edit call proves nothing about grounding."
+    }
+   ],
+   "falsifier": "REFUTED IF the model calls replace_selection despite being told nothing is selected (the exact wasted-round-trip this fix exists to avoid). PASSES IF it calls insert_at_cursor, or declines and answers in prose (both are defensible with no selection to ground on).",
+   "ship_audit": {
+    "gate": "The Apply button IS the gate \u2014 the proposal must reach the user unapplied.",
+    "empty_case": "OWED \u2014 a proposal identical to the current text should be refused or reported as a no-op, not shown as an edit.",
+    "tenancy": "n/a by construction \u2014 it edits the chapter open in the caller's own editor."
+   },
+   "defects": [
+    "D-PROPOSE-EDIT-ACTS-ON-EDITOR-STATE-THE-TURN-CANNOT-SEE"
+   ],
+   "answer_expect": {
+    "why": "None. The measurement is the tool call's operation argument and the store diff, not the reply text."
+   }
+  }
+ ]
+}

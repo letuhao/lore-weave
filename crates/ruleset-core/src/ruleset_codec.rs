@@ -19,6 +19,7 @@ use crate::combat::CombatRules;
 use crate::progression::ProgressionDigest;
 use crate::quantity::QuantityTable;
 use crate::resource::ResourceTable;
+use crate::verb::VerbTable;
 use crate::ruleset::{Ruleset, LAW_VERSION_UNVERSIONED, RULESET_SCHEMA_VERSION, SCHEMA_VERSION_OLDEST};
 use crate::stats::StatRules;
 use sim_core::RulesetDigest;
@@ -83,8 +84,14 @@ impl Ruleset {
             if schema_version >= 3 { QuantityTable::decode(&mut r)? } else { QuantityTable::EMPTY };
         // v1..v3 predate declared pools. An artifact from before Q2 declared
         // none, and `EMPTY` states that rather than guessing it.
-        let resources =
-            if schema_version >= 4 { ResourceTable::decode(&mut r)? } else { ResourceTable::EMPTY };
+        let resources = if schema_version >= 4 {
+            // The version reaches the table because `ResourceDecl::role` arrived
+            // at v6 (see `ResourceTable::canon_at`) — a v4/v5 row has no role
+            // byte, and reading one would consume the NEXT row's ordinal.
+            ResourceTable::decode_at(&mut r, schema_version)?
+        } else {
+            ResourceTable::EMPTY
+        };
         // v1..v4 predate the progression pin. An artifact from before S-1b
         // declared none, and `None` states that rather than guessing it.
         let progression = if schema_version >= 5 {
@@ -110,6 +117,13 @@ impl Ruleset {
         } else {
             None
         };
+        // v1..v6 predate declared verbs. An artifact from before `M2` declared
+        // none, and `EMPTY` states that rather than guessing it.
+        let verbs = if schema_version >= 7 {
+            VerbTable::decode_at(&mut r, schema_version)?
+        } else {
+            VerbTable::EMPTY
+        };
         r.finish()?;
 
         // Upcast: the value handed back is always the current shape. Note it
@@ -124,6 +138,7 @@ impl Ruleset {
             quantities,
             resources,
             progression,
+            verbs,
         };
         Ok((upcast, schema_version))
     }
@@ -148,7 +163,14 @@ impl Ruleset {
         // must be considered here too, if only to decide it is not written at
         // an older version.
         let Self {
-            schema_version: _, law_version, combat, stats, quantities, resources, progression,
+            schema_version: _,
+            law_version,
+            combat,
+            stats,
+            quantities,
+            resources,
+            progression,
+            verbs,
         } = self;
         c.u32(version);
         if version >= 2 {
@@ -160,10 +182,13 @@ impl Ruleset {
             quantities.canon(&mut c);
         }
         if version >= 4 {
-            resources.canon(&mut c);
+            resources.canon_at(&mut c, version);
         }
         if version >= 5 {
             canon_progression(&mut c, progression);
+        }
+        if version >= 7 {
+            verbs.canon_at(&mut c, version);
         }
         Some(c.finish())
     }

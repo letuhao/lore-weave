@@ -42,6 +42,16 @@ from app.events.handlers import (
 )
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import corrections, eval as eval_routes, mining, wiki_judge
+# ⚠️ Event names come from the CONTRACT (T30/OD-1, 2026-08-12): generated into
+# `loreweave_events` from contracts/events/_registry.yaml. These were hand-written
+# literals, and a producer rename left them registering handlers for a name nothing
+# emits — valid Python forever, every mocked test still green, the handler simply
+# never running. A rename is now an ImportError at startup instead.
+from loreweave_events import (
+    EVENT_GLOSSARY_ENTITY_MERGED,
+    EVENT_GLOSSARY_ENTITY_UPDATED,
+    EVENT_GLOSSARY_NAME_CONFIRMED,
+)
 
 setup_logging("learning-service")  # P2·A2a — shared JSON logging + dual trace ids
 logger = logging.getLogger(__name__)
@@ -50,8 +60,8 @@ logger = logging.getLogger(__name__)
 def build_dispatcher() -> EventDispatcher:
     """Register correction event handlers. Extracted for unit-testability."""
     dispatcher = EventDispatcher()
-    dispatcher.register("glossary.entity_updated", handle_glossary_entity_updated)
-    dispatcher.register("glossary.entity_merged", handle_glossary_entity_merged)  # D-LEARN-ENTITY-MERGED
+    dispatcher.register(EVENT_GLOSSARY_ENTITY_UPDATED, handle_glossary_entity_updated)
+    dispatcher.register(EVENT_GLOSSARY_ENTITY_MERGED, handle_glossary_entity_merged)  # D-LEARN-ENTITY-MERGED
     dispatcher.register("knowledge.entity_corrected", handle_knowledge_corrected)
     dispatcher.register("knowledge.relation_corrected", handle_knowledge_corrected)
     dispatcher.register("knowledge.event_corrected", handle_knowledge_corrected)
@@ -63,7 +73,7 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("translation.quality", handle_translation_quality)  # M7a
     dispatcher.register("translation.reviewed", handle_translation_reviewed)  # M7b
     dispatcher.register("translation.corrected", handle_translation_corrected)  # M7c-1
-    dispatcher.register("glossary.name_confirmed", handle_name_confirmed)  # M7c-3
+    dispatcher.register(EVENT_GLOSSARY_NAME_CONFIRMED, handle_name_confirmed)  # M7c-3
     dispatcher.register("wiki.corrected", handle_wiki_corrected)  # D-WIKI-M8
     dispatcher.register("wiki.suggestion_reviewed", handle_wiki_suggestion_reviewed)  # D-WIKI-M8
     # No-silent-drop (compile/CI half): fail-fast at startup if a DECLARED correction

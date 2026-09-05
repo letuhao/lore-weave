@@ -482,7 +482,8 @@
       "adding": "Adding...",
       "submit": "Add Model",
       "pricing_summary": "Cost: input ${{input}}/1M · output ${{output}}/1M",
-      "pricing_missing": "The provider does not publish pricing — add it by hand once the model is registered."
+      "pricing_missing": "The provider does not publish pricing — add it by hand once the model is registered.",
+      "context_too_small": "Too small for chat: the assistant tools alone need about {{floor}} tokens before any of your book is added, so a chat here will fail before it starts. Use a larger window, or keep this model for non-chat work."
     },
     "edit": {
       "aria": "Edit model",
@@ -554,7 +555,9 @@
     "plannerHint": "The chat model the glossary assistant uses to build multi-step plans. Pick a strong, tool-capable model — otherwise planning falls back to an arbitrary chat model and often fails.",
     "none": "None",
     "empty": "No capable models configured.",
-    "saved": "Default updated"
+    "saved": "Default updated",
+    "composer": "Default composer",
+    "composerHint": "The model that writes your prose when a book has no model of its own. Set deliberately — generation is the most expensive thing here, and nothing will spend through your chat model on your behalf."
   },
   "external_services": {
     "delete_blocked": "This service cannot be removed: its model is in use by {{count}} active job(s). Stop them first.",

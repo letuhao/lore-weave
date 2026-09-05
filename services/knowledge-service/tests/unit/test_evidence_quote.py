@@ -14,8 +14,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.neo4j_repos import provenance as pm
-from app.db.neo4j_repos.provenance import add_evidence, list_evidence_for_target
+from app.db.graph_repos import provenance as pm
+from app.db.graph_repos.provenance import add_evidence, list_evidence_for_target
 from app.extraction.pass2_writer import _evidence_quote
 
 _USER = str(uuid4())
@@ -29,17 +29,23 @@ def _result(record):
 
 def test_add_evidence_cypher_stores_and_coalesces_quote():
     cy = pm._ADD_EVIDENCE_CYPHER["Fact"]
-    # ON CREATE sets the quote
-    on_create = cy.split("ON CREATE SET")[1].split("ON MATCH SET")[0]
-    assert "e.quote = $quote" in on_create
-    # ON MATCH coalesces so a quoteless re-run never wipes an existing quote
-    on_match = cy.split("ON MATCH SET")[1]
-    assert "e.quote = coalesce($quote, e.quote)" in on_match
+    # RESTATED (T75): the branches merged into one SET (§10.1). ONE expression now covers
+    # both arms — on create the stored side is null so the parameter wins, and on match a
+    # quoteless re-run never wipes an existing quote. That is strictly the same rule; it
+    # simply cannot be read off a branch keyword any more.
+    assert "e.quote = coalesce($quote, e.quote)" in cy
+    assert "ON CREATE SET" not in cy and "ON MATCH SET" not in cy, (
+        "the merge is supposed to have removed both branch keywords"
+    )
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.provenance.run_write", new_callable=AsyncMock)
-async def test_add_evidence_passes_quote(mock_run):
+@patch("app.db.graph_repos.provenance.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.run_write", new_callable=AsyncMock)
+async def test_add_evidence_passes_quote(mock_run, mock_read):
+    # T75: add_evidence now READS first — a pre-MATCH count in the same transaction that
+    # replaces the `_just_created` marker. n=0 means "this citation is new".
+    mock_read.return_value = _result({"n": 0})
     mock_run.return_value = _result(
         {"evidence_count": 1, "mention_count": 1, "created": True}
     )
@@ -52,8 +58,10 @@ async def test_add_evidence_passes_quote(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.provenance.run_write", new_callable=AsyncMock)
-async def test_add_evidence_blank_quote_normalizes_to_none(mock_run):
+@patch("app.db.graph_repos.provenance.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.run_write", new_callable=AsyncMock)
+async def test_add_evidence_blank_quote_normalizes_to_none(mock_run, mock_read):
+    mock_read.return_value = _result({"n": 0})
     mock_run.return_value = _result(
         {"evidence_count": 1, "mention_count": 1, "created": True}
     )
@@ -85,7 +93,7 @@ def test_list_evidence_cypher_projects_quote_tenant_scoped():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.provenance.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.run_read", new_callable=AsyncMock)
 async def test_list_evidence_for_target_surfaces_quote(mock_run):
     rows = [{
         "source_id": "src-hash", "source_type": "chapter", "raw_source_id": "ch5",

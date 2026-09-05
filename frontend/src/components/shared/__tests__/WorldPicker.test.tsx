@@ -67,14 +67,61 @@ describe('WorldPicker (W4)', () => {
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
-  it('filters out non-matching names', async () => {
-    listWorldsMock.mockResolvedValue(WORLDS);
+  // ── the name filter is the SERVER'S ──────────────────────────────────────
+  //
+  // This used to mock `listWorlds` to return every world whatever was asked for
+  // and assert that typing hid the non-matches — which only passes while the
+  // filtering happens in the browser, and the browser only ever held one
+  // clamped page. `q` was added to `GET /v1/worlds` for this; the mock now
+  // behaves like the endpoint, and the assertions pin the REQUEST as well as
+  // the render so a re-added client-side `.filter()` cannot pass.
+  const serverSideList = (_t: string, params?: { q?: string }) => {
+    const q = (params?.q ?? '').toLowerCase();
+    const items = q
+      ? WORLDS.items.filter((w) => w.name.toLowerCase().includes(q))
+      : WORLDS.items;
+    return Promise.resolve({ items, total: items.length });
+  };
+
+  it('sends the typed name to the server rather than filtering in the browser', async () => {
+    listWorldsMock.mockImplementation(serverSideList);
     render(<WorldPicker value={null} onChange={vi.fn()} />);
     await waitFor(() => expect(listWorldsMock).toHaveBeenCalled());
     fireEvent.focus(screen.getByRole('combobox'));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aethyr' } });
+
+    await waitFor(() =>
+      expect(listWorldsMock).toHaveBeenCalledWith(
+        'tok-test',
+        expect.objectContaining({ q: 'aethyr' }),
+      ),
+    );
     await waitFor(() => expect(screen.queryByText('Verdant Reaches')).toBeNull());
     expect(screen.getByText('Aethyr Expanse')).toBeInTheDocument();
+  });
+
+  it('renders what the server returned even when it does not contain the typed text', async () => {
+    // THE DISCRIMINATING CASE — a client-side `includes()` would hide this row.
+    // The server decides what matches, and it can do what the browser cannot.
+    listWorldsMock.mockResolvedValue({
+      items: [{ world_id: 'w-cccc', name: 'Verdant Reaches', book_count: 1 }],
+      total: 1,
+    });
+    render(<WorldPicker value={null} onChange={vi.fn()} />);
+    await waitFor(() => expect(listWorldsMock).toHaveBeenCalled());
+    fireEvent.focus(screen.getByRole('combobox'));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'aethyr' } });
+    // Wait PAST the 180ms debounce — see ProjectPicker: asserting immediately
+    // races it and the test agrees with a re-added client-side filter.
+    await new Promise((r) => setTimeout(r, 320));
+    expect(screen.getByText('Verdant Reaches')).toBeInTheDocument();
+  });
+
+  it('an empty box asks for no q at all, rather than searching for ""', async () => {
+    listWorldsMock.mockImplementation(serverSideList);
+    render(<WorldPicker value={null} onChange={vi.fn()} />);
+    await waitFor(() => expect(listWorldsMock).toHaveBeenCalled());
+    expect(listWorldsMock.mock.calls[0][1]).not.toHaveProperty('q');
   });
 
   it('resolves a selected-but-unlisted world by id for the chip', async () => {

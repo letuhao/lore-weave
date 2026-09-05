@@ -353,6 +353,29 @@ docs/specs/2026-06-30-editor-compose-overhaul/poc/io/
 /.stage1-wave1-report.json
 docs/eval/discoverability/runs/
 
+# `docs/eval/` run-output dumps — untracked 2026-09-06. This directory was 223MB / 971 files,
+# 5.9M of the branch's 6.2M insertions (measured in
+# docs/plans/2026-09-03-branch-overview-for-merge.md), all raw JSON/JSONL/txt written by
+# scripts/eval/* and scripts/toolloop/* every time an eval harness runs. Checked every one of
+# ~100 references to `docs/eval/` elsewhere in the repo first: every single one is a code
+# comment/docstring CITING a report as evidence for a config default (config.py, tool_surface.py,
+# tool_discovery.py, stream_service.py, prompt_cache.go, plan_forge_service.py, …) or a gitleaks
+# allowlist provenance note — none of them open the file at runtime. One exception is a user-facing
+# hint string in agent-registry-service/liveness.go ("see docs/eval/tool-liveness/") that now points
+# at an untracked path; it was already pointing at raw JSON a human was never meant to read over
+# the wire, so this only changes "browse the checked-out tree" to "browse an old commit or your
+# local run output" — noted, not silently accepted.
+#
+# History is NOT rewritten — every file removed here is still in every commit before this one
+# (`git show <old-sha>:docs/eval/toolloop/...` or `git checkout <old-sha> -- docs/eval` still
+# works). Only *.md (authored analysis, cited by the comments above) and *.py (the handful of
+# source scripts checked in beside old runs) stay tracked; the raw dumps are what get regenerated
+# by re-running the harness, so they're what's ignored.
+docs/eval/**/*.json
+docs/eval/**/*.jsonl
+docs/eval/**/*.txt
+docs/eval/**/*.pyc
+
 # Per-session isolated static FE builds (a session smokes on its own baked build so
 # the shared :5199 vite HMR can't confound it — see the multi-session HMR lesson).
 frontend/dist-s1-iso/
@@ -369,6 +392,13 @@ frontend/dist-s01/
 
 frontend/dist-jamie/
 services/publisher/pub.exe~
+NEW_SESSION_PROMPT.md
+
+# `gate-bite-harness` writes a mutated COPY of a gate beside the original while
+# it measures whether that gate's self-test bites, and removes it in a `finally`.
+# A killed run leaves one behind -- which has happened -- so it must be
+# impossible to commit rather than merely unlikely.
+scripts/.bite-*.py
 
 
 # ── Agent workflow: what is SHARED vs what is YOURS ─────────────────────────
@@ -385,3 +415,18 @@ services/publisher/pub.exe~
 .codex/config.local.toml
 .vscode/settings.json
 AGENTS.local.md
+
+# scratch backups made while biting (see AGENTS.md: BITE)
+*.bak
+.vlive*/
+.vcode*/
+.vmetric*/
+
+# Gate verdict caches: LOCAL accelerators keyed on a tree digest. Never committed — CI runs
+# both gates with --force, and a verdict from one machine certifies nothing on another.
+contracts/*-verdict.json
+scripts/toolloop/fe_runner_auth.json
+
+# Tool-loop fixture provenance manifests — live state about this machine's runs, written by
+# scripts/toolloop/provision.py so `--sweep` can remove an un-torn-down fixture BY ID.
+scripts/toolloop/.fixtures/

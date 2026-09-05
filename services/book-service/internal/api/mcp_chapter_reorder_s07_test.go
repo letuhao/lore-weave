@@ -45,7 +45,11 @@ func TestChapterReorder_MCP(t *testing.T) {
 		t.Fatalf("expected 4 chapters back, got %d", len(out.Chapters))
 	}
 	for i, rc := range out.Chapters {
-		if rc.ChapterID != want[i] || rc.SortOrder != i+1 {
+		// ChapterID is a STRING on the wire (TOOLV2 LOOP #124): a uuid.UUID here generated
+		// `type:"array"` in the output schema while marshalling as a string, so the SDK
+		// rejected every successful response at the boundary. This test drove the handler
+		// DIRECTLY, which is why it stayed green through that defect.
+		if rc.ChapterID != want[i].String() || rc.SortOrder != i+1 {
 			t.Fatalf("out[%d] = {%s, %d}, want {%s, %d}", i, rc.ChapterID, rc.SortOrder, want[i], i+1)
 		}
 	}

@@ -19,8 +19,8 @@
   "mode": {
     "classic": "클래식",
     "classic_title": "클래식 모드 — 집중에 최적화된 글쓰기",
-    "ai": "AI",
-    "ai_title": "AI 어시스턴트 모드 — 모든 기능 제공"
+    "ai_title": "AI 어시스턴트 모드 — 모든 기능 제공",
+    "ai": "AI"
   },
   "workmode": {
     "write": "쓰기",
@@ -90,7 +90,6 @@
     "underline": "밑줄 (Ctrl+U)",
     "inline_code": "인라인 코드",
     "link": "링크",
-    "url_prompt": "URL:",
     "highlight": "하이라이트 (Ctrl+Shift+H)",
     "subscript": "아래 첨자",
     "superscript": "위 첨자",
@@ -103,7 +102,8 @@
     "code_block": "코드 블록",
     "horizontal_rule": "구분선",
     "undo": "실행 취소 (Ctrl+Z)",
-    "redo": "다시 실행 (Ctrl+Shift+Z)"
+    "redo": "다시 실행 (Ctrl+Shift+Z)",
+    "url_prompt": "URL:"
   },
   "slash": {
     "paragraph": {

@@ -1,7 +1,7 @@
 """mui #4 K-2 — unit tests for the semantic-first wiring in
 select_glossary_for_context (chat path). Verifies: no embedding_client →
 FTS (semantic skipped); semantic-first merges pinned ahead; empty semantic
-falls back to FTS. select_glossary_semantic + neo4j_session are patched so
+falls back to FTS. select_glossary_semantic + graph_session are patched so
 no embed/Neo4j is touched.
 """
 from __future__ import annotations
@@ -60,7 +60,7 @@ async def test_no_embedding_client_skips_semantic_uses_fts(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_semantic_first_merges_pinned_ahead(monkeypatch):
-    monkeypatch.setattr(gsel, "neo4j_session", _fake_session)
+    monkeypatch.setattr(gsel, "graph_session", _fake_session)
     monkeypatch.setattr(
         gsel, "select_glossary_semantic",
         AsyncMock(return_value=[_ctx("e-sem", tier="semantic")]),
@@ -82,7 +82,7 @@ async def test_semantic_first_merges_pinned_ahead(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_empty_semantic_falls_back_to_fts(monkeypatch):
-    monkeypatch.setattr(gsel, "neo4j_session", _fake_session)
+    monkeypatch.setattr(gsel, "graph_session", _fake_session)
     monkeypatch.setattr(gsel, "select_glossary_semantic", AsyncMock(return_value=[]))
     client = MagicMock()
     client.select_for_context = AsyncMock(return_value=[_ctx("e-fts", tier="recent")])

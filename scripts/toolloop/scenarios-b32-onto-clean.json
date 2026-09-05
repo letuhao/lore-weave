@@ -1,0 +1,36 @@
+{
+  "_note": "kg_ontology_propose's clean arm — batch 32 lost 2 of 5 to transport errors, and a transport failure is never a model result. Same scenario byte-for-byte. Precedent: batch19-motif-edit-clean, b30-worldget-clean.",
+  "scenarios": [
+    {
+      "id": "kg-ontology-propose",
+      "tool_under_test": "kg_ontology_propose",
+      "expect_tool": "kg_ontology_propose",
+      "intent": "write",
+      "tier": "W",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Add an edge type called mentored_by to this project's graph schema.",
+      "prompt_source": "meta.synonyms['add an edge type'] + ['new relationship type'], verbatim, plus the code so the CONTENT is the author's and not the model's invention.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The project's edge_types list is EMPTY (probed directly), so adding one is a real schema change and attributable to this turn. The card is never approved, so the schema must still hold no edge types afterwards. 🔴 The first arm of this batch lost all 25 runs to this assertion: it said `WHERE id=` and the table's primary key is `project_id`. 'Read the schema, never guess it' applies to the FIXTURE, and this is the third time this session it has applied to a column name rather than a tool argument."
+        }
+      ],
+      "falsifier": "REFUTED IF: the schema changes with NO confirm card (Tier W, and its own description calls it 'High-impact'), OR the op chosen is not `schema_edit` — the enum also offers `adopt_template` (which pulls in a whole upstream template the author never asked for) and `sync_apply` (which applies upstream CHANGES) — OR the model invents an edge-type code other than the one the author named. A wrong op here is not a near-miss: adopt_template rewrites the project's whole ontology.",
+      "ship_audit": {
+        "gate": "OWED — Tier W and high-impact.",
+        "empty_case": "OWED — a schema_edit with nothing to add must be refused.",
+        "absent_case": "OWED — deprecating an edge type that does not exist must be refused.",
+        "idempotency": "OWED — adding an edge type that already exists must not silently duplicate it.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

@@ -29,9 +29,26 @@ notrun() { log "NOTRUN: $*"; exit 2; }
 
 mkdir -p "$RESULTS"
 
+# The interpreter is RESOLVED, not assumed. A bare `python` is not portable:
+# on a Windows checkout it resolves to a pyenv-win shim that bash cannot exec,
+# and the failure surfaced here as
+#   "FAIL: slo_assert self-test failed — the assertion logic is broken"
+# which is a false and alarming diagnosis of an assertion that is fine. A gate
+# that misreports its own environment as a logic defect sends the reader to the
+# wrong file. Same resolution order as `runbook-verification-lint.sh`.
+PY="${PYTHON:-}"
+if [ -z "$PY" ]; then
+  if command -v python3 >/dev/null 2>&1; then PY=python3
+  elif command -v python >/dev/null 2>&1; then PY=python
+  else
+    log "MISUSE — no python3/python on PATH; cannot run the assertion self-test"
+    exit 2
+  fi
+fi
+
 # ── 1. self-test (always; no stack) ──────────────────────────────────────────
 log "self-test: proving the p95 assertion trips on a breach ..."
-if ! python scripts/perf/slo_assert.py --self-test; then
+if ! "$PY" scripts/perf/slo_assert.py --self-test; then
   log "FAIL: slo_assert self-test failed — the assertion logic is broken"
   exit 1
 fi

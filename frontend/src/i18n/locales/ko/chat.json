@@ -214,6 +214,8 @@
     "feedback_error": "피드백을 저장할 수 없습니다",
     "incomplete_error": "오류 — 응답이 불완전합니다",
     "incomplete_interrupted": "중단됨 — 응답이 불완전합니다",
+    "empty_turn": "응답이 생성되지 않았습니다 — 변경된 내용이 없습니다. 다시 시도하세요.",
+    "orphaned_turn": "이 메시지에 대한 응답이 생성되지 않았습니다 — 변경된 내용이 없습니다. 다시 시도하세요.",
     "insert_into_chapter": "장(章)에 삽입"
   },
   "tools": {
@@ -566,5 +568,12 @@
     "done": "확인됨 ✓",
     "error": "확인할 수 없습니다",
     "label": "확인"
+  },
+  "disambiguation": {
+    "label": "어떤 것을 의미하시나요?",
+    "empty": "검색 결과가 없습니다.",
+    "unnamed": "(이름 없음)",
+    "truncated": "{{total}}개 중 {{shown}}개 표시 — 다른 항목을 보려면 검색 조건을 좁혀주세요.",
+    "cancel": "해당 사항 없음"
   }
 }

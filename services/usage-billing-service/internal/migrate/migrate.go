@@ -31,6 +31,43 @@ CREATE TABLE IF NOT EXISTS usage_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_logs_owner_created ON usage_logs(owner_user_id, created_at DESC);
 
+-- 🔴 v3 — WIDEN request_status. The CHECK above lives inside CREATE TABLE IF NOT EXISTS, so
+-- editing it changes NOTHING on a database that already has the table: the same silent no-op
+-- that lets a fix exist in the source and be absent from the server. This ALTER is the only
+-- thing that can move it.
+--
+-- MEASURED 2026-08-26 against the running database. The producer (provider-registry-service)
+-- emits SIX terminal outcomes and the CHECK permitted THREE, so every row carrying one of the
+-- other three was rejected by Postgres and lost — the INSERT carries ON CONFLICT DO NOTHING and
+-- the violation surfaces only in the postgres log:
+--     65,847 rejected INSERTs in ONE two-hour window
+--     775,146 'failed' and 16,851 'cancelled' across 24h
+--     usage_logs holds ZERO rows of either value, because none can ever be written
+-- A failed or cancelled LLM request still consumed provider tokens up to the point it stopped.
+-- Those rows ARE the usage and billing record.
+--
+-- 'aborted' is included because billing/client.go documents it as a recorded terminal outcome
+-- ("success" | "provider_error" | "aborted" | ...), NOT because it was observed — no 'aborted'
+-- row appears in 24h of violations. Widening to the producer's declared set rather than to the
+-- two values that happened to show up is the difference between fixing the class and fixing the
+-- instance.
+--
+-- Guarded by its own definition so the table is re-validated ONCE rather than on every boot.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'usage_logs'::regclass
+       AND conname  = 'usage_logs_request_status_check'
+       AND pg_get_constraintdef(oid) LIKE '%cancelled%'
+  ) THEN
+    ALTER TABLE usage_logs DROP CONSTRAINT IF EXISTS usage_logs_request_status_check;
+    ALTER TABLE usage_logs ADD CONSTRAINT usage_logs_request_status_check
+      CHECK (request_status IN ('success','provider_error','billing_rejected',
+                                'failed','cancelled','aborted'));
+  END IF;
+END $$;
+
 -- v2: purpose column for usage categorization (translation, chat, chunk_edit, image_gen, etc.)
 ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'unknown';
 CREATE INDEX IF NOT EXISTS idx_usage_logs_purpose ON usage_logs(owner_user_id, purpose);

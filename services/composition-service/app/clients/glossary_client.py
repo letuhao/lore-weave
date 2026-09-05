@@ -116,7 +116,11 @@ class GlossaryClient:
         """
         if not entity_ids:
             return []
-        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        # T38 B7 — through the KAL's `cast/by-ids` (INV-KAL). Same projection as `cast`, and
+        # `language` rides through unchanged: it augments each row's alias set, which is the
+        # reason this call exists (prose uses the names the author actually writes).
+        url = (f"{settings.knowledge_gateway_url.rstrip('/')}"
+               f"/v1/kal/books/{book_id}/cast/by-ids")
         payload: dict[str, Any] = {"entity_ids": [str(e) for e in entity_ids]}
         if language:
             payload["language"] = language
@@ -129,6 +133,16 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError, AttributeError) as exc:
             logger.warning("glossary entities/by-ids unavailable: %s", exc)
             return []
+
+    # `entities_by_ids_or_raise` WAS HERE, and it is gone rather than exempted.
+    #
+    # It read `/internal/books/{book}/entities/by-ids` straight from the authored catalog,
+    # and `authored-catalog-reader-gate` refused it on the merge that added it (2026-09-04).
+    # The gate was right: this file's roster read had ALREADY been migrated onto the KAL, so
+    # a new direct read was a regression against the direction of travel, not a fresh debt to
+    # baseline. Its one caller now uses `KalClient.cast_by_ids`, which keeps both properties
+    # it depended on — it RAISES rather than degrading, and it is book-scoped, so
+    # "does not exist" and "belongs to another book" earn the same refusal (H13).
 
     async def read_book_ontology(
         self, bearer: str, book_id: UUID,

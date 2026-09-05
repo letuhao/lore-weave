@@ -1,0 +1,221 @@
+{
+ "_note": "FROZEN BASELINE 2026-08-21. Every REQUIRED tool argument that ships with NO description in its advertised schema — the model has to guess what to put there. This list may only SHRINK: scripts/test_required_args_are_declared_gate.py fails if a tool not listed here gains an undeclared required argument, and fails if an entry here is stale (already fixed) so the baseline cannot rot upward.\nWHY IT EXISTS, measured: 502 of 1314 advertised properties (38%) carry no description at all, composition alone accounting for 451. Two defects in this loop trace straight to it — composition_generate's `model_ref` was filled with the placeholder 'default' on 5/5 runs, and composition_motif_search's `q` was invented as `name` on 10/10 runs across two scenarios, a retry loop that ended in a provider stream error and read as a flaky rig for two batches.\nThe prose in a TOOL description is not a declaration on the ARGUMENT, and the argument is what the model fills in. SHRUNK 2026-08-21 (pm): 68 tools / 120 args -> 56 tools / 105 args. The 15 `op` DISPATCH DISCRIMINATORS in composition-service were declared, each from the tool's OWN description — checked first, and all fifteen already enumerated every member of their enum, so the argument text quotes the tool rather than a guess about what an op does. That is why the pass stopped there: the remaining entries (project_id, book_id, run_id, node_id, expected_version and friends) need a declaration derived from something equally solid, and inventing text for an argument I have not read is the failure this baseline exists to avoid. CORRECTED 2026-08-22: lore_enrichment_auto_enrich.args was removed as a FALSE POSITIVE. It is typed as a nested object, so it arrives as a `$ref` with no description of its own while the schema it points at opens 'Every field carries a Field(description=...) on purpose' and describes every field inside. The model sees all of that. The detector now follows a $ref before calling an argument undeclared; measured across the whole baseline, this was the ONLY entry of that shape — 1 in 105.",
+ "count_tools": 56,
+ "count_args": 98,
+ "tools": {
+  "composition_arc_apply": [
+   "arc_template_id",
+   "project_id"
+  ],
+  "composition_arc_assign_chapters": [
+   "book_id",
+   "chapter_node_ids"
+  ],
+  "composition_arc_create": [
+   "book_id"
+  ],
+  "composition_arc_extract_template": [
+   "code",
+   "name",
+   "node_id"
+  ],
+  "composition_arc_import_analyze": [
+   "import_source_id"
+  ],
+  "composition_arc_move": [
+   "node_id"
+  ],
+  "composition_arc_template_create": [
+   "code",
+   "name"
+  ],
+  "composition_arc_template_update": [
+   "arc_id"
+  ],
+  "composition_arc_update": [
+   "expected_version",
+   "node_id"
+  ],
+  "composition_archive_derivative": [
+   "expected_version",
+   "project_id"
+  ],
+  "composition_authoring_run_accept_unit": [
+   "book_id",
+   "run_id",
+   "unit_index"
+  ],
+  "composition_authoring_run_close": [
+   "book_id"
+  ],
+  "composition_authoring_run_create": [
+   "book_id",
+   "budget_usd",
+   "pause_after_each_unit",
+   "plan_run_id"
+  ],
+  "composition_authoring_run_gate": [
+   "book_id"
+  ],
+  "composition_authoring_run_get": [
+   "book_id",
+   "run_id"
+  ],
+  "composition_authoring_run_list": [
+   "book_id"
+  ],
+  "composition_authoring_run_manage": [
+   "book_id"
+  ],
+  "composition_authoring_run_pause": [
+   "book_id"
+  ],
+  "composition_authoring_run_reject_unit": [
+   "book_id",
+   "run_id",
+   "unit_index"
+  ],
+  "composition_authoring_run_resume": [
+   "book_id",
+   "run_id"
+  ],
+  "composition_authoring_run_revert_all": [
+   "book_id"
+  ],
+  "composition_authoring_run_review": [
+   "book_id"
+  ],
+  "composition_authoring_run_start": [
+   "book_id",
+   "run_id"
+  ],
+  "composition_canon_rule_create": [
+   "project_id",
+   "text"
+  ],
+  "composition_canon_rule_update": [
+   "expected_version",
+   "project_id",
+   "rule_id"
+  ],
+  "composition_conformance_run": [
+   "project_id"
+  ],
+  "composition_create_derivative": [
+   "project_id"
+  ],
+  "composition_derivative_edit": [
+   "project_id"
+  ],
+  "composition_divergence_spec_update": [
+   "project_id"
+  ],
+  "composition_entity_override_add": [
+   "project_id",
+   "target_entity_id"
+  ],
+  "composition_entity_override_delete": [
+   "override_id",
+   "project_id"
+  ],
+  "composition_entity_override_restore": [
+   "override_id",
+   "project_id"
+  ],
+  "composition_entity_override_update": [
+   "override_id",
+   "project_id"
+  ],
+  "composition_generate": [
+   "project_id"
+  ],
+  "composition_library_translate": [
+   "ids",
+   "model_ref",
+   "target_language"
+  ],
+  "composition_motif_adopt": [
+   "motif_id"
+  ],
+  "composition_motif_bind": [
+   "motif_id",
+   "node_id",
+   "project_id"
+  ],
+  "composition_motif_create": [
+   "code",
+   "name"
+  ],
+  "composition_motif_link_create": [
+   "from_motif_id",
+   "kind",
+   "to_motif_id"
+  ],
+  "composition_motif_mine": [
+   "scope"
+  ],
+  "composition_motif_patch": [
+   "expected_version",
+   "motif_id"
+  ],
+  "composition_outline_node_create": [
+   "kind"
+  ],
+  "composition_outline_node_move": [
+   "node_id",
+   "project_id"
+  ],
+  "composition_outline_node_update": [
+   "expected_version",
+   "node_id",
+   "project_id"
+  ],
+  "composition_reference_update": [
+   "project_id",
+   "reference_id"
+  ],
+  "composition_scene_link_create": [
+   "from_node_id",
+   "project_id",
+   "to_node_id"
+  ],
+  "composition_structure_template_archive": [
+   "template_id"
+  ],
+  "composition_structure_template_clone": [
+   "template_id"
+  ],
+  "composition_structure_template_create": [
+   "name"
+  ],
+  "composition_structure_template_restore": [
+   "template_id"
+  ],
+  "composition_structure_template_update": [
+   "expected_version",
+   "template_id"
+  ],
+  "composition_switch_active_work": [
+   "book_id"
+  ],
+  "composition_task_provide_input": [
+   "task_id"
+  ],
+  "composition_write_prose": [
+   "body",
+   "chapter_id",
+   "expected_draft_version",
+   "project_id"
+  ],
+  "glossary_ontology_delete": [
+   "items"
+  ],
+  "translation_task_provide_input": [
+   "task_id"
+  ]
+ },
+ "_refrozen_2026_08_25": "55 tools / 104 args -> 55 / 99. The five composition_authoring_run_* tools' `run_id` is DECLARED now (4af064764, d288305b3) and its description names the supplier: 'list the book's runs with composition_authoring_run_list and pass the id it returns'. The declarations shipped and the baseline was never re-frozen, so the gate had been RED at HEAD - caught only by running the whole scripts suite. A shrink-only list that nobody shrinks is a list that stops meaning anything.",
+ "_shrunk_2026_09_01": "composition_generate.model_source left the list because DQ-T35 made the model_ref/model_source PAIR optional with a server-resolved default, so it is no longer a REQUIRED argument at all and cannot be a required-but-undeclared one. Its partner model_ref was never here (it gained a description on 2026-08-14, after the placeholder defect). project_id stays: still required, still undeclared. count_args 99 -> 98; the list only shrank.",
+ "_shrunk_2026_09_05": "composition_conformance_run.scope left the list because the tool now DESCRIBES it - the catalogue carries a description for the argument, so the baseline was claiming a debt that had already been paid. `test_the_baseline_is_not_stale` is what caught it: a baseline keeping a FIXED entry misleads exactly as much as one missing a broken entry, because it makes the remaining debt look larger than it is and buries the next real offender in it. project_id stays - still required, still undescribed.",
+ "_joined_2026_09_05": "translation_task_provide_input.task_id joined next to composition_task_provide_input.task_id, which has been here since the freeze. They are THE SAME DEFECT from THE SAME FACTORY: both are registered by the Python kit's `tasks_wire.py`, where `task_id: str` was a bare annotation and FastMCP therefore advertised {'title','type'} with no description. The Go kit's identical tool always carried one, so book_ and glossary_task_provide_input show `description` in the catalogue and these two show `title` - a kit-parity gap, visible in the cache as exactly that split. THE SOURCE IS FIXED in this commit (Annotated + Field, wording mirrored from the Go kit), so this entry and composition's should BOTH leave the list on the next catalogue refresh; `test_the_baseline_is_not_stale` is what will force that. The catalogue cannot be refreshed from source - it is a live federation round trip through the ai-gateway - so the debt is recorded here rather than silently left red."
+}

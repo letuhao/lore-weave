@@ -143,7 +143,7 @@ mod tests {
 
     fn evt(outcome: AuditOutcome, tokens: u32) -> AuditEvent {
         AuditEvent {
-            reality_id: Uuid::from_u128(1),
+            reality_id: crate::embedding_queue::test_reality(Uuid::from_u128(1)),
             npc_id: Uuid::from_u128(2),
             session_id: Uuid::from_u128(3),
             provider: "openai".into(),

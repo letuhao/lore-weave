@@ -1,0 +1,55 @@
+{
+  "_note": "DQ-T30 — a question naming stored data must be answered from a tool call in THIS turn. The MEASURED turn is the LAST one: turn 1 is the setup that succeeded live on 2026-08-13, and the RE-ASK is what failed. A single-turn scenario would record turn 1 as a clean pass and never see the defect.",
+  "scenarios": [
+    {
+      "id": "dqt30-reask-canon-rules",
+      "tool_under_test": "composition_list_canon_rules",
+      "expect_tool": "composition_list_canon_rules",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What canon rules have I declared for this book?",
+      "follow_ups": [
+        "Remind me again — what canon rules do I have on this book right now?"
+      ],
+      "prompt_source": "_meta.synonyms['canon rules'] — the author's exact words on the measured turn",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_canon_rule_create",
+          "args": {
+            "project_id": "{project_id}",
+            "text": "Magic always costs lifespan — every spell burns years from the caster."
+          }
+        },
+        {
+          "tool": "composition_canon_rule_create",
+          "args": {
+            "project_id": "{project_id}",
+            "text": "The Obsidian Trench never appears on two maps at once."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM canon_rule WHERE project_id='{project_id}' AND active",
+          "expect": "2",
+          "why": "TWO rules must exist, because the measured failure is a COUNT: the re-ask answered 'one rule'. With one rule seeded, a stale answer and a correct answer are the same sentence and the scenario proves nothing."
+        }
+      ],
+      "answer_expect": {
+        "all_of": ["lifespan", "Obsidian Trench"],
+        "why": "Both seeded rules must appear in the answer to the RE-ASK. The measured failure named one and invented the other, so a reply carrying only one rule is the defect reproducing, not a partial pass."
+      },
+      "falsifier": "REFUTED IF: the re-ask (the LAST turn) answers without composition_list_canon_rules appearing in that turn's tool calls, OR the reply states a count or a rule text that is not in the store, OR a read-intent turn changes the store. CONTROL: turn 1 is recorded in prior_turns — if turn 1 ALSO failed to call the tool, this scenario is measuring the first-ask path (D-FJ-18's territory) and NOT the staleness DQ-T30 names, so the reading is void.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with zero canon rules must answer 'none declared' from a tool call, not from silence.",
+        "tenancy": "OWED — the read is project-scoped; a second account must not see these rules."
+      },
+      "defects": ["DQ-T30"]
+    }
+  ]
+}

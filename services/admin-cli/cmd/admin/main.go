@@ -619,6 +619,185 @@ func buildRebuildProjectionHandler() (framework.Handler, func(), error) {
 	return h, metaPool.Close, nil
 }
 
+// buildProvisionRealityHandler wires `reality provision` (W3) — the command
+// that CREATES a reality.
+//
+// Unlike its siblings this builder opens NO database connection. The Rust
+// worker owns every DSN, the shard connection, the advisory lock and the
+// migrations; this process contributes governance only (the dispatcher has
+// already checked the admin JWT, the admin:write scope, the dry-run gate and
+// the reason, and written the audit "started" row before the handler runs).
+// Keeping the meta pool out of here means an operator who mis-configures the
+// worker gets the worker's own fail-closed exit 2, naming the missing variable,
+// rather than a half-open connection in two processes.
+//
+// Wiring rule (D-ADMIN-NOTWIRED-EXIT): PROVISION_* unset entirely → leave
+// NotWired and let the tier-2 fail-closed policy refuse. PARTIALLY set → a real
+// error, because that is config present but invalid, and silently refusing
+// would hide the typo.
+func buildProvisionRealityHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	env := commands.ProvisionWorkerEnvFromOS()
+	if env.MetaDSN == "" && env.ShardAdminDSN == "" && env.BridgeURL == "" {
+		return nil, noop, nil // not configured at all → NotWired
+	}
+	if err := env.Validate(); err != nil {
+		return nil, noop, err // partially configured → fatal, name the gap
+	}
+	binPath := os.Getenv("PROVISION_BIN_PATH")
+	if binPath == "" {
+		binPath = "provision"
+	}
+	invoker := commands.NewSubprocessProvisionInvoker(binPath, env)
+
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		rid, err := parseProvisionRealityIDParam(inv.Params["reality_id"])
+		if err != nil {
+			return "", err
+		}
+		cohort, err := parseProvisionCohortParam(inv.Params["deploy_cohort"])
+		if err != nil {
+			return "", err
+		}
+		// Optional: absent means the PLATFORM owns the reality (owner_kind=system).
+		var owner uuid.UUID
+		if raw := strings.TrimSpace(inv.Params["owner_user_id"]); raw != "" {
+			owner, err = uuid.Parse(raw)
+			if err != nil {
+				return "", fmt.Errorf("invalid owner_user_id %q: %w", raw, err)
+			}
+			// The nil UUID parses fine and would then be indistinguishable from
+			// "not supplied" one layer down (the invoker drops the flag when the
+			// value is uuid.Nil), so the operator would get a platform-owned
+			// reality and a success message. Refuse where they typed it.
+			if owner == uuid.Nil {
+				return "", fmt.Errorf(
+					"owner_user_id must not be the nil UUID (omit the parameter for a platform-owned reality)")
+			}
+		}
+		return commands.RunProvisionReality(ctx, commands.ProvisionRealityRequest{
+			RealityID:    rid,
+			OwnerUserID:  owner,
+			Locale:       inv.Params["locale"],
+			DeployCohort: cohort,
+			Actor:        inv.Actor,
+			Reason:       inv.Reason,
+			DryRun:       inv.DryRun,
+			Confirm:      inv.Confirm,
+		}, commands.ProvisionRealityDeps{Invoker: invoker})
+	}
+	return h, noop, nil
+}
+
+// buildActorControlHandler wires the three `SEALED-BINDING` commands
+// (`reality grant-control`, `revoke-control`, `create-actor`) onto one Rust
+// worker.
+//
+// Like buildProvisionRealityHandler this builder opens NO database connection:
+// the worker holds every DSN, binds the reality through the control plane, and
+// reaches the per-reality database this process never touches. Keeping the meta
+// pool out means a mis-configured worker gives its own fail-closed exit 2,
+// naming the missing variable, instead of a half-open connection in two
+// processes.
+//
+// One builder for three commands because they are one binary and one env: the
+// only thing that differs is `--op` and which identifier flags go with it. Three
+// builders would be three copies of the same wiring policy, drifting apart the
+// first time one of them was edited.
+//
+// Wiring rule (D-ADMIN-NOTWIRED-EXIT): ACTOR_CONTROL_* unset entirely → leave
+// NotWired and let the fail-closed tier policy refuse. PARTIALLY set → a real
+// error, because that is config present but invalid, and silently refusing
+// would hide the typo.
+func buildActorControlHandler(op commands.ActorControlOp) func() (framework.Handler, func(), error) {
+	return func() (framework.Handler, func(), error) {
+		noop := func() {}
+		env := commands.ActorControlWorkerEnvFromOS()
+		if env.MetaDSN == "" && env.BridgeURL == "" && env.ShardHostPort == "" {
+			return nil, noop, nil // not configured at all → NotWired
+		}
+		if err := env.Validate(); err != nil {
+			return nil, noop, err // partially configured → fatal, name the gap
+		}
+		binPath := os.Getenv("ACTOR_CONTROL_BIN_PATH")
+		if binPath == "" {
+			binPath = "actor-control"
+		}
+		invoker := commands.NewSubprocessActorControlInvoker(binPath, env)
+
+		h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+			rid, err := parseProvisionRealityIDParam(inv.Params["reality_id"])
+			if err != nil {
+				return "", err
+			}
+			req := commands.ActorControlRequest{
+				Op:        op,
+				RealityID: rid,
+				Actor:     inv.Actor,
+				Reason:    inv.Reason,
+				DryRun:    inv.DryRun,
+				Confirm:   inv.Confirm,
+			}
+			// Each id is parsed where the operator typed it, so a typo names the
+			// parameter rather than surfacing as a worker exit 2 two processes
+			// away. The nil UUID is refused for the same reason it is refused in
+			// the worker: it parses fine and is then indistinguishable from
+			// "not supplied" one layer down, where the invoker drops the flag.
+			for _, f := range []struct {
+				name string
+				dst  *uuid.UUID
+			}{
+				{"actor_id", &req.ActorID},
+				{"user_ref_id", &req.UserRefID},
+				{"expected_user_ref_id", &req.ExpectedUserRefID},
+			} {
+				raw := strings.TrimSpace(inv.Params[f.name])
+				if raw == "" {
+					continue
+				}
+				id, perr := uuid.Parse(raw)
+				if perr != nil {
+					return "", fmt.Errorf("invalid %s %q: %w", f.name, raw, perr)
+				}
+				if id == uuid.Nil {
+					return "", fmt.Errorf("%s must not be the nil UUID", f.name)
+				}
+				*f.dst = id
+			}
+			if raw := strings.TrimSpace(inv.Params["entity_id"]); raw != "" {
+				n, perr := strconv.ParseInt(raw, 10, 64)
+				if perr != nil {
+					return "", fmt.Errorf("entity_id %q is not an integer", raw)
+				}
+				req.EntityID = n
+			}
+			return commands.RunActorControl(ctx, req, commands.ActorControlDeps{Invoker: invoker})
+		}
+		return h, noop, nil
+	}
+}
+
+// parseProvisionRealityIDParam parses the required reality_id param.
+func parseProvisionRealityIDParam(raw string) (uuid.UUID, error) {
+	id, err := uuid.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid reality_id %q: %w", raw, err)
+	}
+	return id, nil
+}
+
+// parseProvisionCohortParam parses the optional deploy_cohort param.
+func parseProvisionCohortParam(raw string) (int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("deploy_cohort %q is not an integer", raw)
+	}
+	return n, nil
+}
+
 // resolveCatastrophicRealities turns --scope into a concrete reality-id list:
 // reality (--reality_ids comma/space-separated), all-realities (every ACTIVE
 // reality_registry row — only active realities can be frozen), or aggregate-list
@@ -924,6 +1103,13 @@ func run(args []string, stdout, stderr *os.File) int {
 		"reality capacity-override":    buildCapacityOverrideHandler,
 		"reality rebuild-projection":   buildRebuildProjectionHandler,
 		"reality catastrophic-rebuild": buildCatastrophicRebuildHandler,
+		"reality provision":            buildProvisionRealityHandler,
+		// SEALED-BINDING — three commands, one worker, one env. See
+		// buildActorControlHandler for why the builder is parameterised rather
+		// than copied three times.
+		"reality create-actor":   buildActorControlHandler(commands.OpCreateActor),
+		"reality grant-control":  buildActorControlHandler(commands.OpGrantControl),
+		"reality revoke-control": buildActorControlHandler(commands.OpRevokeControl),
 	}
 	if build, ok := builders[c.Name]; ok {
 		closeHandler, fatal := wireCommandHandler(stderr, handlers, c.Name, build)

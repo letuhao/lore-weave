@@ -356,3 +356,78 @@ def test_a_map_critic_that_IS_the_drafter_is_still_refused():
     r = resolve_critic(s, "same")
     assert r.status is CriticStatus.SAME_AS_DRAFTER
     assert (r.source, r.ref) == (None, None), "a refused critic must not leak its model"
+
+# ── critic_enabled: the per-book OFF switch (QC-5 C32) ───────────────────────────────────
+
+def test_critic_is_ON_when_nothing_says_otherwise():
+    """The shipped default, and the control arm for every assertion below: a resolver that
+    returned False for an unconfigured book would silently disable the critic for every book
+    saved before this control existed."""
+    from app.engine.critic_policy import critic_enabled
+    assert critic_enabled({}, {}) is True
+    assert critic_enabled(None, None) is True
+
+
+def test_the_BOOK_setting_can_turn_it_off():
+    from app.engine.critic_policy import critic_enabled
+    assert critic_enabled({"critic_enabled": False}, {}) is False
+
+
+def test_run_params_OVERRIDE_the_book_setting_in_both_directions():
+    """Params-override-settings is the same precedence `resolve_critic` uses for the MODEL, and
+    it has to hold both ways: an autonomous run forcing the net ON for a book that turned it
+    off, and a single run turning it off without editing the book."""
+    from app.engine.critic_policy import critic_enabled
+    assert critic_enabled({"critic_enabled": False}, {"critic_enabled": True}) is True
+    assert critic_enabled({"critic_enabled": True}, {"critic_enabled": False}) is False
+
+
+def test_an_ABSENT_param_does_not_override_anything():
+    """`in` rather than truthiness: `params.get("critic_enabled")` returning None for an absent
+    key and False for an explicit off are different states, and reading them the same way would
+    make every run ignore the book's setting."""
+    from app.engine.critic_policy import critic_enabled
+    assert critic_enabled({"critic_enabled": False}, {"model_ref": "m"}) is False
+    assert critic_enabled({"critic_enabled": True}, {"model_ref": "m"}) is True
+
+
+# ── QC-5 C46 — the attribution channel's own switch (PO, 2026-08-30) ────────────────────────
+#
+# C44 measured the prose judge at 4/4 FALSE attributions on canon-conforming prose with a
+# single rule in play. C45 measured the precision pass at 14/14 in-sample against 0/5 held
+# out. The PO's C31 conditional — "spend on precision first; if precision cannot be reached,
+# default the judge OFF" — therefore fires, narrowed to the one output the evidence indicts.
+#
+# These tests pin the DEFAULT and the PRECEDENCE. The default is the whole decision: a book
+# that says nothing must not attribute canon violations to its author.
+
+def test_canon_violations_are_OFF_by_default():
+    from app.engine.critic_policy import canon_violations_enabled
+    assert canon_violations_enabled(None, None) is False
+    assert canon_violations_enabled({}, {}) is False
+
+
+def test_a_book_can_turn_the_channel_back_ON():
+    """Re-enabling is a MEASUREMENT, not an opinion — `qc5-verifier-heldout` is the check —
+    but the switch has to exist or the answer would be to delete the channel."""
+    from app.engine.critic_policy import canon_violations_enabled
+    assert canon_violations_enabled({"canon_violations_enabled": True}, None) is True
+
+
+def test_run_params_OVERRIDE_the_book_setting_both_ways():
+    """Same precedence as `critic_enabled` and `resolve_critic`: one concept, one order."""
+    from app.engine.critic_policy import canon_violations_enabled
+    assert canon_violations_enabled({"canon_violations_enabled": True},
+                                    {"canon_violations_enabled": False}) is False
+    assert canon_violations_enabled({"canon_violations_enabled": False},
+                                    {"canon_violations_enabled": True}) is True
+
+
+def test_the_channel_switch_is_INDEPENDENT_of_critic_enabled():
+    """The point of the narrow control: craft notes and the four dimension scores survive.
+    A book with the critic ON still withholds attributions unless it opted in — the
+    measurement faulted the violations channel and nothing else."""
+    from app.engine.critic_policy import canon_violations_enabled, critic_enabled
+    settings = {}
+    assert critic_enabled(settings, None) is True
+    assert canon_violations_enabled(settings, None) is False

@@ -1,0 +1,49 @@
+{
+ "_note": "DQ-T60 — the LIVE proof that removing `_meta.paid` lets the tool reach its own confirm card. composition_library_translate declared paid=True while pricing arithmetically, so chat-service's spend gate SUSPENDED every well-formed call before the estimate existed: 15 calls, 12 suspended, 0 ever ok, against a sibling of identical shape (translation_start_job) at 80 of 82 ok. The flag is removed; this batch asks whether the call now EXECUTES. 🔴 NOTHING SPENDS: the tool only mints a token, `approve` is null so no card is ever accepted, and the fixture is a motif this scenario creates for itself.",
+ "scenarios": [
+  {
+   "id": "a-confirm-minter-reaches-its-own-card",
+   "tool_under_test": "composition_library_translate",
+   "expect_tool": "composition_library_translate",
+   "intent": "write",
+   "tier": "W",
+   "scope": "user",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Translate my motif {step:0:id} into Vietnamese using model 019ebb72-27a2-72f3-a42d-d2d0e0ded179.",
+   "prompt_source": "🔴 THE IDS ARE HANDED OVER DELIBERATELY, and the reason is that they are NOT what is under test. `_LibraryTranslateArgs` requires BOTH `ids` and `model_ref`, and `model_ref` has no supplier on this tool's own surface — which is why 3 of the 15 historical calls died on missing arguments before ever reaching a gate. Supplying them makes the trigger deterministic so the measurement is about the SPEND GATE and nothing else. The same route the degenerate-UUID and placeholder arms were proven by.",
+   "needs_target": false,
+   "approve": null,
+   "editor_context": false,
+   "seed": [
+    {
+     "tool": "composition_motif_edit",
+     "args": {
+      "op": "create",
+      "code": "throwaway-paidgate-c60-{run_id}",
+      "name": "Throwaway Paid Gate {run_word}",
+      "kind": "trope"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif WHERE code='throwaway-paidgate-c60-{run_id}' AND status <> 'archived'",
+     "expect": "1",
+     "why": "🔴 THE SAFETY FIXTURE, copied from batch 19's reasoning. Motifs are ACCOUNT-scoped — there is no throwaway BOOK that contains the damage — and the caller owns ~150 real ones. So the scenario creates its OWN motif under a unique code and names only that one. The `{run_id}` nonce is load-bearing: batch 20 lost 4 of 5 runs to a FIXED code, because an account-scoped seed collides with itself on repeat."
+    }
+   ],
+   "falsifier": "REFUTED IF the call is SUSPENDED on a platform spend card (a pending tool_call record) — that is the pre-fix behaviour, and it means `_meta.paid` is still being read somewhere. PASSES IF the call EXECUTES and returns a confirm_token together with an estimate: the tool reached its own card, which is the one that can state the price. 🔴 A RUN THAT DIES ON MISSING ARGUMENTS IS A THIRD OUTCOME AND MUST BE READ AS NEITHER — it never reached the gate, and it is a known separate defect of this tool's surface (`model_ref` required with no supplier).",
+   "answer_expect": {
+    "why": "None. The measurement is the recorded tool_call — whether it carries `pending: true` or a result with a confirm_token — not the reply text."
+   },
+   "ship_audit": {
+    "gate": "OWED and PRESERVED — Tier W is unchanged; the confirm token IS the gate, and this batch is checking it can be reached at all.",
+    "absent_case": "OWED — a motif id that is not the caller's must be refused (the tool returns a uniform non-enumerating refusal).",
+    "idempotency": "OWED — proposing twice must mint two tokens and spend nothing.",
+    "tenancy": "Account-scoped; the scenario creates its own motif under a run-nonced code and never approves the card."
+   },
+   "defects": []
+  }
+ ]
+}

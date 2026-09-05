@@ -23,6 +23,7 @@ import { ConfirmActionCard, descriptorDomain } from './ConfirmActionCard';
 import { TaskConfirmCard } from './TaskConfirmCard';
 import { BatchConfirmCard, type BatchChild } from './BatchConfirmCard';
 import { ToolApprovalCard, isToolApprovalRecord } from './ToolApprovalCard';
+import { DisambiguationCard, isDisambiguationRecord } from './DisambiguationCard';
 import { TranslationReviewCard, isTranslationProposeCall, summarizeTranslationReview } from './TranslationReviewCard';
 import { SkillProposalCard, skillProposal, type SkillProposal } from './SkillProposalCard';
 import { ActivityStrip } from './ActivityStrip';
@@ -236,6 +237,47 @@ export function AssistantMessage({
         </div>
       )}
 
+      {/* D2 (owner, 2026-09-04) — THE BLANK BUBBLE. A turn that produced no reply at all
+          rendered as nothing: no text, no badge, no error. The author sees an empty bubble
+          and retries by instinct.
+
+          🔴 MEASURED over the live store: assistant rows with no content, no tool calls and
+          no card run at ~0.11% of turns — 7 of 6,640 in August, 1 of 625 in September. Rare,
+          but the author is told nothing at all when it happens.
+
+          ⚠️ WHY THIS IS CHROME AND NOT MESSAGE TEXT, which is the whole reason it can exist.
+          The owner DECLINED a generic failure line in the assistant's own words (recorded in
+          `_last_tool_error_for_author`: "a blank turn cannot be told apart from a crash, a
+          refusal or a slow turn"). That decision stands and this does not touch it — nothing
+          is written into `content`, no runtime-authored prose enters the transcript, and the
+          stored message is unchanged. This is the same badge affordance the interrupted /
+          errored turns already use, extended to the case that renders as literally nothing.
+
+          The backend already records these correctly (`outcome='failed'`, via D-SILENT-TURN);
+          `is_error`/`error_detail` are NOT used, because nothing on this surface reads them
+          and inventing a consumer for them would be a second mechanism to keep in sync.
+
+          NARROW ON PURPOSE. `finishReason` interrupted/error is the badge above and must not
+          be double-badged. A turn that called a tool said something by doing; a turn holding
+          a confirm card has the CARD as its output and is legitimately text-free — both are
+          excluded, or this fires on the 92 measured card-suspends that are working correctly. */}
+      {!isStreaming
+        && !content.trim()
+        && !reasoning
+        && finishReason !== 'interrupted'
+        && finishReason !== 'error'
+        && !(toolCalls && toolCalls.length > 0) && (
+        <div
+          data-testid="message-empty-turn-badge"
+          className="mt-1 inline-flex items-center gap-1.5 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-400/90"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80" />
+          {t('message.empty_turn', {
+            defaultValue: 'No reply was produced — nothing was changed. Try again.',
+          })}
+        </div>
+      )}
+
       {/* K21-C (D2): memory tool calls used in this reply. Renders
           nothing when toolCalls is empty/null. ARCH-1 C6: a pending
           propose_edit (frontend write-back tool) renders as an interactive
@@ -256,6 +298,14 @@ export function AssistantMessage({
           'glossary_propose_entity_edit',
           'glossary_confirm_action',
           'confirm_action',
+          // DQ-V4 — the Tier-A auto-apply cap. NOT a confirm the model asked for: the platform
+          // interrupted a runaway turn, so it carries no confirm_token and Confirm just lets the
+          // turn continue. It suspended as 'confirm_action' until 2026-09-03 and was told apart
+          // from a real confirm by its EMPTY token; it has its own name now.
+          //
+          // 🔴 IF THIS NAME IS MISSING HERE THE CARD DOES NOT RENDER AT ALL, and the cap — the
+          // enforceable bound on injection damage — becomes an invisible stall.
+          'batch_confirm',
         ];
         const isPendingFrontend = (tc: ToolCallRecord) =>
           tc.pending === true && FRONTEND_TOOLS.includes(tc.tool);
@@ -264,8 +314,12 @@ export function AssistantMessage({
         // book_create, so it can't route by name). Approve once / Always allow
         // / Deny resume the run via the standard tool-results endpoint.
         const approvals = toolCalls.filter(isToolApprovalRecord);
+        // DQ-T76 — a pending disambiguation suspend. Like tool_approval it routes by the
+        // `args.kind` marker, not by name: the record's `tool` is the SERVER tool that needs
+        // the id (e.g. world_map_delete), so it can never route by tool name.
+        const disambiguations = toolCalls.filter(isDisambiguationRecord);
         const proposals = toolCalls.filter(
-          (tc) => isPendingFrontend(tc) && !isToolApprovalRecord(tc),
+          (tc) => isPendingFrontend(tc) && !isToolApprovalRecord(tc) && !isDisambiguationRecord(tc),
         );
         // ext-tasks (T1c(3)) — a pending durable-gate suspend (the record carries a
         // `task`). Its tool is a SERVER tool (e.g. composition_create_derivative), not
@@ -286,6 +340,7 @@ export function AssistantMessage({
           .filter((p): p is SkillProposal => p !== null);
         const rest = toolCalls.filter(
           (tc) => !isPendingFrontend(tc) && !isRenderableTranslation(tc) && !isToolApprovalRecord(tc)
+            && !isDisambiguationRecord(tc)
             && !skillProposal(tc) && !(tc.pending === true && !!tc.task),
         );
         // Model-independent human gate: auto-render a confirm card for any completed
@@ -341,6 +396,10 @@ export function AssistantMessage({
             {approvals.map((tc) => (
               <ToolApprovalCard key={tc.toolCallId ?? `${tc.tool}-approval`} record={tc} />
             ))}
+            {/* DQ-T76 — "which one did you mean?" (the ambiguous 76%). */}
+            {disambiguations.map((tc) => (
+              <DisambiguationCard key={tc.toolCallId ?? `${tc.tool}-disambiguation`} record={tc} />
+            ))}
             {translationCards.map((tc) => (
               <TranslationReviewCard key={tc.toolCallId ?? `${tc.tool}-${tc.iteration ?? 0}`} record={tc} />
             ))}
@@ -376,6 +435,11 @@ export function AssistantMessage({
                 return <ConfirmCard key={key} record={tc} />;
               }
               if (tc.tool === 'confirm_action') return <ConfirmActionCard key={key} record={tc} />;
+              // The Tier-A cap gate. Same card as a generic confirm — it has a title, a
+              // reason and Confirm/Cancel — but with no token there is nothing to preview
+              // and nothing to POST: Confirm resumes the suspended run, which is exactly
+              // what ConfirmActionCard already does when confirm_token is empty.
+              if (tc.tool === 'batch_confirm') return <ConfirmActionCard key={key} record={tc} />;
               // propose_record_edit dispatch REMOVED (auto-gate M5); its RecordDiffCard renderer
               // is deleted. book_update_details' server-built diff renders via ConfirmActionCard
               // (auto-confirm path below: minted confirm_token + changes[], descriptor 'book.meta').

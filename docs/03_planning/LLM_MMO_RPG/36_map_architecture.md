@@ -143,8 +143,24 @@ Three consequences are load-bearing:
 > mandatory sequence of rungs.
 
 Freedom **with** law, not freedom **from** law. `Universe → Domain` is legal because the matrix says
-so; `Universe → Universe` likewise. `MAP_001`'s `ChannelTier` is retired (`SPG-R1`) and
-`Channel.level_name: String` is narrowed to `MapKind` (`SPG-R2`).
+so; `Universe → Universe` likewise. `MAP_001`'s `ChannelTier` is retired (`SPG-R1`).
+
+> **⚠ Corrected 2026-08-02.** This paragraph used to end *"…and `Channel.level_name: String` is narrowed
+> to `MapKind` (`SPG-R2`)"* — stated as fact, in an axiom body, **for an amendment that was retired the
+> same day it was written** (§7; [REC-93](19_reconciliation_register.md)). `DP-A13` forbids exactly that
+> narrowing: the data plane is deliberately agnostic to level semantics so a reality can name its own
+> levels — `phủ` (*a prefecture*), `châu` (*a province*). <!-- doc-language-gate: ok — these two words ARE
+> the subject matter, not exposition: the decision under discussion is precisely that a reality keeps its
+> own level vocabulary, so replacing them with their English glosses would delete the example. Glossed
+> inline on first use, per the standard. Same two words appear verbatim at :459 and in DP-A13 itself. -->
+> **Two fields, two jobs** — `Channel.level_name` stays the reality's own word,
+> and the closed set lives one layer up on `map_layout.kind`, where `SPG-R1` already put it.
+>
+> **The rot survived three months because nothing looks for it.** [`amendment-rot-gate.py`](../../../scripts/amendment-rot-gate.py)
+> check D catches a retired **identifier** (`ChannelTier`) used as if live; **no check catches a retired
+> AMENDMENT ROW cited as if live.** That is the *"scope never reaches it"* shape from
+> [`non-vacuity.md`](../../standards/non-vacuity.md) NV-3 — and this is not the only site: `MAP_001:183`
+> carried the same claim in a `//` comment, in the future tense, and is corrected in the same pass.
 
 Prior art: HTML's content model (which elements may contain which) is the canonical typed-containment
 ruleset; `django-polymorphic-tree` ships the same idea for trees whose *"each node can be a different
@@ -300,6 +316,37 @@ is the same pattern the repo already shipped twice: `MAP_001`'s lazy-cell `map_l
 S2.6) and `CSC_001`'s *"first PC entry to cell triggers compute"*. USD names the general form: a
 **payload** is a reference whose subtree is deferred until explicitly loaded.
 
+> **⚠ AMENDED 2026-08-22 — `SDF-R1` APPLIED, and it is the only row in this document backed by a
+> MEASUREMENT rather than an argument.**
+>
+> `SPG-A12` is unchanged as a **policy** — an interior is a declaration until something enters it, and
+> that is still right. What changes is its **representation**, which this axiom never stated and §4
+> silently answered with a field:
+>
+> | | |
+> |---|---|
+> | **was** | `SpaceNode.materialization: Materialization` — a per-node enum, so *"what is live?"* is a **scan over every node** |
+> | **is** | a **live-set INDEX** (doc 41 `T2`). Membership is the index; the node carries nothing |
+>
+> **The measurement** (doc 41 §2, `M-1`): rustc 1.89, release + LTO + `codegen-units=1`, best-of-7,
+> single core, 65 536 residents. **Ladder-as-FIELD versus ladder-as-INDEX is 92.4× at 0.1 % live.**
+>
+> **And the measurement's limits are part of the amendment, not a footnote:** the advantage **collapses
+> to 0.7×** at 100 % live and **1.3×** under heavy per-node work, and index maintenance costs ~1 µs at
+> 512 churn/tick. So this is a win *for a world where almost nothing is live* — which is precisely the
+> world `SPG-A12` describes and §2's own line at `:136` already argued (*"99.99 % of actors"*). **If that
+> premise ever stops holding, this amendment stops paying**, and no capacity table is inferred from it
+> (doc 21 §7 forbids it).
+>
+> **Why it had to land before the first migration.** A column is cheap to add and expensive to remove:
+> this document's own opening says *"the cost of being wrong rises to a migration the moment the first
+> row is written."* `materialization` would have been the first column in the space schema that the
+> project had already measured as wrong.
+>
+> **`Materialization` as a TYPE survives** — a node still moves between declared and live, and `R-56`
+> argues the state is really three plus a generation stage. **It is the LOCATION of that fact that
+> moved**: into the index, out of the row.
+
 ### SPG-A13 — A `Passage` is a map whose geometry is DERIVED, never authored
 
 > The road between two places is a **node**, but its map is generated on demand from the world field
@@ -345,6 +392,31 @@ The corpus currently has two independent override mechanisms —
 answers it with **LIVRPS**, a single documented strength ordering. Three parallel orders is how
 "why did my edit not apply" becomes unanswerable.
 
+> **⚠ VERIFIED 2026-08-22 (`SPG-R11`) — and the count was wrong. There are TWO strength orders, not
+> three, and the third mechanism is not a cascade at all.**
+>
+> Opening both targets settles it, which is the fourth time in this document that opening a target
+> changed a row rather than confirming it.
+>
+> | mechanism | what its order means | is it a strength order? |
+> |---|---|---|
+> | `SPG-A14` template ↔ placement | a placement's local edit versus the template's value | **yes** — two SOURCES, one wins |
+> | [`03_multiverse`](03_multiverse/01_four_layer_canon.md) L1/L2/L3 | which canon AUTHORITY may state a fact; *"reads cascade upward"* | **yes** — two SOURCES, one wins |
+> | `GEO_001` `GeographyDelta` | *"Replay = base + deltas **in order**"*, appended, atomic per event | **NO** — this is TIME, not strength |
+>
+> **`GeographyDelta` is the divergence log over a content-addressed baseline**, which is
+> [`WDS-A1`](37_world_data_storage.md) exactly, and [`WDS-A10`](37_world_data_storage.md) now states its
+> scope in those terms: seed-derived is shared by digest, log-derived is per-reality. In a log the later
+> entry **is** the state — nothing "wins" over it — and [`WDS-A9`](37_world_data_storage.md) folds the
+> log into a NEW baseline, an operation that means nothing for a strength order.
+>
+> **Folding it in would have conflated AUTHORITY with CHRONOLOGY**, and produced the question *"can a
+> stronger source override a later delta?"*, which has no answer because the two orders measure different
+> things. **`SPG-A15` governs the first two. The third is excluded by name.**
+>
+> Nobody could have reached this in July: `WDS-A9` and `WDS-A10` landed on 2026-08-22, and they are what
+> makes the delta overlay legible as a log rather than as a cascade.
+
 ### SPG-A16 — Combat always resolves on a tactical grid; only the grid's SOURCE varies
 
 > The hybrid siting decision is **one** mechanism, not two.
@@ -359,6 +431,47 @@ become cover. One rule set, one renderer, one generator interface with two imple
 This **reverses** `RTM-D Q4` (*instanced dedicated combat scene*) in the same manner and with the
 same justification pattern as [`AUD-F1`](10_medium_blast_radius_audit.md) reversing `COMB_001`'s
 abstract-arena stance: the original reason was cost, and the cost is gone. Recorded as `SPG-D1`.
+
+### SPG-A19 — An `Encounter` is not an `Arena`, and the CLOSURE is the correctness boundary (`SDF-R4`, applied 2026-08-22)
+
+> **⚠ `SPG-D1` AS WRITTEN IS NOT SATISFIABLE, and `R-7` is why.** The decision above frames the question
+> as *which node the fight lives in*. That framing is the problem.
+
+**`R-6` — the structural finding.** The `Encounter` **always** exists during a fight; the `Arena` node is
+**optional**, merely a space the Encounter may point at. Foundry VTT is the shipped proof: its `Combat`
+document holds `scene` as a **foreign key, not ownership**, and `combatants` as *references*. Multiple
+Combats run on one Scene at once.
+
+Without the split, in-place combat forces one of two bad outcomes: **carve an `Arena` anyway** just to
+have somewhere to hang grid, initiative and status state — which defeats `SPG-D1` entirely — or give
+**every** `Locale` and `Domain` combat-shaped fields that are null 99.9 % of the time.
+
+> **`SPG-A19` — the `Encounter` is a first-class thing with its own identity; `carved_arena:
+> Option<NodeId>` is the whole difference between the two branches.** `None` is in place, `Some` is
+> carved, and everything else is identical. **The hybrid decision becomes a one-line branch instead of two
+> code paths.**
+
+**`R-7` — and the half `SPG-D1` never addressed: replay.** XCOM 2's replay works because a tactical
+mission is a **closed world** — a start frame, an append-only chain, nothing external injecting. **An
+in-place fight in a persistent shared `Locale` is an OPEN world**: a wandering NPC, a day/night tick,
+another party's AoE or a weather change can all perturb it. Under this project's own constraint — *a
+fight must replay identically from its event log* — `SPG-D1` as written cannot hold.
+
+> **The reframing that rescues it without reversing the PO's decision: IN PLACE means "no separate
+> SPACE". It does not mean "no isolation boundary".** The `Arena` node is a spatial convenience; the
+> **`Encounter` CLOSURE is the correctness boundary, and it exists in BOTH branches.**
+
+Three rules, and they are structural rather than mechanical:
+
+1. **Everything the fight reads is SNAPSHOTTED at siting** into the log's opening frame — ≈2.3 KB for a
+   24×24 terrain slice, which is cheap enough that the closed-world property costs nothing.
+2. **Anything crossing mid-fight is an EXPLICIT EVENT**, never an ambient effect.
+3. **Nothing outside the closure is mutated until an atomic commit at disposal.**
+
+> **What this axiom deliberately does NOT say.** Damage, initiative, turn order, action budgets, status
+> stacking — **`COMB_*`'s, every one.** This tier states that a boundary exists, where it sits, and what
+> crosses it; **what happens inside it is not the map's to design**, and writing it from this chair is
+> the encroachment the actor round exists to stop.
 
 ---
 
@@ -404,6 +517,76 @@ disguised ladder.
 Reading the matrix: every ✅ is a legal edge, validated **on write**. Anything not marked is rejected
 with a named rule id. `Arena` is a leaf by construction.
 
+
+### 3.2 Portals — the CONNECTIVE relation (`SPG-A18`, `SDF-R3` applied 2026-08-22)
+
+> **⚠ AMENDED 2026-08-22.** This section did not exist. §3.1's matrix is **containment**, and this
+> document had **no traversal relation at all** — `parent` was the only edge, and `parent` cannot
+> express a door.
+
+**`R-14` states the gap:** HoMM3's Monolith and Subterranean Gate are edges that **deliberately
+violate containment**, and a single `parent` pointer cannot express them. Neither can *"the door of
+the house"*, which is a traversal edge between a `Locale` and the `Domain` it contains — an edge that
+runs **along** a containment edge rather than across it, and is still a different relation.
+
+> **`SPG-A18` — containment and connectivity are TWO relations over one node set. A `Portal` is a
+> first-class object with its own identity, ONE record with TWO ends, and it stores no world
+> coordinate.**
+
+```rust
+pub struct Portal {
+    pub id: PortalId,
+    pub a: PortalEnd,
+    pub b: PortalEnd,
+    /// Which layer decides whether it is passable right now. A locked door is a
+    /// LAYER on the portal, never a second portal.
+    pub gate: Option<LayerId>,
+}
+
+pub struct PortalEnd {
+    pub node: NodeId,
+    /// Parent-relative, in the node's own frame (`SPG-A5`/`SPG-A17`). NEVER a
+    /// world coordinate.
+    pub anchor: Transform,
+}
+```
+
+**Three properties, each earned by a shipped failure rather than chosen for symmetry:**
+
+1. **ONE RECORD, TWO ENDS — not two one-way records.** Bethesda's `XTEL` stores only a destination
+   reference and a transform, **never a destination cell id**, so a door pair is two independent
+   one-way records that nothing keeps in step. `R-59`: *"which is exactly why one-sided door links are
+   a classic mod bug."* Making the portal one row with two ends means a one-sided link is **not
+   representable**, rather than validated.
+2. **NO WORLD COORDINATES, EVER.** An end is `(node, anchor)` and the anchor is parent-relative. Combined
+   with `SPG-A5`, **a `Domain` with `Mobility` can move and every portal into it stays valid with zero
+   fixups** — a ship sails and its gangway still lands where it should. Storing an absolute position
+   would make every portal into a moving frame a repair job.
+3. **PORTALS ARE FIRST-CLASS OBJECTS, and that is 30 years old.** `R-53`: Teller's 1992 cells-and-portals
+   gives portals their own identity and maintains object→cell membership **incrementally on crossing,
+   never by search** — which is also what makes `SPG-A12`'s lazy materialization affordable, since a
+   `Domain` with zero occupants and no pending timers is a dematerialization candidate.
+
+**Residency (`R-59`, the second half).** A portal END must stay addressable while the node behind it is
+unmaterialized — Bethesda routes such references into *"Cell Persistent Children"* precisely so a door
+survives its cell being unloaded. So **a portal is resident at a lower materialization tier than the
+`Domain` it opens into**: you can see the door of a house that has not been built yet, which is the whole
+point of a door.
+
+**What a portal is NOT.** It is not a [`Passage`](#). `SPG-A13`'s `Passage` is a **node** — a road you
+travel *through*, with its own derived geometry, where an ambusher can stand. A portal is an **edge** —
+a doorway you travel *across*, with no interior. A `Passage` therefore has portals at its ends, and
+`R-21`'s turn restrictions live on the `(in_portal, out_portal)` pair **inside** the passage node, which
+is why routing's edge-expanded graph is our native representation rather than a transformation we pay
+for.
+
+**And this is one of TWO adjacency relations, not the only one.** [`SDF-A25`](41_space_dataflow.md)
+distinguishes **connective** adjacency (this — mutable, authored, the portal graph) from **geometric**
+adjacency (the generated mesh's `neighbors`, immutable, shared by digest). Two `Locale`s can share a
+border with no road between them, and an army marches overland. **A spatial read must declare which
+relation it means**; Paradox ships `adjacencies.csv` separately from its province raster for exactly this
+reason.
+
 ---
 
 ## 4 — The node
@@ -416,7 +599,11 @@ pub struct SpaceNode {
     pub transform: Transform,          // RELATIVE to parent (SPG-A5). Never absolute.
     pub holder: Option<EntityId>,      // the entity whose interior this is (SPG-A1)
     pub definition: Option<DefRef>,    // shared template, if any (SPG-A14)
-    pub materialization: Materialization, // Declared | Materialized (SPG-A12)
+    // SDF-R1, APPLIED 2026-08-22. NOT a field: the live set is an INDEX,
+    // and the tick iterates the index. Keeping a per-node enum here is a
+    // DENORMALISATION of that index, and the tick reading it would be a
+    // scan over residents -- measured at 92.4x worse (doc 41 section 2).
+    //   pub materialization: Materialization,   <- REMOVED
     pub mobility: Mobility,            // Static | Kinematic { trajectory } (SPG-A9)
 }
 ```
@@ -481,17 +668,38 @@ stated per row.
 | **SPG-R5** | `CSC_001` | "cell" → `Domain`; drop the fixed 16×16 assumption to a **default**, not an invariant (a palace and a cave are not 16×16) | **verified** |
 | **SPG-R6** ✅ **APPLIED** | `ACT_001` L3 | `control_source` enum → a first-class **`control_binding`** `(controller_id, actor_id, since, authority)` aggregate (SPG-A10) | **APPLIED 2026-07-30** — aggregate registered to ACT_001 under a `_boundaries` claim; `user_id` extracted from `pc_user_binding`. Many-to-many by construction. `control_source` survives as an L3 *classification*; `AGT-A3`'s drivers untouched |
 | ~~**SPG-R7**~~ | ~~`PCS-A4` / PC concept notes: relax the `cap=1` validator~~ | **⛔ RETIRED 2026-07-30 — a MIS-DIAGNOSIS of my own, corrected by reading the target ([REC-96](19_reconciliation_register.md)).** Neither half held. `PCS-A4` is *"single `pc_user_binding` **aggregate**"* — a **packaging** decision, silent on control cardinality. `Q9`'s `cap=1` is **PC-per-REALITY**, recorded reason *"single PC narrative"* vs *"multi-PC for charter coauthors"* — a **narrative scope** call, and it was already shaped as `Vec<PcId>` + a validator specifically so relaxing it is *"a single-line validator change, no schema migration"* (`PCS-D3`). Nor does possession need it: a 分身 can be `ActorId::Npc` driven by a **User** controller, which never touches Q9. **The real blocker was a `user_id` FIELD ON THE BODY**, and `SPG-R6` removes exactly that. **Q9 stays locked.** Second row this arc retired by opening its target instead of acting on the table — after `SPG-R2`/[REC-93](19_reconciliation_register.md) | ~~verified~~ **retired — mis-diagnosis** |
-| **SPG-R8** | `RTM-D Q4` | reversed by `SPG-D1` (combat sited in place where the space allows) — record the reversal with its reason, per the `AUD-F1` precedent | **verified** |
-| **SPG-R9** | `TMP_001` `TMP-A1` | cell tier has no `tilemap_view` → restate in `MapKind` terms: `Locale` carries the tilemap; `Domain` carries the interior composition | **verified** |
+| **SPG-R8** ✅ **APPLIED 2026-08-22** | `RTM-D Q4` | record the reversal with its reason, per the `AUD-F1` precedent | **APPLIED at the target.** Verified first, and the rot was live: [`08_realtime_movement_authority.md`](08_realtime_movement_authority.md) still carried `RTM-Q4` as *"✅ **Instanced** — dedicated encounter scene"*, a RESOLVED decision, three weeks after `SPG-D1` reversed it. **The reversal had been recorded in the doc that MADE it and never at the doc it OVERRULED** — which is how a reader of doc 08 alone would have built the wrong thing. Now annotated in place, with `SPG-A16`'s one-mechanism-two-sources reason and an explicit note that §5.4's checkpoint/restore is unaffected |
+| **SPG-R9** ✅ **VERIFIED 2026-08-22 — and its SCOPE was ambiguous, which code had to resolve** | `TMP_001` `TMP-A1` | restate the tilemap boundary in `MapKind` terms | **VERIFIED at the target**, which already carries the restatement and calls the split *"sharper, not different"*: a `Locale` carries the tilemap, a `Domain` the interior, the drill-down arrow is unchanged, and **`zone` needs no rename** because the ladder that used its third meaning is being deleted anyway. **⚠ But the row names `Locale` SINGULAR, while a faithful remap of the old rule (*"every NON-CELL tier may have one"*) yields `Region` **and** `Locale`** — the two readings differ in whether a `Region` renders at all. `services/tilemap-service` had to pick one on 2026-08-22 and picked **`Region | Locale`**, because the target's own words are *"nothing in the pipeline changes"* and dropping three of four rungs would be a behaviour change, not a restatement. **Recorded rather than silently chosen** |
 | **SPG-R10** ✅ **APPLIED** | `EF_001` | `SPG-A1`'s `holder` field joins entity ↔ interior; landed **with** `WSA-R19` as required | **APPLIED 2026-07-30.** `SpaceNode.holder: Option<EntityId>` now has a variant to resolve to: a locus is `EntityId::Place(PlaceId)`, the same `PlaceId` `ActorId::Locus` carries (`WSA-R21`). That identity is the point — **one id, addressed as a thing by `EntityId` and as an agent by `ActorId`** — which is `SPG-A1` and `WSA-A7` meeting: *an entity may hold an interior* and *a locus is an entity*. `holder = None` is an ordinary space (a region has no holder); `holder = Some(Place(p))` is an interior belonging to a locus, which is what makes a ship's hold and a cultivator's inner world the same construction. |
-| **SPG-R11** | `03_multiverse` + `GEO_001` | unify the two override cascades into the single strength order required by `SPG-A15` | **verify** |
-| **SPG-R12** | `TVL_002` / `TVL_004` | composite travel and travel encounters gain `Passage` as their spatial substrate (SPG-A13) | **verify** |
-| **SPG-R13** | `TMP_001` + `_boundaries/02_extension_contracts.md` §2.X | **NEW 2026-07-30, discovered while retyping the machine contract.** `tilemap_templates` / `grid_size_per_kind` / `default_template_per_kind` / `skip_kind` were keyed by the retired `ChannelTier`; the **type** is fixed (`MapKind`), but the **semantics** now nearly collapse. That contract assumed **four** tilemap-bearing tiers at decreasing zoom (the `256/192/128/64` default — four values for four tiers, **correct as written**; an earlier note in this session calling it underspecified was wrong). Under `SPG-R9` the tilemap sits on **`Locale` alone**: `World`/`Region` are served by `GEO_001`'s Voronoi mesh, which **did not exist as a render target** when TMP_001 was drafted, and `Domain` carries `CSC_001`'s interior composition. So a per-kind map now has one meaningful key. **Routed to TMP_001, not decided here** — collapsing another feature's DRAFT schema while holding the `_boundaries` lock for a rename is the scope creep the mutex exists to prevent. | **verify** — type applied, semantics OPEN |
+| **SPG-R11** ✅ **VERIFIED 2026-08-22 — and NARROWED** | `03_multiverse` + `SPG-A14` | ~~unify the two override cascades~~ **unify the two STRENGTH orders — `SPG-A14`'s template↔placement and `03_multiverse`'s L1/L2/L3.** `GEO_001`'s `GeographyDelta` is **struck from the row**: it is *"Replay = base + deltas in order"*, a divergence LOG over a content-addressed baseline (`WDS-A1`), whose order is TIME rather than strength — and `WDS-A9` folds it into a new baseline, which is meaningless for a strength order. Conflating them would have produced *"can a stronger source override a later delta?"*, a question with no answer | **the finding survives, the scope was wrong** — see `SPG-A15` |
+| **SPG-R12** ✅ **VERIFIED 2026-08-22 — the gap is real, and a SECOND finding came with it** | `TVL_002` / `TVL_004` | composite travel and travel encounters gain `Passage` as their spatial substrate (`SPG-A13`) | **VERIFIED by opening both.** `Passage` appears in NEITHER. Travel is built entirely on `GEO_004 ROUTE_001`'s route graph — Dijkstra over `route.distance_units`, `route.is_bidirectional` — so a journey is **a weighted edge and a timer**, which is precisely what `SPG-A13` says makes a class of play structurally impossible: *"if a road is only an edge with a timer, an ambusher has nowhere to stand."* **`TVL_004` is that sentence in a struct:** an encounter carries `progress_fraction: f32 ∈ (0.0, 1.0)` — *"where along the journey this encounter fires"* — a fraction along an edge, with nowhere to stand. **⚠ SECOND FINDING, not in the original row: `progress_fraction` is an `f32` in an EVENT-SOURCED, REPLAYED simulation.** `WDS-A7` already ruled f32 determinism unproven cross-platform, and `SDF-R2` removed exactly this from `Transform` on 2026-08-22. An encounter that fires at a float fraction is a replay divergence with a genre name. **`0028_portal` now supplies the substrate the row asks for** |
+| **SPG-R13** | `TMP_001` + `_boundaries/02_extension_contracts.md` §2.X | **NEW 2026-07-30, discovered while retyping the machine contract.** `tilemap_templates` / `grid_size_per_kind` / `default_template_per_kind` / `skip_kind` were keyed by the retired `ChannelTier`; the **type** is fixed (`MapKind`), but the **semantics** now nearly collapse. That contract assumed **four** tilemap-bearing tiers at decreasing zoom (the `256/192/128/64` default — four values for four tiers, **correct as written**; an earlier note in this session calling it underspecified was wrong). Under `SPG-R9` the tilemap sits on **`Locale` alone**: `World`/`Region` are served by `GEO_001`'s Voronoi mesh, which **did not exist as a render target** when TMP_001 was drafted, and `Domain` carries `CSC_001`'s interior composition. So a per-kind map now has one meaningful key. **Routed to TMP_001, not decided here** — collapsing another feature's DRAFT schema while holding the `_boundaries` lock for a rename is the scope creep the mutex exists to prevent. | **verify** — type applied, semantics OPEN | | **⚠ MEASURED 2026-08-22, AND THE MEASUREMENT SHRANK IT.** Opened `tilemap-service` before acting on the row. Three facts, each counted rather than argued: **(1) NOTHING BRANCHES ON THE TIER.** `ChannelTier::` is constructed **11** times in `src/` (9 `Country`, 1 `Town`, 1 `Cell`) and carried as a field on four structs; the only branch anywhere in the repo is `poc/tilemap_world_view/src/llm/validator.ts:379`'s `tier !== 'Cell'`. **(2) `grid_size` IS ALREADY A FIELD** on `TilemapView`, and the `256/192/128/64` constants are documented in their own source as *"author-configurable per template"* with exactly **two** real consumers, both harnesses. **(3) So the collapse costs NAMING, NOT SEMANTICS.** **Resolution: the four sizes were never a per-kind map — they are a ZOOM LADDER, and `SPG-A3` removed the ladder.** Under a matrix, depth is not a kind, so a `Region` at depth 1 and one at depth 3 have the same kind and different sizes; a per-kind default therefore **cannot** reproduce them and should stop pretending to. The sizes become named **presets an author picks**, and the authored `grid_size` on the node stays authoritative — which is what the source already said it was. **Applied to the presets in the same commit; the `ChannelTier` WIRE enum is a separate row**, because it is `serde(rename_all)` and moving it changes the wire for `frontend-game` and a golden fixture in one step |
 
+| **SPG-R14** ✅ **APPLIED 2026-08-22** | `PF_001` | **the doc that owns "a place" was never in this table.** Thirteen rows corrected `MAP_001`, `GEO_001`, `CSC_001`, `ACT_001`, `TMP_001`, `EF_001`, `TVL_002`, `03_multiverse` and `RTM` — and missed `PF_001`, which is **CANDIDATE-LOCK, owns the `place.*` namespace, and is where an actor spawns.** It is written entirely in the retired `ChannelTier` ladder. Re-stated in `MapKind` terms | **APPLIED** — the mapping is below, and it is `SPG-A3`'s own consequence rather than a new decision: **the ladder's three middle rungs are ONE RECURSIVE KIND**, which is what replacing an ordinal ladder with a matrix was *for*. `PlaceId(ChannelId)` is **unchanged and needed no change** — `PF_001` had already keyed a place to a channel row in April, which is `SDF-A31` reached independently four months earlier. Reject-rule **ids are unchanged on purpose** (see below) |
 **Inherited and still unapplied:** [`WSA-R19..R24`](32_locus_as_actor.md) — doc 32 sealed with its
 own amendment rows explicitly *"PROPOSED, not applied: no feature spec was edited by this arc."*
 `SPG-R10` depends on `WSA-R19`. The two sets should be applied in one pass, because `WSA-R19`
 (`EntityId::Place`) and `SPG-A1` (`holder`) are the same seam approached from two directions.
+
+### `SPG-R14`'s mapping — five rungs become three kinds plus recursion
+
+| `ChannelTier` (retired `SPG-R1`) | `MapKind` | why this one |
+|---|---|---|
+| `Continent` · `Country` · `District` | **`Region`**, nesting | `MapKind::Region` is declared *"a geographic subdivision of a World; **recursive** (a Region may hold Regions)"* (§4). The three middle rungs were never three **kinds** — they were three **depths**, and one of them (`Country`) was never geography at all: §4 already moved political structure to an `owner_*` **attribute**, so territory changes hands by rebinding a relation instead of restructuring the tree |
+| `Town` | **`Locale`** | `SPG-R9` — `Locale` carries the tilemap |
+| `Cell` | **`Domain`** | `SPG-R5` (*"cell" → `Domain`*) · `CSC_001` owns the interior composition · `TMP-A1` excludes the cell tier from any `tilemap_view` |
+
+**So `PF_001`'s V1 invariant — *a place is 1:1 with a cell-tier channel* — reads: A PLACE IS 1:1 WITH A
+`Domain`.** Its own examples confirm the reading rather than strain it: a pavilion, a tea house and a
+market are interiors, which is exactly what `Domain` is for.
+
+**What is deliberately NOT renamed, and the reason is a trade rather than an omission:**
+`place.invalid_place_type_for_channel_tier` is a **registered V1 reject-rule id**
+([`02_extension_contracts.md:130`](_boundaries/02_extension_contracts.md),
+[`03_validator_pipeline_slots.md:212`](_boundaries/03_validator_pipeline_slots.md)) and reject ids reach
+clients. **An id is a contract; the words inside it are not.** Renaming a shipped reject id to fix its
+prose costs compatibility for no semantic gain, and would need its own `_boundaries` claim. **The id
+stays, its description is corrected, and the naming debt is recorded rather than paid.**
 
 ### SPG-A17 — Absolute position is defined only up to the nearest coordinate root
 
@@ -504,12 +712,20 @@ wanted and review removed:
 
 ```rust
 /// Parent-relative placement of a node's frame inside its parent (SPG-A5).
-/// f64, not f32: precision must survive accumulation across DP-Ch1's <=16 levels.
+///
+/// INTEGER, not float (`SDF-R2`, applied 2026-08-22). Not for range -- the
+/// coordinate roots below already dissolve the range problem -- but because
+/// this simulation is EVENT-SOURCED AND REPLAYED, and float is not
+/// bit-reproducible across machines.
 pub struct Transform {
-    /// Origin of this node's frame, in the PARENT's units.
-    pub position: [f64; 3],
-    /// Orientation of this node's frame relative to the parent's.
-    pub rotation: [f64; 4],           // quaternion
+    /// Origin of this node's frame, in units of `2^scale_exp` metres,
+    /// expressed in the PARENT's frame.
+    pub position: [i64; 3],
+    /// Orientation relative to the parent: a quantised unit quaternion.
+    pub rotation: [i32; 4],
+    /// This node's own quantum: metres-per-unit = `2^scale_exp`.
+    /// Conversion between frames is an integer shift -- bit-exact everywhere.
+    pub scale_exp: i8,
 }
 
 /// Where accumulation STOPS.
@@ -521,6 +737,38 @@ pub enum FrameKind {
     Root,
 }
 ```
+
+> **⚠ AMENDED 2026-08-22 — `SDF-R2` APPLIED, and applying it corrected its own headline evidence.**
+>
+> `Transform` was `[f64; 3]` + `[f64; 4]`. [Doc 41](41_space_dataflow.md) `SDF-R2` proposed integers
+> citing **two** agents reaching the same conclusion from opposite directions, and **only one of the two
+> survives contact with this axiom.**
+>
+> **Struck: the magnitude argument.** `R-36` computed that `f64` holds 1 mm only to ≈60 AU and 1 m only
+> to ≈0.95 ly, so *"no single numeric type spans the `Universe → Domain` edge."* **That is true and it is
+> already answered — by this axiom.** `SPG-A17` says absolute position is undefined beyond the nearest
+> coordinate root, so no chain ever spans fifteen orders of magnitude and there is nothing for `f64` to
+> fail at. The amendment cited, as its lead evidence, a problem its own target had already dissolved.
+> **Reading the target before applying the row is what showed it** — the fourth time in this document's
+> history that habit has changed a finding (`SPG-R2`, `SPG-R7`, `REC-98`, now this).
+>
+> **Survives, and is sufficient on its own: DETERMINISM AND ROUND-TRIP.** `R-37`: floats are not
+> bit-reproducible across machines — x87 80-bit versus SSE 64-bit intermediates, FMA contraction, and
+> **transcendentals differing between AMD and Intel** (Battlezone 2 shipped that bug). `R-13`: a `Domain`
+> anchored at tile (137, 42) as a float **does not round-trip losslessly** under repeated
+> serialise/deserialise, and a house on a tile is *the* common `Locale → Domain` case. And
+> [`WDS-A7`](37_world_data_storage.md) already reached the identical conclusion one tier down — f32
+> determinism unproven cross-platform, therefore **bytes are the SSOT**. Three sources, one requirement,
+> and none of them is about range.
+>
+> **Why `scale_exp` belongs here rather than being the rejected field returning.** `SPG-Q3` rejected
+> `parent_units_per_local_unit: f64` because it was **composed down the chain** and a light-year→metre
+> edge ate the mantissa. `scale_exp` is **never composed**: it is one node's own quantum, and because it
+> is a power of two, converting between frames is an **integer shift** — exact on every platform, which
+> is the whole point. The rejected field was an accumulator; this one is a declaration.
+>
+> **Float survives at exactly one place: the render boundary.** Nothing that is persisted, replayed,
+> compared or hashed may hold one.
 
 **What was rejected, and why it matters.** The first draft added
 `parent_units_per_local_unit: f64` and composed it down the chain — the obvious reading of "make a
@@ -555,9 +803,9 @@ entrance is*; it does not know how many metres wide the Domain is, and never nee
 | ~~**SPG-Q1**~~ | **✅ RESOLVED 2026-07-30 — RULESET DATA, engine-validated on write.** The suspected answer held, and closing it turned out to be the *same work* as an unrelated rot fix, which is why it is settled here rather than deferred. **`map_layout.kind` is AUTHORITATIVE on the row, never derived** — and that is the load-bearing half. The old `map.tier_field_mismatch` validator derived the tier *from the DP channel tree*; under `MapKind` that is **unobtainable**, because [`DP-A13`](06_data_plane/02_invariants.md) keeps DP *"agnostic to `level_name` semantics"*. Replaced by **`map.containment_violation`**: the write path validates the **edge** — `allowed(parent.kind, child.kind)` — not the label. The matrix is ruleset data per `SPG-A2`, so it is per-reality **without DP knowing anything**, which is what makes `Domain → World` (内天地) expressible in one reality and forbidden in another. **On the tenancy concern, which was the real content of this question:** the matrix is a **ruleset** artefact, so it inherits the ruleset's tenancy — content-addressed, digest-pinned, admin/author-authored, never user-writable at runtime. A reality **narrows or widens its own** matrix; no user edits a shared one. See [MAP_001 §3.1](features/00_map/MAP_001_map_foundation.md). |
 | ~~**SPG-Q2**~~ | **✅ RESOLVED 2026-07-30 — two bounds already exist and NO third is added.** (1) **Structural:** `DP-Ch1`'s `depth ≤ 16` is not prose — it is a **DB `CHECK` constraint** ([`12_channel_primitives.md:82`](06_data_plane/12_channel_primitives.md): `depth SMALLINT NOT NULL CHECK (depth >= 0 AND depth <= 16)`) plus a stated validation rule at `:66` (*"feature-level books declaring deeper trees fail validation"*). It is already mechanical, at the strongest layer available. (2) **Semantic:** the **containment matrix itself**, per reality — a reality that finds `Universe → Universe` absurd simply omits that cell, and `map.containment_violation` enforces it. The question assumed a semantic bound was *missing*; it was in fact the mechanism introduced two axioms earlier. **Nothing is added, deliberately.** A third bound would be a rule with no mechanism of its own — the exact debt this corpus has been paying down, and `WDS-D3`/`D-WORLD-PAYLOAD-DERIVABLE` records the same reasoning for a different subject: a check with no possible violation is worse than none. |
 | ~~**SPG-Q3**~~ | **✅ RESOLVED 2026-07-30 — there is NO single absolute coordinate space, and there does not need to be.** See `SPG-A17` below, added with this resolution. The question was sharper than it looked: `Transform` was **referenced at §4 and never defined**, so the contract did not merely lack an answer — it lacked a *type*. **First design, rejected at review:** give each node a `parent_units_per_local_unit: f64` and accumulate. It does not survive real ratios — one light-year→metre edge is `9.46e15`, which alone consumes an `f64`'s ~15–16 significant digits, and `DP-Ch1` permits 16 levels. **Adopted instead:** absolute position is defined only up to the nearest enclosing **coordinate root**, and a scale-skipping edge **is** a root boundary — you **re-base** across it, never accumulate through it. This dissolves the precision problem rather than budgeting for it, removes a field, and gives `SPG-A5`'s accumulation rule the **stopping condition it never had**. Star Citizen is the same device (64-bit coords *within* a system; separate systems share no space); OpenUSD's `metersPerUnit` is per-layer interchange metadata, not a factor composed down a deep chain. |
-| **SPG-Q4** | Two actors under one controller in one fight — turn order and action budget. (`SPG-A10` × `COMB_002`.) |
-| **SPG-Q5** | Does `Vessel` need `Kinematic` motion authored, simulated, or player-steered? Steering is possession (`SPG-A10`), but the trajectory source is unstated. |
-| **SPG-Q6** | Cost of loci acting has **never been measured** — carried unchanged from [`WSA-F5(c)`](32_locus_as_actor.md), and doc 21 §7 forbids inferring headroom. |
+| ~~**SPG-Q4**~~ | ~~Two actors under one controller in one fight — turn order and action budget~~ **✅ CLOSED 2026-08-22 — NOT THIS TIER'S QUESTION, and saying so is the answer.** The space tier's whole contribution is `SPG-A10`: control is a **binding**, so *N* actors under one controller is already representable and needs nothing further here. **Turn order and action budget are `COMB_002`'s to decide** — they are the same shape as `S-1`/`S-4` in the actor hub's seam register, which is the discipline that cut that round's contracts from 1107 lines to 364: *a hub exists so feature N+1 does not touch feature #1, not so feature #1 can specify feature N+1.* Recorded as a seam, removed as an open row. |
+| ~~**SPG-Q5**~~ | ~~Does `Vessel` need `Kinematic` motion authored, simulated, or player-steered?~~ **✅ RESOLVED 2026-08-22 — the three are not three mechanisms. They are ONE mechanism with three sources for its parameters.** A trajectory is a **declared function of time, EVALUATED, never integrated**: `transform(t) = f(params, t)`. Authored supplies `params` at S1; player-steered supplies them as **commands, which are log entries**; "simulated" — a per-tick integration carrying state forward — is the one option **`SPG-A9` already refused**, and `SDF-R2` now makes it unrepresentable as well, because an integrated trajectory cannot be expressed bit-exactly in an integer `Transform` and replay would diverge. `R-49` is the shipped corroboration from three independent implementations: **`Mobility` means "my transform is re-evaluated", never "my contents move"** — the interior stays in its own static space and is projected. So the trajectory source is a **parameter provenance question, not a motion-model question**, and every provenance yields the same pure function of (params, tick). |
+| ~~**SPG-Q6**~~ | ~~Cost of loci acting has **never been measured**~~ **✅ MEASURED 2026-08-02, and this row was three weeks stale.** The measurement is [doc 41 §2](41_space_dataflow.md) (`M-1`): rustc 1.89, release + LTO + `codegen-units=1`, best-of-7, single core, 65 536 residents. **Ladder-as-FIELD versus ladder-as-INDEX is 92.4× at 0.1 % live**, and the finding stops where the measurement stops — the advantage collapses to 0.7× at 100 % live and 1.3× under heavy per-node work, and index maintenance costs ~1 µs at 512 churn/tick. **No capacity table is inferred from it** (doc 21 §7). The row it changes is `SDF-R1`: the existence ladder is an INDEX, and `materialization` as a FIELD is a denormalisation the tick must not scan. **The rot here is the interesting part** — the question was answered by this project on 2026-08-02 and the register that asked it was never updated, so for three weeks doc 36 told every reader the cost was unmeasured while doc 41 §2 printed the number. |
 
 ---
 

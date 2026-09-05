@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { authenticate, expectedToken, EchoRoom, __setEchoEdgeForTest } from './EchoRoom.js';
+import { authenticate, echoIdentity, expectedToken, EchoRoom, __setEchoEdgeForTest } from './EchoRoom.js';
 import { ServerError, CloseCode } from 'colyseus';
 import { CLOSE_RATE_LIMIT, CLOSE_CONNECTION_LIMIT } from '../ws/auth.js';
 import type { WsAuditSink, WsAuditEvent } from '../ws/audit.js';
@@ -8,14 +8,41 @@ import type { WsAuditSink, WsAuditEvent } from '../ws/audit.js';
 describe('EchoRoom.authenticate', () => {
   const TOKEN = 'test-token-xyz';
 
-  it('returns user with default userId guest when jwt matches and userId absent', () => {
+  it('returns the SERVER-decided identity when the jwt matches', () => {
     const u = authenticate({ jwt: TOKEN }, TOKEN);
-    assert.equal(u.userId, 'guest');
+    assert.equal(u.userId, echoIdentity());
   });
 
-  it('returns user with provided userId', () => {
-    const u = authenticate({ jwt: TOKEN, userId: 'alice' }, TOKEN);
-    assert.equal(u.userId, 'alice');
+  // `FO-1` — the client cannot choose who it is.
+  //
+  // This test used to assert the OPPOSITE: `authenticate({jwt, userId:'alice'})`
+  // returned `alice`. That id keys the per-user connection cap, so a client
+  // could evade the cap by sending a new id per connection — the limit counted
+  // whatever the caller said it was, which is not a limit.
+  //
+  // `userId` is now absent from `JoinOptions`, so the honest first line of
+  // defence is the COMPILER: the old form of this test no longer type-checks.
+  // The cast below is what an attacker has that a caller does not, and the
+  // assertion is that it buys nothing.
+  it('a client-supplied identity is ignored, not honoured', () => {
+    const u = authenticate({ jwt: TOKEN, userId: 'alice' } as never, TOKEN);
+    assert.equal(u.userId, echoIdentity());
+    assert.notEqual(u.userId, 'alice');
+  });
+
+  it('the identity comes from the environment, not from a literal', () => {
+    const prev = process.env.LW_ECHO_DEV_USER_ID;
+    try {
+      process.env.LW_ECHO_DEV_USER_ID = 'configured-dev';
+      assert.equal(authenticate({ jwt: TOKEN }, TOKEN).userId, 'configured-dev');
+      // Non-vacuity: with nothing configured it falls back to a fixed name, so
+      // the assertion above is about the env var and not about any string.
+      delete process.env.LW_ECHO_DEV_USER_ID;
+      assert.equal(authenticate({ jwt: TOKEN }, TOKEN).userId, 'echo-dev');
+    } finally {
+      if (prev === undefined) delete process.env.LW_ECHO_DEV_USER_ID;
+      else process.env.LW_ECHO_DEV_USER_ID = prev;
+    }
   });
 
   it('throws 401 ServerError when jwt is missing', () => {
@@ -173,11 +200,14 @@ describe('EchoRoom lifecycle wiring', () => {
 
   it('onAuth rejects with 4008 when the user is at the connection cap', async () => {
     const e = __setEchoEdgeForTest({ rateConfig: { maxConnectionsPerUser: 1 } });
-    e.connectionCap.acquire('u1'); // fill the cap
+    // The cap is keyed by the SERVER's identity now, so that is what must be
+    // filled — and that is the point of `FO-1`: before, a caller sending
+    // `userId: 'u2'` would have sailed past a cap filled under `u1`.
+    e.connectionCap.acquire(echoIdentity());
     const { room } = makeRoom();
     const ctx = { headers: {}, ip: '1.2.3.4' } as never;
     await assert.rejects(
-      () => room.onAuth({} as never, { jwt: expectedToken(), userId: 'u1' }, ctx),
+      () => room.onAuth({} as never, { jwt: expectedToken() }, ctx),
       (err) => err instanceof ServerError && err.code === CLOSE_CONNECTION_LIMIT,
     );
   });

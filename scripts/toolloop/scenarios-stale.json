@@ -1,0 +1,108 @@
+{
+  "_note": "STALE-CONCLUSION CLOSE-OUT. These read `blocked` in the ledger, but on evidence from the ORIGINAL loop — they were never re-concluded on this cycle's measurements because the gate refused them, every time on LIVE clean (a transport failure is not a model result). A final state carried over from an older batch is not a conclusion about current behaviour, and the all-final counter cannot tell the difference. Re-run at K=5 for a transport-clean batch.",
+  "scenarios": [
+    {
+      "id": "registry-set-skill-enabled",
+      "tool_under_test": "registry_set_skill_enabled",
+      "expect_tool": "registry_set_skill_enabled",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What skills do I have available?",
+      "follow_ups": [
+        "Turn off the glossary skill for me."
+      ],
+      "prompt_source": "Unchanged across three arms — both previous ones lost 5 of 5 runs to transport errors, so it has never been measured. Nothing implicates the prompt.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_agent_registry",
+          "query": "SELECT count(*)::text FROM skills WHERE slug='glossary' AND tier='system'",
+          "expect": "1",
+          "why": "The `glossary` skill exists and is System-tier. Disabling a System skill 'applies only to this user; the shared skill is never changed', so the SHARED row must be untouched, and the card is never approved so the per-user toggle must not land either. 🔴 SCOPED TO tier='system' 2026-08-23. The original counted EVERY row with this slug and expected 1; the store holds 6 — one system-tier skill and five USER-TIER copies, all created 2026-07-02 and none of them this loop's debris. A user-tier copy sharing the slug is how a per-user override works, so the count was wrong about the schema, not about the store. The assertion's own `why` says the SHARED row must be untouched, and tier='system' is exactly that row — this makes it measure what it already claimed to."
+        }
+      ],
+      "falsifier": "REFUTED IF: the toggle lands with NO confirm card (Tier A), OR the model sends enabled=true when the author said turn it OFF — a bare boolean, so an inverted value silently does the opposite while the card still reads 'set skill enabled' — OR it targets a different slug. CONTROL: disabling a System skill is PER-USER only, so a reply saying it is off 'for everyone', or warning the author they are changing a shared skill, is wrong about the blast radius in the direction that would scare them off a safe action.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "EXERCISED by direct probe (batch 38) — an unknown slug is refused BY NAME: 'skill not found: no-such-skill-xyz'.",
+        "idempotency": "OWED — disabling an already-disabled skill must be a clear no-op.",
+        "tenancy": "OWED — scope=USER: the per-user toggle must not touch another account or the shared row."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-c5-rerun.json"
+    },
+    {
+      "id": "composition-reference-update",
+      "tool_under_test": "composition_reference_update",
+      "expect_tool": "composition_reference_update",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Fix the reference title — update the reference metadata for my source document.",
+      "prompt_source": "meta.synonyms['fix reference title'] + ['update reference metadata'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM reference_source",
+          "expect": "0",
+          "why": "🔴 THE WHOLE TABLE IS EMPTY — read from the store, not assumed. No reference exists anywhere on this deployment, so `reference_id` has no possible legitimate value and this is a PRECONDITION CHAIN by construction. A refusal naming the missing reference is the correct outcome; a confident 'updated' would be a fabricated write. This is the one account-wide count in the batch that is safe to assert precisely because it is zero and nothing in this batch creates one."
+        }
+      ],
+      "falsifier": "REFUTED IF: the model invents a reference_id (there are none to find, so any id is fabricated), OR the reply claims metadata was updated, OR a card is minted for a reference that cannot exist — that would be D-EXTRACTION-CONFIRMS-A-NO-OP, the class fixed in composition_decompile_arcs this cycle. The honest outcome is a refusal that names what is missing, or a question.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "This scenario IS the absent case — the reference table is empty.",
+        "tenancy": "OWED — book-scoped via project_id."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-c5-rerun.json"
+    },
+    {
+      "id": "world-map-add-marker",
+      "tool_under_test": "world_map_add_marker",
+      "expect_tool": "world_map_add_marker",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+      "prompt_source": "_meta.synonyms['add pin'] + ['place marker']. The POSITION is described in the user's own words; the x/y the tool needs are derived by the model, never typed here.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "LOOP-THROWAWAY-ashfall",
+            "description": "batch 7 map fixture"
+          }
+        },
+        {
+          "tool": "world_map_create",
+          "args": {
+            "world_id": "{step:0:world.world_id}",
+            "name": "Ashfall"
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool reports a marker placed while the map gains none, OR the marker's x/y fall outside the map's coordinate space, OR a Tier-A write lands with no confirm card. CONTROL: the model must find map_id itself (world_map_list) — a turn that never lists is a DISCOVERY failure, not a failure of this tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a map_id that does not exist must be refused.",
+        "tenancy": "OWED — another account's map must be refused."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-c3-rerun.json"
+    }
+  ]
+}

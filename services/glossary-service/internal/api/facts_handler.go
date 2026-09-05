@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -17,15 +18,20 @@ import (
 // half-open as-of predicate is the §12.3.1 lock: valid_from <= N AND (valid_to IS NULL OR N < valid_to).
 
 type factDTO struct {
-	FactID       string  `json:"fact_id"`
-	EntityID     string  `json:"entity_id"`
-	FactKind     string  `json:"fact_kind"`
-	Attr         string  `json:"attr_or_predicate"`
-	Value        string  `json:"value"`
-	ValidFrom    int64   `json:"valid_from_ordinal"`
-	ValidTo      *int64  `json:"valid_to_ordinal"`
-	Cardinality  string  `json:"cardinality"`
+	FactID        string  `json:"fact_id"`
+	EntityID      string  `json:"entity_id"`
+	FactKind      string  `json:"fact_kind"`
+	Attr          string  `json:"attr_or_predicate"`
+	Value         string  `json:"value"`
+	ValidFrom     int64   `json:"valid_from_ordinal"`
+	ValidTo       *int64  `json:"valid_to_ordinal"`
+	Cardinality   string  `json:"cardinality"`
 	SourceEpisode *string `json:"source_episode_id"`
+	// Origin — which producer wrote this fact (T37c/T37d, chain step 0066). READ-side because
+	// a retraction path is blind without it: the close must find the facts IT wrote and leave
+	// every other producer's alone, and a DTO that omits the mark makes that undecidable at
+	// the only layer that can decide it. null for anything written before 0066.
+	Origin *string `json:"origin"`
 }
 
 // internalGetFacts — GET /internal/books/{book_id}/entities/{entity_id}/facts?as_of=&attrs=
@@ -40,7 +46,7 @@ func (s *Server) internalGetFacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	asOf, hasAsOf := parseOptionalInt(r.URL.Query().Get("as_of"))
-	args := []any{entityID, bookID} // book_id scopes the read (tenancy, LOCKED)
+	args := []any{entityID, bookID}    // book_id scopes the read (tenancy, LOCKED)
 	pred := "valid_to_ordinal IS NULL" // current head
 	if hasAsOf {
 		args = append(args, asOf)
@@ -48,7 +54,7 @@ func (s *Server) internalGetFacts(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
-		       valid_to_ordinal, cardinality, source_episode_id
+		       valid_to_ordinal, cardinality, source_episode_id, origin
 		FROM entity_facts
 		WHERE entity_id = $1 AND book_id = $2 AND invalidated_at IS NULL AND `+pred+`
 		ORDER BY attr_or_predicate, valid_from_ordinal DESC`, args...)
@@ -86,7 +92,7 @@ func (s *Server) internalFactTimeline(w http.ResponseWriter, r *http.Request) {
 	args = append(args, limit)
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
-		       valid_to_ordinal, cardinality, source_episode_id
+		       valid_to_ordinal, cardinality, source_episode_id, origin
 		FROM entity_facts
 		WHERE `+where+`
 		ORDER BY valid_from_ordinal DESC, created_at DESC
@@ -131,7 +137,7 @@ func (s *Server) internalListAttrValues(w http.ResponseWriter, r *http.Request) 
 	}
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
-		       valid_to_ordinal, cardinality, source_episode_id
+		       valid_to_ordinal, cardinality, source_episode_id, origin
 		FROM entity_facts
 		WHERE entity_id = $1 AND attr_or_predicate = $2 AND book_id = $3 AND invalidated_at IS NULL`+pred+`
 		ORDER BY value`, args...)
@@ -176,6 +182,23 @@ func (s *Server) internalIngestEpisode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "ingest episode failed: "+err.Error())
 		return
 	}
+	// A newly minted episode for a chapter that already had one is a REVISION (Q6): the prose
+	// those older facts were extracted from no longer exists. Invalidate them on the BELIEF
+	// axis, in this same transaction — a revision that committed while its superseded facts
+	// stayed open would leave the graph answering with claims the book no longer makes.
+	// `minted` is the discriminator: a re-run with identical text resumes and must supersede
+	// nothing.
+	if minted {
+		n, serr := supersedePriorEpisodeFacts(r.Context(), tx, chapterID, epID)
+		if serr != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "supersede prior episode facts failed: "+serr.Error())
+			return
+		}
+		if n > 0 {
+			slog.Info("chapter revision superseded prior facts",
+				"chapter_id", chapterID.String(), "episode_id", epID.String(), "facts", n)
+		}
+	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
 		return
@@ -197,8 +220,21 @@ func (s *Server) internalAppendFact(w http.ResponseWriter, r *http.Request) {
 		ValidFrom       int64  `json:"valid_from_ordinal"`
 		Cardinality     string `json:"cardinality"`
 		SourceEpisodeID string `json:"source_episode_id"`
+		Origin          string `json:"origin"`
 	}
 	if !decodeJSON(w, r, &body) {
+		return
+	}
+	// T37c — the closed producer set, enforced HERE rather than as a SQL CHECK (see
+	// migrate/entity_facts_origin.go for why). A typo'd origin must fail LOUDLY: the whole
+	// point of the column is that a producer retracts only its own facts, so a fact written
+	// as "planforge" when the close looks for "plan" would be silently un-retractable —
+	// exactly the class of quiet drift this field exists to remove.
+	switch body.Origin {
+	case "", factOriginPlan, factOriginAuthor, factOriginExtraction:
+	default:
+		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST",
+			"origin must be one of plan|author|extraction, or omitted")
 		return
 	}
 	entityID, err := uuid.Parse(body.EntityID)
@@ -230,6 +266,7 @@ func (s *Server) internalAppendFact(w http.ResponseWriter, r *http.Request) {
 	factID, inserted, err := appendFact(r.Context(), tx, appendFactParams{
 		BookID: bookID, EntityID: entityID, FactKind: body.FactKind, Attr: body.Attr,
 		Value: body.Value, ValidFrom: body.ValidFrom, Card: body.Cardinality, SourceEpisodeID: epPtr,
+		Origin: body.Origin,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "append failed: "+err.Error())
@@ -391,10 +428,10 @@ func (s *Server) internalCloseFact(w http.ResponseWriter, r *http.Request) {
 	var ep *uuid.UUID
 	if err := s.pool.QueryRow(r.Context(), `
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
-		       valid_to_ordinal, cardinality, source_episode_id
+		       valid_to_ordinal, cardinality, source_episode_id, origin
 		FROM entity_facts WHERE fact_id = $1`, factID).Scan(
 		&f.FactID, &f.EntityID, &f.FactKind, &f.Attr, &f.Value, &f.ValidFrom, &f.ValidTo,
-		&f.Cardinality, &ep); err != nil {
+		&f.Cardinality, &ep, &f.Origin); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "reload failed")
 		return
 	}
@@ -599,7 +636,7 @@ func scanFacts(rows interface {
 		var f factDTO
 		var ep *uuid.UUID
 		if err := rows.Scan(&f.FactID, &f.EntityID, &f.FactKind, &f.Attr, &f.Value,
-			&f.ValidFrom, &f.ValidTo, &f.Cardinality, &ep); err != nil {
+			&f.ValidFrom, &f.ValidTo, &f.Cardinality, &ep, &f.Origin); err != nil {
 			continue
 		}
 		if ep != nil {

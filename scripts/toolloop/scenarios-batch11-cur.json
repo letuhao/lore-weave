@@ -1,0 +1,94 @@
+{
+  "_note": "glossary_curation_list re-run with the inverted tag seed.",
+  "scenarios": [
+    {
+      "id": "glossary-curation-list-v2",
+      "tool_under_test": "glossary_curation_list",
+      "expect_tool": "glossary_curation_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is there anything waiting for my review in this book?",
+      "prompt_source": "_meta.synonyms['waiting for my review'] + ['anything to review'] — phrasings this tool gained in D-DECLARE-THE-USERS-WORD, which took it from surfaced 0/3 to called 3/3.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "location",
+                "name": "Hollow Keep"
+              }
+            ]
+          }
+        },
+        {
+          "sql": {
+            "db": "loreweave_glossary",
+            "statement": "UPDATE glossary_entities SET tags = '{}' WHERE book_id='{book_id}' AND cached_name <> 'Mira Solene'",
+            "why": "🔴 INVERTED, because glossary_propose_entities TAGS EVERY PROPOSED ENTITY 'ai-suggested' itself — measured directly. The first version tagged Mira and expected the other two to be untagged; all three were tagged and the seed assertion failed loudly, which is the batch-2 lesson working. Strip the tag from the two that must NOT be in the queue instead."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "THREE entities exist."
+        },
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND 'ai-suggested' = ANY(tags)",
+          "expect": "1",
+          "why": "EXACTLY ONE is ai-suggested. 🔴 Batch 2 measured the alternative: with all three tagged, 'three suggested entries' was CORRECT and a fabrication could not be told from a reading. One-of-three is what makes the count discriminate."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Mira"
+        ],
+        "none_of": [
+          "three suggested",
+          "3 suggested",
+          "three entries"
+        ],
+        "why": "Exactly one entry is awaiting review and it is Mira Solene. Reporting three is reporting the entity count, which is the batch-2 defect reproducing."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports a review-queue size other than 1, OR it names an entity that is not tagged ai-suggested.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with nothing awaiting review must say so rather than list every entity.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

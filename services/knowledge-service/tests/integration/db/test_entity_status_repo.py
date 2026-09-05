@@ -7,7 +7,7 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entity_status import (
+from app.db.graph_repos.entity_status import (
     STATUS_VALUES,
     delete_entity_status_with_zero_evidence,
     entity_status_id,

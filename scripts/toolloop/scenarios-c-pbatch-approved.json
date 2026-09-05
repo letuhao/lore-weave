@@ -1,0 +1,42 @@
+{
+  "scenarios": [
+    {
+      "id": "glossary-propose-batch-seeded-and-approved",
+      "tool_under_test": "glossary_propose_batch",
+      "expect_tool": "glossary_propose_batch",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set up several kinds and attributes at once for this book's ontology — I want to do it in one batch, not one at a time.",
+      "prompt_source": "VERBATIM prompt again, ontology seeded again — the ONLY change from glossary-propose-batch-ontology-seeded is `approve: approved_once`.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          },
+          "why": "🔴 THE ARM THAT SEPARATES 'THE SIBLING WON' FROM 'THE TURN ENDED'.\n\nThe seeded arm returned 0/5 again, and the rival CHANGED: with an ontology present glossary_adopt_standards is no longer called at all, and glossary_extract_entities_from_doc takes the turn on 5 of 5, raising a Tier-A card that SUSPENDS it. So the precondition explanation is dead — but the runner's own caveat is now the live one: 'the turn ended before glossary_propose_batch's turn came, not that the model rejected it'. The ledger already knows this ambiguity: 'a THIRD of carded turns cannot tell rejected from unreached'.\n\nAPPROVING THE CARD RESOLVES IT. The turn continues past the sibling instead of dying at it.\n  propose_batch STILL not called -> the sibling genuinely CONSUMES the request, and the row's\n      'the model picks the sibling' is confirmed against its strongest alternative.\n  propose_batch NOW called       -> the row is not a sibling-wins row at all; it is a\n      CARD-TERMINATION row, every 0/5 it ever recorded is an artefact of the turn ending,\n      and it must be re-filed under a mechanism it does not currently name."
+        }
+      ],
+      "falsifier": "REFUTED IF: glossary_propose_batch is called on >=1 of K runs with the ontology seeded, having been called 0/5 on six separate unseeded batches (c-r1-recheck-0901, t90-arm-b, t90-arm-b2, t90-arm-e, t90-control, t90-control2). 🔴 CONTROL FIRST, BEFORE ANY CONCLUSION: this is one of the five INTENT-GATED setup tools. Read chat_messages.withheld_tools for stage='intent_gate'. If the count is >0 the tool was WITHHELD and this arm measures the gate, not the precondition — a different finding, recorded as such. The six unseeded batches all showed ADVERTISED 5/5 WITHHELD 0/5, so the gate is expected open; if that changes, the comparison is void.",
+      "ship_audit": {
+        "gate": "not under test in this arm — the question is whether the tool is REACHED at all.",
+        "empty_case": "not under test in this arm.",
+        "tenancy": "throwaway fixture book per run, torn down."
+      },
+      "defects": []
+    }
+  ]
+}

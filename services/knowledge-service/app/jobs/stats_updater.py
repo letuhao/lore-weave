@@ -5,11 +5,11 @@ Maintains denormalized counts on knowledge_projects:
 
 Two update modes:
   - incremental: called by worker-ai after each extraction batch
-  - reconcile: full recount from Neo4j (daily cron or manual)
+  - reconcile: full recount through `GraphStore` (daily cron or manual)
 
 The stats are advisory — the UI uses them for dashboard tiles.
-Source of truth is always Neo4j (entities/facts/events) and
-glossary-service (glossary entities).
+Source of truth is always the knowledge graph (entities/facts/events)
+and glossary-service (glossary entities).
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import logging
 from uuid import UUID
 
 import asyncpg
+from app.ports.graph_store import GraphStore
 
 __all__ = ["reconcile_project_stats", "increment_stats"]
 
@@ -54,34 +55,36 @@ async def increment_stats(
 
 async def reconcile_project_stats(
     pool: asyncpg.Pool,
-    neo4j_session,
+    store: GraphStore,
     user_id: UUID,
     project_id: UUID,
 ) -> dict[str, int]:
-    """Full recount from Neo4j → update Postgres.
+    """Full recount from the graph → update Postgres.
 
     Returns the reconciled counts. Should be called on a daily
     schedule or after a graph delete/rebuild.
+
+    Takes a `GraphStore` (plan T17 A10), not a Neo4j session. This job asks the graph one
+    question — *how much is in this project* — and that question has an answer on any engine,
+    which is exactly why spec §1.2 put it on the port while leaving the destructive janitors
+    beside it in the engine layer.
     """
     # stat_glossary_count is NOT reconciled here — it comes from
-    # glossary-service (different DB), not Neo4j. Update it via
+    # glossary-service (different DB), not the graph. Update it via
     # GlossaryClient.count_entities when glossary-service integration
     # is wired (K16.14-v2).
-    counts = {}
-    for label, col in [
-        ("Entity", "stat_entity_count"),
-        ("Fact", "stat_fact_count"),
-        ("Event", "stat_event_count"),
-    ]:
-        result = await neo4j_session.run(
-            f"MATCH (n:{label}) "
-            "WHERE n.user_id = $user_id AND n.project_id = $project_id "
-            "RETURN count(n) AS c",
-            user_id=str(user_id),
-            project_id=str(project_id),
-        )
-        record = await result.single()
-        counts[col] = record["c"] if record else 0
+    #
+    # ONE call, not three. The loop this replaces issued a count per label because the repo
+    # function counted one label at a time; the port answers the whole card, so an engine
+    # that can do it in a single pass (Neo4j's call-subquery) is allowed to.
+    stats = await store.project_graph_stats(
+        user_id=str(user_id), project_id=str(project_id),
+    )
+    counts = {
+        "stat_entity_count": stats["entity_count"],
+        "stat_fact_count": stats["fact_count"],
+        "stat_event_count": stats["event_count"],
+    }
 
     await pool.execute(
         """

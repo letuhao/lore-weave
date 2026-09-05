@@ -1,0 +1,54 @@
+{
+  "_note": "translation_patch_block owes ONE thing: a clean arm. Its re-run was 4/5 called with 0 surfacing problems and one run lost to a genuine client ReadTimeout at 300s — a transport condition, which the bar calls a re-run condition and never a model result. Everything else is already on file: SHIP is complete (absent/tenancy/empty by direct probe, gate by the card, idempotency by the two-call probe). Same scenario, unchanged.",
+  "scenarios": [
+    {
+      "id": "translation-patch-block",
+      "tool_under_test": "translation_patch_block",
+      "expect_tool": "translation_patch_block",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List the Vietnamese translation versions for this chapter.",
+      "follow_ups": [
+        "Fix the second paragraph — it should read: Aldric Vane bước xuống bậc đá đen."
+      ],
+      "prompt_source": "Turn 1 is translation_list_versions' own purpose; the MEASURED turn is translation_patch_block's synonyms ['fix block'] + ['correct one translated paragraph'], verbatim, with the corrected text supplied by the author.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'completed', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+            "why": "The parent job for the base version."
+          }
+        },
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO chapter_translations (job_id, chapter_id, book_id, owner_user_id, status, target_language, source_language, version_num, translated_body_format, authored_by, translated_body_json) SELECT job_id, '{chapter_id}', '{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'completed', 'vi', 'en', 1, 'json', 'llm', '[{\"type\":\"paragraph\",\"text\":\"Thủy triều rút vào buổi sáng.\"},{\"type\":\"paragraph\",\"text\":\"Aldric Vane đi xuống cầu thang.\"}]'::jsonb FROM translation_jobs WHERE book_id='{book_id}' ORDER BY created_at DESC LIMIT 1",
+            "why": "🔴 translated_body_format='json' WITH TWO BLOCKS, because this tool works on 'block/JSON format only' by its own description. A text-format version would make the tool legitimately refuse and the scenario would measure my fixture rather than the tool. Two blocks so 'the second paragraph' picks one and leaves the other visible."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT jsonb_array_length(translated_body_json)::text FROM chapter_translations WHERE book_id='{book_id}' AND translated_body_format='json'",
+          "expect": "2",
+          "why": "TWO blocks in the base version — the assertion counts the BLOCKS, not the row, because block_index is what the tool takes and a one-block body would make any index correct by accident."
+        }
+      ],
+      "falsifier": "REFUTED IF: the patch lands with NO confirm card (Tier A), OR the model patches block_index 0 when the author said the SECOND paragraph — an off-by-one here silently rewrites the wrong line of a published translation — OR it rewrites the block with prose it authored rather than the sentence the author gave. NOTE the side effect its description declares: 'The first patch creates the human version from the base version and makes it active', so a single correction PUBLISHES a new human version, and a reply that presents it as a small local edit is understating what the card does.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and the first patch makes a new human version ACTIVE.",
+        "absent_case": "OWED — a base_version_id that does not exist, or a block_index past the end, must be refused.",
+        "idempotency": "OWED — patching the same block to the same text twice must not create two human versions.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "_rerun_of": "b36-rerun2"
+    }
+  ]
+}

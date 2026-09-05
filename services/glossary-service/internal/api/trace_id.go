@@ -3,7 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"runtime/debug"
@@ -67,7 +68,17 @@ func jsonRecovererMiddleware(next http.Handler) http.Handler {
 		defer func() {
 			if rec := recover(); rec != nil {
 				tid := TraceIDFromContext(r.Context())
-				log.Printf("panic recovered: %v trace_id=%s\n%s", rec, tid, debug.Stack())
+				// STRUCTURED, and a panic is the event that most needs to be. This line
+				// used `log.Printf` while every other site in the package uses `slog`, so
+				// the one record you actually search for after an incident arrived as an
+				// unparsed string: `trace_id` buried in the message text rather than a
+				// field you can filter on, and a multi-line stack breaking the
+				// one-line-per-record shape every log reader here assumes.
+				slog.Error("panic recovered",
+					"panic", fmt.Sprintf("%v", rec),
+					"trace_id", tid,
+					"stack", string(debug.Stack()),
+				)
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set(traceIDHeader, tid)
 				w.WriteHeader(http.StatusInternalServerError)

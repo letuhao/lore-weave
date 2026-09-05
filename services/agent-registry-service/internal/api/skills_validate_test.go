@@ -44,7 +44,11 @@ func TestValidateSkill_AcceptsValidSurfaces(t *testing.T) {
 	in := &skillInput{
 		Slug:        "my-skill",
 		Description: "does a thing",
-		Surfaces:    []string{"chat", "compose", "translate", "admin"},
+		// A body is required since D-EMPTY-SKILL-BODY-PROPOSED (batch 38): a skill IS its
+		// instructions. This test is about SURFACES, so it supplies one rather than asserting
+		// the old, weaker contract — the surface assertion below is unchanged.
+		BodyMD:   "does the thing",
+		Surfaces: []string{"chat", "compose", "translate", "admin"},
 	}
 	if _, ok := validateSkill(in); !ok {
 		t.Fatalf("expected validateSkill to accept the full canonical surface set")

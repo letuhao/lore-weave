@@ -1,0 +1,378 @@
+{
+  "_note": "",
+  "scenarios": [
+    {
+      "id": "composition-outline-node-edit",
+      "tool_under_test": "composition_outline_node_edit",
+      "expect_tool": "composition_outline_node_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Rename the chapter called The Ember Codex in my outline to The Ember Codex Opens.",
+      "prompt_source": "_meta.synonyms['edit outline node'] + the fixture's own seeded node",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        },
+        {
+          "tool": "composition_outline_node_create",
+          "args": {
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "The Ember Codex",
+            "synopsis": "Aldric reaches Hollow Keep and is given the Codex."
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: after an approved run the outline node's title in loreweave_composition is still 'The Ember Codex', OR a SECOND node is created instead of the first being renamed (op=create where op=update was meant — this is a unified op-dispatch tool and picking the wrong op is its most likely failure), OR the node count changes at all.",
+      "ship_audit": {
+        "empty_case": "EXERCISED K=3 (batch2-empty.json), book with one chapter and NO outline. Called 3/3 and the store was clean on 2 of 3 — but on the third run it wrote to loreweave_book.chapters: asked to rename an outline chapter that does not exist, it renamed a MANUSCRIPT chapter instead. Recorded as a finding, not waived: the outline and the manuscript are different graphs and an absent node must not silently redirect to the other one.",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with op=update, the real project_id/node_id and the correct expected_version: refused 'not found or not accessible', and the node's title was re-read UNCHANGED ('Mine').",
+        "gate": "Tier A — approval card required before any write."
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM outline_node WHERE project_id='{project_id}' AND title='The Ember Codex'",
+          "expect": "1",
+          "why": "exactly one node titled 'The Ember Codex' must exist to be renamed"
+        }
+      ],
+      "answer_expect": {
+        "must_not_contain": [
+          "couldn't find",
+          "could not find",
+          "no outline"
+        ]
+      }
+    },
+    {
+      "id": "glossary-ontology-upsert",
+      "tool_under_test": "glossary_ontology_upsert",
+      "expect_tool": "glossary_ontology_upsert",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "I want to start tracking the factions in this world. Add Factions as a new category alongside characters and items.",
+      "prompt_source": "_meta.synonyms + the fixture's adopted kinds",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: after an approved run no new kind row exists for this book in loreweave_glossary (its description says it WRITES IMMEDIATELY with no confirmation, so an unchanged store with ok:true is a silent success), OR an existing kind is overwritten rather than a new one added (it mixes create and update by presence of base_version — omitting it must CREATE).",
+      "ship_audit": {
+        "empty_case": "EXERCISED K=3 on an empty book: the tool itself was NOT called (0/3) — the turn ran glossary_adopt_standards and scaffolded the default ontology instead (5 glossary tables written 3/3). Defensible as first-run scaffolding, and recorded rather than waived because it is the same adjacent-write shape this batch exists to watch.",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with a schema-valid item (level=kind, name, code): refused 'book not accessible', and book_kinds was re-read with 0 rows for code='hijack'.",
+        "gate": "Tier A — writes immediately once approved, per its own description."
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM book_kinds WHERE book_id='{book_id}' AND lower(name)='factions'",
+          "expect": "0",
+          "why": "'Factions' must NOT already exist, or 'added it' is unfalsifiable"
+        }
+      ]
+    },
+    {
+      "id": "plan-compile",
+      "tool_under_test": "plan_compile",
+      "expect_tool": "plan_compile",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Turn the plan I've got for this book into a proper planning package.",
+      "prompt_source": "_meta.synonyms['build plan'] + the fixture's seeded arc",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        },
+        {
+          "tool": "composition_outline_node_create",
+          "args": {
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "The Ember Codex",
+            "synopsis": "Aldric reaches Hollow Keep and is given the Codex."
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "The Road to the Marsh",
+            "summary": "Aldric and Mira cross the Sunless Marsh with the Codex."
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool is reached and returns ok while no PlanningPackage row appears in loreweave_composition, OR it is refused for want of a run_id/arc_id the turn could have resolved from the book it is already looking at — its three required args (book_id, run_id, arc_id) are exactly the shape that produced the cross-wire in batch 1.",
+      "ship_audit": {
+        "empty_case": "EXERCISED K=3 on a book with no arc and no spec: called 0/3, store UNCHANGED 3/3. Nothing was fabricated and nothing was written when there was nothing to compile — the correct absent-case behaviour for a tool whose inputs do not exist yet.",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'not found or not accessible' against another user's book.",
+        "gate": "Tier A."
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "one arc (a structure_node) must exist for plan_compile to have anything to compile"
+        }
+      ]
+    },
+    {
+      "id": "glossary-list-system-standards",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "expect_tool": "glossary_list_system_standards",
+      "prompt": "What kinds of things can I track in a story bible here — what categories does the system offer out of the box?",
+      "prompt_source": "description (declares no _meta.synonyms — R2). Its own text: 'List the SYSTEM standards catalogue — the entity kinds a book can adopt'.",
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "editor_context": false,
+      "falsifier": "REFUTED IF: the reply lists categories that are this BOOK's adopted kinds (character/location/item, seeded here) rather than the SYSTEM catalogue — that is the tool next door answering, not this one. Also refuted if a read-intent turn changes the store.",
+      "answer_expect": {
+        "must_not_contain": [
+          "i don't have",
+          "i cannot",
+          "no categories"
+        ]
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "the three seeded entities must exist"
+        }
+      ],
+      "ship_audit": {
+        "empty_case": "EXERCISED K=3 on an empty book: called 3/3, store unchanged 3/3. Correct by construction — the SYSTEM catalogue does not depend on the book, so 'empty book' cannot empty it.",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. NO BOOK BOUNDARY BY DESIGN: scope=none, it lists the SYSTEM standards catalogue, which is identical for every user and carries no per-user data. Recorded as not-applicable rather than as a pass — there is nothing here to leak, and calling that a tenancy pass would be a category error.",
+        "gate": "Tier R."
+      }
+    },
+    {
+      "id": "glossary-extract-entities-from-doc",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "expect_tool": "glossary_extract_entities_from_doc",
+      "prompt": "Here are my notes — turn them into glossary entries please:\nKessa Duhrin is a salt-cartographer from the drowned city of Ilmarch. She carries the Tidewrit, a chart that redraws itself. Her rival is Warden Sabel.",
+      "prompt_source": "_meta.synonyms['turn my notes into glossary entries'] + a pasted document, which is the shape its description names",
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "editor_context": false,
+      "falsifier": "This tool RETURNS candidates and WRITES NOTHING (its own description). REFUTED IF: glossary_entities grows on this turn — that means something wrote when the tool contracts not to. Also refuted if the reply names none of Kessa Duhrin, Ilmarch, Tidewrit or Warden Sabel, which would mean the notes were never read.",
+      "answer_expect": {
+        "must_contain": [
+          "kessa"
+        ]
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "the three seeded entities must exist"
+        }
+      ],
+      "ship_audit": {
+        "empty_case": "EXERCISED K=3 on an empty book with the notes still pasted in the prompt: called 2/3, store UNCHANGED 3/3 — which is exactly its declared contract (it returns candidates and writes nothing). The absent case for this tool is the book, not the input, and it held.",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'book not accessible' against another user's book.",
+        "gate": "Tier R — its own description states it WRITES NOTHING; the falsifier checks that."
+      }
+    }
+  ]
+}

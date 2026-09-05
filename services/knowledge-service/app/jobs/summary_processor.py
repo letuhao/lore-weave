@@ -32,8 +32,9 @@ from uuid import UUID
 
 import asyncpg
 
-from app.db.neo4j_helpers import (
-    CypherSession,
+from app.db.neo4j_helpers import CypherSession
+from app.db.graph_repos import hierarchy as hierarchy_repo
+from app.db.graph_repos.vector_indexes import (
     ensure_summary_indexes,
     summary_index_name,
 )
@@ -100,7 +101,7 @@ class SummaryProcessorDeps:
     worker-ai's task setup.
     """
     knowledge_pool: asyncpg.Pool
-    neo4j_session: CypherSession
+    graph_session: CypherSession
     llm_client: Any                  # LLMClientProtocol from SDK
     embedding_client: Any            # exposes embed(text, model_uuid) -> list[float]
     summary_enqueue: SummaryEnqueueFn  # for M4 re-enqueue
@@ -182,7 +183,7 @@ async def process_summarize_message(
             book_id=book_id,
             embedding_model_uuid=msg.embedding_model_uuid,
             repo=repo,
-            neo4j_session=deps.neo4j_session,
+            graph_session=deps.graph_session,
         )
     except _DefensiveCheckFailed as exc:
         # D9: children not ready yet. Re-enqueue.
@@ -267,7 +268,7 @@ async def process_summarize_message(
     if outcome.race_winner:
         # Only race winner writes Neo4j (avoid duplicate vector index ops).
         await _write_neo4j_summary(
-            neo4j_session=deps.neo4j_session,
+            graph_session=deps.graph_session,
             level=msg.level,
             node_path=msg.node_path,
             summary_text=summary_text,
@@ -312,7 +313,7 @@ async def _load_children_for_level(
     book_id: UUID,
     embedding_model_uuid: str,
     repo: LevelSummariesRepo,
-    neo4j_session: CypherSession,
+    graph_session: CypherSession,
 ) -> tuple[list[str], list[str]]:
     """Return (child_texts, entity_names) for the given level node.
 
@@ -338,14 +339,14 @@ async def _load_children_for_level(
             raise _DefensiveCheckFailed(
                 f"chapter {node_id} has no :Scene children (legacy?)"
             )
-        entity_names = await _load_top_entities_for_chapter(neo4j_session, node_id)
+        entity_names = await _load_top_entities_for_chapter(graph_session, node_id)
         return scene_texts, entity_names
 
     elif level == "part":
         # Defensive: load all chapter summaries for the book; if fewer than
         # the part's children expects, re-enqueue.
         expected_chapters = await _count_expected_chapter_children(
-            neo4j_session, node_id,
+            graph_session, node_id,
         )
         chapter_summaries = await repo.list_by_book(
             book_id=book_id, level="chapter",
@@ -353,7 +354,7 @@ async def _load_children_for_level(
         )
         # Filter chapter summaries to ONLY those under this part.
         part_chapter_summaries = await _filter_summaries_under_part(
-            neo4j_session, chapter_summaries, part_id=node_id,
+            graph_session, chapter_summaries, part_id=node_id,
         )
         if len(part_chapter_summaries) < expected_chapters:
             raise _DefensiveCheckFailed(
@@ -361,12 +362,12 @@ async def _load_children_for_level(
                 f"summaries, found {len(part_chapter_summaries)}"
             )
         child_texts = [s.summary_text for s in part_chapter_summaries]
-        entity_names = await _load_top_entities_for_part(neo4j_session, node_id)
+        entity_names = await _load_top_entities_for_part(graph_session, node_id)
         return child_texts, entity_names
 
     elif level == "book":
         expected_parts = await _count_expected_part_children(
-            neo4j_session, node_id,
+            graph_session, node_id,
         )
         part_summaries = await repo.list_by_book(
             book_id=book_id, level="part",
@@ -378,7 +379,7 @@ async def _load_children_for_level(
                 f"summaries, found {len(part_summaries)}"
             )
         child_texts = [s.summary_text for s in part_summaries]
-        entity_names = await _load_top_entities_for_book(neo4j_session, node_id)
+        entity_names = await _load_top_entities_for_book(graph_session, node_id)
         return child_texts, entity_names
 
     raise ValueError(f"unknown level {level!r}")
@@ -412,7 +413,7 @@ async def _reenqueue_with_backoff(
     await enqueue(new_msg)
 
 
-# ── Neo4j helpers (stubs — wired to neo4j_repos in worker-ai task setup) ──
+# ── Neo4j helpers (stubs — wired to graph_repos in worker-ai task setup) ──
 
 
 async def _load_scene_leaf_texts(book_id: UUID, chapter_id: UUID) -> list[str]:
@@ -450,106 +451,52 @@ async def _load_scene_leaf_texts(book_id: UUID, chapter_id: UUID) -> list[str]:
 async def _load_top_entities_for_chapter(
     session: CypherSession, chapter_id: UUID, limit: int = 30,
 ) -> list[str]:
-    rows = await session.run(
-        """
-        MATCH (c:Chapter {chapter_id: $chapter_id})<-[:MENTIONED_IN]-(e:Entity)
-        RETURN e.name AS name
-        ORDER BY e.confidence DESC
-        LIMIT $limit
-        """,
-        chapter_id=str(chapter_id),
-        limit=limit,
+    return await hierarchy_repo.top_entity_names_for_chapter(
+        session, chapter_id=str(chapter_id), limit=limit,
     )
-    names = []
-    async for record in rows:
-        names.append(record["name"])
-    return names
 
 
 async def _load_top_entities_for_part(
     session: CypherSession, part_id: UUID, limit: int = 30,
 ) -> list[str]:
-    rows = await session.run(
-        """
-        MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(:Chapter)<-[:MENTIONED_IN]-(e:Entity)
-        WITH e, count(*) AS mentions
-        ORDER BY mentions DESC
-        LIMIT $limit
-        RETURN e.name AS name
-        """,
-        part_id=str(part_id),
-        limit=limit,
+    return await hierarchy_repo.top_entity_names_for_part(
+        session, part_id=str(part_id), limit=limit,
     )
-    names = []
-    async for record in rows:
-        names.append(record["name"])
-    return names
 
 
 async def _load_top_entities_for_book(
     session: CypherSession, book_id: UUID, limit: int = 50,
 ) -> list[str]:
-    rows = await session.run(
-        """
-        MATCH (b:Book {book_id: $book_id})-[:HAS_CHILD*..3]->(:Chapter)<-[:MENTIONED_IN]-(e:Entity)
-        WITH e, count(*) AS mentions
-        ORDER BY mentions DESC
-        LIMIT $limit
-        RETURN e.name AS name
-        """,
-        book_id=str(book_id),
-        limit=limit,
+    return await hierarchy_repo.top_entity_names_for_book(
+        session, book_id=str(book_id), limit=limit,
     )
-    names = []
-    async for record in rows:
-        names.append(record["name"])
-    return names
 
 
 async def _count_expected_chapter_children(
     session: CypherSession, part_id: UUID,
 ) -> int:
-    rows = await session.run(
-        "MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(c:Chapter) RETURN count(c) AS n",
-        part_id=str(part_id),
-    )
-    async for record in rows:
-        return int(record["n"])
-    return 0
+    return await hierarchy_repo.count_child_chapters(session, part_id=str(part_id))
 
 
 async def _count_expected_part_children(
     session: CypherSession, book_id: UUID,
 ) -> int:
-    rows = await session.run(
-        "MATCH (b:Book {book_id: $book_id})-[:HAS_CHILD]->(p:Part) RETURN count(p) AS n",
-        book_id=str(book_id),
-    )
-    async for record in rows:
-        return int(record["n"])
-    return 0
+    return await hierarchy_repo.count_child_parts(session, book_id=str(book_id))
 
 
 async def _filter_summaries_under_part(
     session: CypherSession, summaries: list, part_id: UUID,
 ):
     """Filter the book's chapter summaries to ONLY those under this part."""
-    rows = await session.run(
-        """
-        MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(c:Chapter)
-        RETURN c.chapter_id AS chapter_id
-        """,
-        part_id=str(part_id),
+    part_chapter_ids = await hierarchy_repo.list_chapter_ids_under_part(
+        session, part_id=str(part_id),
     )
-    part_chapter_ids: set[str] = set()
-    async for record in rows:
-        part_chapter_ids.add(str(record["chapter_id"]))
     return [s for s in summaries if str(s.level_id) in part_chapter_ids]
 
 
 async def _write_neo4j_summary(
     *,
-    neo4j_session: CypherSession,
+    graph_session: CypherSession,
     level: Level,
     node_path: str,
     summary_text: str,
@@ -561,27 +508,23 @@ async def _write_neo4j_summary(
     """Write summary_text + summary_embedding to the hierarchy node.
 
     Ensures the per-(project, embedding_model) vector index exists first
-    (H1+M7+SR-2 fix).
+    (H1+M7+SR-2 fix). The index lifecycle stays HERE rather than moving into the write:
+    it belongs to the vector store, and a node write that silently created indexes would
+    make the two impossible to reason about separately.
     """
     # H1: ensure index family exists for this project + embedding_model.
     if project_id:
         await ensure_summary_indexes(
-            neo4j_session,
+            graph_session,
             project_id=project_id,
             embedding_model_uuid=embedding_model_uuid,
             embedding_dimension=embedding_dimension,
         )
-    node_label = level.capitalize()
-    await neo4j_session.run(
-        f"""
-        MATCH (n:{node_label} {{path: $path}})
-        SET n.summary_text = $text,
-            n.summary_embedding = $embedding,
-            n.summary_model_uuid = $model_uuid,
-            n.summary_updated_at = datetime()
-        """,
-        path=node_path,
-        text=summary_text,
+    await hierarchy_repo.write_summary_to_node(
+        graph_session,
+        level=level,
+        node_path=node_path,
+        summary_text=summary_text,
         embedding=embedding,
-        model_uuid=embedding_model_uuid,
+        embedding_model_uuid=embedding_model_uuid,
     )

@@ -8,11 +8,15 @@
 //! so an absent/fled/downed target is a recorded miss, never a panic.
 
 mod actor;
+mod binding;
 mod law;
 mod payload;
+mod round;
 mod state;
+mod substrate;
 
 pub use actor::Actor;
+pub use binding::{BindingError, HubBinding, RealityRules};
 pub use law::CombatDomain;
-pub use payload::{CombatEvent, CombatPayload, Stance};
+pub use payload::{CombatEvent, CombatPayload, RefusalReason, Stance};
 pub use state::{CombatResource, CombatState, NoResource};

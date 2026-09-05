@@ -1,0 +1,179 @@
+{
+  "_note": "D-BLANK-ARGS-CONCENTRATES-WHERE-NO-AMBIENT-ID-EXISTS — the world/map family, extracted VERBATIM from scenarios-batch29.json. The BEFORE measurement is 658 blank-argument calls across 2026-08-21..23 on which composition of the surface was: every advertised world tool REQUIRED a world_id and none RETURNED one, and world_list was advertised 0 times.\n\nSince then `argument_emitters` gained world_map_list.world_id <- world_list (and siblings), and R1 answerability walks that map to FORCE a declared supplier onto the surface. Nobody has ever checked whether that closed this row. This batch asks.",
+  "_what_would_refute_the_fix": "world_list still absent from advertised_tools, OR present and not called, OR called and the model still sends blank arguments to the world/map tool. Any of those means the declared supplier does not reach a tool that arrives via the DOMAIN HOT SET rather than through R1 — which is where the forcing is seeded.",
+  "scenarios": [
+    {
+      "id": "world-map-list",
+      "tool_under_test": "world_map_list",
+      "expect_tool": "world_map_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List the maps in my world called Emberfall Reach {run_word}.",
+      "prompt_source": "meta.synonyms['list maps'] + ['world maps'], verbatim, plus the world's exact name so the target is the author's and not a guess among 200 worlds.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "Emberfall Reach {run_word}"
+          }
+        },
+        {
+          "tool": "world_map_create",
+          "args": {
+            "world_id": "{step:0:world.world_id}",
+            "name": "The Ashen Coast {run_word}"
+          }
+        },
+        {
+          "tool": "world_map_create",
+          "args": {
+            "world_id": "{step:0:world.world_id}",
+            "name": "The Obsidian Trench {run_word}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM world_maps WHERE name LIKE '%{run_word}%'",
+          "expect": "2",
+          "why": "TWO maps in THIS run's world, scoped by the {run_word} nonce rather than by a headcount — the account holds many worlds and maps, and asserting a total would drift under any concurrent activity. Two rather than one so 'listed the maps' is distinguishable from 'named the only thing it could see'."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Ashen Coast"
+        ],
+        "none_of": [
+          "no maps",
+          "doesn't have any maps",
+          "could not find"
+        ],
+        "why": "Both maps exist. A 'no maps' answer over a world holding two is the false-absence shape, and here it would most likely come from world_list paging rather than from world_map_list itself — which is exactly why the falsifier asks which call failed."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports no maps for a world that has two, OR it names a map from a DIFFERENT world (the nonce makes that visible). 🔴 DIAGNOSTIC, NOT A PASS/FAIL: if the model cannot find the world at all, check whether it called world_list and whether the seeded world was beyond the default limit=20 of 200+ worlds. A tool failing because its only supplier cannot page to the answer is a platform defect, not a model defect, and the two must not be recorded as the same thing.",
+      "ship_audit": {
+        "empty_case": "OWED — a world with no maps must read as 'no maps yet', distinguishable from 'no such world'.",
+        "absent_case": "OWED — a world_id that does not exist, or belongs to another owner, must be refused.",
+        "tenancy": "OWED — ACCOUNT-scoped: another owner's world must not list."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-get",
+      "tool_under_test": "world_get",
+      "expect_tool": "world_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the world called Emberfall Reach {run_word}.",
+      "prompt_source": "meta.synonyms['show world'] + ['world detail'], verbatim, plus the world's exact name.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "Emberfall Reach {run_word}",
+            "description": "A drowned coast of ash and low tides."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM worlds WHERE name LIKE '%{run_word}%'",
+          "expect": "1",
+          "why": "EXACTLY ONE world by this run's nonce, among the 200+ the account already holds. That is what makes the supplier question sharp: world_list defaults to limit=20, so the world the author just named may well not be on the page the model reads."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Emberfall Reach"
+        ],
+        "none_of": [
+          "could not find",
+          "couldn't find",
+          "no such world",
+          "does not exist"
+        ],
+        "why": "The world exists and was named verbatim by the author. Reporting it missing is either a paging failure in world_list or the model giving up — and the store proves which claim is false."
+      },
+      "falsifier": "🔴 THIS IS THE SUPPLIER TEST OF THE BATCH. REFUTED IF: a read-intent turn changes the store, OR the model INVENTS a world_id rather than resolving the name, OR it reports the world absent when the store says otherwise. If it reports absence, the diagnostic is whether world_list was called and with what limit/offset: an account with 200+ worlds and a supplier that defaults to 20 means 'I cannot find it' can be the honest limit of the tools provided, in which case the defect is the SUPPLIER's paging and not the model's reasoning. Record which, do not average them.",
+      "ship_audit": {
+        "absent_case": "OWED — a world_id that does not exist must be refused.",
+        "tenancy": "OWED — ACCOUNT-scoped: another owner's world must be refused, not returned.",
+        "empty_case": "OWED — a world with no books and no maps must still read as a real world."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-map-delete",
+      "tool_under_test": "world_map_delete",
+      "expect_tool": "world_map_delete",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Delete the map called The Obsidian Trench {run_word}.",
+      "prompt_source": "meta.synonyms['delete map'] + ['remove map'], verbatim, plus the map's exact name so a wrong target is visible.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "Emberfall Reach {run_word}"
+          }
+        },
+        {
+          "tool": "world_map_create",
+          "args": {
+            "world_id": "{step:0:world.world_id}",
+            "name": "The Ashen Coast {run_word}"
+          }
+        },
+        {
+          "tool": "world_map_create",
+          "args": {
+            "world_id": "{step:0:world.world_id}",
+            "name": "The Obsidian Trench {run_word}"
+          }
+        },
+        {
+          "tool": "world_map_add_marker",
+          "args": {
+            "map_id": "{step:2:map.map_id}",
+            "label": "Ironhold",
+            "x": 0.25,
+            "y": 0.4
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM world_maps WHERE name LIKE '%{run_word}%'",
+          "expect": "2",
+          "why": "TWO maps and only ONE named in the prompt, so deleting the wrong one is visible. The card is never approved, so both must still be there afterwards. 🔴 THE DELETE CASCADES: the description says it removes 'the map, its base image, and all its markers + regions', so the seeded marker rides on the same decision."
+        }
+      ],
+      "falsifier": "REFUTED IF: the map is deleted with NO confirm card (Tier A), OR the model targets 'The Ashen Coast' rather than the map the author named, OR it invents a map_id rather than resolving the NAME, OR the reply describes the deletion as removing only the map without saying its markers and regions go with it — an author told the mild version could approve a cascade they did not intend, which is the shape book_chapter_set_kg_exclude had in batch 27.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and it cascades to markers and regions.",
+        "absent_case": "OWED — a map_id that does not exist must be refused.",
+        "idempotency": "OWED — deleting an already-deleted map must refuse or be a clear no-op, not report a second success.",
+        "tenancy": "OWED — ACCOUNT-scoped: another owner's map must not be deletable."
+      },
+      "defects": []
+    }
+  ]
+}

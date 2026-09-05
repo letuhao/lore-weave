@@ -47,7 +47,7 @@ impl SqlxEmbeddingWriter {
 impl EmbeddingWriter for SqlxEmbeddingWriter {
     async fn write_embedding(
         &self,
-        _reality_id: Uuid,
+        _reality_id: dp::RealityId,
         npc_id: Uuid,
         session_id: Uuid,
         vector: &[f32],

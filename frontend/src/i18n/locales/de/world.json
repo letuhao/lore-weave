@@ -9,7 +9,15 @@
     "description": "Erstelle deine erste Welt, um mit dem Schreiben der Lore zu beginnen – Kapitel sind nicht erforderlich."
   },
   "card": {
-    "books": "{{count}} Bücher"
+    "books": "{{count}} Bücher",
+    "delete": "Welt löschen",
+    "delete_blocked": "Verschiebe zuerst die {{count}} Buch/Bücher aus dieser Welt",
+    "delete_title": "Diese Welt löschen?",
+    "delete_description": "Das Löschen von \"{{name}}\" lässt sich nicht rückgängig machen. Lore, Karten und Zeitleiste gehen mit verloren.",
+    "delete_hint": "Eine Welt mit Büchern kann nicht gelöscht werden – verschiebe sie zuerst.",
+    "delete_cancel": "Abbrechen",
+    "delete_confirm": "Endgültig löschen",
+    "delete_done": "Welt gelöscht"
   },
   "create": {
     "cta": "Neue Welt",

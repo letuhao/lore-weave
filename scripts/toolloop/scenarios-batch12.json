@@ -1,0 +1,264 @@
+{
+  "_note": "Batch 12: four glossary Tier-A writes plus one KG read. Every write scenario seeds a real entity, because NAME→id resolution is the step that has failed repeatedly in this loop (kg_propose_edge, world_map_create, world_map_add_region) and is now guarded at the arg chokepoint — a fabricated-but-valid UUID appearing here is a NEW instance of D-DECLARED-UUID, not a known one.",
+  "scenarios": [
+    {
+      "id": "glossary-create-chapter-link",
+      "tool_under_test": "glossary_create_chapter_link",
+      "expect_tool": "glossary_create_chapter_link",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Aldric Vane appears in this chapter — mark where he shows up.",
+      "prompt_source": "_meta.synonyms['this character appears in this chapter'] + ['mark where this character shows up'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist; the tool takes an entity_id and the model has to resolve the NAME to it."
+        },
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM chapter_entity_links WHERE entity_id IN (SELECT entity_id FROM glossary_entities WHERE book_id='{book_id}')",
+          "expect": "0",
+          "why": "ZERO links before, so any link is attributable to this turn — and, since the card is never approved, the count must still be 0 afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: the link lands with NO confirm card (Tier A), OR the model invents an entity_id or chapter_id rather than resolving them, OR it links to a chapter that is not the one open in the editor. The store check is glossary_chapter_links: unchanged, because the card is never approved.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an entity_id or chapter_id that does not exist must be refused.",
+        "idempotency": "OWED — its description says it ERRORS if the entity is already linked to that chapter; that refusal is the audit.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-entity-rename",
+      "tool_under_test": "glossary_entity_rename",
+      "expect_tool": "glossary_entity_rename",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "I spelled a character wrong — rename Aldrik Vayne to Aldric Vane.",
+      "prompt_source": "_meta.synonyms['fix entity name typo'] + ['rename character']. The seeded entity carries the MISSPELLING, so the model must resolve the wrong name to the right row — a harder and more realistic resolution than matching the target.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldrik Vayne"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND cached_name='Aldrik Vayne'",
+          "expect": "1",
+          "why": "The MISSPELLED name must be the one stored — that is what makes the resolution real rather than a lookup of the string the user is asking for."
+        }
+      ],
+      "falsifier": "REFUTED IF: the rename lands with NO confirm card, OR the model creates a NEW entity called 'Aldric Vane' instead of renaming the existing one (a create-instead-of-edit, which is the v1/v2 surfacing defect's signature), OR it invents an entity_id. Store check: the entity count must stay 1 and cached_name must still be the misspelling, because the card is never approved.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — renaming a nonexistent entity must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-propose-translation",
+      "tool_under_test": "glossary_propose_translation",
+      "expect_tool": "glossary_propose_translation",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Give me Vietnamese names for these characters — localise the glossary into vi.",
+      "prompt_source": "_meta.synonyms['vietnamese names for these characters'] + ['localise the glossary'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO characters, so 'these characters' is plural and a proposal covering only one is visibly partial."
+        }
+      ],
+      "falsifier": "REFUTED IF: translations land with NO confirm card, OR the proposal covers fewer entities than the request implies without saying so, OR language_code is not 'vi' when the user said Vietnamese. Store unchanged, because the card is never approved.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an unknown language_code must be refused with what is supported.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-create-evidence",
+      "tool_under_test": "glossary_create_evidence",
+      "expect_tool": "glossary_create_evidence",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Back up Aldric Vane's role with a passage from the chapter — cite where it says he climbed the black stair.",
+      "prompt_source": "_meta.synonyms['back this up with a passage'] + ['cite where this is stated'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist. NOTE the deeper precondition this scenario is really testing: evidence attaches to an ATTRIBUTE VALUE (attr_value_id), not to the entity, so the model must first find or create an attribute value. If it cannot, that is a PRECONDITION-CHAIN finding like kg_propose_edge's, not a defect in this tool."
+        }
+      ],
+      "falsifier": "REFUTED IF: evidence lands with NO confirm card, OR the quoted original_text is not actually in the chapter (a fabricated citation is the worst outcome here), OR the model invents an attr_value_id. CONTROL: the fixture has no attribute values, so a turn that cannot proceed is the precondition chain, and that must be recorded as such rather than as a tool failure.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an attr_value_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-graph-query",
+      "tool_under_test": "kg_graph_query",
+      "expect_tool": "kg_graph_query",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "How are the characters in this story connected — show me the relationships.",
+      "prompt_source": "_meta.synonyms['how are they connected'] + ['entity relationships'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes relationships a fresh project cannot have. EMPTY case by construction — the graph is un-bootstrapped, so the honest answer is that there is nothing in it yet. 🔴 WATCH FOR THE FALSE PRESENCE: batch 11's composition_conformance_status invented 'effectively stale' for a book that had never run conformance, and this shape invites the same — describing what a knowledge graph WOULD hold as if it held it.",
+      "ship_audit": {
+        "empty_case": "This scenario IS the empty case — an un-bootstrapped graph must be reported as empty, and 'no graph yet' must be distinguishable from 'a graph with no edges'.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

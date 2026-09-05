@@ -28,7 +28,7 @@ from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
 from app.clients.llm_client import LLMClient
 from app.context.builder import ProjectNotFound, build_context
 from app.context.selectors.glossary import select_glossary_semantic
-from app.db.neo4j import neo4j_session
+from app.db.graph import graph_session
 from app.db.repositories.entity_access import EntityAccessRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
@@ -288,7 +288,7 @@ async def glossary_semantic(
     if project is None or project.book_id is None or not project.embedding_model:
         return GlossarySemanticResponse(items=[])
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         items = await select_glossary_semantic(
             session=session,
             embedding_client=embedding_client,

@@ -19,8 +19,8 @@
   "mode": {
     "classic": "คลาสสิก",
     "classic_title": "โหมดคลาสสิก — เน้นการเขียน",
-    "ai": "AI",
-    "ai_title": "โหมดผู้ช่วย AI — ฟีเจอร์ครบครัน"
+    "ai_title": "โหมดผู้ช่วย AI — ฟีเจอร์ครบครัน",
+    "ai": "AI"
   },
   "workmode": {
     "write": "เขียน",
@@ -90,7 +90,6 @@
     "underline": "ขีดเส้นใต้ (Ctrl+U)",
     "inline_code": "โค้ดในบรรทัด",
     "link": "ลิงก์",
-    "url_prompt": "URL:",
     "highlight": "ไฮไลต์ (Ctrl+Shift+H)",
     "subscript": "ตัวห้อย",
     "superscript": "ตัวยก",
@@ -103,7 +102,8 @@
     "code_block": "บล็อกโค้ด",
     "horizontal_rule": "เส้นคั่นแนวนอน",
     "undo": "ย้อนกลับ (Ctrl+Z)",
-    "redo": "ทำซ้ำ (Ctrl+Shift+Z)"
+    "redo": "ทำซ้ำ (Ctrl+Shift+Z)",
+    "url_prompt": "URL:"
   },
   "slash": {
     "paragraph": {
@@ -151,8 +151,8 @@
       "desc": "โค้ดที่เน้นไวยากรณ์"
     },
     "callout": {
-      "title": "Callout",
-      "desc": "บันทึกจากผู้เขียนหรือคำแนะนำ"
+      "desc": "บันทึกจากผู้เขียนหรือคำแนะนำ",
+      "title": "Callout"
     },
     "divider": {
       "title": "ตัวแบ่ง",

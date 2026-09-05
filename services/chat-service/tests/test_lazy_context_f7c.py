@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from app.services.frontend_tools import (
+from tests._v1_tool_fixtures import (
     UI_OPEN_STUDIO_PANEL_TOOL,
     _studio_panel_tool,
     frontend_tool_defs,

@@ -35,6 +35,7 @@ import logging
 import re
 import time
 from difflib import SequenceMatcher
+from types import MappingProxyType
 
 from loreweave_vecmath import cosine_similarity
 
@@ -306,7 +307,13 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
     # just the one that emits schemas.
     # propose_record_edit REMOVED (auto-gate M5) — the generic record diff card is retired;
     # each domain edits via its own natural direct-write tool (audit-confirmed vestigial).
-    "confirm_action",
+    #
+    # confirm_action REMOVED 2026-09-03 (V7/DQ-V9). It is NOT retired — it moved to ai-gateway as
+    # a consumer-local DIRECTIVE tool, so it now arrives through the federated catalogue like any
+    # other tool and no longer needs naming here. It stayed in this list for weeks resolving via
+    # `catalog_index.get(name) or generic_frontend_tool_def(name)`; because it was absent from the
+    # catalogue the FALLBACK always fired, which is precisely how a chat-service-local schema
+    # reached the model on every turn, on every surface.
     # Track D CD5 — `web_search` is fundamental: grounding an answer in the open web is a
     # base capability, not a glossary errand, so it must not cost a find_tools round-trip.
     # It is the ONLY backend (federated) tool in this set, so it resolves from the CATALOG
@@ -451,10 +458,258 @@ INTENT_GATED_SETUP_TOOLS: frozenset[str] = frozenset({
 SETUP_INTENT_SKILL = "glossary_shaping"
 
 
+def _final_live_successor(name: str, by_name: dict[str, dict]) -> str | None:
+    """The first NON-legacy tool reached by following ``superseded_by`` from ``name``.
+
+    A chain, not a single hop, because the catalogue has them: ``composition_get_prose`` ->
+    ``book_get_chapter`` -> ``book_read``, where the middle tool is itself legacy and is being
+    dropped on the same pass. A one-hop resolve would hand the vocabulary to a tool that is
+    about to be deleted, which loses it just as completely as not moving it at all.
+
+    Returns None when the chain dead-ends: no ``superseded_by``, a name absent from this
+    catalogue, or a cycle. 31 legacy tools are in that position (measured 2026-08-28) and this
+    deliberately invents nothing for them.
+    """
+    seen = {name}
+    cur = tool_superseded_by(by_name.get(name) or {})
+    while cur and cur in by_name and cur not in seen:
+        if not is_legacy_tool(by_name[cur]):
+            return cur
+        seen.add(cur)
+        cur = tool_superseded_by(by_name[cur])
+    return None
+
+
+def _inherit_superseded_vocabulary(
+    kept: list[dict], by_name: dict[str, dict], dropped: list[str],
+) -> list[dict]:
+    """Move each dropped legacy tool's declared synonyms onto the live successor.
+
+    See ``drop_superseded_tools``' docstring for why this is here rather than in
+    ``answerable_tools``: R2's union runs over a catalogue this function has already stripped,
+    so the union is inert exactly where it was written to fire.
+
+    Non-mutating — a new dict is built for each affected tool. The catalogue is cached per-user
+    in ``knowledge_client`` and shared across turns, so editing a def in place would leak one
+    turn's inheritance into every later reader of the same cached object.
+    """
+    inherited: dict[str, list[str]] = {}
+    for legacy in dropped:
+        succ = _final_live_successor(legacy, by_name)
+        if not succ:
+            continue
+        for syn in (tool_meta(by_name[legacy]).get("synonyms") or []):
+            if isinstance(syn, str) and syn:
+                inherited.setdefault(succ, []).append(syn)
+    if not inherited:
+        return kept
+    out: list[dict] = []
+    for td in kept:
+        extra = inherited.get(tool_name(td))
+        if not extra:
+            out.append(td)
+            continue
+        fn = td.get("function") or {}
+        meta = dict(tool_meta(td))
+        have = list(meta.get("synonyms") or [])
+        meta["synonyms"] = have + [s for s in extra if s not in have]
+        out.append({**td, "function": {**fn, "_meta": meta}})
+    return out
+
+
+def drop_superseded_tools(
+    catalog: list[dict],
+    pinned: "set[str] | frozenset[str] | None" = None,
+) -> tuple[list[dict], list[str]]:
+    """Drop EVERY legacy tool from a TURN CATALOG, transferring its synonyms to the successor.
+
+    (Summary line corrected 2026-09-03. It read "…when its replacement is on the same wire",
+    which is the pre-2026-08-25 NARROW rule — see the superseded block below. The first line is
+    what every IDE hover, `help()` and doc extractor shows, so it was the one sentence about this
+    function most readers ever saw, and it stated the opposite of the loop beneath it. The file
+    already names that exact cost two paragraphs down.)
+
+    🔴 THE THIRD REACH-PATH. CAT-4's own comment states the invariant — "A legacy tool must
+    never be discoverable: excluded from search_catalog() and from every domain hot-seed" —
+    and both of those do exclude it. The turn catalog that is actually ADVERTISED to the model
+    did not, so a superseded tool sat on the wire beside the tool that replaced it.
+
+    MEASURED 2026-08-14, batch 17: 5 of the 54 distinct tools advertised across the batch were
+    legacy, and every one was the direct predecessor of a tool under test —
+
+        composition_canon_rule_delete      -> composition_canon_rule_edit
+        composition_authoring_run_pause    -> composition_authoring_run_review
+        composition_archive_derivative     -> composition_derivative_edit
+        composition_divergence_spec_update -> composition_derivative_edit
+        book_list_chapters                 -> book_list
+
+    That is not coincidence: the answerability matcher pulls the sibling in because it shares
+    the user's vocabulary with its replacement. And the predecessor WINS, because it is the
+    more specific name for the exact ask — the model called the legacy tool on 3 of 5
+    scenarios, so the unified tool under test scored 0/5 while nothing was actually wrong.
+
+    🔴 SUPERSEDED 2026-08-25 — THE PARAGRAPH BELOW DESCRIBES THE OLD RULE. It is kept
+    because the reasoning still explains what the narrow rule was FOR, but it is no longer
+    what this function does: the loop below drops EVERY legacy tool, replacement or not.
+    A docstring that states the opposite of the code beneath it is worse than none — this
+    one was read, believed, and quoted into a defect report before the code was checked.
+
+    THE RULE WAS DELIBERATELY NARROWER THAN "DROP EVERY LEGACY TOOL". Of the 117 legacy
+    tools, 31 name NO ``superseded_by`` — including ``book_create``, ``book_chapter_publish``
+    and ``book_chapter_delete``. Dropping those would delete reach the platform still needs
+    with nothing to redirect to. So a tool is dropped ONLY when its named replacement is
+    present in the same catalog, which makes the swap capability-preserving by construction:
+    whatever the caller wanted, the tool that does it is right there. All 86 such tools were
+    verified to have their replacement in the live catalog (0 dangling ``superseded_by``).
+
+    ``pinned`` — the session's ``pinned_legacy_tools`` (CAT-4 Part D). A user who deliberately
+    pinned a legacy tool keeps it; that column, its closed-set validator and its picker feed
+    existed with no consumer on the turn path, because nothing was filtering these out for it
+    to re-admit.
+
+    🔴 DROPPING A DECLARATION MUST NOT DROP ITS VOCABULARY — D-THE-MODEL-ASKS-INSTEAD-OF-
+    RAISING-THE-CARD-IT-HAS, owner 2026-08-28 (DQ-T57: "promote the replacement onto the wire").
+
+    ``answerable_tools`` carries a rule it calls R2: *whatever phrasing reaches A must also be
+    able to reach the tool that REPLACED A*, because 59 of 62 superseded pairs orphan at least
+    one phrasing — the deprecated tool declares the words a user actually says and its successor
+    declares the unified ones. R2 implements that as a UNION over the catalog it is handed: if A
+    matched, add A's ``superseded_by``.
+
+    The 2026-08-25 widening above silently disabled it. R2's union needs A to be IN the catalog
+    it reads, and per-pass answerability reads ``discovery_catalog`` — i.e. THIS function's
+    output, with every legacy tool already removed. So the union had nothing left to union from,
+    at exactly the pairs it was written for.
+
+    MEASURED 2026-08-28 against the live 316-tool catalogue, prompt "Undo delete rule — I
+    archived a canon rule by mistake, please restore it.":
+
+        answerable over the FULL catalog       -> {composition_canon_rule_restore,
+                                                   composition_canon_rule_edit}   (R2 fired)
+        answerable over this function's OUTPUT -> {}                              (R2 inert)
+
+    and live at K=5 the model found the archived rule, then asked the author to restore it in
+    PROSE rather than raising the Tier-A confirm card — it had no card to raise. The successor
+    ``composition_canon_rule_edit`` does declare "restore canon rule", but the author wrote
+    "please restore it"; the phrasing that actually matched, "undo delete rule", belonged to the
+    tool this function had just deleted.
+
+    So the fix is here, in the function that DESTROYS the information: when a legacy tool is
+    dropped, its declared synonyms transfer to the live successor that replaced it (following a
+    chain of ``superseded_by`` hops to the first non-legacy tool). One chokepoint, and it repairs
+    every reader of the narrowed catalog at once — R1 answerability, ``find_tools`` recall, the
+    declaration arm, the reads-only mood check — rather than R1 alone.
+
+    Free on the wire: ``_meta`` is consumer-only and ``strip_tool_meta`` removes it before the
+    provider request, so an inherited synonym costs zero tokens.
+
+    🔴 THE ALTERNATIVE WAS BUILT FIRST, MEASURED, AND REVERTED. The first attempt PROMOTED the
+    replacement's definition into this function's output. It passed 20 unit tests and did nothing
+    live: the promotion lands in ``discovery_catalog``, which is only a CANDIDATE pool — domain
+    selection runs afterwards and withheld ``composition_canon_rule_edit`` at
+    ``domain_not_selected`` on the very run under test. It also could not fire for this instance
+    at all, because the replacement was already present in the pool (``replacement in kept_names``
+    -> skip), which is why the server's own withheld record still showed the un-promoted reason.
+    A mechanism that fires and cannot reach the wire is worse than none.
+
+    MEASURED cost/recall of what shipped, over 1,917 distinct real user messages from the live
+    corpus: mean 0.069 extra tools forced per turn (median 0, max 3), 115 turns of 1,917 (6.0%)
+    gain at least one, across 7 distinct successors — dominated by the two pairs R2's own comment
+    names, ``book_get``->``book_read`` and ``book_scene_list``->``book_list``. The rejected
+    unconditional-promotion variant was ~27 extra tools per turn.
+
+    DOES NOT COVER: 31 legacy tools name no resolvable successor (``book_create``,
+    ``book_chapter_publish``, ``composition_publish`` — whose chain ends at a legacy tool with no
+    ``superseded_by``); their vocabulary is genuinely lost when they are dropped, and nothing here
+    invents a destination for it. Nor does inheritance put the successor on the wire by itself —
+    it makes the successor ANSWERABLE, and R1's forcing at the advertise chokepoint is what
+    carries it there; a successor absent from the turn catalog entirely (intent-gated) still
+    cannot be reached.
+
+    Returns ``(kept, dropped_names)`` so the caller can record the withholding rather than
+    narrow the surface silently. A promoted replacement is counted in ``kept``, not
+    ``dropped`` — it was never withheld.
+    """
+    pinned = set(pinned or ())
+    _by_name = {tool_name(td): td for td in catalog}
+    kept: list[dict] = []
+    dropped: list[str] = []
+    for td in catalog:
+        name = tool_name(td)
+        # 2026-08-25 — WIDENED TO EVERY LEGACY TOOL, on the owner's standing decision that a
+        # legacy tool is a DEAD tool. The old rule dropped one only when its named
+        # replacement happened to be on the same wire, which left 31 legacy tools with no
+        # `superseded_by` advertised forever and 86 more advertised whenever their
+        # replacement missed the turn. Traffic to a dead tool is rot, not a requirement:
+        # find_tools is what that looks like when it is left to run.
+        #   ...and replacement and replacement in present   <- the old, narrower condition
+        if (
+            name
+            and name not in pinned
+            and is_legacy_tool(td)
+        ):
+            dropped.append(name)
+            continue
+        kept.append(td)
+    # The vocabulary the drop would otherwise delete, moved to whoever inherited the capability.
+    # AFTER the drop loop, so a successor that is ITSELF being dropped is never a destination.
+    kept = _inherit_superseded_vocabulary(kept, _by_name, dropped)
+    if dropped:
+        # Registered, not silently narrowed — the same reason filter_intent_gated_setup_tools
+        # registers its own drops: "the runtime chose not to offer this and here is why" must
+        # stay distinguishable from "this tool does not exist". Recorded HERE rather than at the
+        # call site so a future caller cannot forget it.
+        from app.services.instrument import record_surface_withheld
+        for _n in dropped:
+            _succ = _final_live_successor(_n, _by_name)
+            if _succ:
+                reason = (
+                    f"superseded by {_succ}, which now also answers to this tool's declared "
+                    "phrasing"
+                )
+            else:
+                reason = (
+                    f"superseded by {tool_superseded_by(_by_name[_n])}"
+                    if tool_superseded_by(_by_name[_n])
+                    else "marked visibility=legacy with no replacement named"
+                ) + " — legacy tools are not advertised; pin it via pinned_legacy_tools to keep it"
+            record_surface_withheld(_n, stage="superseded", reason=reason)
+    return kept, dropped
+
+
+def _declaration_named_setup_tools(
+    catalog: list[dict], request_text: str | None, gated: "set[str] | frozenset[str]",
+) -> set[str]:
+    """The gated tools whose OWN declared synonyms answer this request.
+
+    🔴 THE MATCH IS RUN AGAINST THE GATED TOOLS ALONE, NOT THE WHOLE CATALOGUE, and that is
+    not an optimisation. ``answerable_tools`` ranks its matches and caps the result at
+    ``ANSWERABLE_MAX``; run over 300-odd tools, a gated tool that genuinely answers the
+    request could be crowded out of the cap by unrelated ones and the arm would open only
+    sometimes. Handing it a catalogue of just the gated tools asks the question this gate
+    actually has — *does the request use THIS tool's declared vocabulary* — and makes the
+    answer independent of what else happens to be in the catalogue.
+
+    Imported inside the function: ``tool_surface`` imports from this module, so a top-level
+    import would be a cycle. The platform's own matcher is used rather than reimplemented —
+    a second copy of the normalisation would drift from the first, and the first is already
+    the thing the answerability contract is written against.
+    """
+    if not request_text or not gated:
+        return set()
+    gated_defs = [td for td in catalog if tool_name(td) in gated]
+    if not gated_defs:
+        return set()
+    from app.services.tool_surface import answerable_tools
+
+    return {n for n in answerable_tools(request_text, gated_defs) if n in gated}
+
+
 def filter_intent_gated_setup_tools(
     catalog: list[dict],
     injected_skill_codes: list[str] | set[str],
     rail_step_tools: "set[str] | frozenset[str] | None" = None,
+    request_text: str | None = None,
 ) -> list[dict]:
     """Drop the high-impact world-setup tools from a turn catalog UNLESS the turn is
     world-setup intent (`glossary_shaping` injected). Applied at catalog assembly so the
@@ -477,10 +732,65 @@ def filter_intent_gated_setup_tools(
 
     Scope stays tight: only the steps of a rail actually pinned this turn are exempt, so an
     unrelated "write chapter 1" turn still cannot reach these tools — which is the over-reach
-    N5a-FULL exists to stop."""
+    N5a-FULL exists to stop.
+
+    ``request_text`` — DQ-T31's DECLARATION ARM (owner decision, 2026-08-27). A gated tool
+    whose OWN declared synonyms answer this request is exempt, and only that tool.
+
+    🔴 THE GATE OPENED ON VOCABULARY AND NOT ON WHAT WAS ASKED FOR, AND R1 COULD NOT REACH IN.
+    ``_is_world_setup_intent`` is a substring match over a hand-written marker list, so the
+    gate stayed SHUT on requests that named a gated tool outright — measured on
+    ``glossary_book_sync_apply`` with the prompt *"Take the upstream changes — apply the
+    standard updates to this book"*, which is two of its declared synonyms VERBATIM and
+    against the live catalogue makes it the ONLY answerable tool, with no competitor. It
+    surfaced 0/2 and was called 0/2.
+
+    R1 answerability promises such a tool the wire "whatever the budget, the domain selection
+    or the rail decided", and for a gated tool it cannot deliver — not through any fault of
+    R1's. The one-off build is handed the UNFILTERED catalog and R1 does force the tool in
+    there; the PER-PASS build is handed the catalog AFTER this filter and REPLACES that list
+    on the first pass. So the rescue lands in a list that is immediately discarded, and every
+    pass the model actually sees is built from a catalogue the tool was removed from. The only
+    place that can be fixed is here, before the removal.
+
+    THIS IS THE SAME SHAPE AS ``rail_step_tools`` AND IS SCOPED THE SAME WAY. A rail naming a
+    tool is a signal that this turn is about it; a request using the tool's own declared words
+    is the same signal from the other direction, and *"guidance and capability move as ONE
+    signal"* applies to both. So the exemption is per-TOOL, never per-turn: matching
+    ``glossary_book_sync_apply`` does not un-gate the other four, which is what widening the
+    marker list would have done.
+
+    AND IT DELIBERATELY DOES NOT WIDEN THE MARKERS. The other half of this gate's defect is a
+    false POSITIVE — ``codex`` is a marker, so *"draft the prose for 'Chapter I — The Ember
+    Codex'"* opens the gate on a pure prose turn (the gate fires on 11 of 186 corpus prompts,
+    and at least one is that). A longer marker list fixes the shut side by enlarging the open
+    side. A declaration match cannot: a tool's synonyms are its author's statement about what
+    it is for, reviewable in the declaration, and matching them is evidence about THIS tool
+    rather than a guess about the turn."""
     if SETUP_INTENT_SKILL in injected_skill_codes:
         return catalog
     _exempt = INTENT_GATED_SETUP_TOOLS - set(rail_step_tools or ())
+    _exempt -= _declaration_named_setup_tools(catalog, request_text, _exempt)
+    # P1 · THE SEVENTH FRAME, and the last one upstream. This drops tools at CATALOG ASSEMBLY —
+    # before domain selection, before the hot seed, before the advertise loop, i.e. before every
+    # stage instrumented so far. A verifier's accounting landed on exactly this set twice: the four
+    # in neither bucket are `INTENT_GATED_SETUP_TOOLS` minus `glossary_adopt_standards`, which a
+    # rail exempted. `catalog_miss` could never see them, because they ARE in the catalog index —
+    # they are removed from the catalog handed to it.
+    #
+    # A narrowing this early is the easiest to mistake for "not a candidate". It is a candidate: the
+    # gate exists precisely because these tools would otherwise be offered, and one injected skill
+    # makes them appear. Registering it is what separates "the runtime chose not to offer this and
+    # here is why" from "this tool does not exist", which is the distinction P1 is entirely about.
+    _dropped = sorted(n for n in (tool_name(td) for td in catalog) if n in _exempt)
+    if _dropped:
+        from app.services.instrument import record_surface_withheld
+        for _n in _dropped:
+            record_surface_withheld(
+                _n, stage="intent_gate",
+                reason="world-setup tool withheld unless the turn has world-setup intent "
+                       "(inject the glossary_shaping skill, or name it in a rail step)",
+            )
     return [td for td in catalog if tool_name(td) not in _exempt]
 
 
@@ -536,6 +846,30 @@ def tool_tier(tool_def: dict) -> str:
     carries no tier — a missing tier must NEVER auto-commit a write."""
     tier = tool_meta(tool_def).get("tier")
     return tier if tier in ("R", "A", "W", "S") else "R"
+
+
+#: C-1 · **the lane, as DECLARED data.** `_meta.tier` is set by the provider at registration and
+#: federated verbatim; this map is the only place a tier becomes a lane.
+LANES: tuple[str, ...] = ("read", "action", "write", "system")
+_LANE_BY_TIER = MappingProxyType({"R": "read", "A": "action", "W": "write", "S": "system"})
+
+
+def declared_lane(tool_def: dict) -> str | None:
+    """CP-4.d · C-1's *"lane is data at registration, never inferred from a name"* — the read half.
+
+    🔴 **THIS DELIBERATELY DOES NOT REUSE `tool_tier`, AND THE REASON IS ITS DEFAULT.** That function
+    answers *"may this auto-commit a write?"*, where an unknown tier returning `"R"` is the fail-SAFE
+    answer. The ranking asks the opposite question — *"does this belong in the always-advertised hot
+    set?"* — and there the same default is fail-OPEN: an untiered tool would be promoted into the
+    safe read-first set on the strength of a value nobody declared. One constant cannot be the
+    conservative answer to two questions that point in opposite directions.
+
+    So this returns `None` for an undeclared tier rather than guessing, and the caller sorts an
+    undeclared lane with the writes. **Measured on the live catalogue: 315/315 tools declare a tier**
+    (R=102, W=60, A=153), so nothing legitimate is demoted today — the `None` arm exists so that a
+    provider federating an untiered tool tomorrow is visible instead of silently privileged.
+    """
+    return _LANE_BY_TIER.get(tool_meta(tool_def).get("tier"))
 
 
 def tool_async(tool_def: dict) -> bool:
@@ -881,6 +1215,42 @@ def enumerate_group(
 # `superseded_by`) so `tool_list` can show + redirect rather than hide-but-keep-callable
 # (the invisible-but-callable drift class). The policy-allowed ∩ of the C2 visible-set is
 # applied at the public edge (mcp-public-gateway), the only layer holding the key scope.
+#: The index line's ceiling. 140 chars, chosen from the catalogue rather than taste: the first
+#: sentence of a tool description has a median of 107 characters, so most survive whole, while the
+#: tail (max 462) is what the cap exists to stop.
+SHORT_DESCRIPTION_CHARS = 140
+
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+
+
+def _short_description(description: str) -> str:
+    """The index line for `tool_list` (contracts.md C2): the description's FIRST SENTENCE, capped.
+
+    DERIVED, never a second authoring field. Every tool description is already written summary-
+    first, and a hand-written `short_description` beside the real one is a second thing to drift —
+    the same reasoning `_skill_embedding_text` uses for skills. If the convention ever stops
+    holding, the cap still bounds the damage.
+
+    Whitespace is collapsed first so a description wrapped across source lines does not produce an
+    index line full of newlines.
+    """
+    text = " ".join((description or "").split())
+    if not text:
+        return ""
+    m = _SENTENCE_END.search(text)
+    if m:
+        # `_SENTENCE_END` is a lookbehind on [.!?] matching the WHITESPACE that follows, so
+        # `m.start()` is the space itself and the terminator sits at m.start()-1. Slicing to
+        # m.start() keeps the full stop and drops the space; `+1` would keep a trailing blank.
+        text = text[: m.start()]
+    if len(text) > SHORT_DESCRIPTION_CHARS:
+        # Cut on a word boundary where one is near, so the line does not end mid-token.
+        cut = text[:SHORT_DESCRIPTION_CHARS]
+        sp = cut.rfind(" ")
+        text = (cut[:sp] if sp > SHORT_DESCRIPTION_CHARS - 20 else cut).rstrip() + "…"
+    return text
+
+
 def visible_tools(
     catalog: list[dict],
     group: str | None = None,
@@ -914,8 +1284,50 @@ def visible_tools(
             continue
         entry: dict = {
             "name": name,
-            "description": _fn(tool_def).get("description", "") or "",
+            # ── contracts.md C2 · tool_list IS AN INDEX ──────────────────────────────────────
+            # `short_description`, never the full prose. The listing is BROWSED and the load is
+            # READ; a listing that costs what the load costs buys nothing, which is exactly what
+            # this returned before. Measured 2026-09-01: 192 tools at a mean 303 chars each was
+            # 81.2% of a 71,686-byte payload, and tool_list alone was 21.4% of every tool-result
+            # byte on the platform — its single largest producer.
+            #
+            # The contract had LOST the owner's original design ("a tool_list is a indexing with
+            # short description ... it is a index not a full tool's description"): it named the
+            # field `description` in both tiers, so copying the full text here was correct against
+            # the spec as written. C2 is corrected and this follows it.
+            #
+            # SAFE TO CHANGE HERE because `visible_tools` has exactly two callers, both inside
+            # `tool_list_result` (the "all" branch and the category branch). `tool_load` does NOT
+            # go through this function and keeps the full description, which is the tier that is
+            # supposed to carry it.
+            "short_description": _short_description(_fn(tool_def).get("description", "") or ""),
             "tier": tool_tier(tool_def),
+            # ── DQ-T59 (owner 2026-08-28) · THE REFUSAL, PER ENTRY ───────────────────────────
+            # "REFUSE a contract question answered from a description-only read — the model must
+            # call tool_load for arguments."
+            #
+            # 🔴 THE WORDING VERSION WAS MEASURED AND IT FAILS. `_stamp_no_schemas` has put
+            # exactly that sentence at the TOP of every tool_list payload since 2026-08-23, added
+            # for this defect and never tested. The owner's build note asked for the test before
+            # calling it done: "whether a refusal needs a mechanism rather than wording is a
+            # measurement, and it is owed".
+            #
+            # Run 2026-08-30, batch c-toollistoffwire1, K=5 — a tool_list read followed by a
+            # contract question about `composition_arc_edit`, a tool that is NOT on the wire, so
+            # the description is genuinely all the model holds:
+            #     4 of 5 stated its arguments as FACT from the prose, never calling tool_load
+            #     1 of 5 declined and pointed at tool_load
+            # The stamp was present verbatim in the payload every time.
+            #
+            # TWO EARLIER ARMS PROVED NOTHING AND ARE RECORDED SO THEY ARE NOT REPEATED:
+            # c-toolload3 (5/5 never called tool_list at all) and c-toollistcontract1 (5/5 read
+            # it, but asked about an ADVERTISED tool whose real schema was already in context —
+            # the reply recited it with types tool_list never carried). A clean arm proves
+            # nothing until it is shown to have reached the path.
+            #
+            # So the sentence moves from ONE line above 29KB of prose to EVERY entry, beside the
+            # description it is about. Same claim, at the point of use.
+            "arguments": f"NOT SHOWN — call tool_load({name!r}) to read them.",
         }
         if deprecated:
             entry["deprecated"] = True
@@ -969,6 +1381,132 @@ def _stamp_incomplete(payload: dict, unavailable: set[str] | None) -> dict:
     return payload
 
 
+def _excluded_in_scope(catalog: list[dict], category: str | None, exclude: set[str]) -> list[str]:
+    """The names `exclude` removed that the caller's scope would otherwise have listed.
+
+    Scoped by the SAME `_domain_of` rule `visible_tools` uses, so this can never name a tool
+    the request was not asking about. A tool absent from the catalog entirely is not "held
+    back" — it is simply not there — so this reads the catalog rather than `exclude` itself.
+    """
+    if not exclude:
+        return []
+    held = []
+    for tool_def in catalog:
+        name = tool_name(tool_def)
+        if not name or name not in exclude:
+            continue
+        if category is not None and _domain_of(name) != category:
+            continue
+        held.append(name)
+    return sorted(set(held))
+
+
+def _stamp_no_schemas(payload: dict) -> dict:
+    """Say that a listing carries NAMES and DESCRIPTIONS, never arguments.
+
+    🔴 A MODEL ANSWERED A CONTRACT QUESTION FROM THIS PAYLOAD AND GOT IT WRONG. Measured
+    2026-08-23, batch c-toolload2: asked "What arguments does the composition_arc_apply tool
+    require? Read its real schema", one run of five called `tool_list` instead of `tool_load` and
+    replied "arc_template_id + book_id". The real input_schema is {project_id, arc_template_id,
+    roster_bindings, replace, idempotency_key} — there is NO book_id — and the words it answered
+    with came from a DIFFERENT tool's description: composition_arc_edit's reads "op=create mints a
+    saga/arc (needs book_id; optional ... arc_template_id ...)". One tool's requirements were
+    attributed to another, confidently, with no error.
+
+    The payload was not wrong; it was SILENT about what it is. 29KB of 53 descriptions reads like
+    an authoritative answer to "what does this tool need", and nothing in it says otherwise. This
+    is the same move the file already makes for `always_available` and for an unknown `category`:
+    when a listing withholds something a caller could mistake for absent, it says so IN the
+    payload rather than leaving the caller to infer it.
+    """
+    payload["schemas"] = (
+        "NOT INCLUDED — these entries carry each tool's NAME and DESCRIPTION only. For a tool's "
+        "arguments (which are required, their types), call tool_load with that tool's name. A "
+        "description may MENTION another tool's arguments in prose; that is not this tool's schema."
+    )
+    return payload
+
+
+def _stamp_always_available(
+    payload: dict, catalog: list[dict], category: str | None, exclude: set[str],
+) -> dict:
+    """Name what the always-on exclusion withheld, so no listing silently under-reports.
+
+    The exclusion itself is right — re-listing a tool the model already holds is noise. What
+    was wrong was doing it invisibly: `tool_list` describes itself as "complete and
+    deterministic", and a caller cannot tell a withheld tool from an absent one.
+    """
+    held = _excluded_in_scope(catalog, category, exclude)
+    if held:
+        payload["always_available"] = held
+    return payload
+
+
+#: DQ-T3 — how the intent gate is opened, in the model's terms. ONE string, used by both halves
+#: of the discovery pair, so the listing and the load can never describe the same gate differently.
+_SETUP_GATE_HOW = (
+    "These become available on a turn that is explicitly about setting up or restructuring the "
+    "world/ontology, or when a workflow step names one. You cannot enable them yourself, and "
+    "calling or loading them now will not work."
+)
+_SETUP_GATE_WHY = (
+    "They exist on this platform but are NOT callable on this turn: they make sweeping, "
+    "hard-to-undo changes to a book's ontology, so they are held back unless the turn is "
+    "world-setup."
+)
+_SETUP_GATE_DO = (
+    "Do NOT retry them and do NOT tell the user they do not exist. If one of them is what the "
+    "user actually needs, say so in plain words and ask whether they want to start world setup."
+)
+
+
+def _withheld_setup_tools(catalog: list[dict], category: str | None = None) -> list[str]:
+    """The intent-gated setup tools that are MISSING from this turn's catalog.
+
+    Absence from the catalog is the whole signal: `filter_intent_gated_setup_tools` returns the
+    catalog UNCHANGED on a setup turn, so on such a turn nothing is withheld and this is empty.
+    Deriving it from the catalog rather than re-evaluating the gate keeps one source of truth —
+    a second copy of the gate condition would drift from the first.
+    """
+    present = {tool_name(td) for td in catalog}
+    return sorted(
+        n for n in INTENT_GATED_SETUP_TOOLS
+        if n not in present
+        and (category in (None, "all") or _domain_of(n) == category)
+    )
+
+
+def _stamp_withheld_setup(payload: dict, catalog: list[dict], category: str | None) -> dict:
+    """DQ-T3 (a) — name the intent-gated tools the listing did not show, with the gate.
+
+    🔴 A LISTING THAT OMITS WITHOUT SAYING SO READS AS A COMPLETE, HEALTHY ANSWER — the same
+    class as `always_available` above and as `provider_unavailable` in tool_load. Measured
+    2026-08-13: five glossary tools are dropped at CATALOG ASSEMBLY unless the turn is
+    world-setup, so they are un-seeded, un-findable AND un-loadable. That is deliberate
+    (N5a-FULL, the confirmed over-reach) and it IS instrumented — but only into telemetry the
+    model never sees. From the model's side they are indistinguishable from tools that do not
+    exist, and it tells the user so.
+
+    Owner's decision on DQ-T3: option (a), stamp them the way T7-D2 stamps always-on tools.
+
+    THE OPPOSITE ERROR IS ALSO MEASURED, AND IT IS WORSE, WHICH IS WHY THE WORDING IS SHAPED THE
+    WAY IT IS. Naming a tool the capability floor had made unreachable produced 40,597 characters
+    of one repeated paragraph on the dogfood book before the author hit Stop (see
+    `filter_intent_gated_setup_tools`). So this stamp must never read as "here is a tool, go get
+    it". It says the tools are not callable, that the model cannot open the gate itself, and that
+    the move is to ASK THE USER — a route out that is not a retry.
+    """
+    withheld = _withheld_setup_tools(catalog, category)
+    if withheld:
+        payload["withheld_pending_setup_intent"] = {
+            "tools": withheld,
+            "why": _SETUP_GATE_WHY,
+            "how_to_open": _SETUP_GATE_HOW,
+            "do": _SETUP_GATE_DO,
+        }
+    return payload
+
+
 def tool_list_result(
     catalog: list[dict],
     category: str | None = None,
@@ -986,11 +1524,64 @@ def tool_list_result(
         categories: dict[str, list] = {}
         for t in tools:
             categories.setdefault(_domain_of(t["name"]), []).append(t)
-        return _stamp_incomplete({"categories": categories, "count": len(tools)}, unavailable_providers)
+        payload_all: dict = {"categories": categories, "count": len(tools)}
+        _stamp_always_available(payload_all, catalog, None, exclude)
+        _stamp_no_schemas(payload_all)
+        return _stamp_incomplete(payload_all, unavailable_providers)
+    if category not in CATEGORY_ENUM:
+        # T7-D3 — a category that is not a domain at all must say SO, not report itself empty.
+        #
+        # This function's contract is that `reason` lets a caller "tell 'no tools' from a bad
+        # guess". It could not: both answered the identical string. MEASURED in recorded traffic
+        # 2026-08-13 — the model sent `book}` (a mangled `book`) twice, plus `learning` and
+        # `media`, and each time was told "no tools currently available in this category". The
+        # `book` domain holds 16 current tools, so a single stray brace told the model the
+        # platform has no book tools.
+        #
+        # `category` declares an enum, but a consumer-local tool is dispatched here WITHOUT the
+        # gateway's JSON-schema validation, so an out-of-enum value arrives intact. The enum is
+        # therefore checked at the only layer that sees the call.
+        return _stamp_incomplete(
+            {
+                "category": category,
+                "count": 0,
+                "tools": [],
+                "reason": (
+                    f"unknown category {category!r} — that is not one of the tool domains, so "
+                    "this is a mistyped or invented name rather than an empty domain. Call "
+                    "tool_list again with one of: " + ", ".join(CATEGORY_ENUM) + "."
+                ),
+                "valid_categories": list(CATEGORY_ENUM),
+            },
+            unavailable_providers,
+        )
     tools = visible_tools(catalog, category, include_deprecated=include_deprecated, exclude=exclude)
     payload: dict = {"category": category, "count": len(tools), "tools": tools}
+    _stamp_no_schemas(payload)
+    held = _excluded_in_scope(catalog, category, exclude)
     if not tools:
-        payload["reason"] = "no tools currently available in this category"
+        # T7-D2 — `reason` is the field a caller uses to tell "no such tools" from "bad guess",
+        # so it must never assert the first when the EXCLUSION is what emptied the category.
+        #
+        # MEASURED LIVE 2026-08-13 (session 019ff9da). `research` holds exactly one tool,
+        # `web_search`, which is in ALWAYS_ON_CORE_NAMES and therefore excluded from listings as
+        # redundant — it is already advertised on every turn. So tool_list("research") returned
+        # count 0 and "no tools currently available in this category", while the group directory
+        # injected into that same system prompt says `research: External web research — search
+        # the open web for background facts (web_search). PAID.` and instructs the model to call
+        # tool_list to see a domain's tools. Asked to list them, the model answered "there are
+        # actually **no tools** currently listed under a specific research category."
+        #
+        # Same class as the `incomplete` stamp one function up, and for the same reason: a
+        # listing that omits without saying so reads as a complete, healthy answer.
+        payload["reason"] = (
+            "no tools currently available in this category"
+            if not held else
+            "every tool in this category is ALREADY advertised and callable right now, so it is "
+            "not repeated here: " + ", ".join(held) + ". This category is not empty."
+        )
+    _stamp_always_available(payload, catalog, category, exclude)
+    _stamp_withheld_setup(payload, catalog, category)
     return _stamp_incomplete(payload, unavailable_providers)
 
 
@@ -1001,6 +1592,7 @@ def tool_load_result(
     names: list[str] | None = None,
     category: str | None = None,
     unavailable_providers: set[str] | None = None,
+    legacy_index: dict[str, str | None] | None = None,
 ) -> tuple[dict, list[str]]:
     """Build the ``tool_load`` payload + the names to activate (contracts.md C2).
     Pure disclosure — returns full ``input_schema``(s); executes nothing. Unknown
@@ -1046,6 +1638,47 @@ def tool_load_result(
         loaded.append(entry)
     payload: dict = {"tools": loaded}
     missing = sorted(n for n in want if n not in seen and n not in broken)
+
+    # 🔴 A DEPRECATED TOOL IS NOT A NON-EXISTENT ONE, AND SAYING SO IS THE LIE THIS FUNCTION
+    # ALREADY WARNS ABOUT ONE PARAGRAPH DOWN.
+    #
+    # Since the 2026-08-25 widening, `drop_superseded_tools` removes EVERY legacy tool from the
+    # turn catalogue, so a legacy name reaches here as simply absent and fell into `not_found`.
+    # Measured 2026-09-03 against the live catalogue: `tool_load("book_get")` answered
+    # `{"not_found": ["book_get"]}` — for a tool that exists, is federated, and has
+    # `superseded_by: book_read` sitting in its own meta. That is the same false premise that
+    # cost the 2026-07-23 incident, arrived at from the other direction: there a live tool was
+    # called non-existent because its provider was down; here because it was deprecated.
+    #
+    # A model told "no such tool" stops looking. Told "deprecated, use X" it calls X — which is
+    # the entire point of dropping the predecessor. So the refusal NAMES THE SUCCESSOR.
+    #
+    # PINNED legacy tools never reach this branch: a pin keeps them IN the catalogue, so they
+    # load normally and come back labelled `deprecated: True`. That is deliberate (DQ-V3) — an
+    # explicit per-session user pin is not the model reaching a dead tool.
+    if missing and legacy_index:
+        retired = [n for n in missing if n in legacy_index]
+        if retired:
+            missing = [n for n in missing if n not in legacy_index]
+            payload["deprecated"] = [
+                {"name": n, "superseded_by": legacy_index[n]} if legacy_index[n]
+                else {"name": n} for n in retired
+            ]
+            _named = [f"{n} -> {legacy_index[n]}" for n in retired if legacy_index[n]]
+            _bare = [n for n in retired if not legacy_index[n]]
+            _parts = []
+            if _named:
+                _parts.append("use the replacement instead: " + ", ".join(_named))
+            if _bare:
+                _parts.append("retired with no replacement: " + ", ".join(_bare))
+            # A DISTINCT KEY, not `note`. The block below also writes `note` (for a provider
+            # outage or a genuine not_found), so one request mixing a deprecated name with an
+            # absent one would have silently lost whichever wrote first.
+            payload["deprecated_note"] = (
+                f"{', '.join(retired)} is deprecated and is no longer offered. "
+                + ". ".join(_parts) + ". Do NOT report it as missing — it exists, it is retired."
+            )
+
     if missing:
         # `not_found` ASSERTS that no such tool exists. During an outage that assertion is
         # unknowable: a down provider's tools are absent from the catalog entirely, so an
@@ -1067,7 +1700,21 @@ def tool_load_result(
                 "try again shortly."
             )
         else:
-            payload["not_found"] = missing
+            # DQ-T3 — the SAME lie as the outage case above, from a different cause. An
+            # intent-gated setup tool is absent from this turn's catalog by design, so an
+            # unresolvable name here is not "no such tool" — it is "not on THIS turn". Asserting
+            # non-existence is what makes the model tell the user the capability is missing.
+            _gated = [n for n in missing if n in INTENT_GATED_SETUP_TOOLS]
+            _really_missing = [n for n in missing if n not in INTENT_GATED_SETUP_TOOLS]
+            if _gated:
+                payload["withheld_pending_setup_intent"] = {
+                    "tools": _gated,
+                    "why": _SETUP_GATE_WHY,
+                    "how_to_open": _SETUP_GATE_HOW,
+                    "do": _SETUP_GATE_DO,
+                }
+            if _really_missing:
+                payload["not_found"] = _really_missing
     if broken & want:
         payload["unavailable"] = sorted(broken & want)
         payload["unavailable_reason"] = (
@@ -1241,17 +1888,23 @@ _EMBEDDING_MODEL_CACHE: dict[str, tuple[float, tuple[str, str] | None]] = {}
 
 
 async def _resolve_embedding_model(user_id: str) -> tuple[str, str] | None:
-    """The caller's configured embedding-capable model as ``(model_source,
-    model_ref)``, or ``None`` when the user has no `embedding`-capability
-    default configured. Never raises — `get_default_model()` itself is
-    best-effort."""
+    """The caller's embedding-capable model as ``(model_source, model_ref)``, or ``None``
+    when they have no ACTIVE embedding-capable model at all. Never raises.
+
+    D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE. This used the strict
+    `get_default_model("embedding", user_id)`, which 404s unless the user EXPLICITLY set an
+    'embedding' default — measured 2026-08-28: zero accounts on this deployment ever had, while
+    7 active embedding-capable models exist across the platform. `resolve_embedding_model`
+    falls back to the user's best active embedding-capable model server-side (provider-
+    registry's `internalResolveEmbeddingModel`, mirroring the existing planner-model
+    fallback), so this now returns None only when the user genuinely has no such model."""
     now = time.monotonic()
     cached = _EMBEDDING_MODEL_CACHE.get(user_id)
     if cached is not None and now < cached[0]:
         return cached[1]
     from app.client.provider_client import get_provider_client  # noqa: PLC0415
 
-    ref = await get_provider_client().get_default_model("embedding", user_id)
+    ref = await get_provider_client().resolve_embedding_model(user_id)
     _EMBEDDING_MODEL_CACHE[user_id] = (now + _EMBEDDING_MODEL_CACHE_TTL_S, ref)
     return ref
 

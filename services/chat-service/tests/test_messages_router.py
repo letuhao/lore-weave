@@ -142,8 +142,11 @@ class TestSendMessage:
         # All ops inside transaction run on conn:
         # 1st fetchval → parent_message_id, 2nd fetchval → next_branch, 3rd fetchval → sequence_num
         conn.fetchval.side_effect = [parent_msg_id, 1, 3]
-        # 1st execute → UPDATE (branch move), 2nd execute → INSERT, 3rd execute → UPDATE session
-        conn.execute.side_effect = ["UPDATE 2", "INSERT", "UPDATE"]
+        # 1st execute → UPDATE (branch move), then the per-session advisory lock taken by
+        # next_sequence_num (D-AN-ABORTED-TURNS-DETACHED-WRITE-RACES-THE-RETRYS-SEQUENCE),
+        # then INSERT, then UPDATE session. The lock is a real statement, so it is a real
+        # entry here — a strict side_effect list is a claim about what the code DOES.
+        conn.execute.side_effect = ["UPDATE 2", "LOCK", "INSERT", "UPDATE"]
 
         from app.models import ProviderCredentials
         mock_provider.return_value.resolve = AsyncMock(return_value=ProviderCredentials(

@@ -42,6 +42,10 @@ from loreweave_extraction.canonical import (
 
 logger = logging.getLogger(__name__)
 
+#: Relationship types the merge path knows how to move off a stranded entity before
+#: deleting it. Anything else raises rather than being silently detached.
+_MERGE_HANDLED_RELS = frozenset({"RELATES_TO", "EVIDENCED_BY", "ABOUT"})
+
 __all__ = ["EntityRow", "RecanonAction", "RecanonPlan", "plan_recanon", "run_recanon_backfill"]
 
 
@@ -57,6 +61,13 @@ class EntityRow:
     kind: str
     name: str
     canonical_name: str
+    #: The glossary entity this node mirrors, when it has one. **Load-bearing, not metadata.**
+    #: `:Entity(user_id, project_id, glossary_entity_id)` is UNIQUE, so folding two nodes that
+    #: carry DIFFERENT anchors either raises or silently unanchors one of them — and an
+    #: unanchored glossary entity is invisible in the KG while looking perfectly healthy in
+    #: the glossary. Defaulted so existing callers and tests keep working; the collision
+    #: guard treats `None` as "no claim", which is what a pre-anchor node is.
+    anchor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,12 +93,17 @@ class RecanonPlan:
     skipped_empty: int = 0    # name canonicalizes to empty (degenerate) — untouched
     rekeyed: int = 0
     merged: int = 0
+    #: Groups left untouched because their members mirror DIFFERENT glossary entities. Not a
+    #: failure and not a deferral — a refusal. See the guard in `plan_recanon`.
+    conflicts: list[tuple[str, ...]] = field(default_factory=list)
+    conflicted: int = 0
 
     def __repr__(self) -> str:  # pragma: no cover (debug aid)
         return (
             f"RecanonPlan(scanned={self.scanned}, clean={self.clean}, "
             f"skipped_empty={self.skipped_empty}, rekeyed={self.rekeyed}, "
-            f"merged={self.merged}, actions={len(self.actions)})"
+            f"merged={self.merged}, conflicted={self.conflicted}, "
+            f"actions={len(self.actions)})"
         )
 
 
@@ -128,6 +144,33 @@ def plan_recanon(rows: list[EntityRow]) -> RecanonPlan:
         group_sorted = sorted(group, key=lambda r: r.id)
         clean_sibling_exists = new_id in all_ids and new_id not in {r.id for r in group}
 
+        # 🔴 TWO DISTINCT GLOSSARY ENTITIES MUST NEVER BE FOLDED TOGETHER (T35e).
+        #
+        # Measured on the dev graph 2026-08-14: of 1826 planned actions, 7 were merges and
+        # SIX of them would have folded a node carrying one anchor into a node carrying a
+        # different one — 卡維嘉小姐, 精靈小姐, 魔王殿, 魔王大人. Honorific stripping is exactly
+        # the operation that makes two different characters canonicalise together: 精靈小姐
+        # ("Miss Elf") and 精靈 are one string apart, and the glossary knows they are two
+        # entities even when the canonicaliser cannot see it.
+        #
+        # `merge_entity`'s own Cypher had already found this class and said so — *"ALL 17 are
+        # multi-ANCHORED … a bare 'oldest wins' would have silently moved extraction writes
+        # between those nodes"* — and this planner, written earlier, does a bare oldest-wins.
+        #
+        # Such a group is REPORTED and LEFT ALONE. Both nodes want the same derived id, so
+        # they cannot both be re-keyed; leaving them stranded preserves the status quo (they
+        # still fork on re-extraction) while destroying nothing, and a human decides whether
+        # they are really one entity. Refusing to act is the only option here that cannot
+        # lose an author's data.
+        anchors = {r.anchor for r in group_sorted if r.anchor}
+        target_anchor = next((r.anchor for r in rows if r.id == new_id and r.anchor), None)
+        if target_anchor:
+            anchors.add(target_anchor)
+        if len(anchors) > 1:
+            plan.conflicts.append(tuple(r.id for r in group_sorted))
+            plan.conflicted += len(group_sorted)
+            continue
+
         if clean_sibling_exists:
             # A post-A5 node already lives at new_id → every stranded node merges
             # into it; the sibling survives untouched.
@@ -163,7 +206,13 @@ _LIST_ENTITIES_CYPHER = """
 MATCH (e:Entity)
 WHERE e.archived_at IS NULL
 RETURN e.id AS id, e.user_id AS user_id, e.project_id AS project_id,
-       e.kind AS kind, e.name AS name, e.canonical_name AS canonical_name
+       e.kind AS kind, e.name AS name, e.canonical_name AS canonical_name,
+       // 🔴 WITHOUT THIS THE COLLISION GUARD IS DEAD CODE. It shipped for exactly as long as
+       // it took to write a wiring test: every `EntityRow.anchor` defaulted to None, so the
+       // "two distinct glossary entities" set never had more than one member and the guard
+       // could not fire once in production. Built, unit-tested, and connected to nothing —
+       // the defect class this plan has now hit in a cache, a port and a gate.
+       e.glossary_entity_id AS anchor
 """
 
 
@@ -173,16 +222,23 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
     Cross-tenant read (operator-initiated, like the C17 alias-map backfill). With
     ``apply=False`` this mutates nothing — it returns the plan for review.
     """
-    from app.db.neo4j_repos.entities import merge_entity_at_id  # local: avoid import cycle
+    from app.db.graph_repos.entities import merge_entity_at_id  # local: avoid import cycle
 
     rows: list[EntityRow] = []
     result = await session.run(_LIST_ENTITIES_CYPHER)
     async for rec in result:
-        if not rec["id"] or not rec["user_id"] or not rec["name"]:
+        # `kind` belongs in this list and was missing from it. `entity_canonical_id` REQUIRES
+        # it and raises when it is empty, so one malformed node — a node written by something
+        # other than `merge_entity`, which is what an operator-run cross-tenant walk exists to
+        # find — aborted the whole backfill before it planned a single action. Skipping the row
+        # is what the other three fields already do, and it keeps the run's own `scanned`
+        # count honest rather than turning a bad row into zero work.
+        if not rec["id"] or not rec["user_id"] or not rec["name"] or not rec["kind"]:
             continue
         rows.append(EntityRow(
             id=rec["id"], user_id=rec["user_id"], project_id=rec["project_id"],
             kind=rec["kind"], name=rec["name"], canonical_name=rec["canonical_name"] or "",
+            anchor=rec["anchor"],
         ))
 
     plan = plan_recanon(rows)
@@ -202,6 +258,23 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
                 old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
                 canon=canonicalize_entity_name(a.name),
             )
+            # 🔴 `:EntityStatus` carries `entity_id` as a PROPERTY, not as an edge, so the
+            # re-key above STRANDS every status row that pointed at the old id. Proven by
+            # EXECUTING the apply path (T35f) -- the assertion read `0 == 1`: the status row
+            # survived and resolved to nothing. A canon read would then report the character
+            # as never having died.
+            #
+            # Measured on the dev graph the same day, 0 of 33 resolvable status rows sit on an
+            # entity this backfill re-keys, so the live run was safe BY LUCK. One new status on
+            # a stale entity makes it real, and nothing here was checking.
+            await session.run(
+                """
+                MATCH (st:EntityStatus {entity_id: $old_id})
+                WHERE st.user_id = $user_id
+                SET st.entity_id = $new_id
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
         else:  # merge
             merged = await merge_entity_at_id(
                 session, user_id=a.user_id, id=a.into_id, project_id=a.project_id,
@@ -211,14 +284,97 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
                 logger.warning("recanon merge target %s vanished; skipping %s", a.into_id, a.from_id)
                 continue
             # Re-point the stranded node's relations to the survivor, then remove it.
+            # 🔴 THREE DEFECTS IN THE STATEMENT THIS REPLACES, all found by executing it
+            # (T35f) rather than by reading it:
+            #
+            # 1. `OPTIONAL MATCH (old)-[r]->(o) MERGE (new)-[:RELATES_TO]->(o)` RAISES when the
+            #    stranded node has no outgoing relation: `o` is null and MERGE refuses to build
+            #    an edge to a missing node. That is the COMMON case, so `--apply` would have
+            #    died partway through and left the graph half-migrated.
+            # 2. The re-created edge carried NO PROPERTIES. A relation's `predicate` is its
+            #    meaning — "betrayed" and "guards" are one edge type and two different facts —
+            #    so every folded relation became a typeless link.
+            # 3. Only OUTGOING edges were re-pointed. An incoming `(x)-[:RELATES_TO]->(old)`
+            #    was deleted with the node and never rebuilt.
+            #
+            # Rewritten as three statements: copy out, copy in, then delete. Each is guarded by
+            # its own MATCH, so an absent edge is simply no rows rather than an exception.
+            await session.run(
+                """
+                MATCH (old:Entity {id: $old_id})-[r:RELATES_TO]->(o)
+                WHERE old.user_id = $user_id
+                MATCH (new:Entity {id: $new_id})
+                MERGE (new)-[n:RELATES_TO {predicate: r.predicate}]->(o)
+                SET n += properties(r)
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
+            await session.run(
+                """
+                MATCH (x)-[r:RELATES_TO]->(old:Entity {id: $old_id})
+                WHERE old.user_id = $user_id
+                MATCH (new:Entity {id: $new_id})
+                MERGE (x)-[n:RELATES_TO {predicate: r.predicate}]->(new)
+                SET n += properties(r)
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
+            # 🔴 `RELATES_TO` IS NOT THE ONLY EDGE ON AN ENTITY. Found by EXECUTING the
+            # apply path against a faithful clone of the dev graph (T35g): the Entity
+            # subgraph's `EVIDENCED_BY` count fell 1275 -> 1274 across the single merge,
+            # because the two statements above move `RELATES_TO` and the `DETACH DELETE`
+            # then takes everything else with it.
+            #
+            # On today's graph that one edge was a DUPLICATE -- the stranded node's only
+            # source was one the survivor already held -- so nothing was lost. That is luck,
+            # not design: a stranded node citing a source the survivor lacks would have its
+            # evidence deleted silently, and `ABOUT` (a Fact's link to the entity it is
+            # about) held at 248 only because this particular node had none.
+            await session.run(
+                """
+                MATCH (old:Entity {id: $old_id})-[r:EVIDENCED_BY]->(o)
+                WHERE old.user_id = $user_id
+                MATCH (new:Entity {id: $new_id})
+                MERGE (new)-[n:EVIDENCED_BY]->(o)
+                SET n += properties(r)
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
+            await session.run(
+                """
+                MATCH (f)-[r:ABOUT]->(old:Entity {id: $old_id})
+                WHERE old.user_id = $user_id
+                MATCH (new:Entity {id: $new_id})
+                MERGE (f)-[n:ABOUT]->(new)
+                SET n += properties(r)
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
+            # An enumerated list of edge types is only safe while it is complete, and the
+            # bug above IS that list being incomplete. So refuse rather than delete: a new
+            # relationship type reaching a merged entity stops the backfill by name instead
+            # of being dropped on the floor the way `EVIDENCED_BY` was.
+            probe = await session.run(
+                """
+                MATCH (old:Entity {id: $old_id})-[r]-() WHERE old.user_id = $user_id
+                RETURN collect(DISTINCT type(r)) AS kinds
+                """,
+                old_id=a.from_id, user_id=a.user_id,
+            )
+            rec = await probe.single()
+            unknown = sorted(set(rec["kinds"] if rec else []) - _MERGE_HANDLED_RELS)
+            if unknown:
+                raise RuntimeError(
+                    f"recanon merge would DELETE unmoved {'/'.join(unknown)} edge(s) on "
+                    f"{a.from_id}; teach the merge path to re-point them "
+                    f"(D-ML-A5-RECANON-BACKFILL, apply path) before re-running",
+                )
             await session.run(
                 """
                 MATCH (old:Entity {id: $old_id}) WHERE old.user_id = $user_id
-                MATCH (new:Entity {id: $new_id})
-                OPTIONAL MATCH (old)-[r:RELATES_TO]->(o) MERGE (new)-[:RELATES_TO]->(o)
-                WITH old MATCH (old)-[rel]-() DELETE rel WITH old DELETE old
+                DETACH DELETE old
                 """,
-                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+                old_id=a.from_id, user_id=a.user_id,
             )
     logger.info("recanon APPLIED: %r", plan)
     return plan
@@ -227,16 +383,31 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
 async def _cli_main() -> None:  # pragma: no cover (integration-only)
     import argparse
 
-    from app.db.neo4j import get_neo4j_driver, neo4j_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import close_neo4j_driver, init_neo4j_driver
+    from app.config import settings
 
     ap = argparse.ArgumentParser(description="A5 honorific re-canonicalization backfill")
     ap.add_argument("--apply", action="store_true", help="execute (default: dry-run)")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    get_neo4j_driver()
-    async with neo4j_session() as session:
-        plan = await run_recanon_backfill(session, apply=args.apply)
+    # `get_neo4j_driver` is a GETTER: it raises unless the FastAPI lifespan hook
+    # already ran, which it never does under `python -m`. The CLI owns the
+    # driver's whole lifecycle here.
+    await init_neo4j_driver()
+    # A re-key plus a cross-node MERGE is a structural mutation of whatever
+    # NEO4J_URI happens to point at, so say which graph out loud before doing it.
+    logger.info(
+        "recanon %s against uri=%s",
+        "APPLY" if args.apply else "DRY-RUN",
+        settings.neo4j_uri or "<unset>",
+    )
+    try:
+        async with graph_session(engine="neo4j") as session:
+            plan = await run_recanon_backfill(session, apply=args.apply)
+    finally:
+        await close_neo4j_driver()
     logger.info(
         "recanon %s: scanned=%d clean=%d rekeyed=%d merged=%d",
         "APPLIED" if args.apply else "DRY-RUN",

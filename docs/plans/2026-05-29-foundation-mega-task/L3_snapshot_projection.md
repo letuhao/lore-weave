@@ -70,7 +70,7 @@ ALTER TABLE <projection> ADD COLUMN last_verified_event_version BIGINT;
 
 ### L3.B — `Projection` trait + per-aggregate `apply_event()` runtime
 
-**Owning chunks:** 00_overview §4.4 (command flow), §5 (projections), 04_player_character (PC state model)
+**Owning chunks:** 00_overview §4.4 (command flow), §5 (projections), _superseded/04_player_character (PC state model)
 
 **Artifacts:**
 

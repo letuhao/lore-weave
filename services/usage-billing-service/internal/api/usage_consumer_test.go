@@ -252,3 +252,51 @@ func TestHandleMessage_MalformedEventIsPermanent(t *testing.T) {
 		t.Fatalf("expectations: %v", err)
 	}
 }
+
+// 🔴 D-BILL-PROVIDER-KIND — the CONSUMER half. parseUsageEvent read every other field
+// off the usage stream and silently skipped provider_kind, so every row the jobs path
+// produced landed with provider_kind='' — 99,683 of 103,072 rows (96.7%), last populated
+// 2026-07-21. The column is NOT NULL, so nothing errored; the answer to "which provider
+// is costing me" was simply blank. The producer half is asserted in provider-registry's
+// TestBuildUsageFields_CarriesProviderKind.
+func TestParseUsageEvent_CarriesProviderKind(t *testing.T) {
+	req, owner, model := uuid.New(), uuid.New(), uuid.New()
+	p, err := parseUsageEvent(map[string]any{
+		"request_id":     req.String(),
+		"owner_user_id":  owner.String(),
+		"model_ref":      model.String(),
+		"model_source":   "user_model",
+		"provider_kind":  "ollama",
+		"input_tokens":   "10",
+		"output_tokens":  "5",
+		"request_status": "success",
+	})
+	if err != nil {
+		t.Fatalf("parseUsageEvent: %v", err)
+	}
+	if p.ProviderKind != "ollama" {
+		t.Errorf("ProviderKind = %q, want \"ollama\" — the stream carries it now, and "+
+			"dropping it here writes an unattributable spend row", p.ProviderKind)
+	}
+}
+
+// A row written before usage_outbox carried the column arrives with no provider_kind
+// field at all. That must parse cleanly as "" — a hard failure here would stall the
+// consumer on the backlog and stop ALL usage accounting.
+func TestParseUsageEvent_LegacyRowWithoutProviderKind(t *testing.T) {
+	req, owner, model := uuid.New(), uuid.New(), uuid.New()
+	p, err := parseUsageEvent(map[string]any{
+		"request_id":    req.String(),
+		"owner_user_id": owner.String(),
+		"model_ref":     model.String(),
+		"model_source":  "user_model",
+		"input_tokens":  "1",
+		"output_tokens": "1",
+	})
+	if err != nil {
+		t.Fatalf("a legacy row must still parse: %v", err)
+	}
+	if p.ProviderKind != "" {
+		t.Errorf("ProviderKind = %q, want empty for a pre-column row", p.ProviderKind)
+	}
+}

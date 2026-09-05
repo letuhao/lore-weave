@@ -7,6 +7,15 @@ os.environ.setdefault("KNOWLEDGE_DB_URL", "postgresql://u:p@h:5432/knowledge")
 os.environ.setdefault("GLOSSARY_DB_URL", "postgresql://u:p@h:5432/glossary")
 os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "default_test_token")
 os.environ.setdefault("JWT_SECRET", "s" * 32)
+# T54 — this suite exercises the NEO4J adapter (its doubles are Neo4j-session shaped), so it
+# says which backend it tests rather than inheriting one. The process default is now `age`
+# (§8.1), and inheriting it silently turned 41 tests into 500s that looked like regressions.
+#
+# ⚠️ `setdefault`, not an assignment: a caller that pins a backend on purpose (the AGE
+# conformance run does) must still win. And because pinning here would otherwise mean NOTHING
+# asserts the real default, `tests/unit/test_graph_backend_default.py` reads it from the
+# provider module instead of from the environment.
+os.environ.setdefault("KNOWLEDGE_GRAPH_BACKEND", "neo4j")
 
 
 import pytest  # noqa: E402

@@ -3,7 +3,6 @@
 // Admin/author opt-in for force-propagate (gate 1 of 3, M4 §9.8.3). Triggers consent collector with 24h timeout per Q-L5H-1.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminCanonOverrideRequestedV1 {

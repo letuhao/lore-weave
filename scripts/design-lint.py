@@ -355,9 +355,18 @@ def registered_prefixes(catalog_path: str) -> set[str]:
     return prefixes
 
 
+# A DECLARED exclusion, not a silent skip: `_superseded/` holds design that a
+# later round sealed AGAINST and that must not be built from. Its `_index.md`
+# carries the banner saying so, and its outbound links are deliberately left
+# unrepaired — repairing links inside a document nobody may build from is churn
+# that makes it look maintained. The name is fixed here so a directory cannot
+# quietly opt itself out by any other spelling.
+SUPERSEDED_DIR = "_superseded"
+
+
 def iter_md_files(root: str):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames.sort()
+        dirnames[:] = [d for d in sorted(dirnames) if d != SUPERSEDED_DIR]
         for fn in sorted(filenames):
             if fn.endswith(".md"):
                 yield os.path.join(dirpath, fn)
@@ -381,6 +390,13 @@ def iter_staged_md_files(root: str):
         if not rel.strip().endswith(".md"):
             continue
         path = os.path.abspath(os.path.join(repo_root, rel.strip()))
+        # **The same exclusion as the full walk, and it must be repeated here.**
+        # Applying it only to `iter_md_files` left `--staged` — the path the
+        # pre-commit hook actually uses — scanning `_superseded/` and failing on
+        # 15 links that are unrepaired ON PURPOSE. Two entry points, one rule:
+        # the second one is where an exclusion goes to be forgotten.
+        if f"{os.sep}{SUPERSEDED_DIR}{os.sep}" in path:
+            continue
         if os.path.isfile(path) and (path + os.sep).startswith(root + os.sep):
             yield path
 

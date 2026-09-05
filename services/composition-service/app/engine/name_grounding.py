@@ -49,7 +49,37 @@ from dataclasses import dataclass, field
 
 from loreweave_extraction.name_normalize import normalize_entity_name
 
-_TOKEN = re.compile(r"([A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ\-]+(?:['’](?:s|t|ll|re|ve|m|d))?)")
+# ⚠️ UNICODE-AWARE, AND CASE IS DECIDED IN PYTHON — NOT BY A CHARACTER RANGE.
+#
+# This was `[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ\-]+…`: Latin-1 only. Vietnamese is a CASED LATIN script whose
+# letters live in Latin Extended Additional (U+1E00-U+1EFF), so codepoints such as U+1EE5 and
+# U+1ED9 fall outside those ranges and the tokeniser could not see words containing them.
+#
+# Measured on the QC-5 acceptance draft (job `019ff423`), which invented a character with ZERO
+# canon entities: the extractor emitted nothing for it, `unanchored_names` came back `[]`, and
+# the envelope reported `name_grounding: "checked"`. **A check that cannot see the name it
+# exists to catch, reporting that it checked.** The LLM canon check caught the invention; this
+# one — the cheap deterministic one whose whole job it is — did not.
+#
+# Ranges cannot fix this: Latin Extended-A/Additional interleave upper and lower case, so no
+# range expresses "a capital". The tail is therefore matched permissively as word characters
+# (`\w` is Unicode-aware in Python 3) and CASE is checked in `_is_capitalised`, which uses
+# `str.isupper()`/`str.islower()` and so works for any cased script. A caseless script (CJK)
+# yields False from `.isupper()` and is excluded here — which is correct, because those books
+# take the `caseless_script` branch that says so honestly rather than pretending to check.
+_TOKEN = re.compile(r"([^\W\d_][\w\-]*(?:['’](?:s|t|ll|re|ve|m|d))?)", re.UNICODE)
+
+
+def _is_capitalised(word: str) -> bool:
+    """A leading capital followed by no other capital — the shape a name takes in a cased
+    script. Rejects ALLCAPS (which is emphasis, not a name) and rejects caseless scripts,
+    whose `.isupper()` is False for every character."""
+    core = word.split("'")[0].split("’")[0].replace("-", "")
+    if len(core) < 2 or not core[0].isupper():
+        return False
+    return not any(c.isupper() for c in core[1:])
+
+
 _SENTENCE_START = re.compile(r"(?:^|[.!?;:\n\"“”‘’()\[\]—–\-]\s*)$")
 
 #: Possessive and contraction tails. Run against the REAL chapter, the first version of this
@@ -209,16 +239,107 @@ def extract_names(text: str, corpus: str | None = None) -> set[str]:
     """
     if not text:
         return set()
-    lowercase = frozenset(re.findall(r"\b([a-zà-öø-ÿ]{2,})\b", corpus if corpus is not None else text))
+    # Same widening as `_TOKEN`, and for the same reason: a lowercase Vietnamese word
+    # must count as lowercase evidence, or a word that also appears lowercased
+    # mid-sentence is misjudged as a name.
+    lowercase = frozenset(
+        w for w in re.findall(r"\b([^\W\d_]{2,})\b", corpus if corpus is not None else text)
+        if w[:1].islower())
     spans = _quoted_spans(text)
     seen: dict[str, bool] = {}
     for m in _TOKEN.finditer(text):
         word = _normalise(m.group(1))
-        if len(word) < 3 or _in_quotes(m.start(), spans):
+        # `_TOKEN` is permissive on purpose now; capitalisation is the real predicate and it
+        # is decided here, where `str.isupper()` works for every cased script.
+        if len(word) < 3 or not _is_capitalised(word) or _in_quotes(m.start(), spans):
             continue
         mid = not _SENTENCE_START.search(text[max(0, m.start() - 3):m.start()])
         seen[word] = seen.get(word, False) or mid
     return {w for w, mid in seen.items() if _is_name(w, mid, lowercase)}
+
+
+def extract_name_runs(text: str, corpus: str | None = None) -> set[str]:
+    """Consecutive capitalised tokens as ONE candidate name — `Thanh Trach Uyen`, not three words.
+
+    §2.1b. `extract_names` emits single WORDS, and `audit_names` expands the known cast to its
+    components for a stated reason: *"an invented full name whose FAMILY name matches a canon
+    character will now anchor on that part, trading some recall for a large precision gain"*.
+    That trade is right, and this is the half that buys the recall back: a novel COMBINATION of
+    known syllables — the shape a Vietnamese invented name takes, measured 2026-08-21 as
+    `unanchored: []` on a draft that invented a character — is only visible if something
+    compares the whole run against the whole name.
+
+    Two guards, both from the module's rule that a false accusation is the error that matters:
+
+    * **A run needs two or more ADJACENT capitalised tokens.** `The door opened` is not a run,
+      because `door` is not capitalised — sentence-initial ambiguity cannot manufacture one.
+    * **A leading token that appears lowercased anywhere in the corpus is trimmed.** `The Grey
+      Wren` at a sentence start yields `Grey Wren`, because `the` occurs lowercase elsewhere and
+      is therefore a sentence-position artefact rather than part of the name.
+    """
+    if not text:
+        return set()
+    lowercase = frozenset(
+        w for w in re.findall(r"([^\W\d_]{2,})", corpus if corpus is not None else text)
+        if w[:1].islower())
+    spans = _quoted_spans(text)
+    runs: set[str] = set()
+    current: list[str] = []
+    prev_end: int | None = None
+
+    def _flush() -> None:
+        words = list(current)
+        # Trim sentence-position artefacts at the HEAD. `lowercase` alone is not enough: on a
+        # short passage `the`/`then` may never appear lowercased, and `The Lane` / `Then
+        # Blorpnax` then look like two-word names — a false accusation, the error direction
+        # this module says matters. `_FUNCTION_WORDS` catches them regardless of corpus size.
+        while words and (words[0].lower() in lowercase
+                         or words[0].lower() in _FUNCTION_WORDS):
+            words.pop(0)
+        if len(words) >= 2:
+            # both forms: the trimmed one is what gets REPORTED, the untrimmed one is what a
+            # canon alias like `The Grey Wren` is actually stored as, and it must still anchor.
+            runs.add(" ".join(words))
+        # a run that trims down to one word is not a run — the per-word pass handles it, which
+        # is where plural tolerance and near-miss logic already live.
+
+    for m in _TOKEN.finditer(text):
+        word = _normalise(m.group(1))
+        adjacent = prev_end is not None and text[prev_end:m.start()] == " "
+        if _is_capitalised(word) and not _in_quotes(m.start(), spans):
+            if current and not adjacent:
+                _flush()
+                current = []
+            current.append(word)
+        else:
+            _flush()
+            current = []
+        prev_end = m.end()
+    _flush()
+    return runs
+
+
+def known_names_from_cast(rows: list[dict] | None) -> set[str] | None:
+    """The authored surface forms for a book, as `audit_names(known_names=…)` wants them.
+
+    Accepts both cast shapes this codebase has: the KAL `cast` read returns `name`/`aliases`,
+    while by-ids and select-for-context return `cached_name`/`cached_aliases`. Reading only one
+    of them is how "36 entities, 0 with a surface form" shipped once already, so both are taken.
+
+    Returns **None** for an empty or absent cast rather than an empty set, and the distinction
+    is load-bearing: `audit_names` treats a falsy `known_names` as "fall back to the prompt
+    proxy", whereas an empty set that reached the glossary branch would mean "this book has no
+    names" and accuse every proper noun in the draft.
+    """
+    if not rows:
+        return None
+    out: set[str] = set()
+    for e in rows:
+        for raw in (e.get("name"), e.get("cached_name"),
+                    *(e.get("aliases") or []), *(e.get("cached_aliases") or [])):
+            if isinstance(raw, str) and raw.strip():
+                out.add(raw.strip())
+    return out or None
 
 
 def audit_names(draft: str, grounding: str, language: str | None = None,
@@ -243,10 +364,32 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
     # every capitalised non-function token as something the story knows about.
     if known_names:
         truth = "glossary"
-        known = {_normalise(w) for w in known_names if len(_normalise(w)) >= 3}
+        # ⚠️ A MULTI-WORD CANON NAME MUST ALSO ANCHOR ITS PARTS.
+        #
+        # The extractor emits single WORDS; the glossary holds full names. So `Lâm Uyên` in
+        # `known` never matched the extracted `Lâm` or `Uyên`, and both were reported as
+        # unanchored — the check accusing the book's own protagonist. Not Vietnamese-specific:
+        # `Zaphod Beeblebrox` breaks identically in English. It stayed invisible only because
+        # the Latin-1 tokeniser could not see Vietnamese words at all, so this book produced
+        # no extractions to mismatch.
+        #
+        # Expanding to components is the right direction for THIS check by its own stated
+        # rule — *"a name missing from `known` becomes a false accusation an author reads; a
+        # spurious extra entry in `known` only suppresses one advisory line"*. The cost, said
+        # plainly: an invented full name whose FAMILY name matches a canon character will
+        # now anchor on that part, trading some recall for a large precision gain.
+        known = set()
+        for w in known_names:
+            norm = _normalise(w)
+            if len(norm) >= 3:
+                known.add(norm)
+            for part in norm.replace("-", " ").split():
+                if len(part) >= 3:
+                    known.add(part)
     else:
         truth = "prompt_proxy"
         known = {_normalise(m.group(1)) for m in _TOKEN.finditer(grounding)
+                 if _is_capitalised(_normalise(m.group(1)))
                  if _normalise(m.group(1)).lower() not in _FUNCTION_WORDS
                  and len(_normalise(m.group(1))) >= 3}
     if not known:
@@ -254,7 +397,40 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
         # unanchored, which is true but useless — and would flood the field on exactly the runs
         # where nothing was given. Report the method, claim nothing.
         return NameAudit(method="empty", truth_source="none")
-    drafted = extract_names(draft, corpus=corpus)
+    # §2.1b — RUNS FIRST. `known` above was expanded to components, which anchors an invented
+    # name that shares a syllable with a real one. Comparing the whole run against the whole
+    # name is what sees the novel COMBINATION; the per-word pass below still runs for anything
+    # a run did not cover, so single-word names are unaffected.
+    known_full = {_normalise(w) for w in (known_names or ()) if len(_normalise(w)) >= 3}
+    run_unanchored: list[str] = []
+    covered: set[str] = set()
+    def _trim_head(n: str) -> str:
+        """Drop leading function words so BOTH sides are compared the same way.
+
+        `extract_name_runs` trims `The` off a run as a sentence-position artefact. If the
+        stored alias is `The Grey Wren`, trimming only the draft side means the authored alias
+        never matches and is reported as invented — a false accusation, and the exact error
+        direction this module says matters. Symmetry is the fix, not a longer allowlist.
+        """
+        parts = n.split()
+        while parts and parts[0] in _FUNCTION_WORDS:
+            parts.pop(0)
+        return " ".join(parts)
+
+    known_full_norm = {normalize_entity_name(k) for k in known_full}
+    known_full_norm |= {_trim_head(k) for k in known_full_norm}
+    for run in sorted(extract_name_runs(draft, corpus=corpus)):
+        covered |= set(run.split())
+        low = normalize_entity_name(run)
+        # plural tolerance, mirroring the per-word pass: `Scribes` is the plural of `Scribe`,
+        # not a near miss of it.
+        low_trimmed = _trim_head(low)
+        forms = {low, low.rstrip("s"), low + "s",
+                 low_trimmed, low_trimmed.rstrip("s"), low_trimmed + "s"}
+        if forms & known_full_norm:
+            continue  # a known FULL name anchors ALL of its words
+        run_unanchored.append(run)
+    drafted = {w for w in extract_names(draft, corpus=corpus) if w not in covered}
     # ML-2 — the equivalence key is NFKC + casefold + Han-simplified fold, not `.lower()`.
     #
     # Caught by `language-bias-gate`, RED since this module was written on 2026-08-01 and
@@ -293,5 +469,6 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
             near.append({"name": name, "closest": closest, "distance": best})
         else:
             unanchored.append(name)
-    return NameAudit(method="capitalised_latin", truth_source=truth, unanchored=unanchored,
+    return NameAudit(method="capitalised_latin", truth_source=truth,
+                     unanchored=sorted(run_unanchored + unanchored),
                      near_misses=near, known_count=len(known))

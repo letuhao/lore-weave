@@ -482,7 +482,8 @@
       "adding": "Añadiendo...",
       "submit": "Añadir Modelo",
       "pricing_summary": "Coste: entrada ${{input}}/1M · salida ${{output}}/1M",
-      "pricing_missing": "El proveedor no publica precios; añádelos manualmente una vez registrado el modelo."
+      "pricing_missing": "El proveedor no publica precios; añádelos manualmente una vez registrado el modelo.",
+      "context_too_small": "Demasiado pequeño para chatear: solo las herramientas del asistente necesitan unos {{floor}} tokens antes de añadir tu libro, así que el chat fallará antes de empezar. Usa una ventana mayor o reserva este modelo para otras tareas."
     },
     "edit": {
       "aria": "Editar modelo",
@@ -554,7 +555,9 @@
     "plannerHint": "El modelo de chat que utiliza el asistente de glosario para crear planes de varios pasos. Elige un modelo potente y con capacidad de uso de herramientas; de lo contrario, la planificación recurrirá a un modelo de chat arbitrario y suele fallar.",
     "none": "Ninguno",
     "empty": "No hay modelos capaces configurados.",
-    "saved": "Predeterminado actualizado"
+    "saved": "Predeterminado actualizado",
+    "composer": "Compositor predeterminado",
+    "composerHint": "El modelo que escribe tu prosa cuando un libro no tiene un modelo propio. Configúralo con cuidado: la generación es el proceso más costoso y nada consumirá tus créditos de modelo de chat en tu nombre."
   },
   "external_services": {
     "delete_blocked": "Este servicio no se puede eliminar: su modelo está siendo utilizado por {{count}} trabajo(s) activo(s). Deténlos primero.",

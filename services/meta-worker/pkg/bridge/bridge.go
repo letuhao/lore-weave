@@ -31,6 +31,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,6 +58,17 @@ var ErrAlreadyRegistered = errors.New("bridge: reality already registered")
 type Registrar interface {
 	Register(ctx context.Context, r RegisterReq) error
 	Transition(ctx context.Context, t TransitionReq) (newState string, err error)
+	// RecordOrphans replaces the finding set for one shard (W5-REMEDIATE).
+	RecordOrphans(ctx context.Context, r RecordOrphansReq) (recorded, cleared int, err error)
+	// GrantActorControl / RevokeActorControl are `actor_control_binding`'s
+	// writer — the one it has never had. See actor_control.go.
+	GrantActorControl(ctx context.Context, r GrantControlReq) error
+	RevokeActorControl(ctx context.Context, r RevokeControlReq) error
+	// ReadActorControl answers "who drives this actor". A READ on the interface
+	// beside two writes, because the read is the one that needs the audit row:
+	// it is keyed by ACTOR with no user predicate, which is
+	// `actor_binding_cross_user` in meta-sensitive-read-paths.yml.
+	ReadActorControl(ctx context.Context, r ReadControlReq) (*LiveBinding, error)
 }
 
 // AuditSink records one service_to_service_audit row per bridge call.
@@ -80,6 +93,45 @@ type RegisterReq struct {
 	Locale       string `json:"locale"`
 	DeployCohort int    `json:"deploy_cohort"`
 	Reason       string `json:"reason"`
+
+	// OwnerUserID is the user who owns this reality (W6). EMPTY means the
+	// platform owns it, which the server records as owner_kind='system'.
+	//
+	// The tier is DERIVED here rather than accepted from the client: a client
+	// that could send owner_kind independently could send
+	// ('system', <a user id>) or ('user', NULL), and the table's CHECK
+	// constraints would reject the write at the very end of provisioning
+	// instead of at its edge. One field in, one consistent pair out.
+	OwnerUserID string `json:"owner_user_id,omitempty"`
+}
+
+// OrphanFinding is one row of a scan result (W5-REMEDIATE).
+//
+// `RealityID` is empty EXACTLY for an untracked database — a `lw_reality_*`
+// database no registry row claims, which is the class that matters most because
+// capacity counts registry rows and so cannot see it. The table's CHECK
+// constraints enforce that correspondence; `deriveFindingReality` below refuses
+// to send a payload that would violate them, so the database is not the first
+// thing to notice a malformed finding.
+type OrphanFinding struct {
+	DBName       string         `json:"db_name"`
+	FindingClass string         `json:"finding_class"`
+	RealityID    string         `json:"reality_id,omitempty"`
+	Detail       map[string]any `json:"detail,omitempty"`
+}
+
+// RecordOrphansReq replaces the finding set for one shard.
+//
+// WHOLE-SHARD REPLACE, not append: `orphan_scan_finding` is STATE ("what is
+// wrong now"), so a finding that has cleared must disappear. Sending the full
+// set and letting the server reconcile is what makes a cleared finding
+// impossible to leave behind — an append-only protocol would need the client to
+// remember what it reported last time, and a reaper that forgets grows a list
+// of ghosts.
+type RecordOrphansReq struct {
+	ShardHost string          `json:"shard_host"`
+	Findings  []OrphanFinding `json:"findings"`
+	Reason    string          `json:"reason"`
 }
 
 // TransitionReq is the reality transition payload.
@@ -120,6 +172,16 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /internal/provisioner/register-reality", s.guarded("register-reality", s.handleRegister))
 	mux.HandleFunc("POST /internal/provisioner/transition", s.guarded("transition", s.handleTransition))
+	mux.HandleFunc("POST /internal/provisioner/record-orphans", s.guarded("record-orphans", s.handleRecordOrphans))
+	// `actor_control_binding`'s writer — see actor_control.go. Same auth, same
+	// audit row, same server-builds-the-intent scoping as the three above.
+	mux.HandleFunc("POST /internal/provisioner/grant-actor-control", s.guarded("grant-actor-control", s.handleGrantControl))
+	mux.HandleFunc("POST /internal/provisioner/revoke-actor-control", s.guarded("revoke-actor-control", s.handleRevokeControl))
+	// The READ half. It exists so a caller that is not the writer can ask who
+	// drives an actor WITHOUT writing its own SELECT — there is no audited
+	// cross-user read path outside this package, and the alternative every
+	// caller reaches for is a bare query the lint then catches.
+	mux.HandleFunc("POST /internal/provisioner/read-actor-control", s.guarded("read-actor-control", s.handleReadControl))
 	return mux
 }
 
@@ -181,6 +243,28 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) (int, er
 	}
 }
 
+func (s *Server) handleRecordOrphans(w http.ResponseWriter, r *http.Request) (int, error) {
+	var req RecordOrphansReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad json: " + err.Error()})
+		return http.StatusBadRequest, nil
+	}
+	if strings.TrimSpace(req.ShardHost) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "shard_host required"})
+		return http.StatusBadRequest, nil
+	}
+	// An EMPTY findings list is valid and meaningful: it says "this shard is
+	// clean", and the reconcile below then clears every stale row. Rejecting it
+	// would make a shard that just became healthy keep its old findings forever.
+	recorded, cleared, err := s.reg.RecordOrphans(r.Context(), req)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return http.StatusInternalServerError, err
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"recorded": recorded, "cleared": cleared})
+	return http.StatusOK, nil
+}
+
 func (s *Server) handleTransition(w http.ResponseWriter, r *http.Request) (int, error) {
 	var req TransitionReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -229,6 +313,53 @@ const WorldServiceActorID = "00000000-0000-0000-0000-0000000000a1"
 type MetaRegistrar struct {
 	Cfg    *meta.Config
 	Caller string // the caller's service-principal UUID (audit Actor.ID)
+	// Pool is a READ handle, used only to decide insert-vs-update and to find
+	// findings that have cleared. Every WRITE still goes through MetaWrite;
+	// contracts/meta exposes no upsert (OpInsert/OpUpdate/OpDelete only), so
+	// the reconcile has to know what is already there.
+	Pool *pgxpool.Pool
+	// ReadAudit records the `actor_binding_cross_user` row for the by-actor
+	// binding read. Optional so unit tests need no database; production wires
+	// it, and `nil` means the read happens WITHOUT its audit row, which is why
+	// the wiring is asserted rather than assumed at startup.
+	ReadAudit ReadAuditor
+}
+
+// deriveOwner turns the ONE field a client may send into the (owner_kind,
+// owner_user_id) pair `reality_registry` requires — W6's tenancy tier.
+//
+// Extracted and exported-to-tests because a cold-start review found this
+// decision — the single place `owner_kind` is chosen — had **no test and no
+// bite**: every `TestRegister*` routes through a fake Registrar and exercises
+// the HTTP handler, so replacing the whole derivation with `ownerKind := "user"`
+// left the entire Go suite green. The four bites that did exist all covered the
+// argv TRANSPORT, never the DECISION.
+//
+// Returns `any` for the id so an absent owner becomes a real SQL NULL.
+func deriveOwner(raw string) (kind string, id any, err error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		// Platform-owned. A REAL category, not "unknown".
+		return "system", nil, nil
+	}
+	oid, perr := uuid.Parse(s)
+	if perr != nil {
+		return "", nil, fmt.Errorf("register: owner_user_id not a uuid: %w", perr)
+	}
+	// The nil UUID is not an owner. Accepting it wrote ('user', 00000000-…) —
+	// a reality owned by a user that cannot exist, which satisfies every CHECK
+	// on the table and sits in the partial owner index. The same discipline is
+	// already applied to reality_id (provision_reality.go rejects uuid.Nil);
+	// it was simply not carried across to the new id column.
+	//
+	// It is REFUSED rather than coerced to system-owned: an operator who typed
+	// an owner meant to set one, and silently producing a platform-owned
+	// reality while reporting success is the worse of the two failures.
+	if oid == uuid.Nil {
+		return "", nil, fmt.Errorf(
+			"register: owner_user_id must not be the nil UUID (omit the field for a platform-owned reality)")
+	}
+	return "user", oid, nil
 }
 
 // Register INSERTs the reality_registry row via MetaWrite (I8). A reality_id PK
@@ -238,6 +369,15 @@ func (m MetaRegistrar) Register(ctx context.Context, r RegisterReq) error {
 	if err != nil {
 		return fmt.Errorf("register: reality_id not a uuid: %w", err)
 	}
+	// W6 — ownership. The tier is derived from whether an owner was supplied,
+	// so the pair written is consistent by construction and the table's
+	// owner_system_null / owner_user_set CHECKs can never be the thing that
+	// discovers a mistake.
+	ownerKind, ownerUserID, err := deriveOwner(r.OwnerUserID)
+	if err != nil {
+		return err
+	}
+
 	intent := meta.MetaWriteIntent{
 		Table:     "reality_registry",
 		Operation: meta.OpInsert,
@@ -251,6 +391,8 @@ func (m MetaRegistrar) Register(ctx context.Context, r RegisterReq) error {
 			"session_max_pcs":   10,
 			"session_max_npcs":  10,
 			"session_max_total": 20,
+			"owner_kind":        ownerKind,
+			"owner_user_id":     ownerUserID,
 		},
 		// ActorSystem (not Service): the lifecycle_transition_audit.actor_type
 		// CHECK allows only owner/admin/system/cron, and the provisioner is a
@@ -266,6 +408,162 @@ func (m MetaRegistrar) Register(ctx context.Context, r RegisterReq) error {
 		return err
 	}
 	return nil
+}
+
+// RecordOrphans replaces the finding set for one shard (W5-REMEDIATE).
+//
+// RECONCILE, not append. `orphan_scan_finding` is state, so this UPSERTs every
+// finding the scanner reported and DELETEs every row for the shard it did not.
+// A finding that has cleared must vanish, or the operator worklist becomes a
+// list of ghosts and stops being read — the failure mode that makes a detector
+// worthless faster than not having one.
+//
+// `first_seen_at` survives an upsert (only `last_seen_at` and `detail` move), so
+// "this has been broken for six days" stays answerable. That is the number an
+// operator actually triages on.
+//
+// Every write goes through MetaWrite so each lands its same-TX `meta_write_audit`
+// row (I8). The scanner cannot write this table directly — the
+// meta-write-discipline lint forbids any INSERT/UPDATE/DELETE on a meta table
+// outside contracts/meta, which is exactly why this endpoint exists.
+func (m MetaRegistrar) RecordOrphans(ctx context.Context, r RecordOrphansReq) (int, int, error) {
+	shard := strings.TrimSpace(r.ShardHost)
+	if shard == "" {
+		return 0, 0, fmt.Errorf("record-orphans: shard_host required")
+	}
+
+	existing, err := m.shardFindings(ctx, shard)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	reported := make(map[string]bool, len(r.Findings))
+	intents := make([]meta.MetaWriteIntent, 0, len(r.Findings))
+	for _, f := range r.Findings {
+		name := strings.TrimSpace(f.DBName)
+		if name == "" {
+			return 0, 0, fmt.Errorf("record-orphans: a finding has no db_name")
+		}
+		rid, derr := deriveFindingReality(f.FindingClass, f.RealityID)
+		if derr != nil {
+			return 0, 0, derr
+		}
+		reported[name] = true
+		detail := f.Detail
+		if detail == nil {
+			detail = map[string]any{}
+		}
+		vals := map[string]any{
+			"reality_id":    rid,
+			"finding_class": f.FindingClass,
+			"detail":        detail,
+			// Written on EVERY scan, insert or update. The first version left
+			// this to the column DEFAULT, so it was set once and never moved —
+			// the column said "last confirmed at" and meant "first seen at",
+			// and an operator reading it would believe a finding was stale when
+			// the scanner had just re-confirmed it a minute ago. Caught by
+			// reading the readback rather than the exit code.
+			"last_seen_at": time.Unix(0, m.Cfg.Clock.NowUnixNano()).UTC(),
+		}
+		op := meta.OpInsert
+		if existing[name] {
+			// UPDATE, so `first_seen_at` is untouched: "this has been broken
+			// for six days" is the number an operator triages on, and an
+			// insert-every-scan would reset it to now on every tick.
+			op = meta.OpUpdate
+		} else {
+			vals["shard_host"] = shard
+			vals["db_name"] = name
+		}
+		intents = append(intents, meta.MetaWriteIntent{
+			Table:     "orphan_scan_finding",
+			Operation: op,
+			PK:        map[string]any{"shard_host": shard, "db_name": name},
+			NewValues: vals,
+			Actor:     meta.Actor{Type: meta.ActorSystem, ID: m.Caller},
+			Reason:    orDefault(r.Reason, "orphan scan: record finding"),
+		})
+	}
+
+	// Clear what the scanner no longer reports.
+	var stale []string
+	for name := range existing {
+		if !reported[name] {
+			stale = append(stale, name)
+		}
+	}
+	sort.Strings(stale) // deterministic intent order
+	for _, name := range stale {
+		intents = append(intents, meta.MetaWriteIntent{
+			Table:     "orphan_scan_finding",
+			Operation: meta.OpDelete,
+			PK:        map[string]any{"shard_host": shard, "db_name": name},
+			Actor:     meta.Actor{Type: meta.ActorSystem, ID: m.Caller},
+			Reason:    orDefault(r.Reason, "orphan scan: finding cleared"),
+		})
+	}
+
+	if len(intents) == 0 {
+		return 0, 0, nil
+	}
+	if _, werr := meta.MetaWriteBatch(ctx, m.Cfg, intents); werr != nil {
+		return 0, 0, fmt.Errorf("record-orphans: %w", werr)
+	}
+	return len(r.Findings), len(stale), nil
+}
+
+// deriveFindingReality turns (class, id) into the reality_id column value,
+// REFUSING any pair the table's CHECK constraints would reject.
+//
+// The correspondence is the point of the class: an untracked database is one no
+// registry row claims, so it has no reality; every other class names a row and
+// must carry its id. Validating here means a malformed finding fails at the
+// edge with a sentence, rather than deep inside a MetaWriteBatch with a
+// constraint name — the same reason `deriveOwner` exists one function up.
+func deriveFindingReality(class, rawID string) (any, error) {
+	const untracked = "orphan_untracked_database"
+	id := strings.TrimSpace(rawID)
+	if class == untracked {
+		if id != "" {
+			return nil, fmt.Errorf(
+				"record-orphans: %s carries reality_id %q, but an untracked database is by "+
+					"definition one no registry row claims", untracked, id)
+		}
+		return nil, nil
+	}
+	if id == "" {
+		return nil, fmt.Errorf("record-orphans: finding_class %q requires a reality_id", class)
+	}
+	oid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, fmt.Errorf("record-orphans: reality_id %q is not a uuid: %w", id, err)
+	}
+	if oid == uuid.Nil {
+		return nil, fmt.Errorf("record-orphans: reality_id must not be the nil UUID")
+	}
+	return oid, nil
+}
+
+// shardFindings is the set of db_names currently recorded for the shard.
+func (m MetaRegistrar) shardFindings(ctx context.Context, shard string) (map[string]bool, error) {
+	if m.Pool == nil {
+		return nil, fmt.Errorf("record-orphans: no read pool configured")
+	}
+	rows, err := m.Pool.Query(ctx,
+		`SELECT db_name FROM orphan_scan_finding WHERE shard_host = $1`, shard)
+	if err != nil {
+		return nil, fmt.Errorf("record-orphans: read existing findings: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("record-orphans: scan existing finding: %w", err)
+		}
+		out[name] = true
+	}
+	return out, rows.Err()
 }
 
 // Transition runs a CAS reality transition via AttemptStateTransition.

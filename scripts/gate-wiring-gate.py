@@ -41,13 +41,25 @@ looks at the result.
 
 SCOPE — WHAT IS IN, AND THE LIMIT SAID OUT LOUD
 -----------------------------------------------
-IN: files whose name ends `-gate` / `-lint` (either separator). OUT: the 9
-`*-smoke.sh` scripts. A smoke is a gate in spirit, and every one of them needs a
-live stack, so pulling them in would produce nine SKIP lines and no signal —
-a category this file is not yet built to enforce. That is a **limit, not
-coverage**: the smokes' own not-in-CI problem is tracked as
-`D-PUBLISHER-SMOKE-NOT-IN-CI` and `D-META-LIVE-SMOKE-NOT-IN-CI`, and widening
-`is_gate()` to `-smoke` is the obvious next step once a stack-up CI job exists.
+IN: files whose name ends `-gate` / `-lint` / `-live-smoke` (either separator).
+
+⚠️ **The `-live-smoke` half was added on 2026-08-30 (L4), against what this
+section used to say** — and the argument it used to make was contradicted by
+this same file, twenty lines further down. It read: *"pulling them in would
+produce nine SKIP lines and no signal"*. But `NEEDS_STACK`'s own comment says
+the opposite about exactly those lines — *"Printed, never silent. A skipped gate
+that says nothing is indistinguishable from a passing one, and that is the exact
+confusion this file exists to remove."* Both cannot be right. A SKIP carrying a
+reason IS signal; **absence** is the thing that carries none, and fifteen live
+smokes were absent.
+
+The count was stale too: nine when written, fifteen when measured.
+
+What this does **not** do is put them in CI. They still cannot run on a bare
+checkout, `D-PUBLISHER-SMOKE-NOT-IN-CI` and `D-META-LIVE-SMOKE-NOT-IN-CI` are
+untouched, and a stack-up CI job is still the thing that would discharge them.
+This changes *invisible* to *skipped, with a reason, by name* — which is worth
+having on its own and is not a claim to have solved the other problem.
 
 SCOPE IS A PREDICATE, NOT A LIST
 --------------------------------
@@ -79,6 +91,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -92,7 +105,19 @@ WORKFLOWS = REPO / ".github" / "workflows"
 
 
 def is_gate(name: str) -> bool:
-    """Filename shape, so tomorrow's gate is in scope the day it is written."""
+    """Filename shape, so tomorrow's gate is in scope the day it is written.
+
+    KNOWN HOLE: `-harness` is not matched. `gate-bite-harness.py` and
+    `reality-layer-bite-harness.py` are both real, both wired (each has its own
+    job in `gates.yml`), and both invisible to this predicate — so a harness
+    written tomorrow and wired NOWHERE would not be reported. Found while
+    fixing the mutating-gate race, by noticing this runner said "1
+    tree-mutating gate" where the fix assumed three.
+
+    Not widened in the same change that found it: pulling them in means they
+    join `--run-all`, and they are the slowest things in the repo (one is
+    ~120s). That is a scheduling decision, not a rename.
+    """
     if not name.endswith((".py", ".sh")):
         return False
     stem = name.rsplit(".", 1)[0]
@@ -102,8 +127,22 @@ def is_gate(name: str) -> bool:
     # default-uncovered shape this file exists to close. Accepting `_` pulls the
     # pytest self-tests in too; they get EXEMPT rows, which is the visible
     # outcome rather than the silent one.
+    # 🔴 `-live-smoke` (L4, 2026-08-30). A live smoke is not a gate — it needs a running
+    # stack and can never be a CI leg — but it IS a check somebody wrote and expects to
+    # protect something, which is exactly what this file exists to keep visible.
+    #
+    # Measured before widening: FIFTEEN of them, in `scripts/` and `scripts/raid/`, and this
+    # predicate matched NONE. Every one was invisible here — not exempt, not tracked-red,
+    # not skipped-with-a-reason: absent. `picker-search-live-smoke.sh` was only the fifteenth
+    # to arrive, so the row that sent me here ("a smoke I shipped that nothing runs") was
+    # describing a category, not a mistake in one commit.
+    #
+    # They land in NEEDS_STACK, so `--run-all` prints `SKIP … needs a live stack: <reason>`
+    # for each. That is the point: a check that says nothing is indistinguishable from a
+    # passing one, and fifteen of them were saying nothing.
     return (
-        stem.endswith(("-gate", "_gate", "-lint", "_lint"))
+        stem.endswith(("-gate", "_gate", "-lint", "_lint",
+                       "-live-smoke", "_live_smoke"))
         or "-lint-" in stem
         or "_lint_" in stem
         or "-gate-" in stem
@@ -130,11 +169,74 @@ EXEMPT: dict[str, str] = {
                            "`--run-all` does not recurse into itself",
 }
 
+
+def _pytest_module_exemptions() -> dict[str, str]:
+    """`scripts/test_*.py` with no `__main__` guard is a pytest MODULE, not a gate.
+
+    🔴 MEASURED on run 33881838120. `is_gate` accepts `_gate`/`_lint` for the reason
+    stated above it — which pulls the pytest self-tests in, "and they get EXEMPT rows".
+    **Two of them had one.** The rest were being invoked as `python scripts/test_x.py`,
+    and a pytest file has no `__main__`, so that call DEFINES its test functions and
+    exits 0 without executing a single assertion. Seven were in the run list:
+
+        test_a_failed_snapshot_is_not_a_snapshot_gate.py   4 tests   GREEN, ran none
+        test_a_required_id_declares_its_emitter_gate.py   10 tests   GREEN, ran none
+        test_required_args_are_declared_gate.py            8 tests   GREEN, ran none
+        test_the_out2_lint_coverage_is_measured.py         7 tests   GREEN, ran none
+        test_a_measured_turn_reaches_its_tool_gate.py      9 tests   RED (Traceback)
+        test_synonym_spelling_variants_gate.py             4 tests   RED (Traceback)
+
+    The two REDs are the honest ones: they end their import guard with
+    `pytest.skip(..., allow_module_level=True)`, which raises outside a pytest run,
+    so an unimportable chat-service crashed instead of skipping. The four GREENs are
+    the lie — 29 assertions reported as passing, none of them executed.
+
+    Their real home is foundation-ci's `gate red-ability proofs` step
+    (`python -m pytest scripts/test_*.py`), which runs every one of them properly.
+
+    ⚠️ COMPUTED, not listed, for the reason that step's own comment gives: "a list is
+    default-uncovered; a glob is default-covered". A pytest gate written tomorrow is
+    exempt the day it lands, and a `test_*.py` that DOES grow a `__main__` stays in
+    scope and gets run. Scoped to what `is_gate` already discovers so no row here
+    describes a file the report never looks at.
+    """
+    out: dict[str, str] = {}
+    for p in sorted((REPO / "scripts").glob("test_*.py")):
+        rel = f"scripts/{p.name}"
+        if rel in EXEMPT or not is_gate(p.name):
+            continue
+        try:
+            src = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if "__main__" in src:
+            continue  # it can run as a script; leave it in scope
+        out[rel] = ("pytest module with no `__main__` guard: running it as a script "
+                    "defines its tests and exits 0 without asserting anything. It runs "
+                    "under foundation-ci's `gate red-ability proofs` step "
+                    "(`python -m pytest scripts/test_*.py`), which is where its "
+                    "red-ability is actually proven")
+    return out
+
+
+EXEMPT.update(_pytest_module_exemptions())
+
 # Gates that need a LIVE STACK (docker, Postgres, a built binary). `--run-all`
 # SKIPS these and says so on every run — a skip that prints is a known hole; a
 # skip that is silent is a gate reported as passing when it never ran, which is
 # the failure this whole file is about. They belong in a stack-up CI job.
 NEEDS_STACK: dict[str, str] = {
+    # Arrives with the merge of `feat/frontend-tools-mcp-migration` (2026-09-04) and it is NOT
+    # a gate: it calls composition_entity_override_edit update/delete/restore over MCP against
+    # a RUNNING stack with a canonical project_id, and asserts the refusal names the kind of
+    # Work. It matches the discovery predicate only because "gate" is in its filename, and the
+    # thing it probes is a gate (`_require_derivative`). Bare it dies at import on
+    # `scripts.eval` — the repo root is not on its path — and fixing that would only move the
+    # failure to a connection error, because there is no stack for it to reach. SKIP with the
+    # reason is the honest verdict; RED would say the probe found something.
+    "scripts/toolloop/t_derivative_gate_probe.py": "a LIVE MCP probe, not a tree scan: it "
+        "drives three composition tools against a running stack and needs a book, a Work and a "
+        "minted token that this sweep cannot derive",
     "scripts/standing-integrity-gate-smoke.sh": "brings up foundation-dev postgres + needs "
         "replay-aggregate and integrity-checker binaries built first",
     "scripts/perf/bencher-gate.sh": "a benchmark comparison; needs a baseline run to compare "
@@ -150,12 +252,83 @@ NEEDS_STACK: dict[str, str] = {
     # rather than KNOWN_RED because KNOWN_RED means "a real finding is waiting";
     # these are harnesses that never started. Making them runnable in CI with an
     # injected dummy secret is tracked as D-GATE-ROT-ENV-AT-IMPORT.
+    # Needs a TOOLCHAIN, not a stack, but the category is the same shape: more
+    # than a checkout. It wants nightly-2025-09-12 + rustc-dev + a matching
+    # `cargo-dylint`, and a built cdylib on DYLINT_LIBRARY_PATH. It has its own
+    # CI job (`dp-clippy` in gates.yml) because that install does not belong in
+    # every other leg — the workspace pins 1.89.0 stable on purpose.
+    # NOT a licence to skip it: `--self-test` runs in the shared sweep, and the
+    # gate refuses to report a verdict when the lint library is absent rather
+    # than exiting 0 the way `cargo dylint` does.
+    "scripts/dp-clippy-gate.py": "needs the nightly + rustc-dev toolchain and a built "
+        "dp-clippy cdylib; runs in its own gates.yml job (2F)",
+
     "scripts/context-inspector-trace-gate.py": "imports service code reading JWT_SECRET at "
         "import time — needs env, not just a checkout (D-GATE-ROT-ENV-AT-IMPORT)",
     "scripts/eval/run_quality_gate.py": "an EVAL harness against a live service; same "
         "JWT_SECRET-at-import (D-GATE-ROT-ENV-AT-IMPORT)",
     "scripts/eval/run_skill_gate.py": "an EVAL harness against a live service; same "
         "JWT_SECRET-at-import (D-GATE-ROT-ENV-AT-IMPORT)",
+
+    # ── the live smokes (L4, 2026-08-30) ────────────────────────────────────────────────
+    # Fifteen checks that were invisible to this file until `is_gate` learned the shape.
+    # Every one needs a RUNNING stack by definition, so NEEDS_STACK is the honest category
+    # rather than a parking space: none of them can ever be a CI leg on a bare checkout, and
+    # saying that once here is better than fifteen people rediscovering it.
+    #
+    # The reasons are each script's OWN, read out of its header — a boilerplate "needs a
+    # stack" fifteen times would be a row that carries no information and rots without
+    # anybody noticing.
+    "scripts/archive-worker-live-smoke.sh": "stands up foundation-dev and runs the "
+        "archive-worker against it (P1 DEFERRED 056+057)",
+    "scripts/bitemporal-window-live-smoke.py": "asks a RUNNING knowledge-service whether a "
+        "windowed read holds a reader at a position; T48s found live that it did not",
+    "scripts/entity-lifecycle-guards-live-smoke.sh": "proves the three Phase-0 lifecycle "
+        "guards on a running glossary-service (QC-0)",
+    "scripts/epoch-activation-live-smoke.sh": "drives the epoch path end to end against a "
+        "real Postgres (Q0b B3b+B3c)",
+    "scripts/glossary-lifecycle-live-smoke.sh": "the QC-4 emit-wiring proof; it catches a "
+        "BYPASS, which only exists at runtime",
+    "scripts/kal-auth-boundary-live-smoke.py": "asks whether the KAL's guard DISCRIMINATES "
+        "rather than merely answers — needs the KAL up and a real token",
+    "scripts/kal-read-surface-live-smoke.py": "drives every KAL read route, derived from the "
+        "controller, and reports which ANSWER",
+    "scripts/knowledge-graph-backend-live-smoke.py": "proves the knowledge HTTP surface on "
+        "whichever engine KNOWLEDGE_GRAPH_BACKEND selected; it writes, so it needs a stack",
+    "scripts/meta-rs-pg-live-smoke.sh": "runs crates/meta-rs/tests/pg_live.rs against a real "
+        "Postgres (Q1 B2b)",
+    "scripts/metaworker-live-smoke.sh": "stands up TWO databases for the meta-worker canon "
+        "fan-out (P1 DEFERRED 069)",
+    "scripts/picker-search-live-smoke.sh": "rebuilt images plus a browser: it asserts the "
+        "picker's typed term reaches the SERVER, which a client-side filter renders "
+        "identically (L4)",
+    "scripts/publisher-live-smoke.sh": "the event-sourcing spine's publisher wiring "
+        "(DEFERRED 054 D-PUBLISHER-LIVE-WIRING)",
+    "scripts/raid/degraded-live-smoke.sh": "orchestrates the L1.J degraded-mode flow; it "
+        "brings the stack up itself (RAID cycle 33)",
+    "scripts/retention-worker-live-smoke.sh": "runs both retention paths against live data "
+        "(P1 DEFERRED 058)",
+    "scripts/state-asof-live-smoke.sh": "proves the book-wide as-of read end to end on a "
+        "running stack and measures it (QC-1)",
+
+    # L2 — a RATCHET over live data, so it needs the graph rather than a checkout.
+    "scripts/event-order-collision-gate.py": "counts colliding (project_id, event_order) "
+        "pairs in g_shared against a frozen ceiling; needs the AGE store, not a tree scan",
+
+    # From feat/game-logic, registered at the merge. Both are live smokes and L4's widened
+    # predicate now discovers them; `dp-channels-live-smoke.py`'s own docstring says it is
+    # "deliberately not named like [a gate]" so the predicate "must not demand that CI run"
+    # it. That intent is intact — NEEDS_STACK means VISIBLE AND SKIPPED WITH A REASON, not
+    # "CI must run it". What changed is that its absence is no longer indistinguishable
+    # from a pass.
+    "scripts/declared-verb-live-smoke.sh": "drives the DECLARED VERB path end to end "
+        "against a real Postgres (M2 Axis 2)",
+    "scripts/dp-channels-live-smoke.py": "the RUN axis for the channels migration (1b.2); "
+        "needs a live Postgres, and says so in its own docstring",
+
+    # L1 — reports the causal pass's reach/yield/consistency over live data.
+    "scripts/causal-coverage-gate.py": "measures the causal pass over g_shared and asserts "
+        "every ordered edge is explained by its own window algorithm; needs the AGE store",
 }
 
 # Gates too SLOW to sit in a shared run. Skipped with the reason printed, exactly
@@ -163,10 +336,20 @@ NEEDS_STACK: dict[str, str] = {
 # "expensive" is not "failing" and calling it red would put a non-finding on the
 # board next to two security ones.
 TOO_SLOW: dict[str, str] = {
-    "scripts/meta-write-discipline-lint.sh": "74s standalone on a warm cache and >900s under "
-        "the shared runner — it greps every Go/Rust/SQL/TS file once PER META TABLE (33 of "
-        "them), so it is quadratic in a repo this size. Wants its own CI leg, or a rewrite "
-        "that walks the tree once. Tracked: D-GATE-SLOW-META-WRITE-DISCIPLINE",
+    # EMPTY, and it stays empty until something earns a row.
+    #
+    # Its only occupant was `meta-write-discipline-lint.sh` — 74s standalone,
+    # >900s shared, because it grepped the whole tree once PER META TABLE (33 of
+    # them). Rewritten 2026-08-06 to ONE walk with the table list as a single
+    # alternation: **74s -> 9.2s measured**, so it is now named in the hook like
+    # any other fast gate. `D-GATE-SLOW-META-WRITE-DISCIPLINE` is CLEARED.
+    #
+    # The category survives rather than being deleted, and the reason is the
+    # incident that emptied it: "expensive" was an HONEST classification, it was
+    # printed on every run, and it still meant the invariant went unguarded for
+    # weeks while reading as handled. A future row here is a debt with a clock
+    # on it, not a resting place — the fix is a cheaper walk or its own CI leg,
+    # never a longer explanation.
 }
 
 # name -> (deferral id, why it is red). `--run-all` expects these to FAIL, and
@@ -180,27 +363,26 @@ TOO_SLOW: dict[str, str] = {
 #                         names and span excerpts reached an LLM judge prompt
 #                         unsanitized. Fixed, and the lint tightened from
 #                         "mentions the sanitizer" to "calls it".
-#: Gates that WRITE to the working tree while they run. They must not share the tree with a
-#: concurrent reader, so the runner executes them serially, after everything else.
-#: `guard-redability-gate` injects a real violation into real source and restores it from saved
-#: bytes; that is its mechanism, not a bug, and the isolation belongs to the RUNNER.
-MUTATES_TREE: frozenset[str] = frozenset({
-    "scripts/guard-redability-gate.py",
-})
-
+#   language-bias         D-GATE-ROT-LANGUAGE-BIAS — CLEARED 2026-08-10, and the way it
+#                         cleared is the lesson. The row said the gate was red because of
+#                         TEN classified offenders. Measured on the day it was deleted:
+#                         all ten were already in `language-bias-gate`'s BASELINE, and the
+#                         gate was red because of TWO UNRELATED lines added 2026-08-01
+#                         (`name_grounding.py`, fixed at the source). So the register was
+#                         satisfied by the wrong offenders — red for a reason other than
+#                         the one it recorded, which reads exactly like the debt still
+#                         being tracked. `BDR-56` at the register level.
+#
+#                         The sealed choice this reverses is `multilingual.md`'s
+#                         "deliberately RED, because baselining them would hide the debt".
+#                         That was true of a baseline nothing audited. It is not true of
+#                         this one: 37 named lines, failing on growth AND — as of the same
+#                         day — on a row whose code no longer exists. REVERSAL TRIGGER: if
+#                         the staleness or growth arm is ever removed, the objection is
+#                         valid again and this shape should come back.
 KNOWN_RED: dict[str, tuple[str, str]] = {
-    # EMPTY, and that is the point: this list SHRINKS. `--run-all` fails when a row's gate
-    # turns green, which is what forces the deletion instead of letting an acknowledgement
-    # quietly become a permanent exemption.
-    #
-    # Last row removed 2026-08-03: `scripts/language-bias-gate.py` / D-GATE-ROT-LANGUAGE-BIAS.
-    # It went green legitimately at e84214cc5 (16 offenders FIXED, 3 baselined with a stated
-    # reason, 0 new) — the gate had been failing on 19 NEW offenders stacked on its 41-row
-    # baseline, so a fresh violation was indistinguishable from the backlog. The remaining
-    # analysis it carried (4 classes, two of which change bytes already persisted — a digest
-    # input and casefold() as an identity key, so both are migrations rather than edits) lives
-    # in the game-tier SESSION_HANDOFF's deferral table, which is its home. Nothing was lost
-    # by deleting the row; leaving it would have failed this gate forever.
+    # EMPTY. A row here is a gate whose redness is ACKNOWLEDGED, and `--run-all`
+    # deletes it for you by failing the moment the gate turns green.
 }
 
 
@@ -293,7 +475,8 @@ def _is_wired(rel: str, hook: str, ci: str) -> bool:
 def wiring_report() -> tuple[list[str], list[str]]:
     """(uncovered, stale_rows)."""
     names = discovered()
-    known = set(EXEMPT) | set(KNOWN_RED) | set(NEEDS_STACK) | set(TOO_SLOW)
+    known = (set(EXEMPT) | set(KNOWN_RED) | set(NEEDS_STACK) | set(TOO_SLOW)
+             | set(NEEDS_ARGS))
     stale = [n for n in sorted(known) if n not in names]
 
     if runner_in_ci():
@@ -311,7 +494,33 @@ def wiring_report() -> tuple[list[str], list[str]]:
     return uncovered, stale
 
 
-def _run(rel: str, timeout: int = 900) -> tuple[bool, float, str]:
+# Gates that REQUIRE an argument. `_run` invokes every gate bare, and a gate whose argparse
+# declares a required mutually-exclusive group exits 2 with a usage error — which the runner
+# recorded as RED. Both of these are healthy (`--selftest` is 15/15 and 18/18 respectively, and
+# the pre-commit hook runs them that way and has all along), so `--run-all` carried TWO
+# permanent false reds.
+#
+# 🔴 That is worse than it sounds, and this file already says why: *"a gate that is red and
+# unacknowledged is how a whole suite becomes background noise."* A red that can never be fixed
+# by fixing the code teaches a reader to skim the list, and the next REAL red arrives into an
+# audience that has learned to skim.
+#
+# DERIVED, not remembered: probing all 77 runnable Python gates bare found exactly these two
+# exiting 2 with an argparse "required" error. The rest either run bare or are already in
+# NEEDS_STACK / TOO_SLOW.
+NEEDS_ARGS: dict[str, tuple[list[str], str]] = {
+    "scripts/qc5-acceptance-gate.py": (
+        ["--selftest"], "requires --file or --selftest; the live arms need a stack and models"),
+    "scripts/soak-armed-gate.py": (
+        ["--selftest"], "requires --url, --file or --selftest; the live read needs /metrics"),
+    "scripts/glossary-ordinal-axis-gate.py": (
+        ["--selftest"],
+        "requires --census or --selftest; bare it can only answer DISARMED, which exits 0 and "
+        "proves nothing -- T48aq found it running green and vacuous in CI on every commit"),
+}
+
+
+def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float, str]:
     # RELATIVE path + cwd=REPO, never an absolute one.
     #
     # The first draft passed `str(REPO / rel)`, which on Windows is
@@ -321,10 +530,11 @@ def _run(rel: str, timeout: int = 900) -> tuple[bool, float, str]:
     # A CI job would have shipped failing everything. Worth noting which way it
     # broke: the runner called them RED, not green. A harness bug that reports
     # success is the one that ends careers.
-    cmd = [sys.executable, rel] if rel.endswith(".py") else ["bash", rel]
+    extra = [] if bare else NEEDS_ARGS.get(rel, ([], ""))[0]
+    cmd = ([sys.executable, rel] if rel.endswith(".py") else ["bash", rel]) + extra
     t0 = time.time()
     try:
-        # stdin=DEVNULL is load-bearing. `amaw-guardrail-gate.py` is a Claude
+        # stdin=DEVNULL is load-bearing. The exempt-hook case that taught this was a Claude
         # Code PreToolUse HOOK that does `json.loads(sys.stdin.read())`, so
         # running it as a tree scan blocks forever — and because children share
         # the parent's stdin, ONE such gate hung a second unrelated one with it
@@ -340,11 +550,97 @@ def _run(rel: str, timeout: int = 900) -> tuple[bool, float, str]:
     return ok, time.time() - t0, out
 
 
+# ── A REACHABLE STACK, AND THE GATES THAT CAN USE ONE ────────────────────────
+#
+# 🔴 THE FALSE GREEN THIS CLOSES, measured 2026-08-31 rather than imagined.
+# `--run-all` reported `135 GREEN / 0 RED / 27 SKIP` on a box where the isolated stack
+# had been up for 40 hours. At that same moment `POST fact-for-check` was answering 502
+# to every caller, and `kal-read-surface-live-smoke.py` -- one of the 27 -- was the thing
+# that found it, ten minutes later, when a human ran it by hand. The suite was green
+# while a live route was down, on a machine where the gate would have gone red.
+#
+# The cause was that `NEEDS_STACK` is DECLARED, never PROBED: every row printed SKIP and
+# was dropped from `runnable`, with no code path that asks whether a stack is actually
+# there. The registry comment defends the skip -- "VISIBLE AND SKIPPED WITH A REASON, not
+# indistinguishable from a pass" -- and for CI, which has no stack, that is right. On a
+# developer box with one running it is still the answer, and that is the hole.
+#
+# WHY NOT SIMPLY RUN ALL 27 WHEN A STACK IS UP. Measured: they split in two.
+#   · Some run bare and only READ -- `causal-coverage-gate.py` and
+#     `event-order-collision-gate.py` both exit 0 against a live store with no arguments.
+#   · Most cannot. `kal-read-surface-live-smoke.py`, `bitemporal-window-live-smoke.py` and
+#     `kal-auth-boundary-live-smoke.py` each exit 2 with "--book-id is required": they need
+#     nine derived inputs, which is precisely why `architecture-live-proof-iso.sh` exists.
+#   · A third group WRITES, or stands a stack up itself (`archive-worker-live-smoke.sh`).
+#     Attempting those from a shared sweep is not a check, it is a side effect.
+# So the runner attempts the first group and keeps saying SKIP for the rest -- but now it
+# NAMES the command that runs them, instead of leaving a green summary to imply nothing
+# was missed.
+
+#: TCP anchors that mean "a stack is reachable". 25556 is the isolated knowledge-pg that
+#: holds `g_shared` -- the store BOTH bare-runnable gates default to, so a probe of
+#: anything else could say "up" while the thing they read is down. An accept is enough:
+#: the gates report REFUSED themselves if the port answers but the store does not.
+STACK_ANCHORS: tuple[tuple[str, int, str], ...] = (
+    ("127.0.0.1", 25556, "the isolated AGE store (knowledge-pg, g_shared)"),
+)
+
+#: NEEDS_STACK gates that take NO required arguments and only READ, so a sweep may attempt
+#: them the moment a stack answers. Membership is not a judgement call: run the gate bare
+#: against a live stack, and if it exits 2 saying an argument is required it does not
+#: belong here. `self_test` pins that every member is really a NEEDS_STACK row, so a
+#: renamed gate cannot quietly leave the sweep.
+LIVE_BARE: frozenset[str] = frozenset({
+    "scripts/causal-coverage-gate.py",
+    "scripts/event-order-collision-gate.py",
+})
+
+
+def stack_reachable(anchors: tuple[tuple[str, int, str], ...] = STACK_ANCHORS,
+                    timeout: float = 0.6) -> bool:
+    """True when every anchor accepts a TCP connection.
+
+    Deliberately cheap and deliberately quiet: this decides whether to ATTEMPT gates, and
+    a probe that itself failed loudly would trade one false verdict for another. CI has no
+    stack, every connect refuses, and `--run-all` behaves exactly as it did before.
+    """
+    for host, port, _why in anchors:
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                pass
+        except OSError:
+            return False
+    return True
+
+
+def live_plan(names: list[str], stack_up: bool) -> tuple[list[str], list[str]]:
+    """Split the NEEDS_STACK rows into (attempt, skip) for this run.
+
+    Pure, so both branches are testable without a stack and without running a gate --
+    which is the whole difficulty with the thing this function decides.
+    """
+    rows = [n for n in sorted(NEEDS_STACK) if n in names]
+    if not stack_up:
+        return [], rows
+    return ([n for n in rows if n in LIVE_BARE],
+            [n for n in rows if n not in LIVE_BARE])
+
+
 def run_all() -> int:
     """Executed in PARALLEL, and that is not an optimisation.
 
-    Serially this takes >20 minutes on Windows. Every gate here is an independent
-    read-only scan of the working tree, so there is nothing to serialise for, and
+    Serially this takes >20 minutes on Windows. MOST gates here are independent
+    read-only scans of the working tree, so there is nothing to serialise for, and
+
+    **THREE ARE NOT, and that sentence used to say "every".** The bite harnesses
+    EDIT the tree — break a guard, assert RED, restore — and one of them also
+    runs `cargo` repeatedly over a crate it is mutating. Running those beside a
+    gate that reads or builds the same tree makes a verdict depend on
+    scheduling; measured, `dp-slice1-bite-gate` reported 32/32 and 28/32 from
+    the identical invocation minutes apart. They are dispatched serially after
+    the pool (see MUTATING below). The claim above was false the day the first
+    bite harness was wired, and nothing noticed because the race biases toward
+    false RED, which reads as an ordinary failure rather than as a harness bug.
     a gate suite people cancel is back to being decorative.
 
     **A measurement trap, recorded so the next person does not re-derive it.**
@@ -363,38 +659,103 @@ def run_all() -> int:
         if n in names:
             print(f"  {n:<44} SKIP           too slow for a shared run: {TOO_SLOW[n]}")
 
-    for n in sorted(NEEDS_STACK):
-        if n in names:
-            # Printed, never silent. A skipped gate that says nothing is
-            # indistinguishable from a passing one, and that is the exact
-            # confusion this file exists to remove.
-            print(f"  {n:<44} SKIP           needs a live stack: {NEEDS_STACK[n]}")
+    stack_up = stack_reachable()
+    live_attempt, live_skip = live_plan(names, stack_up)
+    for n in live_skip:
+        # Printed, never silent. A skipped gate that says nothing is
+        # indistinguishable from a passing one, and that is the exact
+        # confusion this file exists to remove.
+        print(f"  {n:<44} SKIP           needs a live stack: {NEEDS_STACK[n]}")
 
     runnable = [n for n in names if n not in NEEDS_STACK and n not in TOO_SLOW]
+    # A reachable stack promotes the read-only, no-argument live gates into the
+    # real run, where they report GREEN or RED like anything else.
+    runnable += live_attempt
 
-    # MUTATORS RUN ALONE, AND LAST. `guard-redability-gate` proves a guard can fail by writing a
-    # real violation into real source, running the guard, and restoring the bytes. That is the
-    # whole point of it — and it means that for a few milliseconds per case the working tree is
-    # WRONG ON PURPOSE. Running it inside the thread pool let every other gate read those bytes.
+    # MUTATING gates run SERIALLY, and after everything else.
     #
-    # It produced exactly the failure you would predict and it was misread for weeks: CI
-    # reported `llm-budget-ssot-gate: a row claims signal_inert on a kind that DOES respond to
-    # signal` — which is, verbatim, the violation guard-redability injects into `llm_budget.py`
-    # in its "S7 gate" case. Three gates flapped this way (`llm-budget-ssot-gate`, `design-lint`,
-    # and guard-redability accusing ITSELF of BASELINE-RED when its baseline probe read a tree
-    # another case had mid-mutation). All three pass standalone, which is why it read as a
-    # local/CI divergence rather than a race.
+    # These edit the working tree — break a guard, assert RED, restore. That is
+    # the only evidence a guard is load-bearing, and it is only valid if nothing
+    # else is building the tree at the same time.
     #
-    # Keyed on a declared SET, not a name guess: a second mutating gate added tomorrow joins it
-    # here, and `--self-test` asserts every name in it is a real gate.
-    mutators = [n for n in runnable if n in MUTATES_TREE]
-    parallel = [n for n in runnable if n not in MUTATES_TREE]
+    # CORRECTION, measured after the first version of this comment: only
+    # `dp-slice1-bite-gate` is actually DISCOVERED here. The other two end in
+    # `-harness`, which `is_gate()` does not match, so they never entered the
+    # pool and could not have collided with anything. They are listed anyway
+    # because they are the same hazard the day `is_gate()` learns that suffix —
+    # see the note there. The real collision was with the pool's other
+    # CARGO-RUNNING gates: `dp-aggregate-gate` builds `crates/dp`, which is
+    # precisely the crate `dp-slice1-bite-gate` mutates.
+    #
+    # They were in the pool with everyone else, and the result was a gate whose
+    # verdict depended on SCHEDULING. Measured: `dp-slice1-bite-gate` passes
+    # standalone in ~126s with "32 bite(s) bit", and inside the sweep aborted in
+    # 9s — its first act is to measure a clean baseline, and another harness had
+    # the tree mutated at that moment. `reality-layer-bite-harness` refuses
+    # outright on a dirty tree, so it loses the same race from the other side.
+    #
+    # The race biases toward FALSE RED (a raced harness reports "did not bite"),
+    # which is the safe direction and exactly why it survived: it produced noise
+    # rather than false assurance, and noise is how a suite gets ignored.
+    #
+    # Serial-after-pool rather than a lock: a lock would make one of them SKIP,
+    # and a skipped bite harness proves nothing while still printing a line.
+    MUTATING = (
+        "scripts/dp-slice1-bite-gate.py",
+        # `5B`. Discovered by `is_gate()` (it ends in `-gate`), mutates
+        # `crates/dp` AND `crates/meta-rs`, and runs `cargo test` on both — so it
+        # collides with the pool's cargo-running gates in BOTH directions. Listed
+        # here on the day it was written rather than after a flaky sweep, which
+        # is the only cheap moment to do it.
+        "scripts/dp-slice5b-bite-gate.py",
+        # `5C`. Mutates crates/dp-control-plane and runs cargo on it; it also
+        # IMPORTS the 5b harness for its read/restore machinery, so the two
+        # must never run concurrently against the same tree.
+        "scripts/dp-slice5c-bite-gate.py",
+        # `5D`. Mutates crates/dp and runs cargo on it, and also imports the
+        # 5b harness — same reason as 5c.
+        "scripts/dp-slice5d-bite-gate.py",
+        # `G3`. Mutates a LOCKED document (`05_control_plane_spec.md`), two
+        # crates and `crates/dp/tests/spec_oracle.rs`, and runs cargo on
+        # `dp-control-plane`. It also imports the 5b harness for its
+        # read/restore/lock machinery — same reason as 5c and 5d. Listed on the
+        # day it was written rather than after a flaky sweep, which is the only
+        # cheap moment to do it.
+        "scripts/dp-oracle-bite-gate.py",
+        # `DF1a`. Mutates `crates/dp` AND `crates/dp-kernel` and runs cargo on
+        # dp-kernel, and imports the 5b harness for its read/restore/lock
+        # machinery — every reason 5c, 5d and G3 are here. Listed on the day it
+        # was written; the lock already refused it once during DF1a, against a
+        # STALE lock left by a killed dp-oracle-bite-gate, which is the failure
+        # mode arriving before the flaky sweep rather than after.
+        "scripts/dp-df1a-bite-gate.py",
+        # `W7-SHELL-UNCOVERED`. Mutates `infra/db-ensure.sh` and, on a box with
+        # the compose Postgres up, CREATEs and DROPs a throwaway role while
+        # doing it. Both halves are reasons it must not run beside anything
+        # else. Its live leg reports SKIP (not pass) without a cluster, so it is
+        # runnable in the shared sweep rather than NEEDS_STACK.
+        "scripts/db-ensure-bite-gate.py",
+        "scripts/gate-bite-harness.py",
+        "scripts/reality-layer-bite-harness.py",
+        # Arrives with the merge of `main` (2026-08-21) and it MUTATES: like every
+        # bite harness it writes a modified copy beside the gate it is proving.
+        # Left out of this tuple it would run inside the pool alongside the others,
+        # and two harnesses in one tree do not merely race — the second one's restore
+        # writes back the first one's mutation permanently. Measured earlier the same
+        # day: a killed sweep left `target/.bite-harness.lock` behind and six gates
+        # then refused to start in 0.1s each, which reads as six RED gates.
+        "scripts/guard-redability-gate.py",
+    )
+    concurrent = [n for n in runnable if n not in MUTATING]
+    serial = [n for n in runnable if n in MUTATING]
+
     workers = min(8, (os.cpu_count() or 4))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        parallel_results = list(pool.map(_run, parallel))
-    mutator_results = [_run(n) for n in mutators]        # serial, after the pool has drained
-    runnable = parallel + mutators
-    results = parallel_results + mutator_results
+        results = list(pool.map(_run, concurrent))
+    if serial:
+        print(f"  ({len(serial)} tree-mutating gate(s) run serially — see MUTATING)")
+        results += [_run(n) for n in serial]
+    runnable = concurrent + serial
 
     for n, (ok, secs, out) in zip(runnable, results):
         expected_red = n in KNOWN_RED
@@ -409,25 +770,32 @@ def run_all() -> int:
             failures.append((n, out))
             print(f"  {n:<44} RED    ({secs:5.1f}s)")
 
+    # A NEEDS_ARGS row that is no longer needed is standing permission for nothing, and the
+    # same shape this file already refuses for KNOWN_RED. Probed rather than assumed: if the
+    # gate runs clean with NO arguments, the row is stale and the next gate to acquire a
+    # required argument would be silently absolved by it.
+    stale_args = []
+    for n in sorted(NEEDS_ARGS):
+        if n not in runnable:
+            continue
+        bare_ok, _, _ = _run(n, timeout=120, bare=True)
+        if bare_ok:
+            stale_args.append(n)
+
     rc = 0
+    if stale_args:
+        print(f"\ngate-wiring-gate: {len(stale_args)} NEEDS_ARGS row(s) are STALE — "
+              f"the gate runs clean with no arguments:\n")
+        for n in stale_args:
+            print(f"  {n}  (row says: {NEEDS_ARGS[n][1]})")
+        print("\nDelete the row. A registry entry that excuses nothing still "
+              "excuses the NEXT gate that lands in the same file.")
+        rc = 1
     if failures:
         print(f"\ngate-wiring-gate: {len(failures)} gate(s) FAILED and are not tracked:\n")
         for n, out in failures:
-            # The FIRST non-empty line is usually the gate's BANNER, not its finding — every
-            # gate here opens by saying what it scanned. Printing only that told CI readers
-            # "design-lint: scanned 385 .md files under …" and nothing about WHY it was red,
-            # which cost a full CI round-trip per diagnosis (the real answer was one broken
-            # link, on line 5475 of a file the banner never mentions). Print a bounded TAIL as
-            # well: a gate's verdict is at the end, and lines that mention a path or a finding
-            # keyword are the ones a reader can act on.
-            lines = [l.rstrip() for l in out.splitlines() if l.strip()]
-            head = lines[0] if lines else ""
+            head = next((l for l in out.splitlines() if l.strip()), "")
             print(f"  {n}: {head[:110]}")
-            keyed = [l for l in lines[1:] if any(
-                k in l.lower() for k in ("finding", "error", "fail", "missing", "does not exist",
-                                         "broken", "unregistered", "drift", ".md:", ".py:", ".go:"))]
-            for l in (keyed or lines[1:])[-6:]:
-                print(f"      {l.strip()[:160]}")
         print("\nFix it, or add a KNOWN_RED row naming a tracked deferral. A gate that "
               "is red and unacknowledged is how a whole suite becomes background noise.")
         rc = 1
@@ -441,6 +809,21 @@ def run_all() -> int:
               "exemption — the same reason file-ceiling-gate reds when allowlisted "
               "debt GROWS.")
         rc = 1
+    # THE CLOSING LINE THAT WAS MISSING. Without it a clean sweep printed nothing at all
+    # about the live surface, and "no failures" read as "nothing is wrong" -- which is the
+    # sentence a 502 hid behind for as long as anyone was reading this output.
+    if live_skip:
+        if stack_up:
+            print(f"\ngate-wiring-gate: a stack IS reachable ({STACK_ANCHORS[0][2]}) and "
+                  f"{len(live_attempt)} live gate(s) ran above — but {len(live_skip)} more "
+                  f"still did NOT, because they need derived inputs this sweep cannot "
+                  f"produce (a book, a project, an entity, a minted token).")
+            print("  Nothing here says the live surface is healthy. The command that "
+                  "answers that is:\n      bash scripts/architecture-live-proof-iso.sh")
+        else:
+            print(f"\ngate-wiring-gate: no stack answered at "
+                  f"{STACK_ANCHORS[0][0]}:{STACK_ANCHORS[0][1]}, so {len(live_skip)} live "
+                  f"gate(s) were skipped. This result covers the STATIC surface only.")
     return rc
 
 
@@ -456,6 +839,29 @@ def self_test() -> int:
     if is_gate("some-gate.txt"):
         fails.append("treated a non-script as a gate")
 
+    # L4 — the `-live-smoke` shape. Without this case, narrowing the predicate back would
+    # make fifteen checks invisible again and every other assertion here would stay green:
+    # the gate would report a smaller, tidier world and call it OK.
+    if not is_gate("picker-search-live-smoke.sh"):
+        fails.append("did not recognise a -live-smoke script as in scope")
+    if not is_gate("some_live_smoke.py"):
+        fails.append("did not recognise the underscore spelling of -live-smoke")
+    # ...and the shape must stay a SUFFIX. `smoke-test-helpers.sh` is not a check.
+    if is_gate("smoke-helpers.sh"):
+        fails.append("treated a merely smoke-ish filename as a check")
+
+    # Every live smoke discovered must carry a registry row. They cannot run on a bare
+    # checkout, so an unregistered one is not "wired" — it is the absence this row closed,
+    # arriving again in a file nobody has written yet.
+    unregistered = [
+        n for n in discovered()
+        if n.rsplit("/", 1)[-1].rsplit(".", 1)[0].endswith(("-live-smoke", "_live_smoke"))
+        and n not in NEEDS_STACK and n not in EXEMPT and n not in TOO_SLOW
+        and n not in KNOWN_RED
+    ]
+    if unregistered:
+        fails.append(f"live smoke(s) with no registry row: {unregistered}")
+
     # The scope must stay a PREDICATE. If someone replaces it with a list, a gate
     # created tomorrow is default-uncovered and this whole file is theatre.
     if isinstance(getattr(sys.modules[__name__], "is_gate", None), (list, tuple, set)):
@@ -466,14 +872,6 @@ def self_test() -> int:
     _, stale = wiring_report()
     if stale:
         fails.append(f"rows for files that no longer exist: {', '.join(stale)}")
-
-    # A MUTATES_TREE name that is not a real gate is a silent LOSS of isolation: the runner
-    # would find nothing to serialise, put every gate back in the pool, and the race this set
-    # exists to prevent returns with no message anywhere. Same shape as the REQUIRES_ENV orphan
-    # check in guard-redability-gate, and for the same reason.
-    for n in sorted(MUTATES_TREE):
-        if not (REPO / n).exists():
-            fails.append(f"MUTATES_TREE names {n}, which does not exist — isolation lost silently")
 
     # Every KNOWN_RED row must name a deferral id, or "tracked" means nothing.
     for n, (did, why) in KNOWN_RED.items():
@@ -506,6 +904,45 @@ def self_test() -> int:
         fails.append(f"{me} is not wired into the hook or CI — the wiring gate is "
                      "itself unwired, which is precisely the defect it reports")
 
+    # ── the live-stack split (2026-08-31) ────────────────────────────────────
+    # These pin the behaviour that let a 502 sit behind a green summary. All four run
+    # without a stack and without executing a single gate, which is the point: the
+    # decision under test is "what do we even ATTEMPT", and that must be checkable on
+    # the machine where the answer is "nothing".
+    stray = sorted(LIVE_BARE - set(NEEDS_STACK))
+    if stray:
+        fails.append(f"LIVE_BARE names {stray}, which are not NEEDS_STACK rows — a "
+                     "renamed or retired gate would silently leave the live sweep")
+
+    _rows = sorted(NEEDS_STACK)
+    # NON-VACUITY, both ways. An empty LIVE_BARE makes every case below pass while the
+    # sweep attempts nothing; a LIVE_BARE covering everything makes the SKIP arm dead.
+    if not LIVE_BARE:
+        fails.append("LIVE_BARE is empty — the promote-on-a-live-stack arm cannot fire, "
+                     "and every case below would pass by attempting nothing")
+    if not [n for n in _rows if n not in LIVE_BARE]:
+        fails.append("every NEEDS_STACK row is in LIVE_BARE — the skip arm is dead, and "
+                     "the gates that need derived inputs would be attempted bare")
+
+    down_attempt, down_skip = live_plan(_rows, stack_up=False)
+    if down_attempt or down_skip != _rows:
+        fails.append(f"with NO stack, live_plan must attempt nothing and skip all "
+                     f"{len(_rows)} row(s); got attempt={len(down_attempt)} "
+                     f"skip={len(down_skip)} — CI behaviour must be unchanged")
+
+    up_attempt, up_skip = live_plan(_rows, stack_up=True)
+    if set(up_attempt) != {n for n in _rows if n in LIVE_BARE}:
+        fails.append("with a stack, live_plan must attempt exactly the LIVE_BARE rows")
+    if set(up_attempt) & set(up_skip) or set(up_attempt) | set(up_skip) != set(_rows):
+        fails.append("live_plan must PARTITION the NEEDS_STACK rows — a row that lands in "
+                     "neither list is a gate that vanished from the output entirely")
+
+    # The probe must be able to say NO. One that always answered True would run the live
+    # gates on a CI runner, where they would red for the absence of the thing they read.
+    if stack_reachable(anchors=(("127.0.0.1", 1, "a port nothing listens on"),), timeout=0.2):
+        fails.append("stack_reachable said a stack was up on port 1 — a probe that cannot "
+                     "answer NO turns every live gate red in CI")
+
     if fails:
         print("gate-wiring-gate SELF-TEST FAILED:")
         for f in fails:
@@ -513,7 +950,8 @@ def self_test() -> int:
         return 1
     print("gate-wiring-gate: self-test OK — the scope is a predicate (a gate created "
           "tomorrow is covered), every exemption carries a reason, every KNOWN_RED row "
-          "names a deferral, and this gate is itself wired")
+          "names a deferral, the live-stack split partitions NEEDS_STACK and can say "
+          "NO, and this gate is itself wired")
     return 0
 
 

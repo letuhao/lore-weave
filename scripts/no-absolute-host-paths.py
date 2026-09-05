@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -35,9 +36,56 @@ _PATTERN = re.compile(
     r"""|['"]/(?:home|Users)/[A-Za-z0-9_.-]+/""",            # /home/me/…, /Users/me/…
 )
 
-_EXTS = {".py", ".ts", ".tsx", ".js", ".go", ".sh", ".yml", ".yaml", ".toml", ".json"}
+# `V2-F8`: the rescope below fixed the DIRECTORY dimension of this gate's scope
+# and left the EXTENSION dimension an enumerated list — in the commit that added
+# a Rust crate to a repo already holding five Rust crates and three Rust
+# services. `.rs` was absent, so `const CORPUS: &str = "D:/Works/source/..."`
+# was unscannable. Latent rather than live (no `.rs` violation existed), which
+# is exactly how the directory dimension started too.
+#
+# Still a list, and that is a real limit: the fix for one dimension does not
+# generalise to the other, because "every text file git tracks" would sweep
+# fixtures, corpora and lockfiles. What it can do is cover every language this
+# repo actually WRITES PROGRAMS IN.
+#
+# `.md` was tried and REVERTED, and the reason is the useful part: it found four
+# hits, all of them a document quoting a `docker compose -f "D:/..."` command
+# someone once ran. That is not this gate's subject. The rule is about a path a
+# PROGRAM USES — a doc transcribing a shell session is prose, and admitting it
+# would widen the SUBJECT rather than the scope, then cry wolf across ~2000
+# documents until someone switched the gate off. Scope and subject are different
+# dimensions, and only one of them was wrong.
+_EXTS = {".py", ".ts", ".tsx", ".js", ".go", ".rs", ".sh", ".yml", ".yaml",
+         ".toml", ".json", ".sql"}
+
+# Used ONLY by the no-git fallback below. In a git checkout the scope comes from git
+# itself — see `_candidates`. An enumerated skip list is default-uncovered: it was
+# missing `target/`, and `cargo`'s trybuild harness writes an absolute `path = ...`
+# into `target/tests/trybuild/*/Cargo.toml`, so the gate reported five findings in
+# generated, gitignored files and blocked a commit it had no business reading.
 _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".claude", "dist", "build",
-              ".venv", "venv", ".mypy_cache", ".pytest_cache", "coverage"}
+              ".venv", "venv", ".mypy_cache", ".pytest_cache", "coverage", "target"}
+
+
+def _candidates() -> list[pathlib.Path]:
+    """Every file that COULD be committed — the gate's actual subject.
+
+    `--cached` covers tracked and staged-new files; `--others --exclude-standard`
+    covers untracked files that are not gitignored (so the gate still fires before
+    you `git add`). What it excludes is exactly what can never reach a commit:
+    build output and anything else `.gitignore` already disowns.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        # Not a checkout (a tarball, a vendored copy). Fall back to walking the tree
+        # with the skip list, which is weaker but never silently narrower.
+        return [p for p in ROOT.rglob("*")
+                if p.is_file() and not any(part in _SKIP_DIRS for part in p.parts)]
+    return [ROOT / rel for rel in out.split("\0") if rel]
 
 # Lines that legitimately mention such a path: env-var DEFAULTS (the sanctioned escape
 # hatch — the value is overridable and its absence fails loudly), and this gate's own
@@ -49,10 +97,8 @@ _ALLOW = re.compile(
 
 def offenders() -> list[tuple[pathlib.Path, int, str]]:
     out: list[tuple[pathlib.Path, int, str]] = []
-    for path in ROOT.rglob("*"):
+    for path in _candidates():
         if path.suffix not in _EXTS or not path.is_file():
-            continue
-        if any(part in _SKIP_DIRS for part in path.parts):
             continue
         if path.resolve() == pathlib.Path(__file__).resolve():
             continue

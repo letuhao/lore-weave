@@ -8,9 +8,10 @@
 // Modes:
 //
 //	apply  Non-breaking GOOD migration over the fleet → every reality applied,
-//	       instance_schema_migrations marked (failure_reason NULL), one
-//	       migration_succeeded per reality in reality_migration_audit, and the
-//	       I8 audit present (meta_write_audit gained rows for BOTH meta tables).
+//	       instance_schema_migrations marked (failure_reason NULL), the REALITY'S
+//	       OWN schema_migrations ledger advanced, one migration_succeeded per
+//	       reality in reality_migration_audit, and the I8 audit present
+//	       (meta_write_audit gained rows for BOTH meta tables).
 //	abort  Breaking BROKEN migration → the canary apply fails → the orchestrator
 //	       aborts (canary_apply_failed) → fan-out is NEVER attempted: 0 fanout
 //	       migration_started, N-1 migration_aborted rows. I8 audit present.
@@ -138,13 +139,20 @@ func cmdApply(ctx context.Context, meta1, shard *pgxpool.Pool) int {
 	mwaIsm := scalar(ctx, meta1, `SELECT count(*) FROM meta_write_audit WHERE table_name='instance_schema_migrations'`)
 	mwaAudit := scalar(ctx, meta1, `SELECT count(*) FROM meta_write_audit WHERE table_name='reality_migration_audit'`)
 	probes := probeCount(ctx, fleet)
+	ledgers := realityLedgerCount(ctx, fleet, "w1d_apply")
 
 	n := int64(len(fleet))
-	fmt.Printf(`{"mode":"apply","applied":%d,"ism_applied":%d,"succeeded_audit":%d,"probes":%d,"mwa_delta":%d,"mwa_ism":%d,"mwa_audit":%d}`+"\n",
-		applied, ismApplied, succAudit, probes, mwaAfter-mwaBefore, mwaIsm, mwaAudit)
+	fmt.Printf(`{"mode":"apply","applied":%d,"ism_applied":%d,"succeeded_audit":%d,"probes":%d,"ledgers":%d,"mwa_delta":%d,"mwa_ism":%d,"mwa_audit":%d}`+"\n",
+		applied, ismApplied, succAudit, probes, ledgers, mwaAfter-mwaBefore, mwaIsm, mwaAudit)
 
 	if int64(applied) != n || ismApplied != n || probes != n {
 		return fail("apply: expected %d applied/marked/probed, got applied=%d ism=%d probes=%d", n, applied, ismApplied, probes)
+	}
+	// The reality's OWN ledger, asserted SEPARATELY from probes. `probes == n`
+	// and `ledgers == 0` is a real state and was the state before SQLApplier
+	// wrote it: the schema is there and the database denies it.
+	if ledgers != n {
+		return fail("apply: %d realities have the migration but only %d record it in their own schema_migrations — the schema changed and the database does not say so", probes, ledgers)
 	}
 	if succAudit != n {
 		return fail("apply: expected %d migration_succeeded audit rows, got %d", n, succAudit)
@@ -154,7 +162,7 @@ func cmdApply(ctx context.Context, meta1, shard *pgxpool.Pool) int {
 	if mwaIsm < n || mwaAudit < n {
 		return fail("apply: I8 — meta_write_audit missing rows (ism=%d audit=%d, want >= %d each)", mwaIsm, mwaAudit, n)
 	}
-	return pass("apply: %d realities migrated through the live wiring; instance_schema_migrations marked; %d meta_write_audit rows (I8 holds for both meta tables)", n, mwaIsm+mwaAudit)
+	return pass("apply: %d realities migrated through the live wiring; instance_schema_migrations marked; %d reality ledgers advanced; %d meta_write_audit rows (I8 holds for both meta tables)", n, ledgers, mwaIsm+mwaAudit)
 }
 
 // cmdAbort — breaking broken migration aborts at the canary; fan-out never runs.
@@ -324,6 +332,35 @@ func writeSQL(migrationID, sql string) (string, error) {
 		return "", err
 	}
 	return dir, nil
+}
+
+// realityLedgerCount returns how many per-reality DBs have the migration
+// recorded in their OWN `schema_migrations` ledger.
+//
+// The twin of probeCount, and the pair is the point: probeCount asks *"did the
+// schema change"* and this asks *"does the database SAY the schema changed"*.
+// They were not both asked until a fleet-wide migration was about to run, and
+// the answers differed — the tables were there and every reality ledger still
+// read `0019_channels`, because only the provisioner ever wrote that table.
+// A resume reading it would have re-applied all eleven.
+func realityLedgerCount(ctx context.Context, fleet []realityreg.Reality, migrationID string) int64 {
+	var n int64
+	for _, r := range fleet {
+		dsn := fmt.Sprintf("postgres://foundation:foundation@%s/%s?sslmode=disable", shardOverPP, r.DBName)
+		p, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			continue
+		}
+		var present bool
+		_ = p.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE id = $1)`, migrationID,
+		).Scan(&present)
+		p.Close()
+		if present {
+			n++
+		}
+	}
+	return n
 }
 
 // probeCount returns how many per-reality DBs have the w1d_probe table (i.e.

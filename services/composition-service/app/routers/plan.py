@@ -56,7 +56,11 @@ from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.pack import OwnershipError
-from app.engine.heal_canon import convention_for, render_canon
+from app.engine.canon_bible import (
+    book_genre_tags as _book_genre_tags,
+    canon_for_chapter,
+    cast_roster as _cast_roster,
+)
 from app.engine.prose_doc import tiptap_doc_to_text
 from app.packer.profile import from_settings
 from app.worker.events import enqueue_job
@@ -167,24 +171,6 @@ async def _book_chapter_ids(book: BookClient, book_id: UUID, bearer: str) -> lis
                                                      "detail": str(exc)}) from exc
 
 
-async def _cast_roster(
-    kal: KalClient, book_id: UUID, user_id: UUID, *, strict: bool = False
-) -> list[dict]:
-    """The book's full cast as `{entity_id, name}`, read through the KAL (INV-KAL).
-
-    Drains the KAL `roster` keyset cursor to completion (D4 / §12.5.2): the prior
-    glossary `list_entities` path read only the first page and ignored `next_cursor`,
-    silently truncating the cast at ~100 — so a deep book's planner saw an incomplete
-    roster. The KAL roster is bounded-per-page, COMPLETE-in-aggregate; the client
-    follows `next_cursor` until null.
-
-    Default (non-strict): empty/partial on outage (the packer just gets a thin/no roster).
-    `strict=True` raises `RosterIncomplete` on a truncated drain so a caller that treats the
-    cast as AUTHORITATIVE (commit-time entity validation) can skip instead of false-rejecting
-    a valid id in a dropped page. `user_id` is forwarded as the KAL tenancy identity."""
-    return await kal.roster(book_id, user_id=user_id, strict=strict)
-
-
 class SelfHealProposeRequest(BaseModel):
     chapter_id: UUID
     model_source: str = Field(min_length=1, max_length=50)
@@ -231,9 +217,13 @@ async def self_heal_propose_endpoint(
     profile = from_settings(work.settings)
     canon = body.canon
     if not canon:
-        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
-        roster = await _cast_roster(kal, work.book_id, user_id)
-        canon = render_canon(roster, convention=convention_for(genre_tags, profile.source_language))
+        # ONE home for the bible (engine/canon_bible.py) — this sequence was written out
+        # here twice and nowhere else, which is why the headless D5 critic seam had no
+        # canon to copy from and judged `canon_consistency` against the passage alone.
+        canon = (await canon_for_chapter(
+            kal=kal, book=book, book_id=work.book_id, chapter_id=body.chapter_id,
+            user_id=user_id, bearer=bearer, source_language=profile.source_language,
+        )).text
 
     heal_input = {
         "worker_op": "self_heal_propose", "chapter_text": text, "canon": canon,
@@ -298,9 +288,13 @@ async def quality_report_endpoint(
     profile = from_settings(work.settings)
     canon = body.canon
     if not canon:
-        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
-        roster = await _cast_roster(kal, work.book_id, user_id)
-        canon = render_canon(roster, convention=convention_for(genre_tags, profile.source_language))
+        # ONE home for the bible (engine/canon_bible.py). AS OF the chapter being reported
+        # on (T7) — a report that grades chapter 12 against end-of-book canon manufactures
+        # "inconsistencies" the author never wrote.
+        canon = (await canon_for_chapter(
+            kal=kal, book=book, book_id=work.book_id, chapter_id=body.chapter_id,
+            user_id=user_id, bearer=bearer, source_language=profile.source_language,
+        )).text
 
     qr_input = {
         "worker_op": "quality_report", "chapter_text": text, "canon": canon,
@@ -471,21 +465,6 @@ def _decompose_response(result) -> dict:
             }
         out["chapters"].append(ch)
     return out
-
-
-async def _book_genre_tags(book: BookClient, book_id: UUID, bearer: str) -> list[str]:
-    """The book's genre tags for motif retrieval (best-effort — an empty list just
-    means the retriever's genre ∩ pre-filter matches nothing, so no motif binds; the
-    planner degrades to invent cleanly). Reads the `genres`/`genre_tags` field off the
-    book object if present."""
-    try:
-        b = await book.get_book(book_id, bearer)
-    except BookClientError:
-        return []
-    if not b:
-        return []
-    raw = b.get("genres") or b.get("genre_tags") or []
-    return [str(g) for g in raw if isinstance(g, (str,)) and g.strip()]
 
 
 @router.post("/works/{project_id}/outline/decompose")

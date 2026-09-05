@@ -9,6 +9,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	lwmcp "github.com/loreweave/loreweave_mcp"
+	lwpg "github.com/loreweave/loreweave_mcp/pgstore"
 )
 
 const gateTestDescriptor = "test.gate"
@@ -37,8 +39,8 @@ func TestPgTaskStore_MultiReplica_ProposeOnA_AcceptOnB(t *testing.T) {
 	var hits []map[string]any
 	reg := lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)}
 	// Two independent store instances over the same DB = two replicas.
-	replicaA := NewPgTaskStore(pool, reg)
-	replicaB := NewPgTaskStore(pool, reg)
+	replicaA := lwpg.NewPgTaskStore(pool, reg)
+	replicaB := lwpg.NewPgTaskStore(pool, reg)
 
 	owner := uuid.New().String()
 	task, err := replicaA.Create(gateTestDescriptor, owner,
@@ -81,7 +83,7 @@ func TestPgTaskStore_MultiReplica_ProposeOnA_AcceptOnB(t *testing.T) {
 	if gotA.Status != lwmcp.TaskCompleted {
 		t.Fatalf("A.Get after accept = %q, want completed", gotA.Status)
 	}
-	if _, err := replicaA.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); err != lwmcp.ErrTaskNotWaiting {
+	if _, err := replicaA.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); !errors.Is(err, lwmcp.ErrTaskNotWaiting) {
 		t.Fatalf("double-accept on A err = %v, want ErrTaskNotWaiting", err)
 	}
 	if len(hits) != 1 {
@@ -93,7 +95,7 @@ func TestPgTaskStore_DeclineCancelsWithoutResolver(t *testing.T) {
 	_, pool := dbTestServer(t)
 	ctx := context.Background()
 	var hits []map[string]any
-	store := NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)})
+	store := lwpg.NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)})
 
 	task, _ := store.Create(gateTestDescriptor, uuid.New().String(), map[string]any{"chapter_id": "c"}, nil, 0)
 	res, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": false})
@@ -104,7 +106,7 @@ func TestPgTaskStore_DeclineCancelsWithoutResolver(t *testing.T) {
 		t.Fatalf("resolver ran on decline (%d hits)", len(hits))
 	}
 	// A post-decline accept is refused.
-	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); err != lwmcp.ErrTaskNotWaiting {
+	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); !errors.Is(err, lwmcp.ErrTaskNotWaiting) {
 		t.Fatalf("accept after decline err = %v, want ErrTaskNotWaiting", err)
 	}
 }
@@ -112,7 +114,7 @@ func TestPgTaskStore_DeclineCancelsWithoutResolver(t *testing.T) {
 func TestPgTaskStore_TTLExpiryLapsesToFailed(t *testing.T) {
 	_, pool := dbTestServer(t)
 	ctx := context.Background()
-	store := NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(new([]map[string]any))})
+	store := lwpg.NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(new([]map[string]any))})
 
 	task, _ := store.Create(gateTestDescriptor, uuid.New().String(), nil, nil, 1) // 1ms TTL
 	// A Get with `now` past the TTL lapses the row to failed/task_expired and persists it.
@@ -124,7 +126,7 @@ func TestPgTaskStore_TTLExpiryLapsesToFailed(t *testing.T) {
 		t.Fatalf("status=%q err=%q, want failed/task_expired", got.Status, got.ErrorMsg)
 	}
 	// The lapse is durable → a later accept is refused.
-	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); err != lwmcp.ErrTaskNotWaiting {
+	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); !errors.Is(err, lwmcp.ErrTaskNotWaiting) {
 		t.Fatalf("accept after expiry err = %v, want ErrTaskNotWaiting", err)
 	}
 }
@@ -132,7 +134,7 @@ func TestPgTaskStore_TTLExpiryLapsesToFailed(t *testing.T) {
 func TestPgTaskStore_CancelIdempotentThenReject(t *testing.T) {
 	_, pool := dbTestServer(t)
 	ctx := context.Background()
-	store := NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(new([]map[string]any))})
+	store := lwpg.NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(new([]map[string]any))})
 
 	task, _ := store.Create(gateTestDescriptor, uuid.New().String(), nil, nil, 0)
 	c, err := store.Cancel(task.TaskID)
@@ -143,7 +145,7 @@ func TestPgTaskStore_CancelIdempotentThenReject(t *testing.T) {
 	if err != nil || c2.Status != lwmcp.TaskCancelled {
 		t.Fatalf("second cancel: err=%v status=%q", err, c2.Status)
 	}
-	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); err != lwmcp.ErrTaskNotWaiting {
+	if _, err := store.ProvideInput(ctx, task.TaskID, map[string]any{"accepted": true}); !errors.Is(err, lwmcp.ErrTaskNotWaiting) {
 		t.Fatalf("accept after cancel err = %v, want ErrTaskNotWaiting", err)
 	}
 }
@@ -152,7 +154,7 @@ func TestPgTaskStore_ConcurrentAccept_SingleWinner(t *testing.T) {
 	_, pool := dbTestServer(t)
 	ctx := context.Background()
 	var hits []map[string]any
-	store := NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)})
+	store := lwpg.NewPgTaskStore(pool, lwmcp.TaskResolverRegistry{gateTestDescriptor: recordingResolver(&hits)})
 
 	task, _ := store.Create(gateTestDescriptor, uuid.New().String(), map[string]any{"chapter_id": "z"}, nil, 0)
 
@@ -178,7 +180,7 @@ func TestPgTaskStore_ConcurrentAccept_SingleWinner(t *testing.T) {
 	for i := range 2 {
 		if results[i] == nil && completed[i] {
 			wins++
-		} else if results[i] == lwmcp.ErrTaskNotWaiting {
+		} else if errors.Is(results[i], lwmcp.ErrTaskNotWaiting) {
 			notWaiting++
 		} else {
 			t.Fatalf("unexpected result[%d]: err=%v completed=%v", i, results[i], completed[i])

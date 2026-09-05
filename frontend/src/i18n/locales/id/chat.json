@@ -214,6 +214,8 @@
     "feedback_error": "Gagal menyimpan masukan",
     "incomplete_error": "Kesalahan — respons tidak lengkap",
     "incomplete_interrupted": "Terputus — respons tidak lengkap",
+    "empty_turn": "Tidak ada balasan yang dihasilkan — tidak ada yang berubah. Coba lagi.",
+    "orphaned_turn": "Tidak ada balasan untuk pesan ini — tidak ada yang berubah. Coba lagi.",
     "insert_into_chapter": "Masukkan ke dalam bab"
   },
   "tools": {
@@ -566,5 +568,12 @@
     "done": "Terkonfirmasi ✓",
     "error": "Tidak dapat mengonfirmasi",
     "label": "Konfirmasi"
+  },
+  "disambiguation": {
+    "label": "Mana yang Anda maksud?",
+    "empty": "Tidak ada pilihan yang ditemukan.",
+    "unnamed": "(tanpa nama)",
+    "truncated": "Menampilkan {{shown}} dari {{total}} — persempit permintaan Anda untuk melihat lainnya.",
+    "cancel": "Tidak ada yang sesuai"
   }
 }

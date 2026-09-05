@@ -1,6 +1,6 @@
 """K21-C (design D7) — unit tests for the public pending-facts router.
 
-The PendingFactsRepo is mocked + `neo4j_session` / `merge_fact` are
+The PendingFactsRepo is mocked + `graph_session` / `merge_fact` are
 patched, so these are pure router tests: JWT scoping, the list /
 confirm / reject contracts, and the cross-user → 404 anti-oracle.
 Mirrors the mock-the-repo-layer pattern of `test_logs_api.py`.
@@ -32,7 +32,7 @@ def _clear_overrides():
 
 @pytest.fixture(autouse=True)
 def _patch_neo4j_session(monkeypatch):
-    """The confirm endpoint opens `async with neo4j_session()`; the
+    """The confirm endpoint opens `async with graph_session()`; the
     merge_fact call inside is itself patched per-test, so the session
     is just a stand-in."""
 
@@ -41,7 +41,7 @@ def _patch_neo4j_session(monkeypatch):
         yield MagicMock()
 
     monkeypatch.setattr(
-        "app.routers.public.pending_facts.neo4j_session", _fake
+        "app.routers.public.pending_facts.graph_session", _fake
     )
 
 

@@ -16,7 +16,7 @@ use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
 use crate::registry::Registry;
 use crate::seed::TilemapSeed;
-use crate::types::channel::{ChannelId, ChannelTier};
+use crate::types::channel::{ChannelId, MapKind};
 use crate::types::template::TilemapTemplate;
 use crate::types::tile::TerrainKind;
 use crate::types::tilemap::{GenerationSource, GridSize, TilemapView, ZoneRuntime};
@@ -38,7 +38,7 @@ pub mod treasure_select;
 /// Reingold → Penrose → fractalize) then the TMP_003 modificator pipeline
 /// (TerrainPainter → ConnectionsPlacer → TreasurePlacer → ObstaclePlacer).
 /// Single-threaded — the determinism axiom (TMP-A4) holds: same
-/// `(template, channel_id, tier, grid, seed)` ⇒ byte-identical output.
+/// `(template, channel_id, kind, grid, seed)` ⇒ byte-identical output.
 ///
 /// `channel_id` + `tier` scope the resulting view (they are channel metadata
 /// the placement algorithm does not synthesize — spec AC-1's `(template, seed,
@@ -49,12 +49,12 @@ pub mod treasure_select;
 pub fn place_tilemap(
     template: &TilemapTemplate,
     channel_id: ChannelId,
-    tier: ChannelTier,
+    kind: MapKind,
     grid: GridSize,
     seed: TilemapSeed,
 ) -> crate::Result<TilemapView> {
     let registry = Registry::load_default().map_err(|e| crate::Error::Config(e.to_string()))?;
-    let (view, _) = place_tilemap_inner(template, channel_id, tier, grid, seed, &registry, false)?;
+    let (view, _) = place_tilemap_inner(template, channel_id, kind, grid, seed, &registry, false)?;
     Ok(view)
 }
 
@@ -64,12 +64,12 @@ pub fn place_tilemap(
 pub fn place_tilemap_with_registry(
     template: &TilemapTemplate,
     channel_id: ChannelId,
-    tier: ChannelTier,
+    kind: MapKind,
     grid: GridSize,
     seed: TilemapSeed,
     registry: &Registry,
 ) -> crate::Result<TilemapView> {
-    let (view, _) = place_tilemap_inner(template, channel_id, tier, grid, seed, registry, false)?;
+    let (view, _) = place_tilemap_inner(template, channel_id, kind, grid, seed, registry, false)?;
     Ok(view)
 }
 
@@ -92,13 +92,13 @@ pub struct PlacementStageTimings {
 pub fn place_tilemap_with_timings(
     template: &TilemapTemplate,
     channel_id: ChannelId,
-    tier: ChannelTier,
+    kind: MapKind,
     grid: GridSize,
     seed: TilemapSeed,
 ) -> crate::Result<(TilemapView, PlacementStageTimings)> {
     let registry = Registry::load_default().map_err(|e| crate::Error::Config(e.to_string()))?;
     let (view, timings) =
-        place_tilemap_inner(template, channel_id, tier, grid, seed, &registry, true)?;
+        place_tilemap_inner(template, channel_id, kind, grid, seed, &registry, true)?;
     Ok((view, timings.expect("collect_timings=true must return Some")))
 }
 
@@ -109,7 +109,7 @@ pub fn place_tilemap_with_timings(
 fn place_tilemap_inner(
     template: &TilemapTemplate,
     channel_id: ChannelId,
-    tier: ChannelTier,
+    kind: MapKind,
     grid: GridSize,
     seed: TilemapSeed,
     registry: &Registry,
@@ -174,7 +174,10 @@ fn place_tilemap_inner(
 
     let view = TilemapView {
         channel_id,
-        tier,
+        // The WIRE field keeps its name; only the internal binding was
+        // renamed. `SPG-F4` was about one word meaning two things IN CODE,
+        // and a serialized field name is a contract (`SPG-R14`).
+        tier: kind,
         grid_size: grid,
         template_id: template.template_id.clone(),
         seed: seed.raw(),
@@ -627,7 +630,7 @@ mod tests {
         let plain = place_tilemap(
             &template,
             crate::types::channel::ChannelId("ch".to_string()),
-            crate::types::channel::ChannelTier::Country,
+            crate::types::channel::MapKind::Region,
             grid,
             TilemapSeed(0xA17_EAD),
         )
@@ -635,7 +638,7 @@ mod tests {
         let (timed_view, timings) = place_tilemap_with_timings(
             &template,
             crate::types::channel::ChannelId("ch".to_string()),
-            crate::types::channel::ChannelTier::Country,
+            crate::types::channel::MapKind::Region,
             grid,
             TilemapSeed(0xA17_EAD),
         )

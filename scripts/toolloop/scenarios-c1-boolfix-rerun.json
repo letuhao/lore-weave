@@ -1,0 +1,147 @@
+{
+  "_note": "Re-run after the falsy-required-argument fix. settings_model_set_active and registry_set_skill_enabled each failed 5/5 with 'missing required argument(s)' because their required BOOLEAN was false and the presence check tested truthiness. The A/B on the control scenario is unambiguous — the false arm went from 4 repair errors + 4 blank-args caps + 0 cards to 0 + 0 + 4 cards, while the TRUE arm was identical before and after. These are the two tools that defect was actually blocking. kg_triage_schema_write rides along: it was called 1/5, which is a distribution finding rather than an argument one, and this measures whether it moves.",
+  "scenarios": [
+    {
+      "id": "settings-model-set-active",
+      "tool_under_test": "settings_model_set_active",
+      "expect_tool": "settings_model_set_active",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my registered AI models.",
+      "follow_ups": [
+        "Deactivate the last one — I am not using it."
+      ],
+      "prompt_source": "Turn 1 is settings_list_models' own purpose; the MEASURED turn is settings_model_set_active's synonyms ['deactivate model'] + ['disable model'], verbatim.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "settings_model_register",
+          "args": {
+            "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+            "provider_model_name": "loop-throwaway-probe",
+            "alias": "LOOP-THROWAWAY-model-{run_word}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. 🔴 THE CARD IS NEVER APPROVED AND THAT MATTERS MORE HERE THAN ANYWHERE ELSE IN THE BATCH: the account's models include the one this loop uses as its own consumer (model_ref 019ebb72…). Deactivating the wrong row would hide the model every future batch runs on."
+        }
+      ],
+      "falsifier": "REFUTED IF: a model is deactivated with NO confirm card (Tier A), OR the model reaches for `settings_model_set_favorite` instead (the mirror of the previous scenario's failure), OR it sends value=true when the author said DEACTIVATE — the argument is a bare boolean with no default, so an inverted value silently does the opposite and the card's title still reads 'set active'. Also REFUTED IF it targets a model other than the one the author pointed at.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a user_model_id that does not exist must be refused.",
+        "idempotency": "OWED — deactivating an already-inactive model must be a clear no-op.",
+        "tenancy": "OWED — scope=USER."
+      },
+      "defects": [],
+      "_rerun_of": "batch35"
+    },
+    {
+      "id": "kg-triage-schema-write",
+      "tool_under_test": "kg_triage_schema_write",
+      "expect_tool": "kg_triage_schema_write",
+      "intent": "write",
+      "tier": "W",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the graph triage queue.",
+      "follow_ups": [
+        "Add the allied_with edge type to the schema so that proposal fits."
+      ],
+      "prompt_source": "Turn 1 is kg_triage_list's synonym; the MEASURED turn is kg_triage_schema_write's synonyms ['add this value to the schema'] + ['resolve triage by changing the schema'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Aldric Vane",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Mira Solene",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_propose_edge",
+          "args": {
+            "project_id": "{project_id}",
+            "source_entity_id": "{step:0:entity_id}",
+            "target_entity_id": "{step:1:entity_id}",
+            "edge_type": "allied_with",
+            "valid_from": 1
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "ONE parked edge, and the project has NO adopted ontology (edge_types=[], probed directly). So `add_to_schema` here is a real schema mutation and may well be refused on the same precondition kg_ontology_propose hit in batch 32 — that refusal, if it comes, is the tool being correct, and the falsifier says so rather than scoring it as a failure."
+        }
+      ],
+      "falsifier": "REFUTED IF: the schema changes with NO confirm card (Tier W), OR the action chosen is not `add_to_schema` when the author asked to add an edge TYPE — `add_to_vocab` adds a controlled-vocabulary VALUE and `widen_target_kinds` loosens which node kinds an edge may point at, both of which are different changes to the author's ontology — OR the model invents a signature. 🔴 A PRECONDITION REFUSAL IS NOT A FAILURE: this project has no adopted ontology, so 'there is nothing to add to' is a correct answer, and it must be recorded as the tool working rather than as the tool broken.",
+      "ship_audit": {
+        "gate": "OWED — Tier W and schema-mutating.",
+        "absent_case": "OWED — a signature that is not in the queue must be refused.",
+        "empty_case": "OWED — an action with no value to add must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_rerun_of": "batch33"
+    },
+    {
+      "id": "registry-set-skill-enabled",
+      "tool_under_test": "registry_set_skill_enabled",
+      "expect_tool": "registry_set_skill_enabled",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What skills do I have available?",
+      "follow_ups": [
+        "Turn off the glossary skill for me."
+      ],
+      "prompt_source": "Unchanged across three arms — both previous ones lost 5 of 5 runs to transport errors, so it has never been measured. Nothing implicates the prompt.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_agent_registry",
+          "query": "SELECT count(*)::text FROM skills WHERE slug='glossary' AND tier='system'",
+          "expect": "1",
+          "why": "🔴 SCOPED TO tier='system', AND THAT SCOPING IS THE WHOLE STORY OF THIS TOOL'S THREE LOST ARMS. The assertion used to count `slug='glossary'` account-wide and expect 1. The registry holds SIX rows with that slug — one System-tier plus FIVE user-tier overrides created on 2026-07-02 by other accounts, body 'override', seven weeks before this loop touched it. So the seed failed every time.\n\nI recorded those three arms as '5 of 5 lost to transport errors' in three commits and in the handoff. They were never transport: the run's error field says 'PROVISION ProvisionError: SEED ASSERTION FAILED' and the report column only says 'err 5'. Reading the column instead of the error is how a fixture bug wore a provider's clothes for three batches.\n\nThe row the scenario is actually about is the SYSTEM one — disabling it 'applies only to this user; the shared skill is never changed' — so that is what the assertion pins, and the card is never approved so it must be untouched afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: the toggle lands with NO confirm card (Tier A), OR the model sends enabled=true when the author said turn it OFF — a bare boolean, so an inverted value silently does the opposite while the card still reads 'set skill enabled' — OR it targets a different slug. CONTROL: disabling a System skill is PER-USER only, so a reply saying it is off 'for everyone', or warning the author they are changing a shared skill, is wrong about the blast radius in the direction that would scare them off a safe action.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "EXERCISED by direct probe (batch 38) — an unknown slug is refused BY NAME: 'skill not found: no-such-skill-xyz'.",
+        "idempotency": "OWED — disabling an already-disabled skill must be a clear no-op.",
+        "tenancy": "OWED — scope=USER: the per-user toggle must not touch another account or the shared row."
+      },
+      "defects": [],
+      "_rerun_of": "b41-skill"
+    }
+  ]
+}

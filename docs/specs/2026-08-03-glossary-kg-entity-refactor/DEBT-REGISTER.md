@@ -36,9 +36,9 @@ Full context: [`README.md`](README.md). All rows also appear in the **Deferred I
 | **2026-08-02-02** | `D-KG-KIND-FACETS` — the **KG-mirror half** of the kind spec's M4 (`kind_code TEXT NOT NULL`) | open |
 | **2026-08-02-03** | `D-GLOSSARY-EVENTS-NO-SOT` — three `glossary.*` events outside the "AUTHORITATIVE" registry. **Fires first** of section A: `glossary.entity_deleted` needs it | open |
 | **2026-08-02-04** | `D-KIND-FACETS-SURFACE` — the **API + FE half** of M4. 399 entities carry a facet; no consumer can see one | open |
-| ★ **2026-08-03-02** | `D-ENTITY-EXISTS-GUARD` — `entity_genres_handler.go:40` has no `deleted_at IS NULL`; guards 6 paths, one of which fires a **paid LLM call** on deleted content and caches it | **fix-now**, open · *re-verified* |
-| ★ **2026-08-03-03** | `D-KNOWN-ENTITIES-PER-JOB` — `extraction_worker.py:473` fetches before the chapter loop at `:556`; a deleted entity is re-emitted for the rest of the job | **fix-now**, open · *re-verified* |
-| ★ **2026-08-03-04** | `D-OUTBOX-PAYLOAD-TRASH` — `outbox.go:398` re-publishes a trashed entity on edit; knowledge-service re-embeds it, silently reversing the deletion | **fix-now**, open · *re-verified* |
+| ★ ~~**2026-08-03-02**~~ | ~~`D-ENTITY-EXISTS-GUARD` — `entity_genres_handler.go:40` has no `deleted_at IS NULL`; guards 6 paths, one of which fires a **paid LLM call** on deleted content and caches it~~ | ✅ **CLOSED** 2026-08-09 · plan T1. The guard resolves liveness through `entityDeleteState`, so *absent* and *in the recycle bin* stay distinguishable and only the second logs `WARN`. **Mechanism:** `entity_lifecycle_guard_test.go::TestDeletedEntity_CanonicalTranslationRefusedAndSpendsNothing` + `scripts/entity-lifecycle-guards-live-smoke.sh`. **Measured, not argued:** on the pre-fix binary rebuilt for the check, a trashed entity returned `200 translating` and **claimed 1 translation row — a paid MT fill launched on author-deleted content**; with the fix, 404 and 0 rows |
+| ★ ~~**2026-08-03-03**~~ | ~~`D-KNOWN-ENTITIES-PER-JOB` — `extraction_worker.py:473` fetches before the chapter loop at `:556`; a deleted entity is re-emitted for the rest of the job~~ | ✅ **CLOSED** 2026-08-09 · plan T2. The known set is re-fetched at every chapter boundary; entities the run itself created — below the server's `min_frequency` floor, so invisible to that read — are pruned by a batched liveness probe on the same boundary. **Mechanism:** `tests/test_extraction_known_entities_refresh.py` (4 tests). **Bite:** restoring "fetch once per job" makes the deleted entity survive into chapter 2 and the per-chapter fetch count fall 3 → 1. The cross-service contract the prune leans on (`entities/by-ids` drops a soft-deleted id) is proven live; the worker leg itself is unit-only and takes its live exercise in QC-4 |
+| ★ ~~**2026-08-03-04**~~ | ~~`D-OUTBOX-PAYLOAD-TRASH` — `outbox.go:398` re-publishes a trashed entity on edit; knowledge-service re-embeds it, silently reversing the deletion~~ | ✅ **CLOSED** 2026-08-09 · plan T3. The payload read is lifecycle-filtered **and** the transactional emitter checks liveness inside the writing tx — its callers discard the `ok` flag by design, so the filter alone would have emitted an *empty* payload rather than none. **Mechanism:** `entity_lifecycle_guard_test.go::TestDeletedEntity_EditEmitsNoOutboxEvent` + the live smoke. **Measured:** pre-fix, editing a trashed entity published 1 outbox row and **2 frames reached `loreweave:events:glossary`** — the deletion reversed in a consumer's index, observed rather than inferred; post-fix, 0 and 0 |
 | ★ **2026-08-03-05** | `D-CANON-CHECK-BLIND-TO-ROLE` — a `cast_plan` names Lâm Trạch the trap-setter; the drafting run gave the trap to `Lâm Diệp`, a `rival` **minted seven minutes earlier** by the `cast` pass, and the critic scored **`canon_consistency = 5/5`** on all three chapters. Nothing holds a role assignment where a check can fail on it: the plan has it as free text, the glossary has two untyped `character` rows, the graph has neither. **Kind was correct on both entities — this is not a kind bug** | open · [evidence §1](2026-08-03-dogfood-entity-consistency-evidence.md) |
 | ★ **2026-08-03-06** | `D-BOOTSTRAP-PREVIEW-LIES` — `bootstrap_service.propose()` dedupes glossary seeds against *prior proposals only*, never against the book, while the chapter half of the same function does query the book. Offered **12 "NEW GLOSSARY ENTRIES"** that all existed, each rendered `Character` (real kinds: `power_system`, `organization`, `event`, `item`). Apply is safe — upsert-by-name preserved the kinds — so this is a **human-approval gate showing a claim that is wrong on both novelty and kind**, not corruption | open · [evidence §2](2026-08-03-dogfood-entity-consistency-evidence.md) |
 | ★ **2026-08-03-08** | `D-UNKNOWN-PARK-IS-PROSE-NOT-DATA` — an entity parked under `unknown` keeps its unmatched attributes only as PROSE: `appendUnmatchedAttrsToFallback` joins them into `- code: value` lines and appends them to the kind's `description`. That is the right instinct (losing the observation is worse than filing it badly) and the wrong SHAPE for the consumer — the thing that will read them is a later kind-resolution pass deciding what this entity actually IS, and it would have to re-parse prose the extractor had already delivered structured. `source_kind_code` remembers the code it arrived as; the raw attribute payload is the missing other half. **Author-proposed 2026-08-03: a JSONB column on the parked row.** Not urgent while parking is rare; load-bearing the moment the refactor tries to re-kind parked entities in bulk, which is the whole point of the bucket | open · [evidence §2 context](2026-08-03-dogfood-entity-consistency-evidence.md) |
@@ -49,6 +49,16 @@ That sentence was their entire tracking mechanism, and it was false. They are **
 deferrals: this register exists so they cannot be lost a second time, **not** to license
 deferring them.
 
+> ✅ **All three are now genuinely closed — 2026-08-09, Phase 0 of
+> [the knowledge-architecture plan](../../plans/2026-08-09-knowledge-architecture-refactor.md).**
+> The difference from the first "already closed" is the point: each row above cites a **test that
+> fails without the fix** and a **live smoke run against a rebuilt binary on a real stack**, and each
+> quotes what the pre-fix code actually did — a paid machine-translation call bought on deleted
+> content, and two event frames re-anchoring a deleted entity in a consumer's index. Prose said
+> closed last time; this time the mechanism says it.
+> *(No `SESSION_HANDOFF.md` change accompanies these: that file has no Deferred Items table and never
+> carried these three ids — this register is their only home, which is why it was created.)*
+
 **05 · 06 · 07** are the 2026-08-03 dogfood rows, and they are a different kind of item: each was
 observed in *output a reader would see*, not in code. Their evidence lives in
 [`2026-08-03-dogfood-entity-consistency-evidence.md`](2026-08-03-dogfood-entity-consistency-evidence.md),
@@ -56,6 +66,92 @@ which also records what the same run proved WORKS — a defect list with no base
 **05 is the acceptance case for this whole refactor:** a design that cannot prevent it has not
 addressed the problem. 06 is small and self-contained (fix-now-shaped, one function); 07 needs the
 kind-typing this refactor is already re-cutting, so it waits on the design.
+
+### A-extra · ✅ `D-KG-FACT-VOCAB-DISJOINT` — found AND fixed 2026-08-11 · **CLOSED**
+
+**The story extractor and the KG fact writer speak two vocabularies that share exactly one
+word, and the writer silently drops everything else.**
+
+| producer | vocabulary |
+|---|---|
+| `loreweave_extraction.extractors.fact.FactType` (what the LLM is prompted for) | `description` · `attribute` · `negation` · `temporal` · `causal` |
+| `neo4j_repos/facts.FactType` (what `merge_fact` accepts) | `decision` · `preference` · `milestone` · **`negation`** · `statement` · `commitment` |
+
+`pass2_writer` validates the first against the second. The intersection is `negation`.
+
+**The live graph shows the consequence exactly**, which is why this is a measurement and not a
+suspicion — 94 `:Fact` nodes, corpus-wide:
+
+```
+negation    64      <- the ONLY overlapping type
+preference  17  |
+decision    11  |-- chat-memory writes, a different producer entirely
+statement    2  |
+```
+
+Story extraction has contributed **only negations, ever**. Every `description`, `attribute`,
+`temporal` and `causal` fact it produced was dropped at
+`pass2_writer.py` (*"skipping fact with unknown type"*), and a run observed live logged
+`persist-pass2 done entities=4 relations=5 events=0 facts=0`.
+
+**Why this is NOT filed as a fix.** Two reasons, and both are about respecting a seal rather
+than working around it:
+
+1. **The enum is a documented 4-site lockstep with an incident behind it.** Its own comment:
+   *"Adding it here (the SoT) must move IN LOCKSTEP with the models.py mirror + the
+   `knowledge_pending_facts` CHECK x2 — the exact drift that 500'd a `statement` fact at
+   merge_fact."* Widening it is a migration, not an edit.
+2. **The sealed direction may make the destination wrong.** §9 **O1** consolidates on ONE
+   physical truth store and names `entity_facts` the working bitemporal SSOT. If story facts
+   belong there, widening the Neo4j chat-memory enum builds on the layer being retired.
+
+## RESOLVED — and the fix was narrower than either option first priced
+
+Neither "widen the enum across 4 sites + a migration" nor "re-home story facts in
+`entity_facts`". Checking *who actually writes the pending-facts queue* collapsed the problem:
+
+`knowledge_pending_facts` has exactly **two** writers — `tools/executor.py` (the
+`memory_remember` chat tool) and `routers/internal_admin.py` (the diary distiller, always
+`'statement'`). **Story extraction never queues**; `pass2_writer` calls `merge_fact` directly.
+So the queue's domain is memory-only *by construction*, and no CHECK migration was needed. The
+lockstep comment asked for a wider change than the code does.
+
+So the two families are **named** instead of merged into one enum pretending to be homogeneous:
+
+```python
+MemoryFactType = Literal["decision","preference","milestone","negation","statement","commitment"]
+StoryFactType  = Literal["description","attribute","temporal","causal"]
+FactType       = MemoryFactType | StoryFactType
+FACT_TYPES     = MEMORY_FACT_TYPES + STORY_FACT_TYPES     # `negation` is shared, appears once
+```
+
+`PendingFactType` (models.py) stays **memory-only**, and that is now a stated invariant rather
+than an accident: widening it would admit a value nothing can produce and invite the opposite
+drift — a queue accepting what the confirm path cannot promote.
+
+**Three lockstep guards fired on the first run and were right to.** One of them caught a
+regression the change introduced: `tools/definitions.py` built the `memory_remember` tool's
+JSON-schema enum from `FACT_TYPES`, so widening it would have offered *story* kinds to the chat
+model and let it queue an unpromotable fact. Both inbox-facing enums (`definitions.py`,
+`graph_schema_tools.py`) now derive from `MEMORY_FACT_TYPES`.
+
+**Proven live**, through the real dispatch-extraction path, not a fixture:
+
+```
+before   negation 64 · preference 17 · decision 11 · statement 2
+after    negation 64 · description 32 · preference 17 · decision 11
+         attribute 3 · statement 2 · temporal 2 · causal 1
+```
+
+**38 story facts persisted where the vocabulary had been dropping them** — every one of the
+four previously-impossible types, first time ever. In the acceptance project alone: description
+32, attribute 3, temporal 2, causal 1.
+
+Bitten: `FACT_TYPES = MEMORY_FACT_TYPES` alone → the three guards go red; restored → green.
+knowledge-service **4532 passed, 307 skipped**.
+
+**Reproduce:** `MATCH (f:Fact) RETURN f.type, count(*)` — an overlap-only distribution was the
+finding; four story types present is the fix.
 
 ---
 

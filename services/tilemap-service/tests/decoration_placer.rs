@@ -23,7 +23,7 @@ use tilemap_service::types::template::{
 use tilemap_service::types::tile::TileCoord;
 use tilemap_service::types::treasure::TreasureTierSpec;
 use tilemap_service::types::zone::{PassageKind, ZoneId, ZoneRole};
-use tilemap_service::types::{ChannelId, ChannelTier, GridSize, TerrainKind, TilemapView};
+use tilemap_service::types::{ChannelId, MapKind, GridSize, TerrainKind, TilemapView};
 
 /// Build a fixture template with the requested decoration_density. The
 /// 3-zone shape mirrors the determinism.rs fixture but trimmed for
@@ -84,13 +84,13 @@ fn fixture(density: Option<DecorationDensity>) -> TilemapTemplate {
 }
 
 fn run(template: &TilemapTemplate, seed: u64) -> TilemapView {
-    run_with(template, seed, ChannelTier::Town, GridSize { width: 48, height: 48 })
+    run_with(template, seed, MapKind::Locale, GridSize { width: 48, height: 48 })
 }
 
 fn run_with(
     template: &TilemapTemplate,
     seed: u64,
-    tier: ChannelTier,
+    tier: MapKind,
     grid: GridSize,
 ) -> TilemapView {
     let registry = Registry::load_default().expect("default registry must load");
@@ -362,7 +362,7 @@ fn decoration_density_bounds_continent_tier() {
     let view = run_with(
         &template,
         7,
-        ChannelTier::Continent,
+        MapKind::Region,
         GridSize { width: 96, height: 96 },
     );
     for zone in &view.zones {

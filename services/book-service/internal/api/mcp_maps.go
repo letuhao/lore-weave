@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -50,7 +51,7 @@ func (s *Server) requireMapOwner(ctx context.Context, mapID, callerID uuid.UUID)
 		return errors.New("failed to resolve map")
 	}
 	if !found || owner != callerID {
-		return errors.New("map not found")
+		return errNoSuchMap
 	}
 	return nil
 }
@@ -68,7 +69,7 @@ func parseOptionalEntityID(raw string) (*uuid.UUID, error) {
 
 // ── world_map_create ─────────────────────────────────────────────────────────
 type worldMapCreateIn struct {
-	WorldID  string `json:"world_id" jsonschema:"the world this map belongs to (UUID; you must own it)"`
+	WorldID  string `json:"world_id" jsonschema:"the world this map belongs to (UUID; you must own it). NOT a name — if you have the world's NAME, call world_list first and match it to get the id"`
 	Name     string `json:"name" jsonschema:"the map's name, e.g. 'The Northern Realms'"`
 	ImageRef string `json:"image_ref,omitempty" jsonschema:"optional MinIO object key of an already-uploaded base image (the value returned by the map-image upload route); omit to attach the image later"`
 }
@@ -92,6 +93,7 @@ func (s *Server) withImageURL(d *worldMapDetail) {
 		d.ImageURL = &u
 	}
 }
+
 type worldMapCreateOut struct {
 	Map worldMapDetail `json:"map"`
 }
@@ -115,7 +117,7 @@ func (s *Server) toolWorldMapCreate(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, worldMapCreateOut{}, errors.New("failed to resolve world")
 	}
 	if !worldOK {
-		return nil, worldMapCreateOut{}, errors.New("world not found")
+		return nil, worldMapCreateOut{}, errNoSuchWorld
 	}
 	imageRef := strings.TrimSpace(in.ImageRef)
 	// K13 (2026-07-23) — idempotency guard against the agent double-firing this Tier-A
@@ -151,7 +153,7 @@ INSERT INTO world_maps(owner_user_id, world_id, name, image_object_key) VALUES($
 
 // ── world_map_add_marker ─────────────────────────────────────────────────────
 type mapAddMarkerIn struct {
-	MapID      string  `json:"map_id" jsonschema:"the map to add a marker to (UUID; you must own it)"`
+	MapID      string  `json:"map_id" jsonschema:"the map to add a marker to (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id"`
 	Label      string  `json:"label" jsonschema:"the marker's label, e.g. 'Ironhold'"`
 	X          float64 `json:"x" jsonschema:"horizontal position on the base image, 0.0 (left) to 1.0 (right)"`
 	Y          float64 `json:"y" jsonschema:"vertical position, 0.0 (top) to 1.0 (bottom)"`
@@ -212,7 +214,7 @@ VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
 
 // ── world_map_add_region ─────────────────────────────────────────────────────
 type mapAddRegionIn struct {
-	MapID    string      `json:"map_id" jsonschema:"the map to add a region to (UUID; you must own it)"`
+	MapID    string      `json:"map_id" jsonschema:"the map to add a region to (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id"`
 	Name     string      `json:"name" jsonschema:"the region's name, e.g. 'The Shattered Coast'"`
 	Polygon  [][]float64 `json:"polygon" jsonschema:"the region outline as an array of [x,y] relative points (each 0.0-1.0); at least 3 points"`
 	EntityID string      `json:"entity_id,omitempty" jsonschema:"optional glossary location entity id (UUID) this region represents"`
@@ -277,7 +279,7 @@ VALUES($1,$2,$3,$4) RETURNING id`,
 
 // ── world_map_get ────────────────────────────────────────────────────────────
 type mapGetIn struct {
-	MapID string `json:"map_id" jsonschema:"the map to fetch (UUID; you must own it)"`
+	MapID string `json:"map_id" jsonschema:"the map to fetch (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id"`
 }
 type markerOut struct {
 	MarkerID   string  `json:"marker_id"`
@@ -316,7 +318,7 @@ func (s *Server) toolWorldMapGet(ctx context.Context, _ *mcp.CallToolRequest, in
 SELECT id, world_id, name, image_object_key, version FROM world_maps WHERE id=$1 AND owner_user_id=$2`,
 		mapID, ownerID).Scan(&mapID, &worldID, &d.Name, &d.ImageObjectKey, &d.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, mapGetOut{}, errors.New("map not found") // owner-scoped, no oracle
+		return nil, mapGetOut{}, errNoSuchMap // owner-scoped, no oracle
 	}
 	if err != nil {
 		return nil, mapGetOut{}, errors.New("failed to get map")
@@ -387,7 +389,7 @@ SELECT id, world_id, name, image_object_key, version FROM world_maps WHERE id=$1
 
 // ── world_map_list ───────────────────────────────────────────────────────────
 type mapListIn struct {
-	WorldID string `json:"world_id" jsonschema:"the world whose maps to list (UUID; you must own it)"`
+	WorldID string `json:"world_id" jsonschema:"the world whose maps to list (UUID; you must own it). NOT a name — if you have the world's NAME, call world_list first and match it to get the id"`
 }
 type mapListOut struct {
 	Maps []worldMapDetail `json:"maps"`
@@ -402,6 +404,23 @@ func (s *Server) toolWorldMapList(ctx context.Context, _ *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, mapListOut{}, errors.New("world_id must be a UUID")
 	}
+	// The listing query below is owner-scoped, so no map can cross a tenant boundary --
+	// but WITHOUT this check a world the caller does not own answered `{"maps": []}`,
+	// which is the same sentence as "your world has no maps yet". That is the
+	// false-absence class this service already refuses by name four times over
+	// (world_get, world_map_get, world_map_delete, world_delete all answer "not
+	// found"), and it is worse through an agent than through the UI: the model
+	// relays "that world has no maps" to an author whose world is full of them.
+	// Owner-scoped existence check, so it is still no oracle for another account.
+	var exists bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM worlds WHERE id=$1 AND owner_user_id=$2)`,
+		worldID, ownerID).Scan(&exists); err != nil {
+		return nil, mapListOut{}, errors.New("failed to list maps")
+	}
+	if !exists {
+		return nil, mapListOut{}, errNoSuchWorld
+	}
 	rows, err := s.pool.Query(ctx, `
 SELECT id, world_id, name, image_object_key, version FROM world_maps
 WHERE world_id=$1 AND owner_user_id=$2 ORDER BY created_at DESC`, worldID, ownerID)
@@ -413,19 +432,28 @@ WHERE world_id=$1 AND owner_user_id=$2 ORDER BY created_at DESC`, worldID, owner
 	for rows.Next() {
 		var id, wid uuid.UUID
 		var d worldMapDetail
-		if rows.Scan(&id, &wid, &d.Name, &d.ImageObjectKey, &d.Version) == nil {
-			d.MapID = id.String()
-			d.WorldID = wid.String()
-			s.withImageURL(&d)
-			maps = append(maps, d)
+		// #312: a scan error FAILS the tool. Skipping the row instead returned a shorter list
+		// presented as the complete set of maps in this world -- the silent-success class that
+		// toolWorldMapGet, twenty lines up in this same file, already refuses by name.
+		if err := rows.Scan(&id, &wid, &d.Name, &d.ImageObjectKey, &d.Version); err != nil {
+			return nil, mapListOut{}, errors.New("failed to list maps")
 		}
+		d.MapID = id.String()
+		d.WorldID = wid.String()
+		s.withImageURL(&d)
+		maps = append(maps, d)
+	}
+	// An iteration error (a connection dropped mid-read) truncates the result set. Without this
+	// check the caller is handed the prefix as if it were everything.
+	if err := rows.Err(); err != nil {
+		return nil, mapListOut{}, errors.New("failed to list maps")
 	}
 	return nil, mapListOut{Maps: maps}, nil
 }
 
 // ── world_map_delete ─────────────────────────────────────────────────────────
 type mapDeleteIn struct {
-	MapID string `json:"map_id" jsonschema:"the map to delete (UUID; you must own it). CASCADE-removes its markers + regions."`
+	MapID string `json:"map_id" jsonschema:"the map to delete (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id. CASCADE-removes its markers + regions."`
 }
 type mapDeleteOut struct {
 	Deleted bool `json:"deleted"`
@@ -445,7 +473,7 @@ func (s *Server) toolWorldMapDelete(ctx context.Context, _ *mcp.CallToolRequest,
 	var imageKey *string
 	err = s.pool.QueryRow(ctx, `SELECT image_object_key FROM world_maps WHERE id=$1 AND owner_user_id=$2`, mapID, ownerID).Scan(&imageKey)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, mapDeleteOut{}, errors.New("map not found")
+		return nil, mapDeleteOut{}, errNoSuchMap
 	}
 	if err != nil {
 		return nil, mapDeleteOut{}, errors.New("failed to resolve map")
@@ -454,20 +482,29 @@ func (s *Server) toolWorldMapDelete(ctx context.Context, _ *mcp.CallToolRequest,
 	if _, err := s.pool.Exec(ctx, `DELETE FROM world_maps WHERE id=$1 AND owner_user_id=$2`, mapID, ownerID); err != nil {
 		return nil, mapDeleteOut{}, errors.New("failed to delete map")
 	}
-	// Best-effort blob cleanup: the row is already gone, so a storage hiccup must NOT
-	// fail the delete (a stray object is swept, never surfaced as a tool error).
+	// Best-effort blob cleanup: the row is already gone, so a storage hiccup must NOT fail the
+	// delete. But it must not vanish either (#310). The discarded error used to be justified with
+	// "a stray object is swept" — there is no sweeper. Nothing in this service or any other
+	// collects orphaned media objects, so a failure here leaked the object permanently AND
+	// silently: no log, no metric, nothing an operator could act on. Measured at the time of the
+	// fix: all 3 map base-images in the bucket belonged to maps that no longer exist, and the only
+	// way to find that out was to list the bucket by hand. Logging the key turns a permanent
+	// invisible leak into a discoverable one; see DQ-28 on whether a sweeper should exist.
 	if imageKey != nil && *imageKey != "" && s.minio != nil {
-		_ = s.minio.RemoveObject(ctx, mediaBucket, *imageKey, minio.RemoveObjectOptions{})
+		if err := s.minio.RemoveObject(ctx, mediaBucket, *imageKey, minio.RemoveObjectOptions{}); err != nil {
+			slog.WarnContext(ctx, "world_map_delete: orphaned map base image (delete succeeded, blob remains)",
+				"map_id", mapID.String(), "object_key", *imageKey, "error", err)
+		}
 	}
 	return nil, mapDeleteOut{Deleted: true}, nil
 }
 
 // ── world_map_remove_marker / world_map_remove_region ─────────────────────────
 type mapRemoveMarkerIn struct {
-	MarkerID string `json:"marker_id" jsonschema:"the marker to remove (UUID; on a map you own)"`
+	MarkerID string `json:"marker_id" jsonschema:"the marker to remove (UUID; on a map you own) — obtained from world_map_get, which returns the map with all its markers + regions"`
 }
 type mapRemoveRegionIn struct {
-	RegionID string `json:"region_id" jsonschema:"the region to remove (UUID; on a map you own)"`
+	RegionID string `json:"region_id" jsonschema:"the region to remove (UUID; on a map you own) — obtained from world_map_get, which returns the map with all its markers + regions"`
 }
 type mapRemoveOut struct {
 	Removed bool `json:"removed"`
@@ -484,16 +521,44 @@ func (s *Server) toolWorldMapRemoveMarker(ctx context.Context, _ *mcp.CallToolRe
 	}
 	// Owner-scoped via a JOIN to world_maps.owner_user_id — a foreign/missing marker
 	// deletes 0 rows → uniform "marker not found" (no cross-owner existence oracle).
-	tag, err := s.pool.Exec(ctx, `
+	//
+	// RETURNING the whole marker (#313), not just a row count. This tool advertises itself as the
+	// undo of world_map_add_marker and prescribed the reversal in its own description: "re-add it
+	// with the same label + coords to restore". Measured, that recipe is LOSSY — add_marker also
+	// carries entity_id and marker_type, so a marker removed at
+	// {label Ironhold, x .25, y .75, marker_type city, entity_id ...beef0} came back as
+	// {entity_id null, marker_type null} when restored exactly as instructed. The values were not
+	// recoverable either: the row was deleted and the response was {removed true} with no _meta at
+	// all. So the undo hint now carries every field add_marker accepts, the same shape world_update
+	// already uses for its reversal.
+	var mapIDOut uuid.UUID
+	var label string
+	var x, y float64
+	var entityID *uuid.UUID
+	var markerType *string
+	err = s.pool.QueryRow(ctx, `
 DELETE FROM map_markers m USING world_maps wm
-WHERE m.id=$1 AND m.map_id=wm.id AND wm.owner_user_id=$2`, markerID, ownerID)
+WHERE m.id=$1 AND m.map_id=wm.id AND wm.owner_user_id=$2
+RETURNING m.map_id, m.label, m.x, m.y, m.entity_id, m.marker_type`,
+		markerID, ownerID).Scan(&mapIDOut, &label, &x, &y, &entityID, &markerType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapRemoveOut{}, errors.New("marker not found")
+	}
 	if err != nil {
 		return nil, mapRemoveOut{}, errors.New("failed to remove marker")
 	}
-	if tag.RowsAffected() == 0 {
-		return nil, mapRemoveOut{}, errors.New("marker not found")
+	undoArgs := map[string]any{
+		"map_id": mapIDOut.String(), "label": label, "x": x, "y": y,
 	}
-	return nil, mapRemoveOut{Removed: true}, nil
+	// Only present when set: add_marker treats both as optional, and sending an empty string for
+	// entity_id would fail its UUID parse rather than restore anything.
+	if entityID != nil {
+		undoArgs["entity_id"] = entityID.String()
+	}
+	if markerType != nil && *markerType != "" {
+		undoArgs["marker_type"] = *markerType
+	}
+	return undoResult("world_map_add_marker", undoArgs), mapRemoveOut{Removed: true}, nil
 }
 
 func (s *Server) toolWorldMapRemoveRegion(ctx context.Context, _ *mcp.CallToolRequest, in mapRemoveRegionIn) (*mcp.CallToolResult, mapRemoveOut, error) {
@@ -505,16 +570,42 @@ func (s *Server) toolWorldMapRemoveRegion(ctx context.Context, _ *mcp.CallToolRe
 	if err != nil {
 		return nil, mapRemoveOut{}, errors.New("region_id must be a UUID")
 	}
-	tag, err := s.pool.Exec(ctx, `
+	// RETURNING the whole region (#314), for the reason its twin needed it (#313) and one more:
+	// this tool's restore recipe was not merely lossy, it was UNEXECUTABLE. The description said
+	// "re-add it with the same polygon to restore", and `name` is a REQUIRED argument of
+	// world_map_add_region. Measured live, following it exactly returned
+	// `required: missing properties: ["name"]` — and the removal had answered {removed true} with
+	// no _meta, so the name and entity_id were gone with nowhere to read them from. The agent's
+	// only remaining move would have been to invent a name for the user's region.
+	var mapIDOut uuid.UUID
+	var name string
+	var polygonJSON []byte
+	var entityID *uuid.UUID
+	err = s.pool.QueryRow(ctx, `
 DELETE FROM map_regions rg USING world_maps wm
-WHERE rg.id=$1 AND rg.map_id=wm.id AND wm.owner_user_id=$2`, regionID, ownerID)
+WHERE rg.id=$1 AND rg.map_id=wm.id AND wm.owner_user_id=$2
+RETURNING rg.map_id, rg.name, rg.polygon, rg.entity_id`,
+		regionID, ownerID).Scan(&mapIDOut, &name, &polygonJSON, &entityID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapRemoveOut{}, errors.New("region not found")
+	}
 	if err != nil {
 		return nil, mapRemoveOut{}, errors.New("failed to remove region")
 	}
-	if tag.RowsAffected() == 0 {
-		return nil, mapRemoveOut{}, errors.New("region not found")
+	// The polygon is stored as JSON. It must go back into the hint as the [[x,y],…] ARRAY that
+	// add_region's schema expects, never as a JSON string — replaying a string would fail the
+	// array validation, which is exactly the unexecutable-undo this fix exists to end.
+	var polygon [][]float64
+	if err := json.Unmarshal(polygonJSON, &polygon); err != nil {
+		return nil, mapRemoveOut{}, errors.New("failed to remove region")
 	}
-	return nil, mapRemoveOut{Removed: true}, nil
+	undoArgs := map[string]any{
+		"map_id": mapIDOut.String(), "name": name, "polygon": polygon,
+	}
+	if entityID != nil {
+		undoArgs["entity_id"] = entityID.String()
+	}
+	return undoResult("world_map_add_region", undoArgs), mapRemoveOut{Removed: true}, nil
 }
 
 // ── world_map_update ─────────────────────────────────────────────────────────
@@ -526,7 +617,7 @@ WHERE rg.id=$1 AND rg.map_id=wm.id AND wm.owner_user_id=$2`, regionID, ownerID)
 // pointer rule (spec §4.2). Owner-gated via requireMapOwner / the world_maps JOIN;
 // the SQL sets only the provided columns (mirrors patchWorld's dynamic SET).
 type mapUpdateIn struct {
-	MapID    string  `json:"map_id" jsonschema:"the map to update (UUID; you must own it)"`
+	MapID    string  `json:"map_id" jsonschema:"the map to update (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id"`
 	Name     *string `json:"name,omitempty" jsonschema:"new map name; omit to leave unchanged"`
 	ImageRef *string `json:"image_ref,omitempty" jsonschema:"new base-image object key (from the upload route); omit to leave unchanged"`
 	// S-07 §1 — optimistic concurrency, matching the REST PATCH's If-Match. When you read the map
@@ -547,7 +638,18 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, mapUpdateOut{}, errors.New("map_id must be a UUID")
 	}
-	setClauses := []string{"updated_at=now()", "version=version+1"}
+	// #315: refuse a call that changes nothing. Without this the statement still ran
+	// `version=version+1`, so an empty update CONSUMED AN OCC GENERATION: measured live, a map at
+	// version 2 came back at version 3 with every field identical, which makes every other client
+	// holding version 2 fail its next write with "map changed elsewhere" over a change that never
+	// happened. The world rename sibling (toolWorldUpdate) already refuses the same way.
+	if in.Name == nil && in.ImageRef == nil {
+		return nil, mapUpdateOut{}, errors.New("provide name and/or image_ref to update")
+	}
+	// `m.version+1`, NOT `version+1`: the statement joins world_maps twice, so an unqualified
+	// `version` on the right-hand side is AMBIGUOUS and Postgres rejects the whole UPDATE.
+	// The Go suite could not see this — it took a live call to surface "failed to update map".
+	setClauses := []string{"updated_at=now()", "version=m.version+1"}
 	args := []any{mapID, ownerID}
 	idx := 3
 	if in.Name != nil {
@@ -573,12 +675,21 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 		args = append(args, *in.ExpectedVersion)
 		idx++
 	}
+	// The self-join to `old` returns the PRE-update row alongside the new one (the FROM side reads
+	// the statement's snapshot, so it cannot see this UPDATE's own writes). That is what makes the
+	// undo hint below possible WITHOUT a second query: a read-then-update would leave a window in
+	// which the values reported as "prior" were already someone else's.
 	query := fmt.Sprintf(
-		`UPDATE world_maps SET %s WHERE id=$1 AND owner_user_id=$2%s RETURNING id, world_id, name, image_object_key, version`,
-		strings.Join(setClauses, ", "), whereVersion)
+		`UPDATE world_maps m SET %s FROM world_maps old
+		 WHERE m.id=old.id AND m.id=$1 AND m.owner_user_id=$2%s
+		 RETURNING m.id, m.world_id, m.name, m.image_object_key, m.version, old.name, old.image_object_key`,
+		strings.Join(setClauses, ", "), strings.ReplaceAll(whereVersion, " AND version=", " AND m.version="))
 	var d worldMapDetail
 	var gotMap, gotWorld uuid.UUID
-	err = s.pool.QueryRow(ctx, query, args...).Scan(&gotMap, &gotWorld, &d.Name, &d.ImageObjectKey, &d.Version)
+	var priorName string
+	var priorImageKey *string
+	err = s.pool.QueryRow(ctx, query, args...).Scan(&gotMap, &gotWorld, &d.Name, &d.ImageObjectKey, &d.Version,
+		&priorName, &priorImageKey)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// 0 rows: either the map is gone/foreign (not found) OR — only when a version was supplied
 		// — it was stale. One owner-scoped read disambiguates, so a version conflict reports the
@@ -593,7 +704,7 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 					*in.ExpectedVersion, curVersion)
 			}
 		}
-		return nil, mapUpdateOut{}, errors.New("map not found") // owner-scoped, no oracle
+		return nil, mapUpdateOut{}, errNoSuchMap // owner-scoped, no oracle
 	}
 	if err != nil {
 		return nil, mapUpdateOut{}, errors.New("failed to update map")
@@ -601,12 +712,30 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 	d.MapID = gotMap.String()
 	d.WorldID = gotWorld.String()
 	s.withImageURL(&d)
-	return nil, mapUpdateOut{Map: d}, nil
+	// Undo hint (#315): a rename had no reversal at all — the prior name was neither kept nor
+	// returned, so an agent that renamed a map could not put it back. The world rename sibling has
+	// emitted one since S-07. `image_ref` is always present and is "" when the map had no base
+	// image, because that is what CLEARS it on replay; omitting it would leave the new image in
+	// place and make the undo a partial one.
+	//
+	// expected_version is the version this call just produced. The undo therefore REFUSES if
+	// anything else touched the map in between, rather than blind-clobbering it — on a tool that
+	// carries an OCC token, an undo that silently overwrites a third party's edit is the failure
+	// the token exists to prevent.
+	undoArgs := map[string]any{
+		"map_id": gotMap.String(), "name": priorName, "expected_version": d.Version,
+	}
+	if priorImageKey != nil {
+		undoArgs["image_ref"] = *priorImageKey
+	} else {
+		undoArgs["image_ref"] = ""
+	}
+	return undoResult("world_map_update", undoArgs), mapUpdateOut{Map: d}, nil
 }
 
 // ── world_map_update_marker ──────────────────────────────────────────────────
 type mapUpdateMarkerIn struct {
-	MarkerID    string   `json:"marker_id" jsonschema:"the marker to update (UUID; on a map you own)"`
+	MarkerID    string   `json:"marker_id" jsonschema:"the marker to update (UUID; on a map you own) — obtained from world_map_get, which returns the map with all its markers + regions"`
 	X           *float64 `json:"x,omitempty" jsonschema:"new horizontal position 0.0-1.0; omit to leave unchanged (a drag sends the ABSOLUTE new x)"`
 	Y           *float64 `json:"y,omitempty" jsonschema:"new vertical position 0.0-1.0; omit to leave unchanged"`
 	Label       *string  `json:"label,omitempty" jsonschema:"new label; omit to leave unchanged"`
@@ -626,6 +755,15 @@ func (s *Server) toolWorldMapUpdateMarker(ctx context.Context, _ *mcp.CallToolRe
 	markerID, err := uuid.Parse(in.MarkerID)
 	if err != nil {
 		return nil, mapUpdateMarkerOut{}, errors.New("marker_id must be a UUID")
+	}
+	// #316: refuse a call with nothing to change. Without this it ran, touched updated_at and
+	// reported success — measured live, an empty call moved updated_at from …606677Z to …632087Z
+	// with every field identical, which the editor renders as "edited". clear_entity counts as a
+	// field: unbinding an entity is a real change even though it sets nothing else.
+	if in.X == nil && in.Y == nil && in.Label == nil && in.MarkerType == nil &&
+		!in.ClearEntity && strings.TrimSpace(in.EntityID) == "" {
+		return nil, mapUpdateMarkerOut{}, errors.New(
+			"provide at least one of x, y, label, marker_type, entity_id or clear_entity to update")
 	}
 	setClauses := []string{"updated_at=now()"}
 	args := []any{markerID, ownerID}
@@ -674,16 +812,27 @@ func (s *Server) toolWorldMapUpdateMarker(ctx context.Context, _ *mcp.CallToolRe
 	}
 	// Owner-scoped via a JOIN to world_maps.owner_user_id — a foreign/missing marker updates 0
 	// rows → uniform "marker not found". Atomic single statement (no read-then-write race).
+	// `map_markers old` joined alongside so the statement also returns the PRE-update row, which is
+	// what the undo hint below is built from — no second read, so no window in which the values
+	// reported as "prior" are already someone else's edit. Every column is alias-qualified: with
+	// the table joined twice, a bare `label`/`x`/`entity_id` would be ambiguous and Postgres would
+	// reject the whole statement (the #315 lesson, which only a live call caught).
 	query := fmt.Sprintf(
-		`UPDATE map_markers m SET %s FROM world_maps wm
-		 WHERE m.id=$1 AND m.map_id=wm.id AND wm.owner_user_id=$2
-		 RETURNING m.id, m.label, m.x, m.y, m.entity_id, m.marker_type, m.updated_at`,
+		`UPDATE map_markers m SET %s FROM world_maps wm, map_markers old
+		 WHERE m.id=$1 AND m.id=old.id AND m.map_id=wm.id AND wm.owner_user_id=$2
+		 RETURNING m.id, m.label, m.x, m.y, m.entity_id, m.marker_type, m.updated_at,
+		           old.label, old.x, old.y, old.entity_id, old.marker_type`,
 		strings.Join(setClauses, ", "))
 	var mk markerOut
 	var id uuid.UUID
 	var entityID *uuid.UUID
 	var updatedAt time.Time
-	err = s.pool.QueryRow(ctx, query, args...).Scan(&id, &mk.Label, &mk.X, &mk.Y, &entityID, &mk.MarkerType, &updatedAt)
+	var priorLabel string
+	var priorX, priorY float64
+	var priorEntity *uuid.UUID
+	var priorType *string
+	err = s.pool.QueryRow(ctx, query, args...).Scan(&id, &mk.Label, &mk.X, &mk.Y, &entityID, &mk.MarkerType, &updatedAt,
+		&priorLabel, &priorX, &priorY, &priorEntity, &priorType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, mapUpdateMarkerOut{}, errors.New("marker not found")
 	}
@@ -696,12 +845,33 @@ func (s *Server) toolWorldMapUpdateMarker(ctx context.Context, _ *mcp.CallToolRe
 		mk.EntityID = &eid
 	}
 	mk.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
-	return nil, mapUpdateMarkerOut{Marker: mk}, nil
+	// Undo hint (#316). This tool had none, which put the map tools in a perverse state after
+	// #313: the description tells the agent to move a pin with THIS tool rather than remove+add,
+	// because the marker_id stays stable — and remove_marker was the one that could be undone.
+	//
+	// The entity is asymmetric and is where a careless hint would corrupt the marker: replaying
+	// entity_id restores a binding, but a marker that had NO entity needs clear_entity=true,
+	// because an omitted entity_id means "leave unchanged" and would silently keep whatever this
+	// update bound. marker_type is always sent, "" when it was unset, since that is what clears it.
+	undoArgs := map[string]any{
+		"marker_id": id.String(), "label": priorLabel, "x": priorX, "y": priorY,
+	}
+	if priorType != nil {
+		undoArgs["marker_type"] = *priorType
+	} else {
+		undoArgs["marker_type"] = ""
+	}
+	if priorEntity != nil {
+		undoArgs["entity_id"] = priorEntity.String()
+	} else {
+		undoArgs["clear_entity"] = true
+	}
+	return undoResult("world_map_update_marker", undoArgs), mapUpdateMarkerOut{Marker: mk}, nil
 }
 
 // ── world_map_update_region ──────────────────────────────────────────────────
 type mapUpdateRegionIn struct {
-	RegionID    string      `json:"region_id" jsonschema:"the region to update (UUID; on a map you own)"`
+	RegionID    string      `json:"region_id" jsonschema:"the region to update (UUID; on a map you own) — obtained from world_map_get, which returns the map with all its markers + regions"`
 	Polygon     [][]float64 `json:"polygon,omitempty" jsonschema:"new outline as [x,y] relative points (>=3, each 0.0-1.0); omit to leave the shape unchanged"`
 	Name        *string     `json:"name,omitempty" jsonschema:"new name; omit to leave unchanged"`
 	EntityID    string      `json:"entity_id,omitempty" jsonschema:"rebind to this glossary/KG location entity (UUID); empty = leave unchanged unless clear_entity"`
@@ -719,6 +889,12 @@ func (s *Server) toolWorldMapUpdateRegion(ctx context.Context, _ *mcp.CallToolRe
 	regionID, err := uuid.Parse(in.RegionID)
 	if err != nil {
 		return nil, mapUpdateRegionOut{}, errors.New("region_id must be a UUID")
+	}
+	// #317: refuse a call with nothing to change — same shape as #315/#316. Measured live, an
+	// empty call moved updated_at from …802859Z to …81511Z with every field identical.
+	if in.Polygon == nil && in.Name == nil && !in.ClearEntity && strings.TrimSpace(in.EntityID) == "" {
+		return nil, mapUpdateRegionOut{}, errors.New(
+			"provide at least one of polygon, name, entity_id or clear_entity to update")
 	}
 	setClauses := []string{"updated_at=now()"}
 	args := []any{regionID, ownerID}
@@ -760,17 +936,27 @@ func (s *Server) toolWorldMapUpdateRegion(ctx context.Context, _ *mcp.CallToolRe
 		args = append(args, entityID)
 		idx++
 	}
+	// `map_regions old` joined alongside so the same statement returns the PRE-update row for the
+	// undo hint — no second read, hence no window in which the "prior" values are already someone
+	// else's. Alias-qualified throughout: map_regions is joined twice, and an unqualified column
+	// makes Postgres reject the statement, which #315 proved is invisible to the compiler and to
+	// every source-reading test.
 	query := fmt.Sprintf(
-		`UPDATE map_regions rg SET %s FROM world_maps wm
-		 WHERE rg.id=$1 AND rg.map_id=wm.id AND wm.owner_user_id=$2
-		 RETURNING rg.id, rg.name, rg.polygon, rg.entity_id, rg.updated_at`,
+		`UPDATE map_regions rg SET %s FROM world_maps wm, map_regions old
+		 WHERE rg.id=$1 AND rg.id=old.id AND rg.map_id=wm.id AND wm.owner_user_id=$2
+		 RETURNING rg.id, rg.name, rg.polygon, rg.entity_id, rg.updated_at,
+		           old.name, old.polygon, old.entity_id`,
 		strings.Join(setClauses, ", "))
 	var rg regionOut
 	var id uuid.UUID
 	var polygonJSON []byte
 	var entityID *uuid.UUID
 	var updatedAt time.Time
-	err = s.pool.QueryRow(ctx, query, args...).Scan(&id, &rg.Name, &polygonJSON, &entityID, &updatedAt)
+	var priorName string
+	var priorPolygonJSON []byte
+	var priorEntity *uuid.UUID
+	err = s.pool.QueryRow(ctx, query, args...).Scan(&id, &rg.Name, &polygonJSON, &entityID, &updatedAt,
+		&priorName, &priorPolygonJSON, &priorEntity)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, mapUpdateRegionOut{}, errors.New("region not found")
 	}
@@ -786,7 +972,24 @@ func (s *Server) toolWorldMapUpdateRegion(ctx context.Context, _ *mcp.CallToolRe
 		rg.EntityID = &eid
 	}
 	rg.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
-	return nil, mapUpdateRegionOut{Region: rg}, nil
+	// Undo hint (#317). The polygon is DECODED back into [[x,y],…] before it goes into the hint:
+	// the column is JSON, and replaying the raw bytes would send a JSON string against a schema
+	// expecting an array — the same uncallable undo #314 fixed on the remove path. The entity
+	// carries the same asymmetry as #316: a region that had none needs clear_entity=true, because
+	// an omitted entity_id means "leave unchanged" and would keep whatever this update bound.
+	var priorPolygon [][]float64
+	if err := json.Unmarshal(priorPolygonJSON, &priorPolygon); err != nil {
+		return nil, mapUpdateRegionOut{}, errors.New("failed to read region")
+	}
+	undoArgs := map[string]any{
+		"region_id": id.String(), "name": priorName, "polygon": priorPolygon,
+	}
+	if priorEntity != nil {
+		undoArgs["entity_id"] = priorEntity.String()
+	} else {
+		undoArgs["clear_entity"] = true
+	}
+	return undoResult("world_map_update_region", undoArgs), mapUpdateRegionOut{Region: rg}, nil
 }
 
 // registerMapTools registers the W10-M2 world-map MCP tools.
@@ -803,7 +1006,7 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 	addTool(srv, "world_map_add_marker",
 		"Place a pin on a map you own at a relative position (x,y each 0.0-1.0), "+
 			"optionally linked to a glossary location entity.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"add pin", "place marker", "map marker"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"add pin", "place marker", "map marker", "put a pin", "add marker", "place pin", "drop a pin"}),
 		s.toolWorldMapAddMarker)
 
 	addTool(srv, "world_map_add_region",
@@ -830,15 +1033,19 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 		s.toolWorldMapDelete)
 
 	addTool(srv, "world_map_remove_marker",
-		"Remove a marker from a map you own. Undoes world_map_add_marker (re-add it with "+
-			"the same label + coords to restore).",
+		"Remove a marker from a map you own. Undoes world_map_add_marker — the result's "+
+			"undo_hint carries the removed marker's full state (label, x, y, and its entity_id / "+
+			"marker_type when set), so replay that to restore it. Re-adding from the label and "+
+			"coords alone drops the entity link and the marker type.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"remove pin", "delete marker"}),
 		s.toolWorldMapRemoveMarker)
 
 	addTool(srv, "world_map_remove_region",
-		"Remove a region from a map you own. Undoes world_map_add_region (re-add it with "+
-			"the same polygon to restore).",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"remove region", "delete area"}),
+		"Remove a region from a map you own. Undoes world_map_add_region — the result's "+
+			"undo_hint carries the removed region's full state (name, polygon, and its entity_id "+
+			"when set), so replay that to restore it. The polygon alone is not enough: "+
+			"world_map_add_region requires a name.",
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"remove region", "delete area", "remove area", "delete region", "drop region", "drop area"}),
 		s.toolWorldMapRemoveRegion)
 
 	// S7·2 — the NET-NEW UPDATE tools (MCP-first parity for the update capability that
@@ -854,13 +1061,13 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 		"Move, relabel, rebind, or retype a marker on a map you own. Pass the ABSOLUTE new x/y "+
 			"to move a pin (a stable marker_id — never remove+add). Provide only the fields you "+
 			"want to change; set clear_entity=true to unbind its location entity.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"move pin", "drag marker", "relabel marker", "rebind marker"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"move pin", "drag marker", "relabel marker", "rebind marker", "relabel pin", "rename pin", "rename marker", "move marker", "drag pin", "rebind pin"}),
 		s.toolWorldMapUpdateMarker)
 
 	addTool(srv, "world_map_update_region",
 		"Reshape, rename, or rebind a region on a map you own. Pass a new polygon (>=3 [x,y] "+
 			"points) to reshape it; provide only the fields you want to change; set "+
 			"clear_entity=true to unbind its location entity.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"reshape region", "rename region", "rebind region"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"reshape region", "rename region", "rebind region", "rename area", "reshape area", "rebind area"}),
 		s.toolWorldMapUpdateRegion)
 }

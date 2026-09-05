@@ -14,8 +14,8 @@ from uuid import UUID
 import pytest
 
 from app.clients.embedding_client import EmbeddingResult
-from app.db.neo4j_repos.passages import Passage, PassageSearchHit
 from app.benchmark.mode3_query_runner import Mode3QueryRunner
+from app.ports.vector_store import VectorHit
 
 
 USER_ID = "user-1"
@@ -23,21 +23,20 @@ USER_UUID = UUID("11111111-1111-1111-1111-111111111111")
 PROJECT_ID = "project-1"
 
 
-def _hit(entity_id: str, score: float) -> PassageSearchHit:
-    return PassageSearchHit(
-        passage=Passage(
-            id=f"p-{entity_id}",
-            user_id=USER_ID,
-            project_id=PROJECT_ID,
-            source_type="benchmark_entity",
-            source_id=entity_id,
-            chunk_index=0,
-            text=f"summary of {entity_id}",
-            embedding_model="bge-m3",
-            is_hub=False,
-            chapter_index=None,
-        ),
-        raw_score=score,
+def _hit(entity_id: str, score: float) -> VectorHit:
+    """A REAL `VectorHit`, not the repo's `PassageSearchHit` (T17 A11).
+
+    The runner reads `h.attributes["source_id"]` now, so a stub shaped like the old repo
+    return would let the test pass against a runner that could not read a real adapter's
+    output — the mocked-client-hides-the-contract failure this repo has recorded before.
+    """
+    return VectorHit(
+        record_id=f"p-{entity_id}",
+        score=score,
+        scope="passage",
+        attributes={"source_id": entity_id, "source_type": "benchmark_entity",
+                    "text": f"summary of {entity_id}", "chunk_index": 0,
+                    "is_hub": False, "chapter_index": None},
     )
 
 
@@ -48,8 +47,12 @@ def _embed_result(dim: int = 1024) -> EmbeddingResult:
 
 
 def _runner(monkeypatch, find_hits: AsyncMock, *, dim: int = 1024) -> Mode3QueryRunner:
+    # Patch the PROVIDER, not a repo function: the runner resolves its store through
+    # `get_vector_store`, so this is the seam a real deployment has.
+    store = MagicMock()
+    store.search = find_hits
     monkeypatch.setattr(
-        "app.benchmark.mode3_query_runner.find_passages_by_vector", find_hits,
+        "app.adapters.vector_store_provider.get_vector_store", AsyncMock(return_value=store),
     )
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result(dim))
@@ -87,18 +90,26 @@ async def test_run_passes_embedding_model_to_search(monkeypatch):
     await runner.run("anything")
 
     kwargs = find_hits.call_args.kwargs
-    assert kwargs["embedding_model"] == "bge-m3"
+    # T17 A11 — the port's vocabulary. `embedding_model` and `project_id` are FILTER fields
+    # now, not top-level kwargs: they narrow the scope before similarity, and the port keeps
+    # that distinction because a backend may push them into the index or apply them after.
+    assert kwargs["filter"].embedding_model == "bge-m3"
     assert kwargs["dim"] == 1024
     assert kwargs["user_id"] == USER_ID
-    assert kwargs["project_id"] == PROJECT_ID
+    assert kwargs["filter"].project_id == PROJECT_ID
+    assert kwargs["scope"] == "passage"
 
 
 @pytest.mark.asyncio
 async def test_run_returns_empty_on_empty_embedding(monkeypatch):
     """Provider returned an empty list — don't invoke search."""
     find_hits = AsyncMock(return_value=[])
+    # Patch the PROVIDER, not a repo function: the runner resolves its store through
+    # `get_vector_store`, so this is the seam a real deployment has.
+    store = MagicMock()
+    store.search = find_hits
     monkeypatch.setattr(
-        "app.benchmark.mode3_query_runner.find_passages_by_vector", find_hits,
+        "app.adapters.vector_store_provider.get_vector_store", AsyncMock(return_value=store),
     )
     client = MagicMock()
     client.embed = AsyncMock(return_value=EmbeddingResult(
@@ -134,4 +145,5 @@ async def test_run_limit_generous_enough_for_mrr_tail(monkeypatch):
     find_hits = AsyncMock(return_value=[])
     runner = _runner(monkeypatch, find_hits)
     await runner.run("anything")
-    assert find_hits.call_args.kwargs["limit"] == 10
+    # `k`, not `limit` — the port names the top-k bound after what it is.
+    assert find_hits.call_args.kwargs["k"] == 10
