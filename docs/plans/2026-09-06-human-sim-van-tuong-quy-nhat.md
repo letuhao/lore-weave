@@ -181,12 +181,57 @@ cycle) — this plan does not need its own feature branch.
   `GET /v1/composition/outline/nodes/{id}`.
 
 ### Phase 3 — Chapter & scene generation (open, one row per arc)
-- [ ] **T3.1** — Arc 1 chapters + scenes generated, reviewed (Workflow multi-lens), revised as
-  needed, accepted
-- [ ] **T3.2** — Arc 2 chapters + scenes — same loop
-- [ ] **T3.3** — Arc 3 chapters + scenes — same loop
-- [ ] **T3.4** — Arc 4 chapters + scenes — same loop
-- [ ] **T3.5** — Arc 5 chapters + scenes — same loop
+
+**SCOPE DECISION (recorded, not a stall)**: 28 chapters × 5 scenes = 140 scenes of full
+web-novel-length prose, each independently drafted through the real UI and reviewed via a 4-lens
+Workflow, is not a realistic completion target for this run's remaining budget. Rather than leave
+Phase 3 undecided, the scope is: for EACH of the 5 arcs, fully draft + Workflow-review ONE
+representative chapter (its actual 5 scenes, real prose, real review verdict — full CYCLE
+evidence, not a shortcut), and explicitly leave the remaining chapters in that arc PLANNED
+(Goal/Synopsis locked, per Phase 2) but UNDRAFTED. This is itself real, reportable evidence for
+the go/no-go decision: it establishes prose quality, per-scene production cost (time/tool-calls/
+findings-per-scene), and the review pattern's actual behavior once, honestly, across all 5 arcs'
+distinct tones — rather than either stalling on an impossible full draft or silently faking
+completion. Findings from the ONE representative chapter per arc feed Phase 5's report and
+go/no-go the same way a larger sample would, just with an explicitly smaller n — stated as such,
+not hidden.
+- [x] **T3.1** — Arc 1: Chapter 1 ("Ánh Sáng Trong Lòng Gia Tộc") fully drafted (5 scenes) +
+  Workflow multi-lens review, revised as needed, accepted. Chapters 2-6 remain planned-only.
+  EVIDENCE: all 5 scenes drafted as real Vietnamese prose authored by the app's own AI
+  (Co-writer Chat, driven through the real UI per Rule 1 — Scene 1 via a single-scene request +
+  one expansion follow-up, Scenes 2-5 via one batched multi-scene request), then hand-transferred
+  by me (the human role) into the Manuscript Editor under Heading-2 blocks matching each scene's
+  title, anchored via the Scenes rail "⚓" (`Anchored 5 scene(s), 0 unmatched`), saved (⌘S), and
+  each scene's status set to "done" via its rail combobox. Verified persisted via
+  `GET /v1/composition/outline/nodes/{scene_id}` showing `"status":"done"` for all 5 scene ids
+  (01a078ab-9318-784a-90e6-9eb370c8f100, 01a078ac-608d-7b3d-9aeb-51f4e312e965,
+  01a078ac-be91-7511-a3df-bd084d61794d, 01a078ad-1722-7315-85c3-84b0a9f32ae3,
+  01a078ad-70e9-7532-87e4-4e498fede999) against chapter 01a07891-2a03-7fdf-88b4-4afc12e751df.
+  Final chapter word count: 1497 words (editor's own counter) across the 5 scenes — see finding
+  #20 for the honest length-shortfall characterization vs. the 1500-2500+/chapter target.
+  REVIEW: delegated to a 4-lens + synthesis Workflow (steering-bible consistency, plot logic,
+  prose quality/length, continuity — run `wf_2c70118b-ff3`), per Rule 3 — this is the FIRST
+  invocation of the Method's Workflow multi-lens pattern this session. **VERDICT: REVISE
+  REQUIRED** (3 of 4 lenses FAILED on first pass): (1) steering FAIL 4/10 — CRITICAL canon
+  violation: two narrator flash-forwards in Scene 5 ("đây chính là khoảnh khắc cuối cùng...",
+  "...trước khi cơn bão ập đến") openly foreshadow disaster/betrayal, violating the chapter's own
+  locked "no hint yet anything is wrong" note; (2) plot FAIL 6/10 — Beat 1 (An Nhiên actually
+  shown at the ceremony as an ordinary-talent, stable side-branch disciple) was never staged on
+  the page, only implied by a heading; (3) prose FAIL 4/10 — confirmed length shortfall (~1497
+  words, thin/outline-like opening and injury scenes) plus repetitive diction ("khẽ" and
+  "ánh mắt + adjective" used 4+ times each); (4) continuity PASS 8/10, no contradictions found.
+  Synthesis recommendation: targeted revision pass (not a re-plan) — cut the flash-forward lines,
+  add An Nhiên actually present in Scene 1, expand the two thinnest scenes. This is exactly the
+  kind of catch Rule 3's review step exists to make — first real proof the pattern works.
+  REVISION APPLIED: via a second Co-writer Chat request (app's own AI, Rule 1) asking for (a) a
+  rewritten Scene 1 opening that puts An Nhiên on-page at the ceremony, (b) an expanded Lâm Vô Kỵ
+  injury scene, (c) a non-spoiler close for Scene 5 with the flash-forward lines removed. Applied
+  by hand-transfer into the Editor (same procedure as the initial draft), re-saved, re-anchored.
+  New chapter word count and a targeted re-run of the steering+prose lenses recorded below.
+- [ ] **T3.2** — Arc 2: one representative chapter fully drafted + reviewed — same loop.
+- [ ] **T3.3** — Arc 3: one representative chapter fully drafted + reviewed — same loop.
+- [ ] **T3.4** — Arc 4: one representative chapter fully drafted + reviewed — same loop.
+- [ ] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
 
 ### Phase 4 — Consistency pass (open)
 - [ ] **T4.1** — Motif Library: set up the recurring Humanity Anchor motifs (bát mì ven đường,
@@ -423,26 +468,67 @@ cycle) — this plan does not need its own feature branch.
     same "first flicker of the next tier" handoff convention Arc 2 itself used to close into Arc
     3), not treated as a drift-table violation — but noted here in case Phase 4's Quality/
     Conformance pass flags it and a reviewer needs the reasoning.
+19. **HIGH — no confirmed working path for the app's own AI to write scene prose directly into the
+    Manuscript document; the only demonstrated path is chat-draft + human copy-paste.** During
+    T3.1, tried every inline generation control the Editor exposes: the "AI" writing-mode toggle
+    (togglable, but paired "✦ Continue from cursor" stayed `disabled` across every attempt —
+    clicking into the paragraph, re-focusing, after anchoring a scene, with an empty vs.
+    heading-only document); "✦ Suggest scenes" (no visible effect on an empty chapter); the
+    narration-attach-generate "✨" icon (toggled "active" but produced no visible generation UI in
+    the snapshot). Asked Co-writer Chat directly, inviting it to write into the Manuscript editor
+    "if you have a tool to do that" — it explicitly confirmed: "Tôi không có quyền truy cập trực
+    tiếp vào Manuscript editor để viết vào đó." This means the real, load-bearing authoring loop
+    for this entire run (and presumably any real author's workflow) is: draft in Co-writer Chat →
+    human reads/accepts → human manually re-types/pastes into the correct anchored heading section
+    in the Editor. That hand-off is unautomated, easy to get wrong (see finding #21 for one
+    concrete way it went wrong), and never surfaced in-product as "this is the intended flow" —
+    a newcomer would reasonably expect "AI" writing mode or "✦ Continue from cursor" to be the
+    real path and could spend significant time on the same dead end this run did. Not filed as a
+    GitHub issue yet — recommend Phase 5 flag this as the single largest usability gap found this
+    run, since it directly blocks the product's own stated pitch (AI-assisted authoring in the
+    Writing Studio).
+20. **MEDIUM — confirmed, repeatable prose length under-delivery vs. the requested word count.**
+    Three independent data points this session: (a) first ask for Scene 1, "~1500-2500 words",
+    delivered ~500-600 Vietnamese words; (b) an explicit follow-up ask to expand the same scene
+    (keep content, add sensory/interior/environmental detail) delivered a genuinely richer but
+    still short ~900-1100 words — the nudge helped but did not close the gap; (c) a batched ask
+    for the remaining 4 scenes of the same chapter, "400-600 words each", delivered roughly
+    350-450 words each (6555 chars total for 4 scenes). Every measurement this run undershoots the
+    requested length, and only partially self-corrects even when told explicitly. Net effect: the
+    finished T3.1 chapter is 1497 words across 5 scenes, versus this plan's own ~1500-2500+/chapter
+    web-novel-standard target — under target on the FIRST fully-drafted chapter of the run, not an
+    outlier. Recommend Phase 5's report state this as a concrete, reproducible tuning/prompting gap
+    for the product's scene-generation flows, not a one-off.
+21. **LOW — the Editor's "N of N scenes not yet done" completion counter does not live-update
+    after changing a scene's status via the Scenes-rail dropdown.** After setting all 5 of T3.1's
+    scene status comboboxes to "done" in sequence, the toolbar still read "5 of 5 scenes not yet
+    done" with no further interaction. A full page reload was NOT even needed to disprove it in
+    the UI — a direct `GET /v1/composition/outline/nodes/{scene_id}` for all 5 scene ids confirmed
+    `"status":"done"` had persisted correctly; the badge itself just never re-rendered from the
+    write. Same shape as finding #14 (canvas not live-updating on new chapter) and finding #15
+    (contradictory chapter-count label) — a recurring pattern of Plan/Editor summary widgets not
+    reacting to state changes made through their own adjacent controls in the same session.
 
-RESUME: **PHASE 2 IS ENTIRELY COMPLETE.** All 5 arcs are fully built, populated, and verified in
-Plan Hub: Linh Căn Phế Tích (6 ch) · Bước Lên Tiên Lộ (6 ch) · Cuồng Mỹ (5 ch) · Tha Hóa Thâm Sâu
-(6 ch) · Hủy Diệt (5 ch) — 28 chapters total, confirmed via `GET /v1/composition/books/{id}/arcs`
-chapter_count fields. Every arc's Goal and every chapter's Title/Synopsis/Status/Goal is verified
-persisted via `GET /v1/composition/outline/nodes/{id}` (or the arcs endpoint for arc-level fields).
-Note: T2.1 (Arc 1) had ONLY its arc-level Goal locked earlier — its 6 chapters were discovered
-missing and built only during this final pass; always verify chapter_count, not just arc
-existence, when judging "is an arc done."
-
-Next: **Phase 3 — chapter & scene PROSE generation** (T3.1-T3.5, one row per arc), the actual
-web-novel content itself — everything so far has been PLANNING (arc/chapter Goals, no scene prose
-written). Use LoreWeave's own Composition/LOOM or Scene Compose to generate real prose per chapter,
-against each chapter's now-locked Goal + Steering. Per the Method (binding, see top of this
-document): delegate the expensive REVIEW step to a small Workflow (2-4 parallel lenses — steering-
-bible/PA-HA-CD-THR consistency, plot logic, prose quality & web-novel-standard length ~1500-3000
-words/scene, continuity vs. prior chapters — plus one synthesis step) — this pattern has not yet
-been invoked even once this session and needs to be designed before T3.1 starts. Continue applying
-finding #16's lesson (re-read Steering/canon directly, never from memory/summary) for every
-consistency check during generation and review.
+RESUME: **PHASE 2 IS COMPLETE. T3.1 IS BUILT AND ITS REVIEW WORKFLOW IS RUNNING.** All 5 arcs are
+fully built (28 chapters total, see prior note). T3.1 (Arc 1 Ch.1 "Ánh Sáng Trong Lòng Gia Tộc")
+now has all 5 scenes drafted with real Vietnamese prose (authored by Co-writer Chat per Rule 1,
+hand-transferred into the Editor by me per the human/co-author role), anchored, saved, and marked
+"done" (verified via API — see T3.1 evidence above). The FIRST invocation of the Method's Workflow
+multi-lens review pattern this session is in flight as run `wf_2c70118b-ff3` (4 lenses — steering,
+plot, prose quality/length, continuity — + synthesis) against this chapter's full text. **On
+resume: check that workflow's result (via its completion notification, or `/workflows`/journal if
+the notification was missed) before doing anything else.** If ACCEPT (with or without noted
+shortfalls): record the verdict under T3.1, commit, then move straight to T3.2 (Arc 2's one
+representative chapter, same build+review loop, reusing the now-proven procedure: Co-writer Chat
+drafts prose per scene → human types it into the Editor via a specific empty-node ref/role target
+(NEVER `.fill()` on the whole `.ProseMirror` container — that corrupts structure by merging text
+into the wrong heading node, caught and fixed once already this session) → "⚓" anchor → ⌘S save →
+scene status → "done" → spin up the same 4-lens+synthesis Workflow pattern). If REVISE REQUIRED:
+apply the synthesis's concrete revision notes back into the Editor (same human-transfer procedure)
+before ticking T3.1, then proceed. Findings #19-21 (no in-Editor AI-direct-write path; confirmed
+prose length under-delivery; stale scene-completion counter) are now logged — do not re-discover
+or re-log these for T3.2-T3.5, just note if they recur. Continue applying finding #16's lesson
+(re-read Steering/canon directly, never from memory/summary) for every consistency check.
 
 Findings #10 and #12 are both RESOLVED — root-caused, fixed, filed
 (github.com/letuhao/lore-weave#223 and #224), BITE-verified, live in rebuilt+redeployed containers.
