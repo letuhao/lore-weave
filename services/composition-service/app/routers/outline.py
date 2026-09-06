@@ -11,12 +11,12 @@ call; by-id routes resolve the target row's scope first and gate on ITS book.
 from __future__ import annotations
 
 import base64
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 
 from loreweave_mcp.errors import NOT_ACCESSIBLE_MESSAGE
 
@@ -40,6 +40,11 @@ from app.packer.pack import OwnershipError
 
 router = APIRouter(prefix="/v1/composition")
 
+# Mirrors models._Long — see the matching _ArcGoal in routers/arc.py. OutlineNode.goal
+# (chapter/scene "Goal (reaches the prompt)") had this same write-unbounded/read-capped
+# split; enforcing the bound here too closes it on this door as well.
+_NodeGoal = Annotated[str, StringConstraints(max_length=20000)]
+
 # SC6/B4 — the decompiler's internal-token surface. A separate router (its path is
 # `/internal/...`, not the `/v1/composition` public prefix); wired in main.py
 # alongside the public `router`.
@@ -57,7 +62,7 @@ class NodeCreate(BaseModel):
     title: str = ""
     pov_entity_id: UUID | None = None
     present_entity_ids: list[UUID] = []
-    goal: str = ""
+    goal: _NodeGoal = ""
     beat_role: str | None = None
     status: NodeStatus = "empty"
     chapter_id: UUID | None = None
@@ -99,7 +104,7 @@ class NodePatch(BaseModel):
     title: str | None = None
     pov_entity_id: UUID | None = None
     present_entity_ids: list[UUID] | None = None
-    goal: str | None = None
+    goal: _NodeGoal | None = None
     beat_role: str | None = None
     status: NodeStatus | None = None
     chapter_id: UUID | None = None

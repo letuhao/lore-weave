@@ -83,6 +83,7 @@ from app.db.models import (
     PlanPassId,
     SceneExitState,
     SceneExitStateIn,
+    _Long,
 )
 from app.services.agent_native import ReferenceSource, resolve_scope
 from app.services.plan_pass_service import UpstreamStale
@@ -1285,7 +1286,7 @@ class _NodeCreateArgs(ForbidExtra):
     kind: Literal["chapter", "scene"]
     parent_id: str | None = None
     title: str = ""
-    goal: str = ""
+    goal: _Long = ""
     synopsis: str = ""
     status: Literal["empty", "outline", "drafting", "done"] = "empty"
     chapter_id: str | None = None
@@ -1414,7 +1415,7 @@ class _NodeUpdateArgs(ForbidExtra):
     node_id: str
     expected_version: int
     title: str | None = None
-    goal: str | None = None
+    goal: _Long | None = None
     synopsis: str | None = None
     # BPS-4/F6 closed set — a bad status is a clean 422, never a DB CheckViolation.
     status: Literal["empty", "outline", "drafting", "done"] | None = None
@@ -7625,7 +7626,7 @@ class _ArcCreateArgs(ForbidExtra):
     parent_arc_id: str | None = None
     title: str = ""
     summary: str = ""
-    goal: str = ""
+    goal: _Long = ""
     status: _ArcStatus = "outline"
     # BA3: the SPEC owns tracks/roster/roster_bindings. NO `pacing` arg (BPS-3): an
     # arc's curve IS its member scenes' tension — set scene tension, never a stored
@@ -7712,7 +7713,7 @@ class _ArcUpdateArgs(ForbidExtra):
     expected_version: int
     title: str | None = None
     summary: str | None = None
-    goal: str | None = None
+    goal: _Long | None = None
     status: _ArcStatus | None = None
     tracks: list[dict[str, Any]] | None = None
     roster: list[dict[str, Any]] | None = None
@@ -8042,7 +8043,7 @@ class _ArcEditArgs(ForbidExtra):
     parent_arc_id: str | None = None    # create
     title: str | None = None            # create, update
     summary: str | None = None          # create, update
-    goal: str | None = None             # create, update
+    goal: _Long | None = None             # create, update
     status: _ArcStatus | None = None    # create, update
     tracks: list[dict[str, Any]] | None = None          # create, update
     roster: list[dict[str, Any]] | None = None          # create, update
@@ -8887,7 +8888,7 @@ class _OutlineNodeEditArgs(ForbidExtra):
     kind: Literal["chapter", "scene"] | None = None  # create (req)
     parent_id: str | None = None         # create
     title: str | None = None             # create, update
-    goal: str | None = None              # create, update
+    goal: _Long | None = None              # create, update
     synopsis: str | None = None          # create, update
     status: Literal["empty", "outline", "drafting", "done"] | None = None  # create, update
     chapter_id: str | None = None        # create, update (bind a plan node to a chapter)
