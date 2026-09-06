@@ -857,6 +857,12 @@ services:
       interval: 5s
       timeout: 10s
       retries: 10
+      # T4 scratch-infra finding (2026-09-06): on a COLD volume rabbitmq's own log says
+      # "Time to start RabbitMQ: 64427 ms" -- longer than the ~50s (retries*interval) this
+      # healthcheck tolerated with no start_period. The long-running dev stack's rabbitmq
+      # volume is never actually cold, so this never surfaced there; a scratch/fresh-infra
+      # run hits it on the very first `up`. Margin above the measured 64.4s.
+      start_period: 75s
 
   translation-service:
     restart: unless-stopped
@@ -1570,8 +1576,16 @@ services:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/health')\" || exit 1"]
       interval: 5s
       timeout: 3s
-      start_period: 20s
-      retries: 5
+      # T4 scratch-infra finding (2026-09-06): on a truly cold stack `docker inspect`'s own
+      # health log showed this container still failing checks past the old 20s+5*5s=45s
+      # budget, then healthy shortly after -- this service's depends_on chain is FOUR
+      # services (postgres, redis, glossary-service, neo4j), each of which must reach
+      # service_healthy first, before this container's own entrypoint even starts, plus its
+      # own Neo4j schema-apply step on top. The long-running dev stack never pays this cost
+      # because none of those four are ever actually cold there. Margin above the measured
+      # gap, same reasoning as rabbitmq's start_period above.
+      start_period: 60s
+      retries: 8
     restart: unless-stopped
     logging:
       driver: "json-file"
