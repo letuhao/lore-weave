@@ -2813,6 +2813,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_chacha"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e6af7f3e25ded52c41df4e0b1af2d047e45896c2f3281792ed68a1c243daedb"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.10.1",
+]
+
+[[package]]
 name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3884,7 +3894,7 @@ dependencies = [
  "loreweave_llm",
  "noise",
  "rand 0.9.4",
- "rand_chacha 0.9.0",
+ "rand_chacha 0.10.0",
  "reqwest",
  "serde",
  "serde_json",
@@ -5065,7 +5075,7 @@ dependencies = [
  "geo-types",
  "image",
  "loreweave_llm",
- "rand_chacha 0.9.0",
+ "rand_chacha 0.10.0",
  "rand_core 0.9.5",
  "serde",
  "serde_json",
