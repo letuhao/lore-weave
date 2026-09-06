@@ -15,6 +15,17 @@ base-image customization, not a LoreWeave service — publishing `ghcr.io/.../po
 confusing at best. Add to `EXCLUDE` with a one-line reason; anything not listed here ships by
 default, which is the safe direction for THIS list specifically (an accidentally-excluded real
 service is a silent gap; an accidentally-included one is just an extra image nobody asked for).
+
+PROFILE SCOPE FOLLOWS `docker compose`'S OWN RULE, NOT A SEPARATE ONE. v0.1.0's scope decision
+was "novel-writing platform only; MMO/game infra stays in the source tree but does not ship" —
+rather than inventing a second classification, this reads the SAME `profiles:` key `docker
+compose --profile ...` already reads: a service with NO `profiles` key ships unconditionally
+(exactly the services `docker compose up -d` with no flag starts); a service WITH a `profiles`
+key ships only if `--include-profile` names one it belongs to. `game`/`tilemap`/`observability`/
+`audio` (frontend-game, game-server, meta-bridge, orphan-scanner, publisher, world-service,
+tilemap-service, grafana/otel-collector/tempo, mock-audio-service) are excluded by this rule with
+zero code here caring what MMO/game even means — the classification lives in one place
+(docker-compose.yml), and a service someone reclassifies there is picked up here automatically.
 """
 from __future__ import annotations
 
@@ -40,7 +51,7 @@ def _repo_relative(path: Path, repo_root: Path) -> str:
     return path.resolve().relative_to(repo_root.resolve()).as_posix()
 
 
-def targets(compose_path: Path = COMPOSE) -> list[dict]:
+def targets(compose_path: Path = COMPOSE, include_profiles: frozenset[str] = frozenset()) -> list[dict]:
     doc = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
     services = doc.get("services", {}) or {}
     compose_dir = compose_path.resolve().parent
@@ -51,6 +62,9 @@ def targets(compose_path: Path = COMPOSE) -> list[dict]:
         if not isinstance(spec, dict) or "build" not in spec:
             continue
         if name in EXCLUDE:
+            continue
+        svc_profiles = spec.get("profiles")
+        if svc_profiles is not None and not (set(svc_profiles) & include_profiles):
             continue
         build = spec["build"]
         if isinstance(build, str):
@@ -70,9 +84,22 @@ def targets(compose_path: Path = COMPOSE) -> list[dict]:
     return out
 
 
+def _parse_include_profiles(argv: list[str]) -> frozenset[str]:
+    """`--include-profile NAME`, repeatable. Absent -> only untagged (default-scope) services."""
+    names = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--include-profile" and i + 1 < len(argv):
+            names.append(argv[i + 1])
+            i += 2
+        else:
+            i += 1
+    return frozenset(names)
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
-    result = targets()
+    result = targets(include_profiles=_parse_include_profiles(argv))
     if "--list" in argv:
         for t in result:
             print(t["service"])
@@ -103,6 +130,13 @@ services:
     build: .
   no-build-service:
     image: redis:7
+  game-service:
+    build:
+      context: ../services/game-service
+      dockerfile: Dockerfile
+    profiles:
+      - game
+      - full
 """
     failures = 0
     with tempfile.TemporaryDirectory() as td:
@@ -114,6 +148,7 @@ services:
         p.write_text(fixture, encoding="utf-8")
         result = targets(p)
         names = {t["service"] for t in result}
+        with_game = {t["service"] for t in targets(p, include_profiles=frozenset({"game"}))}
         checks = [
             ("a buildable service is included", "real-service" in names),
             ("postgres is excluded", "postgres" not in names),
@@ -130,6 +165,10 @@ services:
                 and t["context"] == "services/narrow-context-service"
                 and t["dockerfile"] == "services/narrow-context-service/Dockerfile"
                 for t in result)),
+            ("a profile-tagged service is excluded with no --include-profile", "game-service" not in names),
+            ("...but included once its profile is requested", "game-service" in with_game),
+            ("...without dropping the untagged services when a profile IS requested",
+             "real-service" in with_game),
         ]
         for label, ok in checks:
             print(f"  {'ok  ' if ok else 'FAIL'} {label}")

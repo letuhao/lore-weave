@@ -166,6 +166,14 @@ services:
       # session instead of the next day.
       ORPHAN_SCAN_INTERVAL_SECONDS: "3600"
     restart: unless-stopped
+    # v0.1.0 scope audit: this builds services/world-service/Dockerfile.orphan-scanner
+    # and its env is exclusively per-reality shard/game-world plumbing (ORPHAN_SHARD_*,
+    # ORPHAN_BRIDGE_*) -- MMO/game infra, not the novel-writing platform. Was missing a
+    # profile tag entirely, so it shipped in every "default" (no --profile) run despite
+    # depending on meta-bridge, which is ALSO game-track (see that service's own note).
+    profiles:
+      - game
+      - full
 
   # ── `G1` (2026-08-21) — the publisher: committed event → the wire.
   #
@@ -286,6 +294,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # v0.1.0 scope audit: builds services/meta-worker/Dockerfile.bridge, whose own
+    # README says it is "the ONLY service that consumes the xreality.* Redis Streams"
+    # -- xreality is published exclusively by `publisher` (services/publisher/pkg/
+    # xreality_fanout), a confirmed game/MMO service. Also the HTTP bridge
+    # world-service/orphan-scanner provision through (PROVISION_BRIDGE_URL /
+    # ORPHAN_BRIDGE_URL). MMO/game infra, not the novel-writing platform, despite a
+    # generic-sounding name and env block.
+    profiles:
+      - game
+      - full
 
   auth-service:
     restart: unless-stopped
