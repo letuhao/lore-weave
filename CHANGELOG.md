@@ -84,6 +84,15 @@ derived directly from `infra/docker-compose.yml`'s service list. `docker compose
   novel-writing-platform scope currently issues or redeems a WS ticket — the endpoint
   (`/v1/ws/ticket`) is live and correctly wired, but dormant there; this fix matters only to
   `--profile game`/`--profile full` deployments today.
+- MinIO's own root credentials, and 6 of 9 services' MinIO client credentials, were hardcoded
+  literals in `docker-compose.yml` with **no override path at all** — setting an env var would
+  have done nothing. All of them now read `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` consistently
+  (server and every client together, so one env-var pair rotates the credential everywhere),
+  and both are documented in `infra/.env.example` alongside 6 other secrets
+  (`INTERNAL_SERVICE_TOKEN`, `ADMIN_TOKEN_ISSUER_SECRET`, `ADMIN_AUDIT_HMAC_KEY`,
+  `CONFIRM_TOKEN_SIGNING_SECRET`, `AGENT_REGISTRY_VAULT_KEY`, `LLM_PAYLOAD_ENCRYPTION_KEY`)
+  that already had a mechanical override path but weren't listed there, so a deployer had no
+  signal they existed.
 
 <!--
   Entries go under the section matching their kind, newest first within a section. A line

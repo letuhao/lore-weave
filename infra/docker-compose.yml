@@ -94,8 +94,12 @@ services:
     image: minio/minio:RELEASE.2024-08-03T04-33-23Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: loreweave
-      MINIO_ROOT_PASSWORD: loreweave_dev_minio_secret
+      # Same MINIO_ACCESS_KEY/MINIO_SECRET_KEY vars every client below reads --
+      # setting one pair of env vars rotates the server AND every consumer
+      # together. A split default here (server hardcoded, clients overridable)
+      # would let an operator "set" a new secret that only the clients believed.
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
     ports:
       - "9123:9000"
       - "9124:9001"
@@ -391,8 +395,8 @@ services:
       CONFIRM_TOKEN_SIGNING_SECRET: ${CONFIRM_TOKEN_SIGNING_SECRET:-loreweave_local_dev_confirm_signing_secret_change_me_32chars}
       BOOKS_STORAGE_BUCKET: loreweave-dev-books
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: loreweave
-      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       SHARING_INTERNAL_URL: http://sharing-service:8083
@@ -716,8 +720,8 @@ services:
       # Phase 5e-β.2 — MinIO config for audio_gen URL-mode staging.
       # When unset, audio_gen URL mode disables (b64_json still works).
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: loreweave
-      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       AUDIO_CACHE_BUCKET: loreweave-audio-cache
@@ -1285,8 +1289,8 @@ services:
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: loreweave
-      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
       MINIO_BUCKET: lw-chat
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
@@ -1664,8 +1668,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       # Compose slice 3 (mode F) — MinIO object storage for uploaded files.
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: loreweave
-      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
       MINIO_BUCKET: lore-enrichment-uploads
       MINIO_USE_SSL: "false"
     depends_on:
@@ -1710,8 +1714,8 @@ services:
       # The reaper's orphan-object sweep (D-COMPOSE-S3-UPLOAD-REAPER) deletes row-less
       # MinIO objects, so the worker needs the SAME bucket config as the service.
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: loreweave
-      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
       MINIO_BUCKET: lore-enrichment-uploads
       MINIO_USE_SSL: "false"
     # LE-062: the worker is a headless consumer (no HTTP server), so override the
@@ -1806,8 +1810,8 @@ services:
       BOOK_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book
       PANDOC_URL: http://pandoc-server:3030
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: loreweave
-      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
       MINIO_BUCKET: loreweave-dev-books
       BOOK_SERVICE_URL: http://book-service:8082
       # 26 IX-12 — import tail decompiles imported prose into spec scenes + writes back source_scene_id.
