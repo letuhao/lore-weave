@@ -256,7 +256,27 @@ not hidden.
   pass (cost/benefit: both fixes directly and narrowly address the exact quoted violating text,
   nothing else in the chapter changed) — accepting on the strength of the two logged review
   passes plus this documented, traceable final fix. **T3.1 ACCEPTED.**
-- [ ] **T3.2** — Arc 2: one representative chapter fully drafted + reviewed — same loop.
+- [~] **T3.2** — Arc 2: one representative chapter fully drafted + reviewed — same loop.
+  Re-read Arc 2's LOCKED Goal directly via `GET /v1/composition/outline/nodes/{id}` first (finding
+  #16's lesson, applied deliberately this time) rather than from a prior summary. Picked Chapter 5
+  "Tác Dụng Phụ Đầu Tiên" (arc id `01a07812-5751-7462-8588-2aa42754e16a`, chapter id
+  `01a07842-7b27-7c58-8768-421b05a00499`) — Arc 2's pivotal Event-6 hinge scene, a SOLO scene with
+  no other character, matching Steering's own "no mentor, no antagonist" rule for this arc.
+  EVIDENCE: created 5 scenes via the Scenes rail (Cơn Bạo Loạn Bất Ngờ, Hỗn Loạn Kéo Dài, Khoảnh
+  Khắc Giác Ngộ, Lời Tự Biện Minh, Vẻ Ngoài Bình Thường) with synopses matching the chapter's Goal
+  beats; requested all 5 scenes' real prose from Co-writer Chat in one batched request, this time
+  explicitly instructing it up front to avoid flash-forward narration and to hit a 400-500
+  words/scene target (applying findings #19-20's lessons pre-emptively rather than discovering
+  them again) — delivered a clean, well-executed draft on the first pass, no romance risk (solo
+  scene). CAUGHT DURING TRANSFER (self-directed, before any Workflow run): the AI's own draft had
+  the closing scene's last line reference "sự tĩnh lặng của Lâm Gia" — but An Nhiên was expelled
+  from Lâm Gia at the end of Arc 1 and is alone with no family/sect in Arc 2; fixed by rewording to
+  a neutral "căn nhà trọ nơi nàng đang tạm trú" (the inn/lodging where she's staying) before
+  pasting, per the same "editorial cut/fix for a factual continuity error is not new authorship"
+  rationale used in T3.1. All 5 scenes anchored (`Anchored 5 scene(s), 0 unmatched`), saved,
+  statuses set to "done". Final word count: 1562 (clears the 1500-2500 target on the first pass,
+  unlike T3.1). REVIEW: 4-lens + synthesis Workflow launched (`wf_199bf66f-88d`) — verdict pending,
+  recorded below once it returns.
 - [ ] **T3.3** — Arc 3: one representative chapter fully drafted + reviewed — same loop.
 - [ ] **T3.4** — Arc 4: one representative chapter fully drafted + reviewed — same loop.
 - [ ] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
