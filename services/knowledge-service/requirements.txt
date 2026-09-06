@@ -64,7 +64,7 @@ krippendorff==0.8.2
 # bespoke /internal/tools/* path is retained (dual-run).
 # Keep the service compatible with the shared SDK contract. MCP 2.x removes
 # mcp.server.fastmcp, so that migration still requires a dedicated adapter.
-mcp[cli]>=1.29,<2
+mcp[cli]>=2.0.0,<3
 
 # PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md) —
 # sdks/python/loreweave_parse/pdf_walker.py. pymupdf (imports as `fitz`)
