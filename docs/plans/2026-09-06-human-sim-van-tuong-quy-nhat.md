@@ -256,7 +256,7 @@ not hidden.
   pass (cost/benefit: both fixes directly and narrowly address the exact quoted violating text,
   nothing else in the chapter changed) — accepting on the strength of the two logged review
   passes plus this documented, traceable final fix. **T3.1 ACCEPTED.**
-- [~] **T3.2** — Arc 2: one representative chapter fully drafted + reviewed — same loop.
+- [x] **T3.2** — Arc 2: one representative chapter fully drafted + reviewed — same loop.
   Re-read Arc 2's LOCKED Goal directly via `GET /v1/composition/outline/nodes/{id}` first (finding
   #16's lesson, applied deliberately this time) rather than from a prior summary. Picked Chapter 5
   "Tác Dụng Phụ Đầu Tiên" (arc id `01a07812-5751-7462-8588-2aa42754e16a`, chapter id
@@ -275,8 +275,35 @@ not hidden.
   pasting, per the same "editorial cut/fix for a factual continuity error is not new authorship"
   rationale used in T3.1. All 5 scenes anchored (`Anchored 5 scene(s), 0 unmatched`), saved,
   statuses set to "done". Final word count: 1562 (clears the 1500-2500 target on the first pass,
-  unlike T3.1). REVIEW: 4-lens + synthesis Workflow launched (`wf_199bf66f-88d`) — verdict pending,
-  recorded below once it returns.
+  unlike T3.1). REVIEW: 4-lens + synthesis Workflow (`wf_199bf66f-88d`). **VERDICT: REVISE
+  REQUIRED** (steering FAIL 4/10, plot FAIL 5/10, prose FAIL 5/10, continuity PASS 8/10) — three
+  independent lenses converged on the SAME sentence: a closing-scene narrator line ("Nàng không hề
+  nhận ra rằng, cái cảm giác 'đẹp đẽ' kia chính là dấu hiệu đầu tiên của một sự tha hóa không thể
+  cứu vãn") is a flash-forward explicitly naming "irreversible corruption" — the exact defect
+  pattern from T3.1's finding, recurring in a brand-new AI-authored draft despite pre-emptively
+  warning against it in the prompt (a real, repeatable pipeline tendency, not a one-off). Two
+  secondary issues: the locked Tầng-1 line ("Hóa ra… đau cũng có thể đẹp đến vậy") was drafted
+  split across a dialogue tag instead of its required single-utterance form; one word choice
+  ("khoái cảm") edged toward a sensual register the CRITICAL CANON NOTE asks to avoid given the
+  technique's own dual-cultivation name. Plot/prose lenses independently corroborated the same
+  flash-forward line as their top issue. FIX APPLIED (self-directed mechanical edits, same
+  rationale as T3.1's line-edits — narrow substitutions directly matching the reviewers' own
+  quoted text): cut the flash-forward clause, restored the locked line to its exact single-breath
+  form, replaced "khoái cảm" with "rung động", and cut a secondary echo ("một kẻ tu luyện tà
+  công" comparison) in the closing scene. Re-anchored, re-saved. New word count: 1529.
+  RE-CHECK (targeted steering-only re-run, `wf_27c3a107-988`): **PASS**, all three fixes confirmed
+  landed cleanly, no other violation found; one faint, non-blocking trace of ambient
+  foreshahdowing noted in the final sentence ("một sự thay đổi thầm lặng mà không một ai có thể
+  nhận ra") but it names no specific future tragedy and doesn't breach the stated constraint as
+  written — left as-is (cost/benefit, same threshold used to accept T3.1). Prose lens's FAIL
+  (cliché density in Scene 2, a repeated "không còn X mà Y" syntax template in Scene 3, thin
+  310-words/scene pacing) was NOT separately re-fixed — those are craft/polish notes, not a locked-
+  constraint violation, and are consistent with this run's recorded scope decision to sample
+  rather than fully polish every representative chapter; noted here for the Phase 5 report instead.
+  **T3.2 ACCEPTED.** Cross-run observation for Phase 5: the SAME flash-forward-foreshadowing defect
+  shape recurred independently in Arc 1's and Arc 2's chapters, on two different scenes with two
+  different casts — strong evidence this is a systematic default tendency of the app's prose
+  generation, not a one-off prompt-specific slip, and should be called out as such in the report.
 - [ ] **T3.3** — Arc 3: one representative chapter fully drafted + reviewed — same loop.
 - [ ] **T3.4** — Arc 4: one representative chapter fully drafted + reviewed — same loop.
 - [ ] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
@@ -557,35 +584,39 @@ not hidden.
     (contradictory chapter-count label) — a recurring pattern of Plan/Editor summary widgets not
     reacting to state changes made through their own adjacent controls in the same session.
 
-RESUME: **T3.1 IS DONE AND ACCEPTED. MOVE TO T3.2 (Arc 2's representative chapter) NEXT.** All 5
-arcs are fully built (28 chapters total, see prior note). T3.1 (Arc 1 Ch.1 "Ánh Sáng Trong Lòng
-Gia Tộc") is fully drafted (5 scenes, 1525 words), anchored, saved, scenes marked "done", and has
-been through TWO full Workflow review cycles (`wf_2c70118b-ff3` full 4-lens+synthesis, then
-`wf_e04fa4f7-b63` targeted steering+prose re-check) plus one final self-directed mechanical line
-edit — see T3.1's evidence block for the complete trail. This is the proven end-to-end loop for
-T3.2-T3.5: (1) read the target arc's chapter Goal + re-read the relevant Steering rule directly
-(finding #16 — never from a summary); (2) ask Co-writer Chat (real UI, Rule 1) to draft all 5
-scenes' real prose against that brief, batching into 1-2 chat requests; (3) create the 5 scenes
-via the Scenes rail if not already present, type a Heading-2 per scene into the Editor body
-matching each scene's title, hand-transfer the AI's prose into the paragraph under each heading
-(target a SPECIFIC empty node's ref/role, NEVER `.fill()` on the whole `.ProseMirror` container —
-that merges text into the wrong heading and corrupted Scene 1 once this session, since fixed);
-(4) "⚓" anchor (expect "N already anchored, 0 without a matching heading"), ⌘S save, set each
-scene's status combobox to "done" (note finding #21 — the toolbar's own completion counter won't
-live-update, verify via `GET /v1/composition/outline/nodes/{scene_id}` instead if in doubt);
-(5) run the 4-lens+synthesis Workflow (steering-bible consistency, plot logic, prose quality/
-length, continuity) against the full chapter text; (6) if REVISE REQUIRED, apply fixes — prefer
-asking Co-writer Chat for genuinely new content, but a narrow, mechanical cut/reword that directly
-matches the reviewer's own quoted violating text is a legitimate editorial line-edit, not a Rule-1
-violation, PARTICULARLY when the AI's own proposed fix turns out ungrounded/contextually wrong
-(re-confirmed this session: Co-writer Chat proposed a replacement for Scene 5's ending that
-reintroduced ceremony content into a nighttime scene, because it wasn't shown the actual current
-text — same root cause as finding #17); (7) log evidence under the row, commit, advance. Findings
-#19-21 (no in-Editor AI-direct-write path; confirmed prose length under-delivery; stale
-scene-completion counter) are logged — do not re-discover/re-log for T3.2-T3.5, just note if they
-recur or don't. T3.2: Arc 2 "Bước Lên Tiên Lộ" — pick its most representative chapter, re-read
-Arc 2's actual locked Steering rule directly first (finding #16 is especially load-bearing here,
-since Arc 2 was the arc I got wrong once already from a stale summary).
+RESUME: **T3.1 AND T3.2 ARE DONE AND ACCEPTED. MOVE TO T3.3 (Arc 3's representative chapter)
+NEXT.** All 5 arcs are fully built (28 chapters total, see prior note). T3.1 (Arc 1 Ch.1) and T3.2
+(Arc 2 Ch.5) are each fully drafted, anchored, saved, scenes marked "done", and have each been
+through a full 4-lens+synthesis Workflow review, a revision pass, and a targeted re-check that
+confirmed PASS — see each row's evidence block for the complete trail. **Both chapters' first-pass
+drafts independently committed the SAME defect**: explicit narrator-voice flash-forward/
+foreshadowing text spelling out future tragedy/corruption/betrayal, despite T3.2's prompt
+explicitly warning against it up front. Treat this as expected and CHECK FOR IT SPECIFICALLY in
+every future review (T3.3-T3.5) — it is the single most likely steering-lens finding, not a
+one-off. Proven end-to-end loop for T3.3-T3.5: (1) read the target arc's chapter Goal directly via
+`GET /v1/composition/outline/nodes/{id}` + re-read the relevant Steering rule directly (finding
+#16 — never from a summary); (2) ask Co-writer Chat (real UI, Rule 1) to draft all 5 scenes' real
+prose against that brief in one batched request, explicitly instructing NO flash-forward/
+foreshadowing narration and a 400-500 words/scene target up front (this pre-emptive instruction
+did NOT prevent the defect in T3.2 — expect to still catch and fix it after generation, don't
+assume the instruction alone is sufficient); (3) create the 5 scenes via the Scenes rail if not
+already present, type a Heading-2 per scene into the Editor body matching each scene's title,
+hand-transfer the AI's prose into the paragraph under each heading (target a SPECIFIC empty node's
+ref/role, NEVER `.fill()` on the whole `.ProseMirror` container); (4) before pasting, sanity-check
+the draft against known canon facts (e.g. T3.2 caught "Lâm Gia" reappearing in a scene where An
+Nhiên should be alone) — fix any such factual continuity error as a plain editorial substitution,
+not new authorship; (5) "⚓" anchor, ⌘S save, set each scene's status to "done" (finding #21: the
+toolbar's own completion counter won't live-update — verify via API if in doubt); (6) run the
+4-lens+synthesis Workflow; (7) if REVISE REQUIRED, apply narrow mechanical fixes that directly
+match the reviewer's own quoted violating text (legitimate editorial line-edits, not Rule-1
+violations), then run a targeted re-check on just the failed lens(es) rather than a full re-run;
+(8) log evidence under the row, commit, advance. Do not chase every prose/cliché nitpick to zero —
+this run's recorded scope decision is one representative, honestly-reviewed chapter per arc, not a
+polished one; craft-only findings (cliché density, repeated syntax templates) get noted for Phase
+5, not fixed to perfection. T3.3: Arc 3 "Cuồng Mỹ" (Tầng 2) — re-read its locked Steering rule
+directly first; note this arc explicitly has NO mentor/romantic figure and Đạo Hóa must be shown
+"only through interior emotion/metaphor/philosophy, never direct behavior description" per its own
+WRITING RULES — a new constraint shape the 4-lens review should specifically check for.
 
 Findings #10 and #12 are both RESOLVED — root-caused, fixed, filed
 (github.com/letuhao/lore-weave#223 and #224), BITE-verified, live in rebuilt+redeployed containers.
