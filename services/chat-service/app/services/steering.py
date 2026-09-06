@@ -15,7 +15,7 @@ Selection per DR-C1:
                 scene title (case-insensitive SUBSTRING; regex-special
                 chars are treated literally in v1)
 
-Order: always, then scene_match, then manual/auto. Soft cap ~2000 tokens
+Order: always, then scene_match, then manual/auto. Soft cap ~STEERING_TOKEN_CAP tokens
 (estimate_tokens): drop from the TAIL — manual first, then scene_match,
 then always keeps (DR-C1 "manual < scene_match < always") — and log.
 """
@@ -30,11 +30,23 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["select_steering", "render_steering_block", "STEERING_TOKEN_CAP"]
 
-# DR-C1 soft cap — steering is taxed every turn; keep tight. Tuned around a mid-size
-# (~200K) window; `scale_by_window` grows the cap for a caller that resolves the
-# session model's real (larger) context_length, instead of every model being capped
-# at the same flat number.
-STEERING_TOKEN_CAP = 2000
+# DR-C1 soft cap — steering is taxed every turn; keep tight relative to the window.
+# Tuned around a mid-size (~200K) window; `scale_by_window` grows the cap for a caller
+# that resolves the session model's real (larger) context_length, instead of every
+# model being capped at the same flat number.
+#
+# Was 2000 until measured against a real per-book story bible (human-sim run,
+# 2026-09-06): 8 solidly-written "always" rules (character baseline, corruption
+# mechanics, a locked arc outline) totalled 4944 tokens, and the flat 2000 cap
+# silently dropped 5 of them — including the locked arc outline and the corruption-
+# tier mechanics, i.e. exactly the plot-critical content steering exists to protect —
+# with no indication anywhere in the UI that this had happened. The Steering panel
+# itself advertises up to 20 rules x 8000 chars (~40K tokens of storable content), so
+# 2000 delivered under 5% of the advertised capacity. 8000 keeps steering to ~4% of a
+# 200K window (still deliberately tight — it is taxed every turn) while covering a
+# realistic multi-rule bible; `scale_by_window` still grows it further for genuinely
+# larger context windows.
+STEERING_TOKEN_CAP = 8000
 
 # "#name" token extraction: word chars (unicode) + hyphen, so "#tone." and
 # "(#combat-style)" trigger, but "x#tone" does not (a token, not a substring).
