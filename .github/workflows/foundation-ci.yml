@@ -772,7 +772,7 @@ jobs:
       # Found by reading the job rather than by the leg failing on its first
       # line, which is the only way it could have been found here: Actions
       # cannot be run on the dev box.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: cargo test EVERY live suite (registry-driven, one DB per suite)
