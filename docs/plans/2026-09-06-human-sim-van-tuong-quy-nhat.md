@@ -354,7 +354,7 @@ not hidden.
   only violation) — both were genuine, both were caught only by the Workflow review, neither by the
   pre-emptive prompt instruction alone (the instruction reduced but did not prevent either defect).
   This is strong evidence for the report that the review step is doing real, necessary work.
-- [~] **T3.4** — Arc 4: one representative chapter fully drafted + reviewed — same loop.
+- [x] **T3.4** — Arc 4: one representative chapter fully drafted + reviewed — same loop.
   Re-read Arc 4's LOCKED Goal directly via API (arc id `01a0786c-5657-7757-9b39-fc215e07c319`).
   Picked Chapter 2 "Vết Nứt Của Sự Hoàn Mỹ" (chapter id `01a07870-d97a-7b91-85d2-10abd4e30fa9`) —
   Corruption_Debt's first eruption, a solo/no-mentor/no-antagonist chapter with NO external-POV
@@ -410,8 +410,25 @@ not hidden.
   paragraphs were left in the document as a result (cosmetically inert, do not affect anchoring
   since anchoring matches only on heading text) rather than risk further corruption removing them.
   Re-anchored (`5 already anchored, 0 without a matching heading`), re-saved. New word count: 1558.
-  RE-CHECK (targeted prose+continuity re-run, `wf_384bb1f2-274`) — verdict recorded below once it
-  returns.
+  RE-CHECK (targeted prose+continuity re-run, `wf_384bb1f2-274`): **PASS/PASS** (prose 7.5/10,
+  continuity 8.5/10). Prose: length confirmed grown to ~1558-1608 words; the strict "không còn là
+  X, mà là Y" pattern is down to exactly 3 uses (from 7+); Scenes 1 and 5 gained genuine sensory
+  grounding (pores/streams, fog-to-sunlight, clenched hands, spirit stones and herbs as props);
+  Scene 4 got only one added physical beat and remains mostly interior monologue (acceptable given
+  its analytical nature, noted not fixed). A softer sibling tic ("không còn"/"không phải" without a
+  completing "mà là", 7 instances) and the pervasive abstract-noun "sự X" habit remain untargeted —
+  logged for Phase 5 as residual craft notes, not blocking. Continuity: the fix holds — she now
+  explicitly recalls and reasons past the "foreign entity" sensation via a specific, checkable
+  evidentiary contrast (random dissipation would mean technique-error; forced reordering means
+  external resistance), reinforcing rather than undermining her analytical characterization, with
+  Planner Secret 1 still fully sealed. One minor nuance noted (the fix explains "foreign-origin" but
+  not fully the "entity/agent" quality of the sensation) — read as plausible intentional dramatic
+  irony rather than a plot hole, not chased further. **T3.4 ACCEPTED.** Cross-run observation: this
+  is the FIRST chapter where the two known recurring content defects (flash-forward, direct-action-
+  vs-interior-only) both held clean on the initial 4-lens pass — the review step is generalizing
+  past those two specific patterns into catching genuinely different issues (craft density,
+  characterization logic) each time, which is itself useful Phase-5 evidence that the pattern isn't
+  just re-finding the same two bugs forever.
 - [ ] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
 
 ### Phase 4 — Consistency pass (open)
@@ -704,41 +721,42 @@ not hidden.
     start of a long response could easily miss that the tail is stale/wrong content bleeding in
     from a different request.
 
-RESUME: **T3.1, T3.2, AND T3.3 ARE DONE AND ACCEPTED. MOVE TO T3.4 (Arc 4's representative
-chapter) NEXT.** All 5 arcs are fully built (28 chapters total, see prior note). Each of T3.1-T3.3
-is fully drafted, anchored, saved, scenes "done", and has been through a full 4-lens+synthesis
-Workflow review, a revision pass, and a targeted re-check confirming PASS — see each row's
-evidence block. **Two distinct recurring-defect patterns confirmed across 3 chapters, both caught
-ONLY by the Workflow review, neither prevented by pre-emptive prompting alone**: (a) T3.1/T3.2 —
-explicit narrator-voice flash-forward/foreshadowing naming future tragedy/corruption; (b) T3.3 —
-direct/explicit behavior description where a chapter's own Goal locks an interior/metaphor-only
-register. Both are load-bearing evidence for Phase 5: the review step is doing real work, not
-theater. Proven end-to-end loop for T3.4-T3.5: (1) read the target arc's chapter Goal directly via
-`GET /v1/composition/outline/nodes/{id}` (finding #16 — never from a summary), noting ANY chapter-
-specific stylistic lock (like T3.3's interior-only rule) as a distinct thing to check in review,
-not just the generic flash-forward pattern; (2) ask Co-writer Chat (real UI, Rule 1) to draft all 5
-scenes in one batched request, explicitly instructing against whatever defect patterns are known so
-far (flash-forward; direct-action-vs-interior-only if applicable) and a word-count target — treat
-this as risk-reduction, not prevention, and still expect to catch violations after generation;
-(3) create the 5 scenes via the Scenes rail if not already present, type a Heading-2 per scene,
-hand-transfer AI prose into the paragraph under each heading (target a SPECIFIC empty node's ref/
-role, NEVER `.fill()` on the whole `.ProseMirror` container); (4) before pasting, sanity-check
-against known canon facts — the AI has now reused an already-established character's name THREE
-separate times this session (Lâm Gia in T3.2, Lâm Hạo in both T3.3 drafts even after being told the
-correct replacement name once already) — always check names, not just once but again after any
-revision request, since re-generation reliably regresses to the ungrounded default (finding #17's
-root cause); (5) "⚓" anchor, ⌘S save, set each scene's status to "done" (finding #21 — toolbar
-counter won't live-update, verify via API if in doubt); (6) run the 4-lens+synthesis Workflow;
-(7) if REVISE REQUIRED, judge whether the flagged issue is a locked-constraint violation (fix it,
-even if another lens praised the prose — T3.3's precedent) or a craft-only nitpick (log for Phase 5,
-don't chase to perfection — this run's scope is one honestly-reviewed representative chapter per
-arc); apply narrow mechanical fixes matching the reviewer's own quoted text where possible, or a
-short Co-writer Chat request for genuine rewrites, then a targeted re-check on just the failed
-lens(es); (8) log evidence, commit, advance. T3.4: Arc 4 "Tha Hóa Thâm Sâu" (Tầng 3) — re-read its
-locked Steering rule directly first; note its own CRITICAL CANON NOTE already specifies the SAME
-interior/metaphor-only register as Arc 3, except for two explicitly-allowed external-POV exceptions
-(Chapter 1 Scene 5, Chapter 4 Scene 5) — if picking either of those chapters, the interior-only rule
-does NOT apply to that specific scene, so check the chapter Goal carefully before assuming it does.
+RESUME: **T3.1-T3.4 ARE ALL DONE AND ACCEPTED. MOVE TO T3.5 (Arc 5's representative chapter, the
+LAST of Phase 3) NEXT.** All 5 arcs are fully built (28 chapters total, see prior note). Each of
+T3.1-T3.4 is fully drafted, anchored, saved, scenes "done", and has been through a full 4-lens+
+synthesis Workflow review — every one of them needed at least one revision+targeted-recheck cycle
+before acceptance; none passed clean on the first try, which is itself real Phase-5 evidence about
+how load-bearing the review step is. Defect patterns found across the 4 chapters so far: (a) T3.1/
+T3.2 — explicit narrator-voice flash-forward/foreshadowing (recurred 5 times total this session,
+including twice within T3.4 alone, despite explicit warnings each time — treat as a persistent
+default tendency, not something a prompt instruction reliably prevents); (b) T3.3 — direct/explicit
+behavior description violating a chapter-specific interior-only lock; (c) T3.4 — a genuine
+characterization/logic gap (ignoring a self-observed clue that contradicted the character's own
+established rationality) plus craft density issues (repetitive antithesis sentence pattern,
+abstract-noun overstacking) — NEITHER of patterns (a) or (b) recurred in T3.4's first pass, showing
+the review step generalizes to new issues rather than just re-finding the same two bugs. Proven
+end-to-end loop for T3.5 (same as before, plus new lessons): (1) read the target arc's chapter Goal
+directly via `GET /v1/composition/outline/nodes/{id}` (finding #16); (2) ask Co-writer Chat to draft
+all 5 scenes in one batched request, warning against known defects as risk-reduction only — still
+expect to catch violations after generation regardless; (3) create scenes via the rail, type a
+Heading-2 per scene, hand-transfer prose into the paragraph under each heading using Playwright's
+`.fill()`/`.click()`/real keyboard events ONLY — NEVER raw `execCommand`/`Range`+`Selection` API
+calls for content changes, which ProseMirror silently discards on its next re-render with no error
+(confirmed the hard way in T3.4, cost significant rework); whole-node deletion via `selectNode()`+
+real `Delete` keypress is fine when used alone, just never interleaved with `execCommand`; (4) before
+pasting, re-check names against established cast EVERY time, including after revisions — the AI has
+reused an already-established character's name 3+ separate times this session even after being
+told the fix once; (5) "⚓" anchor, ⌘S save, set scene statuses to "done" (finding #21 — verify via
+API if the toolbar counter looks stale); (6) run the 4-lens+synthesis Workflow; (7) if REVISE
+REQUIRED, fix locked-constraint violations even if another lens praised the prose (T3.3's
+precedent), log craft-only nitpicks for Phase 5 without chasing them to perfection, then a targeted
+re-check on just the failed lens(es); (8) log evidence, commit, advance. T3.5: Arc 5 "Hủy Diệt"
+(Tầng 4, the FINAL arc) — re-read its locked Steering rule directly first; this arc's own Goal
+requires PA to explicitly cross 80+ via NAMED "hoàn mỹ" moments (Chapter 1 Scene 3, Chapter 3
+Scene 4) and poses the story's final question in Chapter 4 — pick a chapter whose beats don't
+depend on cross-chapter setup this single-chapter sample can't provide (Chapter 1 "Thiên Địa Tái
+Tạo" or Chapter 3 "Cuộc Chiến Giữa Hai Bản Thể" are the most self-contained candidates). After
+T3.5, Phase 3 is COMPLETE — proceed straight to Phase 4 (T4.1-T4.3) without waiting for a check-in.
 
 Findings #10 and #12 are both RESOLVED — root-caused, fixed, filed
 (github.com/letuhao/lore-weave#223 and #224), BITE-verified, live in rebuilt+redeployed containers.
