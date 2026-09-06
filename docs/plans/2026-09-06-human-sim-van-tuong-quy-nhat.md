@@ -321,8 +321,29 @@ not hidden.
   scenes anchored (`Anchored 5 scene(s), 0 unmatched`), saved, statuses set to "done". Word count:
   1394 — BELOW the 1500 floor this time (T3.2 cleared it; this pass didn't, despite the same
   instruction) — accepted as an honest data point on generation variance rather than pre-emptively
-  padded before review. REVIEW: 4-lens + synthesis Workflow launched (`wf_908daae2-3ea`) —
-  verdict recorded below once it returns.
+  padded before review. REVIEW: 4-lens + synthesis Workflow (`wf_908daae2-3ea`). **VERDICT: REVISE
+  REQUIRED** (steering FAIL 4/10, prose FAIL 4/10; plot PASS 8/10, continuity PASS 9/10) — a NEW
+  defect shape for this run (not the flash-forward pattern): Scene 4's battle and Scene 5's
+  climactic final line both used direct/explicit behavior description ("nàng vung tay, linh lực
+  thoát ra... cắt đứt sự sống", "nàng đưa tay ra... bao trùm lấy tất cả") — violating this
+  chapter's own CRITICAL CANON NOTE (interior/metaphor/philosophy ONLY, never direct behavior),
+  which I had read directly from the locked API Goal, so the constraint's intent was unambiguous.
+  The synthesis flagged this as a genuine tension (prose lens independently called the SAME
+  passage the chapter's strongest writing) — but since the constraint was deliberately authored
+  into this specific chapter's Goal as a formal Đạo Hóa technique, not a generic style preference,
+  I treated it as binding and revised rather than treating the prose lens's praise as license to
+  keep it. Continuity/plot both confirmed the Tô Bách Xuyên rename held with zero name-collision
+  residue. FIX APPLIED: asked Co-writer Chat to rewrite Scene 4 fully through metaphor/spectator-
+  perception (matching Scene 1's already-successful technique) and re-filter Scene 5's ending the
+  same way, plus expand Scenes 2-3 for length. Its response reused "Lâm Hạo" again for the Scene-2
+  cultivator (same ungrounded-regeneration pattern as T3.1's finding #17 — it re-derives content
+  from its own memory of the brief rather than the actual current text) — renamed to "Tô Bách
+  Xuyên" again during transfer. Also removed a now-redundant duplicate paragraph left over from
+  merging the rewritten Scene 4 (fewer new paragraphs than the original structure) via a precise
+  DOM-node selection-and-delete rather than approximate text-based selection, to avoid the
+  cross-paragraph corruption risk noted in T3.1. Re-anchored, re-saved. New word count: 1606
+  (clears the floor). RE-CHECK (targeted steering-only re-run, `wf_d59406be-4c2`): verdict recorded
+  below once it returns.
 - [ ] **T3.4** — Arc 4: one representative chapter fully drafted + reviewed — same loop.
 - [ ] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
 
