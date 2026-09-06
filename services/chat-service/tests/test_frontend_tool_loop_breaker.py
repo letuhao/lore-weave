@@ -20,7 +20,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.services.frontend_tools import GLOSSARY_PROPOSE_EDIT_TOOL
+from tests._v1_tool_fixtures import GLOSSARY_PROPOSE_EDIT_TOOL
 from app.services.stream_service import REPEATED_FAILURE_CAP
 from tests.test_spend_gate import _kc
 
@@ -104,17 +104,24 @@ class TestFrontendToolLoopBreaker:
         chunks, kc = await _drive(times=8)
         tc = _tool_calls(chunks)
         assert all(t["ok"] is False for t in tc)
-        assert kc.mcp_execute_tool.await_count == 0
-        raw = [t for t in tc if "STOP" not in (t["error"] or "")]
-        steered = [t for t in tc if "STOP" in (t["error"] or "")]
-        # the first CAP failures get the repairable raw error; every later one is steered
-        # (the de-advertise escalation may end the turn before all 8 re-emits land —
-        # FEWER passes than the model attempted is the point, more raw ones is the bug)
-        assert len(raw) == REPEATED_FAILURE_CAP
-        assert len(steered) >= 1
-        assert _FE_TOOL_NAME in steered[0]["error"]
-        # steer echoes the underlying validation error so the model can still self-repair
-        assert "FAILED" in steered[0]["error"]
+
+        # 🔴 V7 CHANGED THE POLICY HERE, DELIBERATELY, AND THIS RECORDS IT.
+        #
+        # Two breakers exist. The FRONTEND one (stream_service.py:7290) bounded any repeated
+        # identical failure, including a missing-required-argument loop. The BACKEND one
+        # (:8495) explicitly EXCLUDES that case — `_MISSING_REQUIRED_ARGS_MARKER not in
+        # _dom_err` — because a missing-arg refusal is self-correcting: it names the argument
+        # and the tool that supplies it, so steering the model away from the tool would stop the
+        # very repair the message asks for.
+        #
+        # These three tools are federated now, so they inherit the BACKEND policy like every
+        # other tool. Keeping the old bound for them would be exactly the special-casing that
+        # architecture v1 was. What must still hold is that the refusal is REPAIRABLE, which is
+        # what the model actually needs — asserted below.
+        assert tc, "the tool was never called; the fixture proves nothing"
+        err = tc[0]["error"] or ""
+        assert "book_id" in err, f"the refusal does not name the missing argument: {err}"
+        assert "Do NOT guess" in err, f"the refusal does not forbid fabricating one: {err}"
 
     @pytest.mark.asyncio
     async def test_turn_still_terminates_with_final_text(self):

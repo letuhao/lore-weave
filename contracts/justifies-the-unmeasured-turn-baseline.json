@@ -1,0 +1,11 @@
+{
+ "_what": "D-FE-RUNNER-MEASURES-THE-LAST-TURN-SO-A-PROMPT-EDIT-CAN-MISS. Scenarios whose `prompt_source` justifies a turn the bars do not read. Shrink-only: an entry may leave, none may be added. 119 of 124 multi-turn scenarios already comply.",
+ "count": 5,
+ "scenarios": [
+  "scenarios-c-planapply2.json::plan-bootstrap-apply-compiled-answered",
+  "scenarios-c-planapply4.json::plan-bootstrap-apply-answerable-confirmation",
+  "scenarios-p4-confirm-batch.json::composition-arc-apply",
+  "scenarios-p4-confirm-batch.json::composition-derivative-edit",
+  "scenarios-p4-confirm-batch.json::composition-motif-adopt"
+ ]
+}

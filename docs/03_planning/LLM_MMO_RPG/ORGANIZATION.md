@@ -81,7 +81,7 @@ LLM_MMO_RPG/
 │   ├── 07_M7_progressive_disclosure.md # §9.6
 │   └── 08_C1_OW_severance.md           # §9.9 (DF14 lore)
 │
-├── 04_player_character/                # formerly 04_PLAYER_CHARACTER_DESIGN.md
+├── _superseded/04_player_character/                # formerly 04_PLAYER_CHARACTER_DESIGN.md
 │   ├── _index.md
 │   ├── A_identity.md                   # PC-A1..A3
 │   ├── B_creation_lifecycle.md         # PC-B1..B2

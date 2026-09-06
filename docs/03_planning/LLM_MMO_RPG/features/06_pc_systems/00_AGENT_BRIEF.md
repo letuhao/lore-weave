@@ -1,5 +1,29 @@
 # 00 — Agent Brief: PCS_001 PC Substrate (parallel work commission)
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 > **Status:** LOCKED brief. Issued 2026-04-25 by the main session that designed Continuum (PL_001/PL_001b) + NPC foundation (NPC_001/NPC_002) + WA closure pass (WA_001..006). The agent receiving this brief is expected to design `06_pc_systems/PCS_001_*.md` with the depth + discipline established by NPC_001 Cast precedent.
 >
 > **Read order before starting:** §0 Identity → §1 Why → §2 IN scope → §3 OUT of scope → §4 Required reading → §5 Phase plan → §6 Stable ID namespace → §7 Process discipline → §8 Coordination → §9 Success criteria → §10 First-session deliverable → Appendix A SPIKE_01 grounding.
@@ -257,7 +281,7 @@ The hot-path check at turn submission ("is this PC's `pc_mortality_state == Aliv
 
 ### O7. Authentication / user accounts (auth-service)
 
-PcId is per-reality-per-PC. UserId-to-PcId mapping (which user owns which PCs across realities) is auth-service / `04_player_character/` territory. PCS_001 does not own user accounts.
+PcId is per-reality-per-PC. UserId-to-PcId mapping (which user owns which PCs across realities) is auth-service / `_superseded/04_player_character/` territory. PCS_001 does not own user accounts.
 
 ### O8. Existing locked / drafted feature designs
 

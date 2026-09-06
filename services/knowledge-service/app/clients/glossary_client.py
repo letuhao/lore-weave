@@ -454,6 +454,88 @@ class GlossaryClient:
         )
         return rows, True
 
+    async def list_mirror_truth_ids(
+        self, book_id: UUID, *, page_size: int = 200, max_pages: int = 50,
+    ) -> tuple[list[dict], bool] | None:
+        """GET /internal/books/{book_id}/mirror-truth-ids — the entities glossary-service
+        EMITS for, which is the only correct truth set for the KG mirror anti-join
+        (D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER).
+
+        Deliberately NOT :meth:`list_entity_ids`, though the two look interchangeable:
+        `entity-ids` filters `alive`, a STORY flag. A narratively dead character still
+        emits and is still a graph node, so reconciling against that list would report
+        every dead-but-correctly-mirrored entity as an orphan, permanently.
+
+        Each row is ``{entity_id, kind_code, has_name}``. `has_name` is reported, not
+        filtered on — the decision of what SHOULD be mirrored is this service's
+        (`app.mirror.predicate.is_mirrorable`), because the skip lives in this service's
+        handler.
+
+        Returns ``(rows, truncated)``; None if the first page fails. `truncated` is True
+        only when `max_pages` ran out with more to come — a silent cap here would
+        under-report the divergence, which is the one thing a detector must not do.
+        """
+        rows: list[dict] = []
+        offset = 0
+        for _page in range(max_pages):
+            url = f"{self._base_url}/internal/books/{book_id}/mirror-truth-ids"
+            try:
+                resp = await self._http.get(
+                    url, params={"limit": page_size, "offset": offset},
+                )
+                if resp.status_code != 200:
+                    logger.warning("glossary mirror-truth-ids → %d", resp.status_code)
+                    return (rows, True) if rows else None
+                data = resp.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning(
+                    "glossary mirror-truth-ids failed: %s: %s",
+                    type(exc).__name__, exc or "(no detail — likely a timeout)",
+                )
+                return (rows, True) if rows else None
+            rows.extend(data.get("items") or [])
+            next_offset = data.get("next_offset")
+            if next_offset is None:
+                return rows, False
+            offset = next_offset
+        logger.warning(
+            "glossary mirror-truth-ids: hit max_pages=%d for book=%s (%d rows)",
+            max_pages, book_id, len(rows),
+        )
+        return rows, True
+
+    async def reemit_mirror(
+        self, book_id: UUID, entity_ids: list[str],
+    ) -> dict | None:
+        """POST /internal/books/{book_id}/mirror-reemit — put lost mirror events back at
+        the start of the projection path (D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER).
+
+        This service DETECTS the divergence but must not repair it from this end: the KG
+        would then have two writers. glossary-service re-publishes through the outbox the
+        consumer already reads, so the repair travels the one path that is proven and
+        idempotent.
+
+        Returns the response body (`reemitted`, `skipped_ids`, `failed_ids`) or None on
+        failure. A None here means the repair did NOT happen — the caller must not report
+        success, because an unrepaired divergence that claims to be fixed is worse than
+        one that is merely known.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/mirror-reemit"
+        try:
+            resp = await self._http.post(url, json={"entity_ids": list(entity_ids)})
+            if resp.status_code != 200:
+                logger.warning(
+                    "glossary mirror-reemit → %d: %s", resp.status_code, resp.text[:200],
+                )
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning(
+                "glossary mirror-reemit failed: %s: %s",
+                type(exc).__name__, exc or "(no detail — likely a timeout)",
+            )
+            return None
+
     async def list_all_entities(
         self,
         book_id: UUID,
@@ -604,7 +686,17 @@ class GlossaryClient:
         """
         if not entity_ids:
             return []
-        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        # T38 B8 — through the KAL's `cast/by-ids` (INV-KAL). It grew `include_attributes` for
+        # THIS caller: the passage producer needs the authored values, and a passage built from
+        # identity alone is the empty-lore bug it exists to fix.
+        #
+        # ⚠️ `is_pinned` / `tier` / `rank_score` stay at their model defaults, and nothing is
+        # lost: the glossary by-ids handler never populated them either — they are ranking
+        # fields of select-for-context, and on this path they were always Go zero values. The
+        # one caller that needs a tier assigns its own (`selectors/glossary.py` sets
+        # `r.tier = "semantic"` after the fetch).
+        url = (f"{settings.knowledge_gateway_url.rstrip('/')}"
+               f"/v1/kal/books/{book_id}/cast/by-ids")
         body: dict = {"entity_ids": entity_ids}
         if language:
             body["language"] = language
@@ -618,8 +710,16 @@ class GlossaryClient:
                 logger.warning("glossary entities/by-ids %d", resp.status_code)
                 return []
             data = resp.json()
+            # The KAL speaks the CastEntry vocabulary (`kind`, `aliases`); this model speaks
+            # the glossary row's (`kind_code`, `cached_aliases`). Mapped here rather than
+            # widening either side — the same field under two names on one boundary is how a
+            # consumer ends up reading one and getting the other's default.
             return [
-                GlossaryEntityForContext.model_validate(it)
+                GlossaryEntityForContext.model_validate({
+                    **it,
+                    "kind_code": it.get("kind_code") or it.get("kind") or "",
+                    "cached_aliases": it.get("cached_aliases") or it.get("aliases") or [],
+                })
                 for it in data.get("items", [])
             ]
         except (httpx.HTTPError, ValueError) as exc:
@@ -668,6 +768,54 @@ class GlossaryClient:
             logger.warning("glossary entity-display-names failed: %s", exc)
             return {}
 
+    async def append_fact(
+        self,
+        book_id: UUID,
+        *,
+        entity_id: str,
+        fact_kind: str,
+        attr_or_predicate: str,
+        value: str,
+        valid_from_ordinal: int,
+        cardinality: str = "single",
+        source_episode_id: str | None = None,
+    ) -> bool:
+        """POST /internal/books/{book_id}/facts/append — one append-only bi-temporal fact.
+
+        Returns True on success, False on any failure (the caller decides whether that
+        matters; D-T32's life-status producer treats it as best-effort because the
+        transition is already durable as an `:EntityStatus`).
+
+        `valid_from_ordinal` is a CHAPTER ordinal, not an `event_order`. Both are plain
+        ints and the two scales differ by `EVENT_ORDER_CHAPTER_STRIDE`, so a caller that
+        passes the wrong one gets a fact positioned a million chapters into the book with
+        nothing to complain about it. The conversion belongs to whoever holds the graph
+        ordinal — see `StatusTransition`.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/facts/append"
+        body: dict = {
+            "entity_id": entity_id,
+            "fact_kind": fact_kind,
+            "attr_or_predicate": attr_or_predicate,
+            "value": value,
+            "valid_from_ordinal": valid_from_ordinal,
+            "cardinality": cardinality,
+        }
+        if source_episode_id:
+            body["source_episode_id"] = source_episode_id
+        try:
+            resp = await self._http.post(url, json=body)
+            if resp.status_code not in (200, 201):
+                logger.warning(
+                    "glossary facts/append → %d (entity=%s kind=%s attr=%s)",
+                    resp.status_code, entity_id, fact_kind, attr_or_predicate,
+                )
+                return False
+            return True
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary facts/append failed: %s", exc)
+            return False
+
     async def propose_entities(
         self,
         book_id: UUID,
@@ -690,6 +838,26 @@ class GlossaryClient:
         name is skipped). ``park_unknown_kinds=False`` opts out of the
         glossary 'unknown' review bucket so experimental KG kinds don't
         flood triage (mui #1).
+
+        NO CHAPTER CONTEXT, AND THAT IS CORRECT — read this before "fixing" it.
+        glossary's `extract-entities` ALSO emits append-only bi-temporal facts when the
+        caller supplies `chapter_id` + `content_hash` + `chapter_ordinal`, and glossary's
+        own code calls a caller that omits them a *"legacy caller"*. That label describes
+        the wire shape, not this caller: the two live callers do different jobs.
+
+          - translation-service `extraction_worker` — per CHAPTER. It holds the chapter,
+            its hash and its ordinal, sends all three, and its writeback emits facts.
+          - this one — the project-wide GAP REPORT (`find_gap_candidates` →
+            `build_writeback_entities`). It aggregates entities the KG discovered but the
+            glossary has not anchored, ACROSS the project, and proposes them as
+            `ai-suggested` drafts for review. There is no single chapter to attribute a
+            project-wide aggregate to, so there is no ordinal to send.
+
+        Adding a chapter argument here would mean picking one arbitrarily and stamping a
+        story position onto an aggregate that does not have one — a worse failure than
+        emitting no facts, because a wrong `valid_from_ordinal` is invisible and permanent.
+        The measured asymmetry (`writeback_log > 0` iff `facts > 0` across books,
+        2026-08-11) is these two callers doing their two jobs, not one being broken.
         """
         url = f"{self._base_url}/internal/books/{book_id}/extract-entities"
         body: dict = {

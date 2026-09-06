@@ -11,13 +11,16 @@ from __future__ import annotations
 
 import re
 
-from app.db.neo4j_repos.events import _MERGE_EVENT_CYPHER
+from app.db.graph_repos.events import _MERGE_EVENT_CYPHER
 
 
 def test_merge_event_cypher_sets_event_date_iso_on_create():
     """ON CREATE branch must SET event_date_iso = $event_date_iso so
     a new node carries the LLM-extracted date."""
-    assert "e.event_date_iso = $event_date_iso" in _MERGE_EVENT_CYPHER
+    # RESTATED (T73): "set on create" is now the first arm of the precision CASE.
+    import re as _re
+    assert "WHEN e.event_date_iso IS NULL THEN $event_date_iso" in _re.sub(
+        r"\s+", " ", _MERGE_EVENT_CYPHER)
 
 
 def test_merge_event_cypher_on_match_uses_precision_preserving_case():

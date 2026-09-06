@@ -522,7 +522,13 @@ pub fn default_pk_lookup(table: &str) -> String {
         "pii_registry" => "user_ref_id".into(),
         "pii_kek" => "kek_id".into(),
         "user_consent_ledger" => "user_ref_id".into(),
-        "player_character_index" => "pc_index_id".into(),
+        // `player_character_index` removed with migration 035. Its successor
+        // `actor_control_binding` is deliberately ABSENT rather than renamed
+        // here, twice over: it has no state machine (the `status` enum this
+        // lookup served was 5/6 presence, mortality and a UI preference — see
+        // 034's column audit), and its PK is COMPOSITE, `(reality_id,
+        // actor_id)`, which a single-column lookup cannot express. A row here
+        // would be a state transition nothing performs, keyed on half a key.
         "meta_write_audit"
         | "meta_read_audit"
         | "admin_action_audit"

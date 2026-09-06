@@ -1,93 +1,305 @@
-//! L1.C.4 — orphan_scanner binary.
+//! `orphan_scanner` — L1.C.4 nightly reaper for what a half-finished provision
+//! leaves behind.
 //!
-//! Nightly cron entry point per R04 §12D.7.
+//! ## What changed in W5, and why it had to
 //!
-//! ## What it does (7-step scan)
+//! This binary shipped in cycle 5 as a scaffold. Its dry run classified
+//! `let scanned = 0u32` — a literal empty set — and its real mode returned exit
+//! 2 with *"real-mode RPC wiring not yet implemented (cycle 6 dependency)"*.
+//! So for the whole of its life it could not report an orphan, because it never
+//! looked at anything.
 //!
-//!  1. List all `reality_registry` rows in transient statuses
-//!     (`provisioning`, `seeding`, `pending_close`, `soft_deleted`).
-//!  2. For each, query the matching shard for the per-reality database:
-//!     - Present + status=`provisioning|seeding` for > 24h → MARK PARTIAL
-//!     - Absent + status=`soft_deleted` for >= 7d                → DROP
-//!     - Present + status=`soft_deleted` for >= 7d                → DROP DB + DROP row
-//!     - All other combos → OK (continue)
-//!  3. Marked-partial rows get a `reality_close_audit` row with reason
-//!     `orphan_partial_provision`; SRE follow-up via runbook L1.C.9.
-//!  4. Per-grace-expired soft-deleted reality: invoke the deprovisioner
-//!     with `force=true` to drop the database + flip to `dropped`.
-//!  5. Emit Prometheus gauge `lw_orphan_scanner_marked_partial` +
-//!     `lw_orphan_scanner_dropped` (alerts in L1.I).
-//!  6. Append a line to `audit/orphan_scanner.log` with summary.
-//!  7. Exit 0 on success; non-zero on any per-reality error (cron alerts).
+//! Two things make that indefensible now. The **dependency it named is up**:
+//! the meta bridge runs (`W2`), and the provisioner writes through it. And
+//! `W3` gave the platform a **producer** — `admin reality provision` creates
+//! realities for real, so a crash between `CREATE DATABASE` and the registry
+//! transition now leaves exactly the states this binary was specified to find.
+//! A scanner that cannot see them is apparatus without a subject.
 //!
-//! ## Why a separate binary (not a feature flag)
+//! ## What it does now
 //!
-//! - Independent SLO (24h jitter OK; not on the request path)
-//! - Different IAM role (read+drop, not write to reality_registry data)
-//! - Cron-friendly entry point with no shared HTTP server lifecycle
+//! Reads `reality_registry` (meta) and the shard's `lw_reality_*` databases,
+//! and classifies them with [`world_service::orphan_scan::classify`] — a pure
+//! function, unit-tested, so the decision rules are provable without a
+//! database. Emits one JSON object on stdout and a human summary on stderr.
 //!
-//! ## Cycle 5 scope
+//! **It RECORDS, it does not remediate.** With `--record` the findings are
+//! written to `orphan_scan_finding` (meta) through the bridge, so an operator
+//! gets a worklist that ages rather than a log line that scrolls away. It never
+//! drops a database or transitions a reality: reclaiming one is
+//! `admin reality force-close` / the deprovisioner, which are double-approval,
+//! typed-confirm commands for the reason R13 §12L.5 gives — no raw destructive
+//! primitive. `--remediate` therefore refuses with that explanation rather than
+//! quietly doing nothing.
 //!
-//! This binary ships the **CLI scaffold** + argument parsing + the
-//! scan-and-classify loop with a `--dry-run` mode that doesn't actually
-//! drop anything. The real RPC wiring to MetaWrite + deprovisioner
-//! lands when the meta-worker RPC stack stands up (cycle 6+). Operating
-//! without `--dry-run` against a live cluster panics with a TODO until
-//! then — explicit so an SRE doesn't accidentally yolo-drop something.
+//! **`reality_close_audit` is NOT the sink**, though R13 §12L names it. Its
+//! `event_type` is a closed enum of six close-lifecycle values (no orphan class
+//! among them) and its `reality_id` is NOT NULL — which the untracked-database
+//! class, by definition, has none of. The design and that schema have disagreed
+//! since migration 005; see `038_orphan_scan_finding.up.sql`.
+//!
+//! ## Exit codes — designed for cron
+//!
+//! - `0` — scanned, nothing wrong
+//! - `1` — orphans found (cron alerts on this)
+//! - `2` — could not scan: missing config, unreachable database
+//!
+//! `1` and `2` are deliberately distinct: "the shard is dirty" and "I never
+//! looked" must never be the same signal to an operator.
 
-use std::env;
 use std::process::ExitCode;
 
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use world_service::orphan_scan::{classify, Finding, RegistryRow, ScanThresholds};
+use world_service::provisioner_live::BridgeClient;
+
 /// 7-day grace period — must match `runbooks/provisioner/orphan_resolution.md`.
-pub const SOFT_DELETE_GRACE_DAYS: u32 = 7;
+pub const SOFT_DELETE_GRACE_DAYS: i64 = 7;
 
 /// 24-hour stall threshold for transient `provisioning|seeding` statuses.
-pub const TRANSIENT_STALL_HOURS: u32 = 24;
+pub const TRANSIENT_STALL_HOURS: i64 = 24;
 
-fn main() -> ExitCode {
-    let args: Vec<String> = env::args().collect();
-    let dry_run = args.iter().any(|a| a == "--dry-run");
-    let help = args.iter().any(|a| a == "--help" || a == "-h");
+/// Env vars carrying a DSN. No defaults: a credential default silently points a
+/// reaper at the wrong server, and this one reads every reality on a shard.
+const REQUIRED_ENV: [&str; 2] = ["ORPHAN_META_DSN", "ORPHAN_SHARD_ADMIN_DSN"];
 
-    if help {
+#[tokio::main]
+async fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    if args.iter().any(|a| a == "--help" || a == "-h") {
         print_usage();
         return ExitCode::SUCCESS;
     }
-
-    eprintln!(
-        "[orphan_scanner] cycle-5 scaffold — grace_days={SOFT_DELETE_GRACE_DAYS}, \
-         stall_hours={TRANSIENT_STALL_HOURS}, dry_run={dry_run}"
-    );
-
-    if !dry_run {
-        // Defensive panic — wired RPC stack lands in cycle 6+.
+    let record = args.iter().any(|a| a == "--record");
+    if args.iter().any(|a| a == "--remediate") {
         eprintln!(
-            "[orphan_scanner] FATAL: real-mode RPC wiring not yet implemented \
-             (cycle 6 dependency). Re-run with --dry-run for a no-op scan."
+            "[orphan_scanner] REFUSING: --remediate does not exist. This binary RECORDS findings \
+             (--record) so an operator can act on them; it never drops a database or transitions \
+             a reality. Reclaiming a reality is `admin reality force-close` / the deprovisioner, \
+             which are double-approval, typed-confirm commands for good reason (R13 §12L.5: no \
+             raw destructive primitive)."
         );
         return ExitCode::from(2);
     }
+    if let Some(bad) = args.iter().find(|a| {
+        !matches!(
+            a.as_str(),
+            "--dry-run" | "--json" | "--help" | "-h" | "--remediate" | "--record"
+        )
+    }) {
+        eprintln!("[orphan_scanner] unknown flag {bad}");
+        print_usage();
+        return ExitCode::from(2);
+    }
+    let json_only = args.iter().any(|a| a == "--json");
 
-    // Dry-run: simulate the classification loop with an empty input set.
-    // Production wiring iterates `MetaRead::list_transient_realities()`
-    // when that surface lands. Today this is intentionally a no-op so the
-    // cron entry point is testable end-to-end (`run --bin orphan_scanner -- --dry-run`).
-    let scanned = 0u32;
-    let marked_partial = 0u32;
-    let dropped = 0u32;
-    eprintln!(
-        "[orphan_scanner] dry-run complete: scanned={scanned} marked_partial={marked_partial} dropped={dropped}"
-    );
-    ExitCode::SUCCESS
+    match run(json_only, record).await {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("[orphan_scanner] NOTRUN(setup): {e}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+async fn run(json_only: bool, record: bool) -> Result<ExitCode, String> {
+    let missing: Vec<&str> = REQUIRED_ENV
+        .iter()
+        .copied()
+        .filter(|k| std::env::var(k).map(|v| v.trim().is_empty()).unwrap_or(true))
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "missing required env: {} (no credential defaults — a default would point the \
+             reaper at the wrong server)",
+            missing.join(", ")
+        ));
+    }
+    let shard_host = std::env::var("ORPHAN_SHARD_HOST")
+        .unwrap_or_else(|_| "pg-shard-0.internal".to_string());
+
+    let meta = connect(&std::env::var("ORPHAN_META_DSN").unwrap_or_default()).await?;
+    let shard = connect(&std::env::var("ORPHAN_SHARD_ADMIN_DSN").unwrap_or_default()).await?;
+
+    let rows = read_registry(&meta, &shard_host).await?;
+    let databases = read_shard_databases(&shard).await?;
+    let thresholds = ScanThresholds {
+        stall_hours: TRANSIENT_STALL_HOURS,
+        grace_days: SOFT_DELETE_GRACE_DAYS,
+    };
+    let findings = classify(&rows, &databases, thresholds);
+
+    println!("{}", report_json(&shard_host, &rows, &databases, &findings));
+
+    // W5-REMEDIATE. RECORD, not remediate: the findings go into
+    // `orphan_scan_finding` (meta) so an operator has a worklist that ages.
+    // Every write goes through the bridge -- the meta-write-discipline lint
+    // forbids a service touching a meta table directly, which is what makes the
+    // same-TX audit invariant (I8) hold.
+    if record {
+        let url = std::env::var("ORPHAN_BRIDGE_URL").unwrap_or_default();
+        let token = std::env::var("ORPHAN_BRIDGE_TOKEN").unwrap_or_default();
+        if url.trim().is_empty() || token.trim().is_empty() {
+            return Err("--record needs ORPHAN_BRIDGE_URL and ORPHAN_BRIDGE_TOKEN \
+                        (no defaults: a default would post this shard's findings \
+                        at some other stack's meta database)"
+                .to_string());
+        }
+        let bridge = BridgeClient::new(url, token);
+        let (recorded, cleared) = bridge
+            .record_orphans(&shard_host, &findings, "orphan_scanner scheduled scan")
+            .await
+            .map_err(|e| format!("record findings: {e}"))?;
+        eprintln!("[orphan_scanner] recorded={recorded} cleared={cleared}");
+    }
+
+    if !json_only {
+        eprintln!(
+            "[orphan_scanner] shard={shard_host} registry_rows={} databases={} findings={}",
+            rows.len(),
+            databases.len(),
+            findings.len()
+        );
+        for f in &findings {
+            eprintln!("[orphan_scanner]   {} {}", f.class(), describe(f));
+        }
+        if findings.is_empty() {
+            eprintln!("[orphan_scanner] clean");
+        } else {
+            eprintln!(
+                "[orphan_scanner] {} orphan(s) — see runbooks/provisioner/orphan_resolution.md",
+                findings.len()
+            );
+        }
+    }
+
+    Ok(if findings.is_empty() { ExitCode::SUCCESS } else { ExitCode::from(1) })
+}
+
+/// Every `reality_registry` row on this shard — ALL statuses, not just the
+/// transient ones. An `active` row is what proves its database is tracked, so
+/// filtering here would make every healthy database look untracked.
+async fn read_registry(meta: &PgPool, shard_host: &str) -> Result<Vec<RegistryRow>, String> {
+    let rows: Vec<(Uuid, String, String, String, i64)> = sqlx::query_as(
+        r#"
+        SELECT reality_id,
+               db_name,
+               db_host,
+               status,
+               GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - created_at)) / 3600))::bigint
+          FROM reality_registry
+         WHERE db_host = $1
+        "#,
+    )
+    .bind(shard_host)
+    .fetch_all(meta)
+    .await
+    .map_err(|e| format!("read reality_registry: {e}"))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(reality_id, db_name, db_host, status, age_hours)| RegistryRow {
+            reality_id,
+            db_name,
+            db_host,
+            status,
+            age_hours,
+        })
+        .collect())
+}
+
+/// Every per-reality database physically present on the shard.
+///
+/// The `lw_reality_` prefix is the provisioner's own naming (`db_name_for`), so
+/// this deliberately does NOT sweep unrelated databases: a reaper that can see
+/// `loreweave_auth` is a reaper that can eventually be told to drop it.
+async fn read_shard_databases(shard: &PgPool) -> Result<Vec<String>, String> {
+    sqlx::query_scalar(
+        "SELECT datname FROM pg_database WHERE datname LIKE 'lw\\_reality\\_%' ORDER BY 1",
+    )
+    .fetch_all(shard)
+    .await
+    .map_err(|e| format!("read pg_database: {e}"))
+}
+
+fn describe(f: &Finding) -> String {
+    match f {
+        Finding::StalledProvision { reality_id, db_name, status, age_hours, database_present } => {
+            format!(
+                "{reality_id} db={db_name} status={status} age={age_hours}h database_present={database_present}"
+            )
+        }
+        Finding::MissingDatabase { reality_id, db_name, status } => {
+            format!("{reality_id} db={db_name} status={status} (registry claims a database that is not there)")
+        }
+        Finding::UntrackedDatabase { db_name } => {
+            format!("{db_name} (no registry row — invisible to capacity, which counts registry rows)")
+        }
+        Finding::DropEligible { reality_id, db_name, age_hours } => {
+            format!("{reality_id} db={db_name} soft_deleted for {age_hours}h")
+        }
+    }
+}
+
+fn report_json(
+    shard_host: &str,
+    rows: &[RegistryRow],
+    databases: &[String],
+    findings: &[Finding],
+) -> String {
+    let items: Vec<String> = findings
+        .iter()
+        .map(|f| {
+            serde_json::to_string(f).unwrap_or_else(|_| "{\"class\":\"unserialisable\"}".into())
+        })
+        .collect();
+    format!(
+        r#"{{"shard":{},"registry_rows":{},"databases":{},"findings":{},"detail":[{}]}}"#,
+        serde_json::to_string(shard_host).unwrap_or_else(|_| "\"?\"".into()),
+        rows.len(),
+        databases.len(),
+        findings.len(),
+        items.join(",")
+    )
+}
+
+async fn connect(dsn: &str) -> Result<PgPool, String> {
+    PgPoolOptions::new()
+        .max_connections(2)
+        .connect(dsn)
+        .await
+        // Never interpolate the DSN — it carries the password.
+        .map_err(|e| format!("connect failed: {e}"))
 }
 
 fn print_usage() {
     println!(
-        "orphan_scanner — L1.C.4 nightly cron for partial-provision and stale-drop reapers\n\
+        "orphan_scanner — L1.C.4 reaper for partial provisions and stale databases\n\
+         \n\
+         READ-ONLY. Writes nothing, drops nothing.\n\
          \n\
          USAGE:\n\
-           orphan_scanner --dry-run    # classify only; no MetaWrite, no DROP DATABASE\n\
-           orphan_scanner --help       # show this help\n\
+           orphan_scanner            # scan + report\n\
+           orphan_scanner --json     # stdout JSON only (no stderr summary)\n\
+           orphan_scanner --record   # ALSO write findings to orphan_scan_finding\n\
+           orphan_scanner --dry-run  # accepted; the scanner never remediates regardless\n\
+           orphan_scanner --help\n\
+         \n\
+         ENV (required, no defaults):\n\
+           ORPHAN_META_DSN           # the meta database\n\
+           ORPHAN_SHARD_ADMIN_DSN    # the shard, to list pg_database\n\
+           ORPHAN_SHARD_HOST         # logical shard name (default pg-shard-0.internal)\n\
+           ORPHAN_BRIDGE_URL         # meta bridge  -- required by --record\n\
+           ORPHAN_BRIDGE_TOKEN       # bridge token -- required by --record\n\
+         \n\
+         EXIT:\n\
+           0  clean\n\
+           1  orphans found\n\
+           2  could not scan (config/connection) — NOT the same as clean\n\
          \n\
          CONSTANTS:\n\
            SOFT_DELETE_GRACE_DAYS = {SOFT_DELETE_GRACE_DAYS}\n\

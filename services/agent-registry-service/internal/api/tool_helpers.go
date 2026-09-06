@@ -34,6 +34,17 @@ var enumSurfaces = func() []any {
 	return out
 }()
 
+// enumWorkflowSurfaces is the same construction over validWorkflowSurfaces — workflows
+// advertise on book/editor/studio, not on a skill's chat/compose/translate/admin. Kept
+// separate rather than shared so the two vocabularies cannot silently merge again.
+var enumWorkflowSurfaces = func() []any {
+	out := make([]any, len(validWorkflowSurfaces))
+	for i, v := range validWorkflowSurfaces {
+		out[i] = v
+	}
+	return out
+}()
+
 // closedSetSchemaFor infers the input schema for T, then pins each listed arg
 // path to its enum. Paths use the FE-contract dotted form ("surface",
 // "surfaces[]") — a "[]" segment descends into an array's item schema. Panics

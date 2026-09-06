@@ -1,0 +1,73 @@
+{
+  "_note": "CYCLE 3 CLOSE-OUT — the two tools that could be concluded in NEITHER direction.\n\nsettings_provider_inventory: 1/5 called, and the newly declared expectation catches the real defect on the other 4 — the model answers from settings_list_models and calls registry rows 'what your providers currently offer'. Both sides of the substitution are now declared: the LOSING tool says what it is and is not, and the WINNING tool (settings_list_models) now says a retired model still appears in it and that live inventory belongs elsewhere. Fixing only the losing side left the winning side just as attractive.\n\nworld_map_add_marker: called 5/5 with map_id now naming world_map_list, and ONE run died in transport, which is not evidence about the tool in either direction. Its `gate` case also needs a live card.",
+  "scenarios": [
+    {
+      "id": "settings-provider-inventory",
+      "tool_under_test": "settings_provider_inventory",
+      "expect_tool": "settings_provider_inventory",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What models can I use? Show me what my configured provider actually offers.",
+      "prompt_source": "_meta.synonyms['what models']",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply lists models from a provider this account has not configured. scope=user, and it requires a provider_credential_id — so the interesting failure is the model inventing one rather than looking it up first.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments — two of these first died in argument validation (fact_type / scope enums), which is UNPROBED rather than refused, and re-probed with valid enum values afterwards. scope=user. Called as claude-test2 with the HARNESS user's provider_credential_id: refused 'not accessible' — a credential id is not a capability.",
+        "gate": "Tier R; returns no secrets by contract."
+      },
+      "editor_context": false,
+      "seed_assert": [],
+      "answer_expect": {
+        "all_of": [
+          "registered in your account"
+        ],
+        "why": "🔴 THIS EXPECTATION WAS RECALIBRATED 2026-08-23, BECAUSE THE FIX MADE THE OLD PHRASE LIE.\n\nThe original gate was none_of:['currently offer'], calibrated on the BROKEN population where that phrase only ever occurred as the false claim — 'here is what your configured providers currently offer', said over registry rows. It discriminated perfectly THEN: 9 of the 10 pre-fix replies contained it and the single reply that actually called settings_provider_inventory did not.\n\nAfter the result-level `note` shipped, 4 of 5 replies still contain 'currently offer' — inside a CORRECT sentence: 'These are the models currently REGISTERED in your account. If you want the live, real-time inventory of what your providers are currently offering, let me know and I can check that for you.' The gate was red over the right answer. A phrase-level gate calibrated on the broken population marks the very distinction the fix introduces, because the fixed answer has to NAME the thing it is not, in order to disclaim it.\n\nSo the expectation now asserts the PROPOSITION rather than a symptom of its absence, and the separation was measured over both populations before it was adopted:\n\n    'registered in your account'   pre-fix  0/10   (c3-close-raw.json, c3-run-raw.json)\n                                   post-fix 5/5    (c3-note-raw.json)\n    'currently offer'              pre-fix  9/10   post-fix 4/5 — no longer discriminating\n\nD-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY IS FIXED and this is the evidence for it. What is still not satisfied is a DIFFERENT bar: settings_provider_inventory is called 0/5, so the model stops at a correct disclaimer and an OFFER to check live inventory instead of checking it. That is the tool-surfacing problem, and it is why this tool concludes `blocked` and not `proven`."
+      },
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P5-SIBLING-WINS"
+    },
+    {
+      "id": "world-map-add-marker",
+      "tool_under_test": "world_map_add_marker",
+      "expect_tool": "world_map_add_marker",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+      "prompt_source": "_meta.synonyms['add pin'] + ['place marker']. The POSITION is described in the user's own words; the x/y the tool needs are derived by the model, never typed here.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "LOOP-THROWAWAY-ashfall",
+            "description": "batch 7 map fixture"
+          }
+        },
+        {
+          "tool": "world_map_create",
+          "args": {
+            "world_id": "{step:0:world.world_id}",
+            "name": "Ashfall"
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool reports a marker placed while the map gains none, OR the marker's x/y fall outside the map's coordinate space, OR a Tier-A write lands with no confirm card. CONTROL: the model must find map_id itself (world_map_list) — a turn that never lists is a DISCOVERY failure, not a failure of this tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt): an absent map_id is refused with 'map not found — check the map_id (call world_map_list for valid ids)'.",
+        "tenancy": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt): a foreign map_id refuses IDENTICALLY."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P5-SIBLING-WINS"
+    }
+  ]
+}

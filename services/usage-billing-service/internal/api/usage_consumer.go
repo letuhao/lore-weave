@@ -13,11 +13,14 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -143,6 +146,29 @@ func (c *UsageConsumer) processMessages(ctx context.Context, msgs []redis.XMessa
 	}
 }
 
+// isConstraintViolation reports whether an error is Postgres class 23 — integrity constraint
+// violation. Those are decided by the ROW, so a retry sends the identical row at the identical
+// constraint and gets the identical answer.
+//
+// 23505 (unique_violation) is deliberately NOT here: `writeUsageLog` inserts ON CONFLICT DO
+// NOTHING, so a duplicate is already a success, and treating one as permanent would be
+// classifying a case that cannot reach this branch — a mechanism with no defect to catch.
+func isConstraintViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	switch pgErr.Code {
+	case "23514", // check_violation      — the measured one
+		"23502", // not_null_violation
+		"23503", // foreign_key_violation
+		"22P02", // invalid_text_representation (a malformed uuid/enum in the payload)
+		"22001": // string_data_right_truncation
+		return true
+	}
+	return false
+}
+
 func (c *UsageConsumer) ack(ctx context.Context, id string) {
 	if err := c.rdb.XAck(ctx, c.stream, c.group, id).Err(); err != nil {
 		c.logger.Warn("usage consumer XACK failed", "id", id, "err", err)
@@ -163,6 +189,24 @@ func (c *UsageConsumer) handleMessage(ctx context.Context, values map[string]any
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, _, _, werr := c.srv.writeUsageLog(ctx, tx, p); werr != nil {
+		// A CONSTRAINT VIOLATION IS A PROPERTY OF THE PAYLOAD, NOT OF THE DATABASE, so it can
+		// never succeed on a retry and must be dropped like any other malformed event.
+		//
+		// 🔴 MEASURED 2026-09-04: two entries (1781773507908-0, 1781773507909-0) carrying
+		// `model_source: "openai"` — a PROVIDER KIND in a field whose CHECK admits only
+		// `user_model` / `platform_model` — were retried **50,529 times in 24 hours**, logged
+		// as "transient failure (will retry)". `XINFO GROUPS` showed `lag: 0` with `pending: 3`:
+		// the stream had moved on and the group was spinning on its own Pending Entries List.
+		// The producer is already correct (`usage_outbox` holds only `user_model` today, with
+		// `provider_kind` in its own column), so these are historical poison that nothing was
+		// ever going to fix by asking again.
+		//
+		// The usage IS lost either way — that is what a violated CHECK means. What changes is
+		// that the loss is recorded once and the group moves on, instead of being re-attempted
+		// twice a second forever while burying every real transient failure in the same log.
+		if isConstraintViolation(werr) {
+			return true, werr
+		}
 		return false, werr
 	}
 	if cerr := tx.Commit(ctx); cerr != nil {
@@ -173,7 +217,8 @@ func (c *UsageConsumer) handleMessage(ctx context.Context, values map[string]any
 
 // parseUsageEvent maps a Redis-stream field map (all string values, per S4b
 // buildUsageFields) to usageLogParams. cost_usd empty/unparseable → flat fallback
-// (rare: unpriced model). provider_kind + payloads are absent on the jobs path.
+// (rare: unpriced model). provider_kind now rides the stream (D-BILL-PROVIDER-KIND);
+// it is '' only for a row written before usage_outbox carried the column.
 func parseUsageEvent(v map[string]any) (usageLogParams, error) {
 	get := func(k string) string {
 		s, _ := v[k].(string)
@@ -222,6 +267,7 @@ func parseUsageEvent(v map[string]any) (usageLogParams, error) {
 	return usageLogParams{
 		RequestID:     reqID,
 		OwnerUserID:   owner,
+		ProviderKind:  get("provider_kind"),
 		ModelSource:   get("model_source"),
 		ModelRef:      modelRef,
 		InputTokens:   inTok,

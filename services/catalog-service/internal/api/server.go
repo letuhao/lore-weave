@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -134,11 +133,13 @@ type bookProjection struct {
 	CreatedAt        *time.Time `json:"created_at"`
 }
 
-func (s *Server) fetchPublicIDs(limit, offset int, q string) (*sharingPublicList, int) {
+// fetchPublicIDs asks sharing-service which books are public. It deliberately sends NO
+// free-text query: sharing_policies holds (book_id, visibility) and no title, so its handler
+// reads only limit/offset and a `q` parameter was silently discarded. Titles live in the
+// book projection this service already fetches, so the search belongs here — see the title
+// filter in queryPublicBooks (TOOLV2 LOOP #141).
+func (s *Server) fetchPublicIDs(limit, offset int) (*sharingPublicList, int) {
 	u := fmt.Sprintf("%s/internal/sharing/public?limit=%d&offset=%d", strings.TrimRight(s.cfg.SharingServiceInternalURL, "/"), limit, offset)
-	if q != "" {
-		u += "&q=" + url.QueryEscape(q)
-	}
 	res, err := s.internalGet(u)
 	if err != nil {
 		return nil, http.StatusBadGateway
@@ -230,6 +231,19 @@ func (s *Server) listPublicBooks(w http.ResponseWriter, r *http.Request) {
 // sharing-service public gate + lifecycle filter) — owner-AGNOSTIC (OD-7: public
 // discovery, not owner-scoped), so it is safe to expose to any caller, including a
 // public MCP key (no OD-8 gate applies — there is no private data here).
+// titleMatchesQuery reports whether a book title satisfies the free-text query. An empty
+// query matches everything, which is what makes the filter safe to apply unconditionally
+// beside the others. Matching is case-insensitive and substring-based rather than
+// token-based: the catalogue is multilingual and a space tokenizer degrades badly on CJK,
+// where a title carries no spaces at all.
+func titleMatchesQuery(title, q string) bool {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(title), strings.ToLower(q))
+}
+
 func (s *Server) queryPublicBooks(limit, offset int, q, language, genre, sortBy, author string) ([]map[string]any, int, int, string, string) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
@@ -257,7 +271,7 @@ func (s *Server) queryPublicBooks(limit, offset int, q, language, genre, sortBy,
 	// Fetch a large page to allow client-side filter/sort
 	// (sharing-service handles the "public" gate, we filter further here)
 	fetchLimit := 200
-	ids, status := s.fetchPublicIDs(fetchLimit, 0, q)
+	ids, status := s.fetchPublicIDs(fetchLimit, 0)
 	if status != http.StatusOK {
 		return nil, 0, http.StatusBadGateway, "BOOK_CONFLICT", "failed to query public books"
 	}
@@ -278,6 +292,12 @@ func (s *Server) queryPublicBooks(limit, offset int, q, language, genre, sortBy,
 			if aid, err := uuid.Parse(author); err == nil && p.OwnerUserID != aid {
 				continue
 			}
+		}
+		// Free-text title filter. This is the one the schema advertises ("free-text title
+		// search") and the only one that was never applied: `q` was forwarded to a service
+		// that cannot see titles, so every query returned the unfiltered catalogue.
+		if !titleMatchesQuery(p.Title, q) {
+			continue
 		}
 		// Language filter
 		if language != "" && (p.OriginalLanguage == nil || *p.OriginalLanguage != language) {

@@ -207,6 +207,57 @@ detailed polygons" has only one lever, cell count (which is `GEO-D14`).
 > on the client and would inherit `WDS-A7`'s float problem on the *read* path, where it is worse — a
 > second reason the deferral is the right call and not merely the easy one.
 
+### WDS-A9 — Divergence is COMPACTED into a new baseline, never merely bounded (`SDF-R8`, applied 2026-08-22)
+
+> **⚠ THIS AXIOM DID NOT EXIST, and its absence was found by grep rather than by review.** `compact`,
+> `truncate` and `fold-baseline` returned **zero hits** in this document on the day after it was
+> committed.
+
+`SDF-A17` rule 4 already refuses an overflowing write rather than silently pruning it, and `R-61` is why:
+No Man's Sky caps at **15 000 edits / 256 buffers**, and past the cap unprotected buffers are overwritten
+so *"whatever was overwritten will result in respawned terrain"* — bases end up buried or airborne, and
+**visiting another player's heavily-edited base consumes your buffers.**
+
+**But refusing alone is WORSE than what NMS ships**, and that is the finding. NMS degrades; a bare refusal
+means a long-lived world eventually cannot be edited by its owner at all, permanently, with no path back.
+A bound on *lifetime* edits is a bound on the world's whole future.
+
+> **`WDS-A9` — periodically FOLD a node's divergence into a NEW content-addressed baseline `H'` and reset
+> its log. The bound is then on UN-COMPACTED delta, not on lifetime edits.**
+
+**The determinism cost, stated because it is not free.** After compaction, a replay from `t=0` needs
+either the **original** baseline plus the full log, or `H'` plus the tail. So **the old baseline must be
+retained while any replay target predates the compaction** — which is [`WDS-A6`](#) arriving a second
+time for a second reason, and it inherits `WDS-A6`'s acknowledged cost: the chain is never pruned, which
+is why a 2011 Minecraft world still loads.
+
+### WDS-A10 — Scope follows DERIVATION, not the table (`SDF-R9`, applied 2026-08-22)
+
+This document scoped **one** thing — the `space_node` tree, *"per-reality Postgres"* — and was silent on
+the other eight tables [doc 41 §5](41_space_dataflow.md) lists. The rule that settles all nine at once,
+and it is about **provenance** rather than about tables:
+
+> **`WDS-A10` — anything derived from a SEED is shared by digest. Anything derived from the LOG is
+> per-reality. A registry is per-RULESET, itself pinned per `(reality, epoch)`.**
+
+| derived from | scope | example |
+|---|---|---|
+| seed + `CreativeSeed` + generator version | **shared by digest** | the world baseline |
+| the ruleset | **per-ruleset**, pinned per reality-epoch | the layer registry |
+| the log | **per-reality** | nodes, portals, layer sidecars, occupancy |
+| runtime state over the log | per-reality, **not persisted** | the live set, the frame-epoch index |
+
+**And this is `WDS-A1` finally delivering its stated value in numbers.** Measured 2026-08-22 against
+Postgres 18 (doc 41 §16): a node row costs **251 B as stored** — *indexes are 51.5 % of it* — so a
+reality's authored tree is **1.10 MB** against a **14.9 MB** shared baseline. A hundred realities forked
+from one book therefore cost **125 MB instead of 1 490 MB: 92 % saved.**
+
+> **It holds only because an authored node is a row and a generated cell is NOT** (`SDF-A31`). Had cells
+> been rows, `Gigaplanet` would cost **126 MB per reality** against that 14.9 MB baseline — 8.5× over, and
+> this axiom would be false. **Two rules written the same day are load-bearing for each other**, and
+> neither could have been checked without the other.
+
+
 ---
 
 ## 3 — What this changes elsewhere

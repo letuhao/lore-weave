@@ -1,0 +1,9 @@
+{
+ "_note": "Scenarios asking a READ question about a Tier A/W tool — they measure the model answering the question it was given, not the tool they name. SHRINK-ONLY: an entry leaves when its prompt is fixed and NOTHING may be added. Seeded 2026-08-27 from the historical batches; every tool involved is already `proven` via the corrected scenarios-c-ask.json prompts, so these are archived measurements rather than live debt.",
+ "_regenerate": "Never wholesale. Remove the one entry you fixed; the guard fails if a fixed entry is left behind, and fails if a new one appears.",
+ "count": 1,
+ "scenarios": [
+  "scenarios-batch10.json::composition-error-block-edit"
+ ],
+ "note": "Re-derived 2026-08-27 from the MEASURED turn (follow_ups[-1], else prompt). The first version judged `prompt` and seeded 60, of which 59 were SETUP reads that no bar reads. Shrink-only: an entry may leave, none may be added."
+}

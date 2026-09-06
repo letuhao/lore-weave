@@ -40,6 +40,17 @@ class ProposedChar:
     archetype: str = ""
     traits: list[str] = field(default_factory=list)
     relationships: str = ""      # free-text ties to other cast ("huynh trưởng of Lâm Uyển")
+    #: T37 — the STRUCTURED half of the tie above, ADDITIVE rather than a replacement.
+    #: `relationships` is prose the packer already uses for grounding; `roles` is
+    #: `[{"predicate": "betrayed", "object": "<name>"}]`, the shape `append_role_fact` needs
+    #: (SPEC §4.2c). The two answer different questions, and dropping the prose to make room
+    #: would degrade the prompt to serve the graph.
+    #:
+    #: Parsed DEFENSIVELY, defaulting to empty: an older model, a truncated array, or a
+    #: prompt predating the field all yield `[]`, and a plan with no structured roles must
+    #: still produce a cast. A role is a canon claim the guard enforces — fewer of them is a
+    #: thinner book, a WRONG one is a false verdict.
+    roles: list[dict[str, str]] = field(default_factory=list)
     summary: str = ""
     is_new: bool = False         # True = invented here (not named in the premise) → a planned introduction
 
@@ -98,10 +109,20 @@ def build_propose_cast_messages(
         " Respect the premise's naming convention (do not rename existing characters). "
         "For EACH character return a JSON object: "
         '"name", "role" (protagonist/antagonist/mentor/rival/ally/foil/...), "archetype", '
-        '"traits" (a short list), "relationships" (ties to other cast), "summary" (one line), '
+        '"traits" (a short list), "relationships" (ties to other cast, as prose), '
+        # T37 — the SAME ties the line above asks for as prose, requested a second time as
+        # structure. Additive on purpose: the model already knows these ties, and asking for
+        # the machine-readable form is cheaper and safer than parsing the prose back out
+        # (SPEC §4.2c — a heuristic over multilingual free text is what promoted an event
+        # phrase to a character in the acceptance book).
+        '"roles" (the SAME ties, structured: '
+        '[{"predicate":"betrayed","object":"<other cast NAME>"}]; predicate a short verb '
+        'phrase, object another character name; [] if none), '
+        '"summary" (one line), '
         + is_new_rule +
         'Return ONLY a JSON array [{"name":...,"role":...,"archetype":...,"traits":[...],'
-        '"relationships":...,"summary":...,"is_new":bool}]. No prose around it.' + lang
+        '"relationships":...,"roles":[...],"summary":...,"is_new":bool}]. No prose around it.'
+        + lang
     )
     # The roster goes in the USER message beside the premise, not the system prompt: it is data
     # about THIS book, not a rule about how to behave. Capped — a long-running book's cast can be
@@ -146,6 +167,26 @@ def parse_cast(content: str) -> list[ProposedChar]:
                 arr.append(row)
     if not arr:
         return []
+    def _as_roles(v: Any) -> list[dict[str, str]]:
+        """`[{"predicate": …, "object": …}]`, keeping only rows with BOTH sides.
+
+        A role with a blank side is a canon claim about nothing, and the KAL would store it
+        happily — `attr_or_predicate` and `value` are plain strings all the way down. Dropped
+        HERE rather than at the write: the model is the thing being tolerated, and the
+        producer should not have to re-litigate it.
+        """
+        if not isinstance(v, list):
+            return []
+        out: list[dict[str, str]] = []
+        for r in v:
+            if not isinstance(r, dict):
+                continue
+            pred = str(r.get("predicate", "") or "").strip()
+            obj = str(r.get("object", "") or "").strip()
+            if pred and obj:
+                out.append({"predicate": pred, "object": obj})
+        return out
+
     def _as_bool(v: Any) -> bool:
         # JSON true/false → bool; but a model sometimes emits the STRING "false"/"no",
         # and bool("false") is True — coerce those textual negatives to False.
@@ -176,6 +217,7 @@ def parse_cast(content: str) -> list[ProposedChar]:
             archetype=str(row.get("archetype", "")).strip(),
             traits=traits,
             relationships=str(row.get("relationships", "")).strip(),
+            roles=_as_roles(row.get("roles")),
             summary=str(row.get("summary", "")).strip(),
             is_new=_as_bool(row.get("is_new", False)),
         ))

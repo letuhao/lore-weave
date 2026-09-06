@@ -73,8 +73,8 @@
       "number": "數字",
       "date": "日期",
       "tags": "標籤",
-      "url": "URL",
-      "boolean": "是 / 否"
+      "boolean": "是 / 否",
+      "url": "URL"
     }
   },
   "stdform": {

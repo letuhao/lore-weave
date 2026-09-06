@@ -27,6 +27,18 @@ info:
     `list_attr_values` are *bounded-per-page, complete-in-aggregate* (cursor-drained), never the monolith.
     This makes context bloat structurally impossible (§12.0 INV-FACTS corollary).
 
+    **`state` is the third carved-out shape, and it is bounded differently — say so out loud.**
+    It is neither paged nor projection-restricted: it returns one value per (entity, attribute) for
+    the whole book at one story position, in a single response. What bounds it is the POSITION —
+    only intervals covering N, one per attribute — not a page size. Paging it would be worse than
+    useless: a caller draining pages to assemble "the state at N" holds a torn snapshot, and the
+    single-response shape is what makes the answer atomic. Measured on the largest real book
+    (26 192 facts, 1 673 entities, 97 chapters) it returns ~8 900 facts in ~35 ms; see
+    `docs/measurements/2026-08-09-state-asof-ceiling.md`. Nothing is truncated — the service WARNs
+    past a threshold instead, because a silently capped state read is exactly the confidently-wrong
+    answer this endpoint exists to remove. Consumers that cannot afford the whole cast need a
+    SALIENCE filter, which is a different question and not this contract's to answer.
+
     ## Temporal model (v1 == current projection; temporal is additive)
     v1 semantics equal **today's current-projection** (latest-valid facts where `invalidated_at IS NULL`),
     so consumers migrate with NO behavior change. Temporal is an additive `as_of` (chapter ordinal) param.
@@ -224,6 +236,130 @@ paths:
                   next_cursor: { type: string, nullable: true }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /v1/kal/books/{book_id}/cast:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: cursor, in: query, required: false, description: "Keyset cursor; same axis as roster", schema: { type: string } }
+      - { name: limit, in: query, required: false, schema: { type: integer, default: 200, maximum: 500 } }
+    get:
+      tags: [reads]
+      summary: cast — the DETAIL read beside roster (T38)
+      description: |
+        `roster` is projection-restricted to id+name+kind, and T38's census found **0 of 10** pinned
+        consumers could migrate onto it: four went to glossary's `entities/by-ids` for the detail, two
+        need `aliases`, one needs `kind` + `short_description`. `cast` is the missing rung — roster's page
+        shape with the projection those consumers actually read, over ONE book.
+
+        It does NOT replace either neighbour, and that is deliberate. `roster` stays narrow because it is
+        the enumeration every indexing pass drains end-to-end; widening it would charge that cost to
+        readers that never asked. `entities/by-ids` stays because it answers a different question —
+        "these specific entities", keyed by an id list, not "a page of this book".
+
+        `truncated` is EXPLICIT, never inferred from a short page. A caller that stops at
+        `items.length < limit` is guessing, and the guess is wrong exactly when the upstream capped it —
+        the silent truncation that once cut a deep book's cast at ~100 while reporting a complete-looking
+        count.
+      responses:
+        '200':
+          description: One page; drain `next_cursor` to completion for the full cast
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, truncated]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CastEntry' } }
+                  next_cursor: { type: string, nullable: true }
+                  truncated: { type: boolean, description: "True while more pages remain; NEVER inferred by the caller" }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/cast/by-ids:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [reads]
+      summary: cast/by-ids — the cast projection, keyed by an id list (T38)
+      description: |
+        The same `CastEntry` projection as `cast`, for "these specific entities" rather than "a page of
+        this book". Both questions are legitimate — the KAL simply had no way to ask the second, so FIVE
+        pinned call sites reached past the boundary to glossary's `/internal/.../entities/by-ids` because
+        there was nowhere else to go. A boundary with a hole in it is not a boundary.
+
+        POST rather than a query param: an id list is unbounded in principle, and a caller pinning 200
+        entities would build a URL long enough to be truncated somewhere in the middle — silently, and as
+        a SHORTER answer rather than an error.
+
+        An empty `entity_ids` returns `{items: []}` and makes no downstream call. It must never be read
+        as "the whole book": that inversion turns a no-op pin into a full-cast read on every empty call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entity_ids]
+              properties:
+                entity_ids: { type: array, items: { type: string, format: uuid } }
+                language: { type: string, description: "Optional; augments aliases with that language's set" }
+                include_attributes: { type: boolean, description: "Optional; also return authored attribute VALUES. Off by default — this sits on a hot path and only the passage producer needs them." }
+      responses:
+        '200':
+          description: The requested entities, in the same shape `cast` returns
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CastEntry' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/state:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: as_of
+        in: query
+        required: true
+        schema: { type: integer, format: int64, minimum: 0 }
+        description: "Story ordinal. REQUIRED — there is no default; a missing position is 400."
+    get:
+      tags: [reads]
+      summary: state — the whole cast's state AT a story position (AC1/AC2)
+      description: |
+        What was TRUE at story position N, for every entity in the book, one value per
+        (entity, attribute). This is the read `roster` cannot be: `roster` is an untimed
+        catalogue of every entity that ever existed, so a drafting agent using it at chapter 12
+        sees the end of the book.
+
+        `as_of` is REQUIRED and has no default. A defaulted position answers "what is true now"
+        while wearing the shape of "what was true then", and the caller has no way to notice —
+        that failure mode is what this read exists to remove. Enforced by the owning service,
+        not by the gateway (decision B2: no domain logic in TypeScript).
+
+        Three axes are involved and only the first is `as_of`:
+        STORY time (the half-open interval `[valid_from_ordinal, valid_to_ordinal)`) selects the
+        answer; BELIEF time (`invalidated_at`) excludes superseded facts at every position; and
+        the author's recycle bin (`deleted_at`) excludes trashed entities, which have no story
+        position at all.
+
+        Bounded by the position rather than by a projection: only intervals covering N, one per
+        attribute. Nothing is truncated — see the T8 ceiling measurement.
+      responses:
+        '200':
+          description: One value per (entity, attribute) at the requested position
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [book_id, as_of_ordinal, entities, temporal_capability]
+                properties:
+                  book_id: { type: string, format: uuid }
+                  as_of_ordinal: { type: integer, format: int64 }
+                  entities: { type: array, items: { $ref: '#/components/schemas/StateEntity' } }
+                  temporal_capability: { $ref: '#/components/schemas/TemporalCapability' }
+        '400': { description: "`as_of` missing, non-numeric or negative" }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /v1/kal/books/{book_id}/retrieve:
     parameters:
       - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -279,7 +415,10 @@ paths:
     parameters:
       - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
       - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
-      - { name: hops, in: query, required: false, schema: { type: integer, default: 1, maximum: 2 } }
+      # maximum 1, not 2: the graph port is one-hop by construction and always has been.
+      # The spec advertised 2 against an endpoint that did not exist at all; narrowing it to
+      # what is served beats leaving a promise the implementation rejects with 422.
+      - { name: hops, in: query, required: false, schema: { type: integer, default: 1, maximum: 1 } }
       - { name: cap, in: query, required: false, schema: { type: integer, default: 50, maximum: 200 } }
       - { name: as_of, in: query, required: false, schema: { type: integer, format: int64 } }
     get:
@@ -296,6 +435,129 @@ paths:
                 properties:
                   edges: { type: array, items: { $ref: '#/components/schemas/Edge' } }
                   temporal_capability: { $ref: '#/components/schemas/TemporalCapability' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ─────────────────── ENTITY COMMANDS (plan T29) ───────────────────────
+  #
+  # The five transitions T27/T28 made safe, exposed to SERVICES. Each forwards to the one
+  # `*Core` that writes and emits in a single transaction — so a command here produces the
+  # same event a browser's REST call does, which is the property that keeps the KG mirror
+  # convergent.
+  #
+  # A 404 means "nothing was in a state to change" (already deleted, already live, not in this
+  # book) and is a normal answer, not an error: a caller that cannot tell it from success will
+  # retry forever or stop too early.
+  #
+  # The KAL forwards `X-User-Id` when a caller identity exists and omits it otherwise; glossary
+  # records the absence as `pipeline` with an empty actor id rather than inventing a user.
+  /v1/kal/books/{book_id}/entities/{entity_id}/delete:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: Soft-delete an entity (reversible; emits glossary.entity_deleted)
+      responses:
+        '200': { $ref: '#/components/responses/EntityCommandApplied' }
+        '404': { description: nothing was in a state to delete }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/restore:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: Restore a soft-deleted entity (emits glossary.entity_restored)
+      responses:
+        '200': { $ref: '#/components/responses/EntityCommandApplied' }
+        '404': { description: nothing was in a state to restore }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/purge:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: >-
+        Permanently remove an entity (IRREVERSIBLE; emits glossary.entity_purged, which
+        cascades a hard delete into the KG). A separate verb from delete because it is a
+        separate fact — soft-delete maps to archive, purge does not.
+      responses:
+        '200': { $ref: '#/components/responses/EntityCommandApplied' }
+        '404': { description: nothing was in a state to purge }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/reassign-kind:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: >-
+        Move an entity onto a different kind, re-keying its attribute values (emits
+        glossary.entity_updated carrying the NEW kind). Attribute values whose code has no
+        counterpart in the target kind are DROPPED; recoverable via revision restore.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind_id]
+              properties:
+                kind_id:
+                  type: string
+                  format: uuid
+                  description: >-
+                    the target book_kind_id. A kind CODE is deliberately not accepted — two
+                    entry points resolving a code separately is how they come to disagree
+                    about what it means.
+      responses:
+        '200': { $ref: '#/components/responses/EntityCommandApplied' }
+        '404': { description: the entity or the target kind does not exist in this book }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/status:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: >-
+        Set curation status on up to 1000 entities (emits one
+        glossary.entity_status_changed per entity whose status ACTUALLY moved). `status` is a
+        liveness predicate — every consumer read filters `status = 'active'` — so retiring an
+        entity removes it from downstream reads and archives its KG node.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, entity_ids]
+              properties:
+                status: { type: string, enum: [active, inactive, draft, rejected] }
+                entity_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: how many entities matched, and the status they now hold
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated, status]
+                properties:
+                  # The count and the emitted events are read off ONE locked row list, so they
+                  # cannot disagree. `updated` counts MATCHED entities; an entity already at
+                  # the target status is matched but emits nothing.
+                  updated: { type: integer }
+                  status: { type: string }
+        '422': { description: status outside the closed set }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   # ─────────────────────────────── WRITES ───────────────────────────────
@@ -526,6 +788,15 @@ components:
         valid_to_ordinal: { type: integer, format: int64, nullable: true, description: NULL = +∞ (open) }
         cardinality: { type: string, enum: [single, multi], default: single }
         source_episode_id: { type: string, format: uuid, nullable: true }
+        origin:
+          type: string
+          enum: [plan, author, extraction]
+          nullable: true
+          description: >-
+            Which producer wrote this fact (chain step 0066). Returned on READS because a
+            retraction path is blind without it — a producer must close the facts it wrote and
+            leave every other producer's alone. NULL for anything written before 0066, and an
+            unmarked fact is never anyone's to retract.
         evidence: { $ref: '#/components/schemas/Evidence' }
         invalidated_at: { type: string, format: date-time, nullable: true }
     Evidence:
@@ -558,6 +829,46 @@ components:
         entity_id: { type: string, format: uuid }
         name: { type: string }
         kind: { type: string, nullable: true }
+    CastEntry:
+      type: object
+      required: [entity_id, name]
+      properties:
+        entity_id: { type: string, format: uuid }
+        name: { type: string }
+        cached_name: { type: string, nullable: true, description: "Carried because two pinned consumers read it BY THIS NAME" }
+        kind: { type: string, nullable: true }
+        aliases: { type: array, items: { type: string }, description: "Surface forms; [] when none, never absent" }
+        short_description: { type: string, nullable: true }
+        attributes:
+          type: array
+          description: "Authored attribute values. PRESENT ONLY when include_attributes was sent — absent and empty are different answers, and a caller that forgot the flag must not read [] as 'this entity has none'."
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              value: { type: string }
+    StateEntity:
+      type: object
+      required: [entity_id, facts]
+      properties:
+        entity_id: { type: string, format: uuid }
+        facts: { type: array, items: { $ref: '#/components/schemas/StateFact' } }
+    StateFact:
+      type: object
+      description: |
+        One attribute's value at the requested position. `facts` is a LIST, not a map keyed by
+        attribute — a map would satisfy "exactly one value per attribute" by construction, so a
+        consumer conformance test could not tell a correct read from one that returned every
+        matching interval and let the last write win.
+      required: [attr, value, fact_kind, valid_from_ordinal]
+      properties:
+        attr: { type: string }
+        value: { type: string }
+        fact_kind: { type: string, enum: [attribute, relation, event, name, alias] }
+        valid_from_ordinal:
+          type: integer
+          format: int64
+          description: "Which interval answered — how a caller tells fresh canon from ancient canon."
     RetrievedSegment:
       type: object
       required: [text, score]
@@ -587,8 +898,33 @@ components:
         cardinality: { type: string, enum: [single, multi], default: single }
         evidence: { $ref: '#/components/schemas/Evidence' }
         writeback_key: { type: string, description: Path-A idempotency gate (reused, §12.2.2) }
+        origin:
+          type: string
+          enum: [plan, author, extraction]
+          description: >-
+            Which producer wrote this fact (T37c, chain step 0066). A producer may retract only
+            facts it can prove it wrote: roles have two writers (planforge and the studio), and
+            without this a plan revision closing "what the plan no longer implies" would erase
+            the author's own declarations. OMITTED means unknown — every fact older than 0066 —
+            and an unmarked fact is never anyone's to retract. An unrecognised value is a 400,
+            not a silent write, because a fact stored under a misspelt origin is un-retractable
+            and nothing reports it.
   responses:
     Unauthorized: { description: Missing/invalid auth }
+    # `applied` is always true on a 200 — the field exists so the shape stays stable if a
+    # future command grows a partial-apply case. A no-op is a 404, never a 200 with
+    # applied=false, because "nothing to do" is about the ENTITY's state, not the command's.
+    EntityCommandApplied:
+      description: the transition was applied and its event emitted in the same transaction
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [entity_id, op, applied]
+            properties:
+              entity_id: { type: string, format: uuid }
+              op: { type: string, enum: [delete, restore, purge, reassign_kind] }
+              applied: { type: boolean }
     Forbidden: { description: Caller lacks a View/Edit grant on the book }
     NotFound: { description: Entity/episode not found }
   securitySchemes:

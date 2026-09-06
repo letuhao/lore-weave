@@ -43,8 +43,8 @@
         "desc": "暖かい紙の色合い"
       },
       "oled": {
-        "name": "OLED",
-        "desc": "OLED画面向けの完全な黒"
+        "desc": "OLED画面向けの完全な黒",
+        "name": "OLED"
       },
       "parchment": {
         "name": "羊皮紙",
@@ -69,9 +69,9 @@
   "tts": {
     "source": {
       "attached": "添付",
-      "ai": "AI 音声合成",
       "browser": "ブラウザ",
-      "inline": "音声"
+      "inline": "音声",
+      "ai": "AI 音声合成"
     },
     "prev_block": "前のブロック (Shift+Left)",
     "play": "再生 (Space)",
@@ -105,10 +105,10 @@
   "audio": {
     "source": {
       "attached": "添付",
-      "ai": "AI 音声合成",
       "browser": "ブラウザ",
       "inline": "音声ブロック",
-      "none": "なし"
+      "none": "なし",
+      "ai": "AI 音声合成"
     },
     "coverage": "音声カバレッジ",
     "summary": "{{speakable}}個の読み上げ可能ブロック · {{missing}}個がブラウザTTS使用",

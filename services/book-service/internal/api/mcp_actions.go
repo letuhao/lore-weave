@@ -32,6 +32,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	lwmcp "github.com/loreweave/loreweave_mcp"
+	lwpg "github.com/loreweave/loreweave_mcp/pgstore"
 )
 
 // Action descriptors (intent). Grouped to the §4 confirm descriptors.
@@ -136,7 +137,7 @@ func (s *Server) registerActionProposeTools(srv *mcp.Server) {
 	// One DISPATCHING resolver serves every book write descriptor (delete/trash/purge
 	// via descBookDelete; publish/unpublish via descBookPublish) — it switches on the
 	// payload op and calls the SAME underlying logic the /actions/confirm effects run.
-	actionTasks := NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
+	actionTasks := lwpg.NewPgTaskStore(s.pool, lwmcp.TaskResolverRegistry{
 		descBookDelete:  s.resolveBookAction,
 		descBookPublish: s.resolveBookAction,
 	})
@@ -253,9 +254,32 @@ func (s *Server) proposeChapterAction(ctx context.Context, in chapterActionIn, n
 		return nil, confirmCardOut{}, mcpOwnershipError(err)
 	}
 	// Mint-time existence check so the agent never shows a card destined to 404.
+	// The grant check above ALREADY passed, so the book is accessible by definition and
+	// `errBookNotAccessible` here states something false. Measured live: proposing a publish for
+	// an absent chapter in a perfectly readable book answered "book not accessible", while
+	// book_get_chapter — same service, same book, same absent id — answers "no active chapter
+	// with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for
+	// valid ids)". One names the wrong noun and offers nothing; the other names the argument and
+	// its satisfier. H13's uniform message exists to avoid an enumeration ORACLE, and there is
+	// no oracle to protect here: the caller has already proven it may read this book.
 	var exists bool
 	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state!='purge_pending')`, chID, bookID).Scan(&exists); err != nil || !exists {
-		return nil, confirmCardOut{}, errBookNotAccessible
+		return nil, confirmCardOut{}, errChapterNotInBook
+	}
+	// A PURGE is irreversible, and its own tool description promises it acts on a
+	// TRASHED chapter. Nothing enforced that at mint time: TOOLV2 LOOP #123 called
+	// book_chapter_purge against a chapter whose lifecycle_state was `active` and got
+	// a normal "Permanently purge chapter (irreversible)" card. A human is then one
+	// click from destroying a live chapter, having been told the tool only purges
+	// trash. Refuse here, where every sibling already refuses on a missing chapter —
+	// the mint-time check is exactly the shape this function already uses.
+	if op == "purge_chapter" {
+		var trashed bool
+		if err := s.pool.QueryRow(ctx,
+			`SELECT lifecycle_state='trashed' FROM chapters WHERE id=$1 AND book_id=$2`,
+			chID, bookID).Scan(&trashed); err != nil || !trashed {
+			return nil, confirmCardOut{}, errors.New("chapter is not in the trash — purge only removes an ALREADY-TRASHED chapter; delete it first (book_chapter_delete), then purge")
+		}
 	}
 	return s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op, ChapterID: chID.String()}, destructive)
 }
@@ -282,10 +306,34 @@ func (s *Server) proposeChapterActionGated(ctx context.Context, meta lwmcp.Meta,
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, need); err != nil {
 		return nil, nil, mcpOwnershipError(err)
 	}
+	// The grant check above ALREADY passed, so the book is accessible by definition and
+	// `errBookNotAccessible` here states something false. Measured live: proposing a publish for
+	// an absent chapter in a perfectly readable book answered "book not accessible", while
+	// book_get_chapter — same service, same book, same absent id — answers "no active chapter
+	// with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for
+	// valid ids)". One names the wrong noun and offers nothing; the other names the argument and
+	// its satisfier. H13's uniform message exists to avoid an enumeration ORACLE, and there is
+	// no oracle to protect here: the caller has already proven it may read this book.
 	var exists bool
 	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state!='purge_pending')`, chID, bookID).Scan(&exists); err != nil || !exists {
-		return nil, nil, errBookNotAccessible
+		return nil, nil, errChapterNotInBook
 	}
+	// A PURGE is irreversible, and its own tool description promises it acts on a
+	// TRASHED chapter. Nothing enforced that at mint time: TOOLV2 LOOP #123 called
+	// book_chapter_purge against a chapter whose lifecycle_state was `active` and got
+	// a normal "Permanently purge chapter (irreversible)" card. A human is then one
+	// click from destroying a live chapter, having been told the tool only purges
+	// trash. Refuse here, where every sibling already refuses on a missing chapter —
+	// the mint-time check is exactly the shape this function already uses.
+	if op == "purge_chapter" {
+		var trashed bool
+		if err := s.pool.QueryRow(ctx,
+			`SELECT lifecycle_state='trashed' FROM chapters WHERE id=$1 AND book_id=$2`,
+			chID, bookID).Scan(&trashed); err != nil || !trashed {
+			return nil, nil, errors.New("chapter is not in the trash — purge only removes an ALREADY-TRASHED chapter; delete it first (book_chapter_delete), then purge")
+		}
+	}
+
 	_, card, cerr := s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op, ChapterID: chID.String()}, destructive)
 	if cerr != nil {
 		return nil, nil, cerr
@@ -313,6 +361,20 @@ func (s *Server) proposeBookActionGated(ctx context.Context, meta lwmcp.Meta, st
 	}
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, need); err != nil {
 		return nil, nil, mcpOwnershipError(err)
+	}
+	// A book PURGE is irreversible and its description promises it acts on a TRASHED book.
+	// Nothing enforced that at mint time: TOOLV2 LOOP #131 called book_purge against an ACTIVE
+	// book and got a "Permanently purge book (irreversible)" card. mcpTransitionBook DOES guard
+	// (its purge_pending arm refuses unless lifecycle=="trashed"), so confirming would have
+	// errored rather than destroyed the book — but the human is still handed an irreversible
+	// card for a live book, having been told the tool only purges trash. Same defect and same
+	// fix as the chapter-level purge in iteration 123.
+	if op == "purge_book" {
+		var trashed bool
+		if err := s.pool.QueryRow(ctx,
+			`SELECT lifecycle_state='trashed' FROM books WHERE id=$1`, bookID).Scan(&trashed); err != nil || !trashed {
+			return nil, nil, errors.New("book is not in the trash — purge only removes an ALREADY-TRASHED book; delete it first (book_delete), then purge")
+		}
 	}
 	_, card, cerr := s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op}, destructive)
 	if cerr != nil {

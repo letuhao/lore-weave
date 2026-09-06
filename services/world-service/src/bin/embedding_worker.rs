@@ -62,6 +62,19 @@ async fn run() -> Result<(), String> {
         .await
         .map_err(|e| format!("meta db connect: {e}"))?;
 
+    // ── 3E: VERIFY the reality before draining a single embedding into it ──
+    //
+    // `EMBEDDING_REALITY_ID` is an env string. Binding turns it into a
+    // `dp::RealityId`, which the control plane only issues after confirming the
+    // reality EXISTS and still ACCEPTS COMMANDS — so a worker pointed at a
+    // frozen, archived or absent world refuses at startup instead of writing
+    // embeddings into it. The meta pool this needs is the one already opened
+    // above for the audit trail.
+    let reality = world_service::embedding_queue::bind_reality(&meta_pool, cfg.reality_id)
+        .await
+        .map_err(|e| format!("reality bind: {e}"))?;
+    tracing::info!(reality_id = %reality, "reality verified with the control plane");
+
     let queue = Arc::new(EmbeddingQueue::new(cfg.queue_capacity));
     let metrics = Arc::new(Metrics::new());
 

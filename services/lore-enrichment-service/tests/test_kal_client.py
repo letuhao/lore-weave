@@ -154,18 +154,22 @@ async def test_search_parses_items():
 @respx.mock
 async def test_list_entities_via_kal_roster_drains_and_merges_fields():
     """With a KAL configured, the COMPLETE cast (id+name) comes from the drained
-    KAL roster; kind + authored short_description merge from glossary's own
-    entity-list projection keyed by entity_id."""
+    KAL roster; kind + authored short_description merge from the field map.
+
+    T38 B3 — that field map now comes from the KAL's `cast` read rather than a direct
+    glossary `/internal/.../entities` page. The MERGE behaviour under test is unchanged; only
+    the source of the fields moved, which is exactly what a migration should look like from a
+    test's point of view."""
     book = uuid4()
-    # glossary legacy projection (kind + short_description) — only e1, e2 here.
-    respx.get(f"{GL}/internal/books/{book}/entities").respond(
+    # field map (kind + short_description) — only e1, e2 here.
+    respx.get(f"{KAL}/v1/kal/books/{book}/cast").respond(
         200,
         json={"items": [
-            {"entity_id": "e1", "name": "玉虛宮", "kind_code": "location",
+            {"entity_id": "e1", "name": "玉虛宮", "kind": "location",
              "short_description": "闡教 HQ"},
             {"entity_id": "e2", "name": "金鰲島", "kind": "location",
              "short_description": "截教 base"},
-        ]},
+        ], "next_cursor": None},
     )
     # KAL roster drains 2 pages → e1, e2, e3 (e3 created after the legacy page).
     roster = respx.get(f"{KAL}/v1/kal/books/{book}/roster")
@@ -189,19 +193,21 @@ async def test_list_entities_via_kal_roster_drains_and_merges_fields():
 
 
 @respx.mock
-async def test_list_entities_without_kal_uses_direct_glossary():
-    """No KAL configured → unchanged legacy direct-glossary behavior."""
-    book = uuid4()
-    route = respx.get(f"{GL}/internal/books/{book}/entities").respond(
-        200, json={"items": [{"entity_id": "e1", "name": "蓬萊", "kind_code": "location",
-                              "short_description": "仙岛"}]}
-    )
-    g = GlossaryClient(base_url=GL, internal_token="t")  # no kal_base_url
-    rows = await g.list_entities(book_id=book)
-    await g.aclose()
-    assert route.call_count == 1
-    assert rows[0].name == "蓬萊" and rows[0].description == "仙岛"
+async def test_list_entities_REFUSES_without_a_kal_rather_than_answering_emptily():
+    """T38 B3 — the direct-glossary fallback is GONE, and its absence is a REFUSAL.
 
+    It was already unreachable (`knowledge_gateway_url` has a default and both construction
+    sites pass it), and while the path existed the reader gate correctly refused to shrink.
+    Returning `[]` for a KAL-less client would read as "this book has no cast" — the same
+    shape as the silent truncation the whole drain exists to end.
+    """
+    book = uuid4()
+    g = GlossaryClient(base_url=GL, internal_token="t")   # no kal_base_url
+    with pytest.raises(GlossaryServiceError) as exc:
+        await g.list_entities(book_id=book)
+    await g.aclose()
+    assert exc.value.retryable is False
+    assert "INV-KAL" in str(exc.value)
 
 @respx.mock
 async def test_list_entities_kal_failure_surfaces_as_glossary_error():
@@ -209,7 +215,9 @@ async def test_list_entities_kal_failure_surfaces_as_glossary_error():
     existing degrade path (verify_degraded / empty grounding) fires — never a
     silent false-green."""
     book = uuid4()
-    respx.get(f"{GL}/internal/books/{book}/entities").respond(200, json={"items": []})
+    # T38 B3 — the field map moved to the KAL's `cast`; the roster failure is still the one
+    # under test, so `cast` is mocked healthy and `roster` is the thing that 503s.
+    respx.get(f"{KAL}/v1/kal/books/{book}/cast").respond(200, json={"items": [], "next_cursor": None})
     respx.get(f"{KAL}/v1/kal/books/{book}/roster").respond(503)
     g = GlossaryClient(base_url=GL, internal_token="t", kal_base_url=KAL)
     with pytest.raises(GlossaryServiceError) as exc:
@@ -221,7 +229,7 @@ async def test_list_entities_kal_failure_surfaces_as_glossary_error():
 @respx.mock
 async def test_list_entities_via_kal_cjk_round_trips():
     book = uuid4()
-    respx.get(f"{GL}/internal/books/{book}/entities").respond(200, json={"items": []})
+    respx.get(f"{KAL}/v1/kal/books/{book}/cast").respond(200, json={"items": [], "next_cursor": None})
     items = [{"entity_id": f"e{i}", "name": n} for i, n in enumerate(FENGSHEN_PLACES)]
     respx.get(f"{KAL}/v1/kal/books/{book}/roster").respond(
         200, json={"items": items, "next_cursor": None}

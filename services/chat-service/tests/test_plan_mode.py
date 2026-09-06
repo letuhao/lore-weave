@@ -28,7 +28,7 @@ from uuid import uuid4
 import pytest
 
 from app.db.suspended_runs import SuspendedRun
-from app.services.frontend_tools import PROPOSE_EDIT_TOOL
+from tests._v1_tool_fixtures import PROPOSE_EDIT_TOOL
 from app.services.skill_registry import resolve_skills_to_inject
 from app.services.stream_service import (
     ASK_MODE_NUDGE,
@@ -65,6 +65,31 @@ from tests.test_stream_tools import (
     tok,
     tool_frag,
 )
+
+
+# V7 re-vehicle (2026-09-03) — a tool result carrying the ai-gateway CONFIRM directive.
+#
+# These tests assert that a SUSPEND persists the turn's mode. They used a chat-service-intercepted
+# frontend tool as the vehicle, and their docstrings record that the vehicle was ALREADY swapped
+# once (P2.2 moved propose_edit out). V7 moved the last three out too, so interception produces no
+# suspend at all — the mechanism under test is untouched, only its vehicle died.
+#
+# The replacement drives the LIVE path: ai-gateway returns a gated directive, chat-service detects
+# it in the RESULT and suspends. Strictly better than the old vehicle, which exercised a branch
+# that no longer exists.
+def _confirm_directive_client(kc):
+    """Make `kc.mcp_execute_tool` answer with a gated confirm directive."""
+    from app.services.task_detect import CONFIRM_DIRECTIVE_TYPE
+    kc.mcp_execute_tool = AsyncMock(return_value={
+        "success": True,
+        "result": {
+            "type": CONFIRM_DIRECTIVE_TYPE,
+            "confirm_token": "tok-1", "descriptor": "glossary.adopt",
+            "title": "Adopt standards", "domain": "glossary",
+        },
+    })
+    return kc
+
 
 ALL_PLAN_ACTIVE = ALL_CATALOG_NAMES | PLAN_TOOL_NAMES
 
@@ -560,7 +585,15 @@ class TestPlanSuspendResumeRoundTrip:
         pool, conn = _make_pool_with_conn()
         pool.fetch.return_value = []
         conn.fetchval.return_value = 1
-        kc = _patched_knowledge(tool_defs=[])  # gateway-down agui editor surface
+        # The vehicle must be ADVERTISED to reach dispatch: with tool_defs=[] the call is
+        # refused before it ever reaches ai-gateway, so no directive comes back and nothing
+        # suspends. The old vehicle needed no def because chat-service INTERCEPTED it.
+        kc = _confirm_directive_client(_patched_knowledge(tool_defs=[
+            {"type": "function", "function": {
+                "name": "glossary_propose_entity_edit",
+                "parameters": {"type": "object", "properties": {}},
+            }},
+        ]))
 
         scripts = [[
             tool_frag(index=0, id="c1", name="glossary_propose_entity_edit"),

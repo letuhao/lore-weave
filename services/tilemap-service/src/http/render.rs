@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use crate::engine::place_tilemap;
 use crate::seed::TilemapSeed;
-use crate::types::{ChannelId, ChannelTier, GridSize};
+use crate::types::{ChannelId, MapKind, GridSize};
 use crate::types::template::TilemapTemplate;
 use crate::types::tilemap::TilemapView;
 
@@ -81,7 +81,7 @@ fn json_rejection_to_problem(rej: JsonRejection) -> ProblemDetails {
 pub struct RenderRequest {
     pub template: TilemapTemplate,
     pub channel_id: ChannelId,
-    pub tier: ChannelTier,
+    pub tier: MapKind,
     pub grid_size: GridSize,
     pub seed: u64,
 }
@@ -94,7 +94,9 @@ pub async fn render(
     State(_state): State<AppState>,
     JsonProblem(req): JsonProblem<RenderRequest>,
 ) -> Result<Json<TilemapView>, ProblemDetails> {
-    let RenderRequest { template, channel_id, tier, grid_size, seed } = req;
+    // The wire field is `tier` and the binding is `kind` -- one rename stops at
+    // the contract boundary, which is where `SPG-R14` says it should stop.
+    let RenderRequest { template, channel_id, tier: kind, grid_size, seed } = req;
 
     // MED-1 from /review-impl: reject oversized requests BEFORE
     // spawn_blocking allocates the grid. Internal Bearer auth limits the
@@ -126,7 +128,7 @@ pub async fn render(
     );
 
     let view = tokio::task::spawn_blocking(move || {
-        place_tilemap(&template, channel_id, tier, grid_size, TilemapSeed(seed))
+        place_tilemap(&template, channel_id, kind, grid_size, TilemapSeed(seed))
     })
     .await
     .map_err(|err| {

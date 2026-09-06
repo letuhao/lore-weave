@@ -11,6 +11,19 @@ use std::time::Duration;
 use commit_service::admission::{admit_signed, AdmissionOutcome, Category, DedupCache, Verdict};
 use commit_service::producer::{sign, ProducerError, ProducerRegistry};
 use commit_service::{Vocabulary, COMBAT_V1_JSON};
+use sim_core::EntityId;
+
+/// The submitter. Any uuid — these suites are about admission, not identity.
+/// Before `SEALED-SUBJECT` the proposal carried `"actor": 1` and admission
+/// believed it; the SUBJECT is now a parameter the CALLER supplies.
+const TEST_USER: &str = "7e57ab1e-0000-4000-8000-00000000ac70";
+
+/// The shipped reality's declared verbs. Admission judges against the rules in
+/// force (`M2`), so a test that passed `VerbTable::EMPTY` would be testing an
+/// admission path no deployment has.
+fn verbs() -> ruleset_core::VerbTable {
+    commit_service::RealityRules::proving_ground().rules().verbs
+}
 
 fn vocab() -> Vocabulary {
     Vocabulary::from_json(COMBAT_V1_JSON).unwrap()
@@ -30,7 +43,7 @@ fn proposal(producer: &str, id: &str) -> String {
         "producer_service": producer,
         "proposal_id": id,
         "target_channel": 1,
-        "actor": 1,
+        "user_ref_id": TEST_USER,
         "candidates": [[2, "hostile-2"]],
         "decision": {"vocabulary": "combat_v1", "tool": "strike", "params": {"target": "hostile-2"}},
     })
@@ -45,7 +58,7 @@ fn a_signed_proposal_is_admitted_under_its_producers_tier() {
     let raw = proposal("game-server", "p-1");
     let sig = sign(GS_KEY, raw.as_bytes());
 
-    let rec = admit_signed(&raw, Some(&sig), &registry(), &vocab(), &mut dedup);
+    let rec = admit_signed(&raw, Some(&sig), EntityId(1), &registry(), &vocab(), &verbs(), &mut dedup);
     assert!(matches!(rec.outcome, AdmissionOutcome::Admitted(_)));
     assert!(rec.stages.iter().any(|(n, v)| *n == "producer-identity" && *v == Verdict::Pass));
 
@@ -65,7 +78,7 @@ fn a_producer_cannot_claim_another_producers_tier() {
     let raw = proposal("game-server", "p-forge");
     let sig = sign(LLM_KEY, raw.as_bytes());
 
-    let rec = admit_signed(&raw, Some(&sig), &registry(), &vocab(), &mut dedup);
+    let rec = admit_signed(&raw, Some(&sig), EntityId(1), &registry(), &vocab(), &verbs(), &mut dedup);
     assert!(
         matches!(rec.outcome, AdmissionOutcome::Rejected { stage: "producer-identity", .. }),
         "claiming another producer must fail at the SIGNATURE, not be believed"
@@ -79,7 +92,7 @@ fn the_llm_driver_gets_the_full_pipeline() {
     let raw = proposal("llm-driver", "p-llm");
     let sig = sign(LLM_KEY, raw.as_bytes());
 
-    let rec = admit_signed(&raw, Some(&sig), &registry(), &vocab(), &mut dedup);
+    let rec = admit_signed(&raw, Some(&sig), EntityId(1), &registry(), &vocab(), &verbs(), &mut dedup);
     assert!(matches!(rec.outcome, AdmissionOutcome::Admitted(_)));
     let notrun = rec.stages.iter().filter(|(_, v)| matches!(v, Verdict::NotRun)).count();
     assert_eq!(notrun, 10, "T6 owes all ten stages — none declared inapplicable");
@@ -94,7 +107,7 @@ fn an_unknown_producer_is_denied_before_dedup() {
     let raw = proposal("who-am-i", "p-x");
     let sig = sign(GS_KEY, raw.as_bytes());
 
-    let rec = admit_signed(&raw, Some(&sig), &registry(), &vocab(), &mut dedup);
+    let rec = admit_signed(&raw, Some(&sig), EntityId(1), &registry(), &vocab(), &verbs(), &mut dedup);
     assert!(matches!(rec.outcome, AdmissionOutcome::Rejected { stage: "producer-identity", .. }));
     assert!(
         !rec.stages.iter().any(|(n, _)| *n == "idempotency"),
@@ -108,7 +121,7 @@ fn an_unknown_producer_is_denied_before_dedup() {
 fn a_missing_signature_is_rejected() {
     let mut dedup = DedupCache::new(Duration::from_secs(60));
     let raw = proposal("game-server", "p-nosig");
-    let rec = admit_signed(&raw, None, &registry(), &vocab(), &mut dedup);
+    let rec = admit_signed(&raw, None, EntityId(1), &registry(), &vocab(), &verbs(), &mut dedup);
     assert!(matches!(rec.outcome, AdmissionOutcome::Rejected { stage: "producer-identity", .. }));
 }
 
@@ -119,10 +132,15 @@ fn tampering_with_the_body_invalidates_the_signature() {
     let mut dedup = DedupCache::new(Duration::from_secs(60));
     let raw = proposal("game-server", "p-tamper");
     let sig = sign(GS_KEY, raw.as_bytes());
-    let tampered = raw.replace(r#""actor":1"#, r#""actor":99"#);
+    // Was `"actor":1` -> `"actor":99`. That field is GONE (`SEALED-SUBJECT`),
+    // and the claim here was never about the actor: it is that the MAC covers
+    // the BODY, not merely the producer name. Retargeted at a field that still
+    // exists — a `replace` matching nothing would leave this test asserting
+    // that an UNCHANGED body fails its own signature, which it must not.
+    let tampered = raw.replace(r#""proposal_id":"p-tamper""#, r#""proposal_id":"p-forged""#);
     assert_ne!(raw, tampered, "the tamper must actually change the bytes");
 
-    let rec = admit_signed(&tampered, Some(&sig), &registry(), &vocab(), &mut dedup);
+    let rec = admit_signed(&tampered, Some(&sig), EntityId(1), &registry(), &vocab(), &verbs(), &mut dedup);
     assert!(matches!(rec.outcome, AdmissionOutcome::Rejected { stage: "producer-identity", .. }));
 }
 

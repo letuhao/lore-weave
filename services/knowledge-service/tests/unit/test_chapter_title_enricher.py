@@ -18,7 +18,7 @@ from app.clients.chapter_title_enricher import (
     enrich_events_with_chapter_titles,
     enrich_jobs_with_current_chapter_titles,
 )
-from app.db.neo4j_repos.events import Event
+from app.db.graph_repos.events import Event
 from app.db.repositories.extraction_jobs import ExtractionJob
 
 

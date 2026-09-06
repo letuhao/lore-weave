@@ -1,0 +1,19 @@
+# `G8` — five `.stderr` files in `crates/dp/tests/ui/` pin rustc's DIAGNOSTIC
+# PROSE (`error[E0603]: module `sealed` is private`, and four more). Those pins
+# are the entirety of Axis 2's evidence for slice 1: the claim "these violations
+# do not compile" is executed by rustc and read off its output.
+#
+# Without this file, CI resolves `dtolnay/rust-toolchain@stable` to whatever
+# stable is on the day, and a diagnostic reworded upstream turns a green suite
+# red for a reason that has nothing to do with the property. It fails LOUD rather
+# than silent, which is the safe direction — but it makes the one leg that runs
+# Axis 2 fragile on a schedule nobody in this repo controls.
+#
+# Pinned to the version the pins were captured on. Bumping it is a deliberate
+# act: bump here, re-run `TRYBUILD=overwrite cargo test -p dp`, and READ the
+# regenerated `.stderr` diff rather than blessing it — trybuild prints
+# "you can bless it by rerunning with TRYBUILD=overwrite" in its own failure
+# output, and a refuter used exactly that path to make a fifth tier stick.
+[toolchain]
+channel = "1.89.0"
+components = ["clippy", "rustfmt"]

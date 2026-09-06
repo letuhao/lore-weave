@@ -21,7 +21,9 @@ evolving copies:
 Skill-vector cache lifetime is DELIBERATELY simpler than the tool-vector cache:
 `SYSTEM_SKILLS` is a module-level constant (~11-15 entries), not a live,
 per-user MCP catalog -- there is no TTL, only a signature check (the sorted
-tuple of skill codes). In practice this means "compute once per process,
+tuple of skill codes, PLUS the embedding model since U-3: vectors from two
+different models are not comparable, so sharing them silently corrupts every
+similarity score the router ranks on). In practice this means "compute once per process,
 never again" today; the signature check exists only so a hypothetical future
 where SYSTEM_SKILLS becomes dynamic doesn't silently serve stale vectors.
 
@@ -71,9 +73,72 @@ ROUTER_CONFIDENCE_THRESHOLD = 0.35
 ROUTER_MAX_ADDITIONS = 2
 
 # Process-lifetime cache: skill code -> embedding vector. No TTL (see module
-# docstring) -- invalidated only by a SYSTEM_SKILLS signature change.
+# docstring) -- invalidated by a change to the SYSTEM_SKILLS signature OR to the
+# embedding model, because vectors from two models are not comparable (U-3).
 _SKILL_VECTOR_CACHE: dict[str, list[float]] | None = None
 _SKILL_VECTOR_CACHE_SIGNATURE: tuple[str, ...] | None = None
+
+
+#: DQ-T90 arm (b) — CONTRASTIVE skill texts, embedded INSTEAD of `description` when
+#: `settings.skill_contrastive_desc` is on.
+#:
+#: WHY. Measured 2026-09-01: all 66 of 66 pairs of distinct skills are more similar to each other
+#: than the 0.35 floor a skill must clear to be injected — median 0.5512, max 0.7715. The cap
+#: boundary therefore falls inside embedding noise and no threshold can separate them. The
+#: embedder is NOT at fault: it spreads 0.40 and puts admin/co_write at 0.3676. The texts collide.
+#: `book` and `translation` (0.7715, the closest pair in the catalogue, and the pair that took
+#: both cap slots on this row's founding prompt) both say "chapters" and "publish"; `co_write` and
+#: `plan_forge` (0.7121) both say plan/propose/compile; `glossary` and `glossary_shaping` (0.6964)
+#: both say kinds/attributes.
+#:
+#: HOW THEY ARE WRITTEN — the rule this repo already applies to entity kinds
+#: (glossary-service/internal/domain/kinds.go): "say what the kind is AND what it is not, naming
+#: the neighbour it is most often confused with. 'A body of people acting together; it survives
+#: the loss of its building' discriminates; 'an organization' does not."
+#:
+#: KEPT SEPARATE from `description`, which is the L1 index line a READER sees. The two have
+#: different jobs — the index says what a skill does, this says how it differs — and separating
+#: them makes the arm a flag flip rather than a rewrite the control cannot be run without.
+_CONTRASTIVE: dict[str, str] = {
+    "book": "Chapter FILES and their lifecycle: create, reorder, rename, trash, restore a saved "
+            "revision, publish a draft as canon, commission cover art or audio. This is "
+            "librarianship, not authorship — it never writes prose, and it never renders another "
+            "language.",
+    "translation": "Rendering finished text into ANOTHER LANGUAGE: translate, review coverage, "
+                   "apply a human's corrections, release a translated edition. Always works from "
+                   "text that already exists; it never composes new material and never "
+                   "reorganises the source.",
+    "composition": "AUTHORING the story itself: shape the outline, write scene and chapter prose "
+                   "with the cowrite engine, declare canon rules, work the motif library. The "
+                   "craft of making the text, as distinct from filing it or restating it in "
+                   "another tongue.",
+    "co_write": "Writing WITH the author, turn by turn, and turning a story they describe aloud "
+                "into real linked chapters and scenes. Interactive and mid-flight — the author is "
+                "here now, talking; this is not the up-front design pass done before any text "
+                "exists.",
+    "plan_forge": "Deriving a novel's SYSTEM from a source document before the story is written: "
+                  "magic rules, factions, power ladders, validated and compiled into a spec. A "
+                  "cold-start design activity, not a drafting one, and it happens once rather "
+                  "than continuously.",
+    "glossary": "Individual world-bible ENTRIES: look up a character, place or item, read it, "
+                "correct it, merge duplicates, retire it. Works on the records themselves, one at "
+                "a time, never on the categories that describe them.",
+    "glossary_shaping": "The SHAPE the world bible takes: which categories of thing exist, what "
+                        "fields each carries, adopting a standard set, proposing many at once. "
+                        "Structural and up-front — it defines the containers, never the contents.",
+    "knowledge": "The GRAPH across the whole story: who relates to whom, what happened when, "
+                 "recalling facts established chapters ago. Connections and memory spanning the "
+                 "work, rather than any single record or the rules governing it.",
+    "settings": "One user's own account and their private AI provider keys: profile, register a "
+                "provider, favourite or activate a model, set a default. Personal configuration, "
+                "affecting nobody else.",
+    "admin": "PLATFORM-WIDE defaults that every book inherits, editable only by an operator. "
+             "Changes what all users get, which is the opposite of adjusting a single account.",
+    "jobs": "Watching WORK ALREADY RUNNING in the background: list it, inspect it, cancel or "
+            "pause it. Concerned with the progress of tasks, never with performing the task.",
+    "universal": "A fallback driver for requests no domain covers, including open-web research on "
+                 "any subject. Use only when nothing more specific applies.",
+}
 
 
 def _skill_embedding_text(code: str) -> str:
@@ -85,10 +150,28 @@ def _skill_embedding_text(code: str) -> str:
     second authoring field before evidence shows description text is
     insufficient would be over-engineering for a static, tiny set."""
     skill = SYSTEM_SKILLS[code]
+    # DQ-T90 arm (b). The docstring above says a second authoring field would be
+    # "over-engineering ... before evidence shows description text is insufficient". That
+    # evidence now exists and is the reason this branch is here: 66 of 66 skill pairs sit closer
+    # to each other than the floor a skill must clear. Still OFF by default — the arm has to beat
+    # the control's measured 70.0% before it becomes the shipped path.
+    from app.config import settings  # noqa: PLC0415 — local, like the router's own imports
+
+    if settings.skill_contrastive_desc and _CONTRASTIVE.get(code):
+        return f"{skill.label}: {_CONTRASTIVE[code]}".strip(": ")
     return f"{skill.label}: {skill.description}".strip(": ")
 
 
 def _skill_catalog_signature() -> tuple[str, ...]:
+    """The skill CODES, and nothing else.
+
+    🔴 It is used BOTH as the cache signature and as the code list (`codes = list(...)` below),
+    so anything appended here is later looked up as a skill name. The module already records one
+    instance of that ("`_skill_embedding_text` would look up a skill named after an embedding
+    model"); a second was added and reverted on 2026-09-01 when arm (b)'s flag was appended here
+    and ten router tests failed with `KeyError: 'contrastive=False'`. Extra cache dimensions
+    belong at the call site, where the embedding model already is.
+    """
     return tuple(sorted(SYSTEM_SKILLS.keys()))
 
 
@@ -102,17 +185,55 @@ def reset_skill_vector_cache() -> None:
 
 
 async def _get_skill_vectors(
-    *, user_id: str, model_source: str, model_ref: str,
+    *, user_id: str,
 ) -> dict[str, list[float]] | None:
     """Best-effort per-skill embedding vectors, cached for the process
     lifetime (see module docstring). Returns None on ANY embedding-client
     failure -- the caller MUST fall back to "no additions"; this never
     raises."""
     global _SKILL_VECTOR_CACHE, _SKILL_VECTOR_CACHE_SIGNATURE
-    sig = _skill_catalog_signature()
+    # 🔴 U-3 — THE EMBEDDING MODEL IS PART OF THE KEY, and it was not.
+    #
+    # The signature was the skill codes alone, while the vectors below are computed BY a specific
+    # embedding model. So whichever model ran first after boot supplied the vectors for every later
+    # turn, whatever model that turn asked for — and vectors from two different models are not
+    # comparable, so the similarity scores the router ranks on were silently wrong.
+    #
+    # This is the SAME defect its twin already fixed: `tool_discovery._TOOL_VECTOR_CACHE` keys on
+    # `(catalog_signature, model_source, model_ref)` under the note "so two distinct embedding
+    # models never share a cached vector set". One of the pair was patched and the other was not,
+    # which is this repository's most repeated shape — a correction applied where someone was
+    # looking, and nowhere else.
+    #
+    # The consequence is a determinism defect as much as a correctness one: the surface then depends
+    # on WHICH TURN RAN FIRST AFTER BOOT, which no record captures and no replay can reproduce.
+    #
+    # 🔴 AND THE TWIN CARRIED **TWO** FIXES; ONLY THE KEY WAS PORTED. `tool_discovery` HIGH-2 also
+    # removed `model_source`/`model_ref` from its signature, because those were the turn-scoped
+    # CHAT-completion model values — *"most chat models can't embed, so that either failed upstream
+    # or risked an improvised vector from a model never meant to embed"* — and replaced them with
+    # `_resolve_embedding_model(user_id)`. So the key here was honest about a model that should not
+    # have been embedding at all: the same erratum-not-applied-everywhere shape as U-3 itself, one
+    # level up, found by a verifier reading the twin rather than this file.
+    from app.services.tool_discovery import _resolve_embedding_model  # noqa: PLC0415
+
+    model = await _resolve_embedding_model(user_id)
+    if model is None:
+        return None
+    model_source, model_ref = model
+    # The contrastive flag is a cache DIMENSION, not a skill: arm (b) changes the TEXT the
+    # vectors are built from without changing any skill CODE, so a key without it would
+    # serve vectors of the old wording under the new flag. It goes here, beside the model,
+    # and never into `_skill_catalog_signature` — see that function's docstring.
+    from app.config import settings  # noqa: PLC0415
+
+    sig = _skill_catalog_signature() + (
+        model_source, model_ref, f"contrastive={bool(settings.skill_contrastive_desc)}")
     if _SKILL_VECTOR_CACHE is not None and _SKILL_VECTOR_CACHE_SIGNATURE == sig:
         return _SKILL_VECTOR_CACHE
-    codes = list(sig)
+    # NOT `list(sig)` — the signature now carries the model too, and feeding that to
+    # `_skill_embedding_text` would look up a skill named after an embedding model.
+    codes = list(_skill_catalog_signature())
     if not codes:
         return {}
     texts = [_skill_embedding_text(c) for c in codes]
@@ -140,8 +261,6 @@ async def route_additional_skills(
     active_surface: set[str],
     already_selected: list[str],
     user_id: str,
-    model_source: str,
-    model_ref: str,
 ) -> list[str]:
     """Additive-only: EXTRA skill codes (never already in `already_selected`)
     whose cosine similarity to `intent_text` clears `ROUTER_CONFIDENCE_THRESHOLD`,
@@ -160,14 +279,19 @@ async def route_additional_skills(
     vectors: dict[str, list[float]] | None = None
     intent_vector: list[float] | None = None
     try:
-        vectors = await _get_skill_vectors(
-            user_id=user_id, model_source=model_source, model_ref=model_ref,
-        )
+        vectors = await _get_skill_vectors(user_id=user_id)
         if vectors:
             from app.client.embedding_client import get_embedding_client  # noqa: PLC0415
 
+            # The SAME model that produced the cached skill vectors — a cosine score between two
+            # models' vectors is not a similarity, it is a coincidence.
+            from app.services.tool_discovery import _resolve_embedding_model  # noqa: PLC0415
+
+            model = await _resolve_embedding_model(user_id)
+            if model is None:
+                return []
             intent_result = await get_embedding_client().embed(
-                user_id=user_id, model_source=model_source, model_ref=model_ref,
+                user_id=user_id, model_source=model[0], model_ref=model[1],
                 texts=[intent_text],
             )
             intent_vector = intent_result.embeddings[0] if intent_result.embeddings else None
@@ -200,4 +324,11 @@ async def route_additional_skills(
     # the whole (tightly clustered) set clears that floor. `sorted` is stable, so ties
     # break on SYSTEM_SKILLS insertion order — deterministic, not arbitrary.
     scored.sort(key=lambda cs: cs[1], reverse=True)
-    return [code for code, _ in scored[:ROUTER_MAX_ADDITIONS]]
+    # DQ-T90 arm (a) — the cap is the shipped ROUTER_MAX_ADDITIONS unless overridden. The sweep
+    # priced 2->3 at +6.1 points of hit rate for 270 more injected skills, 250 of them never
+    # used, on a smooth curve with no knee; it is a stopgap, not an answer, and it is measurable
+    # here rather than argued.
+    from app.config import settings  # noqa: PLC0415
+
+    cap = settings.router_max_additions or ROUTER_MAX_ADDITIONS
+    return [code for code, _ in scored[:cap]]

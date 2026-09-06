@@ -4,11 +4,116 @@
 # Forbids direct INSERT/UPDATE/DELETE on meta tables OUTSIDE contracts/meta/.
 # Services MUST go through MetaWrite() so the same-TX audit invariant holds.
 # Exit 0 = clean; 1 = violations; 2 = misuse.
+#
+# ── WHY THIS WAS REWRITTEN (2026-08-06) ─────────────────────────────────────
+#
+# It was correct and IT DID NOT RUN. The old shape was
+#
+#     for table in $meta_tables; do   grep -rniE "...${table}..." <whole tree>
+#
+# — one full-tree walk PER TABLE, 33 of them. Measured at 74s standalone on a
+# warm cache and >900s sharing a machine with the other gates, which is why
+# `gate-wiring-gate.py` carried it as `TOO_SLOW` and skipped it, tracked as
+# `D-GATE-SLOW-META-WRITE-DISCIPLINE`. So the invariant *"no direct meta write"*
+# was held by human discipline, and the only reason it still held is that nobody
+# had crossed it.
+#
+# Now: ONE walk, with the table list as a single alternation, and the table a
+# hit named recovered from the matched text afterwards. Same rules, same
+# exclusions, same output — the cost model is what changed.
+#
+# The same-day sibling is `meta-sensitive-read-bypass-lint.sh`, whose extractor
+# had matched nothing since the day it was written. Both were found by one PO
+# question: *"is there anywhere a module that may not touch the DB reaches down
+# to it, and how is that guarded?"* — a gate that is too slow to run and a gate
+# that scans nothing fail in exactly the same way, and neither says so.
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-violations=0
+
+# ── what is NOT a subject of this rule ───────────────────────────────────────
+#
+# A function rather than an inline chain, so the self-test below exercises the
+# SAME filter the walk uses. A self-test that re-typed these patterns would be
+# checking a copy — and a check pointed at the copy with no defect is exactly
+# how `DFO-8` stayed green through a whole run.
+#
+# `/tests/*.rs` was ADDED 2026-08-14. The list knew `_test.(go|rs|ts)`, which is
+# GO's convention; Rust's integration tests live in `<crate>/tests/` with
+# ordinary filenames, and cargo compiles that directory as test targets and
+# nothing else. So a Rust fixture seeding a meta table was judged as production
+# code. Latent, not benign: it stayed quiet only because no Rust integration
+# test had ever seeded a meta table until `spine_drain_once_live.rs` did.
+exclude_nonsubject() {
+  grep -vE '/contracts/meta/' \
+  | grep -vE '/crates/meta-rs/' \
+  | grep -vE 'migrations/meta/' \
+  | grep -vE '_test\.(go|rs|ts)' \
+  | grep -vE '/tests/[^:]*\.rs:' \
+  | grep -vE '/cmd/(closure-drill|lifecycle-race|migrate-drill)/' \
+  | grep -vE '/src/bin/(provision_drill|capacity_place|freeze_drill)\.rs' \
+  | grep -vE ':[[:space:]]*(//|--|#|\*|///)'
+}
+
+# ── self-test: the gate's own teeth, before it is trusted about the repo ─────
+#
+# Convention borrowed from the Python gates in this directory. It runs on
+# synthetic input in a temp dir, so it says nothing about repo state — only
+# that the matcher can still tell a violation from a legitimate line.
+selftest() {
+  local tmp bad=0
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/services/x"
+  cat >"$tmp/services/x/a.go" <<'EOF'
+_ = `INSERT INTO reality_registry (a) VALUES (1)`
+_ = `UPDATE pii_kek SET x = 1`
+_ = `DELETE FROM user_consent_ledger WHERE u = $1`
+// INSERT INTO reality_registry -- a comment, must NOT count
+_ = `SELECT * FROM reality_registry`
+_ = `INSERT INTO reality_registry_shadow (a) VALUES (1)`
+EOF
+  local alt='reality_registry_shadow|user_consent_ledger|reality_registry|pii_kek'
+  local got
+  got=$(grep -rniE "(INSERT[[:space:]]+INTO[[:space:]]+(${alt})|UPDATE[[:space:]]+(${alt})|DELETE[[:space:]]+FROM[[:space:]]+(${alt}))[^a-z0-9_]" \
+    --include='*.go' "$tmp" 2>/dev/null | grep -vE ':[[:space:]]*(//|--|#|\*|///)' || true)
+
+  # three real writes, and NEITHER the comment NOR the SELECT NOR the
+  # longer-named sibling table counted as `reality_registry`.
+  local n; n=$(printf '%s\n' "$got" | grep -c '[a-z]' || true)
+  [[ "$n" -eq 4 ]] || { echo "  selftest: expected 4 hits (3 writes + the _shadow write), got $n"; bad=1; }
+  printf '%s\n' "$got" | grep -q 'a comment' && { echo "  selftest: a commented-out write was counted"; bad=1; }
+  printf '%s\n' "$got" | grep -q 'SELECT \*'  && { echo "  selftest: a SELECT was counted as a write"; bad=1; }
+  printf '%s\n' "$got" | grep -q 'reality_registry_shadow' || { echo "  selftest: the sibling table's write was MISSED"; bad=1; }
+
+  # ── the EXCLUSION, in both directions ──
+  #
+  # The arms above test the MATCHER. Nothing tested the filter chain, which is
+  # where the Rust-test scope bug lived: an exclusion that is too wide silences
+  # real findings and an exclusion that is too narrow reports correct code, and
+  # neither shows up in a matcher test.
+  local sample_src="$tmp/services/x/src/seed.rs:9:  \"INSERT INTO reality_registry (a) VALUES (1)\""
+  local sample_tst="$tmp/services/x/tests/live.rs:9:  \"INSERT INTO reality_registry (a) VALUES (1)\""
+  local sample_srcdir="$tmp/services/x/src/tests_helper.rs:9:  \"INSERT INTO reality_registry (a)\""
+
+  printf '%s\n' "$sample_src" | exclude_nonsubject | grep -q 'seed.rs' \
+    || { echo "  selftest: a write in src/ was EXCLUDED — the filter is too wide"; bad=1; }
+  printf '%s\n' "$sample_tst" | exclude_nonsubject | grep -q 'live.rs' \
+    && { echo "  selftest: a Rust integration test under tests/ was reported"; bad=1; }
+  printf '%s\n' "$sample_srcdir" | exclude_nonsubject | grep -q 'tests_helper.rs' \
+    || { echo "  selftest: a src/ file merely NAMED tests_* was excluded"; bad=1; }
+
+  if [[ "$bad" -ne 0 ]]; then
+    echo "[meta-write-discipline] SELFTEST FAIL"
+    return 1
+  fi
+  echo "[meta-write-discipline] SELFTEST PASS — flags INSERT/UPDATE/DELETE, ignores a comment and a SELECT, does not confuse a table with its longer-named sibling, and the exclusion keeps src/ while dropping tests/*.rs"
+  return 0
+}
+
+selftest || exit 2
+[[ "${1:-}" == "--selftest" ]] && exit 0
 
 # Authoritative table list — derived from migrations/meta/*.up.sql filenames.
 #
@@ -19,11 +124,27 @@ violations=0
 #     per-reality events_outbox is drained by the publisher. The relay's
 #     UPDATE is the drain, not a domain write that must route through MetaWrite.
 #     (events_outbox already escapes this lint by living in per_reality/, not meta/.)
-meta_tables=$(ls "$repo_root/migrations/meta/" 2>/dev/null | grep -E '^[0-9]+_.*\.up\.sql$' | sed -E 's/^[0-9]+_(.*)\.up\.sql$/\1/' | grep -vxE 'meta_outbox' || true)
+#
+# `drop_`-prefixed migrations are filtered: `035_drop_player_character_index`
+# names a table that no longer EXISTS, so linting writes to it would be a rule
+# with no possible subject. The drop itself is what keeps it gone
+# (contracts/meta/actor_control_binding_test.go).
+meta_tables=$(ls "$repo_root/migrations/meta/" 2>/dev/null \
+  | grep -E '^[0-9]+_.*\.up\.sql$' \
+  | sed -E 's/^[0-9]+_(.*)\.up\.sql$/\1/' \
+  | grep -vE '^drop_' \
+  | grep -vxE 'meta_outbox' || true)
 
-if [[ -z "$meta_tables" ]]; then
-  echo "[meta-write-discipline] no meta tables discovered; nothing to lint"
-  exit 0
+table_count=$(printf '%s\n' "$meta_tables" | grep -c '[a-z]' || true)
+
+# A scan over zero tables passes trivially and prints success — the exact shape
+# `docs/standards/non-vacuity.md` NV-3 names, and the shape this file's sibling
+# had shipped in for months. It used to `exit 0` here.
+if [[ "$table_count" -eq 0 ]]; then
+  echo "[meta-write-discipline] FAIL — discovered ZERO meta tables from migrations/meta/." >&2
+  echo "  A scan over no tables cannot fail, so a clean result means nothing. Either the" >&2
+  echo "  migration directory moved, or the filename pattern stopped matching." >&2
+  exit 1
 fi
 
 scan_dirs=(
@@ -54,41 +175,62 @@ declare -A sanctioned=(
   ["services/meta-worker/cmd/capacity-override/"]="scaling_events"
 )
 
-for table in $meta_tables; do
-  # Match INSERT INTO <table>, UPDATE <table>, DELETE FROM <table>
-  # in Go/Rust/SQL/TS files OUTSIDE contracts/meta.
-  #
-  # The two drill exclusions below cover the W1/S13 LIVE-TEST DRILL harnesses —
-  # standalone binaries that set up + tear down test realities by writing meta
-  # tables DIRECTLY on purpose (driving the raw DB: CAS races, freeze, relocation
-  # — not the audited domain path). They are functionally tests (like _test.go
-  # above), just compiled as runnable bins so they can drive a live stack.
-  hits=$(grep -rniE "(INSERT[[:space:]]+INTO[[:space:]]+${table}|UPDATE[[:space:]]+${table}|DELETE[[:space:]]+FROM[[:space:]]+${table})" \
-    --include='*.go' --include='*.rs' --include='*.sql' --include='*.ts' \
-    "${scan_dirs[@]}" 2>/dev/null \
-    | grep -vE '/contracts/meta/' \
-    | grep -vE '/crates/meta-rs/' \
-    | grep -vE 'migrations/meta/' \
-    | grep -vE '_test\.(go|rs|ts)' \
-    | grep -vE '/cmd/(closure-drill|lifecycle-race|migrate-drill)/' \
-    | grep -vE '/src/bin/(provision_drill|capacity_place|freeze_drill)\.rs' \
-    | grep -vE ':[[:space:]]*(//|--|#|\*|///)' || true)
-  # Drop sanctioned (path, table) writers for THIS table.
-  for path in "${!sanctioned[@]}"; do
-    if [[ "${sanctioned[$path]}" == "$table" && -n "$hits" ]]; then
-      hits=$(printf '%s\n' "$hits" | grep -vF "$path" || true)
+# ── ONE walk ────────────────────────────────────────────────────────────────
+#
+# Tables sorted LONGEST FIRST so the alternation prefers the longest match:
+# with `a|a_b`, POSIX ERE alternation would report `a` for a write to `a_b` and
+# the sanctioned-writer lookup would then be asked about the wrong table.
+#
+# The trailing `[^a-z0-9_]` is a boundary the per-table version did not have.
+# Without it `UPDATE reality_registry_shadow` matches the table
+# `reality_registry` — a false positive on a table that has its own row in the
+# list anyway. Strictly more correct, and the self-test above is what holds it.
+alt=$(printf '%s\n' "$meta_tables" | awk '{ print length, $0 }' | sort -rn | cut -d' ' -f2- | paste -sd'|' -)
+
+# The two drill exclusions below cover the W1/S13 LIVE-TEST DRILL harnesses —
+# standalone binaries that set up + tear down test realities by writing meta
+# tables DIRECTLY on purpose (driving the raw DB: CAS races, freeze, relocation
+# — not the audited domain path). They are functionally tests (like _test.go),
+# just compiled as runnable bins so they can drive a live stack.
+all_hits=$(grep -rniE "(INSERT[[:space:]]+INTO[[:space:]]+(${alt})|UPDATE[[:space:]]+(${alt})|DELETE[[:space:]]+FROM[[:space:]]+(${alt}))[^a-z0-9_]" \
+  --include='*.go' --include='*.rs' --include='*.sql' --include='*.ts' \
+  "${scan_dirs[@]}" 2>/dev/null \
+  | exclude_nonsubject || true)
+
+violations=0
+if [[ -n "$all_hits" ]]; then
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    # Which table did THIS line name? Recovered from the matched text rather
+    # than from the loop variable the old shape had.
+    table=$(printf '%s\n' "$line" \
+      | grep -oiE "(INSERT[[:space:]]+INTO[[:space:]]+(${alt})|UPDATE[[:space:]]+(${alt})|DELETE[[:space:]]+FROM[[:space:]]+(${alt}))" \
+      | head -1 | awk '{ print tolower($NF) }')
+    [[ -z "$table" ]] && continue
+
+    # Sanctioned (path, table) pairs — both must match, as before.
+    skip=0
+    for path in "${!sanctioned[@]}"; do
+      if [[ "${sanctioned[$path]}" == "$table" ]] && [[ "$line" == *"$path"* ]]; then
+        skip=1
+        break
+      fi
+    done
+    [[ "$skip" -eq 1 ]] && continue
+
+    if [[ "$violations" -eq 0 ]]; then
+      echo "[meta-write-discipline] FAIL — direct write(s) on meta table(s) outside contracts/meta:"
     fi
-  done
-  if [[ -n "$hits" ]]; then
-    echo "[meta-write-discipline] FAIL — direct write on meta table $table outside contracts/meta:"
-    echo "$hits" | sed 's/^/  /'
+    echo "  [$table] $line"
     violations=$((violations + 1))
-  fi
-done
+  done <<< "$all_hits"
+fi
 
 if [[ $violations -gt 0 ]]; then
-  echo "[meta-write-discipline] FAIL — $violations table(s) with direct writes (I8 / S04 §12T.6)"
+  echo "[meta-write-discipline] FAIL — $violations direct write(s) (I8 / S04 §12T.6)."
+  echo "  Route the write through contracts/meta MetaWrite() so the data row, the"
+  echo "  meta_write_audit row and the outbox event land in ONE transaction."
   exit 1
 fi
-echo "[meta-write-discipline] PASS"
+echo "[meta-write-discipline] PASS — $table_count meta table(s) scanned in one walk"
 exit 0

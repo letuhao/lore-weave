@@ -1,5 +1,9 @@
 # GEO_001 — World Geometry
 
+> **📐 THIS IS DESIGN. For what is BUILT, read [`docs/standards/world-and-map.md`](../../../../standards/world-and-map.md) FIRST** — the
+> BUILT / HOLLOW / ABSENT inventory of the space graph, with the symbol that owns each
+> capability. Attach to those seams rather than starting a second world model.
+
 > **⚠ SCOPE INVERTED — CORRECTION 2026-07-30 ([`36_map_architecture.md`](../../36_map_architecture.md) `SPG-F3`, row `SPG-R3`):**
 > **§2 scopes `world_geometry` to a CONTINENT channel (*"One row per continent channel"*). That
 > containment is backwards relative to both the locked redesign and the shipped code.**

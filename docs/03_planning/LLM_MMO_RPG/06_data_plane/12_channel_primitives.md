@@ -21,8 +21,16 @@ It does **not** lock: per-channel event ordering (→ Q17/Q30), writer node bind
 /// Channel identifier. Newtype with module-private constructor — cannot be
 /// forged by feature code. Produced only by the SDK during channel-tree
 /// resolution (at bind_session or on delta-stream updates).
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ChannelId(pub(crate) Uuid);
+///
+/// ⚠ AMENDED 2026-08-07 (REC-102a, PO-approved): the payload is `i64`, not
+/// `Uuid`. Three artifacts disagreed and two of the three said 64-bit — the
+/// shipped `crates/dp-kernel/src/channel.rs`, and the client wire contract
+/// (`contracts/game-wire/common.schema.json`, `Uint64String`). The build is
+/// right on substance: DP-Ch11's allocator is a monotonic per-channel COUNTER
+/// seeded from MAX(), which is what a BIGINT is for; a Uuid cannot be
+/// incremented. So the spec adopts i64 rather than the code adopting Uuid.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct ChannelId(pub(crate) i64);
 
 impl ChannelId {
     /// Reserved: the root channel of a reality. Stable per-reality derivation
@@ -30,11 +38,35 @@ impl ChannelId {
     /// an extra CP lookup.
     pub fn reality_root(reality_id: &RealityId) -> Self { /* deterministic derivation */ }
 
-    pub fn as_str(&self) -> String { self.0.to_string() }
+    /// Read the raw BIGINT — needed to bind it as a query parameter.
+    pub fn get(self) -> i64 { self.0 }
 
-    pub(crate) fn new_verified(uuid: Uuid) -> Self { Self(uuid) }
+    pub(crate) fn new_verified(raw: i64) -> Self { Self(raw) }
 }
 ```
+
+> **⚠ AMENDED 2026-08-07 (REC-102a) — the SHIPPED type had a `pub` field, and the privacy is the
+> whole point.** `crates/dp-kernel/src/channel.rs` declared `pub struct ChannelId(pub i64)`, so any
+> caller could write `ChannelId(7)`. That deletes exactly the property this section claims — *"cannot
+> be forged by feature code"* — and it is the property `DP-A12` rests the whole cross-reality
+> argument on for the parallel `RealityId`. **It is the third occurrence of one shape this week**:
+> `SEALED-SUBJECT` on the proposal's `actor`, `PID-D5` on `event_category`, and here — *a value whose
+> supplier is also its judge.*
+>
+> **Applied to the code in the same commit.** The field is now `pub(crate)`, with `get()` for the
+> query-binding read. Because `new_verified`'s caller — SDK channel-tree resolution against the
+> `channels` table — **does not exist yet** (`crates/dp` is unbuilt, and `channels` has no migration),
+> the code carries a deliberately-named, greppable `ChannelId::unverified(i64)` instead:
+>
+> - It does **not** claim safety. It makes the unverified mints **countable**. Measured
+>   2026-08-07 — `rg -c 'ChannelId::unverified' --type rust` over `crates/` + `services/`:
+>   **22 call sites**, and the shape of the list is the useful part. **18 are tests**; three of the
+>   remaining four are operator CLIs (`bin/spine.rs`, `bin/ceilings.rs`). **The load-bearing one is
+>   exactly one line** — `services/commit-service/src/manager.rs`, where the channel arrives **from
+>   the wire**, which is `SEALED-SUBJECT`'s site verbatim, now visible instead of invisible.
+> - When `crates/dp` lands, the function is deleted and the compiler enumerates the migration.
+> - `new_verified` is deliberately **not** declared in the code yet: an unused constructor for a model
+>   nothing produces is the orphan shape `scripts/orphan-model-gate.py` refuses.
 
 Parallel shape to [`RealityId`](04a_core_types_and_session.md#realityid) (see [DP-K1](04a_core_types_and_session.md#dp-k1--core-types)) — same module-privacy story, same newtype discipline, compile-time forgery prevention.
 
@@ -75,26 +107,299 @@ Lives in each reality's own Postgres database (the same DB that holds the realit
 ```sql
 -- In each per-reality DB
 CREATE TABLE channels (
-    id            UUID PRIMARY KEY,
-    parent        UUID REFERENCES channels(id),
+    reality_id    UUID     NOT NULL,           -- ⚠ ADDED (REC-105)
+    id            BIGINT   NOT NULL,           -- ⚠ AMENDED (REC-103): was UUID
+    parent        BIGINT,
     level_name    TEXT NOT NULL,
     display_name  TEXT,
-    depth         SMALLINT NOT NULL CHECK (depth >= 0 AND depth <= 16),
-    lifecycle     TEXT NOT NULL CHECK (lifecycle IN ('active','dormant','dissolved')),
+    depth         SMALLINT NOT NULL,          -- ⚠ CHECK moved below and NAMED (REC-105)
+    lifecycle     TEXT     NOT NULL,          -- ⚠ CHECK moved below and NAMED (REC-105)
     metadata      JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     dissolved_at  TIMESTAMPTZ,
 
-    CONSTRAINT channels_root_single UNIQUE (id) DEFERRABLE INITIALLY DEFERRED,
+    -- ⚠ ADDED (REC-106): not a fact about this channel — a fact about the one it
+    -- claims as a parent, GENERATED from this row so it cannot disagree with
+    -- `depth`. The root's value is -1 and no row can match it; the root does not
+    -- need one, because its `parent` is NULL and the FK below is MATCH SIMPLE.
+    parent_depth  SMALLINT GENERATED ALWAYS AS ((depth - 1)::smallint) STORED,
+
+    PRIMARY KEY (reality_id, id),             -- ⚠ AMENDED (REC-105)
+
+    -- ⚠ ADDED (REC-106): the FK's target, and its only purpose. `(reality_id,
+    -- id)` is already unique; Postgres still requires a declared unique
+    -- constraint on the exact referenced column list.
+    CONSTRAINT channels_id_depth_uq UNIQUE (reality_id, id, depth),
+
+    -- ⚠ AMENDED (REC-105): composite, so a channel in reality A cannot claim a
+    -- parent in reality B.
+    -- ⚠ AMENDED (REC-106): `parent_depth` joins the key, and that is DP-Ch1's
+    -- own sentence (:97) turned into SQL. Along every parent edge depth
+    -- decreases by exactly one, so a cycle of length k would need `d = d - k`.
+    -- Through ORDINARY SQL a cycle is not representable, including the one-node
+    -- case (⚠ AMENDED 1b7db-02/03: this said "not rejected — not REPRESENTABLE"
+    -- flatly, and DROP EXPRESSION / DISABLE TRIGGER ALL are two measured routes
+    -- past it; a constraint gives you "rejected while the thing it rests on is
+    -- still there", and no more). DEFERRABLE because a parent's depth is referenced by its children,
+    -- so a subtree move must pass through an inconsistent middle; that does not
+    -- weaken the guarantee, since the impossibility is arithmetic and a deferred
+    -- cycle still fails at COMMIT.
+    CONSTRAINT channels_parent_fk FOREIGN KEY (reality_id, parent, parent_depth)
+        REFERENCES channels (reality_id, id, depth)
+        DEFERRABLE INITIALLY IMMEDIATE,
+
+    CONSTRAINT channels_depth_bounded CHECK (depth >= 0 AND depth <= 16),
+    CONSTRAINT channels_lifecycle_known
+        CHECK (lifecycle IN ('active', 'dormant', 'dissolved')),
     CONSTRAINT channels_no_orphan CHECK (
         (parent IS NULL AND depth = 0) OR (parent IS NOT NULL AND depth > 0)
+    ),
+
+    -- ⚠ ADDED (1b5-M4): `REC-103` carried the wire contract's WIDTH across and
+    -- not its DOMAIN.
+    CONSTRAINT channels_id_positive CHECK (id > 0),
+    CONSTRAINT channels_level_name_nonempty CHECK (length(btrim(level_name)) > 0),
+
+    -- ⚠ ADDED (1b7gap-L1): the domain was fixed at ONE end. `id = i64::MAX` was
+    -- accepted and then `SELECT MAX(id) + 1` — the shape any allocator for this
+    -- column will have — dies with `bigint out of range`. Reserving the top value
+    -- means a successor always exists. NOTE: `contracts/game-wire/common.schema.json`
+    -- types `Uint64String` as `^(0|[1-9][0-9]{0,19})$`, which admits `0` and
+    -- values past `i64::MAX`; the column is the narrower of the two, which is the
+    -- safe direction, and the contract needs the amendment.
+    CONSTRAINT channels_id_allocatable CHECK (id < 9223372036854775807),
+
+    -- ⚠ ADDED (1b7db-02): the assertion that makes `channels_parent_fk`'s
+    -- arithmetic a fact about DATA rather than about DDL. `ALTER COLUMN
+    -- parent_depth DROP EXPRESSION` needs only table ownership — no superuser,
+    -- no rewrite — and then a caller supplies `parent_depth` by hand and a
+    -- self-parent inserts in one statement. A CHECK survives DROP EXPRESSION.
+    -- Vacuous only while the expression exists, which is exactly the condition
+    -- it exists to outlive.
+    -- ⚠ `IS NOT NULL` ADDED (1b12-03): `parent_depth` is NULLABLE, so after
+    -- DROP EXPRESSION you do not FORGE a value — you OMIT the column. The CHECK
+    -- then evaluates to NULL (not FALSE, so it passes) and the MATCH SIMPLE FK
+    -- skips a key with a NULL member. A self-parent and a 2-cycle both INSERT,
+    -- under a constraint reporting convalidated = t. The previous leg tested the
+    -- exact probe its author imagined; the hole was one step to the side.
+    CONSTRAINT channels_parent_depth_derived
+        CHECK (parent_depth IS NOT NULL AND parent_depth = depth - 1),
+
+    -- ⚠ REMOVED (REC-106): `channels_no_self_parent CHECK (parent IS NULL OR
+    -- parent <> id)` stood here. `channels_parent_fk` now makes it unable to
+    -- fail — a self-parented row would need a row with its own id at its own
+    -- depth minus one, and `id` is unique per reality — and a CHECK that cannot
+    -- reject anything is `NV-1`. That is `1bF-2`'s defect, in the same table,
+    -- and keeping it for readability is how it got there the first time.
+
+    -- ⚠ ADDED (REC-105), DP-Ch31..Ch37 (17_channel_lifecycle.md): a dissolved
+    -- channel has a dissolution time and
+    -- a live one does not. A biconditional, so neither direction can rot.
+    CONSTRAINT channels_dissolved_at_iff_dissolved CHECK (
+        (lifecycle = 'dissolved') = (dissolved_at IS NOT NULL)
     )
 );
 
-CREATE INDEX channels_parent_idx ON channels(parent);
-CREATE INDEX channels_level_idx ON channels(level_name) WHERE lifecycle = 'active';
-CREATE INDEX channels_lifecycle_idx ON channels(lifecycle);
+-- ⚠ AMENDED (REC-104): `CONSTRAINT channels_root_single UNIQUE (id) DEFERRABLE
+-- INITIALLY DEFERRED` stood here and was VACUOUS — `id` is already the primary
+-- key, so it could never fire, while its NAME states the real DP-Ch1 invariant
+-- (a strict tree has exactly one root). This is that constraint, made able to
+-- fail. A partial unique index is the only form Postgres offers for it.
+-- ⚠ AMENDED (REC-105): keyed on `reality_id`, so the invariant is ONE ROOT PER
+-- REALITY. Keyed on a constant it would have been one root per DATABASE, which
+-- is a different and wrong claim once the table carries `reality_id`.
+-- ⚠ NOTED (1b5-L3): this index ignores `lifecycle`, and DP-Ch33 keeps a
+-- dissolved row indefinitely, so dissolving a reality's root FORECLOSES that
+-- reality. Correct, and written down so it is a decision (⚠ AMENDED 1b7gap-M2:
+-- this claimed "DP-Ch11 never reissues an id"; DP-Ch11 does not say that, and a
+-- MAX(id)+1 allocator over a table permitting DELETE provably reissues -- measured
+-- moving from 5 back to 3. Non-reuse is a real requirement and is UNOWNED)
+-- re-rooted while the old tree's events still reference the old root.
+-- ⚠ NOTED (REC-106): this index gives AT MOST one root. The parent FK gives AT
+-- LEAST one for any non-empty reality — walk `parent` and depth strictly
+-- decreases, so the walk terminates, and only `depth = 0` can terminate it,
+-- which `channels_no_orphan` forces to be a root. Together: EXACTLY one.
+CREATE UNIQUE INDEX channels_root_single ON channels (reality_id)
+    WHERE parent IS NULL;
+
+CREATE INDEX channels_parent_idx ON channels(reality_id, parent);
+CREATE INDEX channels_level_idx ON channels(reality_id, level_name) WHERE lifecycle = 'active';
+CREATE INDEX channels_lifecycle_idx ON channels(reality_id, lifecycle);
 ```
+
+⚠ **ADDED (`1b5-L5`) — the two lifecycle rules `DP-Ch31` names and no row-level
+mechanism enforced.** [`17_channel_lifecycle.md:57`](17_channel_lifecycle.md)
+locks *Dissolved → (any)* as *"terminal, no transitions"* and `:77` attributes it
+to a *"row-level rule"*; `:55` requires *"all descendants Dissolved"* before a
+dissolution. Both are statements about a TRANSITION, which a `CHECK` cannot see,
+and until `1b.5` both fell to a plain `UPDATE` while `:77` named a mechanism that
+existed nowhere. The rule is a `BEFORE INSERT OR UPDATE` trigger — in the DB
+and not only in the SDK, because `DP-Ch31` says *"row-level rule **+** SDK
+transition validator"*, and an SDK-only check is one the next writer to reach
+this table does not have.
+
+⚠ **AMENDED 2026-08-08 (`1b7gap-H3`) — there are THREE rules, and the third is
+what makes the other two's induction argument true rather than merely stated.**
+This section originally justified checking CHILDREN rather than descendants by
+claiming *"a child may only reach Dissolved when its own children are, so by
+induction a Dissolved channel's whole subtree is Dissolved."* **That was false.**
+Induction over TRANSITIONS says nothing about CREATION, and the trigger fired
+`BEFORE UPDATE OF lifecycle` only. Measured on a live Postgres 18: dissolve
+channel 2, then `INSERT (id 3, parent 2, 'active')` → `INSERT 0 1` — a live child
+under a dissolved parent, which the state table above forbids in its own
+precondition column (*"parent exists, parent not Dissolved"*) and which nothing
+implemented. The trigger is now `BEFORE INSERT OR UPDATE` rather than
+`UPDATE OF lifecycle`, because an `UPDATE OF lifecycle` trigger does not fire
+when only `parent` changes — re-parenting under a dissolved node was the same
+hole through a second door.
+
+⚠ **`FOR UPDATE` and `AFTER INSERT` ADDED 2026-08-08 (`1b12-02`, `1b12-01`) — two
+independent routes past the rule above, neither needing DDL or superuser.**
+*(a)* Both guards were **unlocked predicate reads**, so plain READ COMMITTED
+write-skew defeated them: T1 inserts a child under an active parent (reads
+`active`, passes, uncommitted) while T2 dissolves that parent (`DP-Ch33`'s
+`EXISTS` cannot see T1's row, passes). Both commit. **Two predicate reads that
+each pass are not the same as the conjunction holding.** Locking the parent row
+makes both paths contend on one row in either order. *(b)* Both guards only
+inspected rows that ALREADY EXIST, so **reversing the insert order** inside the
+sanctioned `SET CONSTRAINTS ... DEFERRED` hatch smuggled a dissolved parent in
+underneath an already-inserted live child — and since `DP-Ch33` checks children
+rather than descendants *on the strength of this rule*, every ancestor could then
+be dissolved legally, leaving a fully dissolved tree with a live leaf.
+
+```sql
+CREATE OR REPLACE FUNCTION channels_lifecycle_guard() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE parent_lifecycle TEXT;
+BEGIN
+    IF NEW.parent IS NOT NULL
+       AND (TG_OP = 'INSERT' OR NEW.parent IS DISTINCT FROM OLD.parent) THEN
+        SELECT c.lifecycle INTO parent_lifecycle FROM channels c
+         WHERE c.reality_id = NEW.reality_id AND c.id = NEW.parent
+           FOR UPDATE;                       -- 1b12-02: serialises against a concurrent dissolve
+        IF parent_lifecycle = 'dissolved' THEN
+            RAISE EXCEPTION 'channels_no_child_of_dissolved: ...' USING ERRCODE = 'check_violation';
+        END IF;
+    END IF;
+    IF TG_OP = 'INSERT' THEN
+        RETURN NEW;
+    END IF;
+    IF OLD.lifecycle = 'dissolved' AND NEW.lifecycle <> 'dissolved' THEN
+        RAISE EXCEPTION 'channels_dissolved_is_terminal: ...' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER channels_lifecycle_guard_trg
+    BEFORE INSERT OR UPDATE ON channels
+    FOR EACH ROW EXECUTE FUNCTION channels_lifecycle_guard();
+```
+
+⚠ **`DP-Ch33` is a SEPARATE, `AFTER`, CONSTRAINT trigger, and the shape is the
+finding (`1b7db-07`).** As a `BEFORE`-row check this rule made a legitimate
+operation *impossible* rather than merely awkward: dissolving a subtree in one
+statement failed in **every** row order, including an explicit leaf-first
+`ORDER BY depth DESC`, because a `BEFORE`-row trigger cannot see the other rows
+the same command is updating. The only working shape was N separate single-row
+statements — nowhere documented, and not something a caller would guess. A
+constraint trigger fires at the **end of the statement**, so it sees the whole
+effect; it is also `DEFERRABLE`, so a subtree dissolved across several statements
+can defer to `COMMIT`. Same escape hatch as `channels_parent_fk`, same reason,
+and it does not weaken the rule because the final state is still checked.
+
+```sql
+CREATE OR REPLACE FUNCTION channels_dissolve_order_guard() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM channels c
+                WHERE c.reality_id = NEW.reality_id AND c.parent = NEW.id
+                  AND c.lifecycle <> 'dissolved') THEN
+        RAISE EXCEPTION 'channels_dissolve_descendants_first: ...' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS channels_dissolve_order_trg ON channels;
+CREATE CONSTRAINT TRIGGER channels_dissolve_order_trg
+    AFTER INSERT OR UPDATE OF lifecycle ON channels
+    DEFERRABLE INITIALLY IMMEDIATE
+    FOR EACH ROW
+    WHEN (NEW.lifecycle = 'dissolved')
+    EXECUTE FUNCTION channels_dissolve_order_guard();
+```
+
+> ## ⚠ `REC-103` — `id` is `BIGINT`, not `UUID`, and this is the amendment `REC-102a` implied
+>
+> `REC-102a` (PO-approved 2026-08-07) settled `ChannelId`'s payload as **`i64`**, on three grounds
+> measured at the time: the shipped `crates/dp-kernel/src/channel.rs` declares
+> `pub struct ChannelId(pub(crate) i64)`; the client wire contract
+> (`contracts/game-wire/common.schema.json`) types it `Uint64String`; and **`DP-Ch11`'s allocator is a
+> monotonic per-channel COUNTER seeded from `MAX()`** — which is what a `BIGINT` is for and which a
+> `Uuid` cannot do, because a `Uuid` cannot be incremented.
+>
+> That decision was applied to `DP-Ch1`'s newtype and to the code in the same commit. **It never
+> reached this schema**, thirty lines below, which continued to declare `UUID` — so the one artifact a
+> migration would be written from still said the thing `REC-102a` had ruled false. Found by slice 1b's
+> Phase 0 (`1bF-1`) before any migration existed, which is the only reason it is an amendment rather
+> than a schema.
+>
+> **This is `FLOW-2`'s shape from the inside:** a correction decided, applied where the author was
+> looking, and not applied where they were not. `REC-102a` is why `spec_oracle` now compares documents
+> to code; `1b.3` extends that to compare *this SQL* to the migration's SQL, so the next time these
+> two disagree a test says so rather than a reader noticing eight weeks later.
+
+
+> ## ⚠ `REC-105` — the table carries `reality_id`, and the spec did not
+>
+> **Derived from the shipped tables, not chosen.** Every other migration in
+> `contracts/migrations/per_reality/` carries `reality_id UUID NOT NULL` inside its primary key —
+> `events` is `PRIMARY KEY (reality_id, aggregate_type, aggregate_id, …)`, and `channel_writer_state`
+> is `PRIMARY KEY (reality_id, channel_id)`. The directory's README states no reason for it.
+>
+> **`DP-Ch2` as written made `FLOW-19` unfixable by the migration that exists to fix it.** With
+> `channels` keyed on `id` alone, a foreign key from `channel_writer_state (reality_id, channel_id)`
+> is **not expressible** — so writing the spec literally would have shipped the table and left the
+> lease still dangling, which is the exact defect `1b` was opened for.
+>
+> The composite key follows, and so do three things it makes possible: the parent FK becomes
+> `(reality_id, parent) → (reality_id, id)`, which is what stops a channel claiming a parent in
+> another reality; `channels_root_single` becomes **one root per reality** rather than one per
+> database; and a `MAX()+1` allocator becomes per-reality, which is what a per-reality
+> counter means.
+>
+> ⚠ **This is the one amendment in `1b` that is a judgement rather than a correction**, and it is
+> recorded as such. If the intent is genuinely one database per reality with `reality_id` redundant,
+> this shape is wrong — and it is cheap to change now, because **nothing has been applied to a real
+> database**: the migration has only ever run against a throwaway. Say so and it comes out.
+>
+> Also added here because the live-smoke asked every constraint to fail and two had nothing to say:
+> `channels_no_self_parent` (a self-parented row at `depth > 0` satisfies `channels_no_orphan`, and a
+> one-node cycle is the cheapest way to make the tree a graph) and
+> `channels_dissolved_at_iff_dissolved` (the `DP-Ch31`..`DP-Ch37` lifecycle, as a biconditional so neither
+> direction can rot).
+
+> ## ⚠ `REC-104` — `channels_root_single` was a check that could not fail
+>
+> The constraint read `UNIQUE (id) DEFERRABLE INITIALLY DEFERRED`. `id` is the **primary key**, so
+> uniqueness on it is already total: the constraint added nothing, could never reject a row, and had
+> been sitting in a LOCKED document since Phase 4.
+>
+> Its **name** is the tell, and it names a real invariant. `DP-Ch1`: *"A reality's channel tree is a
+> strict tree (not a DAG): every channel except the root has exactly one parent."* Exactly one root
+> means exactly one row with `parent IS NULL` — and **nothing enforced that**. `channels_no_orphan`
+> is adjacent but weaker: it forbids a root at `depth != 0` and an orphan at `depth > 0`, and permits
+> any number of roots.
+>
+> Replaced with the partial unique index above, which is the only shape Postgres offers for
+> *"at most one row satisfying a predicate"*. It is `1b.4`'s first bite: drop it, insert a second
+> root, watch it succeed.
+>
+> **Recorded rather than quietly fixed**, because this is `NV-1` — *a check that cannot fail is not a
+> check* — inside a LOCKED spec, predating this run entirely. `docs/standards/non-vacuity.md` was
+> written about the code tier; this is the same defect in the design corpus, and it suggests the
+> standard's reach is shorter than its subject.
 
 **Why per-reality DB and not CP:**
 
@@ -384,8 +689,8 @@ Entry shape (MessagePack):
 {
   "v": 1,
   "op": "insert" | "update" | "dissolve",
-  "channel_id": "<uuid>",
-  "parent": "<uuid|null>",
+  "channel_id": "<uint64-string>",
+  "parent": "<uint64-string|null>",
   "level_name": "<string>",
   "lifecycle": "active|dormant|dissolved",
   "version": <monotonic per reality>,

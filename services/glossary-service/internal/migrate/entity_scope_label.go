@@ -24,10 +24,10 @@ import (
 // entities never set it and behave exactly as before (empty matches empty, same
 // as today); an author sets it only when disambiguation is actually needed.
 //
-// Additive + non-destructive: every existing row defaults to scope_label='', so
+// Additive + non-destructive: every existing row defaults to scope_label=”, so
 // the new composite unique index is a strict superset of the current one and
 // cannot fail on existing data (two entities already coexisting under the old
-// 3-column key never collided; adding a 4th column that is constant '' for both
+// 3-column key never collided; adding a 4th column that is constant ” for both
 // cannot introduce a new collision).
 func UpEntityScopeLabel(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "entity-scope-label", `

@@ -1,0 +1,31 @@
+{
+ "_note": "DQ-T56 — the LIVE proof of the whole-turn ceiling and the visible end. The deployed chat-service runs with LLM_TURN_CEILING_S=20 for this batch ONLY (default is 900); the prompt asks for a generation that cannot finish in 20s, so every run crosses the ceiling through the real chat path against the real provider. What is being read is NOT the answer — it is whether the turn ENDS and whether the row it leaves behind SAYS it did not complete. The ceiling is restored to 900 immediately after.",
+ "scenarios": [
+  {
+   "id": "a-turn-that-cannot-finish-in-time",
+   "tool_under_test": null,
+   "expect_tool": null,
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Write the opening chapter of a novel about a cartographer who maps a city that rearranges itself every night. At least 2500 words, in full prose, with dialogue. Do not summarise or outline — write the chapter itself.",
+   "prompt_source": "🔴 THE TURN MUST GENUINELY OUTRUN THE CEILING, not be tricked into it. A 2500-word single-call generation is measured on this platform as taking well past 20s — the single-call word ceiling note puts ~1500 words at the top of one call's comfortable range — so the turn is doing REAL work when the ceiling fires. That is the case that matters: a ceiling that only fires on a deliberately broken turn proves nothing about a slow one. No tool is named, so nothing here writes.",
+   "needs_target": false,
+   "approve": "as-is",
+   "editor_context": false,
+   "seed": [],
+   "falsifier": "REFUTED IF a run ends with no assistant row at all, or with a row whose content is empty — that is the pre-fix behaviour (the author's message standing alone with the outcome in a column). PASSES IF every run leaves a row whose CONTENT says the turn did not complete, carrying outcome='failed' and an error_detail naming the ceiling. A run that finishes UNDER 20s is a THIRD outcome and must be read as neither: it never reached the mechanism, and counting it either way would be scoring a turn the ceiling never touched.",
+   "answer_expect": {
+    "why": "None. The measurement is the persisted row and the service log, not the reply text — there is no reply text on a turn that hits the ceiling."
+   },
+   "ship_audit": {
+    "gate": "N/A — no tool is called; the turn is the subject.",
+    "absent_case": "N/A",
+    "idempotency": "N/A",
+    "tenancy": "Throwaway fixture book per repeat, torn down by the harness."
+   },
+   "defects": []
+  }
+ ]
+}

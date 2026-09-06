@@ -53,7 +53,11 @@ func (s *Server) RegisterDeepResearchTools(srv *mcp.Server) {
 		// Mints a grant confirm_token ⇒ Tier W. Paid: the action's PAID web-search spend is
 		// gated behind the human confirm (effectDeepResearch), so the flag marks it a
 		// spend-bearing action (its confirm card itself displays the cost) — orthogonal to tier.
-		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil)),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"research this on the web", "research this entity online", "on the web", "find sources for", "find sources for this character", "research and cite"})),
 	}, s.toolDeepResearch)
 }
 
@@ -64,7 +68,7 @@ type deepResearchParams struct {
 }
 
 type deepResearchToolIn struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity to research (UUID)"`
 	Query    string `json:"query" jsonschema:"what to look up on the web"`
 	// `,omitempty` keeps max_results OPTIONAL in the generated MCP arg schema —

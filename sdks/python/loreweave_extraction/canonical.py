@@ -1,7 +1,7 @@
 """Canonical entity name + deterministic ID derivation (Phase 4b-α).
 
 Pure functions, no I/O. Moved from knowledge-service's
-`app/db/neo4j_repos/canonical.py` + `relations.py` so the 4 extractors
+`app/db/graph_repos/canonical.py` + `relations.py` so the 4 extractors
 + pass2 orchestrator can derive the same canonical_id / relation_id
 without depending on knowledge-service internals.
 

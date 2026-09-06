@@ -1,0 +1,245 @@
+{
+  "_note": "Batch 32 — five knowledge-graph tools, scope=project. The fixture's throwaway book carries a linked knowledge project, and every one of these declares 'Omit to use the project linked to the current book', so project_id never has to be typed.\n\nA FRESH PROJECT WAS PROBED BEFORE THE SEEDS WERE WRITTEN, and it decided three of the five scenarios: edge_types is EMPTY, allow_free_edges is true, sync_available reports adopted=false/has_updates=false, and the triage queue is empty. So the honest empty case is the natural shape here, and two scenarios are built on it deliberately rather than by accident.\n\nTHE SEED CHAIN IS PROVEN, not assumed: kg_add_nodes (mode=manual) returns an entity_id, kg_propose_edge parks the edge and returns a triage_id with parked:true, and kg_triage_list then shows the group. That was run end-to-end against a real project before this file was written, because a seed that silently produces nothing turns a tool's scenario into a measurement of my fixture.\n\nMULTI-TURN where the tool needs an id the model must obtain — the design batches 30 and 31 proved. Every setup turn is a plain author utterance and no tool argument is typed anywhere.\n\n🔴 NOTHING REACHES THE GRAPH IN THIS BATCH. kg_triage_place_edge and kg_ontology_propose are both confirm-gated and their cards are never approved, so the proposed edge stays parked and the ontology stays empty. That is what makes kg_entity_edge_timeline's empty case honest rather than contrived: the entity genuinely has no placed relationships.",
+  "scenarios": [
+    {
+      "id": "kg-sync-available",
+      "tool_under_test": "kg_sync_available",
+      "expect_tool": "kg_sync_available",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is my graph schema out of date — are there upstream template updates?",
+      "prompt_source": "meta.synonyms['is my schema out of date'] + ['upstream schema changes'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The project exists and has adopted NO template — probed directly on a fresh project: adopted=false, has_updates=false, changes=[]. That makes this the honest empty case in its most useful form: 'you have not adopted a template, so there is nothing to be out of date ABOUT' is a different answer from 'your schema is up to date', and only one of them is true here. 🔴 The first arm of this batch lost all 25 runs to this assertion: it said `WHERE id=` and the table's primary key is `project_id`. 'Read the schema, never guess it' applies to the FIXTURE, and this is the third time this session it has applied to a column name rather than a tool argument."
+        }
+      ],
+      "answer_expect": {
+        "none_of": [
+          "updates are available",
+          "out of date",
+          "changes available"
+        ],
+        "why": "The project has adopted nothing and the tool reports has_updates=false. Claiming updates exist would be inventing a diff over a schema with no source to diff against."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports updates available when the tool returned has_updates=false. 🔴 THE SHAPE TO WATCH is the one batch 11 caught on composition_conformance_status: describing what the sync board WOULD show as if it had shown it. 'Nothing to pull' and 'I cannot tell' are different answers, and so is 'up to date' when the truth is 'never adopted'.",
+      "ship_audit": {
+        "empty_case": "This scenario IS the empty case — a project that has adopted no template.",
+        "absent_case": "OWED — a project_id that does not exist must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-entity-edge-timeline",
+      "tool_under_test": "kg_entity_edge_timeline",
+      "expect_tool": "kg_entity_edge_timeline",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the knowledge graph for this book.",
+      "follow_ups": [
+        "How did Aldric Vane's relationships change over time?"
+      ],
+      "prompt_source": "Turn 1 is kg_graph_query's synonym ('show the graph'); the MEASURED turn is kg_entity_edge_timeline's synonyms ['how did their relationship change'] + ['relationship over time'], verbatim. Two turns because the tool's own description says to use 'an entity id and an edge-type code seen in an EARLIER GRAPH RESULT' — the supplier is the graph read, so it gets its own turn.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Aldric Vane",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Mira Solene",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_propose_edge",
+          "args": {
+            "project_id": "{project_id}",
+            "source_entity_id": "{step:0:entity_id}",
+            "target_entity_id": "{step:1:entity_id}",
+            "edge_type": "allied_with",
+            "valid_from": 1
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "🔴 THE ENTITY EXISTS AND ITS ONLY RELATIONSHIP IS PARKED IN TRIAGE, NOT IN THE GRAPH. kg_propose_edge's own description says an edge is 'NEVER written to the graph directly', and this loop never approves the card that would place it. So Aldric Vane genuinely has NO placed relationships, and the honest timeline is empty. That is the whole point: 'no relationship history yet' must not come back as an invented arc, and it must also not come back as 'I don't know who Aldric Vane is' when the node is right there. 🔴 The first arm of this batch lost all 25 runs to this assertion: it said `WHERE id=` and the table's primary key is `project_id`. 'Read the schema, never guess it' applies to the FIXTURE, and this is the third time this session it has applied to a column name rather than a tool argument."
+        }
+      ],
+      "answer_expect": {
+        "none_of": [
+          "couldn't find",
+          "could not find",
+          "no such character",
+          "don't have a record"
+        ],
+        "why": "The node EXISTS — turn 1's graph read shows it. An empty timeline is the truthful answer; 'I can't find Aldric Vane' is a false absence over a node the previous turn just listed."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes a relationship ARC that does not exist — the only edge is parked in triage, so any narrative of how the relationship changed is fabricated — OR it reports the entity itself as unknown when turn 1 listed it. CONTROL: `edge_type` is REQUIRED and the project's edge_types list is EMPTY, so there is no legal code to read out of the schema; a model that invents one is guessing, and a model that says so is right.",
+      "ship_audit": {
+        "empty_case": "This scenario IS the empty case — a real entity with no placed edges.",
+        "absent_case": "OWED — an entity_id that does not exist must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-run-benchmark",
+      "tool_under_test": "kg_run_benchmark",
+      "expect_tool": "kg_run_benchmark",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "How good is retrieval on this project — benchmark the embedding model.",
+      "prompt_source": "meta.synonyms['how good is retrieval'] + ['benchmark the embedding model'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}' AND embedding_model IS NULL",
+          "expect": "1",
+          "why": "A fresh project with NO embedding model configured — and the assertion now PROVES that rather than asserting a bare row count: it pins embedding_model IS NULL, which is the precondition the whole scenario turns on. That is the interesting state: the tool measures how well the embedding model retrieves, so with no model there is nothing to measure, and the question is whether it says so and names kg_project_set_embedding_model — the supplier its SIBLINGS name in exactly this situation (kg_build's description does). 🔴 The first arm of this batch lost all 25 runs to this assertion: it said `WHERE id=` and the table's primary key is `project_id`. 'Read the schema, never guess it' applies to the FIXTURE, and this is the third time this session it has applied to a column name rather than a tool argument."
+        }
+      ],
+      "falsifier": "REFUTED IF: a benchmark runs with NO confirm card (Tier A), OR the reply reports a retrieval SCORE for a project with no embedding model — a fabricated quality number is worse than a refusal because it looks like a measurement — OR it describes the benchmark as a PRECONDITION for building the graph, which its own description explicitly denies ('a quality diagnostic, NOT a precondition: kg_build target=graph runs whether or not this has passed'). A refusal that names kg_project_set_embedding_model is the good outcome.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "empty_case": "OWED — no embedding model configured must be reported as such, not scored.",
+        "absent_case": "OWED — a project_id that does not exist must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-ontology-propose",
+      "tool_under_test": "kg_ontology_propose",
+      "expect_tool": "kg_ontology_propose",
+      "intent": "write",
+      "tier": "W",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Add an edge type called mentored_by to this project's graph schema.",
+      "prompt_source": "meta.synonyms['add an edge type'] + ['new relationship type'], verbatim, plus the code so the CONTENT is the author's and not the model's invention.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The project's edge_types list is EMPTY (probed directly), so adding one is a real schema change and attributable to this turn. The card is never approved, so the schema must still hold no edge types afterwards. 🔴 The first arm of this batch lost all 25 runs to this assertion: it said `WHERE id=` and the table's primary key is `project_id`. 'Read the schema, never guess it' applies to the FIXTURE, and this is the third time this session it has applied to a column name rather than a tool argument."
+        }
+      ],
+      "falsifier": "REFUTED IF: the schema changes with NO confirm card (Tier W, and its own description calls it 'High-impact'), OR the op chosen is not `schema_edit` — the enum also offers `adopt_template` (which pulls in a whole upstream template the author never asked for) and `sync_apply` (which applies upstream CHANGES) — OR the model invents an edge-type code other than the one the author named. A wrong op here is not a near-miss: adopt_template rewrites the project's whole ontology.",
+      "ship_audit": {
+        "gate": "OWED — Tier W and high-impact.",
+        "empty_case": "OWED — a schema_edit with nothing to add must be refused.",
+        "absent_case": "OWED — deprecating an edge type that does not exist must be refused.",
+        "idempotency": "OWED — adding an edge type that already exists must not silently duplicate it.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-triage-place-edge",
+      "tool_under_test": "kg_triage_place_edge",
+      "expect_tool": "kg_triage_place_edge",
+      "intent": "write",
+      "tier": "W",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the graph triage queue.",
+      "follow_ups": [
+        "Place the proposed edge between Aldric Vane and Mira Solene into the graph."
+      ],
+      "prompt_source": "Turn 1 is kg_triage_list's synonym ('graph triage'); the MEASURED turn is kg_triage_place_edge's synonyms ['place this edge'] + ['put the edge in the graph'], verbatim. Two turns because `triage_id` is REQUIRED and its only supplier is kg_triage_list — the tool's own description says so.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Aldric Vane",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Mira Solene",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_propose_edge",
+          "args": {
+            "project_id": "{project_id}",
+            "source_entity_id": "{step:0:entity_id}",
+            "target_entity_id": "{step:1:entity_id}",
+            "edge_type": "allied_with",
+            "valid_from": 1
+          }
+        },
+        {
+          "tool": "kg_propose_edge",
+          "args": {
+            "project_id": "{project_id}",
+            "source_entity_id": "{step:1:entity_id}",
+            "target_entity_id": "{step:0:entity_id}",
+            "edge_type": "rival_of",
+            "valid_from": 3
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "TWO proposed edges are parked, in OPPOSITE directions with different types — allied_with (Aldric→Mira, from chapter 1) and rival_of (Mira→Aldric, from chapter 3). Only one is named in the measured turn, so placing the wrong one is visible, and the pair is the realistic case: a triage queue with more than one candidate is where picking by signature actually matters. The seed chain was proven end-to-end before this file was written — kg_propose_edge returns parked:true with a triage_id. 🔴 The first arm of this batch lost all 25 runs to this assertion: it said `WHERE id=` and the table's primary key is `project_id`. 'Read the schema, never guess it' applies to the FIXTURE, and this is the third time this session it has applied to a column name rather than a tool argument."
+        }
+      ],
+      "falsifier": "REFUTED IF: an edge is written with NO confirm card (Tier W — its description says it writes a REAL edge and so returns a confirm_token rather than applying), OR the model places the `rival_of` edge when the author named the one between Aldric and Mira as allies, OR it invents a triage_id rather than reading one out of turn 1's list. CONTROL: both edges involve the same two characters, so 'the edge between Aldric Vane and Mira Solene' is ambiguous ON PURPOSE — a model that asks which one, or that names the one it chose, is behaving better than one that silently picks.",
+      "ship_audit": {
+        "gate": "OWED — Tier W, and it writes a real graph edge.",
+        "absent_case": "OWED — a triage_id that does not exist must be refused.",
+        "idempotency": "OWED — placing the same triage item twice must not write the edge twice.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

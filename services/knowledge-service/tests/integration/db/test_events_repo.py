@@ -16,7 +16,7 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.events import (
+from app.db.graph_repos.events import (
     delete_events_with_zero_evidence,
     event_id,
     get_event,

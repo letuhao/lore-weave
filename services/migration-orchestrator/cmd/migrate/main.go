@@ -25,6 +25,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -55,6 +56,9 @@ Live flags (non-dry-run; the CLI is fail-closed without --meta-dsn):
   --pg-port <n>         per-reality shard port (default: 5432)
   --ssl <mode>          per-reality sslmode (default: disable)
   --concurrency <n>     fan-out concurrency cap (default: 10)
+  --reality <id[,id]>   apply to ONLY these realities (default: the whole
+                        drainable fleet). An id that is not in the fleet is a
+                        REFUSAL, never a silent narrowing.
 `
 
 func main() {
@@ -84,6 +88,7 @@ func run(args []string, stdout, stderr *os.File) error {
 	fs.IntVar(&lf.pgPort, "pg-port", 5432, "per-reality shard port")
 	fs.StringVar(&lf.ssl, "ssl", "disable", "per-reality sslmode")
 	fs.IntVar(&lf.concurrency, "concurrency", 0, "fan-out concurrency cap (0 = default 10)")
+	fs.StringVar(&lf.reality, "reality", "", "comma-separated reality ids; default = whole fleet")
 
 	cmd := args[0]
 	switch cmd {
@@ -112,6 +117,7 @@ type liveFlags struct {
 	pgPort       int
 	ssl          string
 	concurrency  int
+	reality      string
 }
 
 func cmdList(manifestPath string, stdout *os.File) error {
@@ -136,6 +142,11 @@ func cmdApply(migrationID, manifestPath string, dryRun bool, lf liveFlags, stdou
 		return fmt.Errorf("migration %q not found in %s", migrationID, manifestPath)
 	}
 	fmt.Fprintf(stdout, "migration: %s v%d breaking=%v\n", mig.ID, mig.Version, mig.Breaking)
+	// `A2` -- a dry run WITH a meta DSN resolves the REAL fleet and prints what
+	// would be touched, without touching it. See planLive.
+	if dryRun && lf.metaDSN != "" {
+		return planLive(migrationID, mig.Breaking, lf, stdout)
+	}
 	if dryRun {
 		if mig.Breaking {
 			fmt.Fprintln(stdout, "would: route through internal/canary (1 reality first, verification gate, fanout)")
@@ -150,6 +161,98 @@ func cmdApply(migrationID, manifestPath string, dryRun bool, lf liveFlags, stdou
 		return fmt.Errorf("live apply requires --meta-dsn (use --dry-run for a no-op plan)")
 	}
 	return runLive(migrationID, mig.Breaking, lf, stdout)
+}
+
+// planLive resolves the real fleet and prints what a live apply WOULD do.
+//
+// Read-only by construction: it opens the meta pool, reads `reality_registry`,
+// narrows by `--reality`, and returns. It never constructs an Applier and never
+// reaches a per-reality database.
+//
+// `A2`. Until now `--dry-run` never opened a database: it printed a route and
+// stopped, so it could not name a reality, say which were behind, or be used to
+// ASK for authorisation. "Dry-run first, on one reality" was not expressible,
+// and an operator's only way to learn what a migration would do was to run it.
+func planLive(migrationID string, breaking bool, lf liveFlags, stdout *os.File) error {
+	ctx := context.Background()
+
+	metaPool, err := pgxpool.New(ctx, lf.metaDSN)
+	if err != nil {
+		return fmt.Errorf("meta pool: %w", err)
+	}
+	defer metaPool.Close()
+
+	fleet, err := realityreg.ActiveRealities(ctx, metaPool)
+	if err != nil {
+		return fmt.Errorf("resolve fleet: %w", err)
+	}
+	if len(fleet) == 0 {
+		fmt.Fprintln(stdout, "no active realities to migrate")
+		return nil
+	}
+	selected, err := selectFleet(fleet, lf.reality)
+	if err != nil {
+		return err
+	}
+
+	route := "internal/runner with concurrency=10"
+	if breaking {
+		route = "internal/canary (1 reality first, verification gate, fanout)"
+	}
+	fmt.Fprintln(stdout, "PLAN (nothing is written)")
+	fmt.Fprintf(stdout, "  route          : %s\n", route)
+	fmt.Fprintf(stdout, "  drainable fleet: %d\n", len(fleet))
+	fmt.Fprintf(stdout, "  would apply to : %d\n", len(selected))
+	for _, r := range selected {
+		fmt.Fprintf(stdout, "    %s  %s @ %s\n", r.ID, r.DBName, r.DBHost)
+	}
+	fmt.Fprintf(stdout, "  migration      : %s\n", migrationID)
+	fmt.Fprintln(stdout, "Q-L1D-1: V1 doc-only rollback. On persistent failure consult runbooks/migration/persistent_failure.md")
+	return nil
+}
+
+// selectFleet narrows `fleet` to the comma-separated ids in `want`.
+//
+// An empty selector means the WHOLE fleet — the previous behaviour, unchanged.
+//
+// AN ID THAT IS NOT IN THE FLEET IS A REFUSAL. The alternative is a silent
+// narrowing: a mistyped uuid would produce an empty selection, the caller would
+// print "no active realities to migrate", exit 0, and an operator would believe
+// a migration had been applied to a reality it never touched. That is the same
+// fail-closed reasoning the `--meta-dsn` check already states one function up.
+func selectFleet(fleet []realityreg.Reality, want string) ([]realityreg.Reality, error) {
+	want = strings.TrimSpace(want)
+	if want == "" {
+		return fleet, nil
+	}
+	have := make(map[string]realityreg.Reality, len(fleet))
+	for _, r := range fleet {
+		have[r.ID] = r
+	}
+	var out []realityreg.Reality
+	seen := map[string]bool{}
+	for _, id := range strings.Split(want, ",") {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		r, ok := have[id]
+		if !ok {
+			return nil, fmt.Errorf(
+				"--reality %s is not in the drainable fleet of %d; refusing rather than "+
+					"narrowing to nothing (a typo would otherwise read as a clean no-op)",
+				id, len(fleet))
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, r)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("--reality named no ids")
+	}
+	return out, nil
 }
 
 // runLive wires the real collaborators (contracts/meta MetaWrite, the per-
@@ -176,6 +279,24 @@ func runLive(migrationID string, breaking bool, lf liveFlags, stdout *os.File) e
 		fmt.Fprintln(stdout, "no active realities to migrate")
 		return nil
 	}
+
+	// `A2` — narrow to named realities, so one lagging reality can be brought
+	// forward without touching the other nine.
+	//
+	// The fleet was ALL-OR-NOTHING until now, and that is why this exists: a
+	// board that wanted "dry-run first, on one reality" could not express it,
+	// and the two alternatives were both worse. Editing `reality_registry.status`
+	// to narrow the fleet is a live write to the meta database made in order to
+	// make a live write safer; a fleet-wide first attempt is the caution
+	// abandoned.
+	selected, err := selectFleet(fleet, lf.reality)
+	if err != nil {
+		return err
+	}
+	if len(selected) != len(fleet) {
+		fmt.Fprintf(stdout, "fleet narrowed by --reality: %d of %d\n", len(selected), len(fleet))
+	}
+	fleet = selected
 
 	hostOverride, err := realityreg.ParseHostOverride(lf.hostOverride)
 	if err != nil {

@@ -12,6 +12,8 @@
 //! UUID per test — no destructive statements, and no test can see another's
 //! rows.
 
+mod hub_fixture;
+
 use std::sync::Arc;
 
 use sqlx::postgres::PgPoolOptions;
@@ -19,14 +21,19 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use commit_service::recovery::{recover_writer_state, seed_seen, RECOVERY_TAIL};
-use commit_service::{Actor, CombatDomain, Ruleset, CombatState};
+use commit_service::combat::Side;
+use commit_service::{CombatDomain, CombatState, RealityRules};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{
+
     RulesetEpoch,
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
     Outcome, Producer, QueuedInput, SeenWindow, Seq, StepStatus,
 };
+
+mod support;
+use support::verified_reality;
 
 /// Default aggregate for single-channel tests. The `events` PK is
 /// (reality, aggregate_type, aggregate_id, aggregate_version, recorded_at), so
@@ -91,10 +98,10 @@ async fn db_now(pool: &PgPool) -> String {
 fn island() -> Island<CombatDomain> {
     // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
     // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
-    let rules = Arc::new(Ruleset::engine_default());
+    let rules = Arc::new(RealityRules::proving_ground());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
-    state.actors.insert(EntityId(2), Actor::new(&rules, 100_000));
+    state.actors.insert(EntityId(1), hub_fixture::actor(&rules, EntityId(1), Side::A, 100));
+    state.actors.insert(EntityId(2), hub_fixture::actor(&rules, EntityId(2), Side::B, 100_000));
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xC2D2,
@@ -127,6 +134,48 @@ fn strike(input_id: u128) -> Admitted<CombatDomain> {
     })
 }
 
+/// Seed the `channels` row a writer lease now REQUIRES.
+///
+/// 🔴 `0027_channel_writer_state_fk` enforces `channel_writer_state -> channels` on every NEW
+/// write (`NOT VALID`, so history is untouched). This suite reached it through the commit path. Its header calls the pre-existing
+/// orphans "the DEFECT the key exists to prevent": a lease was being taken on a channel that did
+/// not exist, and nothing said so until the key landed.
+///
+/// ⚠ `ON CONFLICT (reality_id, id)`, NOT a bare `ON CONFLICT`. `channels` carries
+/// `channels_root_single` - UNIQUE (reality_id) WHERE parent IS NULL - so a bare clause
+/// swallows a SECOND root for the same reality and the seed becomes a silent no-op. That is
+/// how the scoping test below kept failing on channel 11 after this helper "seeded" it.
+/// Narrowed to the primary key: idempotent when the same channel is seeded twice, loud on
+/// anything else.
+///
+/// A ROOT channel (`parent` NULL, `depth` 0) - these tests are about recovery and fencing, not
+/// hierarchy. Mirrors `dp-kernel/tests/integration_dp_channel.rs::seed_channels`.
+/// A CHILD of `parent`, for the one test that needs two channels in one reality.
+async fn seed_child_channel(pool: &PgPool, reality: Uuid, ch: i64, parent: i64) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, $3, 'cell', 1, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(ch)
+    .bind(parent)
+    .execute(pool)
+    .await
+    .expect("seed child channel");
+}
+
+async fn seed_channel(pool: &PgPool, reality: Uuid, ch: i64) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, NULL, 'reality', 0, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(ch)
+    .execute(pool)
+    .await
+    .expect("seed channel");
+}
+
 /// The recovery query reads back what the spine wrote: dedup keys, the DP-A17
 /// turn counter, and the version high-water.
 /// Kill-mutations: ordering by `recorded_at` (a wall clock, ties across nodes)
@@ -139,7 +188,8 @@ async fn recovery_reads_back_what_the_writer_committed() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId(1);
+    let ch = ChannelId::unverified(1);
+    seed_channel(&pool, reality, ch.get()).await;
     let ts = db_now(&pool).await;
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
@@ -152,7 +202,7 @@ async fn recovery_reads_back_what_the_writer_committed() {
         writer.append(&env, &serde_json::json!([])).await.unwrap();
     }
 
-    let rec = recover_writer_state(&pool, reality, ch.0, RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, verified_reality(reality), ch.get(), RECOVERY_TAIL).await.unwrap();
     assert_eq!(rec.seen_input_ids.len(), 3, "every committed dedup key came back");
     assert!(rec.seen_input_ids.contains(&InputId(big)), "128-bit id survived the round trip");
     assert_eq!(rec.turn_number, 3, "turn counter recovered, not reset to 0");
@@ -173,7 +223,8 @@ async fn a_redelivered_intent_does_not_apply_twice_after_writer_handover() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId(2);
+    let ch = ChannelId::unverified(2);
+    seed_channel(&pool, reality, ch.get()).await;
     let ts = db_now(&pool).await;
 
     // Node A commits one resolution, then dies before ACKing the bus.
@@ -187,7 +238,7 @@ async fn a_redelivered_intent_does_not_apply_twice_after_writer_handover() {
 
     // Node B takes the lease and the bus redelivers the SAME intent.
     let _lease_b = acquire_writer_lease(&pool, reality, ch).await.unwrap();
-    let rec = recover_writer_state(&pool, reality, ch.0, RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, verified_reality(reality), ch.get(), RECOVERY_TAIL).await.unwrap();
     assert!(rec.seen_input_ids.contains(&InputId(in_flight)));
 
     // (a) WITHOUT recovery — the pre-fix behaviour, kept as the control. If
@@ -235,14 +286,15 @@ async fn recovery_does_not_block_new_intents() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId(3);
+    let ch = ChannelId::unverified(3);
+    seed_channel(&pool, reality, ch.get()).await;
     let ts = db_now(&pool).await;
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     writer.append(&envelope(reality, 1, 0xAAA, 1, &ts), &serde_json::json!([])).await.unwrap();
 
-    let rec = recover_writer_state(&pool, reality, ch.0, RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, verified_reality(reality), ch.get(), RECOVERY_TAIL).await.unwrap();
     let mut isle = island();
     let at = isle.tick_now();
     seed_seen(&mut isle, &rec.seen_input_ids, at);
@@ -266,19 +318,33 @@ async fn recovery_is_scoped_to_its_own_channel() {
         eprintln!("[skip] LOREWEAVE_TEST_PG_URL not set — recovery suite skipped");
         return;
     };
+
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ts = db_now(&pool).await;
 
+    // Two channels in ONE reality, so 10 is the root and 11 is its CHILD: `channels_root_single`
+    // permits exactly one parentless row per reality. Seeding both as roots made the second a
+    // silent no-op and the test still failed on channel 11 - the neighbour it exists to prove is
+    // isolated could not hold writer state at all.
+    // 🔴 `i64`, NOT `ChannelId` — taking the newtype here forced the caller to build TWO
+    // more `ChannelId::unverified(...)`, and channel-id-adoption-gate counts exactly that: it
+    // read 6 against a baseline of 4 and failed the branch. These are row ids being INSERTED
+    // into `channels`; there is no channel to resolve yet, so the newtype buys nothing and
+    // costs the seam. The sibling helpers in failover.rs and epoch_activation_live.rs already
+    // take i64.
+    seed_channel(&pool, reality, 10).await;
+    seed_child_channel(&pool, reality, 11, 10).await;
+
     for (ch, id) in [(10i64, 0x111u128), (11, 0x222)] {
-        let lease = acquire_writer_lease(&pool, reality, ChannelId(ch)).await.unwrap();
+        let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(ch)).await.unwrap();
         let w = ChannelWriter::new(pool.clone(), reality, lease);
         // Distinct aggregate per channel — see `envelope`'s note on the PK.
         let env = envelope_for(reality, &format!("enc-ch{ch}"), 1, id, 1, &ts);
         w.append(&env, &serde_json::json!([])).await.unwrap();
     }
 
-    let rec = recover_writer_state(&pool, reality, 10, RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, verified_reality(reality), 10, RECOVERY_TAIL).await.unwrap();
     assert!(rec.seen_input_ids.contains(&InputId(0x111)), "own key present");
     assert!(!rec.seen_input_ids.contains(&InputId(0x222)), "neighbour's key must NOT leak in");
 }

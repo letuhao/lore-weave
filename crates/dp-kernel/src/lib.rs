@@ -41,8 +41,8 @@
 //!   writer bridging cycle-4 `prompt_audit`. ProviderPayload OPAQUE
 //!   (Q-L4D-1). Empty templates (Q-L6K-1 — foundation does not own copy).
 //! - [`ws`] — Rust mirror of `contracts/ws/` (S12 §12AB SKELETON):
-//!   typed [`ws::Ticket`] (60s TTL) + [`ws::Envelope`] (control vs data
-//!   + 11 close codes) + [`ws::WSSession`] (15-min TTL, refresh, seq /
+//!   typed [`ws::Ticket`] (60s TTL) + [`ws::Envelope`] (control vs data +
+//!   11 close codes) + [`ws::WSSession`] (15-min TTL, refresh, seq /
 //!   nonce tracking) + ServiceMode integration (cycle 18 lifecycle:
 //!   ReadOnly mode rejects WS writes). SERVER-only — no browser TS lib
 //!   (Q-L6-3: frontend-game team owns browser lib).
@@ -102,6 +102,12 @@
 pub mod aggregate;
 pub mod canon_cache;
 pub mod channel;
+pub mod dp_backend;
+/// `DF1a` — the CHANNEL half of `dp`'s seams: the write backend over
+/// `ChannelWriter`, and the first production `ChannelTree`.
+pub mod dp_channel;
+/// `DF3` — `dp`'s CACHE seam over Redis (DP-A4 role 1, DP-X3's read-through).
+pub mod dp_cache;
 pub mod canon_history;
 pub mod capacity;
 pub mod dependencies;

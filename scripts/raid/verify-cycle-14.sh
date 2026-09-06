@@ -22,7 +22,7 @@ have() { grep -Fq "$2" "$1" || fail "$3"; }
 
 echo "[verify-cycle-14] running CI gate"
 
-EVENTS="$KS/app/db/neo4j_repos/events.py"
+EVENTS="$KS/app/db/graph_repos/events.py"
 ROUTER="$KS/app/routers/public/timeline.py"
 APIFE="$FE/src/features/knowledge/api.ts"
 ROW="$FE/src/features/knowledge/components/TimelineEventRow.tsx"

@@ -47,19 +47,18 @@ if TYPE_CHECKING:  # deps used only as ToolContext type hints (lane LF + story_s
     from app.db.repositories.triage import TriageRepo
     from app.ontology.resolver import OntologyResolver
 
+from app.adapters.vector_store_provider import get_vector_store
+from app.ports.vector_store import VectorFilter
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.config import settings
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import (
-    find_entities_by_name,
+from app.adapters.graph_store_provider import get_graph_store
+from app.db.graph import graph_session
+from app.db.graph_repos.entities import (
     get_entity_with_relations,
 )
-from app.db.neo4j_repos.events import list_events_filtered
-from app.db.neo4j_repos.facts import invalidate_fact, merge_fact
-from app.db.neo4j_repos.passages import (
-    SUPPORTED_PASSAGE_DIMS,
-    find_passages_by_vector,
-)
+from app.db.graph_repos.events import list_events_filtered
+from app.db.graph_repos.facts import invalidate_fact, merge_fact
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.extraction.injection_defense import neutralize_injection
@@ -125,7 +124,18 @@ STORY_SEARCH_REF_FIELDS = (
 # memory_search: keep the 1-line `snippet` preview + source_type + score; DROP the
 # full (≤500-char) `text` body. The preview is added additively in the handler so
 # detail="full" still carries the full `text` (no behavior change).
-MEMORY_SEARCH_REF_FIELDS = ("snippet", "source_type", "score")
+#
+# 🔴 `fact_id` IS HERE BECAUSE A FIND THE CALLER CANNOT ACT ON IS HALF A FIX. The fact leg made a
+# stored fact findable again; `memory_forget` REQUIRES a fact_id and its own description says
+# "only use a fact_id you have seen in an earlier tool result". Measured after that leg shipped:
+# the hit carried {score, snippet, source_type, text} at BOTH detail levels and no id, so a later
+# turn could find a fact and still not forget it — memory_remember's id being gone by the next
+# turn is the whole reason search is the only route. Same lesson as composition_reference_list:
+# a reader must project the id its CONSUMER spells, or the chain ends one call short.
+#
+# Only fact hits carry it. `apply_response_contract` keeps a ref field only `if k in it`, so
+# chapter/chat/glossary hits are untouched — no empty key, no shape change for them.
+MEMORY_SEARCH_REF_FIELDS = ("snippet", "source_type", "score", "fact_id")
 # memory_timeline: keep the event's title/date/participants; DROP the (≤500-char)
 # `summary` body at summary detail.
 MEMORY_TIMELINE_REF_FIELDS = ("title", "event_date", "participants")
@@ -375,6 +385,15 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
         granularity=args.granularity,
         limit=args.limit,
         before_sort_order=before_sort_order,
+        # D-AUTHOR-SEARCH-READS-ONLY-CANON — see the long note at the memory_search call
+        # site. story_search is BLOCKED in the tool-deep-dive ledger on exactly this: it
+        # returned 0 hits with degraded.semantic='not_indexed' over a seeded chapter that
+        # literally contained the phrase, and the model relayed that as "it's possible it
+        # hasn't been written yet". I recorded the cause then as a fixture gap — "needs an
+        # INDEXED project" — and that diagnosis was WRONG. The lexical leg needs no
+        # embeddings at all; it was searching canon over an unpublished draft. Same
+        # owner-keyed project lookup, so the same boundary applies.
+        surface="all",
     )
     hits = result.hits[: args.limit]
     # L1/L2 reference-first (§6b): at detail="summary" drop the heavy passage
@@ -388,11 +407,49 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
     if result.degraded:
         out["degraded"] = result.degraded
     if not projected:
-        out["note"] = (
-            "no matches — try mode='semantic' for ideas described in your own "
-            "words, or a shorter exact phrase"
-        )
+        out["note"] = _empty_story_search_note(args.mode, result.degraded)
     return out
+
+
+def _empty_story_search_note(mode: str, degraded: dict[str, str]) -> str:
+    """The advice for an empty result — which must not name a leg that just reported it did
+    not run.
+
+    The two branches above were written independently and never consulted each other, so an
+    empty result carrying `degraded: {"semantic": "not_indexed"}` was followed by "try
+    mode='semantic'". S1 row 12 recorded it and it happened 9 times on 2026-07-15: the tool
+    said the semantic leg could not run and then recommended it in the next key.
+
+    That is worse than an unhelpful note. The model has no way to know the advice is void, so
+    it spends its next call on the one thing guaranteed to fail — and when that returns empty
+    too, the same note comes back. Naming the real obstacle, and the tool that clears it, is
+    the difference between an empty result and a dead end.
+    """
+    if degraded.get("semantic") == "not_indexed":
+        # The project has no passage vectors, so `semantic` and the semantic half of `hybrid`
+        # are BOTH unavailable — recommending either is recommending nothing.
+        return (
+            "no matches, and semantic search did not run: this project has no indexed "
+            "passages. Only exact matching was applied, so try a shorter exact phrase or a "
+            "different spelling. To enable meaning-based search, index the project first "
+            "(kg_project_set_embedding_model, then run extraction)."
+        )
+    if degraded:
+        return (
+            "no matches, and part of the search did not run ("
+            + ", ".join(f"{leg}: {why}" for leg, why in sorted(degraded.items()))
+            + "). Try a shorter exact phrase; the missing leg may be why this is empty."
+        )
+    if mode == "semantic":
+        # Suggesting the mode already in use is the same dead end in a smaller form.
+        return (
+            "no matches — try mode='exact' for a literal phrase or name, or a broader "
+            "description of the idea"
+        )
+    return (
+        "no matches — try mode='semantic' for ideas described in your own "
+        "words, or a shorter exact phrase"
+    )
 
 
 async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dict:
@@ -444,11 +501,34 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
     ):
         from app.search.retriever import run_hybrid_search  # heavy deps — late import
 
+        # ── D-AUTHOR-SEARCH-READS-ONLY-CANON ──────────────────────────────────────
+        # `run_hybrid_search` defaults surface="canon" — PUBLISHED-revision text only —
+        # and this call site never passed one, so an author searching their own book was
+        # silently given the READER's answer. A chapter written and not yet published
+        # (editorial_status='draft', published_revision_id=null) is the normal state of a
+        # manuscript in progress, and it was invisible.
+        #
+        # MEASURED 2026-08-14, reproducible with no model in the loop: a throwaway book
+        # with one seeded chapter containing "The Obsidian Trench is only walkable during
+        # low tide", then memory_search for each of 'Obsidian Trench', 'low tide',
+        # 'Obsidian', 'waterline', 'Aldric Vane' — 0 hits, every one, while the tool's own
+        # description promises "lexical + semantic, so it finds an exact phrase even with
+        # nothing indexed yet". The lexical leg was working; it was searching canon, and
+        # canon was empty.
+        #
+        # THE BOUNDARY, because "just pass all" is wrong for half the call sites: drafts
+        # are OWNER-ONLY (raw_search.py states it — a non-owner asking surface=all is
+        # downgraded). These two tools resolve `project` through the OWNER-KEYED
+        # projects_repo.get(ctx.user_id, ...), so the caller IS the owner by construction.
+        # The reader-facing sites — reader_tools.py and wiki/context.py — keep the canon
+        # default deliberately, because there the published surface is the correct answer.
+        # The spoiler window (before_sort_order) is a separate control and still applies.
         result = await run_hybrid_search(
             user_id=ctx.user_id, book_id=project.book_id, query=args.query,
             project=project, book_client=ctx.book_client,
             embedding_client=ctx.embedding_client, reranker_client=ctx.reranker_client,
             mode="hybrid", granularity="block", limit=args.limit,
+            surface="all",
         )
         for h in result.hits[: args.limit]:
             snip = h.get("snippet") or ""
@@ -490,12 +570,30 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
                 )
         if embed and embed.embeddings and embed.embeddings[0]:
             try:
-                async with neo4j_session() as session:
-                    hits = await find_passages_by_vector(
-                        session, user_id=str(ctx.user_id), project_id=str(ctx.project_id),
-                        query_vector=embed.embeddings[0], dim=project.embedding_dimension,
-                        embedding_model=project.embedding_model,
-                        source_type=_passage_source, limit=args.limit,
+                # T25 (3) — through the PORT. This was one of the two production readers that
+                # still called `graph_repos` directly, and neither was in §3.1's migration list,
+                # so the module-level adoption count (54) could not see them: a vector reader
+                # and any other `graph_repos` caller looked identical to it.
+                #
+                # Retiring the Neo4j vector indexes means deleting their DDL from
+                # `neo4j_schema.cypher` (a graph DROP is recreated at startup — proven on
+                # lw-iso in 4s), and that deletion breaks every module on this list.
+                #
+                # The migration is a straight swap because the port already carries what this
+                # caller reads: `attributes["text"]` and `attributes["source_type"]` are
+                # populated by BOTH adapters, so the snippet and the source label survive the
+                # engine change that `h.passage.<field>` would not have.
+                async with graph_session() as session:
+                    store = await get_vector_store(session)
+                    hits = await store.search(
+                        scope="passage", user_id=str(ctx.user_id),
+                        embedding=embed.embeddings[0], dim=project.embedding_dimension,
+                        k=args.limit,
+                        filter=VectorFilter(
+                            project_id=str(ctx.project_id),
+                            embedding_model=project.embedding_model,
+                            source_type=_passage_source,
+                        ),
                     )
             except ValueError as exc:
                 # query_vector length disagrees with the stored dim (model changed
@@ -504,16 +602,76 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
                     raise ToolExecutionError(f"memory search failed: {exc}")
                 hits = []
             for h in hits[: args.limit]:
-                key = _one_line(h.passage.text)
+                key = _one_line(h.attributes.get("text") or "")
                 if not key or key in seen:
                     continue
                 seen.add(key)
                 items.append({
                     "snippet": key,
-                    "text": _truncate(h.passage.text),
-                    "source_type": h.passage.source_type,
-                    "score": round(h.raw_score, 4),
+                    "text": _truncate(h.attributes.get("text") or ""),
+                    "source_type": h.attributes.get("source_type"),
+                    "score": round(h.score, 4),
                 })
+
+    # ── FACT leg: the project's stored facts, lexically matched.
+    # 🔴 D-A-STORED-FACT-IS-UNFINDABLE-BY-THE-SEARCH-THAT-EXISTS-TO-FIND-IT. Until this leg existed
+    # `memory_remember` wrote a `:Fact` and NOTHING here read one — the manuscript leg reads
+    # chapters, the passage leg reads `:Passage`, and a Fact is neither. So a fact the platform had
+    # accepted and confirmed with a fact_id was unreachable by the only tool a later turn has,
+    # because that id is gone by the next turn.
+    #
+    # THE `degraded: {"semantic": "not_indexed"}` MARKER IS NOT THE CAUSE and reading it as one
+    # cost a cycle. Controlled on ONE project so the index state was identical: a nonce in a
+    # CHAPTER was found (count 1), a nonce in a FACT was missed (count 0), same marker on both.
+    #
+    # LEXICAL, like the manuscript leg above and for the same reason — it must work on a project
+    # with no embedding model at all, which is the state every new project starts in and the state
+    # both probes above were in. See `rank_facts_by_overlap` for the five matchers measured and why
+    # the floor is RELATIVE.
+    if args.source_type in (None, "fact"):
+        from app.db.graph_repos.facts import search_facts_by_text
+
+        try:
+            async with graph_session() as session:
+                fact_hits = await search_facts_by_text(
+                    session, user_id=str(ctx.user_id), project_id=str(ctx.project_id),
+                    query=args.query,
+                    # The floor is TOOL_FACT_CONFIDENCE, not the 0.8 the L2 loader uses: a
+                    # memory_remember fact is written at 0.7, so an 0.8 floor would exclude
+                    # exactly what this leg exists to find and fail as an empty result — the
+                    # defect's own symptom, reproduced by the fix for it.
+                    min_confidence=TOOL_FACT_CONFIDENCE, limit=args.limit,
+                )
+        except Exception:  # noqa: BLE001 — a third leg must never take the other two down
+            logger.warning("memory_search: fact leg failed", exc_info=True)
+            fact_hits = []
+        fact_items: list[dict] = []
+        for score, fact in fact_hits:
+            key = _one_line(fact.content)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            fact_items.append({
+                "snippet": key,
+                "text": _truncate(fact.content or ""),
+                "source_type": "fact",
+                "score": round(float(score), 4),
+                "fact_id": fact.id,
+                # The id memory_forget needs, spelled the way memory_forget spells it.
+            })
+        # 🔴 RESERVED SLOTS, BECAUSE APPENDING WOULD HAVE MADE THIS A HALF-FIX. The manuscript leg
+        # runs first and can fill `limit` on its own, and the truncation below is positional — so a
+        # fact would be found, appended, and silently cut on exactly the projects with the most
+        # chapter text. "The fact is now reachable, unless the book is big" is not the invariant.
+        #
+        # A GLOBAL SORT BY `score` WOULD BE WRONG and was rejected: the manuscript leg's score comes
+        # from a hybrid retriever with an optional reranker and the fact leg's is a token-overlap
+        # fraction. They share a field name and no scale, so ordering across them would be
+        # comparing two different numbers because they are spelled alike.
+        if fact_items:
+            reserved = max(1, args.limit // 5)
+            keep_other = max(0, args.limit - min(len(fact_items), reserved))
+            items = items[:keep_other] + fact_items
 
     items = items[: args.limit]
     projected, meta = apply_response_contract(
@@ -523,7 +681,20 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
     if degraded:
         out["degraded"] = degraded
     if not projected:
-        out["note"] = "this project has no indexed memory yet"
+        # 🔴 AND THE NOTE MUST NOT ASSERT AN INDEXING STATE IT NEVER CHECKED. This line
+        # fired whenever the result was empty, for ANY reason, so "I found nothing" was
+        # reported to the caller as "nothing is indexed". The model then relayed it to the
+        # author as "it hasn't been established in the story yet" — measured live, rep3 of
+        # 5 on 2026-08-14 — which is D-DEGRADED-READ-REPORTED-AS-ABSENCE arriving in the
+        # payload rather than being invented by the model. An empty result and an
+        # un-indexed project are different facts and now read differently.
+        out["note"] = (
+            "no stored knowledge matched this query"
+            + (" — note the semantic index is not built for this project yet, so this "
+               "search covered the manuscript text only"
+               if isinstance(degraded, dict) and degraded.get("semantic") == "not_indexed"
+               else "")
+        )
     return out
 
 
@@ -547,9 +718,8 @@ async def _handle_memory_recall_entity(
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
     exclude = await _diary_exclusion(ctx)  # D16 — no diary leak into a non-assistant session
-    async with neo4j_session() as session:
-        matches = await find_entities_by_name(
-            session,
+    async with graph_session() as session:
+        matches = await get_graph_store(session).find_entities_by_name(  # T17
             user_id=str(ctx.user_id),
             project_id=project_id,
             name=args.entity_name,
@@ -572,6 +742,27 @@ async def _handle_memory_recall_entity(
         }
         for r in detail.relations
     ]
+    # `other_matches` used to be a list of NAMES, which by construction could not
+    # disambiguate anything: `find_entities_by_name` matches ON the name (canonical or
+    # alias), so every other match carries the same string. Measured on the corpus, all
+    # 13 calls that returned this field returned FIVE entries with ONE distinct value —
+    # the field never once carried information. It also truncated silently at 5 while
+    # `relations` next to it declares `relations_truncated`; the live probe that found
+    # this was 5 of 47 matches, all in different projects, with `entity` being an
+    # arbitrary one of them and nothing in the payload saying so.
+    #
+    # What distinguishes same-named matches is the project they live in, so each row now
+    # carries it — and `project_id` is a real argument of this tool, which makes the
+    # disambiguation ACTIONABLE: the model can re-call scoped to one project.
+    #
+    # `anchor_score` and `confidence` are the ACTUAL tiebreak: the find-by-name Cypher
+    # orders by anchor_score DESC, confidence DESC, name ASC. S1 row 11 records this pick
+    # as having "no declared tiebreak" — it has one, in the query, invisible to every
+    # caller. Returning the two sort keys states it in the payload rather than in a
+    # sentence, so the caller can see WHY this match won and not merely that it did.
+    # This is the candidate-set half of the unadmitted C-23; the `outcome: "ambiguous"`
+    # half is a contract change and is not smuggled in here.
+    others = matches[1 : 1 + _OTHER_MATCHES_CAP]
     return {
         "found": True,
         "entity": {
@@ -579,10 +770,25 @@ async def _handle_memory_recall_entity(
             "kind": detail.entity.kind,
             "aliases": detail.entity.aliases,
             "confidence": detail.entity.confidence,
+            "project_id": detail.entity.project_id,
+            "anchor_score": detail.entity.anchor_score,
         },
         "relations": relations,
         "relations_truncated": detail.relations_truncated,
-        "other_matches": [e.name for e in matches[1 : 1 + _OTHER_MATCHES_CAP]],
+        "other_matches": [
+            {
+                "name": e.name,
+                "kind": e.kind,
+                "project_id": e.project_id,
+                "confidence": e.confidence,
+                "anchor_score": e.anchor_score,
+            }
+            for e in others
+        ],
+        # A COUNT, not a bool, and derived from the match list rather than typed: the
+        # Cypher has no LIMIT, so this is the true residue. `> len(other_matches)` is the
+        # truncation signal, which is why no separate flag is added.
+        "other_matches_total": len(matches) - 1,
     }
 
 
@@ -592,11 +798,10 @@ async def _handle_memory_timeline(
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
     exclude = await _diary_exclusion(ctx)  # D16 — no diary leak into a non-assistant session
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         participant_candidates: list[str] | None = None
         if args.entity_name:
-            matches = await find_entities_by_name(
-                session,
+            matches = await get_graph_store(session).find_entities_by_name(  # T17
                 user_id=str(ctx.user_id),
                 project_id=project_id,
                 name=args.entity_name,
@@ -704,7 +909,7 @@ async def _handle_memory_remember(
                 "fact_type": pending.fact_type,
             }
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         fact = await merge_fact(
             session,
             user_id=str(ctx.user_id),
@@ -730,7 +935,7 @@ async def _handle_memory_forget(
     # id and invalidate_fact is OWNER-keyed (user_id scoped), so a fact belonging to
     # another user simply doesn't match (→ "no matching fact"). The owner boundary
     # here is the user_id, not a project.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         fact = await invalidate_fact(
             session, user_id=str(ctx.user_id), fact_id=args.fact_id
         )

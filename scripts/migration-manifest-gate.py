@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""migration-manifest-gate — a migration file the orchestrator never applies.
+
+THE INCIDENT, measured 2026-08-08 (`1b7gap-H1`)
+-----------------------------------------------
+`contracts/migrations/manifest.yaml` is the ordered list the migration
+orchestrator applies. It ended at `0013`. Six migrations — `0014` through
+`0019` — had shipped since, and **not one was registered**, so the orchestrator
+had been applying an eight-month-old schema: the writer lease, the ruleset
+digest, both projection drops and the whole `channels` registry could not exist
+in a real per-reality database. `0019_channels` in particular was written,
+reviewed, live-smoked 46 times, gated pre-commit, and **applied by nothing**.
+
+The part that makes this a gate rather than a fix: **the gap was already
+tracked.** A comment in the manifest names `D-MANIFEST-0009-0012-UNREGISTERED`
+and explains that four files are deliberately unregistered. Six more drifted
+straight past that row while it sat there. That is the project's own lesson in
+its purest form — *intent is not a mechanism*, and a row that describes a hole
+does not notice the hole getting bigger.
+
+WHAT IT CHECKS
+--------------
+  R1  every `per_reality/<id>.up.sql` has a manifest entry, or an `UNREGISTERED`
+      row below stating WHY and what would wake it up
+  R2  every manifest entry names a file that exists (the phantom direction —
+      an entry for a deleted migration makes the orchestrator fail at deploy)
+  R3  every `.up.sql` has a matching `.down.sql`
+  R4  versions strictly increase, and `dependencies` reference earlier ids
+      (the orchestrator checks this at RUNTIME, which is too late to be a
+      pre-commit signal; checking it here is cheap and catches the edit)
+  R6  a migration containing `DROP TABLE`/`DROP COLUMN` is `breaking: true`, so it
+      routes through the canary the manifest's own header mandates (`1b12-06`)
+  R5  the `UNREGISTERED` list SHRINKS — an id that is now registered must lose
+      its row, or this gate reds. An exclusion that outlives its reason is how
+      `D-MANIFEST-0009-0012-UNREGISTERED` came to cover six files it never named.
+
+Run: ``python scripts/migration-manifest-gate.py`` — wired pre-commit.
+``--self-test`` runs the non-vacuity cases alone.
+Exit 0 = every migration is accounted for; 1 = findings; 2 = misuse.
+"""
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+
+# BOTH migration trees. The meta tree is at REPO ROOT, not under `contracts/`,
+# and it had no manifest and no gate until 2026-08-08 -- 35 migrations governing
+# `reality_registry` and the whole control plane, covered by nothing. A gate that
+# knows about one of two trees is `NV-3`: the second is default-uncovered, and
+# `1b7gap-H1` is what that costs on the tree that WAS covered.
+TREES = {
+    "per_reality": (REPO / "contracts/migrations/manifest.yaml",
+                    REPO / "contracts/migrations/per_reality"),
+    "meta":        (REPO / "migrations/meta/manifest.yaml",
+                    REPO / "migrations/meta"),
+}
+MANIFEST, MIGRATIONS = TREES["per_reality"]
+
+# Deliberately unregistered, each with the reason and the trigger that would end
+# it. This list must SHRINK. Adding a row is a decision; leaving one after the
+# id is registered is a finding (R5).
+# Keyed by TREE, because an exclusion that is right for one tree is not
+# automatically right for the other.
+UNREGISTERED_BY_TREE = {
+    "meta": {},
+    "per_reality": {
+            "0009_canon_projection": "applied by the projection/test harnesses directly, not the "
+                                 "orchestrator's migrate path (D-MANIFEST-0009-0012-UNREGISTERED). "
+                                 "Wakes up when canon projection is provisioned per reality.",
+        "0010_canon_projection_indexes": "see 0009 — same harness, same deferral row.",
+        "0011_archive_state": "see 0009 — same harness, same deferral row.",
+        "0012_events_outbox_prune_index": "see 0009 — same harness, same deferral row.",
+    },
+}
+UNREGISTERED = UNREGISTERED_BY_TREE["per_reality"]
+
+
+def strip_sql_comments(text: str) -> str:
+    """A `DROP TABLE` inside a `--` comment is prose, not a drop."""
+    return "\n".join(line.split("--")[0] for line in text.splitlines())
+
+
+def parse_manifest(text: str) -> list[dict]:
+    """A tiny reader for the manifest's fixed shape.
+
+    Deliberately not PyYAML: this gate runs pre-commit on every machine, and a
+    gate that cannot run because a dependency is missing is a gate that gets
+    removed. The shape is `- id: "x"` / `version: N` / `dependencies: [...]`,
+    which is a stable contract stated in the manifest's own header.
+    """
+    out: list[dict] = []
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("#"):
+            continue
+        m = re.match(r'-\s*id:\s*"([^"]+)"', s)
+        if m:
+            out.append({"id": m.group(1), "version": None, "breaking": False,
+                        "dependencies": []})
+            continue
+        if not out:
+            continue
+        m = re.match(r"breaking:\s*(true|false)", s)
+        if m:
+            out[-1]["breaking"] = m.group(1) == "true"
+        m = re.match(r"version:\s*(\d+)", s)
+        if m:
+            out[-1]["version"] = int(m.group(1))
+        m = re.match(r"dependencies:\s*\[(.*)\]", s)
+        if m:
+            out[-1]["dependencies"] = re.findall(r'"([^"]+)"', m.group(1))
+    return out
+
+
+def check(manifest_text: str, on_disk: set[str], downs: set[str],
+          unregistered: dict[str, str], destructive: set[str] | None = None) -> list[str]:
+    findings: list[str] = []
+    entries = parse_manifest(manifest_text)
+    ids = [e["id"] for e in entries]
+    destructive = destructive or set()
+
+    if not entries:
+        return ["MISUSE — no migration entries parsed out of the manifest. A comparison "
+                "against nothing agrees with anything."]
+
+    # R1 — a file with no entry and no reasoned exclusion.
+    for stem in sorted(on_disk):
+        if stem not in ids and stem not in unregistered:
+            findings.append(
+                f"R1 {stem}.up.sql exists and the orchestrator will never apply it — no manifest "
+                f"entry, and no UNREGISTERED row saying why. This is the 1b7gap-H1 defect: six "
+                f"migrations shipped unregistered while a comment tracked four.")
+
+    # R2 — an entry naming a file that is not there.
+    for stem in ids:
+        if stem not in on_disk:
+            findings.append(f"R2 the manifest declares `{stem}` and "
+                            f"per_reality/{stem}.up.sql does not exist — the orchestrator will "
+                            f"fail at deploy, not here.")
+
+    # R3 — no down migration.
+    for stem in sorted(on_disk):
+        if stem not in downs:
+            findings.append(f"R3 {stem}.up.sql has no {stem}.down.sql — nothing can reverse it.")
+
+    # R4 — ordering, and dependencies that point forward or nowhere.
+    seen: list[str] = []
+    prev = None
+    for e in entries:
+        if e["version"] is None:
+            findings.append(f"R4 `{e['id']}` has no version.")
+        elif prev is not None and e["version"] <= prev:
+            findings.append(f"R4 `{e['id']}` version {e['version']} does not exceed the previous "
+                            f"entry's {prev}.")
+        else:
+            prev = e["version"]
+        for dep in e["dependencies"]:
+            if dep not in seen:
+                findings.append(f"R4 `{e['id']}` depends on `{dep}`, which is not declared "
+                                f"before it.")
+        seen.append(e["id"])
+
+    # R6 — a migration that DROPs must be `breaking: true` (`1b12-06`).
+    #
+    # The manifest's own header states the criterion — `breaking: <bool> — true
+    # ⇒ route through canary module` — and `0002`/`0003`/`0004` carry it BECAUSE
+    # they drop tables. `0017` and `0018` were registered `breaking: false` while
+    # dropping TEN tables between them, which fans a destructive change out to
+    # the whole fleet with no one-reality canary. Nothing checked `breaking` at
+    # all: the field existed, the rule was written down, and the two were joined
+    # by nobody.
+    for e in entries:
+        if e["id"] in destructive and not e["breaking"]:
+            findings.append(
+                f"R6 `{e['id']}` contains a DROP TABLE / DROP COLUMN and is registered "
+                f"`breaking: false`, so it fans out to every reality with no canary. The "
+                f"manifest's own header: `true => route through canary module`.")
+
+    # R5 — the exclusion list must shrink.
+    for stem in sorted(unregistered):
+        if stem in ids:
+            findings.append(f"R5 `{stem}` is UNREGISTERED here and IS in the manifest. The "
+                            f"exclusion outlived its reason — delete the row.")
+        elif stem not in on_disk:
+            findings.append(f"R5 `{stem}` is UNREGISTERED here and has no file. Delete the row.")
+    return findings
+
+
+def self_test() -> int:
+    bad = []
+    good_manifest = (
+        'migrations:\n'
+        '  - id: "0001_initial"\n    version: 1\n    dependencies: []\n'
+        '  - id: "0002_events"\n    version: 2\n    dependencies: ["0001_initial"]\n')
+    disk = {"0001_initial", "0002_events"}
+    downs = set(disk)
+
+    if check(good_manifest, disk, downs, {}):
+        bad.append(f"reds on a clean input: {check(good_manifest, disk, downs, {})}")
+
+    cases = {
+        "R1 a file with no entry (the actual 1b7gap-H1 defect)":
+            (good_manifest, disk | {"0003_orphan"}, downs | {"0003_orphan"}, {}),
+        "R2 an entry with no file":
+            (good_manifest + '  - id: "0009_ghost"\n    version: 9\n    dependencies: []\n',
+             disk, downs, {}),
+        "R3 an up with no down":
+            (good_manifest, disk, {"0001_initial"}, {}),
+        "R4 a version that does not increase":
+            (good_manifest.replace("version: 2", "version: 1"), disk, downs, {}),
+        "R4 a dependency declared later":
+            (good_manifest.replace('dependencies: []', 'dependencies: ["0002_events"]', 1),
+             disk, downs, {}),
+        "R5 an exclusion that is now registered":
+            (good_manifest, disk, downs, {"0002_events": "stale reason"}),
+        "R5 an exclusion whose file is gone":
+            (good_manifest, disk, downs, {"0099_vanished": "stale reason"}),
+        "R6 a DROP registered as non-breaking (the 0017/0018 defect)":
+            (good_manifest, disk, downs, {}, {"0002_events"}),
+    }
+    for label, args in cases.items():
+        if not check(*args):
+            bad.append(f"BLIND to: {label}")
+
+    # A file that IS excluded must NOT red — the exclusion has to work, or the
+    # list is decoration and the next author deletes the gate instead.
+    if check(good_manifest, disk | {"0004_harness"}, downs | {"0004_harness"},
+             {"0004_harness": "applied by the harness"}):
+        bad.append("a REASONED exclusion still reds — the escape hatch does not work")
+
+    # R6 must NOT red once the migration is correctly marked breaking, or the
+    # rule is unsatisfiable and the next author deletes it rather than obeys it.
+    breaking_manifest = good_manifest.replace(
+        '  - id: "0002_events"\n    version: 2\n',
+        '  - id: "0002_events"\n    version: 2\n    breaking: true\n', 1)
+    if check(breaking_manifest, disk, downs, {}, {"0002_events"}):
+        bad.append("R6 still reds when the DROP migration IS marked breaking — unsatisfiable")
+    # And a DROP that lives only inside a `--` comment is prose, not a drop.
+    if strip_sql_comments("-- DROP TABLE x;\nSELECT 1;").strip().startswith("DROP"):
+        bad.append("a DROP TABLE inside a comment reads as a real drop")
+
+    if bad:
+        print("migration-manifest-gate: SELF-TEST FAIL")
+        for b in bad:
+            print("  " + b)
+        return 1
+    print(f"migration-manifest-gate: SELF-TEST PASS — {len(cases)} case(s) each red (an "
+          f"unregistered file, a phantom entry, a missing down, a non-increasing version, a "
+          f"forward dependency, and an exclusion that outlived its reason), and a reasoned "
+          f"exclusion does NOT red (non-vacuous in both directions)")
+    return 0
+
+
+def main() -> int:
+    if "--self-test" in sys.argv:
+        return self_test()
+    if self_test() != 0:
+        return 2
+
+    total_disk = total_reg = total_excl = 0
+    all_findings: list[str] = []
+
+    for tree, (manifest, migdir) in TREES.items():
+        if not manifest.is_file() or not migdir.is_dir():
+            print(f"migration-manifest-gate: MISUSE — {tree}: {manifest} or {migdir} is absent",
+                  file=sys.stderr)
+            return 2
+
+        on_disk = {p.name[:-len(".up.sql")] for p in migdir.rglob("*.up.sql")}
+        downs = {p.name[:-len(".down.sql")] for p in migdir.rglob("*.down.sql")}
+        destructive = {
+            p.name[:-len(".up.sql")] for p in migdir.rglob("*.up.sql")
+            if re.search(r"(?im)^[ 	]*DROP[ 	]+(TABLE|COLUMN)[ 	]",
+                         strip_sql_comments(p.read_bytes().decode("utf-8", "replace")))
+        }
+        unreg = UNREGISTERED_BY_TREE.get(tree, {})
+        findings = check(manifest.read_bytes().decode("utf-8"), on_disk, downs, unreg, destructive)
+        all_findings += [f"[{tree}] {f}" for f in findings]
+
+        total_disk += len(on_disk)
+        total_reg += len(parse_manifest(manifest.read_bytes().decode("utf-8")))
+        total_excl += len(unreg)
+
+    if all_findings:
+        print(f"migration-manifest-gate: {len(all_findings)} finding(s)")
+        print()
+        for f in all_findings:
+            print("  " + f)
+        print()
+        print("A migration the orchestrator never applies is a schema change that does not")
+        print("happen. 0014-0019 shipped that way for months, past a comment that tracked four")
+        print("other files by name -- a row is not a mechanism.")
+        return 1
+
+    print(f"migration-manifest-gate: OK — {len(TREES)} tree(s): {total_disk} migration(s) on disk, "
+          f"{total_reg} registered, {total_excl} deliberately excluded with a stated reason, every "
+          f"up has a down, versions strictly increase and no dependency points forward")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

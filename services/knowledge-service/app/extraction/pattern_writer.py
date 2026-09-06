@@ -53,13 +53,13 @@ from collections.abc import Iterable
 from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.facts import merge_fact
+from app.db.graph_repos.facts import merge_fact
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
-from app.db.neo4j_repos.provenance import (
+from app.db.graph_repos.provenance import (
     add_evidence,
     upsert_extraction_source,
 )
-from app.db.neo4j_repos.relations import create_relation
+from app.db.graph_repos.relations import create_relation
 from app.extraction.anchor_loader import Anchor
 from app.extraction.entity_detector import EntityCandidate
 from app.extraction.entity_resolver import (

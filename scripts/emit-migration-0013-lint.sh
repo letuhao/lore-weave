@@ -25,14 +25,27 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 # violates TEXT — echoes "MISSING-0013" when the text is an own-baseline emit
 # script that omits 0013, else nothing. Returns 0 always.
+# 🔴 ANSWERS BY EXIT STATUS, NOT BY STDOUT — the same lesson as the `$(cat "$f")`
+# note in `run_lint` below, one call deeper. This echoed `MISSING-0013` and every caller then
+# asked `[ -n "$(violates ...)" ]`, so a command substitution that came back EMPTY under CI load
+# was indistinguishable from the verdict "clean". That is how `--selftest` failed in CI on
+# 2026-09-05 with *"did NOT flag an own-baseline emit script missing 0013 (vacuous)"* while
+# passing locally, bare and with the flag, on the same bytes.
+#
+# In the SELFTEST an empty capture is a loud false alarm. In `run_lint` the same empty capture is
+# a FALSE NEGATIVE — a script that really is missing 0013 reads as clean and the lint says PASS.
+# That is the worse direction, and it was live on every one of the 191 files this scans.
+#
+# A status cannot come back empty. 0 = violates, 1 = clean, and no subshell stands between the
+# predicate and its caller.
 violates() {
   local text="$1"
   if printf '%s' "$text" | grep -q '0002_events_table' \
      && printf '%s' "$text" | grep -q ' -emit' \
      && ! printf '%s' "$text" | grep -q '0013_events_content_sha256'; then
-    echo MISSING-0013
+    return 0
   fi
-  return 0
+  return 1
 }
 
 run_lint() {
@@ -53,7 +66,7 @@ run_lint() {
       exit 1
     fi
     scanned=$((scanned + 1))
-    if [ -n "$(violates "$text")" ]; then
+    if violates "$text"; then
       echo "[emit-0013] FAIL — $f sets up its own events baseline + runs 'wg -emit' but does NOT apply 0013_events_content_sha256"
       echo "  → add 0013_events_content_sha256 to its migration list (the emit path stamps events.content_sha256)."
       violations=$((violations + 1))
@@ -77,10 +90,10 @@ selftest() {
 "$WG" -seed 1 -profile x -emit -dsn "$DSN"'
   good='for m in 0001_initial 0002_events_table 0013_events_content_sha256; do :; done
 "$WG" -emit -dsn "$DSN"'
-  if [ -z "$(violates "$bad")" ]; then
+  if ! violates "$bad"; then
     echo "[emit-0013] SELFTEST FAIL — did NOT flag an own-baseline emit script missing 0013 (vacuous)"; exit 2
   fi
-  if [ -n "$(violates "$good")" ]; then
+  if violates "$good"; then
     echo "[emit-0013] SELFTEST FAIL — flagged a script that DOES apply 0013"; exit 2
   fi
   echo "[emit-0013] SELFTEST PASS — flags a missing-0013 emit script, passes one with 0013 (non-vacuous)"

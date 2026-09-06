@@ -1,0 +1,26 @@
+{
+  "_note": "glossary_propose_batch, re-asked with the concrete ops the tool requires.",
+  "scenarios": [
+    {
+      "id": "glossary-propose-batch-v2",
+      "tool_under_test": "glossary_propose_batch",
+      "expect_tool": "glossary_propose_batch",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set these up together in one batch for this book: a kind called Faction with an attribute Allegiance, and a kind called Artifact with an attribute Origin.",
+      "prompt_source": "_meta.synonyms['several kinds and attributes at once'] + ['apply these changes together'], now NAMING the concrete changes. v1 said only 'set up several kinds and attributes' and the model correctly asked WHICH — `ops` must be explicit, so a vague ask has nothing to batch. Naming the kinds is ordinary user prose, not a typed tool argument.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the tool applies ontology changes WITHOUT a confirm card (its own description says MANY changes on ONE confirm), OR the minted card carries ops the user never named, OR fewer than the two kinds asked for. CONTROL: read chat_messages.withheld_tools for stage='intent_gate' — a non-zero count means the tool was WITHHELD and the run measures the DQ-T3 stamp instead. v1 measured 0, i.e. the setup wording opened the gate.",
+      "ship_audit": {
+        "gate": "OWED — the whole point of this tool is ONE confirm for MANY changes.",
+        "empty_case": "OWED — an empty `ops` must be refused, not minted as an empty confirm.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

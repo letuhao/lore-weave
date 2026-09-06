@@ -32,7 +32,11 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"Use before proposing entities or shaping the book's schema. Every genre/kind/attribute " +
 			"row carries a `base_version` — copy it verbatim into glossary_ontology_upsert to get " +
 			"concurrent-edit detection.",
-		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil)),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"what categories does this book have", "my story bible structure", "what kinds are in this book", "show my ontology", "what attributes do characters have"})),
 	}, s.toolBookOntologyRead)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -41,9 +45,16 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"copying the picked genres/kinds (+ their attributes & links) down into the book tier. " +
 			"High-impact: it does NOT adopt; it returns a confirm_token + a preview of how many are new, " +
 			"which a human confirms via glossary_confirm_action. `universal` genre + `unknown` kind are " +
-			"always included. Args are genre/kind CODES (see glossary_list_system_standards).",
+			"always included. Args are genre/kind CODES (see glossary_list_system_standards). " +
+			"CALLING THIS IS HOW YOU ASK: the card carries the question with the preview attached. " +
+			"If the author already asked for the setup, do not ask again in prose first — that raises no card, " +
+			"mints no token, and spends a turn on permission they gave.",
 		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"set up my story bible", "scaffold the glossary", "adopt the standard categories", "set up the world", "start my world bible", "give me the default categories"}),
 	}, s.toolAdoptStandards)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -55,7 +66,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[bookCreateToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_ontology_upsert"),
 	}, s.toolBookCreate)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -71,7 +82,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			}),
 			"changes[]", // the tolerance-shim diff absorbs weak-model extras (old_value, …)
 		),
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_ontology_upsert"),
 	}, s.toolBookPatch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -82,7 +93,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"Address by code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code). " +
 			"NOTE: superseded by glossary_ontology_delete — kept for existing callers only.",
 		InputSchema: closedSetSchemaFor[bookDeleteToolIn](map[string][]any{"level": enumLevels}),
-		Meta:        lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_ontology_delete"),
 	}, s.toolBookDelete)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -106,7 +117,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"NOTE: superseded by glossary_set_genres (target=book_active) — kept for existing callers only.",
 		// Direct, reversible delta write (INSERT/DELETE active-genre rows) ⇒ Tier A.
 		// LEGACY (catalog-unification 2026-07-22 Part D): superseded by glossary_set_genres.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_set_genres"),
 	}, s.toolBookSetActiveGenres)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -115,7 +126,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"of genre codes. Adds or removes which genres' attributes apply to that kind. " +
 			"NOTE: superseded by glossary_set_genres (target=kind) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part D): superseded by glossary_set_genres.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_set_genres"),
 	}, s.toolBookSetKindGenres)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -124,7 +135,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"entity follows the book's active genres. " +
 			"NOTE: superseded by glossary_get_entity (include=genres) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part B2): folded into glossary_get_entity.include.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_get_entity"),
 	}, s.toolEntityGetGenres)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -134,7 +145,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"NOTE: superseded by glossary_set_genres (target=entity) — kept for existing callers only.",
 		// Direct, reversible write (replaces the entity's genre override) ⇒ Tier A.
 		// LEGACY (catalog-unification 2026-07-22 Part D): superseded by glossary_set_genres.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_set_genres"),
 	}, s.toolEntitySetGenres)
 }
 
@@ -147,7 +158,7 @@ const (
 // ── adopt (C) ─────────────────────────────────────────────────────────────────
 
 type adoptToolIn struct {
-	BookID string   `json:"book_id,omitempty" jsonschema:"the book to scaffold (UUID)"`
+	BookID string   `json:"book_id" jsonschema:"the book to scaffold (UUID)"`
 	Genres []string `json:"genres,omitempty" jsonschema:"system genre codes to adopt (universal is always added)"`
 	Kinds  []string `json:"kinds,omitempty" jsonschema:"system kind codes to adopt (unknown is always added)"`
 }
@@ -181,7 +192,7 @@ func (s *Server) toolAdoptStandards(ctx context.Context, req *mcp.CallToolReques
 // ── create (W) ────────────────────────────────────────────────────────────────
 
 type bookCreateToolIn struct {
-	BookID          string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID          string   `json:"book_id" jsonschema:"the book (UUID)"`
 	Level           string   `json:"level" jsonschema:"REQUIRED discriminator — what to create: 'genre' | 'kind' | 'attribute'. Always set this first."`
 	Code            string   `json:"code,omitempty" jsonschema:"machine code (derived from name if omitted)"`
 	Name            string   `json:"name" jsonschema:"display name"`
@@ -269,7 +280,7 @@ func bookCreateToolErr(err error, code string) error {
 // ── patch (W, base-version) ───────────────────────────────────────────────────
 
 type bookPatchToolIn struct {
-	BookID          string    `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID          string    `json:"book_id" jsonschema:"the book (UUID)"`
 	Level           string    `json:"level" jsonschema:"REQUIRED discriminator — what to edit: 'genre' | 'kind' | 'attribute'. Always set this first."`
 	Code            string    `json:"code" jsonschema:"the row's code"`
 	KindCode        string    `json:"kind_code,omitempty" jsonschema:"attribute only"`
@@ -550,7 +561,7 @@ func (s *Server) bookRowVersions(ctx context.Context, table, idCol string, bookI
 // ── set-active-genres / set-kind-genres (W, delta) ────────────────────────────
 
 type setActiveGenresToolIn struct {
-	BookID string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID string   `json:"book_id" jsonschema:"the book (UUID)"`
 	Add    []string `json:"add,omitempty" jsonschema:"genre codes to activate"`
 	Remove []string `json:"remove,omitempty" jsonschema:"genre codes to deactivate"`
 }
@@ -600,7 +611,7 @@ func (s *Server) setActiveGenresCore(ctx context.Context, bookID uuid.UUID, add,
 }
 
 type setKindGenresToolIn struct {
-	BookID   string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID   string   `json:"book_id" jsonschema:"the book (UUID)"`
 	KindCode string   `json:"kind_code" jsonschema:"the kind whose genre links to change"`
 	Add      []string `json:"add,omitempty" jsonschema:"genre codes to link"`
 	Remove   []string `json:"remove,omitempty" jsonschema:"genre codes to unlink"`
@@ -659,7 +670,7 @@ func (s *Server) setKindGenresCore(ctx context.Context, bookID uuid.UUID, kindCo
 // ── entity-genres (R / W) ─────────────────────────────────────────────────────
 
 type entityGenresGetToolIn struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity (UUID)"`
 }
 type entityGenresToolOut struct {
@@ -689,7 +700,7 @@ func (s *Server) toolEntityGetGenres(ctx context.Context, _ *mcp.CallToolRequest
 }
 
 type entityGenresSetToolIn struct {
-	BookID     string   `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID     string   `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID   string   `json:"entity_id" jsonschema:"the entity (UUID)"`
 	GenreCodes []string `json:"genre_codes,omitempty" jsonschema:"genre codes for the override; empty clears to book default"`
 }

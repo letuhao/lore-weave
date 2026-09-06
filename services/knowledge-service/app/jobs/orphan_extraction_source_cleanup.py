@@ -37,7 +37,8 @@ from __future__ import annotations
 
 import logging
 
-from app.db.neo4j_helpers import CypherSession, run_write
+from app.db.neo4j_helpers import CypherSession
+from app.db.graph_repos import maintenance
 
 __all__ = ["delete_orphan_extraction_sources"]
 
@@ -52,21 +53,6 @@ logger = logging.getLogger(__name__)
 # `$user_id` is always present (K11.4 assert_user_id_param); project
 # narrowing is optional and reuses the `$project_id IS NULL OR ...`
 # pattern from the reconciler.
-_ORPHAN_CLEANUP_CYPHER = """
-MATCH (s:ExtractionSource)
-WHERE s.user_id = $user_id
-  AND ($project_id IS NULL OR s.project_id = $project_id)
-OPTIONAL MATCH (n)-[r:EVIDENCED_BY]->(s)
-  WHERE n.user_id = $user_id
-WITH s, count(r) AS edge_count
-WHERE edge_count = 0
-WITH s
-LIMIT COALESCE($limit, 2147483647)
-DETACH DELETE s
-RETURN count(*) AS deleted
-"""
-
-
 async def delete_orphan_extraction_sources(
     session: CypherSession,
     *,
@@ -74,50 +60,14 @@ async def delete_orphan_extraction_sources(
     project_id: str | None = None,
     limit: int | None = None,
 ) -> int:
-    """Delete `:ExtractionSource` nodes with zero incoming EVIDENCED_BY
-    edges.
+    """Delete `:ExtractionSource` nodes with zero incoming EVIDENCED_BY edges.
 
-    Args:
-        session: K11.4 CypherSession (multi-tenant guarded).
-        user_id: tenant scope. Required; this job is always per-user.
-        project_id: optional narrowing. `None` sweeps all sources for
-            the user.
-        limit: max orphans deleted per call. `None` removes the cap;
-            the scheduler should loop until a call returns zero when
-            running against large tenants.
-
-    Returns:
-        Number of orphan sources deleted on this run.
-
-    Do NOT run concurrently with extraction — the transaction-local
-    race described in the module docstring can delete a source that
-    a pending extraction transaction is about to link edges to.
+    The query moved to `graph_repos/maintenance.py` (plan T17); this module keeps the
+    SCHEDULING contract, which is the part with operational teeth: do NOT run concurrently
+    with extraction — the transaction-local race in the module docstring can delete a
+    source a pending extraction is about to link edges to. `limit=None` removes the cap and
+    the scheduler should loop until a call returns zero on large tenants.
     """
-    if not user_id:
-        raise ValueError("user_id is required for orphan source cleanup")
-    if limit is not None and limit <= 0:
-        raise ValueError(f"limit must be positive when set, got {limit}")
-
-    result = await run_write(
-        session,
-        _ORPHAN_CLEANUP_CYPHER,
-        user_id=user_id,
-        project_id=project_id,
-        limit=limit,
+    return await maintenance.delete_orphan_extraction_sources(
+        session, user_id=user_id, project_id=project_id, limit=limit,
     )
-    record = await result.single()
-    # Same anomaly-guard as K11.9 reconciler — RETURN count(*) always
-    # produces a row; None means driver/session corruption.
-    if record is None:
-        raise RuntimeError(
-            "D-K11.9-02: delete_orphan_extraction_sources returned no row "
-            "— driver or session anomaly"
-        )
-    deleted = int(record["deleted"])
-    if deleted > 0:
-        logger.info(
-            "D-K11.9-02: deleted %d orphan ExtractionSource(s) "
-            "user=%s project=%s",
-            deleted, user_id, project_id,
-        )
-    return deleted

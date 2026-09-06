@@ -20,8 +20,8 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.canonical import entity_canonical_id
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.canonical import entity_canonical_id
+from app.db.graph_repos.entities import (
     SUPPORTED_VECTOR_DIMS,
     archive_entity,
     find_entities_by_vector,

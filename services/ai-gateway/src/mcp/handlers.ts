@@ -14,6 +14,10 @@ import {
 } from '../federation/find-tools.js';
 import { UI_TOOL_NAMES, handleUiTool } from './ui-tools.js';
 import { PROPOSE_EDIT_TOOL, PROPOSE_EDIT_NAME, handleProposeEdit } from './propose-edit-tool.js';
+import {
+  CONFIRM_ACTION_TOOL, GLOSSARY_CONFIRM_ACTION_TOOL, GLOSSARY_PROPOSE_ENTITY_EDIT_TOOL,
+  handleConfirmAction, handleGlossaryConfirmAction, handleGlossaryProposeEntityEdit,
+} from './confirm-tools.js';
 
 const log = new Logger('McpProxy');
 
@@ -75,6 +79,10 @@ export async function handleListTools(
       // nav only cost tokens. `handleUiTool` stays wired, so a directive still resolves if one
       // arrives — the model just never sees these tools.
       PROPOSE_EDIT_TOOL,
+      // V7 / DQ-V9 (2026-09-03) — the three KIND-C human-gate tools moved here from
+      // chat-service's frontend_tools.py. They are DIRECTIVE tools (no server executor),
+      // so the human gate they exist to provide is preserved; see confirm-tools.ts.
+      CONFIRM_ACTION_TOOL, GLOSSARY_CONFIRM_ACTION_TOOL, GLOSSARY_PROPOSE_ENTITY_EDIT_TOOL,
       ...(federation.catalog() as any[]),
       ...overlay,
     ],
@@ -236,7 +244,15 @@ export async function handleFindTools(
 function consumerLocalTools(): any[] {
   // DEPRECATED 2026-07-25 — UI_TOOLS de-advertised (GUI control is user/logic-driven).
   // handleUiTool remains dispatchable for a cached-workflow directive; the model never sees them.
-  return [TOOL_LIST_TOOL, TOOL_LOAD_TOOL, PROPOSE_EDIT_TOOL] as any[];
+  // V7 / DQ-V9 — the three KIND-C human-gate tools must be listed HERE as well as in
+  // handleListTools, or K23 breaks: `tool_list` would not enumerate tools that
+  // `tools/list` serves, so a model narrowed to the discovery pair could never find them.
+  // Adding them to the advertised array alone left exactly that hole, and the K23 guard
+  // caught it — advertising a tool and making it DISCOVERABLE are two separate wirings.
+  return [
+    TOOL_LIST_TOOL, TOOL_LOAD_TOOL, PROPOSE_EDIT_TOOL,
+    CONFIRM_ACTION_TOOL, GLOSSARY_CONFIRM_ACTION_TOOL, GLOSSARY_PROPOSE_ENTITY_EDIT_TOOL,
+  ] as any[];
 }
 
 export async function handleToolList(
@@ -308,8 +324,22 @@ export async function handleCallTool(
   if (name === TOOL_LOAD_NAME) {
     return handleToolLoad(federation, args, headers);
   }
+  // RETIRED 2026-08-25 (owner decision). find_tools is semantic top-K and structurally
+  // cannot surface a tool outside its K matches — the F17 reason it was pulled from the
+  // LLM's view on 2026-07-20. It has not been called since 2026-07-15. The handler and
+  // `handleFindTools` are LEFT IN PLACE deliberately (deleting them loses the rationale
+  // above), but nothing may reach them: a caller gets a refusal that names the replacement
+  // rather than a silent empty result it would mistake for "no such capability".
   if (name === FIND_TOOLS_NAME) {
-    return handleFindTools(federation, args, headers);
+    return {
+      isError: true,
+      content: [{
+        type: 'text' as const,
+        text: 'find_tools is RETIRED. Use tool_list to see every tool in a domain, then '
+          + 'tool_load to load the exact one. It was semantic top-K and could not surface a '
+          + 'tool outside its K matches; the deterministic pair has no such blind spot.',
+      }],
+    };
   }
   // Phase 3 — ui_* are consumer-local directive tools: validate (enum/required) and
   // return a directive the browser acts on; an out-of-enum arg is an isError result
@@ -324,6 +354,15 @@ export async function handleCallTool(
   // incident (propose_edit called with propose_record_edit's args) is rejected at the source.
   if (name === PROPOSE_EDIT_NAME) {
     return handleProposeEdit(args);
+  }
+  if (name === CONFIRM_ACTION_TOOL.name) {
+    return handleConfirmAction(args);
+  }
+  if (name === GLOSSARY_CONFIRM_ACTION_TOOL.name) {
+    return handleGlossaryConfirmAction(args);
+  }
+  if (name === GLOSSARY_PROPOSE_ENTITY_EDIT_TOOL.name) {
+    return handleGlossaryProposeEntityEdit(args);
   }
 
   const env = extractEnvelope(headers);

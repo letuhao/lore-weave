@@ -25,11 +25,23 @@ def _nb(eid, *relations, found=True):
                             relations=list(relations))
 
 
-def _patch(monkeypatch, entities, nb_by_id):
+def _patch(monkeypatch, entities, nb_by_id, seen=None):
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return entities
 
-    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id, as_of=None):
+        # T55/i — ASSERT the book, do not merely accept it. The KAL scopes the read on this
+        # id; a double that swallowed the kwarg would keep passing while `build_context_brief`
+        # dropped it again, which is precisely how it came to be dropped in the first place.
+        assert book_id, "book_id was not threaded through to the neighbourhood fetch"
+        # T48ad — the same treatment for the STORY WINDOW, and for the same reason: `as_of`
+        # was a parameter of `build_context_brief`, was used for the canonical snapshot, and
+        # never reached this call. The brief therefore mixed a chapter-scoped snapshot with
+        # latest-head relations — measured live at 81 relations spanning ten chapters while
+        # the sibling `neighborhood` route held the same entity at 25. RECORDING it here is
+        # what lets a test assert the threading instead of the double swallowing it.
+        if seen is not None:
+            seen.append(as_of)
         return nb_by_id.get(glossary_entity_id, WikiNeighborhood.empty(glossary_entity_id))
 
     monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)
@@ -249,7 +261,7 @@ def _patch_with_canonical(monkeypatch, entities, nb_by_id, canon_by_id, capture=
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return entities
 
-    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id, as_of=None):
         return nb_by_id.get(glossary_entity_id, WikiNeighborhood.empty(glossary_entity_id))
 
     async def fake_canon(book_id, entity_id, *, content_hash, as_of=None, user_id=None):
@@ -310,7 +322,7 @@ async def test_build_brief_isolates_a_failing_canonical_fetch(monkeypatch):
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return ents
 
-    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id, as_of=None):
         return WikiNeighborhood.empty(glossary_entity_id)
 
     async def fake_canon(book_id, entity_id, *, content_hash, as_of=None, user_id=None):
@@ -339,7 +351,7 @@ async def test_build_brief_isolates_a_failing_neighborhood_fetch(monkeypatch):
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return ents
 
-    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id, as_of=None):
         if glossary_entity_id == "e2":
             raise RuntimeError("knowledge-service down")
         return _nb("e1", _rel("leader_of", "Paladins"))
@@ -363,7 +375,7 @@ async def test_build_brief_neighborhood_fetch_timeout_degrades(monkeypatch):
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return ents
 
-    async def slow_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def slow_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id, as_of=None):
         await asyncio.sleep(0.2)
         return _nb("e1", _rel("leader_of", "TooLate"))
 
@@ -386,7 +398,7 @@ async def test_build_brief_neighborhood_fetch_cancellation_propagates(monkeypatc
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return ents
 
-    async def cancel_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def cancel_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id, as_of=None):
         raise asyncio.CancelledError()
 
     monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)
@@ -431,3 +443,34 @@ async def test_orchestrator_threads_brief_to_translator_and_verifier(monkeypatch
     assert "KB-SENTINEL" in captured["extra_system"]          # M4b knowledge brief
     assert "Zeldarion" in captured["extra_system"]             # M4c prev-memo names
     assert captured["verify_brief"] == "KB-SENTINEL"
+
+
+# ── T48ad: the story window reaches the neighbourhood fetch ──────────────────
+
+@pytest.mark.asyncio
+async def test_build_brief_threads_as_of_to_the_neighbourhood_fetch(monkeypatch):
+    """`as_of` was a parameter of `build_context_brief`, was used for the canonical
+    snapshot, and never reached `fetch_wiki_neighborhood`. The brief therefore carried a
+    chapter-scoped snapshot beside a LATEST-HEAD neighbourhood — measured live at 81
+    relations spanning ten chapters while the sibling `neighborhood` route, given the same
+    entity and position, returned 25.
+
+    Asserting the VALUE, not merely that the kwarg is accepted: a double that swallowed it
+    would keep passing while the brief dropped it again, which is how `book_id` came to be
+    dropped in the first place (T55/i, the assert directly above in `_patch`)."""
+    seen: list = []
+    _patch(monkeypatch, [_entity('e1', 'Tirami', desc='paladin')],
+           {'e1': _nb('e1', _rel('leader_of', 'Paladins'))}, seen=seen)
+    await build_context_brief('b1', 'u1', 'text', as_of=3_000_000)
+    assert seen == [3_000_000], f'as_of did not reach the fetch: {seen}'
+
+
+@pytest.mark.asyncio
+async def test_build_brief_without_as_of_sends_none_not_a_default(monkeypatch):
+    """No position => the transaction-time head, byte-identical to pre-T48ad. A brief that
+    invented a position would silently narrow every caller that never asked for one."""
+    seen: list = []
+    _patch(monkeypatch, [_entity('e1', 'Tirami', desc='paladin')],
+           {'e1': _nb('e1', _rel('leader_of', 'Paladins'))}, seen=seen)
+    await build_context_brief('b1', 'u1', 'text')
+    assert seen == [None], f'expected no window, got {seen}'

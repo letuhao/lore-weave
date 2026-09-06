@@ -24,9 +24,10 @@ from typing import Iterable, Mapping
 
 from uuid import UUID
 
+from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
-from app.db.neo4j_repos.entities import Entity, merge_entity, merge_entity_at_id
+from loreweave_extraction.canonical import canonicalize_entity_name
+from app.db.graph_repos.entities import Entity, merge_entity, merge_entity_at_id
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.extraction.anchor_loader import Anchor
 from app.metrics import (
@@ -290,9 +291,8 @@ async def resolve_or_merge_entity(
                     user_id, kind, canonical_alias, target_id,
                 )
 
-    return await merge_entity(
-        session,
-        user_id=user_id,
+    return await get_graph_store(session).resolve_or_merge_entity(  # T17
+                user_id=user_id,
         project_id=project_id,
         name=name,
         kind=kind,

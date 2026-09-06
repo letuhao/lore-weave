@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.clients.chapter_title_enricher import enrich_events_with_chapter_titles
-from app.db.neo4j_repos.events import Event
+from app.db.graph_repos.events import Event
 from app.db.repositories.event_text_translations import (
     EVENT_TEXT_FIELDS,
     EventTextTranslationsRepo,

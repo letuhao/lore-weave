@@ -1,0 +1,52 @@
+{
+  "_note": "DQ-T58 (owner 2026-08-28): 'DECLARE THE ARC PHRASING on composition_motif_bind_edit so the turn reaches the tool and the author gets an EXPLICIT refusal naming chapters. The tool is not taught to accept an arc.' Same scenario as scenarios-c-bindarc1.json, whose prompt is an ARC request — 'Attach Emberfall Seam to the opening arc as this book's motif' — and which measured composition_motif_bind_edit called 0 of 5.\n\nBEFORE: the arc phrasing reached no tool, and an arc id passed to the bind resolved to None in outline_node (arcs live in structure_node; ZERO ids appear in both) and got the uniform 'not found or not accessible' — the refusal the ruling explicitly rejects.",
+  "scenarios": [
+    {
+      "id": "an-arc-request-reaches-the-tool-and-is-refused-naming-chapters",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+      "prompt_source": "meta.synonyms['attach pattern to chapter'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-seam-b26-{run_id}",
+            "name": "Emberfall Seam {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-seam-b26-{run_id}')",
+          "expect": "0",
+          "why": "ZERO bindings for THIS motif. FIFTEENTH ARM: 73 attempts, 1 clean run — which called the tool and minted its card with the store unchanged. Prompt wording has now been varied seven times and the siblings measure fine in the same arms."
+        }
+      ],
+      "falsifier": "REFUTED IF: composition_motif_bind_edit is not on the wire (the arc phrasing still reaches nothing), OR it is called and the refusal does not NAME CHAPTERS, OR the tool binds the motif to the arc anyway — the owner declined teaching it that semantic. A Tier-A card raised on a CHAPTER the model picked itself is NOT a refutation; the ruling asks for the request to reach the tool, not for the bind to fail.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

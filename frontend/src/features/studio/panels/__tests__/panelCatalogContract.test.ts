@@ -15,7 +15,7 @@ import { CATEGORY_ORDER } from '../../palette/useStudioCommands';
 // openable set, and the buildable dock set in lockstep, on every CI run.
 
 const contract: Record<string, { args: Record<string, { enum?: string[] }> }> = JSON.parse(
-  readFileSync(resolve(process.cwd(), '../contracts/frontend-tools.contract.json'), 'utf-8'),
+  readFileSync(resolve(process.cwd(), '../contracts/browser-tools.contract.json'), 'utf-8'),
 );
 
 describe('studio open-panel tool ↔ dock catalog contract', () => {

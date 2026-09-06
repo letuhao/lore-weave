@@ -1,0 +1,39 @@
+error[E0603]: tuple struct constructor `RealityId` is private
+  --> tests/ui/forged_reality_id.rs:32:23
+   |
+32 |       let _forged = dp::RealityId(raw);
+   |                         ^^^^^^^^^ private tuple struct constructor
+   |
+  ::: src/ids.rs
+   |
+   | / verified_uuid_newtype!(
+   | |     /// Which reality a call addresses (`DP-A12`, `DP-R1`).
+   | |     ///
+   | |     /// Produced only by session bind, after the control plane confirms the
+...  |
+   | |     "reality"
+   | | );
+   | |_- a constructor is private if any of the fields is private
+   |
+note: the tuple struct constructor `RealityId` is defined here
+  --> src/lib.rs
+   |
+   | pub use ids::{ChannelId, NodeId, RealityId, ServiceIdentity, SessionId};
+   |                                  ^^^^^^^^^
+
+error[E0624]: associated function `new_verified` is private
+  --> tests/ui/forged_reality_id.rs:35:34
+   |
+35 |       let _minted = dp::RealityId::new_verified(raw);
+   |                                    ^^^^^^^^^^^^ private associated function
+   |
+  ::: src/ids.rs
+   |
+   | / verified_uuid_newtype!(
+   | |     /// Which reality a call addresses (`DP-A12`, `DP-R1`).
+   | |     ///
+   | |     /// Produced only by session bind, after the control plane confirms the
+...  |
+   | |     "reality"
+   | | );
+   | |_- private associated function defined here

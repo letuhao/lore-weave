@@ -40,7 +40,7 @@ from .rail import (
     step_is_required,
     user_abandoned_rail,
 )
-from .harness import DriveVerdict, ProbeFn, decide_rail_drive
+from .harness import DriveVerdict, ProbeFn, TurnRequest, decide_rail_drive
 from .state_merge import (
     EXECUTIVE_MAX_TURN_CHARS,
     EXECUTIVE_MAX_TURNS,
@@ -92,5 +92,6 @@ __all__ = [
     # harness — the drive verdict (RW-3 / RV-H3)
     "decide_rail_drive",
     "DriveVerdict",
+    "TurnRequest",
     "ProbeFn",
 ]

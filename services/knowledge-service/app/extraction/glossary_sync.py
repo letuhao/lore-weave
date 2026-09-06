@@ -32,7 +32,8 @@ from typing import Any
 from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.canonical import canonicalize_entity_name, entity_canonical_id
+from app.db.graph_repos.entities import GLOBAL_PROJECT_SENTINEL, sync_glossary_entity_node
+from loreweave_extraction.canonical import canonicalize_entity_name
 
 __all__ = ["sync_glossary_entity_to_neo4j"]
 
@@ -65,60 +66,24 @@ async def sync_glossary_entity_to_neo4j(
     Returns a dict with the node id and whether it was created or updated.
     """
     canonical_name = canonicalize_entity_name(name)
-    canonical_id = entity_canonical_id(user_id, project_id, name, kind)
 
-    # D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: the MERGE key now includes `project_id`.
-    # It used to be `(user_id, glossary_entity_id)`, which meant a user's SECOND
-    # knowledge project over the same book re-used (and mutated) the FIRST project's
-    # node — the reason `project_id` was overwritten on ON MATCH ("latest-sync wins").
-    # That made `project_id` meaningless on any shared node. Now the node is per
-    # (user, project, entity), matching `Entity.id = hash(user, project, name, kind)`,
-    # so `project_id` is part of the identity and is never overwritten.
-    #
-    # `$project_id` is never NULL here (the caller coalesces to the "global" sentinel
-    # below), which matters: Cypher rejects a MERGE pattern with a null property.
-    result = await session.run(
-        """
-        MERGE (e:Entity {user_id: $user_id, project_id: $project_id, glossary_entity_id: $glossary_entity_id})
-        ON CREATE SET
-          e.id = $canonical_id,
-          e.name = $name,
-          e.canonical_name = $canonical_name,
-          e.kind = $kind,
-          e.aliases = $aliases,
-          e.short_description = $short_description,
-          e.confidence = 1.0,
-          e.source_type = 'glossary',
-          e.source_types = ['glossary'],
-          e.canonical_version = 1,
-          e.anchor_score = 1.0,
-          e.evidence_count = 0,
-          e.mention_count = 0,
-          e.archived_at = NULL,
-          e.created_at = datetime(),
-          e.updated_at = datetime()
-        ON MATCH SET
-          e.name = $name,
-          e.canonical_name = $canonical_name,
-          e.kind = $kind,
-          e.aliases = $aliases,
-          e.short_description = $short_description,
-          e.confidence = 1.0,
-          e.updated_at = datetime()
-        RETURN e.glossary_entity_id AS id, e.created_at = e.updated_at AS created
-        """,
+    # The MERGE moved to `graph_repos/entities.py` (plan T17) — including the
+    # D-KG-GLOSSARY-FK-GLOBAL-UNIQUE reasoning about why `project_id` is part of the key.
+    created = await sync_glossary_entity_node(
+        session,
         user_id=user_id,
-        project_id=project_id or "global",
+        # Coalesced here, not in the repo: Cypher rejects a MERGE pattern with a null
+        # property. The VALUE comes from the repo (QC-6) because `merge_entity`'s
+        # resolve-first lookup has to recognise it — when the two disagreed, an author
+        # rename followed by a re-extraction minted a duplicate on the live stack.
+        project_id=project_id or GLOBAL_PROJECT_SENTINEL,
         glossary_entity_id=glossary_entity_id,
-        canonical_id=canonical_id,
         name=name,
         canonical_name=canonical_name,
         kind=kind,
         aliases=aliases or [],
         short_description=short_description or "",
     )
-    record = await result.single()
-    created = record["created"] if record else False
 
     action = "created" if created else "updated"
     logger.info(

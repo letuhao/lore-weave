@@ -1,3 +1,5 @@
+-- `DP-Ch15` — causal references for bubble-up. `causal_refs` below is the
+-- column that carries them, and this migration is where the rule is real.
 -- 0014 — DP-Ch11/Ch13 channel ordering + writer fence (S3a, 2026-07-27).
 --
 -- ⚠ SPEC CORRECTION (plan D1 / REC-80 candidate): DP-Ch11 asks for
@@ -12,6 +14,8 @@
 --       triple, written in the same tx as the event row: the hard
 --       uniqueness + the channel-ordered lookup index DP-Ch11 wanted.
 -- Reality-scoped events keep channel columns NULL (DP-Ch11 note).
+
+BEGIN;
 
 ALTER TABLE events
     ADD COLUMN IF NOT EXISTS channel_id       BIGINT,
@@ -46,3 +50,5 @@ CREATE TABLE IF NOT EXISTS channel_event_index (
 CREATE INDEX IF NOT EXISTS events_channel_order_idx
     ON events (reality_id, channel_id, channel_event_id)
     WHERE channel_id IS NOT NULL;
+
+COMMIT;

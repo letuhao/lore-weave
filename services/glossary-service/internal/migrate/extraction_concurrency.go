@@ -18,7 +18,7 @@ import (
 // LLM or silently dropped entities. This migration closes both:
 //
 //   - normalized_name (GENERATED/STORED off the trigger-maintained cached_name)
-//     + a partial UNIQUE index = constraint-backed dedup (INV-C2). The per-book
+//   - a partial UNIQUE index = constraint-backed dedup (INV-C2). The per-book
 //     advisory lock the handler takes makes the resolver race-free; this index is
 //     the backstop AND the ON CONFLICT target. Partial so it ignores soft-deleted
 //     rows and the transient empty-name state (the entity row is inserted before

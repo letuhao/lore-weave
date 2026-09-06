@@ -39,8 +39,17 @@ jobs:
       fail-fast: false
       matrix:
         lint:
+          # `--self-test`, not `--files /dev/null`. This leg used to pass an
+          # EMPTY file list, which the gate classified as `patch` and exited 0 —
+          # so the leg proved only that the script parses, and it did that by
+          # exercising the one path that was a bug: "the diff resolved to
+          # nothing" and "this is a small change" were the same word. That is
+          # now a hard error (BDR-82), which turned this leg RED. The honest
+          # replacement is the gate's own self-test, which drives every
+          # classification rule against synthetic trees and reds if any stops
+          # biting — strictly more than the empty-list smoke ever checked.
           - name: deploy-class-check
-            cmd: bash scripts/deploy-class-check.sh --files /dev/null
+            cmd: bash scripts/deploy-class-check.sh --self-test
           - name: deploy-freeze-check
             cmd: bash scripts/deploy-freeze-check.sh --class patch --pr-labels ''
           - name: feature-freeze-enforcer

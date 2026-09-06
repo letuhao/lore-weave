@@ -226,19 +226,58 @@ func TestExtractEntitiesFromDoc_BadBookID(t *testing.T) {
 }
 
 func TestExtractEntitiesFromDoc_EmptyDoc(t *testing.T) {
+	// DQ-T55 — the PROPERTY is unchanged (an empty document is refused); what changed is WHOSE
+	// fault it is. With source_ref required, an empty source_markdown can no longer be a caller
+	// mistake: the field is server-filled, so an empty one means the REFERENCE RESOLVED TO
+	// NOTHING. The message says that instead of "you forgot an argument", which would send a
+	// model hunting for a field it is not allowed to set.
 	s := &Server{}
 	_, _, err := s.toolExtractEntitiesFromDoc(ctxWithUser(uuid.New()), nil, extractEntitiesFromDocIn{
-		BookID: uuid.NewString(), SourceMarkdown: "   ",
+		BookID: uuid.NewString(), SourceRef: sourceRefLastUserMessage, SourceMarkdown: "   ",
 	})
-	if err == nil || !strings.Contains(err.Error(), "source_markdown is required") {
-		t.Fatalf("want empty-doc error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "resolved to an empty document") {
+		t.Fatalf("want empty-resolution error, got %v", err)
+	}
+}
+
+func TestExtractEntitiesFromDoc_RefusesAModelAuthoredSource(t *testing.T) {
+	// 🔴 THE DEFECT ITSELF: a caller that pastes a document it composed and names no source.
+	// D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE measured the same invented text ("a
+	// young cultivator named Wei Wuxian…") handed to this tool against SEVERAL DIFFERENT books.
+	s := &Server{}
+	_, _, err := s.toolExtractEntitiesFromDoc(ctxWithUser(uuid.New()), nil, extractEntitiesFromDocIn{
+		BookID:         uuid.NewString(),
+		SourceMarkdown: "a young cultivator named Wei Wuxian who lives in the Azure Cloud Sect",
+	})
+	if err == nil || !strings.Contains(err.Error(), "source_ref is required") {
+		t.Fatalf("a model-authored document with no source_ref must be refused, got %v", err)
+	}
+	// The refusal has to say what to send INSTEAD, or it just blocks the turn.
+	if !strings.Contains(err.Error(), sourceRefLastUserMessage) {
+		t.Fatalf("the refusal must name the accepted reference, got %v", err)
+	}
+}
+
+func TestExtractEntitiesFromDoc_RefusesAnUnresolvableReference(t *testing.T) {
+	// A reference this server cannot resolve is refused BY NAME rather than falling through to
+	// whatever text happened to arrive — a chapter_id is the owner's other named option and is
+	// NOT built, so it must fail loudly instead of silently extracting from something else.
+	s := &Server{}
+	_, _, err := s.toolExtractEntitiesFromDoc(ctxWithUser(uuid.New()), nil, extractEntitiesFromDocIn{
+		BookID:         uuid.NewString(),
+		SourceRef:      "chapter_id:019f5239-0000-0000-0000-000000000000",
+		SourceMarkdown: "text that would otherwise have been extracted",
+	})
+	if err == nil || !strings.Contains(err.Error(), "not a source this server can resolve") {
+		t.Fatalf("an unresolvable reference must be refused by name, got %v", err)
 	}
 }
 
 func TestExtractEntitiesFromDoc_DocTooLong(t *testing.T) {
 	s := &Server{}
 	_, _, err := s.toolExtractEntitiesFromDoc(ctxWithUser(uuid.New()), nil, extractEntitiesFromDocIn{
-		BookID: uuid.NewString(), SourceMarkdown: strings.Repeat("x", maxSourceMarkdownLen+1),
+		BookID: uuid.NewString(), SourceRef: sourceRefLastUserMessage,
+		SourceMarkdown: strings.Repeat("x", maxSourceMarkdownLen+1),
 	})
 	if err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("want too-long error, got %v", err)

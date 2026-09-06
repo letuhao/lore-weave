@@ -19,7 +19,7 @@ name: python-integration-tests
 #    a PK to the built-in uuidv7() (PG18); a pg16/17 image would fail migration.
 #  - neo4j:2026.03-community to match dev: knowledge's schema uses CREATE VECTOR INDEX /
 #    SHOW VECTOR INDEXES (Neo4j 5+) and a CJK full-text index. NO apoc plugin is loaded —
-#    the schema runner deliberately avoids APOC (neo4j_repos/events.py), so the container
+#    the schema runner deliberately avoids APOC (graph_repos/events.py), so the container
 #    stays minimal and fast.
 #  - Each harness self-applies its schema (the `pool` fixture runs migrations; knowledge's
 #    neo4j_driver fixture runs run_neo4j_schema), so the job only needs EMPTY databases.
@@ -51,6 +51,8 @@ on:
       - "services/chat-service/**"
       - "services/translation-service/**"
       - "sdks/python/**"
+      - "infra/postgres-knowledge/**"
+      - "scripts/postgres-knowledge-image-smoke.sh"
       - ".github/workflows/python-integration-tests.yml"
   pull_request:
     branches: ["**"]
@@ -63,6 +65,8 @@ on:
       - "services/chat-service/**"
       - "services/translation-service/**"
       - "sdks/python/**"
+      - "infra/postgres-knowledge/**"
+      - "scripts/postgres-knowledge-image-smoke.sh"
       - ".github/workflows/python-integration-tests.yml"
 
 permissions:
@@ -284,11 +288,77 @@ jobs:
         env:
           PGPASSWORD: loreweave_dev
         run: psql -h localhost -p 5432 -U loreweave -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE loreweave_knowledge_test;"
-      - name: pytest (integration — real Postgres + Neo4j)
+      # ── the AGE leg ────────────────────────────────────────────────────────
+      # AGE lives in a LOCALLY BUILT image (infra/postgres-knowledge), so it cannot be a
+      # `services:` container — those must be pullable. It runs as a step-started container
+      # instead, on the same runner host, which is why localhost:7893 reaches it.
+      #
+      # It is bolted onto THIS job rather than given its own because the suites that matter
+      # need Neo4j and AGE AT THE SAME TIME: test_graph_store_conformance.py parameterises
+      # one rule set across all three adapters, and test_shadow_comparison.py compares the
+      # two real engines operation by operation. Split across jobs, each would degrade to
+      # whichever engine its job happened to have — which is precisely the silent-skip
+      # failure this whole leg exists to end.
+      - name: build the knowledge Postgres image (PG18 + pgvector + pgvectorscale + AGE)
+        run: docker build -t loreweave/postgres-knowledge:18 infra/postgres-knowledge
+      - name: image smoke — extensions load, diskann indexes, AGE runs Cypher
+        # The Dockerfile's build-time checks deliberately stop at "the files are installed";
+        # its own comments defer the "does it WORK" question to this script ("the runtime
+        # smoke is what makes this safe to change"). Until now that script ran on no build,
+        # so the deferral pointed at nothing.
+        run: bash scripts/postgres-knowledge-image-smoke.sh loreweave/postgres-knowledge:18
+      - name: start AGE for the test run
+        run: |
+          docker run -d --name lw-age-ci -e POSTGRES_PASSWORD=loreweave_dev_age \
+            -p 7893:5432 loreweave/postgres-knowledge:18
+          # Poll rather than sleep: the image initialises a fresh cluster on first boot and
+          # a fixed sleep is either a flake or wasted minutes.
+          for _ in $(seq 1 60); do
+            docker exec lw-age-ci pg_isready -U postgres -d postgres >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec lw-age-ci pg_isready -U postgres -d postgres
+          # Same container, separate database. `pg_vector_store`'s suite DROPs its tables
+          # per test (it asserts on which indexes exist), so it must not share a database
+          # with anything else — and the name has to end in `_test` or conftest's
+          # `_guard_throwaway` refuses the DSN before the first DROP.
+          # Both databases carry a `_test` marker, and that is load-bearing rather than
+          # cosmetic. conftest's `_guard_throwaway` REFUSES a DSN whose database name has no
+          # marker before running any destructive setup, and scripts/db-safety-gate.py flags a
+          # CI `*_TEST_*_URL` pointing at an unmarked name — it caught this leg's first cut,
+          # which used the default `postgres` database. Ephemeral-container-ness is not
+          # visible to either check, and "it happens to be disposable" is exactly the
+          # reasoning that once hard-deleted every user's books.
+          #
+          # No CREATE EXTENSION here: create_age_pool() calls ensure_age_extension() itself
+          # (verified against a fresh unprepared database), so a missing extension would be a
+          # real bug rather than a setup gap this step papered over.
+          docker exec lw-age-ci psql -U postgres -d postgres -v ON_ERROR_STOP=1             -c "CREATE DATABASE loreweave_age_test;"             -c "CREATE DATABASE loreweave_vectors_test;"
+      - name: pytest (integration — real Postgres + Neo4j + AGE)
         working-directory: "services/knowledge-service"
         env:
           TEST_KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@localhost:5432/loreweave_knowledge_test
           TEST_NEO4J_URI: bolt://localhost:7687
           TEST_NEO4J_USER: neo4j
           TEST_NEO4J_PASSWORD: loreweave_dev_neo4j
+          # Armed 2026-08-12. Without it the AGE adapter's conformance, bootstrap, shadow
+          # and rebuild suites all SKIPPED, and a skip is indistinguishable from a pass in
+          # pytest's summary line — so the second graph engine has been reported green in CI
+          # while never once executing there. Found by scripts/test-dsn-coverage-gate.py.
+          TEST_AGE_DSN: postgresql://postgres:loreweave_dev_age@localhost:7893/loreweave_age_test
+          # Armed the same day and for the same reason: the pgvector suite that proves the
+          # vector layer moved off Neo4j was skipping in CI too. The dev-stack half of this
+          # (KNOWLEDGE_VECTOR_DB_URL, OD-2) is a separate PO decision and is untouched here.
+          TEST_VECTOR_DB_URL: postgresql://postgres:loreweave_dev_age@localhost:7893/loreweave_vectors_test
+          # The throwaway guard REFUSES ports 7687/7688 (the dev graph's) unless this is set,
+          # and this job publishes its service container on 7687. Its own comment calls this
+          # flag "the escape hatch for CI, where the graph IS disposable" — it was written for
+          # exactly this job and never wired, so `_guard_throwaway_neo4j` has been RAISING
+          # here rather than skipping. Found by T42a, whose conformance suite would have died
+          # the same way. Safe: this is an ephemeral service container, not the dev stack.
+          TEST_NEO4J_ALLOW_SHARED: "1"
+          # T42a — a conformance run that quietly degrades to fake-only would report the word
+          # "conformance" while proving nothing about any real store. With this set, the suite
+          # FAILS instead of skipping when no real adapter was exercised.
+          CONFORMANCE_REQUIRE_REAL: "1"
         run: python -m pytest tests/integration -q -p no:cacheprovider

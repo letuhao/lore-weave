@@ -1,0 +1,58 @@
+{
+  "_note": "memory_forget, re-run after the harness stopped presenting itself as one immortal session. Its seed calls memory_remember, which is rate-limited PER SESSION (cap 10), and MCPDirect sent the literal 'tle-fixtures' for every seeded call ever made — so the budget was spent once and every later fixture failed. Measured: 5/5 PROVISION failures.",
+  "scenarios": [
+    {
+      "id": "memory-forget-asked-fresh",
+      "tool_under_test": "memory_forget",
+      "expect_tool": "memory_forget",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "That was wrong — forget that the Obsidian Trench is walkable at low tide.",
+      "follow_ups": [
+        "That is wrong — forget that fact."
+      ],
+      "prompt_source": "Turn 1 is memory_search's synonym ('what do i know about'); the MEASURED turn is memory_forget's synonyms ['that was wrong'] + ['forget that'], verbatim. Two turns because the tool's own description says 'Only use a fact_id you have seen in an earlier tool result' — it names its supplier and this walks it.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "memory_remember",
+          "args": {
+            "project_id": "{project_id}",
+            "fact_type": "statement",
+            "fact_text": "The Obsidian Trench is walkable at high tide."
+          }
+        },
+        {
+          "tool": "memory_remember",
+          "args": {
+            "project_id": "{project_id}",
+            "fact_type": "statement",
+            "fact_text": "Aldric Vane keeps a brass compass."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "TWO facts are stored and only ONE is about the Obsidian Trench, so invalidating the wrong one is visible. The facts live in NEO4J — the harness snapshots neo4j.Fact.total and neo4j.Fact.project around every run, which is where the DATA bar for this scenario actually comes from; the card is never approved, so both must survive."
+        }
+      ],
+      "falsifier": "REFUTED IF: a fact is invalidated with NO confirm card (Tier A), OR the model targets the brass-compass fact rather than the one the author called wrong, OR it invents a fact_id rather than reusing one from turn 1's result — its description is explicit that only a seen fact_id may be used, so an invented one is the tool's own rule being broken. CONTROL: the seeded fact contradicts the fixture's chapter, which says the trench is walkable at LOW tide. So the author's 'that is wrong' is justified by the manuscript, and a model that argues the fact is correct is disagreeing with the book.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a fact_id that does not exist must be refused.",
+        "idempotency": "OWED — forgetting an already-invalidated fact must refuse or be a clear no-op.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P7-FALSE-ABSENCE",
+      "_original_prompt": "What do I know about the Obsidian Trench?"
+    }
+  ]
+}

@@ -9,7 +9,15 @@
     "description": "最初のワールドを作成して設定を書き始めましょう — 章は不要です。"
   },
   "card": {
-    "books": "{{count}} 冊"
+    "books": "{{count}} 冊",
+    "delete": "ワールドを削除",
+    "delete_blocked": "先にこのワールドから{{count}}冊の本を移動してください",
+    "delete_title": "このワールドを削除しますか？",
+    "delete_description": "「{{name}}」の削除は取り消せません。ロア、マップ、年表も一緒に失われます。",
+    "delete_hint": "本があるワールドは削除できません。先に移動してください。",
+    "delete_cancel": "キャンセル",
+    "delete_confirm": "完全に削除",
+    "delete_done": "ワールドを削除しました"
   },
   "create": {
     "cta": "新しいワールド",

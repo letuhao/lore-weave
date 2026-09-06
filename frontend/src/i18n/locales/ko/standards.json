@@ -73,8 +73,8 @@
       "number": "숫자",
       "date": "날짜",
       "tags": "태그",
-      "url": "URL",
-      "boolean": "예 / 아니요"
+      "boolean": "예 / 아니요",
+      "url": "URL"
     }
   },
   "stdform": {

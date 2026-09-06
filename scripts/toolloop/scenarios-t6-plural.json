@@ -1,0 +1,25 @@
+{
+  "scenarios": [
+    {
+      "id": "arc-suggest-plural-request",
+      "tool_under_test": "composition_arc_suggest",
+      "expect_tool": "composition_arc_suggest",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Suggest some arc structures for this book.",
+      "prompt_source": "VERBATIM the instance DQ-T6 (i) was ruled on. Measured 2026-09-02 BEFORE the fix: answerable_tools returned only [composition_arc_list], composition_arc_suggest was advertised 0/5, and the model used a WRITE (composition_structure_template_edit) on 5 of 5 runs. The singular form of the same request already worked, so one letter decided it.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_arc_suggest is not ADVERTISED on 5/5 runs. Surfacing is what this fix changes -- the matcher decides what reaches the wire, not what the model picks -- so ADVERTISED is the measurement and CALLED is a separate question this fix does not claim to answer. CONTROL: composition_arc_list must still be advertised; the rule is additive and losing it would mean the request is being REPLACED by its depluralised form.",
+      "ship_audit": {
+        "gate": "not under test -- Tier R, no card.",
+        "empty_case": "not under test.",
+        "tenancy": "throwaway fixture book per run, torn down."
+      },
+      "defects": []
+    }
+  ]
+}

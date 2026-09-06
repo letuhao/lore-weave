@@ -19,8 +19,8 @@
   "mode": {
     "classic": "經典",
     "classic_title": "經典模式 — 專注寫作",
-    "ai": "AI",
-    "ai_title": "AI 助手模式 — 完整功能"
+    "ai_title": "AI 助手模式 — 完整功能",
+    "ai": "AI"
   },
   "workmode": {
     "write": "寫作",

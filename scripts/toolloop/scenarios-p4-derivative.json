@@ -1,0 +1,52 @@
+{
+  "_note": "P4 BUILDABLE #1: composition_derivative_edit, whose fixture asserted the absence of the thing its prompt acts on. Seeds a real derivative through the confirm gate.\n\nWHAT WOULD REFUTE IT: still called 0/5 with a live derivative present. Then the missing derivative was not the block.",
+  "scenarios": [
+    {
+      "id": "composition-derivative-edit-seeded",
+      "tool_under_test": "composition_derivative_edit",
+      "expect_tool": "composition_derivative_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+      "prompt_source": "meta.synonyms['update divergence spec'] + ['archive derivative'], verbatim.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "tool": "composition_create_derivative",
+          "args": {
+            "project_id": "{project_id}",
+            "name": "Throwaway Divergence {run_word}"
+          }
+        },
+        {
+          "rest": {
+            "domain": "composition",
+            "method": "POST",
+            "path": "/v1/composition/actions/confirm?token={step:0:confirm_token}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM composition_work WHERE status='active' AND source_work_id=(SELECT id FROM composition_work WHERE project_id='{project_id}')",
+          "expect": "1",
+          "why": "🔴 THE OLD ASSERTION EXPECTED **0**. The scenario asserted that NO derivative exists and then asked the model to 'update the divergence spec for my derivative'. Measured 2026-08-23: the model answered 'there are no active derivatives (what-if versions) currently listed. The only work found is your canonical version.' — correct, and unanswerable. A fixture that asserts the ABSENCE of the thing its prompt acts on can never prove the tool.\n\ncomposition_create_derivative is CONFIRM-GATED — it returns a confirm_token and creates NOTHING until redeemed — so the seed is TWO steps: propose, then POST the token to /v1/composition/actions/confirm. status='active' is asserted because the tool's own read is active-only, the lesson the archived-motif fixture cost fifteen runs.\n\n🔴 AND MY FIRST DRAFT OF THIS QUERY COULD NEVER MATCH. It read `source_work_id='{project_id}'`, but the constraint is FOREIGN KEY (source_work_id) REFERENCES composition_work(id) — the table carries BOTH `id` and `project_id` and they are different columns. The seed had actually created the derivative; the assertion was looking under the wrong key and reported the fixture broken. Verified against pg_constraint rather than assumed."
+        }
+      ],
+      "falsifier": "REFUTED IF: the model invents a project_id for a derivative that does not exist, OR the reply claims a divergence spec was updated or a derivative archived when there is none, OR it picks `archive` on a prompt whose primary verb is update — the prompt deliberately names both so the CHOICE is observable, and archiving something the author only asked to update would be acting beyond the request.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "This scenario IS the absent case — no derivative exists.",
+        "tenancy": "OWED — another account's derivative must not be editable or archivable."
+      },
+      "defects": [],
+      "max_approvals": 6,
+      "_carried_from": "scenarios-batch17.json",
+      "_why_this_fixture": "Only the SEED and its assertion change; the measured prompt is carried over verbatim. The tool was unmeasurable because its fixture asserted zero derivatives existed."
+    }
+  ]
+}

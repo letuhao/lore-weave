@@ -94,7 +94,8 @@ def test_the_package_tree_STAYS_UNDER_BUDGET_on_a_10k_chapter_book():
         "manuscript": {"chapter_count": 10_000},   # a COUNT, not the chapters
         "index": {"stale_chapter_count": 4200, "arcs_dirty": 39, "arcs_never_run": 12},
         "coverage": {"unplanned_chapter_count": 900, "spine_truncated": False},
-        "runs": {"recent": [{"id": "0" * 36, "status": "compiled", "mode": "llm"}] * 5},
+        # `run_id`, not `id` — the field is spelled the way its 13 plan_* consumers spell it.
+        "runs": {"recent": [{"run_id": "0" * 36, "status": "compiled", "mode": "llm"}] * 5},
     }
     # ~4 chars/token is the standard rough estimate; 4K tokens ⇒ ~16K chars.
     chars = len(json.dumps(payload))
@@ -357,6 +358,42 @@ def test_the_runs_block_is_VIEW_scoped_NOT_owner_scoped():
     # …so the tool must not re-narrow it
     src = _i.getsource(server.composition_package_tree)
     assert "r.created_by == tc.user_id" not in src
+
+
+def test_the_runs_block_spells_the_id_the_way_its_CONSUMERS_do():
+    """🔴 THE FIELD NAME IS THE CONTRACT — the same lesson composition_reference_list was built on.
+
+    `runs.recent` is the ONLY supplier of a plan run_id for a run that ALREADY exists, and 13
+    `plan_*` tools require one under exactly that name. `argument_emitters` now declares this tool
+    as their emitter, and R1 answerability is TRANSITIVE over that map, so the declaration decides
+    what reaches the wire as well as what the refusal can name.
+
+    Projecting the row's own column as `id` left the consumer a rename to perform on a value it
+    must reproduce VERBATIM. Renaming it back would break the chain silently: the tool would still
+    return the value, the map would still point here, and the model would still have nothing to
+    pass. Verified by calling it (2026-08-26): plan_pass_status and plan_validate both accept this
+    value, and it is the same id composition_authoring_run_list returns as `plan_run_id`.
+    """
+    import inspect as _i
+    import json as _json
+    import pathlib as _p
+
+    from app.mcp import server
+
+    src = _i.getsource(server.composition_package_tree)
+    assert '"run_id": str(r.id)' in src, "the runs block no longer projects `run_id`"
+    assert '"id": str(r.id)' not in src, (
+        "a bare `id` beside `run_id` would ask the model which of the two to pass")
+
+    # …and the DECLARATION must still point here, or the rename above protects nothing.
+    reg = _p.Path(__file__).resolve().parents[4] / "contracts" / "agent-runtime-tool-contracts.json"
+    if reg.is_file():  # the contracts dir is not vendored into the service image
+        em = _json.loads(reg.read_text(encoding="utf-8"))["argument_emitters"]
+        pointed = {t for t, args in em.items()
+                   if isinstance(args, dict) and args.get("run_id") == "composition_package_tree"}
+        assert len(pointed) >= 13, (
+            f"only {len(pointed)} tools declare this tool as their run_id emitter; the family was "
+            "measured at 13 plan_* consumers")
 
 
 def test_the_entity_reference_sources_carry_NO_project_id():

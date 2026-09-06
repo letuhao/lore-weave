@@ -937,7 +937,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// never clobbered by a later machine writeback.
 		if result.EntityID != "" && (result.Status == "created" || result.Status == "updated") {
 			if entID, perr := uuid.Parse(result.EntityID); perr == nil {
-				if sderr := s.regenerateAutoShortDescription(ctx, tx, entID); sderr != nil {
+				if _, sderr := s.regenerateAutoShortDescription(ctx, tx, entID); sderr != nil {
 					BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL",
 						"failed to derive short description: "+sderr.Error())

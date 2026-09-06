@@ -1,0 +1,31 @@
+{
+  "registry_version": 1,
+  "_why": "CP-6.1 closed-vocabulary resolution. A field whose legal values are PER-BOOK DATA cannot be an enum in a static JSON Schema, which is why this needs a runtime source rather than a declaration. Same registry-row shape and the same lane=read safety rule as the ref/resolver map (CP-5.3, correction W1): authored once, later pushed upstream into the tool's own _meta.",
+  "_measured": "glossary_propose_entities fails in 51 organic sessions; 88 of its 109 failures (81%) are `unknown kind`. Of the 154 recorded kind mentions, 83 (54%) name a kind that IS a system standard the book never adopted -- character x32, item x14, terminology x13, location x11, power_system x7. The existing failure message is correct and complete and names the repair TOOLS; it has never named the VALUES, and the corpus after it is 88 calls over 37 sessions.",
+
+  "vocabularies": {
+    "BookEntityKind": {
+      "_why": "The kind codes THIS book has adopted. Per-book by construction: two books legitimately have different ontologies, so the set cannot live in the tool schema.",
+      "source_tool": "glossary_book_ontology_read",
+      "source_path": "ontology.kinds",
+      "value_field": "code",
+      "scope_params": ["book_id"],
+
+      "standards_tool": "glossary_list_system_standards",
+      "standards_path": "kinds",
+      "standards_field": "code",
+      "_why_standards": "The 54% case. A kind that is a SYSTEM standard is one adoption call away, and the difference between 'that category does not exist' and 'that is a standard kind, adopt it like this' is the whole member.",
+
+      "adopt_tool": "glossary_adopt_standards",
+      "create_tool": "glossary_ontology_upsert",
+      "_the_create_tool_was_CORRECTED": "The failure message the model receives today names `glossary_propose_kinds`. That tool is `visibility: legacy` in its own _meta and carries NO `superseded_by` -- so the remedy prose not only failed to change behaviour, it routes the model to a DEPRECATED tool. The live path is `glossary_ontology_upsert` (tier A, not legacy), which creates a kind by omitting base_version. Verified against the frozen catalogue, not assumed."
+    }
+  },
+
+  "bindings": {
+    "glossary_propose_entities": {
+      "items[].kind": "BookEntityKind"
+    }
+  },
+  "_bindings_note": "Bound where the defect is measured, not everywhere the shape occurs. `items[].kind` is the one path in the corpus that produced `unknown kind`; a binding with no measured subject would be the clause-with-no-subject failure CP-5 section 7 gates against."
+}

@@ -96,6 +96,11 @@ EXPECTED_TOOLS = {
     "composition_entity_override_delete",
     # ── S-03 — reference-shelf metadata edit (agent parity). Tier A (auto-write + Undo). ──
     "composition_reference_update",
+    # D-A-REQUIRED-ID-NO-TOOL-CAN-SUPPLY — the READER that makes the line above satisfiable.
+    # reference_id was required by exactly one tool and produced by NONE of the 315 in the
+    # catalogue, so composition_reference_update was unreachable through MCP by construction.
+    # Tier R, VIEW-gated, bodies never projected.
+    "composition_reference_list",
     # Tier W
     "composition_publish", "composition_generate",
     "composition_decompile_arcs",  # close-21-28 P-O2a — confirm-gated arc decompiler
@@ -170,7 +175,7 @@ EXPECTED_TOOLS = {
     # ── glossary-build pipeline (spec 2026-07-27) — the DELEGATION surface. One
     # Tier-A tool with a closed-set `op`; the FSM makes every downstream call, so
     # the agent never picks a per-entity tool (the Mị Đế dogfood failure).
-    "composition_glossary_build",
+    "composition_build_cast_and_graph",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_outline_node",
@@ -568,6 +573,10 @@ async def test_create_work_no_project_id_auto_creates_default_project():
     async with _patched(grant_level=2, works_get=no_existing_work) as s:
         works = s.WorksRepo(None)
         works.resolve_by_book = AsyncMock(return_value=[])  # no marked Work
+        # ...and no PENDING one either, which is what "greenfield" means here. Left to the
+        # bare AsyncMock this returns a truthy auto-child, and the adopt-a-pending-Work
+        # branch (TOOLV2 LOOP #142) swallows the create this test exists to assert.
+        works.get_pending_for_book = AsyncMock(return_value=None)
         works.create = AsyncMock(return_value=created_work)
         with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
              patch.object(srv, "get_book_client", return_value=book), \
@@ -1129,7 +1138,15 @@ async def test_divergence_spec_update_taxonomy_is_closed_set():
 
 
 async def test_entity_override_add_success_and_duplicate():
-    """add creates an override after derive; a duplicate target → OVERRIDE_EXISTS (not a 500)."""
+    """add creates an override after derive; a duplicate target → OVERRIDE_EXISTS (not a 500).
+
+    The glossary client is stubbed to CONFIRM the target because op=add now checks that the
+    entity exists in this derivative's own book (D-AN-OVERRIDE-ACCEPTS-A-TARGET-ENTITY-THAT-IS-
+    NOT-THERE). Without the stub this test would fail at the new gate and never reach the
+    duplicate it exists to assert — the stub restores the precondition, it does not soften the
+    assertion. The gate itself is covered in
+    tests/unit/test_an_override_target_must_exist_in_this_book.py.
+    """
     import asyncpg as _asyncpg
     import app.mcp.server as srv
     from types import SimpleNamespace as NS
@@ -1143,7 +1160,10 @@ async def test_entity_override_add_success_and_duplicate():
     ov = NS(id=uuid.uuid4(), target_entity_id=target, overridden_fields={"role": "hero"})
     async with _patched(works_get=get_deriv) as s:
         s.WorksRepo(None).get = AsyncMock(return_value=deriv)
-        with patch.object(srv, "DerivativesRepo") as DR:
+        # Through the KAL since 2026-09-04 — the direct catalog read was removed.
+        _gloss = NS(cast_by_ids=AsyncMock(
+            return_value=[{"entity_id": str(target), "name": "Aldric"}]))
+        with patch.object(srv, "DerivativesRepo") as DR,                 patch.object(srv, "get_kal_client", return_value=_gloss):
             DR.return_value.add_override = AsyncMock(return_value=ov)
             res = await srv.composition_entity_override_add(
                 _Ctx(), srv._EntityOverrideAddArgs(
@@ -1153,13 +1173,64 @@ async def test_entity_override_add_success_and_duplicate():
             assert res["success"] is True
             assert res["override"]["overridden_fields"] == {"role": "hero"}
             # duplicate target → OVERRIDE_EXISTS
+            #
+            # `overridden_fields` is passed here for the same reason the first call passes it: an
+            # empty field-set is now refused with EMPTY_OVERRIDE before the repo is reached, so a
+            # call that omitted it would never get as far as the duplicate it is asserting. The
+            # omission was incidental to this half of the test — what it checks is that a
+            # UniqueViolation becomes OVERRIDE_EXISTS rather than a 500, and that is unchanged.
             DR.return_value.add_override = AsyncMock(
                 side_effect=_asyncpg.UniqueViolationError("dup"))
             res2 = await srv.composition_entity_override_add(
                 _Ctx(), srv._EntityOverrideAddArgs(
-                    project_id=str(deriv.project_id), target_entity_id=str(target)),
+                    project_id=str(deriv.project_id), target_entity_id=str(target),
+                    overridden_fields={"role": "hero"}),
             )
     assert res2["success"] is False and "OVERRIDE_EXISTS" in res2["error"]
+
+
+async def test_an_override_with_no_fields_is_refused():
+    """🔴 AN OVERRIDE THAT OVERRIDES NOTHING WAS BEING CREATED.
+
+    Measured 2026-08-23 by direct probe against a real derivative: overridden_fields={} returned
+    {"success": true, "override": {..., "overridden_fields": {}}}. The row then reads as a real
+    override everywhere downstream — the derivative's context pack, the undo hint, the list — and
+    resolves to no change at all.
+
+    This case is refused BEFORE the target check, which is why no glossary stub is needed here:
+    an empty field-set is wrong whatever the target is, and checking the cheap local thing first
+    keeps a wire call off the path of a call that was never going to succeed.
+
+    🔴 THIS DOCSTRING USED TO SAY the other two cases (an absent target, and another BOOK's)
+    were a fail-open/fail-closed product call because glossary's client "never raises". That
+    premise was wrong — the module already carried GlossaryClientError and seed_entities_or_raise
+    for exactly this situation — and both are closed. See
+    tests/unit/test_an_override_target_must_exist_in_this_book.py.
+    """
+    import app.mcp.server as srv
+
+    deriv = _derivative()
+
+    async def get_deriv(pid):
+        return deriv
+
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.add_override = AsyncMock()
+            res = await srv.composition_entity_override_add(
+                _Ctx(), srv._EntityOverrideAddArgs(
+                    project_id=str(deriv.project_id),
+                    target_entity_id=str(uuid.uuid4()),
+                    overridden_fields={}),
+            )
+            assert res["success"] is False
+            assert "EMPTY_OVERRIDE" in res["error"], res
+            assert "occupation" in res["error"], (
+                "the refusal does not show the SHAPE it wants, which is the whole reason the "
+                "previous version of this argument was sent as a list"
+            )
+            DR.return_value.add_override.assert_not_awaited()
 
 
 async def test_entity_override_update_and_delete():
@@ -1197,6 +1268,68 @@ async def test_entity_override_update_and_delete():
     assert dele["success"] is True and dele["deleted"] is True
     assert dele["_meta"]["undo_hint"]["tool"] == "composition_entity_override_add"
     assert dele["_meta"]["undo_hint"]["args"]["target_entity_id"] == str(tgt)
+
+
+# ── D-A-REQUIRED-ID-NO-TOOL-CAN-SUPPLY — the reader that makes the edit satisfiable ──
+
+async def test_reference_list_projects_the_id_under_the_name_its_CONSUMER_uses():
+    """🔴 THE FIELD NAME IS THE CONTRACT, not a presentation choice.
+
+    `reference_id` was required by composition_reference_update and produced by NO tool in the
+    315-tool catalogue, so the edit was unreachable through MCP by construction. This reader is
+    the supplier, and `argument_emitters` now declares it as such — a declaration R1 answerability
+    is TRANSITIVE over, so it also decides what reaches the wire.
+
+    The row's own column is `id`. Projecting it as `id` would leave the consumer to guess that
+    `id` means `reference_id`, which is exactly the naming mismatch that made a catalogue-wide
+    orphan sweep over-report by 11 of 12. Renaming this field back would break the chain silently:
+    the tool would still return the value and the model would still have nowhere to take it from.
+    """
+    import uuid as _uuid
+    from types import SimpleNamespace as NS
+
+    import app.mcp.server as srv
+
+    work = _work()
+    row = NS(id=_uuid.uuid4(), title="Tidal Almanac", author="M. Solene",
+             source_url="https://example.invalid/tidal", content="x" * 4096, created_at=None)
+    async with _patched(works_get=lambda pid: work) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=work)
+        with patch.object(srv, "ReferencesRepo") as RR:
+            RR.return_value.list = AsyncMock(return_value=[row])
+            res = await srv.composition_reference_list(_Ctx(), project_id=str(PROJECT))
+
+    assert res["references"][0]["reference_id"] == str(row.id), (
+        "the id must be projected under the name composition_reference_update requires")
+    assert "id" not in res["references"][0], "a bare `id` beside it would be ambiguous"
+    # BODIES ARE NEVER PROJECTED — a reference is an author-pasted passage up to 20000 chars by
+    # the create model's own constraint, so a list that returned bodies would dump a corpus into
+    # the turn. The SIZE is enough to tell a stub from a real passage.
+    assert "content" not in res["references"][0]
+    assert res["references"][0]["content_chars"] == 4096
+    # K25: a capped slice must never read as the whole set.
+    assert res["returned"] == 1 and res["total"] == 1
+    assert "complete" in res["guidance"]
+
+
+async def test_reference_list_states_the_WHOLE_total_when_it_caps():
+    """`total` is exact rather than a limit+1 `more` probe: the repo hands back the whole shelf,
+    so a probe would be strictly less information than we already hold."""
+    import uuid as _uuid
+    from types import SimpleNamespace as NS
+
+    import app.mcp.server as srv
+
+    work = _work()
+    rows = [NS(id=_uuid.uuid4(), title=f"R{i}", author="", source_url="", content="",
+               created_at=None) for i in range(7)]
+    async with _patched(works_get=lambda pid: work) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=work)
+        with patch.object(srv, "ReferencesRepo") as RR:
+            RR.return_value.list = AsyncMock(return_value=rows)
+            res = await srv.composition_reference_list(_Ctx(), project_id=str(PROJECT), limit=3)
+    assert res["returned"] == 3 and res["total"] == 7
+    assert "3 of 7" in res["guidance"] and "Do NOT assume" in res["guidance"]
 
 
 # ── S-03: reference-shelf metadata edit (agent parity) ──
@@ -1675,14 +1808,23 @@ async def test_generate_chapter_mints_confirm_token():
     from loreweave_mcp import verify_confirm_token
     from app.config import settings
 
+    # A chapter target now requires a SCENE PLAN at propose — the engine refuses
+    # NO_CHAPTER_PLAN without one, so minting a card for a chapter that has none was
+    # approve-then-fail (see test_generate_refuses_a_chapter_with_no_scene_plan). This test is
+    # about the TOKEN, so it stubs a chapter that has a plan; the absent case has its own file.
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    _outline = MagicMock()
+    _outline.return_value.scenes_for_chapter = AsyncMock(return_value=[MagicMock(parent_id=None)])
     async with _patched(grant_level=2):
-        res = await srv.composition_generate(
-            _Ctx(),
-            srv._GenerateArgs(
-                project_id=str(PROJECT), chapter_id=str(CHAPTER),
-                model_source="user_model", model_ref=str(MODEL_REF), guide="dark tone",
-            ),
-        )
+        with patch.object(srv, "OutlineRepo", _outline):
+            res = await srv.composition_generate(
+                _Ctx(),
+                srv._GenerateArgs(
+                    project_id=str(PROJECT), chapter_id=str(CHAPTER),
+                    model_source="user_model", model_ref=str(MODEL_REF), guide="dark tone",
+                ),
+            )
     assert res["descriptor"] == "composition.generate"
     assert res["domain"] == "composition"
     claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])

@@ -1331,7 +1331,7 @@ def test_patch_embedding_model_rejected_on_project_with_graph(
     from unittest.mock import AsyncMock, patch
 
     with patch(
-        "app.db.neo4j_repos.graph_state.project_has_embedded_passages",
+        "app.db.graph_repos.graph_state.project_has_embedded_passages",
         AsyncMock(return_value=True),
     ):
         resp = client.patch(

@@ -32,16 +32,9 @@ use serde::Serialize;
 /// into `jsonb_populate_record(NULL::<table>, …)`, so an un-allowlisted name
 /// must never reach the SQL.
 pub const PROJECTION_TABLES: &[&str] = &[
-    "pc_projection",
-    "pc_inventory_projection",
-    "pc_relationship_projection",
-    "npc_projection",
-    "npc_session_memory_projection",
-    "npc_pc_relationship_projection",
-    "npc_session_memory_embedding",
-    "region_projection",
-    "world_kv_projection",
-    "session_participants",
+    // Eleven -> four (`0017`) -> ONE (`0018`). Every removal was a table whose
+    // events nothing emitted; see `all_projections`. A vocabulary enumeration is
+    // supposed to be able to move in this direction, and this one has, twice.
     "canon_projection",
 ];
 
@@ -56,14 +49,19 @@ pub fn is_known_projection_table(table: &str) -> bool {
 /// because the per-aggregate-parallel path can't guarantee the cross-aggregate
 /// ordering.
 ///
-/// Today the only such table is `npc_session_memory_projection`: the *session*
-/// aggregate's `session.started` creates the row and the *npc* aggregate's
-/// `npc.said` (Q-L3B-1 fan-out) increments `interaction_count`. The other L3.A
-/// tables are each written from a single aggregate (audited 2026-06-04:
-/// session_participants ← session.*; npc_pc_relationship ← npc.relationship_*;
-/// pc_* ← pc.*; region ← region.*; world_kv ← world.kv_*; canon ← canon.*). Add
-/// a table here if a new cross-aggregate fan-out is introduced.
-pub const MULTI_AGGREGATE_TABLES: &[&str] = &["npc_session_memory_projection"];
+/// **The list is EMPTY, and that is a fact rather than an oversight.** The only
+/// cross-aggregate table there has ever been was `npc_session_memory_projection`
+/// — the *session* aggregate created the row, the *npc* aggregate incremented it
+/// — and `0017` dropped it. Every surviving projection is written from a single
+/// aggregate: `session_participants` ← `session.*`, `region_projection` ←
+/// `region.*`, `world_kv_projection` ← `world.kv_*`, `canon_projection` ←
+/// `canon.*`.
+///
+/// The global-order path it selects is NOT dead: `rebuild::global` is exercised
+/// by test-only projectors, because cross-aggregate replay ordering is a
+/// property of the rebuilder rather than of npc vocabulary. Add a table here if
+/// a new cross-aggregate fan-out is introduced.
+pub const MULTI_AGGREGATE_TABLES: &[&str] = &[];
 
 /// Returns true if `table` must be rebuilt with the global-order path rather
 /// than the per-aggregate-parallel path.
@@ -112,25 +110,33 @@ impl RebuildStats {
 /// process lifetime).
 ///
 /// All projections run over every event; the writer applies ONLY the updates
-/// targeting the requested table, so rebuilding e.g. `pc_projection` replays
-/// `pc.*` through `PcProjection` and drops every other projection's output.
+/// targeting the requested table, so rebuilding e.g. `canon_projection` replays
+/// `canon.entry.*` through `CanonProjection` and drops every other projection's
+/// output.
+///
+/// **There is exactly ONE projection left, and that is the point.** `0017` removed
+/// seven; `0018` removed the last three. Every one of them handled events that no
+/// production code emitted — and `world_kv` looked produced only because the gate
+/// that asks the question could not see a `#[cfg(test)]` module inside a `src/`
+/// file, so a unit-test fixture in `crates/rebuilder` had been vouching for it.
+/// `canon.entry.*` is emitted by `meta-worker`'s canon writer, which is why canon
+/// is here and nothing else is.
+///
+/// **The seven `pc.*` / `npc.*` projections were REMOVED 2026-08-04.** They had
+/// no producer: every occurrence of `pc.created`, `pc.moved`, `npc.created` in
+/// the tree was a fixture, a bench input or a test — no production code emitted
+/// one, so seven of the ten L3.A tables could only ever be rebuilt from events
+/// that nothing wrote. They also encoded game vocabulary (`name`, `stats`,
+/// `status IN (...)`) in engine tables, which `D-2` forbids: *the engine closes
+/// on MECHANISM; the manifest closes on VOCABULARY.* Actor quantities come from
+/// the fold (`crates/actor-hub`), addressed by ordinal and explainable, and a
+/// second opaque `stats` blob would have become a competing SSOT the day
+/// anyone implemented the `pc.stats_changed` TODO that sat beside it.
 pub fn all_projections() -> Vec<&'static dyn SendSyncProjection> {
     fn leak<T: SendSyncProjection + 'static>(p: T) -> &'static dyn SendSyncProjection {
         &*Box::leak(Box::new(p))
     }
-    vec![
-        leak(projections_pc::PcProjection),
-        leak(projections_pc::PcInventoryProjection),
-        leak(projections_pc::PcRelationshipProjection),
-        leak(projections_npc::NpcProjection),
-        leak(projections_npc::NpcSessionMemoryProjection),
-        leak(projections_npc::NpcPcRelationshipProjection),
-        leak(projections_npc::NpcSessionMemoryEmbeddingProjection),
-        leak(projections_region::RegionProjection),
-        leak(projections_session::SessionParticipantsProjection),
-        leak(projections_world_kv::WorldKvProjection),
-        leak(projections_canon::CanonProjection),
-    ]
+    vec![leak(projections_canon::CanonProjection)]
 }
 
 #[cfg(test)]
@@ -179,24 +185,29 @@ mod tests {
     #[test]
     fn all_projections_present_and_named() {
         let ps = all_projections();
-        assert_eq!(ps.len(), 11, "all L3.B projections registered");
+        assert_eq!(ps.len(), 1, "canon is the only projection with a producer");
     }
 
     #[test]
     fn projection_table_allowlist() {
-        assert!(is_known_projection_table("pc_projection"));
         assert!(is_known_projection_table("canon_projection"));
         assert!(!is_known_projection_table("reality_registry"));
-        assert!(!is_known_projection_table("pc_projection; DROP TABLE x"));
+        // The removed vocabulary must NOT be re-admitted by accident.
+        assert!(!is_known_projection_table("pc_projection"));
+        assert!(!is_known_projection_table("npc_projection"));
+        assert!(!is_known_projection_table("region_projection"));
+        assert!(!is_known_projection_table("session_participants"));
+        assert!(!is_known_projection_table("world_kv_projection"));
+        assert!(!is_known_projection_table("canon_projection; DROP TABLE x"));
     }
 
     #[test]
     fn multi_aggregate_dispatch() {
-        // The one multi-aggregate table goes global-order; single-aggregate
-        // tables keep the per-aggregate-parallel path.
-        assert!(needs_global_order("npc_session_memory_projection"));
-        assert!(!needs_global_order("npc_projection"));
-        assert!(!needs_global_order("session_participants"));
+        // NO shipped table is multi-aggregate today — the only one that was
+        // went out with the `npc` projections. Every table therefore keeps the
+        // per-aggregate-parallel path, and the global-order path stays because
+        // the SHAPE recurs the moment two aggregates share a table.
+        assert!(!needs_global_order("canon_projection"));
         // Every multi-aggregate table must also be a known projection table.
         for t in MULTI_AGGREGATE_TABLES {
             assert!(is_known_projection_table(t), "{t} not in PROJECTION_TABLES");

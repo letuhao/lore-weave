@@ -1,0 +1,29 @@
+{
+  "_note": "D-SURFACING-IS-NECESSARY-BUT-NOT-SUFFICIENT — the DECISIVE case, extracted VERBATIM from scenarios-c-r1-recheck.json. The row: 'answerable_tools returns EXACTLY ONE tool for its request — {glossary_propose_batch}, no competitor — and it was advertised 5/5. On 5 of 5 runs the model used glossary_adopt_standards, which the request does not match at all.'",
+  "scenarios": [
+    {
+      "id": "glossary-propose-batch",
+      "tool_under_test": "glossary_propose_batch",
+      "expect_tool": "glossary_propose_batch",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set up several kinds and attributes at once for this book's ontology — I want to do it in one batch, not one at a time.",
+      "prompt_source": "_meta.synonyms['several kinds and attributes at once'] + ['batch of glossary changes'].",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [],
+      "falsifier": "REFUTED IF: the tool applies ontology changes WITHOUT a confirm card (its own description says MANY changes on ONE confirm), OR it invents `ops` the user never described. 🔴 CONTROL FIRST, BEFORE ANY CONCLUSION: this is one of the five INTENT-GATED setup tools. Read chat_messages.withheld_tools for stage='intent_gate'. If the count is >0 the tool was WITHHELD and the run measures the DQ-T3 stamp instead of the tool — a different finding, recorded as such. If it is 0 the setup wording opened the gate and the tool is genuinely under test.",
+      "ship_audit": {
+        "gate": "OWED — the whole point of this tool is ONE confirm for MANY changes.",
+        "empty_case": "OWED — an empty `ops` must be refused, not minted as an empty confirm.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scripts/toolloop/scenarios-rebaseline.json",
+      "_problem": "P9-INTENT-GATE",
+      "approve_why": "🔴 approve SET, and the reason is a measurement error this batch exists to correct. Each of these five was recorded 'surfaced 5/5, called 0/5, suspended-on-card 5/5' with approve=None — and the card is NEVER for the tool under test. Read off their own raw evidence: composition_entity_override_edit died on kg_project_create / glossary_entity_set_attributes cards; tool_load died on a kg_project_create card 5/5; composition_generate on composition_arc_edit / book_chapter_save_draft / glossary_deep_research.\n\nSo 'called 0/5' did not measure whether the model can reach this tool. It measured whether the model can reach it BEFORE ANY OTHER TOOL RAISES A CARD — and an unrelated tool's card decided the result. A user would click; the turn would continue.\n\nLegitimate under the standing rule: intent is WRITE, and the target is the run's OWN throwaway book, provisioned and torn down. Bounded by max_approvals (default 3), so a model that re-proposes the same write forever still cannot spend the run.\n\ntool-load KEEPS approve=None on purpose: it is READ intent, and approving a write on a turn that only asked to look would make the harness the thing that wrote. That a read-only question raises a kg_project_create card on 5 of 5 runs is a FINDING about the product, not an obstacle to approve away."
+    }
+  ]
+}

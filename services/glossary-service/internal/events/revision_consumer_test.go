@@ -26,23 +26,26 @@ func setupDB(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	for _, m := range []struct {
-		name string
-		fn   func(context.Context, *pgxpool.Pool) error
-	}{
-		{"Up", migrate.Up}, {"Seed", migrate.Seed},
-		{"UpSnapshot", migrate.UpSnapshot}, {"UpSoftDelete", migrate.UpSoftDelete},
-		{"UpEntityRevisions", migrate.UpEntityRevisions},
-		// G4 cutover: glossary_entities.kind_id now FK→book_kinds. Need the tier
-		// tables (book_kinds) + the repoint so seedEntity's book-tier kind is valid.
-		{"UpUserKinds", migrate.UpUserKinds},
-		{"UpGenreKindAttr", migrate.UpGenreKindAttr},
-		{"SeedGenreKindAttr", migrate.SeedGenreKindAttr},
-		{"UpGlossaryCutoverG4", migrate.UpGlossaryCutoverG4},
-	} {
-		if err := m.fn(ctx, pool); err != nil {
-			t.Fatalf("migrate %s: %v", m.name, err)
-		}
+	// migrate.RunChain, NOT a hand-copied list — the same correction
+	// internal/api made in entity_revisions_handler_test.go, which this package
+	// was missed by.
+	//
+	// A hand-copied list calls the step FUNCTIONS directly, which bypasses the
+	// ApplyOnce ledger and re-executes their SQL unconditionally. That is not a
+	// tidiness point: this list ran {"UpSnapshot", migrate.UpSnapshot}, and
+	// snapshotSQL carries 0004's body of recalculate_entity_snapshot — the one
+	// that does NOT maintain cached_name or search_vector. Step
+	// 0060_glossary_recalc_restore installs the body that does, and the list did
+	// not include it. So running this suite against an already-migrated database
+	// SILENTLY REVERTED 0060: glossary_search stopped matching by name, and
+	// because the ledger still recorded 0060 as applied, re-running the chain
+	// could never put it back. See
+	// D-GLOSSARY-READS-RETURN-ok-true-result-null-ON-A-SEEDED-BOOK.
+	//
+	// RunChain is ApplyOnce-backed, so it is a no-op on a migrated database and
+	// still builds a fresh one from nothing.
+	if err := migrate.RunChain(ctx, pool); err != nil {
+		t.Fatalf("migrate.RunChain: %v", err)
 	}
 	return pool
 }

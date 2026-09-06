@@ -1,0 +1,59 @@
+{
+  "_note": "DQ-T54 (owner 2026-08-28) — the SUSPEND arm of scenarios-c-canonrestore.json, identical except that `approve` is removed so the Tier-A card is left PENDING. It exists because the parent scenario approves in-flight and therefore never reaches the suspend branch, so it cannot exercise the line at all.",
+  "scenarios": [
+    {
+      "id": "canon-rule-restore-LEAVES-THE-CARD-PENDING",
+      "tool_under_test": "composition_canon_rule_restore",
+      "expect_tool": "composition_canon_rule_restore",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+      "prompt_source": "composition_canon_rule_restore's OWN declared synonyms, verbatim: 'undo delete rule' + 'restore it' alongside 'canon rule'.",
+      "needs_target": false,
+      "seed": [
+        {
+          "tool": "composition_canon_rule_create",
+          "args": {
+            "project_id": "{project_id}",
+            "text": "Magic always costs HP."
+          },
+          "why": "The rule must exist before it can be archived. Its id is captured by the harness for the next step and is NEVER given to the model."
+        },
+        {
+          "tool": "composition_canon_rule_delete",
+          "args": {
+            "project_id": "{project_id}",
+            "rule_id": "{step:0:id}"
+          },
+          "why": "🔴 ARCHIVED IN THE SEED, which is the whole point. A turn that archived the rule itself would still be holding the id; this defect is about a turn that arrives AFTER, when the only surface that could name the rule showed non-archived rows only."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM canon_rule WHERE project_id='{project_id}' AND is_archived",
+          "expect": "1",
+          "why": "Exactly one ARCHIVED rule before the turn. If it were not archived the listing would show it anyway and the scenario would measure nothing; if it did not exist there would be nothing to restore."
+        }
+      ],
+      "falsifier": "REFUTED IF: the suspended turn's stored text does NOT end with the server line 'Nothing has been saved yet; confirm the card above to apply it.', OR the line appears on a turn that did NOT suspend (finish_reason != 'awaiting_input'), which is the inversion the owner's build note warns about. THE RESTORE IS EXPECTED NOT TO LAND HERE — the card is deliberately left unapproved, so an unchanged store is the CORRECT outcome and is not a failure of the tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier A; the restore mutates author-declared canon.",
+        "absent_case": "a rule_id that does not exist must be refused — not covered here.",
+        "idempotency": "restoring an already-active rule must not duplicate it — not covered here.",
+        "tenancy": "project-scoped; the listing is VIEW-gated on the book."
+      },
+      "defects": [],
+      "_problem": "D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE",
+      "answer_expect": {
+        "all_of": [
+          "nothing has been saved yet"
+        ],
+        "why": "The server line is deterministic; if it is absent the fix did not fire."
+      },
+      "approve_why": "DELIBERATELY ABSENT. `approve=None` is the runner's documented way to LEAVE THE RUN SUSPENDED, which is the only state DQ-T54's line fires in. The parent scenario approves the card and so never suspends — measured: batch c-cardline1, 5 of 5 finish_reason='stop'."
+    }
+  ]
+}

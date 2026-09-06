@@ -13,19 +13,19 @@ import (
 //
 // Each single-valued EAV row (entity_attribute_values) seeds an entity_facts row:
 //   - value            = the entity's CURRENT flat value (eav.original_value) — NOT a
-//                        first-seen value; the projection must equal today's overwritten
-//                        current value or "consumers keep working unchanged" is false (D5).
+//     first-seen value; the projection must equal today's overwritten
+//     current value or "consumers keep working unchanged" is false (D5).
 //   - valid_from_ordinal = -1, a synthetic "before-history" LOWER BOUND (no history
-//                        backfill — append-only tolerates it; dec-5). -1 is strictly
-//                        below every real chapter ordinal (chapter_index is 0-based, so
-//                        chapter 0 exists; -1 is the same "before-all" sentinel the
-//                        canon-at-chapter window uses), so a real ch.0 Path-A append
-//                        NEVER collides with a seed fact at the same valid_from.
-//                        valid_to_ordinal = NULL (open).
+//     backfill — append-only tolerates it; dec-5). -1 is strictly
+//     below every real chapter ordinal (chapter_index is 0-based, so
+//     chapter 0 exists; -1 is the same "before-all" sentinel the
+//     canon-at-chapter window uses), so a real ch.0 Path-A append
+//     NEVER collides with a seed fact at the same valid_from.
+//     valid_to_ordinal = NULL (open).
 //   - source_episode_id = NULL (no episode for a migration seed; the natural key
-//                        coalesces NULL → nil UUID so one fact per (entity, attr, value)).
+//     coalesces NULL → nil UUID so one fact per (entity, attr, value)).
 //   - attr_or_predicate = the attribute CODE (book_attributes.code via attr_def_id), the
-//                        same key the fact pipeline + refreshEAVProjection use.
+//     same key the fact pipeline + refreshEAVProjection use.
 //
 // Because exactly one open fact per (entity, attr) carries the current value,
 // maintain_chain leaves it open and the projection re-derived from facts equals the

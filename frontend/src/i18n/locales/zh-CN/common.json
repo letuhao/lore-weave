@@ -111,7 +111,6 @@
     "receiving": "正在接收...",
     "error": "错误",
     "you": "你",
-    "ai": "AI",
     "thinking": "思考中...",
     "startSpeaking": "开始说话...",
     "cancel": "取消",
@@ -140,7 +139,8 @@
     "presetNormalDesc": "平衡 (默认)",
     "presetPatientDesc": "等待时间较长，适合语速较慢的用户",
     "presetLearnerDesc": "允许较长停顿，适合语言练习",
-    "audioRetention": "语音音频将保存 48 小时以供回放，之后将自动删除。"
+    "audioRetention": "语音音频将保存 48 小时以供回放，之后将自动删除。",
+    "ai": "AI"
   },
   "theme_name": {
     "dark": "深色",

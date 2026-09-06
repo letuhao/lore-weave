@@ -106,8 +106,12 @@ async def test_merge_key_is_project_scoped_and_on_match_keeps_project_id():
     assert "project_id: $project_id" in merge_line, (
         f"MERGE key must include project_id: {merge_line}"
     )
-    assert "ON MATCH SET" in cypher
-    on_match_block = cypher.split("ON MATCH SET", 1)[1].split("RETURN", 1)[0]
-    assert "e.project_id" not in on_match_block, (
-        f"ON MATCH must not overwrite project_id (it is in the MERGE key): {on_match_block}"
+    # RESTATED (T76): §10.1 merged the branches into one unconditional SET, so "ON MATCH
+    # must not overwrite project_id" becomes "project_id is not ASSIGNED anywhere" — which
+    # is strictly stronger, because a single SET has no arm that could touch it.
+    import re as _re
+    assigns = [l for l in cypher.splitlines() if _re.search(r"e\.project_id\s*=(?!=)", l)]
+    assert not assigns, (
+        f"project_id is assigned — it is part of the MERGE key and every read "
+        f"(salience, coref, graph views) filters on it: {assigns}"
     )

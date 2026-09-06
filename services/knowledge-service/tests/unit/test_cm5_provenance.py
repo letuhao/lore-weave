@@ -73,7 +73,7 @@ def test_chapter_index_rejects_negative():
 # OTHER fake node omits the property, so only THIS test would catch it.
 
 def test_node_to_entity_tolerates_provenances_property():
-    from app.db.neo4j_repos.entities import _node_to_entity
+    from app.db.graph_repos.entities import _node_to_entity
     ent = _node_to_entity({
         "id": "e1", "user_id": "u1", "name": "Kai", "canonical_name": "kai",
         "kind": "person", "provenances": ["human_authored", "ai_assisted"],
@@ -83,7 +83,7 @@ def test_node_to_entity_tolerates_provenances_property():
 
 
 def test_node_to_event_tolerates_provenances_property():
-    from app.db.neo4j_repos.events import _node_to_event
+    from app.db.graph_repos.events import _node_to_event
     ev = _node_to_event({
         "id": "ev1", "user_id": "u1", "title": "Duel", "canonical_title": "duel",
         "provenances": ["ai_assisted"],
@@ -92,7 +92,7 @@ def test_node_to_event_tolerates_provenances_property():
 
 
 def test_node_to_fact_tolerates_provenances_property():
-    from app.db.neo4j_repos.facts import _node_to_fact
+    from app.db.graph_repos.facts import _node_to_fact
     f = _node_to_fact({
         "id": "f1", "user_id": "u1", "type": "milestone",
         "content": "Kai wins", "canonical_content": "kai wins",

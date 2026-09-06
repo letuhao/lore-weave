@@ -20,7 +20,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.neo4j_repos.events import Event
+from app.db.graph_repos.events import Event
 from app.labels import timeline_localizer
 from app.labels.timeline_localizer import localize_participants
 
@@ -152,7 +152,7 @@ async def test_participants_misaligned_array_falls_back(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_resolve_participant_anchors_picks_anchored(monkeypatch):
-    from app.db.neo4j_repos import entities as ent_mod
+    from app.db.graph_repos import entities as ent_mod
 
     def ent(gid):
         m = MagicMock()

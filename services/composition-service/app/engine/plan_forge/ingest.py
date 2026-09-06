@@ -103,6 +103,13 @@ _HEADING = re.compile(r"^(#{1,6})\s+(?:(\d+)\.\s*)?(.+)$")
 _DOTTED_SUB = re.compile(r"^#{1,6}\s+\d+\.\d")
 
 
+#: `# 1. Arc Overview` — a heading the author explicitly numbered as a SECTION. The parent-level twin
+#: of `_DOTTED_SUB`: where `N.M` is the author saying "this is part of section N", a bare `N.` is the
+#: author saying "this IS section N", so a lone one is never the document's title. Requires the space
+#: after the dot, so `# 1.1 Hồ Sơ` stays a dotted SUB-heading and is not caught here.
+_NUMBERED_SECTION = re.compile(r"^#{1,6}\s+\d+[.)]\s")
+
+
 #: `一、立意` — CJK section numbering. Not markdown, and the third corpus (a mainland web-novel
 #: planning document) uses it for EVERY section and contains not one `#`: authors write in Word or
 #: the site's own editor, where markdown is not a thing. The rules path therefore read it as zero
@@ -220,6 +227,21 @@ def _section_level(lines: list[str]) -> int:
     for nxt in levels[1:]:
         children = by_level[nxt]
         if len(by_level[level]) > 1 or len(children) < 2:
+            break
+        # A lone heading the author NUMBERED is a section they numbered, not a title. Both corpus
+        # `# 1. Arc Overview` documents happened to hold ONE arc, so the `len(children) < 2` guard
+        # above stopped the descent by luck — the shape was never actually protected. A plan with
+        # the ordinary THREE arcs has three `## ` siblings, so descent read `# 1. Arc Overview` as a
+        # title and promoted each ARC to a section; the kind matcher cannot place an arc's name, so
+        # all three fell into `unclassified` and the spec parsed ZERO arcs. Measured live
+        # 2026-08-12: the model sent exactly the shape this tool's own `guidance` prescribes and was
+        # told to send it again — an instruction the caller cannot satisfy.
+        #
+        # The signal is the author's, not the vocabulary's: descending on "is this heading a known
+        # kind?" was tried first and misread `# Story Premise: …` as a section, because "premise" is
+        # vocabulary. `N.` is the same authored statement of structure `_DOTTED_SUB` already trusts
+        # one level down, and it leaves all five unnumbered corpus titles descending as before.
+        if all(_NUMBERED_SECTION.match(h) for h in by_level[level]):
             break
         if any(_DOTTED_SUB.match(h) for h in children):
             break

@@ -51,6 +51,26 @@ class Settings(BaseSettings):
     # The upsert is idempotent+monotonic, so a generous overlap is harmless.
     reconcile_lookback_s: float = 3600.0
 
+    # ── The ABSENCE pass (owner ruling 2026-08-31, DQ-T65) ───────────────────────────────
+    # The `?since=` sweep above is additive and keyed on CHANGE, so it heals drift and is
+    # blind to a job that VANISHED: a row that stopped changing never appears in another
+    # window. Measured 2026-08-31 — 28 rows at running/pending/paused for up to 74 days, and
+    # `jobs_list` advertised `cancel` on all of them; every composition row had no owning row
+    # at all. This pass asks each owner `?ids=` about the non-terminal rows the projection
+    # still calls live, and marks what does not come back.
+    #
+    # OFF BY DEFAULT ON PURPOSE. It is the only loop here that writes a TERMINAL status the
+    # owning service did not emit, so it is enabled deliberately per environment rather than
+    # arriving with a deploy.
+    absence_check_enabled: bool = False
+    # Only ask about rows untouched for this long. A grace, not a guess: a job that started
+    # seconds ago must never be asked about and marked gone because its creation event is
+    # still in flight. Fails toward doing nothing.
+    absence_check_min_age_s: float = 86400.0
+    # Cap per service per pass — the ids go in a query string, and an unbounded list would
+    # build a URL no proxy will carry. The remainder is simply asked next pass.
+    absence_check_batch: int = 200
+
     # Per-service internal URLs the reconcile sweep (P3) + control routing (P3)
     # target. Defaults match the docker-compose container DNS names.
     # Ports = each service's IN-CONTAINER listen port (compose service DNS name),

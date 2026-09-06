@@ -26,6 +26,9 @@ use world_service::embedding_queue::{
     AuditEvent, AuditOutcome, AuditWriter, EMBEDDING_DIM, EmbeddingWriter,
 };
 
+mod support;
+use support::verified_reality;
+
 fn migration(rel: &str) -> String {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let path = format!("{root}/{rel}");
@@ -100,7 +103,7 @@ async fn embedding_writer_and_audit_live_smoke() {
     let writer = SqlxEmbeddingWriter::from_arc(std::sync::Arc::new(reality_pool.clone()));
     let vector: Vec<f32> = (0..EMBEDDING_DIM).map(|i| (i as f32) * 0.0001).collect();
     writer
-        .write_embedding(reality_id, npc_id, session_id, &vector)
+        .write_embedding(verified_reality(reality_id), npc_id, session_id, &vector)
         .await
         .expect("write_embedding");
 
@@ -117,7 +120,7 @@ async fn embedding_writer_and_audit_live_smoke() {
     // Idempotency: a second write must NOT error and must NOT clobber (the
     // `embedding IS NULL` guard means rows_affected == 0 the second time).
     writer
-        .write_embedding(reality_id, npc_id, session_id, &vector)
+        .write_embedding(verified_reality(reality_id), npc_id, session_id, &vector)
         .await
         .expect("idempotent re-write");
     let still: bool = sqlx::query_scalar(
@@ -136,7 +139,7 @@ async fn embedding_writer_and_audit_live_smoke() {
 
     audit
         .record(AuditEvent {
-            reality_id,
+            reality_id: verified_reality(reality_id),
             npc_id,
             session_id,
             provider: "openai".into(),
@@ -147,7 +150,7 @@ async fn embedding_writer_and_audit_live_smoke() {
         .await;
     audit
         .record(AuditEvent {
-            reality_id,
+            reality_id: verified_reality(reality_id),
             npc_id,
             session_id,
             provider: "openai".into(),
@@ -169,7 +172,7 @@ async fn embedding_writer_and_audit_live_smoke() {
     // skip it — one provider call = one edge row, never two.
     audit
         .record(AuditEvent {
-            reality_id,
+            reality_id: verified_reality(reality_id),
             npc_id,
             session_id,
             provider: "openai".into(),

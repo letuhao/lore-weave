@@ -56,6 +56,7 @@ from app.deps import (
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.structure import StructureRepo
 from app.db.models import CorrectionKind
+from app.engine.model_roles import role_ref
 from app.engine.adaptive_k import adaptive_k
 from app.engine.chapter_gen import build_chapter_pack_node, union_cast
 from app.engine.prose_doc import text_to_tiptap_doc
@@ -63,7 +64,8 @@ from app.engine.stitch import prepend_scene_headings, stitch_chapter
 from app.engine.canon_check import canon_envelope, unguarded_envelope
 from app.engine.canon_reflect import run_canon_reflect
 from app.engine.critic_policy import (
-    CriticResolution, CriticStatus, resolve_critic_verified,
+    CriticResolution, CriticStatus, canon_violations_enabled,
+    resolve_critic_verified,
 )
 from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
@@ -771,6 +773,8 @@ async def generate(
                 user_id=user_id, project_id=project_id,
                 cast_glossary_ids=cast_glossary_ids,
                 plan_status=plan_status, plan_cast=plan_cast,
+                # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
+                role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
                 scene_sort_order=pc.scene_sort_order,
                 draft=w.text, packed_prompt=pc.prompt, profile=pc.profile,
                 drafter_source=body.model_source, drafter_ref=str(body.model_ref),
@@ -1428,6 +1432,8 @@ async def generate_chapter(
             # silently absent — the check reports NO_POSITION rather than passing for
             # a reason nobody can see on the envelope.
             plan_supported=False,
+            # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
+            role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
             knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
             cast_glossary_ids=[str(e) for e in pack_node["present_entity_ids"]],
             scene_sort_order=pc.scene_sort_order, draft=winner.text,
@@ -1668,6 +1674,8 @@ async def stitch_chapter_endpoint(
             # silently absent — the check reports NO_POSITION rather than passing for
             # a reason nobody can see on the envelope.
             plan_supported=False,
+            # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
+            role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
             knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
             cast_glossary_ids=[str(e) for e in union_cast(scenes)],
             # A stitch has no single packed prompt — pass the chapter intent as the
@@ -2052,15 +2060,76 @@ async def critique(
 
     # CC2: re-resolve the ACTIVE canon at critique time — a deleted/archived rule
     # is never enforced.
-    rules = await canon.list_active(job.project_id)
+    # ── QC-5 C40: the bi-temporal ANCHOR this route has always had and never used ────────
+    #
+    # 🔴 The comment below used to read "no chapter anchor, so no spoiler-safe `as of` cast
+    # exists to render; DEFENSIBLE". Measured: `job.input["chapter_id"]` is set on **232 of
+    # 514** jobs, including every acceptance-book draft, and `create_chapter_job_guarded`
+    # documents it — *"`chapter_id` is matched via `input->>'chapter_id'`"*. The anchor was
+    # there; this route simply did not read it.
+    #
+    # What that cost is QC-5's clause 1a. C39 dumped the prompt this route builds: six one-line
+    # rules, `ESTABLISHED FACTS (none)`, one chapter, no position — and the critic then reads a
+    # scene in which the betrayer acts humble as CONTRADICTING "he is the betrayer". A rule is a
+    # fact about the whole story; a passage is one moment inside it. Asked without the story
+    # position, concealment is indistinguishable from contradiction, and the untouched control
+    # flags as often as the planted draft (7/8 vs 7/8, C37/C38).
+    #
+    # `canon_for_chapter` is degrade-safe by construction: any read failure yields an `empty`
+    # bible rather than raising, which is why an advisory critique can depend on it.
+    present_facts: list[str] = []
+    _as_of: int | None = None
+    _anchor = (job.input or {}).get("chapter_id")
+    if _anchor and job.book_id:
+        from app.clients.kal_client import get_kal_client
+        from app.engine.canon_bible import canon_for_chapter
+        try:
+            _bible = await canon_for_chapter(
+                kal=get_kal_client(), book=book, book_id=job.book_id,
+                chapter_id=UUID(str(_anchor)), user_id=user_id, bearer=bearer,
+                source_language=str(settings_dict.get("source_language") or "auto"),
+            )
+            present_facts = _bible.as_present_facts()
+            _as_of = _bible.as_of
+        except Exception:  # noqa: BLE001 — advisory; a critique must not fail over a canon read
+            logger.debug("critique canon bible unavailable — grounding empty", exc_info=True)
+
+    # CC2: re-resolve the ACTIVE canon at critique time — a deleted/archived rule is never
+    # enforced — and WINDOW it to the chapter's story position (C42). `canon_rule.from_order`
+    # / `until_order` had no reader, so a rule stating a REVEAL was handed to the critic as
+    # true from chapter 1: measured, the betrayal rule is cited on 7 of 8 clean drafts and
+    # dropping it takes the clean arm from 7/8 to 4/8. `_bible.as_of` is None when no position
+    # resolved, and `list_active` then behaves exactly as before.
+    rules = await canon.list_active(job.project_id, as_of=_as_of)
     active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
 
+    # QC-5 C34 — the verifier role, resolved HERE too. C33 wired it into the authoring
+    # path only, and the live smoke caught the gap: this route is what the studio and the
+    # QC-5 harness call, so a book that had configured a verifier still had its findings
+    # audited by the critic. `judge_prose` has three call sites and the role was passed at
+    # one — the same one-concept-N-readers shape `resolve_critic` records an eighth copy of.
+    _ver_src, _ver_ref = role_ref(settings_dict, "critic_verifier")
+    # QC-5 C46 — the attribution channel is OFF unless this book turned it on. Resolved
+    # HERE as well as in the authoring path, because C34 found the verifier role wired at
+    # one call site of three and this is the one the studio and the QC-5 harness call.
+    _emit_v = canon_violations_enabled(settings_dict, (job.input or {}).get("params"))
     critic = await judge_prose(
         llm, user_id=str(user_id),
         model_source=str(critic_res.source), model_ref=str(critic_res.ref),
-        passage=passage, active_rules=active_rules, present_facts=[],
+        passage=passage, active_rules=active_rules, present_facts=present_facts,
         profile=from_settings(settings_dict),
+        verifier_source=_ver_src, verifier_ref=_ver_ref,
+        emit_canon_violations=_emit_v,
     )
+    # WHICH judge answered, stamped on the verdict itself. The authoring path already does
+    # this (`authoring_run_service.py`), and the studio renders both fields; this route did
+    # not, so a critique could name every dimension it scored except the critic that scored
+    # them. The gap is not cosmetic: QC-5's acceptance was once measured with a critic passed
+    # in the request body and read as a statement about the path users get — exactly what
+    # `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC` names. A verdict that cannot say
+    # which judge produced it is how two critics' numbers get compared as if they were one.
+    critic = {**critic, "critic_ref": str(critic_res.ref),
+              "critic_status": critic_res.status.value}
     # Fold the deterministic derivative findings + the GATE verdict into the critic
     # contract (alongside the LLM dims/violations) so the regeneration loop sees both.
     if derivative_findings:

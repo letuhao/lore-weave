@@ -1,0 +1,56 @@
+{
+  "_note": "composition_authoring_run_manage re-measured after its three create-required arguments got DESCRIPTIONS and plan_run_id got a declared emitter.",
+  "scenarios": [
+    {
+      "id": "composition-authoring-run-manage-with-a-plan",
+      "tool_under_test": "composition_authoring_run_manage",
+      "expect_tool": "composition_authoring_run_manage",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Start an authoring run for this book — begin autopilot. Budget it at 5 dollars and pause after each unit so I can review.",
+      "prompt_source": "The tool's synonyms ('start authoring run' / 'begin autopilot') PLUS the two values its own schema now says only the author can supply.\n\n🔴 THE OLD PROMPT COULD NOT BE SATISFIED BY ANY MODEL. It read 'Start an authoring run for this book - begin autopilot.' and op=create REQUIRES budget_usd and pause_after_each_unit, which no tool emits and which the model is correctly forbidden from inventing. A scenario that withholds an input the contract demands measures the prompt, not the tool. A user who asks for an autonomous, cost-bearing run and states a budget is the ordinary case, not a hint.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I - The Emberfall\n### The Ember Codex\nAldric Vane climbs the black stair and finds the codex burning.\n### The Waterline\nThe Obsidian Trench is walkable only at low tide.\n\n## Arc II - The Reckoning\n### The Black Stair Again\nAldric returns to the keep with the codex.\n### The Last Tide\nThe trench closes for good and the keep is cut off.\n"
+          },
+          "why": "op=create needs plan_run_id - 'the PLAN run this authoring run drafts from', per the description added 2026-08-23 - and there was no plan run at all. Measured before the seed: the model called composition_package_tree on 5 of 5 runs and answered 'there is no story plan (arcs) in place', which is correct and leaves the tool unreachable.\n\nThe markdown has TWO '## ' arcs each holding two '### ' events, because the ingest descends to the shallowest level with two or more headings - one arc heading makes it read the events as arcs and parse none."
+        },
+        {
+          "tool": "plan_compile",
+          "args": {
+            "book_id": "{book_id}",
+            "run_id": "{step:0:run_id}",
+            "arc_id": "arc_1"
+          },
+          "why": "A proposed run is not a compiled one. arc_id is the SPEC's own id ('arc_1'), not a structure node's - the tool says so when you get it wrong: 'no arc <uuid> in this spec - it has: arc_1, arc_2.'"
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT (count(*) > 0)::text FROM plan_artifact a JOIN plan_run r ON r.id = a.run_id WHERE r.book_id = '{book_id}' AND a.kind = 'package'",
+          "expect": "true",
+          "why": "A COMPILED plan run must exist, or plan_run_id names nothing and the tool is unreachable. Existence rather than a count: compile writes more than one package artifact per run, and an exact count would fail on a fixture that is correct."
+        }
+      ],
+      "falsifier": "REFUTED IF: a run is created or started with NO confirm card (Tier W and it spends), OR the op chosen is not create/start when the user said start — its enum spans create|start|resume|gate|revert_all and revert_all on a create request would be the worst outcome reachable here — OR the model invents a plan_run_id (op=create REQUIRES one and this fresh book has no plan run, so inventing it is the D-DECLARED-UUID class), OR it invents a budget_usd the author never named, which is a number with money attached. CONTROL: the fixture has no plan_run, so the honest outcome may well be a refusal naming what is missing, and that is a PRECONDITION finding rather than a tool defect. Store check: authoring_runs stays 0.",
+      "ship_audit": {
+        "gate": "OWED — Tier W, cost-bearing, and the confirm-token IS the audit for this tool.",
+        "absent_case": "OWED — a plan_run_id or run_id that does not exist must be refused.",
+        "idempotency": "OWED — op=start on an already-started run must not start a second one.",
+        "tenancy": "OWED — book-scoped; another account's book must not be drivable, and spend is the consequence."
+      },
+      "defects": [],
+      "_rerun_note": "Re-run: the first batch-16 arm lost this scenario's rep to a provider STREAM_ERROR — 'upstream sent error with no error message ... the provider reported a failure without saying why'. It hit 4 of 25 runs across the batch, which is the local provider hiccuping, not a tool result. A transport failure is not a model result, so this is a clean K=5 rather than an argument about a 4-of-5.",
+      "approve_why": "op=create mints a confirm token and is cost-bearing, so it cards. The target is this run's OWN throwaway book, torn down after, and the budget the prompt states is 5 dollars against a LOCAL model."
+    }
+  ]
+}

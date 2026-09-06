@@ -1,0 +1,47 @@
+{
+ "_note": "D-HARNESS-agentSurface-DISAGREES-WITH-THE-WIRE-LOG, the DISCRIMINATING control. c-surfrec1 agreed with the wire log 5/5 AND SO WOULD THE OLD RECORD — its surface never changed between turns, so it could not tell the fix from the defect. This scenario's turn 1 asks for job status and turn 2 asks to cancel, and the corpus shows 10 recorded runs of it where a tool called in turn 1 appears nowhere in the measured turn's surfaces. Scenario copied VERBATIM from scenarios-c-two.json.",
+ "scenarios": [
+  {
+   "id": "translation-job-control-refederated",
+   "tool_under_test": "translation_job_control",
+   "expect_tool": "translation_job_control",
+   "intent": "write",
+   "tier": "W",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "What is the status of the translation job for this book?",
+   "follow_ups": [
+    "Cancel that job."
+   ],
+   "prompt_source": "Turn 1 is translation_job_status' own purpose; the MEASURED turn is translation_job_control's synonyms ['cancel job'] + ['stop translation'], verbatim. Two turns because job_id is REQUIRED and job_status/list is its supplier.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "sql": {
+      "db": "loreweave_translation",
+      "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'pending', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+      "why": "A PENDING translation job for the throwaway book. Seeded in SQL because the only tool that creates one is translation_start_job, which SPENDS — and a cost-bearing card is never approved. status='pending' rather than a terminal state so that CANCEL is a meaningful action rather than a no-op."
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_translation",
+     "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}' AND status='pending'",
+     "expect": "1",
+     "why": "EXACTLY ONE pending job — the SELECT that proves the SQL seed did what it claims. The card is never approved, so it must still be 'pending' afterwards; a status of 'cancelled' would mean the cancel landed without approval."
+    }
+   ],
+   "falsifier": "REFUTED IF: the job is cancelled with NO confirm card (Tier W), OR the action chosen is `resume` or `retry` — both RE-SPEND money by the tool's own description and neither is what the author asked for — OR the model invents a job_id rather than reading one from turn 1. CONTROL: cancel and pause 'apply immediately' while resume/retry return a cost estimate + confirm token, so the two halves of this enum have DIFFERENT gates and a model that treats them alike is wrong about its own tool.",
+   "ship_audit": {
+    "gate": "OWED — Tier W.",
+    "absent_case": "OWED — a job_id that does not exist must be refused.",
+    "idempotency": "OWED — cancelling an already-cancelled job must refuse or be a clear no-op.",
+    "tenancy": "OWED — book-scoped."
+   },
+   "defects": [],
+   "rerun_why": "🔴 THE PREVIOUS VERDICT MEASURED AN ABSENT TOOL. translation_job_control was carried as blocked on 'called 0/5'. It was not on the wire and could not be: infra-translation-service-1 was in a restart loop (its version_num backfill could not run twice), ai-gateway logged 'provider translation list-tools failed -> PARTIAL', and the federated catalogue held 300 tools instead of 315. Fixed and verified today - service and worker Up, catalogue back to 315, the tool present with required ['job_id', 'action']. Re-run verbatim; the control is its own earlier number."
+  }
+ ]
+}

@@ -56,7 +56,8 @@ from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from loreweave_llm.models import Job
 from app.context.formatters.token_counter import estimate_tokens
 from app.db.models import Summary
-from app.db.neo4j_helpers import CypherSession, run_read
+from app.db.neo4j_helpers import CypherSession
+from app.db.graph_repos import passages as passages_repo
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
@@ -229,44 +230,16 @@ async def _fetch_recent_passages(
     (global-scope passages only). When set: filter to the given
     project_id. KSA §7.6 rule 5 — L0 vs L1 must not cross-contaminate.
     """
-    if not source_types:
-        return []
-    if project_id is None:
-        cypher = """
-        MATCH (p:Passage)
-        WHERE p.user_id = $user_id
-          AND p.project_id IS NULL
-          AND p.source_type IN $source_types
-        RETURN p.text AS text
-        ORDER BY p.created_at DESC
-        LIMIT $limit
-        """
-        result = await run_read(
-            session,
-            cypher,
-            user_id=str(user_id),
-            source_types=source_types,
-            limit=limit,
-        )
-    else:
-        cypher = """
-        MATCH (p:Passage)
-        WHERE p.user_id = $user_id
-          AND p.project_id = $project_id
-          AND p.source_type IN $source_types
-        RETURN p.text AS text
-        ORDER BY p.created_at DESC
-        LIMIT $limit
-        """
-        result = await run_read(
-            session,
-            cypher,
-            user_id=str(user_id),
-            project_id=str(project_id),
-            source_types=source_types,
-            limit=limit,
-        )
-    return [record["text"] async for record in result if record.get("text")]
+    # The query moved to `graph_repos/passages.py` (plan T17), and the two scope branches
+    # collapsed into one there — they differed only in the project predicate, and only one
+    # of them was updated when the source-type filter was added.
+    return await passages_repo.recent_passage_texts(
+        session,
+        user_id=str(user_id),
+        project_id=str(project_id) if project_id is not None else None,
+        source_types=source_types,
+        limit=limit,
+    )
 
 
 def _build_messages(

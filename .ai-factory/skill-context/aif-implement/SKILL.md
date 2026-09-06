@@ -17,6 +17,31 @@ watch it go red, put it back, paste the output.
 
 Exceptions are narrow and stated out loud: a pure rename, a comment, a generated file.
 
+## Execute the plan, do not narrate it
+
+`aif-implement` Step 3.8 asks *"ready to commit?"* at every commit checkpoint. **That prompt is
+disabled in this repository.** A plan here routinely carries 10–15 checkpoints, so honouring it turns
+one execution into fifteen interrupted ones, and the human is answering "yes" to a question whose
+real gate — the QC task — has already been evaluated by the agent.
+
+**Commit at a checkpoint without asking, provided the checkpoint's QC task is green.** If the plan
+has no QC task for that checkpoint, the tests-and-evidence rule above is the gate. QC red is not a
+reason to ask either: fix it and carry on.
+
+**Between tasks, keep going.** Do not stop to summarise progress, do not hand back because the next
+task looks large, do not treat a phase boundary as an ending. Stop only for:
+
+- an explicit ⏸ POST-REVIEW checkpoint the plan marks stop-and-wait,
+- a stop condition the plan names,
+- a decision genuinely reserved to the PO,
+- exhausted context.
+
+**Exhausted context is a handoff, not a stop.** Write the current task's evidence into the plan,
+refresh whatever "current state" block it carries, and end with `RESUME: <task id>`. Then the next
+invocation — or `/loop /aif-implement @<plan>` — picks it up. Stopping *cleanly* mid-plan without
+leaving that pointer is the failure mode: it reads as completion and the next session re-derives
+what was already done.
+
 ## Follow the repo's phases, not a parallel set
 
 Implementation sits inside `CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC

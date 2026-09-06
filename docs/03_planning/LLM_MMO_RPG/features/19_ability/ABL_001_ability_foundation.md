@@ -351,7 +351,9 @@ effective_strike_power =
 > scaling and slots move together or not at all. The referenced `kind_id` set is known at schema stage
 > (ABL-V3 already validates it), so the capture is bounded and needs no extra lookup at cast time.
 
-- **Fixed-point, no floats, saturating** — the whole path inherits DF7-A4, so DF7-V4's replay assertion
+- **Fixed-point, saturating** (was *"no floats"* — DF7-A4 revised 2026-08-02: the rule is one byte
+  representation per value, and these are integers on a fixed scale) — the whole path inherits DF7-A4,
+  so DF7-V4's replay assertion
   stays meaningful across abilities. `sat_mul` matters here for the same reason it does in DF07 §4: a
   PROG_001 kind may be declared `Unbounded`, and `raw_value × weight_milli` overflows i64 milli-units
   without it — a debug panic mid-resolution, or a release wrap that silently inverts a cultivator's damage.

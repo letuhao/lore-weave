@@ -48,9 +48,17 @@ fn env_of(bytes: &str) -> EventEnvelope {
         .envelope
 }
 
-/// A spread of events that, between them, exercise every one of the 11
-/// registered projections' `apply_event` paths (so the apply_one bench is
-/// representative of a real mixed-event rebuild, not one hot arm).
+/// A spread of events that, between them, exercise every registered
+/// projection's `apply_event` path (so the apply_one bench is representative of
+/// a real mixed-event rebuild, not one hot arm).
+///
+/// **Pre-existing RED, fixed in passing 2026-08-06.** `0018` removed the
+/// `region` / `session` / `world_kv` projections as ORPHANS — a projector, a
+/// rebuilder and a golden fixture with no producer at all — and deleted their
+/// fixtures. This bench still named all three, so `cargo build --all-targets`
+/// had been failing on the branch with three `include_str!` errors since that
+/// migration landed. Nothing caught it because a bench is not built by
+/// `cargo test`.
 fn representative_events() -> Vec<(&'static str, EventEnvelope)> {
     // include_str! is relative to THIS file (services/world-service/benches/):
     // ../../../crates → repo-root/crates.
@@ -66,18 +74,7 @@ fn representative_events() -> Vec<(&'static str, EventEnvelope)> {
         };
     }
     vec![
-        fx!("npc.said", "npc.said.json"),
-        fx!("npc.relationship_changed", "npc.relationship_changed.json"),
-        fx!("npc.memory_embedded", "npc.memory_embedded.json"),
-        fx!("npc.created", "npc.created.json"),
-        fx!("pc.moved", "pc.moved.json"),
-        fx!("pc.relationship_changed", "pc.relationship_changed.json"),
-        fx!("pc.item_acquired", "pc.item_acquired.json"),
-        fx!("pc.spawned", "pc.spawned.json"),
         fx!("canon.entry.created", "canon.entry.created.json"),
-        fx!("region.created", "region.created.json"),
-        fx!("session.started", "session.started.json"),
-        fx!("world.kv_set", "world.kv_set.json"),
     ]
 }
 

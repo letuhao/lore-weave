@@ -294,6 +294,51 @@ def test_hard_rules_pass_still_blocks_on_hard_tier_failure():
     assert _hard_rules_pass(rules) is False
 
 
+def test_compile_blocked_message_NAMES_THE_RULES_THAT_BLOCKED():
+    """🔴 MEASURED: 3 calls in one session were answered 'validation failed — compile blocked'
+    and nothing else. `run_rules` had already produced a verdict per rule and the raise discarded
+    the list. The caller has no move from that sentence: it names no rule, no field, and nothing
+    that would be legal instead (C-12)."""
+    from app.services.plan_forge_service import _compile_blocked_message
+
+    msg = _compile_blocked_message([
+        {"rule": "vars_four", "pass": False, "detail": "codes=[]"},
+        {"rule": "arc2_discovery", "pass": False, "detail": "missing"},
+        {"rule": "pa_not_realm", "pass": True, "detail": ""},
+    ])
+    assert "vars_four" in msg and "codes=[]" in msg
+    assert "arc2_discovery" in msg and "missing" in msg
+    assert "2 hard rule(s)" in msg
+    assert "pa_not_realm" not in msg, "a PASSING rule must not be listed as a blocker"
+
+
+def test_compile_blocked_message_OMITS_ADVISORY_AND_INAPPLICABLE_RULES():
+    """They do not gate the compile (`_hard_rules_pass`), so naming them would accuse the author
+    of failing checks that stopped nothing — the same dishonesty validate.py calls out about a
+    vacuous check mark."""
+    from app.services.plan_forge_service import _compile_blocked_message
+
+    msg = _compile_blocked_message([
+        {"rule": "sg_value_shift_per_scene", "pass": False, "tier": "advisory"},
+        {"rule": "pa_not_realm", "pass": False, "applicable": False},
+        {"rule": "vars_four", "pass": False, "detail": "codes=[]"},
+    ])
+    assert "sg_value_shift_per_scene" not in msg
+    assert "pa_not_realm" not in msg
+    assert "vars_four" in msg and "1 hard rule(s)" in msg
+
+
+def test_compile_blocked_message_SAYS_SO_WHEN_NOTHING_ACTUALLY_BLOCKS():
+    """Defensive: `_hard_rules_pass` said no while nothing is hard, applicable AND failing. That
+    is a contradiction inside the module, and naming it beats the old sentence, which was
+    indistinguishable from a real rule failure."""
+    from app.services.plan_forge_service import _compile_blocked_message
+
+    msg = _compile_blocked_message([{"rule": "advisory_only", "pass": False, "tier": "advisory"}])
+    assert "validator inconsistency" in msg
+    assert "not something the spec can fix" in msg
+
+
 def test_negative_thr_early_explain(pipeline_artifacts):
     _, spec, _, compiled = pipeline_artifacts
     bad = json.loads(json.dumps(spec))

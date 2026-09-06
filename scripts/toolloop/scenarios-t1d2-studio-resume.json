@@ -1,0 +1,46 @@
+{
+  "_note": "T1-D2 — the studio's single-book knowledge must survive a SUSPEND. The row's fix persists `studio` on chat_suspended_runs and repairs the saved book_id on the resumed dispatch, because the /tool-results request carries no studio signal and an in-memory fix therefore cannot work. It shipped with 7 guards and an applied migration but NO post-fix live run: its only live measurement was of the DEFECT, on 2026-08-12.\n\nTHE TRIGGER IS COMMANDED, NOT WAITED FOR. The recorded instance had the model pass the book's KNOWLEDGE-PROJECT id as book_id. Prompts are substituted with the fixture's own ids (fe_runner.py:596 -> Throwaway.substitute_text), so the prompt can name `{project_id}` directly and the confusion is reproduced deterministically instead of hoped for.\n\nWHY THE ASSERTION IS THE STORE AND NOT THE LOG. The streaming path already overrode the id before the card — that half was never broken. What broke was the RESUMED call after approval, which used the raw saved args and asked composition-service for a book the author does not own, so the approved write failed 'not found or not accessible'. An entity present on the STUDIO's book after approval is therefore the whole fix, end to end.",
+  "scenarios": [
+    {
+      "id": "studio-approved-call-keeps-the-studio-book",
+      "tool_under_test": "glossary_propose_entities",
+      "expect_tool": "glossary_propose_entities",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "studio_context": {},
+      "prompt": "For book {project_id}, add a character named Aldric Vane to the glossary.",
+      "prompt_source": "Reconstructed from the 2026-08-12 live capture, where the model called a Tier-A tool with book_id set to the book's knowledge-project id while the studio held a different book. `{project_id}` is substituted with the fixture's own composition project id, so the wrong-id condition is produced on purpose rather than waited for.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": { "genres": ["universal"], "kinds": ["character"] }
+          },
+          "why": "The book must hold the `character` kind before an entity of that kind can be proposed. Copied from the seed proven in scenarios-c-evidence2.json."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "The studio's book must start empty, or an entity that was already there would read as the approved write having landed and the scenario would prove nothing."
+        }
+      ],
+      "falsifier": "REFUTED IF: after the approval, glossary_entities holds NO row for the studio's book — that is the defect, the resumed dispatch having used the raw saved book_id and been refused on a book the author does not own.\n\nCONFIRMED IF: a row for 'Aldric Vane' exists on {book_id} AFTER the card is approved. The write must land on the STUDIO's book, never on {project_id}.\n\n🔴 CONTROL, and the reading is VOID without it: the turn must actually SUSPEND. `approve: approved_once` means the harness clicks a card, so if no card is raised the turn never took the resume path and a clean store diff would measure nothing at all. A run with no pending_approval is not evidence either way.",
+      "ship_audit": {
+        "gate": "EXERCISED — Tier A, approved deliberately under the throwaway-fixture rule.",
+        "empty_case": "OWED.",
+        "idempotency": "OWED.",
+        "tenancy": "OWED — this scenario is adjacent to tenancy but does not test another owner's book."
+      },
+      "defects": []
+    }
+  ]
+}

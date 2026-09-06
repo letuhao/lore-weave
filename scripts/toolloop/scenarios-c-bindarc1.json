@@ -1,0 +1,52 @@
+{
+  "_note": "D-THE-MODEL-CLAIMS-A-BINDING-IT-NEVER-MADE — the row's ORIGINAL arm, extracted VERBATIM from scenarios-batch26.json so it can be re-measured on its own. Nothing in the scenario is changed: same prompt, same seed, same falsifier. Re-run 2026-08-28 to read the SERVER'S OWN withheld_tools record for composition_motif_bind_edit, which the 2026-08-14 batch predates — the row needs to know whether the tool is unreachable by DECLARATION (a synonym gap, DQ-T58's premise) or by BUDGET/domain (a different mechanism entirely, and one DQ-T58's answer would not fix).",
+  "scenarios": [
+    {
+      "id": "composition-motif-bind-edit",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Attach Emberfall Seam to the opening arc as this book's motif.",
+      "prompt_source": "meta.synonyms['attach pattern to chapter'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-seam-b26-{run_id}",
+            "name": "Emberfall Seam {run_id} {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-seam-b26-{run_id}')",
+          "expect": "0",
+          "why": "ZERO bindings for THIS motif. FIFTEENTH ARM: 73 attempts, 1 clean run — which called the tool and minted its card with the store unchanged. Prompt wording has now been varied seven times and the siblings measure fine in the same arms."
+        }
+      ],
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run ending with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — re-run it, never read it as 0/5.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

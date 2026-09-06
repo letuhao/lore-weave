@@ -8,6 +8,30 @@ generated_by: scripts/chunk_doc.py
 
 ## 12S. Security Review — S1/S2/S3 Resolutions (2026-04-24)
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #2, #4).** §12S.2's visibility schema keys events to `session_id` and routes `region_broadcast`/`reality_broadcast` “via R7 event-handler” — but the channel/island is the concurrency unit (SL-A9), cross-island propagation is async messages, not an events-table tailer (SL-A10), and event identity is `(reality_id, channel_id, channel_event_id)`, not a reality-global id. §12S.2.5's canonical prompt-assembly query also predates island state as an input. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
 
 **Origin:** Security Engineer / Threat Modeler adversarial review. S2 + S3 reshaped via user insight — capability-based data model replaces access-control-filter model. S3 extends with full Option A privacy tier system.

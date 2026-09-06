@@ -43,7 +43,8 @@ from loreweave_mcp import (
 from app.config import settings
 from app.middleware.jwt_auth import get_optional_current_user
 from app.grant_client import GrantClient, GrantLevel
-from app.grant_deps import InsufficientGrant, authorize_book
+from app.grant_deps import (GrantAuthorityUnavailable, InsufficientGrant,
+                            authorize_book)
 from app.deps import (
     get_grant_client_dep,
     get_outline_repo,
@@ -296,9 +297,21 @@ async def confirm_action(
             try:
                 book_uuid = UUID(str(book_target))
             except (ValueError, TypeError) as exc:
-                raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+                raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
             try:
                 await authorize_book(grant, book_uuid, envelope_user, GrantLevel.EDIT)
+            # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+            # so the 63 existing handlers keep working unchanged, and catching the base first here
+            # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+            # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+            except GrantAuthorityUnavailable as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "grant_authority_unavailable",
+                            "detail": "Access could not be checked: the permission service is "
+                                      "unreachable. This is temporary — retry shortly."},
+                    headers={"Retry-After": "5"},
+                ) from exc
             except (OwnershipError, InsufficientGrant) as exc:
                 raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_motif_adopt(payload, envelope_user, token=token, claims=claims)
@@ -312,9 +325,21 @@ async def confirm_action(
         try:
             book_id = UUID(str(payload["book_id"]))
         except (KeyError, ValueError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+        # so the 63 existing handlers keep working unchanged, and catching the base first here
+        # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+        # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+        except GrantAuthorityUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "grant_authority_unavailable",
+                        "detail": "Access could not be checked: the permission service is "
+                                  "unreachable. This is temporary — retry shortly."},
+                headers={"Retry-After": "5"},
+            ) from exc
         except (OwnershipError, InsufficientGrant) as exc:
             raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_decompile(payload, book_id, envelope_user, token=token, claims=claims)
@@ -326,9 +351,21 @@ async def confirm_action(
         try:
             book_id = UUID(str(payload["book_id"]))
         except (KeyError, ValueError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+        # so the 63 existing handlers keep working unchanged, and catching the base first here
+        # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+        # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+        except GrantAuthorityUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "grant_authority_unavailable",
+                        "detail": "Access could not be checked: the permission service is "
+                                  "unreachable. This is temporary — retry shortly."},
+                headers={"Retry-After": "5"},
+            ) from exc
         except (OwnershipError, InsufficientGrant) as exc:
             raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_derive(payload, envelope_user, works=works, book=book)
@@ -342,9 +379,21 @@ async def confirm_action(
             try:
                 book_id = UUID(str(payload["book_id"]))
             except (KeyError, ValueError, TypeError) as exc:
-                raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+                raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
             try:
                 await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+            # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+            # so the 63 existing handlers keep working unchanged, and catching the base first here
+            # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+            # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+            except GrantAuthorityUnavailable as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "grant_authority_unavailable",
+                            "detail": "Access could not be checked: the permission service is "
+                                      "unreachable. This is temporary — retry shortly."},
+                    headers={"Retry-After": "5"},
+                ) from exc
             except (OwnershipError, InsufficientGrant) as exc:
                 raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_motif_mine(payload, envelope_user, token=token, claims=claims)
@@ -359,9 +408,21 @@ async def confirm_action(
             try:
                 book_id = UUID(str(payload["book_id"]))
             except (ValueError, TypeError) as exc:
-                raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+                raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
             try:
                 await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+            # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+            # so the 63 existing handlers keep working unchanged, and catching the base first here
+            # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+            # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+            except GrantAuthorityUnavailable as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "grant_authority_unavailable",
+                            "detail": "Access could not be checked: the permission service is "
+                                      "unreachable. This is temporary — retry shortly."},
+                    headers={"Retry-After": "5"},
+                ) from exc
             except (OwnershipError, InsufficientGrant) as exc:
                 raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_library_translate(payload, envelope_user, token=token, claims=claims)
@@ -373,9 +434,21 @@ async def confirm_action(
         try:
             book_id = UUID(str(payload["book_id"]))
         except (KeyError, ValueError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+        # so the 63 existing handlers keep working unchanged, and catching the base first here
+        # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+        # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+        except GrantAuthorityUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "grant_authority_unavailable",
+                        "detail": "Access could not be checked: the permission service is "
+                                  "unreachable. This is temporary — retry shortly."},
+                headers={"Retry-After": "5"},
+            ) from exc
         except (OwnershipError, InsufficientGrant) as exc:
             raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         if claims.descriptor == _AUTHORING_RUN_CREATE_DESCRIPTOR:
@@ -393,9 +466,21 @@ async def confirm_action(
         try:
             book_id = UUID(str(payload["book_id"]))
         except (KeyError, ValueError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+        # so the 63 existing handlers keep working unchanged, and catching the base first here
+        # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+        # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+        except GrantAuthorityUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "grant_authority_unavailable",
+                        "detail": "Access could not be checked: the permission service is "
+                                  "unreachable. This is temporary — retry shortly."},
+                headers={"Retry-After": "5"},
+            ) from exc
         except (OwnershipError, InsufficientGrant) as exc:
             raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_bootstrap_apply(payload, book_id, envelope_user)
@@ -406,13 +491,25 @@ async def confirm_action(
     try:
         project_id = UUID(str(payload["project_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     work = await works.get(project_id)
     if work is None:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
     try:
         await authorize_book(grant, work.book_id, envelope_user, GrantLevel.EDIT)
+    # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+    # so the 63 existing handlers keep working unchanged, and catching the base first here
+    # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+    # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+    except GrantAuthorityUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "grant_authority_unavailable",
+                    "detail": "Access could not be checked: the permission service is "
+                              "unreachable. This is temporary — retry shortly."},
+            headers={"Retry-After": "5"},
+        ) from exc
     except (OwnershipError, InsufficientGrant) as exc:
         raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
 
@@ -441,7 +538,7 @@ async def _execute_publish(
     try:
         chapter_id = UUID(str(payload["chapter_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     # Canonization gate (CM1 / OI-1): a chapter is publishable ONLY when all its
     # composition scenes are 'done' and no unresolved canon contradiction survives
@@ -463,7 +560,7 @@ async def _execute_publish(
         # Surface book-service's client errors as a uniform action_error; a 5xx is
         # an upstream failure (the action did not complete).
         logger.warning("composition.publish book-service error: %s", exc)
-        raise HTTPException(status_code=502, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=502, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     return {
         "outcome": "action_done",
@@ -507,7 +604,7 @@ async def _execute_generate(
         target_id = UUID(str(target_id_raw))
         model_ref = UUID(str(model_ref_raw))
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     guide = str(payload.get("guide") or "")
     reasoning = str(payload.get("reasoning") or "auto")
     max_out = payload.get("max_output_tokens")
@@ -564,7 +661,7 @@ async def _execute_generate(
                 body_kwargs["max_output_tokens"] = int(max_out)
             body = engine_router.GenerateChapterBody(**body_kwargs)
     except (ValueError, TypeError) as exc:  # pydantic ValidationError ⊂ ValueError
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     try:
         if target_kind == "scene":
@@ -688,7 +785,7 @@ async def _execute_motif_adopt(
     try:
         motif_id = UUID(str(payload["motif_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     retag = payload.get("retag_genres")
     if retag is not None and not isinstance(retag, list):
         raise HTTPException(status_code=400, detail={"code": "action_error"})
@@ -699,7 +796,7 @@ async def _execute_motif_adopt(
     try:
         book_uuid = UUID(str(book_label)) if book_label else None
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     # book_shared MUST carry a book — a shared clone without a (gated) book is a tenancy defect.
     if book_shared and book_uuid is None:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
@@ -831,7 +928,7 @@ async def _execute_decompile(
     try:
         per = max(1, int(payload.get("chapters_per_arc") or 10))
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     # Replay guard: a re-submitted token returns the prior outcome, never a second mutation.
     await _claim_or_replay(token, claims)
     result = await decompile_arcs(
@@ -858,7 +955,7 @@ async def _execute_derive(
     try:
         source_pid = UUID(str(payload["source_project_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     source = await works.get(source_pid)
     if source is None or source.source_work_id is not None:
         # gone since propose, or somehow a derivative — uniform refusal (anti-oracle).
@@ -882,7 +979,7 @@ async def _execute_derive(
             entity_overrides=overrides,
         )
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret, ttl=120)
     pool = get_pool()
@@ -908,7 +1005,7 @@ async def _execute_arc_import(
     try:
         import_source_id = UUID(str(payload["import_source_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     # Re-check ownership at confirm (the import_source row is per-user, no visibility
     # column — a foreign id is a uniform action_error, never an oracle).
@@ -1021,7 +1118,7 @@ async def _execute_authoring_run_create(
     try:
         plan_run_id = UUID(str(payload["plan_run_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     scope = payload.get("scope") or []
     if not isinstance(scope, list) or not all(isinstance(s, str) for s in scope):
         raise HTTPException(status_code=400, detail={"code": "action_error"})
@@ -1031,11 +1128,11 @@ async def _execute_authoring_run_create(
     try:
         budget_usd = Decimal(str(payload["budget_usd"]))
     except (KeyError, InvalidOperation, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     try:
         level = int(payload.get("level", 3))
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     if "pause_after_each_unit" not in payload:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
     pause_after_each_unit = bool(payload["pause_after_each_unit"])
@@ -1074,8 +1171,23 @@ async def _execute_authoring_run_gate(
     from app.deps import get_authoring_run_service
 
     try:
-        run_id = UUID(str(payload["run_id"]))
-    except (KeyError, ValueError, TypeError) as exc:
+        try:
+            run_id = UUID(str(payload["run_id"]))
+        except (KeyError, ValueError, TypeError) as exc:
+            # D-CONFIRM-REFUSAL-IS-AN-OPAQUE-ACTION-ERROR, CORRECTED 2026-08-28. Named here once,
+            # on the reasoning that the caller minted the token and supplied the field. That
+            # reasoning does not survive reading BOTH live mint sites:
+            # composition_authoring_run_gate (legacy) and composition_authoring_run_manage's
+            # op=gate, its only successor — which delegates to the SAME function — both validate
+            # run_id with `_uuid()` before minting, so payload["run_id"] is always a well-formed
+            # UUID when a genuine token decodes here. This branch is PROVABLY UNREACHABLE by any
+            # legitimate caller; a malformed value can only mean a forged or corrupted token
+            # payload, which is `_verify`'s own ConfirmTokenInvalid -> bare 400 mapping, reused
+            # here rather than inventing a second, differently-worded answer to the same
+            # underlying problem. Detail helps a legitimate caller act; here there is none, and
+            # detail on a forged token helps only the forger calibrate it.
+            raise ConfirmTokenInvalid(str(exc)) from exc
+    except ConfirmTokenInvalid as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
     await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
@@ -1083,7 +1195,12 @@ async def _execute_authoring_run_gate(
     try:
         chapters = await book.list_chapters(book_id, bearer)
     except BookClientError as exc:
-        raise HTTPException(status_code=502, detail={"code": "action_error"}) from exc
+        # An UPSTREAM failure, not a fact about the caller's data: "could not read the book's
+        # chapters" is the difference between a caller that retries and one that cannot tell a
+        # 502 from a rejected request.
+        raise HTTPException(
+            status_code=502, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     chapter_ids = {str(c["chapter_id"]) for c in chapters if c.get("chapter_id")}
     try:
         run = await svc.gate(run_id, book_chapter_ids=chapter_ids)
@@ -1095,7 +1212,15 @@ async def _execute_authoring_run_gate(
             detail={"code": "action_error", "reason": "active_run_overlap"},
         ) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=400, detail={"code": "action_error", "detail": str(exc)},
@@ -1148,7 +1273,15 @@ async def _apply_pause_override(
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
 
 
 async def _execute_authoring_run_start(
@@ -1163,7 +1296,7 @@ async def _execute_authoring_run_start(
     try:
         run_id = UUID(str(payload["run_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     svc = await get_authoring_run_service()
     await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     await _apply_pause_override(svc, run_id, payload)
@@ -1172,7 +1305,15 @@ async def _execute_authoring_run_start(
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     return {
         "outcome": "action_done",
         "descriptor": _AUTHORING_RUN_START_DESCRIPTOR,
@@ -1194,7 +1335,7 @@ async def _execute_bootstrap_apply(
     try:
         proposal_id = UUID(str(payload["proposal_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     svc = await get_bootstrap_service()
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
@@ -1245,7 +1386,7 @@ async def _execute_authoring_run_resume(
     try:
         run_id = UUID(str(payload["run_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     svc = await get_authoring_run_service()
     await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     await _apply_pause_override(svc, run_id, payload)
@@ -1254,7 +1395,15 @@ async def _execute_authoring_run_resume(
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     return {
         "outcome": "action_done",
         "descriptor": _AUTHORING_RUN_RESUME_DESCRIPTOR,
@@ -1276,7 +1425,7 @@ async def _execute_authoring_run_revert_all(
     try:
         run_id = UUID(str(payload["run_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     svc = await get_authoring_run_service()
     await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
@@ -1289,7 +1438,15 @@ async def _execute_authoring_run_revert_all(
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     if result["failed_unit_index"] is not None:
         raise HTTPException(
             status_code=502,

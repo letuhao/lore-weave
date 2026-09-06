@@ -1,0 +1,45 @@
+{
+  "_note": "composition_motif_adopt asked with a NAMED system motif. See the scenario's _why_this_prompt.",
+  "scenarios": [
+    {
+      "id": "composition-motif-adopt-named",
+      "tool_under_test": "composition_motif_adopt",
+      "expect_tool": "composition_motif_adopt",
+      "intent": "write",
+      "tier": "W",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+      "prompt_source": "meta.synonyms['adopt motif'] + ['copy trope to my library'], verbatim.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif WHERE status='active' AND owner_user_id IS NULL",
+          "expect": "84",
+          "why": "EIGHTY-FOUR system/unlisted motifs already exist, so there is genuinely something to adopt and the model must FIND one — composition_motif_book_list / a motif search is the supplier. Read from the store rather than assumed. NOTE the deliberate asymmetry with batch 15's arc templates: the system arc-template library is EMPTY, so this is the first tool in the loop whose cross-tenancy source actually has rows.\n\n🔴 status='active' ADDED 2026-08-23 by the lifecycle-predicate gate. The tool reads active rows only (get_by_codes filters status='active'), so without this the assertion could pass over rows the tool is structurally unable to see — which is exactly what happened to composition_motif_link_edit for fifteen runs. Verified NOT to change the seeded value: all 84 system motifs are active today, so this tightens the assertion without moving its number."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif WHERE owner_user_id='019d5e3c-7cc5-7e6a-8b27-1344e148bf7c' AND code LIKE 'adopted-%'",
+          "expect": "0",
+          "why": "SCOPED, not a headcount of the caller's library. That library is 152 and MOVING — the other scenarios in this batch seed into it, and my own seed-smoke added a row while I was verifying the fixture. The system side (84, owner_user_id NULL) is stable and is asserted above; here the check is simply that no ADOPTED clone exists yet, so one appearing is attributable to this turn."
+        }
+      ],
+      "falsifier": "REFUTED IF: a clone lands with NO confirm card (Tier W — its own description says adopting 'crosses the tenancy boundary and counts against your library quota', which is why it is human-confirmed), OR the model invents a motif_id rather than listing the built-ins first, OR it passes retag_genres the author never mentioned — retagging is optional and silently re-genre-ing an adopted motif changes what it will match later.",
+      "ship_audit": {
+        "gate": "The card IS the audit — this is a cross-tenancy copy against a quota.",
+        "absent_case": "OWED — a motif_id that is neither public nor the caller's must be refused.",
+        "tenancy": "OWED — 🔴 THIS TOOL CROSSES THE BOUNDARY BY DESIGN, so the check is the inverse of every other one in this batch: adopting a PUBLIC motif must be allowed, and adopting another USER's private motif must not."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION",
+      "_original_prompt": "Adopt motif — copy one of the built-in tropes into my library so I can customise it.",
+      "_why_this_prompt": "🔴 THE OLD PROMPT WAS UNANSWERABLE AND THE MODEL WAS RIGHT. It read 'copy ONE OF the built-in tropes', naming no target against 84 system motifs, and the model answered 'tell me WHICH specific motif' on every run — correct, because guessing on a write is worse than asking, and a bare 'yes' cannot answer a which-one question (measured: an explicit follow-up confirmation left it at 0/5).\n\nThis names a real system motif — cultivation.face_slap / 'Face-Slap Reversal' — and keeps the declared synonym 'adopt motif' CONTIGUOUS, which the answerability matcher requires. The tool takes a motif_id (UUID), so the chain composition_motif_search -> composition_motif_adopt is the thing under test.\n\nA NEW QUESTION, labelled: it does not inherit the old row's conclusion and does not overwrite it."
+    }
+  ]
+}

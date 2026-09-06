@@ -68,8 +68,8 @@ func TestForwardOptionalChatFields_ChatTemplateKwargs(t *testing.T) {
 	input := map[string]any{
 		"messages": []any{},
 		"chat_template_kwargs": map[string]any{
-			"thinking":         false,
-			"enable_thinking":  false,
+			"thinking":        false,
+			"enable_thinking": false,
 		},
 	}
 	body := map[string]any{}

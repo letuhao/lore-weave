@@ -30,7 +30,8 @@ from app.db.repositories.works import WorksRepo
 from app.grant_client import GrantClient, GrantLevel
 from app.packer.pack import OwnershipError
 
-__all__ = ["GrantLevel", "InsufficientGrant", "authorize_book", "book_id_for_project"]
+__all__ = ["GrantLevel", "InsufficientGrant", "GrantAuthorityUnavailable",
+           "authorize_book", "book_id_for_project"]
 
 
 class InsufficientGrant(Exception):
@@ -39,14 +40,59 @@ class InsufficientGrant(Exception):
     not 404 — a grantee already knows the book exists, so there's no oracle."""
 
 
+class GrantAuthorityUnavailable(OwnershipError):
+    """The grant could not be resolved because the AUTHORITY was unreachable.
+
+    🔴 A SUBCLASS OF `OwnershipError`, AND THAT IS THE WHOLE SAFETY OF THIS CHANGE. 63 sites
+    across 28 files catch `OwnershipError` / `InsufficientGrant` and map them to the uniform
+    404/403. A NEW exception type none of them named would escape every one of those handlers
+    and turn a book-service outage into a 500 across the entire service — a worse defect than
+    the bare refusal this row is about. As a subclass, every existing handler catches it exactly
+    as before and the mapping is byte-identical; a site that wants to tell the two apart catches
+    the subclass FIRST, which is the ordering rule this repo already records for SDK errors.
+
+
+    🔴 THIS IS NOT A FACT ABOUT THE CALLER'S DATA, which is the whole reason it is its own
+    exception. Until 2026-08-31 a book-service outage resolved to NONE and became an
+    `OwnershipError` — indistinguishable from "you have no grant on this book" — so a route
+    answered a permission refusal to an OUTAGE. Measured live: a real confirm token redeemed
+    against an instance whose book-service was unreachable produced
+
+        403 {"code": "action_error"}
+
+    with no detail, while the SDK logged "grant authority unavailable (fail-closed deny): All
+    connection attempts failed" one frame away. The reason was known and thrown away.
+
+    THE DENY IS UNCHANGED AND MUST STAY SO. Fail-closed on an unreachable authority is correct;
+    this only lets the route say the refusal is RETRYABLE rather than about the caller. It is the
+    same principle the platform already accepted one layer up, where composition's confirm route
+    names its BookClientError 502 because an upstream failure is not a fact about the caller's
+    data — and the Python mirror of `grantclient.ErrUnavailable`, which the Go SDK has carried
+    all along (owner ruling 2026-08-31, DQ-T66 (a)).
+
+    NO ORACLE. It discloses nothing about whether the book exists or who may reach it: the
+    authority was down, so NOBODY could have been resolved. That is why raising it does not
+    reopen the anti-oracle hole `OwnershipError` exists to close.
+    """
+
+
 async def authorize_book(
     grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel
 ) -> GrantLevel:
     """Resolve + gate the caller's grant on ``book_id``. Returns the level on
-    success; raises OwnershipError (none → 404) or InsufficientGrant (under-tier
-    → 403). Fail-closed: a book-service outage resolves to NONE → OwnershipError."""
+    success; raises OwnershipError (none → 404), InsufficientGrant (under-tier
+    → 403), or GrantAuthorityUnavailable (authority down → retryable).
+
+    Fail-closed throughout: an outage still DENIES, and the only thing that changed on
+    2026-08-31 is that it denies with a reason the caller can act on."""
     lvl = await grant.resolve_grant(book_id, caller)
     if lvl == GrantLevel.NONE:
+        # Asked only on the DENY path, and only after the deny is already decided — so the
+        # happy path is untouched and no grant is ever softened by it.
+        if getattr(grant, "last_denial_was_unavailable", None) and \
+                grant.last_denial_was_unavailable(book_id, caller):
+            raise GrantAuthorityUnavailable(
+                "the grant authority could not be reached, so access could not be checked")
         raise OwnershipError("caller has no grant on the book")
     if not lvl.at_least(need):
         raise InsufficientGrant(

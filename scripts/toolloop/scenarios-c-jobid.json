@@ -1,0 +1,34 @@
+{
+  "_note": "D-EMPTY-ID-REACHES-THE-DATABASE-UNVALIDATED. The turn names a job the author cannot identify by id, so the model must either fetch one from jobs_list or send something malformed — and if it sends something malformed, the refusal has to be one it can act on rather than a query position.",
+  "scenarios": [
+    {
+      "id": "cancel-a-job-the-author-cannot-name",
+      "tool_under_test": "jobs_cancel",
+      "expect_tool": "jobs_cancel",
+      "intent": "write",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Cancel my translation job — stop the runaway translation run.",
+      "prompt_source": "jobs_cancel's declared vocabulary: its description says 'to stop a runaway translation or extraction run', and the prompt names no id because an author does not hold one.",
+      "needs_target": false,
+      "approve": null,
+      "approve_why": "jobs_cancel is Tier R by declaration (free and reversible-by-restart, no confirm). Nothing here needs an approval, and the fixture creates no job of its own — the account's existing jobs are NOT this run's to cancel.",
+      "seed": [],
+      "falsifier": "REFUTED IF: any tool result contains a raw driver error — 'invalid input for query argument' or 'invalid UUID' — which names a query position and no argument the model passed; OR the model is told a job was cancelled when none was. A refusal here is a PASS provided it names the argument and the rule. Store check: no job of this account may change state — the turn must not cancel a real job it did not create.",
+      "ship_audit": {
+        "gate": "N/A — Tier R by declaration.",
+        "absent_case": "THIS IS the absent case: no job id is in hand and none is seeded.",
+        "idempotency": "N/A — nothing is expected to be cancelled.",
+        "tenancy": "owner-scoped; a non-owned job is indistinguishable from a missing one."
+      },
+      "defects": [],
+      "_problem": "D-EMPTY-ID-REACHES-THE-DATABASE-UNVALIDATED",
+      "_safety_note": "🔴 NO JOB IS SEEDED AND NONE MAY BE CANCELLED. The account owns real jobs from earlier runs; cancelling one to make a scenario green would be the harness writing into state it does not own. The falsifier therefore treats a REFUSAL as the pass and a state change as the failure — the opposite of the usual shape, on purpose.",
+      "answer_expect": {
+        "all_of": ["job"],
+        "why": "Deliberately weak. The assertion is the tool trace: no driver error may appear in any result. A reply that discusses jobs proves nothing either way, which is why the bar is the refusal's SHAPE and not the prose."
+      }
+    }
+  ]
+}

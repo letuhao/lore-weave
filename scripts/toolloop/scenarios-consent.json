@@ -1,0 +1,73 @@
+{
+  "_note": "D-READ-TURN-REACHES-FOR-WRITES, measured with standing approvals IN PLACE — the configuration in which the defect actually bites. The harness normally clears them, which is why every earlier occurrence surfaced as a harmless card.",
+  "scenarios": [
+    {
+      "id": "consent-question-with-standing-grants",
+      "tool_under_test": "memory_recall_entity",
+      "expect_tool": "memory_recall_entity",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Who is Mira Solene?",
+      "prompt_source": "_meta.synonyms['who is'] — its OWN phrase. The v1 prompt was 'What do we know about Mira Solene so far?', which contains memory_search's declared phrase 'what do we know about' and NOT this tool's longer 'what do we know about this character'. Longest-match therefore picked memory_search, correctly. That was a scenario defect, not a product one.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO characters, so an answer naming the right one is distinguishable from an answer that just echoes the only name present."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "cartographer"
+        ],
+        "why": "The seeded fact is the ONLY stored detail about her. A reply that does not carry it either did not read memory or read and dropped it; a reply carrying anything else about her is fabricated."
+      },
+      "falsifier": "REFUTED IF: with 46 standing approvals LEFT IN PLACE, a Tier-A write runs on this pure question — i.e. the store changes, or a write records ok=true/done with no card. The CONTROL is the earlier run of this same scenario with approvals CLEARED, where the writes were attempted 3/3 and gated; if the writes simply stop being attempted, the reading is about the model's variance and not about consent, and must be recorded as such.",
+      "ship_audit": {
+        "empty_case": "OWED — an entity with no stored facts must say so, not invent.",
+        "tenancy": "OWED — project-scoped; a second account must not recall these facts."
+      },
+      "defects": []
+    }
+  ]
+}

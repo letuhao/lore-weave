@@ -67,7 +67,13 @@ def confirm(auth: Auth, tool_name: str, token: str, *,
     body: dict = {"confirm_token": token}
     if enabled_ops is not None:
         body["enabled_ops"] = enabled_ops
-    path = f"/v1/{domain}/actions/confirm"
+    # 🔴 THE PATH SEGMENT IS NOT ALWAYS THE DOMAIN. knowledge-service mounts its actions router at
+    # `/v1/kg/actions` (kg_actions.py: APIRouter(prefix="/v1/kg/actions")), so `/v1/knowledge/...`
+    # 404s for EVERY kg_* tool. Measured 2026-08-23 while redeeming a kg_ontology_propose token:
+    # both attempts returned 404 and the only reason it was visible is that the caller recorded the
+    # status instead of treating a failed redemption as "the tool wrote nothing".
+    _PATH_SEG = {"knowledge": "kg"}
+    path = f"/v1/{_PATH_SEG.get(domain, domain)}/actions/confirm"
 
     # 1) gateway edge, Bearer JWT (auth path under test)
     for base, headers in (
@@ -84,7 +90,13 @@ def confirm(auth: Auth, tool_name: str, token: str, *,
             continue
         ct = r.headers.get("content-type", "")
         parsed = r.json() if ct.startswith("application/json") else r.text
-        if r.status_code in (200, 201, 202):
+        # 🔴 204 IS A SUCCESS AND WAS READ AS A FAILURE. Measured 2026-08-22 confirming a
+        # `settings_model_delete`: the route answered 204 No Content, this returned ok=False, and
+        # the model WAS deleted — verified by re-listing. A teardown that believes that answer
+        # reports a leak it does not have, or retries a delete that already happened; the mirror
+        # of it is a caller treating a real failure as done. "No content" is the natural reply to
+        # a delete, so it belongs here rather than in a caller's special case.
+        if r.status_code in (200, 201, 202, 204):
             return True, r.status_code, parsed
         last = (False, r.status_code, parsed)
     return last

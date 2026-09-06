@@ -3,7 +3,9 @@ package commands
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -26,20 +28,20 @@ func TestRunProjectionDriftCheck_RejectsUnknownProjection(t *testing.T) {
 		t.Fatalf("want unknown-projection error, got %v", err)
 	}
 	// The error must list the allowlist so the operator can self-correct.
-	if !strings.Contains(err.Error(), "pc_projection") {
+	if !strings.Contains(err.Error(), "canon_projection") {
 		t.Errorf("error should list allowed projections: %v", err)
 	}
 }
 
 func TestRunProjectionDriftCheck_RejectsBadSampleSize(t *testing.T) {
-	_, err := RunProjectionDriftCheck(context.Background(), "pc_projection", 0, fakeDriftReader{})
+	_, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 0, fakeDriftReader{})
 	if err == nil || !strings.Contains(err.Error(), "sample_size must be >= 1") {
 		t.Fatalf("want sample_size error, got %v", err)
 	}
 }
 
 func TestRunProjectionDriftCheck_NilReader(t *testing.T) {
-	_, err := RunProjectionDriftCheck(context.Background(), "pc_projection", 100, nil)
+	_, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 100, nil)
 	if err == nil || !strings.Contains(err.Error(), "not wired") {
 		t.Fatalf("want not-wired error, got %v", err)
 	}
@@ -50,13 +52,13 @@ func TestRunProjectionDriftCheck_FleetAggregate(t *testing.T) {
 	nextSweep := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
 	agg := uuid.New()
 	rows := []DriftRow{
-		{RealityID: uuid.New(), TableName: "pc_projection", DriftCount: 3, LastVerifiedAt: &verified, ExpectedNextSweep: &nextSweep, LastDriftedAggID: &agg, LastSampleSize: intPtr(100), Notes: "pgvector skipped"},
-		{RealityID: uuid.New(), TableName: "pc_projection", DriftCount: 0, LastVerifiedAt: &verified},
-		{RealityID: uuid.New(), TableName: "pc_projection"},                   // never verified
-		{RealityID: uuid.New(), TableName: "pc_projection", MissingRow: true}, // shard not seeded
-		{RealityID: uuid.New(), TableName: "pc_projection", ReadErr: "dial timeout"},
+		{RealityID: uuid.New(), TableName: "canon_projection", DriftCount: 3, LastVerifiedAt: &verified, ExpectedNextSweep: &nextSweep, LastDriftedAggID: &agg, LastSampleSize: intPtr(100), Notes: "pgvector skipped"},
+		{RealityID: uuid.New(), TableName: "canon_projection", DriftCount: 0, LastVerifiedAt: &verified},
+		{RealityID: uuid.New(), TableName: "canon_projection"},                   // never verified
+		{RealityID: uuid.New(), TableName: "canon_projection", MissingRow: true}, // shard not seeded
+		{RealityID: uuid.New(), TableName: "canon_projection", ReadErr: "dial timeout"},
 	}
-	out, err := RunProjectionDriftCheck(context.Background(), "pc_projection", 100, fakeDriftReader{rows: rows})
+	out, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 100, fakeDriftReader{rows: rows})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -83,7 +85,7 @@ func TestRunProjectionDriftCheck_FleetAggregate(t *testing.T) {
 func TestRunProjectionDriftCheck_SampleSizeEchoIsNotConstant(t *testing.T) {
 	// Proves the "not applied" note echoes the CALLER's value, not a hardcoded 100 —
 	// closing the honest-status loop (a constant 100 would pass the FleetAggregate test).
-	out, err := RunProjectionDriftCheck(context.Background(), "pc_projection", 37, fakeDriftReader{})
+	out, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 37, fakeDriftReader{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,7 +95,7 @@ func TestRunProjectionDriftCheck_SampleSizeEchoIsNotConstant(t *testing.T) {
 }
 
 func TestRunProjectionDriftCheck_EmptyFleet(t *testing.T) {
-	out, err := RunProjectionDriftCheck(context.Background(), "world_kv_projection", 100, fakeDriftReader{rows: nil})
+	out, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 100, fakeDriftReader{rows: nil})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,35 +107,72 @@ func TestRunProjectionDriftCheck_EmptyFleet(t *testing.T) {
 func intPtr(n int) *int { return &n }
 
 // TestAllowlist_MatchesMigrationCheck is the drift tripwire D3 lacked: the Go
-// allowedProjectionTables map is a hand-copy of the CHECK constraint in migration
-// 0007, whose own comment says "New tables added in L4+ MUST extend this CHECK". This
-// parses the table_name IN (...) list out of the migration and asserts set-equality,
-// so the next time the CHECK grows, this fails and points at the Go copy.
+// allowedProjectionTables map is a hand-copy of the projection_drift_state CHECK
+// constraint, so this parses the constraint out of the migrations and asserts
+// set-equality.
+//
+// **It read ONE FILE until 2026-08-04, and that is why it did not fire.** The
+// original pinned `0007_drift_metadata.up.sql` and its comment anticipated only
+// growth — "the next time the CHECK GROWS, this fails". `0017` SHRANK the same
+// constraint, from a different file, and this test went on comparing the Go map
+// against 0007's ten names: it stayed green while the map it guards named seven
+// tables the database no longer had. A tripwire pinned to one file cannot see a
+// later file redefine its subject.
+//
+// So it now derives the EFFECTIVE constraint: walk every per_reality up-migration
+// in filename order and keep the LAST `ADD CONSTRAINT
+// projection_drift_table_name_allowlist ... CHECK (table_name IN (...))`, which
+// is what Postgres would be left holding. It must also anchor on ADD CONSTRAINT
+// rather than on `table_name IN (` alone — 0017 contains a `DELETE FROM
+// projection_drift_state WHERE table_name IN (<the seven dropped names>)`, and a
+// looser pattern happily parses that instead and asserts the exact opposite of
+// the truth.
 func TestAllowlist_MatchesMigrationCheck(t *testing.T) {
-	const mig = "../../../../contracts/migrations/per_reality/0007_drift_metadata.up.sql"
-	src, err := os.ReadFile(mig)
-	if err != nil {
-		t.Fatalf("read migration %s: %v", mig, err)
+	const dir = "../../../../contracts/migrations/per_reality"
+	files, err := filepath.Glob(filepath.Join(dir, "*.up.sql"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("glob %s: %v (found %d)", dir, err, len(files))
 	}
-	block := regexp.MustCompile(`(?s)table_name IN \((.*?)\)`).FindStringSubmatch(string(src))
-	if block == nil {
-		t.Fatalf("could not find `table_name IN (...)` CHECK in %s", mig)
+	sort.Strings(files) // migration order == filename order (0001..NNNN)
+
+	// Anchored on the constraint NAME, so an unrelated `table_name IN (...)`
+	// elsewhere in the same file cannot be mistaken for the constraint.
+	constraintRe := regexp.MustCompile(
+		`(?s)ADD CONSTRAINT projection_drift_table_name_allowlist\s+CHECK \(table_name IN \((.*?)\)\s*\)`)
+
+	effective, from := "", ""
+	for _, f := range files {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		if ms := constraintRe.FindAllStringSubmatch(string(src), -1); len(ms) > 0 {
+			effective = ms[len(ms)-1][1] // last one in this file wins
+			from = filepath.Base(f)
+		}
 	}
+	if effective == "" {
+		t.Fatal("no ADD CONSTRAINT projection_drift_table_name_allowlist found in any " +
+			"per_reality migration — the tripwire has lost its subject, which is a failure, " +
+			"not a pass")
+	}
+
 	got := map[string]bool{}
-	for _, m := range regexp.MustCompile(`'([a-z_]+)'`).FindAllStringSubmatch(block[1], -1) {
+	for _, m := range regexp.MustCompile(`'([a-z_]+)'`).FindAllStringSubmatch(effective, -1) {
 		got[m[1]] = true
 	}
 	if len(got) == 0 {
-		t.Fatalf("parsed 0 table names from the CHECK block")
+		t.Fatalf("parsed 0 table names from the effective CHECK (%s)", from)
 	}
 	for k := range allowedProjectionTables {
 		if !got[k] {
-			t.Errorf("allowlist has %q but migration CHECK does not", k)
+			t.Errorf("allowlist has %q but the effective CHECK (%s) does not", k, from)
 		}
 	}
 	for k := range got {
 		if !allowedProjectionTables[k] {
-			t.Errorf("migration CHECK has %q but allowedProjectionTables does not — extend the Go map", k)
+			t.Errorf("the effective CHECK (%s) has %q but allowedProjectionTables does not — "+
+				"extend the Go map", from, k)
 		}
 	}
 }

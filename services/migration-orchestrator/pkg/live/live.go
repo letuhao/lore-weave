@@ -3,7 +3,8 @@
 // D-MIGRATE-CLI-LIVE-WIRING (Wave 1 / W1.2):
 //
 //   - SQLApplier  — runs a migration's UP SQL on each per-reality DB (pgx),
-//     resolving the DSN from reality_registry via contracts/realityreg.
+//     resolving the DSN from reality_registry via contracts/realityreg, and
+//     recording it in that reality's own `schema_migrations` ledger.
 //   - MetaCollaborator — the runner's Auditor + StateWriter and the canary's
 //     AbortAuditor, all writing through contracts/meta.MetaWrite so every
 //     reality_migration_audit / instance_schema_migrations row lands with its
@@ -17,6 +18,10 @@
 // desync instance_schema_migrations from the reality's real schema. Recovery is
 // the runner's idempotent re-run: the migration SQL is IF-NOT-EXISTS-shaped and
 // MarkApplied/MarkFailed are check-then-write (UPDATE if a prior row exists).
+//
+// The reality's OWN ledger is written inside the Applier, in the same database
+// as the schema it describes, so THAT pair cannot desync across a crash the way
+// the meta pair can. See [SQLApplier.Apply] for why both ledgers exist.
 package live
 
 import (
@@ -83,6 +88,28 @@ func NewSQLApplier(dsn realityreg.DSNConfig, fleet []realityreg.Reality, sqlDir 
 // Apply runs the migration UP SQL on the reality's DB. A Postgres error is a
 // permanent failure (not runner.ErrTransient) — a broken migration must fail
 // the canary fast, not retry to exhaustion.
+//
+// It then records the migration in the REALITY'S OWN `schema_migrations`
+// ledger. That is a second ledger and it is deliberate, because the two answer
+// different questions to different readers:
+//
+//   - `instance_schema_migrations` (META) answers *"what has the orchestrator
+//     been asked to do, by whom, and did it succeed"* — audit, fleet-wide.
+//   - `schema_migrations` (the REALITY) answers *"what is in THIS database"* —
+//     and it is the one [`provisioner_live::apply_pending`] reads to decide
+//     what a re-provision or a resume still has to apply.
+//
+// Until this write existed only the provisioner wrote the reality ledger, so a
+// migration applied through the orchestrator left the reality's own ledger
+// UNMOVED: the tables were there and the database said they were not. The next
+// resume would then re-apply every one of them. That was survivable only
+// because the migration SQL is IF-NOT-EXISTS-shaped — which is a property of
+// the files, not a guarantee of the mechanism, and `1b12-05` is the standing
+// record of trusting exactly that kind of accident.
+//
+// Recorded only AFTER the SQL succeeded, and the failure to record is NOT
+// swallowed: a silent miss here reproduces the desync this exists to end.
+// `apply_pending` makes the same choice for the same reason.
 func (a *SQLApplier) Apply(ctx context.Context, realityID, migrationID string) (bool, error) {
 	sql, err := a.loadSQL(migrationID)
 	if err != nil {
@@ -95,7 +122,32 @@ func (a *SQLApplier) Apply(ctx context.Context, realityID, migrationID string) (
 	if _, err := pool.Exec(ctx, sql); err != nil {
 		return false, fmt.Errorf("apply %s on reality %s: %w", migrationID, realityID, err)
 	}
+	if err := recordInRealityLedger(ctx, pool, migrationID); err != nil {
+		return false, fmt.Errorf("apply %s on reality %s: %w", migrationID, realityID, err)
+	}
 	return true, nil
+}
+
+// recordInRealityLedger writes the per-reality `schema_migrations` row.
+//
+// The DDL mirrors `provisioner_live::apply_pending` EXACTLY — same table, same
+// `id TEXT PRIMARY KEY`, same `applied_at` default. Two writers of one table
+// that disagreed on its shape would be worse than one writer that never wrote.
+func recordInRealityLedger(ctx context.Context, pool *pgxpool.Pool, migrationID string) error {
+	if _, err := pool.Exec(ctx,
+		`CREATE TABLE IF NOT EXISTS schema_migrations (
+		   id TEXT PRIMARY KEY,
+		   applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+	); err != nil {
+		return fmt.Errorf("create reality ledger: %w", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO schema_migrations (id) VALUES ($1) ON CONFLICT DO NOTHING`,
+		migrationID,
+	); err != nil {
+		return fmt.Errorf("record %s in reality ledger: %w", migrationID, err)
+	}
+	return nil
 }
 
 func (a *SQLApplier) loadSQL(migrationID string) (string, error) {

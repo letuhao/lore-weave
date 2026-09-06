@@ -435,7 +435,21 @@ _WORLD_SETUP_MARKERS: tuple[str, ...] = (
     "ontolog",          # ontology / ontological
     "entity kind", "entity-kind", "entity kinds",
     "glossary",
-    "codex",
+    # 🔴 "codex" REMOVED 2026-08-23. It is a proper noun as often as a concept, and measured over
+    # 186 distinct corpus prompts it fired TWICE — both times on a chapter TITLE, never on a setup
+    # request:
+    #     'Write chapter — ... draft the prose for "Chapter I — The Ember Codex"'
+    #     'Rename the chapter called The Ember Codex in my outline to ...'
+    # Recall contribution 0, false-positive rate 2 of 2. And the false positives are the exact
+    # over-reach this gate EXISTS to stop: tool_discovery records that keeping these tools
+    # advertised "made the co-writer rebuild a newcomer's ontology on a plain write-a-chapter turn",
+    # and a chapter merely NAMED a codex was opening it.
+    #
+    # Removing a marker can only make the gate STRICTER, never looser, so it cannot reintroduce the
+    # over-reach. The recall risk — a real author who writes "build my codex" — is carried by the
+    # other path this gate has: the intent ROUTER matches the message against glossary_shaping's
+    # description, and the skill can be pinned. This list is the deterministic FALLBACK, and a
+    # fallback that fires on fiction is worse than one word shorter.
     "taxonomy",
     "worldbuild", "world-build", "world build",  # worldbuilding / world-building
     "adopt standard", "adopt the standard", "system kinds", "seed the core entit",
@@ -686,6 +700,16 @@ async def resolve_skills_to_inject_async(
                 if sk and _skill_visible(sk, active):
                     base.append(code)
 
+    # DQ-T90 arm (e): with the preload OFF the turn keeps its base/pinned/mode-bound skills
+    # and the L1 index, and the model pulls a body with `load_skill` instead of being handed
+    # the router's top-2. Defaulted ON, so this is a no-op on the shipped path — see
+    # `skill_router_preload` in config.py for the bar the arm must clear.
+    from app.config import settings  # noqa: PLC0415 — local, matching this module's style
+
+    if not settings.skill_router_preload:
+        logger.info("skill router preload DISABLED (DQ-T90 arm e); base skills only")
+        return base
+
     try:
         from app.services.skill_router import route_additional_skills  # noqa: PLC0415
 
@@ -693,9 +717,12 @@ async def resolve_skills_to_inject_async(
             intent_text=intent_text,
             active_surface=active,
             already_selected=base,
+            # 🔴 NOT the turn's chat model. The router EMBEDS, and most chat models cannot; passing
+            # the session's completion model either failed upstream or produced an improvised vector
+            # from a model never meant to embed. `tool_discovery` removed exactly this argument
+            # (HIGH-2) and the sibling kept it for another four rounds. The router now resolves the
+            # user's embedding-capability default itself.
             user_id=user_id,
-            model_source=model_source,
-            model_ref=model_ref,
         )
     except Exception:  # noqa: BLE001 — mandatory fallback, never raise into the turn
         logger.warning(

@@ -202,6 +202,102 @@ dependencies:
       - limited
     runbook: docs/sre/runbooks/llm-provider/llm-byok-down.md
 
+  # ── The knowledge-access layer (plan T29 / F5) ──────────────────────
+  #
+  # Registered BEFORE the KAL owns entity-lifecycle writes, which is the whole
+  # point of the F5 precondition: a write surface whose failure behaviour is
+  # undesigned is a write surface that fails by accident.
+  #
+  # ⚠ These three rows describe the discipline the KAL is REQUIRED to have, not
+  # the discipline it has today. `services/knowledge-gateway/src/kal/downstream.ts`
+  # calls both backends with a bare `fetch` — no timeout, no breaker, no bulkhead.
+  # A hung glossary-service currently parks a KAL request until the client gives
+  # up. Wiring these values through ClientFactory is the follow-up the
+  # dependency-registry lint flips to error mode for (it is WARN today precisely
+  # because services have not been migrated).
+  - name: knowledge-gateway
+    owner_service: api-gateway-bff
+    also_used_by:
+      - composition-service
+    criticality: P1
+    type: http_internal
+    sla_target: "99.9%"
+    timeout_ms: 15000
+    circuit_breaker:
+      error_rate_threshold: 0.25
+      min_requests: 20
+      open_duration_ms: 30000
+    # non_idempotent, NOT idempotent: the KAL surface is mixed. Its reads are
+    # safe to replay, but the same host serves the write verbs (episode/append/
+    # close/retract/merge/split/fold), and `appendFact` applied twice is two
+    # facts. A caller-level retry cannot tell the two halves apart from the
+    # outside, so the dep-wide class has to assume the unsafe one.
+    retry_class: non_idempotent
+    bulkhead:
+      max_concurrent: 30
+      queue_depth: 15
+      queue_timeout_ms: 200
+    fallback: []
+    degraded_modes:
+      - limited
+    runbook: docs/sre/runbooks/knowledge-gateway/down.md
+
+  - name: glossary-service
+    owner_service: knowledge-gateway
+    also_used_by:
+      - knowledge-service
+      - translation-service
+      - composition-service
+    criticality: P1
+    type: http_internal
+    sla_target: "99.9%"
+    timeout_ms: 10000
+    circuit_breaker:
+      error_rate_threshold: 0.25
+      min_requests: 20
+      open_duration_ms: 30000
+    # critical_write: this is the sink every KAL command lands in. A fact or an
+    # entity-lifecycle transition that is dropped on a transient failure is a
+    # divergence no later read repairs — the exact class T27/T28 spent two tasks
+    # closing on the emit side.
+    retry_class: critical_write
+    bulkhead:
+      max_concurrent: 30
+      queue_depth: 15
+      queue_timeout_ms: 200
+    fallback: []
+    # read_only, not limited: when the write sink is down the KAL must REFUSE
+    # commands rather than accept them and lose them. Reads that do not touch
+    # glossary keep serving.
+    degraded_modes:
+      - read_only
+    runbook: docs/sre/runbooks/glossary-service/down.md
+
+  - name: knowledge-service
+    owner_service: knowledge-gateway
+    also_used_by:
+      - glossary-service
+      - chat-service
+    criticality: P1
+    type: http_internal
+    sla_target: "99.9%"
+    timeout_ms: 20000
+    circuit_breaker:
+      error_rate_threshold: 0.25
+      min_requests: 20
+      open_duration_ms: 30000
+    # idempotent: the KAL only READS knowledge-service (KG neighborhood,
+    # retrieve, temporal capability). Its writes arrive by event, not by call.
+    retry_class: idempotent
+    bulkhead:
+      max_concurrent: 30
+      queue_depth: 15
+      queue_timeout_ms: 200
+    fallback: []
+    degraded_modes:
+      - limited
+    runbook: docs/sre/runbooks/knowledge-service/down.md
+
   # ────────────────────────────────────────────────────────────────────
   # P2 — Background (failure doesn't block active play)
   # ────────────────────────────────────────────────────────────────────

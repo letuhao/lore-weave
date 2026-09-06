@@ -407,10 +407,13 @@ func (s *Server) toolBookListRevisions(ctx context.Context, _ *mcp.CallToolReque
 		offset = 0
 	}
 	rows, err := s.pool.Query(ctx, `
+-- ORDER tiebreak below: save_draft writes the 'before assistant save' snapshot and the new
+-- body in ONE transaction, so now() gives both the SAME created_at and 'newest first' was
+-- returning the pre-save snapshot first — the row whose restore UNDOES the save.
 SELECT rv.id,rv.created_at,rv.author_user_id,rv.message,octet_length(rv.body::text)
 FROM chapter_revisions rv JOIN chapters c ON c.id=rv.chapter_id
 WHERE rv.chapter_id=$1 AND c.book_id=$2
-ORDER BY rv.created_at DESC LIMIT $3 OFFSET $4`, chID, bookID, limit, offset)
+ORDER BY rv.created_at DESC, rv.id DESC LIMIT $3 OFFSET $4`, chID, bookID, limit, offset)
 	if err != nil {
 		return nil, listRevisionsOut{}, errors.New("failed to list revisions")
 	}

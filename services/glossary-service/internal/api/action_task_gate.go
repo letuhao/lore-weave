@@ -170,7 +170,50 @@ func effectResultFromRecorder(rec *httptest.ResponseRecorder) (any, error) {
 	if err := json.Unmarshal(body, &v); err != nil {
 		return nil, errors.New("action produced an unreadable result")
 	}
-	return v, nil
+	return compactOntologyForTheModel(body, v), nil
+}
+
+// compactOntologyForTheModel projects an ONTOLOGY task result through the SAME compactor the
+// dedicated read tool already uses.
+//
+// 🔴 THE COMPACTOR ALREADY EXISTED AND THIS PATH DID NOT USE IT. `compactBookOntologyOf` was
+// built for exactly this bloat and is applied at `glossary_book_ontology_read`
+// (mcp_server.go). The durable-gate result replays the same effect and returns its RAW HTTP
+// body, so the identical data reaches the model uncompacted. Measured over tool calls since
+// 2026-08-24:
+//
+//     glossary_book_ontology_read    81 calls     385 kB    avg  4.8 kB   compacted
+//     glossary_task_provide_input    98 calls   4,485 kB    avg 46.0 kB   NOT compacted
+//
+// Ten times the size for the same ontology, and it makes this tool **37.6% of ALL
+// tool-result bytes on the platform** — three times the next contributor. One concept, two
+// paths, and only one of them knew about the projection.
+//
+// A SECOND TRIM WAS WRITTEN HERE FIRST AND DELETED. Hand-rolling the field removal would have
+// been a second opinion about which fields a model needs, in a codebase that already has one
+// — and the two would drift the first time an attribute field is added.
+//
+// The shape gate is deliberate: this resolver dispatches EVERY glossary descriptor, and
+// compacting anything else would corrupt results whose ids their callers need (a create_kind
+// result exists to return `kind_id`). It fires only on a body carrying all four ontology
+// collections.
+func compactOntologyForTheModel(body []byte, v any) any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return v
+	}
+	for _, k := range []string{"genres", "kinds", "attributes", "kind_genres"} {
+		if _, present := m[k]; !present {
+			return v
+		}
+	}
+	var ont bookOntologyResp
+	if err := json.Unmarshal(body, &ont); err != nil {
+		// Unreadable as the typed shape ⇒ hand back what we already parsed, rather than
+		// dropping a result the caller is waiting on.
+		return v
+	}
+	return compactBookOntologyOf(&ont)
 }
 
 // extractErrorMessage pulls the human message out of a writeError body ({code,message}).

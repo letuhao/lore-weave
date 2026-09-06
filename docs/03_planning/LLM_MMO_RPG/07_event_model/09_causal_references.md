@@ -44,6 +44,33 @@ causal_refs: Vec<CausalRef>     // empty Vec if no refs; missing field forbidden
 
 **Why typed (not opaque UUID):** typed shape lets the validator pipeline run integrity checks at commit time (does the referenced channel exist? does the channel_event_id range to a real event?). Opaque UUID would defer checks to runtime queries with weaker guarantees.
 
+> ## ⚠️ ROT `E-6` — 2026-08-02: **the column shipped and typed is exactly what it is not.**
+>
+> `contracts/migrations/per_reality/0014_channel_ordering.up.sql:20` adds
+> `causal_refs JSONB NOT NULL DEFAULT '[]'::jsonb`, and `crates/dp-kernel/src/channel.rs:122` takes
+> `causal_refs: &serde_json::Value` and binds it **opaquely** at `:195`. **`CausalRef` as a type has 0
+> occurrences**, and **none of `EVT-L13`'s four integrity checks exists.** So the property this section
+> argues for — *"typed shape lets the validator run integrity checks at commit time"* — is precisely the
+> property the implementation dropped, and the paragraph above now reads as a justification for
+> something that did not happen.
+>
+> Worse for the argument: **every one of the five call sites passes `json!([])`** — `epoch_commit.rs:243`,
+> `spine.rs:308`, `spine.rs:396`, `ceilings.rs:346`, `ceilings.rs:414` — and **nothing ever reads the
+> column back.** Measured 2026-08-02; every absence re-established with `grep -rIn` after `rg` was
+> observed under-reporting in this repo.
+>
+> **Related, and contested rather than refuted (`E-18`):** `EVT-A6` + `EVT-L14` make causal-refs
+> *required* on `EVT-T5 Generated` with a hard cap of 64 per event. `D-46` argues the opposite shape for
+> a neighbouring problem — *"stamping a 32-byte digest on every event pays forever for a question the
+> registry answers once"* — and a required `Vec<CausalRef>` of up to 64 is the same per-event-cost
+> pattern. **The cost side was never weighed here.** Weigh it before re-locking.
+>
+> ⚠️ Note the one thing this does NOT contest: `causation_id` and `correlation_id` answer **different**
+> questions and both are needed. With only correlation you get the set of everything in a cascade **but
+> not its shape** — you cannot distinguish a 3-deep chain from 3 parallel siblings, which is exactly what
+> diagnosing a runaway cascade requires. Measured in this repo: `causation_id` has **5 occurrences
+> repo-wide**, and **the only assignment is inside `mod tests`** (`metadata.rs:140`).
+
 **Forbidden:** untyped string refs, JSON-blob refs without typed schema, refs that contain only `channel_event_id` (would be ambiguous across channels).
 
 **Cross-ref:** [EVT-A6](02_invariants.md#evt-a6--causal-references-are-typed-single-reality-gap-free), [DP-A15 channel ordering](../06_data_plane/02_invariants.md#dp-a15--per-channel-total-event-ordering-phase-4-2026-04-25), [DP-Ch11 channel_event_id allocation](../06_data_plane/13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism).

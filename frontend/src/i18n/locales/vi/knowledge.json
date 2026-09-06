@@ -521,14 +521,14 @@
       "discoveredHint": "Các thực thể mới sẽ ở trạng thái «đã khám phá». Trạng thái «chính thức» sẽ đạt được khi được gắn vào bảng thuật ngữ."
     },
     "kind": {
-      "unknown": "Loại không xác định",
-      "person": "Nhân vật",
-      "artifact": "Vật phẩm",
       "character": "Nhân vật",
       "location": "Địa điểm",
       "organization": "Tổ chức",
       "concept": "Khái niệm",
       "item": "Vật phẩm",
+      "unknown": "Loại không xác định",
+      "person": "Nhân vật",
+      "artifact": "Vật phẩm",
       "event_ref": "Sự kiện tham chiếu",
       "preference": "Sở thích",
       "event": "Sự kiện",
@@ -1220,7 +1220,6 @@
     "edit": {
       "cta": "Correct relation",
       "title": "Correct relation",
-      "description": "Sửa vị ngữ của quan hệ này, hoặc đánh dấu là sai để xóa nó.",
       "field": {
         "predicate": "Predicate"
       },
@@ -1229,10 +1228,11 @@
       "cancel": "Cancel",
       "correctSuccess": "Relation corrected.",
       "invalidateSuccess": "Relation removed.",
-      "invalidateHint": "Nếu quan hệ này không nên được trích xuất, hãy đánh dấu là sai để xóa nó.",
-      "invalidateConfirm": "Đánh dấu quan hệ này là sai và xóa nó?",
       "markWrong": "Mark wrong",
       "invalidating": "Removing…",
+      "description": "Sửa vị ngữ của quan hệ này, hoặc đánh dấu là sai để xóa nó.",
+      "invalidateHint": "Nếu quan hệ này không nên được trích xuất, hãy đánh dấu là sai để xóa nó.",
+      "invalidateConfirm": "Đánh dấu quan hệ này là sai và xóa nó?",
       "failed": "Không thể lưu bản sửa lỗi: {{error}}"
     },
     "create": {
@@ -1265,27 +1265,27 @@
     "edit": {
       "cta": "Edit",
       "title": "Edit event",
-      "description": "Điều chỉnh tiêu đề, tóm tắt hoặc thời gian của sự kiện này.",
       "field": {
         "title": "Title",
         "summary": "Summary",
         "timeCue": "Time cue",
         "dateIso": "Date (ISO)"
       },
-      "dateIsoPlaceholder": "YYYY hoặc YYYY-MM-DD",
       "save": "Save",
       "saving": "Saving…",
       "cancel": "Cancel",
       "success": "Event updated.",
+      "description": "Điều chỉnh tiêu đề, tóm tắt hoặc thời gian của sự kiện này.",
+      "dateIsoPlaceholder": "YYYY hoặc YYYY-MM-DD",
       "conflict": "Một thiết bị khác đã cập nhật sự kiện này. Hãy xem lại bản mới nhất và thử lại.",
       "failed": "Không thể cập nhật sự kiện: {{error}}",
       "invalidDate": "Ngày phải ở định dạng YYYY, YYYY-MM, hoặc YYYY-MM-DD."
     },
     "archive": {
       "cta": "Delete",
-      "confirm": "Xóa (ẩn) sự kiện này?",
       "archiving": "Deleting…",
       "success": "Event deleted.",
+      "confirm": "Xóa (ẩn) sự kiện này?",
       "failed": "Không thể xóa sự kiện: {{error}}"
     }
   },

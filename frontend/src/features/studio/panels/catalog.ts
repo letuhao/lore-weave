@@ -186,7 +186,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // #13 A3 — entity list/search/filter/bulk-actions (cycle-2 of the #12 per-tool queue).
   // Palette + agent openable (panelCatalogContract enforces openable-set == enum, so any
   // palette-visible panel must join `ui_open_studio_panel` — see frontend_tools.py + the
-  // regenerated contracts/frontend-tools.contract.json).
+  // regenerated contracts/browser-tools.contract.json).
   { id: 'glossary', component: GlossaryPanel, titleKey: 'panels.glossary.title', descKey: 'panels.glossary.desc', category: 'storyBible', guideBodyKey: 'panels.glossary.guideBody', tourAnchor: 'studio-glossary-panel' },
   // 13_glossary_panels.md Phase B — the 4 capabilities GlossaryPanel used to internally
   // view-switch (a DOCK-8 exception) are now real sibling dock panels. Each is palette + agent
@@ -254,7 +254,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // 24 Plan Hub v2 (H2.1) — the package explorer on the graph canvas (structure lanes +
   // keyset chapter/scene windows + scene-link edges, React Flow over the pure laneLayout).
   // Palette + agent openable (panelCatalogContract enforces openable-set == the
-  // ui_open_studio_panel enum + regenerated contracts/frontend-tools.contract.json).
+  // ui_open_studio_panel enum + regenerated contracts/browser-tools.contract.json).
   { id: 'plan-hub', component: PlanHubPanel, titleKey: 'panels.plan-hub.title', descKey: 'panels.plan-hub.desc', category: 'editor', guideBodyKey: 'panels.plan-hub.guideBody' },
   { id: 'decompose', component: DecomposePanel, titleKey: 'panels.decompose.title', descKey: 'panels.decompose.desc', category: 'editor', guideBodyKey: 'panels.decompose.guideBody', tourAnchor: 'studio-decompose-panel' }, /* S-13 — decompose a book against an authored structure */
   // S3 · PlanForge — the 7-pass compiler rail (motifs→…→self_heal) + its 2 blocking checkpoints.
@@ -326,7 +326,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // 20_agent_mode.md D1/D2 — Agent Mode mission control + its diff-panel wrapper.
   // `agent-mode` is palette+agent-openable (D1) — added 'agent-mode' to
   // chat-service's `ui_open_studio_panel` panel_id enum + regenerated
-  // contracts/frontend-tools.contract.json so panelCatalogContract.test.ts's
+  // contracts/browser-tools.contract.json so panelCatalogContract.test.ts's
   // palette-openable-set === backend-enum check stays green. Still also
   // reachable via the `planner` panel's "Autonomous Agent Runs" link.
   // `chapter-revision-compare` is a params-retargeting singleton (json-editor/
@@ -339,7 +339,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // critic scores, book-wide promise coverage, and canon issues are 4 distinct
   // data sources, not one monolithic tabbed panel. All palette + agent openable
   // (added to chat-service's ui_open_studio_panel enum + regenerated
-  // contracts/frontend-tools.contract.json).
+  // contracts/browser-tools.contract.json).
   { id: 'quality', component: QualityHubPanel, titleKey: 'panels.quality.title', descKey: 'panels.quality.desc', category: 'quality', guideBodyKey: 'panels.quality.guideBody', tourAnchor: 'studio-quality-hub-panel' },
   { id: 'quality-promises', component: QualityPromisesPanel, titleKey: 'panels.quality-promises.title', descKey: 'panels.quality-promises.desc', category: 'quality', guideBodyKey: 'panels.quality-promises.guideBody' },
   { id: 'quality-critic', component: QualityCriticPanel, titleKey: 'panels.quality-critic.title', descKey: 'panels.quality-critic.desc', category: 'quality', guideBodyKey: 'panels.quality-critic.guideBody' },
@@ -352,7 +352,7 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   // Each session adds its panels IN ITS OWN BLOCK below, so two sessions editing
   // this file concurrently touch different line-ranges. Registration is not done
   // until the row is here AND in chat-service's `ui_open_studio_panel` enum AND in
-  // contracts/frontend-tools.contract.json (regen: WRITE_FRONTEND_CONTRACT=1 pytest)
+  // contracts/browser-tools.contract.json (regen: WRITE_FRONTEND_CONTRACT=1 pytest)
   // AND has an `en` i18n guideBodyKey. Keep enum == openable == contract in sync.
   // Panel-id ledger + per-session ownership: docs/plans/2026-07-16-studio-completeness-8-session-orchestration.md §4/§8.0
   // ───────────────────────────────────────────────────────────────────────────

@@ -23,11 +23,11 @@ func isRerank(m ModelInventory) bool {
 
 func TestClassifyOpenAIModel_Rerank(t *testing.T) {
 	cases := map[string]string{
-		"rerank-v3.5":          "rerank",
-		"rerank-english-v3.0":  "rerank",
-		"bge-reranker-v2-m3":   "rerank",
+		"rerank-v3.5":            "rerank",
+		"rerank-english-v3.0":    "rerank",
+		"bge-reranker-v2-m3":     "rerank",
 		"text-embedding-3-small": "embedding",
-		"gpt-4o":               "chat",
+		"gpt-4o":                 "chat",
 	}
 	for id, want := range cases {
 		if got := classifyOpenAIModel(id); got != want {

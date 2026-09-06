@@ -1,0 +1,98 @@
+[
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1
+ },
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1
+ },
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1
+ },
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1
+ },
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0
+ },
+ {
+  "arm": "flow",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 2
+ },
+ {
+  "arm": "flow",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 6
+ },
+ {
+  "arm": "flow",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0
+ },
+ {
+  "arm": "flow",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 5
+ },
+ {
+  "arm": "flow",
+  "canon": 9,
+  "attributed": 0,
+  "raw": 0
+ },
+ {
+  "arm": "flow_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 6
+ }
+]

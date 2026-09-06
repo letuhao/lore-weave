@@ -1,0 +1,18 @@
+{
+ "_note": "Tools declaring one spelling of a word and not its variant. A gap here is exact, not a judgement: the two spellings are the same word, and the answerability matcher is exact on word boundaries. The test beside this asserts the set does not GROW; fixing an entry means adding the missing spelling to the tool's synonyms and re-running with --write.",
+ "_generated_by": "scripts/lint_synonym_spelling_variants.py --write",
+ "gaps": {
+  "catalog_list_public_books": [
+   "declares 'catalog', not 'catalogue'"
+  ],
+  "composition_arc_import_analyze": [
+   "declares 'analyze', not 'analyse'"
+  ],
+  "composition_motif_mine": [
+   "declares 'analyze', not 'analyse'"
+  ],
+  "composition_structure_template_clone": [
+   "declares 'customise', not 'customize'"
+  ]
+ }
+}

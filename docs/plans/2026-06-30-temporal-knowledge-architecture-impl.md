@@ -17,7 +17,7 @@
 |---|---|---|
 | D-KAL-LANG | **KAL = new TypeScript gateway service** (`services/knowledge-gateway`), I3 gateway-tier convention; federates glossary-svc (Go) + knowledge-svc (Python) behind one versioned typed contract. MCP tools become one client of it. | user 2026-06-30; spec §9.9 |
 | D-RUN-SCOPE | This run = plan + **serial foundation** (F0–F4), then human checkpoint before fanout (X1–X7). | user 2026-06-30 |
-| D-SUBSTRATE-HOME | The `entity_facts` SSOT + `episodes` + `canonical_snapshot` live in **glossary-service** (Postgres, the SSOT side). KG side gets the **ordinal valid-time unify** in knowledge-service (Neo4j). | spec §8B |
+| D-SUBSTRATE-HOME | ~~The `entity_facts` SSOT + `episodes` + `canonical_snapshot` live in **glossary-service** (Postgres, the SSOT side). KG side gets the **ordinal valid-time unify** in knowledge-service (Neo4j).~~ **REWRITTEN 2026-08-14 (T44).** The placement is still accurate; the words *"the SSOT side"* were not, and that half is what drifted into SCOPE-3 as *"knowledge is the derived layer"*. **Neither store is derived from the other** — measured live: knowledge holds **1184 `:Event`** (glossary has no events table), **35 `:EntityStatus`, 0 anchored**, and **567 unanchored `:Entity`**, none of which `entity_facts` can even hold (its `entity_id` is an FK to `glossary_entities`). They are two truth stores joined by an anchor, and **O1 sealed ONE store as the destination** — `T46` merges them, `T45` first settles the scope-dependent valid-time axis this row's *"ordinal valid-time unify"* was gesturing at. | spec §8B; T44 |
 
 ---
 

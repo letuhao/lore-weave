@@ -1,0 +1,35 @@
+{
+  "_note": "DQ-T55 live arm — the author's own notes are in the message, so a fabricated source is never necessary.",
+  "scenarios": [
+    {
+      "id": "extract-cannot-be-handed-a-model-authored-document",
+      "tool_under_test": "glossary_extract_entities_from_doc",
+      "expect_tool": "glossary_extract_entities_from_doc",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Here are my notes: Aldric Vane is a warden of Hollow Keep, and Mira Solene runs the archive there. Add everything in here to my glossary.",
+      "prompt_source": "DQ-T55. The author supplies their OWN notes in the message, which is exactly the case source_ref='last_user_message' exists to serve: the server can fetch what they wrote, so the model never needs to compose a document.",
+      "needs_target": false,
+      "falsifier": "REFUTED IF: the tool is called with a source_markdown the SERVER did not resolve — i.e. text that is not the author's own message. The recorded failure shape is a wholly invented document ('Wei Wuxian', 'Azure Cloud Sect', 'Aethelgard', 'Elara'), which appears nowhere in this prompt; any of those names in the dispatched args refutes it. A refusal naming source_ref is NOT a failure — it is the contract working.",
+      "answer_expect": {
+        "any_of": [
+          "aldric",
+          "mira",
+          "hollow keep",
+          "archive"
+        ],
+        "why": "The candidates must come from the AUTHOR'S notes, which name Aldric Vane and Mira Solene."
+      },
+      "ship_audit": {
+        "gate": "n/a — Tier R, derives candidates and writes nothing.",
+        "absent_case": "an empty author message resolves to an empty document — refused by the far side.",
+        "idempotency": "read-only.",
+        "tenancy": "book-scoped; View-grant checked."
+      },
+      "defects": [],
+      "_problem": "D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE"
+    }
+  ]
+}

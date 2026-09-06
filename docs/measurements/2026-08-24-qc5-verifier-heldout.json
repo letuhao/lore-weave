@@ -1,0 +1,81 @@
+{
+ "verdict": {
+  "verdict": "HELD-OUT-MISS",
+  "runs": 4,
+  "raw": 5,
+  "false_positives_dropped_by_verifier": 0,
+  "false_positives_SURVIVING": 5,
+  "c31_claim": "14/14 historical false positives dropped (the set it was built from)",
+  "reason": "the verifier kept false positives on drafts it was not derived from — C31's 14/14 is a figure over its own motivating examples"
+ },
+ "rows": [
+  {
+   "job": "01a02d22",
+   "attributed": 1,
+   "unverified": 0,
+   "raw": 1,
+   "canon": 4
+  },
+  {
+   "job": "01a02d22",
+   "attributed": 1,
+   "unverified": 0,
+   "raw": 1,
+   "canon": 3
+  },
+  {
+   "job": "01a02d21",
+   "attributed": 1,
+   "unverified": 0,
+   "raw": 1,
+   "canon": 3
+  },
+  {
+   "job": "01a02d20",
+   "attributed": 2,
+   "unverified": 0,
+   "raw": 2,
+   "canon": 3
+  }
+ ],
+ "surviving_violations": [
+  {
+   "job": "01a02d22",
+   "rule_id": "019ff43e-5efb-710e-9794-cc1cbe37bc29",
+   "span_chars": 150,
+   "why_chars": 200,
+   "restates_rule": true
+  },
+  {
+   "job": "01a02d22",
+   "rule_id": "019ff43e-5efb-710e-9794-cc1cbe37bc29",
+   "span_chars": 150,
+   "why_chars": 200,
+   "restates_rule": true
+  },
+  {
+   "job": "01a02d21",
+   "rule_id": "019ff43e-5efb-710e-9794-cc1cbe37bc29",
+   "span_chars": 150,
+   "why_chars": 81,
+   "restates_rule": false
+  },
+  {
+   "job": "01a02d20",
+   "rule_id": "019ff43e-5efb-710e-9794-cc1cbe37bc29",
+   "span_chars": 150,
+   "why_chars": 68,
+   "restates_rule": false
+  },
+  {
+   "job": "01a02d20",
+   "rule_id": "019ff43e-5efb-710e-9794-cc1cbe37bc29",
+   "span_chars": 138,
+   "why_chars": 68,
+   "restates_rule": false
+  }
+ ],
+ "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1",
+ "verifier_ref": "51ea9fd7-4a25-4801-af67-d88c2d161dac",
+ "note": "Spans are recorded as structure, not corpus text — this repo's measurement files carry numbers. The one verbatim span that carries the argument is quoted in the plan's QC-5 C45 block under a doc-language-gate pragma."
+}

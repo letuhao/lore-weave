@@ -68,7 +68,26 @@ func renderRustStruct(e *events.RegistryEntry, v uint32, structName string) stri
 	b.WriteString(fmt.Sprintf("// Event: %s v%d\n", e.Name, v))
 	b.WriteString(fmt.Sprintf("// %s\n\n", e.Description))
 	b.WriteString("use serde::{Deserialize, Serialize};\n")
-	b.WriteString("use uuid::Uuid;\n\n")
+	// CONDITIONAL, and it was not: `use uuid::Uuid;` was emitted for every
+	// event, which is an `unused_imports` warning on any event with no UUID
+	// field — and a warning is an error wherever this tree is built with
+	// `-D warnings`, which `foundation-ci`'s dp-contract job does.
+	//
+	// It survived because until `channel.turn_boundary` every single event
+	// carried at least one UUID, so the unconditional line was correct for
+	// every input that existed. Same shape as the Python `typing` import next
+	// door, found in the same run: a hardcoded emission that the corpus had
+	// never contradicted.
+	usesUuid := false
+	for _, f := range fieldsForEvent(e.Name, v) {
+		if strings.Contains(f.RustType, "Uuid") {
+			usesUuid = true
+		}
+	}
+	if usesUuid {
+		b.WriteString("use uuid::Uuid;\n")
+	}
+	b.WriteString("\n")
 	b.WriteString("#[derive(Debug, Clone, Serialize, Deserialize)]\n")
 	b.WriteString(fmt.Sprintf("pub struct %s {\n", structName))
 	for _, f := range fieldsForEvent(e.Name, v) {

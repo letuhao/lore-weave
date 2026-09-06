@@ -254,7 +254,7 @@ async def test_changing_model_on_a_built_graph_is_refused_not_silently_orphaning
         )
     )
     monkeypatch.setattr(
-        "app.db.neo4j_repos.graph_state.project_has_embedded_passages",
+        "app.db.graph_repos.graph_state.project_has_embedded_passages",
         AsyncMock(return_value=True),
     )
     monkeypatch.setattr(

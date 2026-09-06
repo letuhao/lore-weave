@@ -93,8 +93,8 @@ Feature-specific query logic — inventory list with filters, quest state aggreg
 
 | Concern | Owner | Example |
 |---|---|---|
-| Primitive: read one aggregate by type + id | DP SDK | `dp::primitives::read_projection::<Player>(ctx, id)` |
-| Primitive: scoped projection query by predicate | DP SDK | `dp::primitives::query_scoped(ctx, predicate_typed)` |
+| Primitive: read one aggregate by type + id | DP SDK | `dp::primitives::read_projection_reality::<Player>(ctx, id, None, None)` *(AMENDED 2026-08-07, REC-101b — was the pre-Phase-4 `read_projection`)* |
+| Primitive: scoped projection query by predicate | DP SDK | `dp::primitives::query_scoped_reality(ctx, predicate_typed, ..)` *(same amendment)* |
 | Primitive: atomic multi-aggregate T3 write | DP SDK | `dp::primitives::t3_write_multi(ctx, &[...])` |
 | Domain query: list player's inventory filtered by slot and tag, sorted by rarity | Feature repo (`inventory-repo`) | `inventory_repo::list_filtered(ctx, player_id, slot, tags)` |
 | Domain query: quest state for player across active + completed + prerequisites | Feature repo (`quest-repo`) | `quest_repo::state_for_player(ctx, player_id)` |

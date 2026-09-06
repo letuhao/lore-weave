@@ -107,6 +107,15 @@ entries:
 
   # ── L1.A-3 §3.3 (cycle 4) — admin command audit; never outboxed (the
   # data write the command performs has its own meta_write_audit + outbox row)
+  # W5-REMEDIATE — orphan_scanner's current findings, as STATE not history.
+  # Upserted per scan and DELETEd when a finding clears, so it answers "what is
+  # wrong on this shard now". Never outboxed: an operator worklist is not a
+  # domain event, and emitting one per scan tick would be noise, not signal.
+  - table: orphan_scan_finding
+    owner: world-service (orphan_scanner, through the meta bridge)
+    notes: "W5 — detector output. reality_id is NULL exactly for an untracked database. Never outbox."
+    events: []
+
   - table: admin_action_audit
     owner: admin-cli (writer ships cycle 36)
     notes: "R13 §12L.3 — admin command-level audit. error_detail scrubbed via S08 §12X.5. Never outbox."
@@ -151,15 +160,23 @@ entries:
       - op: UPDATE
         event_name: user.consent.revoked
 
-  # ── L1.A-2 §2.4 (cycle 3) — player character index (dashboard view)
-  - table: player_character_index
+  # ── SEALED-BINDING (migration 034) — who drives which actor, in which reality
+  - table: actor_control_binding
     owner: world-service
-    notes: "L1A §2.4 — cross-reality PC index. Status transitions emit pc.index.status.changed."
+    notes: >-
+      Replaces player_character_index. A player is not a KIND of actor — it is a
+      control interface — so the events are about the BINDING, not about a
+      character's lifecycle. `pc.index.status.changed` had no successor because
+      the status enum it announced was presence and mortality, which belong to
+      the transport and to GoneState; a revoke is the only durable transition
+      this table has, and DELETE is the GDPR erasure of the binding itself.
     events:
       - op: INSERT
-        event_name: pc.index.created
+        event_name: actor.control.granted
       - op: UPDATE
-        event_name: pc.index.status.changed
+        event_name: actor.control.revoked
+      - op: DELETE
+        event_name: actor.control.erased
 
   # ── L1.A-4 §4.1 (cycle 7) — user_cost_ledger (financial; events to billing dashboards)
   - table: user_cost_ledger
@@ -226,3 +243,16 @@ entries:
     events:
       - op: INSERT
         event_name: scaling.event.recorded
+
+  # ── DP-C8 (slice 5B, 2026-08-09) — session_registry: the capability store
+  #
+  # `events: []` is a decision, not an omission. Bind/refresh/revoke have no
+  # subscriber anywhere in the tree, and an outbox event nobody consumes is the
+  # orphan shape with a topic name on it. The forensic record these writes owe
+  # is already discharged in-transaction by the `meta_write_audit` row every
+  # MetaWrite emits, which is what I8 requires and what an outbox event would
+  # merely duplicate. A subscriber arriving is what earns an event here.
+  - table: session_registry
+    owner: control-plane (crates/meta-rs MetaControlPlane; slice 5B)
+    notes: "DP-C8 — one row per issued capability: SHA-256 of the bearer secret, never the secret. INSERT = bind; UPDATE = refresh or revoke."
+    events: []

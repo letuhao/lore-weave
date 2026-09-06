@@ -17,17 +17,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/minio/minio-go/v7"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ── world_update ──────────────────────────────────────────────────────────────
 type worldUpdateIn struct {
-	WorldID     string  `json:"world_id" jsonschema:"the world to update (UUID; you must own it)"`
+	WorldID     string  `json:"world_id" jsonschema:"the world to update (UUID; you must own it). NOT a name — if you have the world's NAME, call world_list first and match it to get the id"`
 	Name        *string `json:"name,omitempty" jsonschema:"new name; omit to leave unchanged"`
 	Description *string `json:"description,omitempty" jsonschema:"new one-line description; omit to leave unchanged (pass an empty string to clear it)"`
 }
@@ -48,19 +50,6 @@ func (s *Server) toolWorldUpdate(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, worldUpdateOut{}, errors.New("provide name and/or description to update")
 	}
 
-	// Capture the prior values for the undo hint (owner-scoped; a foreign/missing world
-	// yields ErrNoRows → uniform "world not found", no existence oracle).
-	var priorName string
-	var priorDesc *string
-	if err := s.pool.QueryRow(ctx,
-		`SELECT name, description FROM worlds WHERE id=$1 AND owner_user_id=$2`, worldID, ownerID,
-	).Scan(&priorName, &priorDesc); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, worldUpdateOut{}, errors.New("world not found")
-		}
-		return nil, worldUpdateOut{}, errors.New("failed to resolve world")
-	}
-
 	setClauses := []string{"updated_at=now()"}
 	args := []any{worldID, ownerID}
 	idx := 3
@@ -78,13 +67,30 @@ func (s *Server) toolWorldUpdate(ctx context.Context, _ *mcp.CallToolRequest, in
 		args = append(args, nullableString(strings.TrimSpace(*in.Description)))
 		idx++
 	}
-	query := fmt.Sprintf(`UPDATE worlds SET %s WHERE id=$1 AND owner_user_id=$2`, strings.Join(setClauses, ", "))
-	tag, err := s.pool.Exec(ctx, query, args...)
+	// #319: the prior values come from the UPDATE itself, via a self-join whose FROM side reads
+	// the statement's snapshot and so cannot see this write. They used to come from a SELECT
+	// issued just before it, which left a window: a concurrent rename landing in between made the
+	// emitted undo_hint report a value that was no longer the prior one, so replaying the undo
+	// would set the world to a name it never had at that moment and silently revert the other
+	// edit to a third value. Worlds are single-owner, so that means the same user in two sessions
+	// rather than two users — narrow, but this was the last tool still doing read-then-write, and
+	// it is the one whose undo shape all five map tools were modelled on.
+	//
+	// The SET list is only parameters and now(), so nothing here is ambiguous across the two
+	// aliases — the trap #315 hit is absent by construction, not by luck.
+	query := fmt.Sprintf(
+		`UPDATE worlds w SET %s FROM worlds old
+		 WHERE w.id=old.id AND w.id=$1 AND w.owner_user_id=$2
+		 RETURNING old.name, old.description`,
+		strings.Join(setClauses, ", "))
+	var priorName string
+	var priorDesc *string
+	err = s.pool.QueryRow(ctx, query, args...).Scan(&priorName, &priorDesc)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, worldUpdateOut{}, errNoSuchWorld // owner-scoped, no oracle
+	}
 	if err != nil {
 		return nil, worldUpdateOut{}, errors.New("failed to update world")
-	}
-	if tag.RowsAffected() == 0 {
-		return nil, worldUpdateOut{}, errors.New("world not found") // owner-scoped, no oracle
 	}
 
 	d, err := scanWorldDetail(s.pool.QueryRow(ctx, worldSelectSQL+`
@@ -107,7 +113,7 @@ WHERE w.id=$1 AND w.owner_user_id=$2`, worldID, ownerID))
 
 // ── world_delete ──────────────────────────────────────────────────────────────
 type worldDeleteIn struct {
-	WorldID string `json:"world_id" jsonschema:"the world to delete (UUID; you must own it). Hard delete — NOT reversible. Refused while it still contains member books."`
+	WorldID string `json:"world_id" jsonschema:"the world to delete (UUID; you must own it). NOT a name — if you have the world's NAME, call world_list first and match it to get the id. Hard delete — NOT reversible. Refused while it still contains member books."`
 }
 type worldDeleteOut struct {
 	Deleted bool `json:"deleted"`
@@ -127,10 +133,23 @@ func (s *Server) toolWorldDelete(ctx context.Context, _ *mcp.CallToolRequest, in
 	// world delete SET-NULLs them (orphaning the user's books), which an agent must not do
 	// implicitly. The count is owner-scoped, so a non-owner sees 0 and falls through to the
 	// owner-scoped DELETE below → uniform "world not found" (no existence oracle).
+	//
+	// `trashed` is excluded alongside `purge_pending` (#308). It counted before, which made the
+	// refusal unsatisfiable: `delete_book` moves a book to `trashed`, so following the message's
+	// own "delete them first" left the count unchanged, and at the time `world_move_book` required
+	// a UUID world_id — there was no detach, so "move them out" only relocated the block to the
+	// next world. (#318 has since added clear_world, so that half of the message now works too.)
+	// The single state that cleared it was `purge_pending`, reachable only through
+	// `purge_book` — an irreversible permanent destroy. A guard whose stated purpose is to keep
+	// the user's books from being discarded must not have "destroy them forever" as its only
+	// exit. A book the user has already thrown away is not one the agent is discarding on their
+	// behalf; SET NULL leaves it intact in the trash, which is the "your own books survive"
+	// behaviour the purge helper below describes.
 	var memberBooks int
 	if err := s.pool.QueryRow(ctx, `
 SELECT count(*) FROM books
-WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=false AND lifecycle_state!='purge_pending'`,
+WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=false
+  AND lifecycle_state NOT IN ('purge_pending','trashed')`,
 		worldID, ownerID).Scan(&memberBooks); err != nil {
 		return nil, worldDeleteOut{}, errors.New("failed to resolve world")
 	}
@@ -145,7 +164,7 @@ WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=false AND lifecycle_state!='
 		return nil, worldDeleteOut{}, errors.New("failed to delete world")
 	}
 	if !deleted {
-		return nil, worldDeleteOut{}, errors.New("world not found") // owner-scoped, no oracle
+		return nil, worldDeleteOut{}, errNoSuchWorld // owner-scoped, no oracle
 	}
 	return nil, worldDeleteOut{Deleted: true}, nil
 }
@@ -185,6 +204,34 @@ WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=true AND lifecycle_state!='p
 		worldID, ownerID); err != nil {
 		return false, err
 	}
+	// The world's maps go with it via world_maps.world_id ON DELETE CASCADE — in the DATABASE.
+	// Their base images do not (#311). world_map_delete removes a map's blob in application code,
+	// and a cascade never runs that code, so every map image in a deleted world was orphaned in
+	// storage permanently. This is not the failed-RemoveObject edge case #310 covered: no removal
+	// was even attempted. It is the mechanism behind the orphans measured there — all 3 map images
+	// in the bucket belonged to maps that no longer existed. Collect the keys while the rows still
+	// exist; the removal happens after the commit.
+	var imageKeys []string
+	rows, err := tx.Query(ctx, `
+SELECT image_object_key FROM world_maps
+WHERE world_id=$1 AND owner_user_id=$2 AND image_object_key IS NOT NULL AND image_object_key<>''`,
+		worldID, ownerID)
+	if err != nil {
+		return false, err
+	}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			rows.Close()
+			return false, err
+		}
+		imageKeys = append(imageKeys, k)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+
 	tag, err := tx.Exec(ctx, `DELETE FROM worlds WHERE id=$1 AND owner_user_id=$2`, worldID, ownerID)
 	if err != nil {
 		return false, err
@@ -194,6 +241,17 @@ WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=true AND lifecycle_state!='p
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
+	}
+
+	// After the commit only: the rows are gone for good, so a storage failure must not fail the
+	// delete — but it is logged with the key, never discarded (#310).
+	if s.minio != nil {
+		for _, k := range imageKeys {
+			if err := s.minio.RemoveObject(ctx, mediaBucket, k, minio.RemoveObjectOptions{}); err != nil {
+				slog.WarnContext(ctx, "world delete: orphaned map base image (world deleted, blob remains)",
+					"world_id", worldID.String(), "object_key", k, "error", err)
+			}
+		}
 	}
 	return true, nil
 }

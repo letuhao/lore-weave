@@ -20,11 +20,11 @@ import (
 //   - char_start / char_end — chapter-relative character offsets of the quote.
 //   - provenance_status — the trust taxonomy (INV-7: model offsets are HINTS,
 //     validated against the real text, never persisted as truth unverified):
-//       'exact'      — offset matched the quote verbatim in the source
-//       'resolved'   — quote found in the chapter, offset corrected to where it is
-//       'ambiguous'  — quote occurs multiple times; a best-effort offset
-//       'unmatched'  — quote not found in the chapter (likely a hallucination)
-//       'unverified' — DEFAULT: not yet checked (chapter-level provenance only)
+//     'exact'      — offset matched the quote verbatim in the source
+//     'resolved'   — quote found in the chapter, offset corrected to where it is
+//     'ambiguous'  — quote occurs multiple times; a best-effort offset
+//     'unmatched'  — quote not found in the chapter (likely a hallucination)
+//     'unverified' — DEFAULT: not yet checked (chapter-level provenance only)
 //
 // Additive + idempotent, routed through execGuarded. The offsets/validation are
 // POPULATED by the translation-side preprocess (the model-offset-trust step); this

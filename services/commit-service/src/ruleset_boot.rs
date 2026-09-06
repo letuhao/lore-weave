@@ -87,11 +87,23 @@ impl RulesetBoot {
     /// validates, stores the bytes, binds the reality to their digest. Refuses
     /// a second creation.
     ///
-    /// `ruleset` absent = the engine default, which is the bootstrap floor and
-    /// **not** a silent fallback: the digest still describes exactly the rules
-    /// in force, and the returned line says which.
+    /// `ruleset` absent = the shipped **proving-ground preset**, and **not** a
+    /// silent fallback: the digest describes exactly the rules in force and the
+    /// returned line names which layer they came from.
+    ///
+    /// **`M1` changed what "absent" means, and the reason is mechanical.** It
+    /// used to mean `engine_default` alone — which declares no quantities and no
+    /// pools (`QTY-A10(c)` is why it must not), so it binds none of the three
+    /// engine roles and produces a reality no law can run. Creating one would
+    /// have succeeded here and failed at island construction, which is a worse
+    /// place to find out. The preset is the smallest runnable content; an author
+    /// passing `--ruleset` still overrides it at a higher layer.
     pub fn create(&self, reality_id: &str, ruleset: Option<&str>) -> anyhow::Result<String> {
-        let mut layers = Vec::new();
+        let mut layers = vec![ruleset_loader::parse_layer(
+            ruleset_loader::Layer::Preset,
+            ruleset_loader::PROVING_GROUND_TOML,
+        )
+        .map_err(|e| anyhow::anyhow!("the shipped preset does not parse: {e}"))?];
         if let Some(path) = ruleset {
             layers.push(
                 ruleset_loader::read_layer(ruleset_loader::Layer::Reality, Path::new(path))
@@ -105,7 +117,7 @@ impl RulesetBoot {
             "CREATED reality {reality_id} epoch {} -> ruleset {} (from {})",
             binding.epoch,
             binding.digest,
-            ruleset.unwrap_or("engine_default"),
+            ruleset.unwrap_or("the shipped proving-ground preset"),
         ))
     }
 
@@ -152,7 +164,11 @@ pub async fn boot_reality(
     reality_id: &str,
     create: bool,
     ruleset_path: Option<&str>,
-) -> anyhow::Result<(RulesetBoot, std::sync::Arc<Ruleset>, sim_core::RulesetEpoch)> {
+) -> anyhow::Result<(
+    RulesetBoot,
+    std::sync::Arc<crate::domain::RealityRules>,
+    sim_core::RulesetEpoch,
+)> {
     let boot = RulesetBoot::open(state_root, meta_url, allowlist).await?;
     println!("BINDINGS <- {}", boot.provenance);
     if create {
@@ -163,5 +179,9 @@ pub async fn boot_reality(
         "RULESET {} <- store (NOT re-resolved), reality epoch {}",
         binding.digest, binding.epoch
     );
-    Ok((boot, std::sync::Arc::new(r), sim_core::RulesetEpoch(binding.epoch)))
+    // `M1` — resolve the role bindings HERE, at boot, where an unbound role is
+    // an operator-readable refusal rather than a fight that never ends.
+    let resolved = crate::domain::RealityRules::resolve(r)
+        .map_err(|e| anyhow::anyhow!("reality {reality_id} is unrunnable: {e}"))?;
+    Ok((boot, std::sync::Arc::new(resolved), sim_core::RulesetEpoch(binding.epoch)))
 }

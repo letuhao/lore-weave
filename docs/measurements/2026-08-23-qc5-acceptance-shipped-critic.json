@@ -1,0 +1,107 @@
+[
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "planted",
+  "canon": 2,
+  "attributed": 1,
+  "raw": 1,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "planted_control",
+  "canon": 5,
+  "attributed": 0,
+  "raw": 0,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "flow",
+  "canon": 4,
+  "attributed": 2,
+  "raw": 2,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "flow",
+  "canon": 3,
+  "attributed": 2,
+  "raw": 2,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "flow",
+  "canon": 3,
+  "attributed": 2,
+  "raw": 2,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "flow",
+  "canon": 9,
+  "attributed": 0,
+  "raw": 0,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ },
+ {
+  "arm": "flow",
+  "canon": 4,
+  "attributed": 2,
+  "raw": 2,
+  "critic_ref": "019eb620-bfb1-78ce-ad72-a360c604cfc1"
+ }
+]

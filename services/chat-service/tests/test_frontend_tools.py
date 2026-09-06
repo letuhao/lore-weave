@@ -11,6 +11,7 @@ Reuses the _FakeClient scripting harness from test_stream_tools. Covers:
 from __future__ import annotations
 
 import json
+import pathlib
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -19,7 +20,7 @@ import pytest
 from app.config import settings
 from app.db.suspended_runs import SuspendedRun
 from app.models import ProviderCredentials
-from app.services.frontend_tools import (
+from tests._v1_tool_fixtures import (
     FRONTEND_TOOL_NAMES,
     GLOSSARY_CONFIRM_ACTION_TOOL,
     GLOSSARY_PROPOSE_EDIT_TOOL,
@@ -27,6 +28,7 @@ from app.services.frontend_tools import (
     UI_FOCUS_MANUSCRIPT_UNIT_TOOL,
     UI_OPEN_STUDIO_PANEL_TOOL,
     frontend_tool_defs,
+    is_browser_executed,
     is_frontend_tool,
 )
 from app.services.stream_events import AgUiEmitter, LegacyEmitter
@@ -57,13 +59,23 @@ class TestFrontendToolDefs:
         assert not is_frontend_tool("propose_edit")
         assert "propose_edit" not in FRONTEND_TOOL_NAMES
 
-    def test_glossary_edit_is_a_frontend_tool(self):
-        assert is_frontend_tool("glossary_propose_entity_edit")
-        assert "glossary_propose_entity_edit" in FRONTEND_TOOL_NAMES
+    def test_the_kind_c_tools_are_no_longer_INTERCEPTED_but_are_still_BROWSER_EXECUTED(self):
+        """V7 (2026-09-03) — these asserted `is_frontend_tool(...)`, i.e. that chat-service
+        SUSPENDS on them. It no longer does: they moved to ai-gateway as directive tools, so the
+        schema and the validation live there and the suspend comes from the RESULT.
 
-    def test_glossary_confirm_action_is_a_frontend_tool(self):
-        assert is_frontend_tool("glossary_confirm_action")
-        assert "glossary_confirm_action" in FRONTEND_TOOL_NAMES
+        🔴 BOTH HALVES, because dropping the second is a real defect I shipped and had to fix.
+        `is_browser_executed` answered True for these only VIA `FRONTEND_TOOL_NAMES`; emptying
+        that set flipped it to False and `subagent_runtime` stopped excluding them — handing a
+        HEADLESS sub-run a human-gate tool with no human to gate on. Moving a tool's HOME must
+        not change WHO EXECUTES it.
+        """
+        for name in ("glossary_propose_entity_edit", "glossary_confirm_action", "confirm_action"):
+            assert not is_frontend_tool(name), f"chat-service is intercepting {name} again"
+            assert name not in FRONTEND_TOOL_NAMES
+            assert is_browser_executed(name), (
+                f"{name} stopped being browser-executed; a headless sub-run will now be offered a "
+                f"tool only a human can answer")
 
     def test_glossary_confirm_action_schema_is_wire_standard(self):
         d = GLOSSARY_CONFIRM_ACTION_TOOL
@@ -77,10 +89,19 @@ class TestFrontendToolDefs:
         the prompt must be updated too — else the LLM is told to call a tool that
         no longer exists and nothing fails. Catch that drift here."""
         from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
-        glossary_frontend_tools = {n for n in FRONTEND_TOOL_NAMES if n.startswith("glossary_")}
-        # sanity: there ARE glossary frontend tools to check
-        assert glossary_frontend_tools
-        for name in glossary_frontend_tools:
+        # 🔴 SOURCED FROM THE CONTRACT, NOT FROM FRONTEND_TOOL_NAMES. V7 emptied that set, and
+        # this loop would then have iterated NOTHING — passing while checking no name at all.
+        # Its own `assert glossary_frontend_tools` guard is what caught that, and it is the
+        # reason the guard was written: an anti-vacuity line earns its keep exactly once.
+        #
+        # The drift this defends against is unchanged by the move: the prompt instructs the LLM
+        # by tool NAME, and the names did not change when their home did.
+        contract = json.loads(
+            (pathlib.Path(__file__).resolve().parents[3] / "contracts"
+             / "browser-tools.contract.json").read_text(encoding="utf-8"))
+        glossary_tools = {n for n in contract if n.startswith("glossary_")}
+        assert glossary_tools, "the contract lists no glossary tools — this test would be vacuous"
+        for name in glossary_tools:
             assert name in GLOSSARY_SKILL_PROMPT, f"skill prompt is missing tool name {name!r}"
 
     def test_glossary_skill_prompt_mandates_one_card_batch(self):
@@ -136,18 +157,19 @@ class TestFrontendToolDefs:
         assert item["properties"]["target"]["enum"] == ["short_description", "attribute"]
 
     def test_frontend_tool_defs_are_surface_scoped(self):
-        # editor surface → prose write-back only
-        assert frontend_tool_defs(editor=True, book_scoped=False) == [PROPOSE_EDIT_TOOL]
-        # glossary-page surface (book-scoped, not editor) → glossary edit + action confirm
-        assert frontend_tool_defs(editor=False, book_scoped=True) == [
-            GLOSSARY_PROPOSE_EDIT_TOOL, GLOSSARY_CONFIRM_ACTION_TOOL,
-        ]
-        # editor chat is also book-scoped → prose edit + both glossary tools
-        assert frontend_tool_defs(editor=True, book_scoped=True) == [
-            PROPOSE_EDIT_TOOL, GLOSSARY_PROPOSE_EDIT_TOOL, GLOSSARY_CONFIRM_ACTION_TOOL,
-        ]
-        # neither surface → nothing
-        assert frontend_tool_defs() == []
+        # V7 — EVERY surface gets nothing from here now, and that is the fix rather than a
+        # regression. This function appended local copies of propose_edit and the two glossary
+        # tools; all three are federated, so each append was a SECOND, frozen schema shadowing
+        # the live one. Its stated purpose was an "ai-gateway-down fallback", but all three
+        # DISPATCH inside ai-gateway — with the gateway down it advertised tools that cannot
+        # execute, which CD4 rates worse than omitting them.
+        for kwargs in ({"editor": True, "book_scoped": False},
+                       {"editor": False, "book_scoped": True},
+                       {"editor": True, "book_scoped": True},
+                       {}):
+            assert frontend_tool_defs(**kwargs) == [], (
+                f"a local def is being advertised again for {kwargs} — it would shadow the "
+                f"federated schema of the same name")
 
     def test_ui_tools_are_no_longer_frontend_tools(self):
         # Phase 3 (P3.2) — the KIND-A ui_* tools moved to ai-gateway as consumer-local
@@ -178,7 +200,7 @@ class TestFrontendToolDefs:
         # sharing, book-settings, translation, enrichment-*, user-guide, agent-mode) because
         # nothing forced it to stay in sync with the real enum. The actual anti-drift
         # mechanism for that is test_frontend_tools_contract.py's committed
-        # contracts/frontend-tools.contract.json (regenerated via WRITE_FRONTEND_CONTRACT=1),
+        # contracts/browser-tools.contract.json (regenerated via WRITE_FRONTEND_CONTRACT=1),
         # which the FE guard also reads — duplicating the list here only added a second,
         # unmaintained copy that could fail for reasons unrelated to whatever change
         # actually broke the contract. Keep this test to what it can uniquely catch:
@@ -204,10 +226,28 @@ class TestFrontendToolDefs:
 class TestSuspendLoop:
     @pytest.mark.asyncio
     async def test_confirm_action_frontend_tool_suspends_without_executing(self):
-        """A still-frontend tool (confirm_action) yields a `suspend` chunk carrying the
-        rehydrate state and does NOT call knowledge_client.execute_tool (the classic
-        frontend-tool suspend path, kept after propose_edit migrated to ai-gateway)."""
+        """confirm_action yields a `suspend` chunk carrying the rehydrate state.
+
+        V7 RE-VEHICLED: it used to suspend because chat-service INTERCEPTED the call before
+        dispatch. It now dispatches to ai-gateway, which answers with a gated CONFIRM directive,
+        and chat-service suspends on that. The observable contract the FE depends on — one
+        suspend, named confirm_action, carrying the working state and the turn's usage — is
+        unchanged, which is the whole point of keeping the suspend shape byte-identical.
+
+        The `assert_not_awaited` that used to guard "no server execute happened" is gone on
+        purpose: a dispatch is now REQUIRED for the suspend to exist at all. What still must not
+        happen is a server-side COMMIT, and that is guaranteed by the directive carrying no
+        executor — asserted in ai-gateway's confirm-tools.spec.ts.
+        """
+        from app.services.task_detect import CONFIRM_DIRECTIVE_TYPE
         kc = AsyncMock()
+        kc.mcp_execute_tool = AsyncMock(return_value={
+            "success": True,
+            "result": {
+                "type": CONFIRM_DIRECTIVE_TYPE, "confirm_token": "tok",
+                "descriptor": "book.publish", "title": "Publish?", "domain": "book",
+            },
+        })
         args = '{"confirm_token":"tok","descriptor":"book.publish","title":"Publish?"}'
         scripts = [[
             tool_frag(index=0, id="call_fe", name="confirm_action"),
@@ -220,8 +260,8 @@ class TestSuspendLoop:
                 scripts, knowledge_client=kc,
                 tools=[{"type": "function", "function": {"name": "confirm_action"}}],
             ))
-        # never executed server-side (a frontend tool suspends, it doesn't call mcp)
-        kc.mcp_execute_tool.assert_not_awaited()
+        # dispatched exactly once — the directive IS the suspend's source now
+        kc.mcp_execute_tool.assert_awaited_once()
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
         s = suspends[0]["suspend"]
@@ -440,7 +480,13 @@ class TestResumeUsageSummed:
         billing = AsyncMock()
 
         kc = AsyncMock()
-        kc.get_tool_definitions.return_value = []  # the no-project / empty case
+        # V7 — propose_edit is FEDERATED, so a resumed editor pass re-advertises it from the
+        # catalogue. It used to be appended locally by `frontend_tool_defs(editor=True)`, which
+        # is why an empty catalogue used to be enough here. The subject of this test is usage
+        # SUMMING across the resume; the tool-path assertion below is just its precondition.
+        kc.get_tool_definitions.return_value = [
+            {"type": "function", "function": {"name": "propose_edit"}},
+        ]
 
         # resumed pass: a plain text answer + its own usage
         scripts = [[tok("Applied."), usage(500, 30), done("stop")]]

@@ -22,12 +22,29 @@ from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import write_pass2_extraction
-from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+from app.db.graph_repos.events import EVENT_ORDER_CHAPTER_STRIDE
 
 USER_ID = "test-user-001"
 PROJECT_ID = "test-project-001"
 JOB_ID = "test-job-001"
 _PATCH_BASE = "app.extraction.pass2_writer"
+
+
+@pytest.fixture(autouse=True)
+def _empty_event_order_band():
+    """Every write in this module is a chapter's FIRST extraction, so the band is empty.
+
+    The writer now asks the store for the highest `event_order` already used in the
+    chapter's band before numbering (it used to restart at 0, which collided whenever a
+    chapter was extracted by more than one job). These tests are not about that; without
+    this, each would reach the real repo call through a MagicMock session and fail on an
+    un-awaitable mock, which reads as a defect in the code under test rather than a missing
+    stub.
+    """
+    with patch(_PATCH_BASE + ".max_event_order_in_band",
+               new_callable=AsyncMock, return_value=None) as m:
+        yield m
+
 
 
 def _fake_session() -> Any:

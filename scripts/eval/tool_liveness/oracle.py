@@ -16,9 +16,79 @@ import subprocess
 from . import config
 
 
+#: The value a scenario puts in a seed_assert's `db` to address the GRAPH instead of a
+#: Postgres database. Chosen to match what `store_snapshot` already calls that store.
+GRAPH_DB = "neo4j"
+
+
+def _neo4j_password() -> str:
+    """Read the graph password from the service that owns the connection.
+
+    Deliberately not a new env var or a config constant: the credential already exists in the
+    running container, and a second place to configure it is a second place for it to be wrong.
+    """
+    out = subprocess.run(
+        ["docker", "exec", "infra-knowledge-service-1", "printenv", "NEO4J_PASSWORD"],
+        capture_output=True, text=True, timeout=60,
+    )
+    return out.stdout.strip()
+
+
+def cypher_query(cypher: str) -> list[list[str]]:
+    """Run a read-only Cypher query against the graph; same row/cell shape as `db_query`.
+
+    🔴 D-SEED-ASSERT-CANNOT-ADDRESS-THE-GRAPH. A scenario's `seed_assert` ran `psql` against a
+    named Postgres database, and facts, entities and events live in NEO4J — so an assertion over
+    them could not be written at all. Hit 2026-08-26 writing scenarios-c-factsearch.json: the
+    harness refused the batch with `db_query failed (neo4j): psql: ... database "neo4j" does not
+    exist`.
+
+    THE REFUSAL WAS CORRECT and was never the defect — a scenario whose assertion cannot execute
+    measures nothing, and declining to start is the right call. The defect was that a whole class
+    of seeded state could not be preflighted, so a graph-seeded scenario ran with no guard that
+    its seed had landed.
+
+    The output shape is what makes this a drop-in: cypher-shell `--format plain` prints a header
+    line then the rows, exactly like psql's `-tA`, so a scalar comparison needs no new rule —
+    which was the open question recorded on the row.
+    """
+    pw = _neo4j_password()
+    if not pw:
+        raise RuntimeError(
+            "cypher_query: could not read NEO4J_PASSWORD from infra-knowledge-service-1 — the "
+            "graph is unreachable, so a seed assertion over it cannot be checked (and must not "
+            "be reported as passing)")
+    out = subprocess.run(
+        ["docker", "exec", "-i", "infra-neo4j-1", "cypher-shell", "-u", "neo4j", "-p", pw,
+         "--format", "plain", cypher],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+    )
+    if out.returncode != 0:
+        # 🔴 STRIP THE JVM NOISE OR THE MESSAGE NAMES THE WRONG THING. cypher-shell prints four
+        # lines of "WARNING: A restricted method in java.lang.System has been called" to stderr
+        # on every invocation, and a bare [:400] truncation shows ONLY those — so a syntax error
+        # in the caller's Cypher arrives as a Java module warning, pointing the reader at the
+        # JVM instead of at their query. Measured the first time this path was exercised.
+        noise = ("WARNING:", "warning:")
+        real = [ln for ln in out.stderr.splitlines()
+                if ln.strip() and not ln.lstrip().startswith(noise)]
+        raise RuntimeError(f"cypher_query failed: {' '.join(real).strip()[:400] or out.stderr.strip()[:200]}")
+    lines = [ln.strip() for ln in out.stdout.splitlines()
+             if ln.strip() and not ln.startswith("WARNING")]
+    # plain format prints the column header first; a scalar query yields header + one value.
+    return [[c.strip().strip('"')] for c in lines[1:]] if len(lines) >= 2 else []
+
+
 def db_query(dbname: str, sql: str) -> list[list[str]]:
-    """Run a read-only SQL query in the postgres container; return rows as lists of
-    string cells. Uses `-tAF|` (tuples-only, unaligned, pipe-separated)."""
+    """Run a read-only query and return rows as lists of string cells.
+
+    `dbname="neo4j"` addresses the GRAPH and `sql` is Cypher — routed here rather than at each
+    call site so that BOTH seed-assert paths get it from one place: `preflight_seed_asserts`
+    (which checks every query once before the batch spends a turn) and `assert_seeded` (which
+    runs it per-run against the real fixture). Two dispatches would be two chances to diverge.
+    """
+    if dbname == GRAPH_DB:
+        return cypher_query(sql)
     cmd = [
         "docker", "exec", config.PG_CONTAINER,
         "psql", "-U", config.PG_USER, "-d", dbname,

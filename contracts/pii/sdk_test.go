@@ -10,6 +10,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/loreweave/foundation/contracts/meta"
+	"os"
+	"path/filepath"
+	"regexp"
 )
 
 // fakePIIReader is a map-backed PIIReader for SDK tests (mirrors
@@ -326,12 +329,12 @@ func TestSensitiveReadEntry_Validate(t *testing.T) {
 	}
 
 	cases := map[string]func(*SensitiveReadEntry){
-		"zero audit_id":   func(e *SensitiveReadEntry) { e.AuditID = uuid.Nil },
-		"invalid tag":     func(e *SensitiveReadEntry) { e.QueryType = "bogus" },
-		"empty actor_id":  func(e *SensitiveReadEntry) { e.ActorID = "" },
+		"zero audit_id":    func(e *SensitiveReadEntry) { e.AuditID = uuid.Nil },
+		"invalid tag":      func(e *SensitiveReadEntry) { e.QueryType = "bogus" },
+		"empty actor_id":   func(e *SensitiveReadEntry) { e.ActorID = "" },
 		"empty actor_type": func(e *SensitiveReadEntry) { e.ActorType = "" },
-		"negative count":  func(e *SensitiveReadEntry) { e.ResultCount = -1 },
-		"implausible ts":  func(e *SensitiveReadEntry) { e.CreatedAtNanos = 1577836800000000000 },
+		"negative count":   func(e *SensitiveReadEntry) { e.ResultCount = -1 },
+		"implausible ts":   func(e *SensitiveReadEntry) { e.CreatedAtNanos = 1577836800000000000 },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -353,4 +356,101 @@ func TestSensitiveReadTag_IsValid(t *testing.T) {
 	if SensitiveReadTag("bogus").IsValid() {
 		t.Fatal("bogus tag must be invalid")
 	}
+}
+
+// ─── the yml ↔ SDK mirror ────────────────────────────────────────────────────
+
+// ymlPathsWithNoGoCaller are sensitive-read paths the yml registers that no Go
+// code writes an audit row for yet.
+//
+// The SDK is a strict SUBSET of the yml — 4 constants against 7 paths — and
+// `IsValid`'s comment claimed to mirror it. This list is the difference, stated,
+// so the mirror test can be exact in both directions instead of approximately
+// true in one. A path leaves this list the day it gains a constant, and the test
+// below FAILS if it is in both places: a name in a "not implemented" list that
+// is in fact implemented is the stalest kind of comment.
+var ymlPathsWithNoGoCaller = map[string]string{
+	"audit_query": "any SELECT from an *_audit or *_log table. No Go caller " +
+		"writes this row today; the reads happen in psql and in ops tooling.",
+	"admin_bulk_export": "admin-cli bulk export commands. The commands exist; " +
+		"the audit row for them does not, and that is its own gap, not this one.",
+	"bulk_meta_query": "bulk cross-table meta reads. No Go caller today.",
+}
+
+// Every yml path is either a valid SDK tag or declared as having no Go caller.
+//
+// The defect this exists for: `TagActorBindingCrossUser` was declared as a
+// constant on 2026-08-14 and never added to `IsValid`'s switch, so the only way
+// to use the registered name was to fail validation. Nothing noticed for a week,
+// because no production code had wired the auditor that calls it.
+//
+// Measured 2026-08-21 by finally wiring it: every audited cross-user read of
+// `actor_control_binding` came back `invalid query_type
+// "actor_binding_cross_user"`, the row was dropped, and `meta_read_audit` held
+// ZERO rows since the table was created in `014`. Four layers of a discipline —
+// the migration that declared it, the yml that registered it, the constant that
+// named it, the interface that guarded it — with an empty table underneath.
+func TestEveryYmlPathIsEitherValidOrDeclaredUnused(t *testing.T) {
+	ids := ymlPathIDs(t)
+	for _, id := range ids {
+		valid := SensitiveReadTag(id).IsValid()
+		_, excused := ymlPathsWithNoGoCaller[id]
+		if !valid && !excused {
+			t.Errorf("the yml registers %q, IsValid rejects it, and no reason is declared — "+
+				"a caller using the registered name cannot write its audit row", id)
+		}
+		if valid && excused {
+			t.Errorf("%q is BOTH a valid tag and listed as having no Go caller; remove it "+
+				"from ymlPathsWithNoGoCaller", id)
+		}
+	}
+}
+
+// …and every SDK tag is registered in the yml.
+//
+// The direction that matters for security: a tag `IsValid` accepts but the yml
+// does not register would let the SDK write an audit row for a path
+// security-team never reviewed.
+func TestEveryValidTagIsRegisteredInTheYml(t *testing.T) {
+	registered := map[string]bool{}
+	for _, id := range ymlPathIDs(t) {
+		registered[id] = true
+	}
+	for _, tag := range []SensitiveReadTag{
+		TagPIIUserGet, TagPIIUserErase, TagBulkPIIRead, TagActorBindingCrossUser,
+	} {
+		if !tag.IsValid() {
+			t.Errorf("%q is a declared constant and IsValid rejects it", tag)
+		}
+		if !registered[string(tag)] {
+			t.Errorf("%q is valid here and the yml registers no such path", tag)
+		}
+	}
+	// The enumeration must stay CLOSED, or both tests above are satisfied by an
+	// IsValid that returns true for everything.
+	if SensitiveReadTag("invented_path").IsValid() {
+		t.Error("IsValid accepts an unregistered tag; the enumeration is not closed")
+	}
+}
+
+// ymlPathIDs reads the registered path ids at RUNTIME, so a yml edit reds these
+// tests without recompiling the package.
+func ymlPathIDs(t *testing.T) []string {
+	t.Helper()
+	path := filepath.Join("..", "meta", "meta-sensitive-read-paths.yml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the yml this SDK mirrors must be readable at %s: %v", path, err)
+	}
+	var out []string
+	for _, m := range regexp.MustCompile(`(?m)^\s*-\s*id:\s*([a-z0-9_]+)\s*$`).
+		FindAllStringSubmatch(string(raw), -1) {
+		out = append(out, m[1])
+	}
+	// Non-vacuity: a scan that matched nothing would make both mirror tests
+	// trivially true, and "the yml has no paths" must never read as agreement.
+	if len(out) < 4 {
+		t.Fatalf("found %d path id(s) in %s — the scan is not reading the yml", len(out), path)
+	}
+	return out
 }

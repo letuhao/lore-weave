@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.db.neo4j_repos.entities import merge_entity, set_entity_embedding
-from app.db.neo4j_repos.relations import create_relation, get_world_subgraph
+from app.db.graph_repos.entities import merge_entity, set_entity_embedding
+from app.db.graph_repos.relations import create_relation, get_world_subgraph
 from app.tools.kg_unify import unify_subgraph
 
 pytestmark = pytest.mark.asyncio

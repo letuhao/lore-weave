@@ -70,6 +70,10 @@ MIGRATIONS=(
   027_meta_write_audit_scrub_version
   030_meta_outbox
   033_reality_ruleset_binding
+  # 5B — session_registry, the capability store. It is the only table in
+  # this set whose write path exercises BYTEA-through-jsonb and a CAS on a
+  # NULL column, both of which a unit test cannot reach.
+  039_session_registry
 )
 for m in "${MIGRATIONS[@]}"; do
   f="migrations/meta/${m}.up.sql"

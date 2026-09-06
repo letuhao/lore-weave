@@ -1,6 +1,6 @@
 # 21 — LLM Turn Slot Primitive + Patterns (DP-Ch51..DP-Ch53)
 
-> **Status:** LOCKED (Phase 4, 2026-04-25). Resolves [99_open_questions.md Q20 — Phần B](99_open_questions.md) (LLM turn slot primitive + pattern documentation). **Phần A** (quantitative DP-S\* rescale based on V1 prototype data) remains deferred — no design action available without measurement.
+> **Status:** LOCKED (Phase 4, 2026-04-25). Resolves [99_open_questions.md Q20 — Part B](99_open_questions.md) (LLM turn slot primitive + pattern documentation). **Part A** (quantitative DP-S\* rescale based on V1 prototype data) remains deferred — no design action available without measurement.
 > **Stable IDs:** DP-Ch51..DP-Ch53.
 
 ---
@@ -344,8 +344,8 @@ This is feature design, not DP enforcement.
 
 | Q | Status |
 |---|---|
-| **Q20 Phần A** quantitative DP-S\* rescale | Still V1-data-deferred. No design action without prototype measurement. |
-| **Q20 Phần B** LLM turn slot primitive + patterns | ✅ Resolved here. |
+| **Q20 Part A** quantitative DP-S\* rescale | Still V1-data-deferred. No design action without prototype measurement. |
+| **Q20 Part B** LLM turn slot primitive + patterns | ✅ Resolved here. |
 | **Phase 2b** Rust implementation of slot primitives | Picked up when V1 game services begin coding. |
 
-After this file, **Phase 4 has only Q20-Phần-A remaining** — purely a measurement question, not a design question. 06_data_plane design is functionally complete; SDK implementation is the next phase of work.
+After this file, **Phase 4 has only Q20-Part-A remaining** — purely a measurement question, not a design question. 06_data_plane design is functionally complete; SDK implementation is the next phase of work.

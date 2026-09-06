@@ -214,6 +214,8 @@
     "feedback_error": "無法儲存回饋",
     "incomplete_error": "錯誤 — 回應不完整",
     "incomplete_interrupted": "已中斷 — 回應不完整",
+    "empty_turn": "未產生任何回覆 — 沒有任何變更。請重試。",
+    "orphaned_turn": "這則訊息未產生任何回覆 — 沒有任何變更。請重試。",
     "insert_into_chapter": "插入至章節"
   },
   "tools": {
@@ -566,5 +568,12 @@
     "done": "已確認 ✓",
     "error": "無法確認",
     "label": "確認"
+  },
+  "disambiguation": {
+    "label": "您是指哪一個？",
+    "empty": "未回傳任何選項。",
+    "unnamed": "（未命名）",
+    "truncated": "顯示 {{shown}} / {{total}} — 請縮小搜尋範圍以查看其他結果。",
+    "cancel": "都不是"
   }
 }

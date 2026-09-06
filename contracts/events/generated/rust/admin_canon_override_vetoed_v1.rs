@@ -3,7 +3,6 @@
 // Reality owner refused force-propagate (gate 2 of 3, M4 §9.8.3). Reality SKIPPED — no compensating event emitted.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminCanonOverrideVetoedV1 {

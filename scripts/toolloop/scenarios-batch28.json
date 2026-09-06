@@ -1,0 +1,188 @@
+{
+  "_note": "Batch 28 — four book tools plus world_create. world_create is scope=none: it makes an ACCOUNT-level world with no throwaway book to contain it, so its assertion is scoped to a name prefix rather than to the account's 200-world headcount (the lesson batch 20 paid for, where an account-wide count drifted during the batch and made a tool look like it was double-counting). Its description also says 'Direct + reversible', which sits oddly against tier=A — if no card mints, the declaration and the behaviour disagree, and that is a finding either way.",
+  "scenarios": [
+    {
+      "id": "book-structure-read",
+      "tool_under_test": "book_structure_read",
+      "expect_tool": "book_structure_read",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Where do chapters live in this book — show me the manuscript structure.",
+      "prompt_source": "meta.synonyms['where do chapters live'] + ['manuscript structure'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_chapter_create",
+          "args": {
+            "book_id": "{book_id}",
+            "original_language": "en",
+            "title": "Chapter II — The Waterline",
+            "body": "The trench is walkable at low tide."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO chapters and ZERO parts, so every chapter is UNASSIGNED. That is the shape the tool's own description promises to report — 'every part with its chapter_count, plus unassigned_count' — and it is the honest empty case for a structure that exists but has no parts yet."
+        }
+      ],
+      "answer_expect": {
+        "none_of": [
+          "no chapters",
+          "the book is empty"
+        ],
+        "why": "The book has two chapters; they are simply unassigned to any part. 'No parts' must not become 'no chapters' — that is the D-ABSENT-ENTITY-READS-AS-UNUSED shape in a structural read."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports parts the book does not have, OR it reports the book as empty when two chapters exist unassigned. The distinction being tested is 'no parts yet' versus 'no chapters'.",
+      "ship_audit": {
+        "empty_case": "This scenario IS the empty case — chapters present, no parts.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "book-steering-set",
+      "tool_under_test": "book_steering_set",
+      "expect_tool": "book_steering_set",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Write that down as a rule — never describe the weather in the first paragraph of a chapter.",
+      "prompt_source": "meta.synonyms['write that down'] + ['never do'], verbatim, followed by a real rule so the BODY is the author's words and not the model's invention.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM book_steering WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "ZERO steering rules before, so any rule is attributable to this turn — and the card is never approved, so it must still be 0 afterwards. NOTE the upsert semantics its description states: 'a new name CREATES, an existing name FULLY replaces' — so a wrong name would silently overwrite an existing rule rather than adding one."
+        }
+      ],
+      "falsifier": "REFUTED IF: a rule lands with NO confirm card (Tier A), OR the model writes a BODY the author did not say — the author gave the rule verbatim, so paraphrasing or embellishing it puts words into the story bible the agent will then obey — OR it picks a `name` that collides with an existing rule, since an existing name FULLY REPLACES rather than merging.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "empty_case": "OWED — an empty body must be refused rather than stored as a rule that says nothing.",
+        "idempotency": "OWED — the upsert is keyed on name; setting the same name twice must replace, not duplicate.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "book-steering-delete",
+      "tool_under_test": "book_steering_delete",
+      "expect_tool": "book_steering_delete",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Forget the rule called no-weather-openings for this book.",
+      "prompt_source": "meta.synonyms['forget rule'] + ['remove rule'], verbatim, plus the rule's own name so the target is unambiguous.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_steering_set",
+          "args": {
+            "book_id": "{book_id}",
+            "name": "no-weather-openings",
+            "body": "Never describe the weather in the first paragraph of a chapter."
+          }
+        },
+        {
+          "tool": "book_steering_set",
+          "args": {
+            "book_id": "{book_id}",
+            "name": "keep-aldric-terse",
+            "body": "Aldric Vane speaks in short sentences."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM book_steering WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO rules, and only ONE is named in the prompt — so deleting the wrong one is visible. Since the card is never approved, both must still be there afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: a rule is deleted with NO confirm card (Tier A), OR the model targets `keep-aldric-terse` rather than the rule the author named, OR it invents a rule id. NOTE the tool's own promise, which is worth checking against the arc_template defect this loop found: 'An unknown name/id is an error, never a silent no-op.'",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — and the tool DECLARES the answer: an unknown name must be an error, never a silent no-op. That is exactly what composition_arc_template_archive got wrong in batch 15.",
+        "idempotency": "OWED — deleting the same rule twice must error the second time, by the same promise.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "book-structure-edit",
+      "tool_under_test": "book_structure_edit",
+      "expect_tool": "book_structure_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Create a part called Book One — The Ember Road for this manuscript.",
+      "prompt_source": "meta.synonyms['create part'] + ['add volume'], verbatim, plus the part's title so the CONTENT is the author's.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='part' AND NOT is_archived",
+          "expect": "0",
+          "why": "ZERO parts before, so a created part is attributable to this turn; the card is never approved, so it must still be 0. 🔴 PARTS LIVE IN COMPOSITION, NOT IN THE BOOK DB — they are structure_node rows with kind='part'. Asserting a `book_parts` table (the obvious guess from the tool's name) would have errored on the first arm, which is the 'read the schema, never guess it' rule applying to the FIXTURE and not only to the tool. CONTROL: the op enum spans create_part | rename_part | reorder_parts | home_chapter | reorder_chapters, and reorder_parts takes 'the full active list' — so picking a reorder op here would move chapters the author never mentioned."
+        }
+      ],
+      "falsifier": "REFUTED IF: a part is created with NO confirm card (Tier A), OR the op chosen is not `create_part` when the author said create — `reorder_parts` or `reorder_chapters` would rearrange the manuscript's reading order, which is a far larger change than was asked for — OR the model invents a different title. NOTE: this tool's description was FIXED before this batch ran. It had told the model 'use this same tool's archive op — there is no separate delete tool', naming an op absent from its own enum and denying book_structure_part_archive, which exists but is visibility:legacy and so reachable only by name. That is D-DESCRIPTION-NAMES-AN-OP-THE-ENUM-LACKS, now gated.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — rename_part or home_chapter with an id that does not exist must be refused.",
+        "idempotency": "OWED — creating the same part twice must not silently make two.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-create",
+      "tool_under_test": "world_create",
+      "expect_tool": "world_create",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Start a world called Emberfall Reach for me.",
+      "prompt_source": "meta.synonyms['start a world'] + ['create world'], verbatim, plus the world's name so the CONTENT is the author's.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM worlds WHERE name LIKE 'Emberfall Reach%'",
+          "expect": "0",
+          "why": "🔴 SCOPED TO A NAME PREFIX, NOT A HEADCOUNT. world_create is scope=none — it makes an ACCOUNT-level world with no throwaway book to contain it, and the account already holds 200 worlds. Asserting that total would be the batch-20 mistake again, where an account-wide count drifted mid-batch. Zero worlds by this name before; the card is never approved, so zero after."
+        }
+      ],
+      "falsifier": "🔴 REFUTED IF NO CONFIRM CARD MINTS — and that is the measurement, not an assumption. The tool is tier=A, which means a card, but its own description says 'Direct + reversible (delete it to undo)'. Those cannot both be true: a card means the description is stale, no card means a Tier-A tool is auto-applying an account-level create. Either is a finding. ALSO REFUTED IF: the model invents a different world name, or a world is created and left behind — this one has no throwaway to sweep it.",
+      "ship_audit": {
+        "gate": "OWED — and the answer is the point of this scenario; see the falsifier.",
+        "empty_case": "OWED — an empty name must be refused.",
+        "idempotency": "OWED — creating the same world name twice must not silently make two.",
+        "tenancy": "OWED — ACCOUNT-scoped: the world belongs to the caller and must not be visible to another owner."
+      },
+      "defects": []
+    }
+  ]
+}

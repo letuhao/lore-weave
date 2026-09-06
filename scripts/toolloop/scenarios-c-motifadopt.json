@@ -1,0 +1,43 @@
+{
+  "_note": "One control arm for composition_motif_adopt, added 2026-08-24 alongside the declaration composition_motif_adopt.motif_id <- composition_motif_search.",
+  "scenarios": [
+    {
+      "id": "composition-motif-adopt-named",
+      "tool_under_test": "composition_motif_adopt",
+      "expect_tool": "composition_motif_adopt",
+      "intent": "write",
+      "tier": "W",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+      "prompt_source": "meta.synonyms['adopt motif'] VERBATIM AND CONTIGUOUS, with the target named around it.\n\n🔴 THE CONTIGUITY IS NOT STYLE, IT DECIDES WHETHER THE TOOL IS ON THE WIRE AT ALL. Checked against the deployed matcher before this scenario was written:\n    'Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope ...' -> ANSWERABLE\n    'Adopt the built-in motif \"A Grudge Older Than the Holder\" ...'                -> NOT\nInserting two words INSIDE the declared synonym drops the tool from the answerable set, so a more specific prompt can be a strictly worse one. The motif named is a real system row (code wuxia.inherited_feud), one of the 84 the seed_assert counts.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif WHERE status='active' AND owner_user_id IS NULL",
+          "expect": "84",
+          "why": "EIGHTY-FOUR system/unlisted motifs already exist, so there is genuinely something to adopt and the model must FIND one — composition_motif_book_list / a motif search is the supplier. Read from the store rather than assumed. NOTE the deliberate asymmetry with batch 15's arc templates: the system arc-template library is EMPTY, so this is the first tool in the loop whose cross-tenancy source actually has rows.\n\n🔴 status='active' ADDED 2026-08-23 by the lifecycle-predicate gate. The tool reads active rows only (get_by_codes filters status='active'), so without this the assertion could pass over rows the tool is structurally unable to see — which is exactly what happened to composition_motif_link_edit for fifteen runs. Verified NOT to change the seeded value: all 84 system motifs are active today, so this tightens the assertion without moving its number."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif WHERE owner_user_id='019d5e3c-7cc5-7e6a-8b27-1344e148bf7c' AND code LIKE 'adopted-%'",
+          "expect": "0",
+          "why": "SCOPED, not a headcount of the caller's library. That library is 152 and MOVING — the other scenarios in this batch seed into it, and my own seed-smoke added a row while I was verifying the fixture. The system side (84, owner_user_id NULL) is stable and is asserted above; here the check is simply that no ADOPTED clone exists yet, so one appearing is attributable to this turn."
+        }
+      ],
+      "falsifier": "REFUTED IF: a clone lands with NO confirm card (Tier W — its own description says adopting 'crosses the tenancy boundary and counts against your library quota', which is why it is human-confirmed), OR the model invents a motif_id rather than listing the built-ins first, OR it passes retag_genres the author never mentioned — retagging is optional and silently re-genre-ing an adopted motif changes what it will match later.",
+      "ship_audit": {
+        "gate": "The card IS the audit — this is a cross-tenancy copy against a quota.",
+        "absent_case": "OWED — a motif_id that is neither public nor the caller's must be refused.",
+        "tenancy": "OWED — 🔴 THIS TOOL CROSSES THE BOUNDARY BY DESIGN, so the check is the inverse of every other one in this batch: adopting a PUBLIC motif must be allowed, and adopting another USER's private motif must not."
+      },
+      "defects": [],
+      "_rerun_note": "Re-run at --concurrency 1. The batch-19 arms lost 21/25 then 14/25 runs to the provider's 'upstream sent error with no error message'. Concurrency 4 -> 2 took it 84% -> 56%, so pressure is part of it but not all of it; a one-turn smoke at concurrency 1 was clean. A transport failure is not a model result, so the earlier arms are VOID rather than evidence of 0/5.",
+      "_control_note": "CONTROL ARM. It does NOT replace composition-motif-adopt and does not retire its finding.\n\nTHE ORIGINAL MEASURES SOMETHING REAL AND THE MODEL PASSES IT: its measured turn is a bare confirmation, 'Yes, go ahead and do it.', after a turn that listed the built-ins. The model answers 'you haven't told me WHICH motif' on 5 of 5 — correct, because 'one of the built-in tropes' names no target among 84. That arm keeps its result.\n\nWHAT IT CANNOT MEASURE is the tool, for a reason the matcher makes plain: the answerable set for 'Yes, go ahead and do it.' is EMPTY, so the tool was never advertised in the turn under test — surfaced 0/5 is not a selection finding, it is a turn with no vocabulary in it. Whether an intent should reach back to the previous user message is P16-PROSE-CONFIRMATION and an owner's question.\n\nSo this arm asks the answerable version of the same request, exactly as composition-generate-named-chapter sits beside composition-generate. If the tool is still not called here, the supplier declaration was not the blocker and that is the finding."
+    }
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "_note": "Two tools whose blocked verdicts measured something other than the tool: one an un-seeded fixture, one a service that could not boot.",
+  "scenarios": [
+    {
+      "id": "kg-triage-schema-write-with-an-ontology",
+      "tool_under_test": "kg_triage_schema_write",
+      "expect_tool": "kg_triage_schema_write",
+      "intent": "write",
+      "tier": "W",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+      "follow_ups": [
+        "Add the allied_with edge type to the schema so that proposal fits."
+      ],
+      "prompt_source": "Turn 1 is kg_triage_list's synonym; the MEASURED turn is kg_triage_schema_write's synonyms ['add this value to the schema'] + ['resolve triage by changing the schema'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Aldric Vane",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_add_nodes",
+          "args": {
+            "project_id": "{project_id}",
+            "mode": "manual",
+            "name": "Mira Solene",
+            "kind": "character"
+          }
+        },
+        {
+          "tool": "kg_propose_edge",
+          "args": {
+            "project_id": "{project_id}",
+            "source_entity_id": "{step:0:entity_id}",
+            "target_entity_id": "{step:1:entity_id}",
+            "edge_type": "allied_with",
+            "valid_from": 1
+          }
+        },
+        {
+          "tool": "kg_adopt_template",
+          "args": {
+            "project_id": "{project_id}",
+            "source_schema_id": "019feb06-2a98-710f-8d39-bdce8ec022ee"
+          },
+          "why": "🔴 THE FIXTURE NEVER GAVE THE PROJECT AN ONTOLOGY, AND THE TOOL SAID SO. Measured 5/5: kg_triage_schema_write was CALLED and answered 'this project has no adopted ontology to edit - call kg_list_templates to pick one, then kg_adopt_template', so every run measured the seed rather than the tool. The remedy is quoted from the tool's own error.\n\n019feb06-2a98-710f-8d39-bdce8ec022ee is the SYSTEM 'Fantasy' schema (scope=system, deprecated_at IS NULL), read from loreweave_knowledge.kg_graph_schemas rather than invented. Adopted INTO the run's own throwaway project, so nothing shared is touched.\n\n🔴 APPENDED, NOT PREPENDED, AND THAT IS LOAD-BEARING. My first attempt put this at index 0 and every run died in provisioning: 'seed step 0 returned no entity_id - got keys [confirm_token, descriptor, ...]'. The original seed's kg_propose_edge references {step:0:entity_id} and {step:1:entity_id}, so inserting a step at the front silently re-pointed both at the wrong call. A positional reference makes seed ORDER part of the contract."
+        },
+        {
+          "rest": {
+            "domain": "knowledge",
+            "method": "POST",
+            "path": "/v1/kg/actions/confirm",
+            "json": {
+              "confirm_token": "{step:3:confirm_token}"
+            }
+          },
+          "why": "kg_adopt_template is confirm-gated: it MINTS a confirm_token and adopts nothing at call time. Without this redemption the seed would report success and leave the project exactly as un-adopted as before - the failure the seed assertion below exists to catch. Path and body follow the knowledge convention (POST /v1/kg/actions/confirm with confirm_token), which differs from composition/book/translation's ?token= form."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "ONE parked edge, and the project has NO adopted ontology (edge_types=[], probed directly). So `add_to_schema` here is a real schema mutation and may well be refused on the same precondition kg_ontology_propose hit in batch 32 — that refusal, if it comes, is the tool being correct, and the falsifier says so rather than scoring it as a failure."
+        },
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM kg_graph_schemas WHERE scope='project' AND scope_id='{project_id}'",
+          "expect": "1",
+          "why": "The project must OWN an adopted schema, or the tool has nothing to edit and the run measures the fixture again. Keyed on the run's own project so it cannot pass on the system templates every project can see."
+        }
+      ],
+      "falsifier": "REFUTED IF: the schema changes with NO confirm card (Tier W), OR the action chosen is not `add_to_schema` when the author asked to add an edge TYPE — `add_to_vocab` adds a controlled-vocabulary VALUE and `widen_target_kinds` loosens which node kinds an edge may point at, both of which are different changes to the author's ontology — OR the model invents a signature. 🔴 A PRECONDITION REFUSAL IS NOT A FAILURE: this project has no adopted ontology, so 'there is nothing to add to' is a correct answer, and it must be recorded as the tool working rather than as the tool broken.",
+      "ship_audit": {
+        "gate": "OWED — Tier W and schema-mutating.",
+        "absent_case": "OWED — a signature that is not in the queue must be refused.",
+        "empty_case": "OWED — an action with no value to add must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_rerun_of": "batch33",
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P6-DESCRIBE-NOT-RECORD",
+      "_original_prompt": "Show me the graph triage queue."
+    },
+    {
+      "id": "translation-job-control-refederated",
+      "tool_under_test": "translation_job_control",
+      "expect_tool": "translation_job_control",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What is the status of the translation job for this book?",
+      "follow_ups": [
+        "Cancel that job."
+      ],
+      "prompt_source": "Turn 1 is translation_job_status' own purpose; the MEASURED turn is translation_job_control's synonyms ['cancel job'] + ['stop translation'], verbatim. Two turns because job_id is REQUIRED and job_status/list is its supplier.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'pending', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+            "why": "A PENDING translation job for the throwaway book. Seeded in SQL because the only tool that creates one is translation_start_job, which SPENDS — and a cost-bearing card is never approved. status='pending' rather than a terminal state so that CANCEL is a meaningful action rather than a no-op."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}' AND status='pending'",
+          "expect": "1",
+          "why": "EXACTLY ONE pending job — the SELECT that proves the SQL seed did what it claims. The card is never approved, so it must still be 'pending' afterwards; a status of 'cancelled' would mean the cancel landed without approval."
+        }
+      ],
+      "falsifier": "REFUTED IF: the job is cancelled with NO confirm card (Tier W), OR the action chosen is `resume` or `retry` — both RE-SPEND money by the tool's own description and neither is what the author asked for — OR the model invents a job_id rather than reading one from turn 1. CONTROL: cancel and pause 'apply immediately' while resume/retry return a cost estimate + confirm token, so the two halves of this enum have DIFFERENT gates and a model that treats them alike is wrong about its own tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier W.",
+        "absent_case": "OWED — a job_id that does not exist must be refused.",
+        "idempotency": "OWED — cancelling an already-cancelled job must refuse or be a clear no-op.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "rerun_why": "🔴 THE PREVIOUS VERDICT MEASURED AN ABSENT TOOL. translation_job_control was carried as blocked on 'called 0/5'. It was not on the wire and could not be: infra-translation-service-1 was in a restart loop (its version_num backfill could not run twice), ai-gateway logged 'provider translation list-tools failed -> PARTIAL', and the federated catalogue held 300 tools instead of 315. Fixed and verified today - service and worker Up, catalogue back to 315, the tool present with required ['job_id', 'action']. Re-run verbatim; the control is its own earlier number."
+    }
+  ]
+}

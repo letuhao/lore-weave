@@ -521,14 +521,14 @@
       "discoveredHint": "नई एंटिटीज़ 'खोजे गए' (discovered) के रूप में शुरू होती हैं। शब्दावली (glossary) से जोड़ने पर इन्हें 'मानक' (canonical) दर्जा प्राप्त होता है।"
     },
     "kind": {
-      "unknown": "अज्ञात प्रकार",
-      "person": "व्यक्ति",
-      "artifact": "कलाकृति",
       "character": "पात्र",
       "location": "स्थान",
       "organization": "संगठन",
       "concept": "अवधारणा",
       "item": "वस्तु",
+      "unknown": "अज्ञात प्रकार",
+      "person": "व्यक्ति",
+      "artifact": "कलाकृति",
       "event_ref": "घटना",
       "preference": "पसंद",
       "event": "घटना",
@@ -691,11 +691,11 @@
       "staticMemory": "स्थिर मेमोरी",
       "archivedBadge": "संग्रहित",
       "open": "खोलें",
+      "tuneExtraction": "Extraction ट्यून करें",
       "edit": "संपादित करें",
       "archive": "संग्रहित करें",
       "restore": "पुनर्स्थापित करें",
       "delete": "मिटाएं",
-      "tuneExtraction": "Extraction ट्यून करें",
       "bookId": "book_id"
     },
     "form": {
@@ -713,7 +713,6 @@
         "general": "सामान्य"
       },
       "bookId": "बुक ID (वैकल्पिक)",
-      "bookIdPlaceholder": "uuid",
       "description": "विवरण (वैकल्पिक)",
       "instructions": "निर्देश (वैकल्पिक)",
       "instructionsPlaceholder": "शैली संबंधी नोट्स, स्वर, सीमाएँ — इस प्रोजेक्ट के लिए हर चैट में शामिल किए जाएंगे।",
@@ -733,6 +732,7 @@
         "errorProviderFlake": "एम्बेडिंग प्रदाता रन के दौरान विफल हो गया। कृपया पुनः प्रयास करें।",
         "errorGeneric": "बेंचमार्क विफल रहा: {{message}}"
       },
+      "bookIdPlaceholder": "uuid",
       "benchmarkNoRun": "⋯ अभी तक कोई बेंचमार्क नहीं — एक्सट्रैक्शन सक्षम करने के लिए गोल्डन-सेट बेंचमार्क चलाएँ।",
       "bookIdLocked": "यह पुस्तक (लॉक है)",
       "canonCapture": "चैट से नए नामों को ऑटो-कैप्चर करें",

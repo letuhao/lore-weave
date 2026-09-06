@@ -222,6 +222,60 @@ func TestStreamResponsesSSE_FailedSurfacesError(t *testing.T) {
 	}
 }
 
+// 🔴 MEASURED LIVE 2026-08-12, frontend journey loop. Three chat turns across three books died as
+// LLM_UPSTREAM_ERROR with outcome='crashed' and 0 chars, at 6% of a 200k context, while a direct LM
+// Studio probe answered normally. Nothing anywhere recorded WHY: chat-service re-raised a bare code,
+// provider-registry logged only its context preflight, worker-ai logged nothing.
+//
+// The cause was here. LM Studio's Responses stream sends `response.failed` with neither a top-level
+// `message` nor `response.error.message`, and StreamChunk.Message is `omitempty` — so the frame
+// serialized to exactly `{"event":"error","code":"LLM_UPSTREAM_ERROR"}`, which is the string the SDK
+// then raised. The tool-contract's own error_contract says "message: required on every failure; a
+// failure carrying no message is unrepresentable"; this path could emit precisely that.
+func TestStreamResponsesSSE_AFailureWithNoUpstreamMessageStillSaysSomething(t *testing.T) {
+	body := `data: {"type":"response.failed","response":{"id":"resp_zz9","status":"failed"}}
+
+`
+	chunks := collectResponsesChunks(t, body)
+	var errc *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkError {
+			errc = &chunks[i]
+		}
+	}
+	if errc == nil {
+		t.Fatalf("no error chunk emitted for response.failed")
+	}
+	if errc.Message == "" {
+		t.Fatalf("a failure was emitted with NO message — the bare frame the operator cannot act on")
+	}
+	// It must name what is actually known, so the id is greppable in the provider's own logs and
+	// `failed` is distinguishable from a bare `error` frame.
+	for _, want := range []string{"response.failed", "resp_zz9", "failed"} {
+		if !strings.Contains(errc.Message, want) {
+			t.Fatalf("message %q does not name %q", errc.Message, want)
+		}
+	}
+}
+
+// The control: a real upstream message must never be replaced by the synthesized one, or the fix
+// would destroy the very information it exists to preserve.
+func TestStreamResponsesSSE_ARealUpstreamMessageIsNotOverwritten(t *testing.T) {
+	body := `data: {"type":"response.failed","response":{"id":"resp_kk1","status":"failed","error":{"message":"context length exceeded"}}}
+
+`
+	chunks := collectResponsesChunks(t, body)
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkError {
+			if chunks[i].Message != "context length exceeded" {
+				t.Fatalf("upstream message was rewritten: %q", chunks[i].Message)
+			}
+			return
+		}
+	}
+	t.Fatalf("no error chunk emitted")
+}
+
 func TestBuildResponsesBody_ConvertsMessagesToolsAndChain(t *testing.T) {
 	input := map[string]any{
 		"messages": []any{

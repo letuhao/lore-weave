@@ -1,0 +1,13 @@
+error[E0603]: module `sealed` is private
+  --> tests/ui/fifth_tier.rs:32:16
+   |
+32 | impl dp::tier::sealed::SealedTier for T1Point5 {}
+   |                ^^^^^^  ---------- trait `SealedTier` is not publicly re-exported
+   |                |
+   |                private module
+   |
+note: the module `sealed` is defined here
+  --> src/tier.rs
+   |
+   | pub(crate) mod sealed {
+   | ^^^^^^^^^^^^^^^^^^^^^

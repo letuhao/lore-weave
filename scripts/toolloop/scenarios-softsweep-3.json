@@ -1,0 +1,109 @@
+{
+  "scenarios": [
+    {
+      "id": "softsweep-glossary-book-ontology-read",
+      "tool_under_test": "glossary_book_ontology_read",
+      "expect_tool": "glossary_book_ontology_read",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What categories does this book have? Show me my story bible structure.",
+      "prompt_source": "meta.synonyms ['what categories does this book have', 'my story bible structure'] — both verbatim, and it requires no argument.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF glossary_book_ontology_read is not ADVERTISED on 5/5. It requires nothing and the request quotes two of its declared synonyms whole, so surfacing is the only gate. 🔴 A SIZE NOTE RATHER THAN A DEFECT: this tool is 20.1% of ALL tool-result bytes on the platform (p50 14 kB, max 96 kB), which is why the DQ-T88 replay projection exists. A large result here is expected, not a finding.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — a book with no ontology must read as empty, which is the common case (0 of 664 Works carry a model, and most books carry no kinds).",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-kg-list-templates",
+      "tool_under_test": "kg_list_templates",
+      "expect_tool": "kg_list_templates",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What graph templates can I adopt? Show me the available graph schemas.",
+      "prompt_source": "meta.synonyms ['what templates can i adopt', 'available graph schemas', 'graph templates'] — all three, verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF kg_list_templates is not ADVERTISED on 5/5. No required arguments, three synonyms quoted verbatim: surfacing is the only thing that can fail.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — zero templates must list empty.",
+        "tenancy": "user-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-composition-reference-list",
+      "tool_under_test": "composition_reference_list",
+      "expect_tool": "composition_reference_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What references do I have? Show me the reference shelf for this book.",
+      "prompt_source": "meta.synonyms ['what references do I have', 'reference shelf'] — both verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_reference_list is not ADVERTISED on 5/5. 🔴 THIS TOOL IS THE REASON THE WHOLE SWEEP EXISTS. On 2026-09-02 I gave it a gate-backed row citing c-reflist1, where it is CALLED 5/5 — but that batch's `tools` array lists only its CONSUMER (composition_reference_update), so gate.is_gate_backed returned False and it was the only row in 207 claiming the label and failing the definition. This scenario puts it UNDER TEST in its own right, which is the only thing that can cite it.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — a Work with no references must list empty.",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-composition-arc-suggest",
+      "tool_under_test": "composition_arc_suggest",
+      "expect_tool": "composition_arc_suggest",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Suggest some arc structures for this book.",
+      "prompt_source": "VERBATIM the instance DQ-T6 (i) was ruled and built on. project_id is a context id the runtime injects.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_arc_suggest is not ADVERTISED on 5/5. 🔴 THIS IS A REGRESSION GUARD AS MUCH AS A CYCLE: before DQ-T6 (i) shipped (2026-09-02) this exact prompt surfaced it 0/5, because the request says 'arc structureS' and the tool declares 'arc structure' — one letter. After the fix it was 5/5 advertised and 5/5 called. A miss here means the plural normalisation has regressed.",
+      "ship_audit": {
+        "gate": "not owed — Tier R, it suggests and writes nothing.",
+        "empty_case": "OWED — a Work with no premise must still answer, not error.",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-composition-get-work",
+      "tool_under_test": "composition_get_work",
+      "expect_tool": "composition_get_work",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the composition work for this book.",
+      "prompt_source": "meta.synonyms ['composition work'], quoted CONTIGUOUSLY. 🔴 THE FIRST ATTEMPT (softsweep2) ASKED 'What's the authoring workspace for this book' and the tool was advertised 0/5 -- MY SCENARIO'S FAULT, not the platform's. The declared synonym is \"the book's authoring workspace\"; my paraphrase reordered it, so the contiguous phrase never appeared and answerable_tools returned [] for the whole request. Verified directly against the live matcher before re-running: this prompt returns ['composition_get_work']. A fixture that does not match the shipped declaration tests the fixture -- the same lesson glossary_propose_batch taught this loop earlier today.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_get_work is not ADVERTISED on 5/5. It requires nothing, so surfacing is the only gate. CONTROL, already measured: the FAILED first attempt is the control -- a paraphrase surfaced it 0/5 while this contiguous quote is answerable, so a miss here would mean something other than the matcher is dropping it. NOTE the turn was still ANSWERED correctly on that failed arm, by composition_package_tree, so 0/5 there was never a broken turn.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — a book with no Work must say so, not invent one.",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
+    }
+  ]
+}

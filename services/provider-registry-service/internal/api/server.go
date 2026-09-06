@@ -504,6 +504,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/web-search", s.internalWebSearch)                       // S5 — BYOK web search (deep-research)
 		r.Get("/default-models/{capability}", s.internalGetDefaultModel) // per-user default model fallback
 		r.Get("/planner-model", s.internalResolvePlannerModel)           // MED-6 — planner model w/ chat fallback
+		r.Get("/embedding-model", s.internalResolveEmbeddingModel)       // D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE — embedding model w/ capability-flag fallback
 
 		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
 		r.Post("/billing/estimate", s.internalBillingEstimate)
@@ -1454,11 +1455,20 @@ func (s *Server) providerHealth(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "M03_PROVIDER_KIND_UNSUPPORTED", "unsupported provider kind")
 		return
 	}
-	if err := adapter.HealthCheck(r.Context(), cred.EndpointBaseURL, cred.Secret); err != nil {
+	hcUsage, hcErr := adapter.HealthCheck(r.Context(), cred.EndpointBaseURL, cred.Secret)
+	// D-BILL-UNRECORDED-PROBE — the probe is a REAL completion on every cloud provider,
+	// and nothing recorded it: our usage_logs read 18 rows against the provider's own
+	// dashboard of 23 for the same model. Record it on BOTH outcomes (a rejected
+	// credential can still have spent) and attribute it to a model registered under this
+	// credential. When none is registered there is nothing to attribute to; say so in the
+	// log rather than inventing a model_ref, because a wrong attribution is worse than a
+	// named gap.
+	s.recordProbeUsage(r.Context(), userID, cred.ProviderCredentialID, "health_check", hcUsage, hcErr)
+	if hcErr != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"provider_credential_id": cred.ProviderCredentialID,
 			"healthy":                false,
-			"message":                err.Error(),
+			"message":                hcErr.Error(),
 		})
 		return
 	}
@@ -2760,9 +2770,23 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		"messages": []map[string]any{
 			{"role": "user", "content": "Hi"},
 		},
+		// D-BILL-UNRECORDED-PROBE — capped. A verify asks "does this model answer", not
+		// for prose, and this ping was UNCAPPED against whatever model was registered.
+		"max_tokens": 1,
 	}
 
-	output, _, invokeErr := adapter.Invoke(ctx, endpointBaseURL, secret, providerModelName, pingInput)
+	output, pingUsage, invokeErr := adapter.Invoke(ctx, endpointBaseURL, secret, providerModelName, pingInput)
+	// The usage used to go into `_`. It is a real completion on a real credential, so it
+	// is booked here on BOTH outcomes — modelRef is in scope on this path, so unlike the
+	// credential health check there is nothing to guess about attribution.
+	if pingUsage.InputTokens > 0 || pingUsage.OutputTokens > 0 {
+		st := "success"
+		if invokeErr != nil {
+			st = "provider_error"
+		}
+		s.recordSyncUsage(ctx, userID, modelID, "verify", st,
+			pingUsage.InputTokens, pingUsage.OutputTokens, nil, nil, nil)
+	}
 
 	latencyMs := time.Since(start).Milliseconds()
 
@@ -3304,9 +3328,23 @@ func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID
 		status = "success"
 	}
 	detached := observability.DetachedContext(ctx)
+	// D-BILL-PROVIDER-KIND — resolved HERE rather than threaded through the six
+	// call sites (rerank/embed/web_search × success/provider_error), two of which
+	// have no providerKind in scope at all. One place, so a future sync op cannot
+	// forget it. Best-effort: a lookup failure leaves "" — the same value every row
+	// carried before, never a lost audit row.
+	// s.pool is nil on a Server built as a bare literal (unit tests), exactly as
+	// s.guardrail is above — guard it the same way rather than panicking.
+	var providerKind string
+	if s.pool != nil {
+		_ = s.pool.QueryRow(ctx,
+			`SELECT provider_kind FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+			modelRef, userID).Scan(&providerKind)
+	}
 	rec := billing.UsageRecord{
 		RequestID:     reqID,
 		OwnerUserID:   userID,
+		ProviderKind:  providerKind,
 		ModelSource:   "user_model",
 		ModelRef:      modelRef,
 		Operation:     operation,
@@ -3323,6 +3361,44 @@ func (s *Server) recordSyncUsage(ctx context.Context, userID, modelRef uuid.UUID
 				"operation", operation, "request_id", reqID.String(), "err", err)
 		}
 	}()
+}
+
+// recordProbeUsage books the spend of a credential PROBE (health check / verify).
+//
+// 🔴 THESE CALLS WERE FREE ONLY IN OUR LEDGER. Every adapter's HealthCheck issues a real
+// completion, and three of the four did it UNCAPPED against a hardcoded paid model. None
+// was recorded, so the provider's request count ran ahead of ours with no way to tell that
+// drift from a leak.
+//
+// Attribution: a probe targets a CREDENTIAL, not a user_model, so there is no model_ref in
+// hand. We adopt an active model registered under that credential. If the credential has
+// none, we log and skip — never a synthetic model_ref, which would put fabricated rows in
+// the spend ledger to make a number look complete.
+func (s *Server) recordProbeUsage(ctx context.Context, userID, credentialID uuid.UUID,
+	purpose string, u provider.Usage, probeErr error) {
+	if s.pool == nil || s.guardrail == nil {
+		return
+	}
+	if u.InputTokens == 0 && u.OutputTokens == 0 {
+		return // no completion happened (local Ollama's reachability-only path)
+	}
+	var modelRef uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+SELECT user_model_id FROM user_models
+WHERE provider_credential_id = $1 AND owner_user_id = $2 AND is_active = true
+ORDER BY created_at LIMIT 1`, credentialID, userID).Scan(&modelRef)
+	if err != nil {
+		slog.Warn("probe spend is UNATTRIBUTED — no active model under this credential",
+			"purpose", purpose, "credential_id", credentialID.String(),
+			"input_tokens", u.InputTokens, "output_tokens", u.OutputTokens)
+		return
+	}
+	status := "success"
+	if probeErr != nil {
+		status = "provider_error"
+	}
+	s.recordSyncUsage(ctx, userID, modelRef, purpose, status,
+		u.InputTokens, u.OutputTokens, nil, nil, nil)
 }
 
 // ── K12.1 — Embedding endpoint ──────────────────────────────────────────────
@@ -3630,8 +3706,9 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	// still records, just without an exact cost. Only reported prompt_tokens count.
 	var embedCostPtr *float64
 	if result.PromptTokens > 0 {
-		var pricing billing.Pricing
-		if uerr := json.Unmarshal(pricingBytes, &pricing); uerr == nil {
+		// DecodePricing (not Unmarshal) so a LOCAL embedding model bills $0 rather
+		// than its stored cloud rate. endpointBaseURL is already in scope here.
+		if pricing, uerr := billing.DecodePricing(pricingBytes, endpointBaseURL); uerr == nil {
 			if c, cerr := billing.PriceEmbedding(result.PromptTokens, pricing); cerr == nil {
 				embedCostPtr = &c
 			}

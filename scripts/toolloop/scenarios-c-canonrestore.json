@@ -1,0 +1,52 @@
+{
+  "_note": "D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE, the canon-rule family, through the real chat path. The rule is created AND archived in the seed, so the turn arrives holding no rule_id — which is the defect: the only way to hold one was to have written it down before archiving.",
+  "scenarios": [
+    {
+      "id": "canon-rule-restore-finds-its-own-id",
+      "tool_under_test": "composition_canon_rule_restore",
+      "expect_tool": "composition_canon_rule_restore",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+      "prompt_source": "composition_canon_rule_restore's OWN declared synonyms, verbatim: 'undo delete rule' + 'restore it' alongside 'canon rule'.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "approve_why": "Tier A, and the target is the run's OWN throwaway book, provisioned and torn down. Legitimate under the standing rule: the write is the RESTORE this scenario exists to reach, and leaving it unapproved would measure whether the model reaches the card, not whether the chain works. Bounded by max_approvals.",
+      "seed": [
+        {
+          "tool": "composition_canon_rule_create",
+          "args": {"project_id": "{project_id}", "text": "Magic always costs HP."},
+          "why": "The rule must exist before it can be archived. Its id is captured by the harness for the next step and is NEVER given to the model."
+        },
+        {
+          "tool": "composition_canon_rule_delete",
+          "args": {"project_id": "{project_id}", "rule_id": "{step:0:id}"},
+          "why": "🔴 ARCHIVED IN THE SEED, which is the whole point. A turn that archived the rule itself would still be holding the id; this defect is about a turn that arrives AFTER, when the only surface that could name the rule showed non-archived rows only."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM canon_rule WHERE project_id='{project_id}' AND is_archived",
+          "expect": "1",
+          "why": "Exactly one ARCHIVED rule before the turn. If it were not archived the listing would show it anyway and the scenario would measure nothing; if it did not exist there would be nothing to restore."
+        }
+      ],
+      "falsifier": "REFUTED IF: the model asks the AUTHOR for a rule_id (the recorded failure shape for this family — 'I can't see it in the trash without an ID'), OR it invents a rule_id, OR it calls composition_list_canon_rules WITHOUT include_archived and then reports there is nothing to restore, OR the rule is restored with NO confirm card (Tier A). Store check: canon_rule stays at exactly 1 row for this project — a restore must never create a second rule.",
+      "ship_audit": {
+        "gate": "OWED — Tier A; the restore mutates author-declared canon.",
+        "absent_case": "a rule_id that does not exist must be refused — not covered here.",
+        "idempotency": "restoring an already-active rule must not duplicate it — not covered here.",
+        "tenancy": "project-scoped; the listing is VIEW-gated on the book."
+      },
+      "defects": [],
+      "_problem": "D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE",
+      "answer_expect": {
+        "all_of": ["magic"],
+        "why": "The rule's TEXT can only have come from the archived listing — it is not in the prompt. A reply that talks about restoring in the abstract proves nothing; naming the rule proves the model actually saw the archived row."
+      }
+    }
+  ]
+}

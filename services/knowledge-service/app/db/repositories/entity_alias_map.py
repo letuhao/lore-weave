@@ -2,7 +2,7 @@
 
 Redirect index for post-merge alias resolution. The extractor's
 ``canonical_id`` is a SHA hash of the entity name (see
-``app/db/neo4j_repos/canonical.py``); without a redirect table, every
+``app/db/graph_repos/canonical.py``); without a redirect table, every
 re-extraction of a merged-away alias resurrects the source as a brand-
 new entity.
 

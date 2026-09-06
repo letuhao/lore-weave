@@ -35,9 +35,9 @@ from app.db.models import (
     ProjectExtractionConfigUpdate,
     ProjectUpdate,
 )
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_helpers import purge_project
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.db.graph import graph_session
+from app.adapters.graph_store_provider import get_graph_store
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.event_text_translations import EventTextTranslationsRepo
@@ -562,9 +562,9 @@ async def patch_project(
     # The "nothing to orphan" test is a PASSAGE-EXISTENCE probe, not
     # `extraction_status`: that column reads 'disabled' both after a graph
     # delete (vectors gone) and after `POST /extraction/disable` (vectors
-    # explicitly preserved). See app/db/neo4j_repos/graph_state.py.
+    # explicitly preserved). See app/db/graph_repos/graph_state.py.
     if "embedding_model" in body.model_fields_set:
-        from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+        from app.db.graph_repos.graph_state import project_has_embedded_passages
 
         current = await repo.get(user_id, project_id)
         if current is None:
@@ -798,11 +798,16 @@ async def delete_project(
     # delete no longer orphans the graph. A Neo4j fault must NOT fail the delete —
     # the row is already gone (re-sweep can reclaim a stray orphan); log + move on.
     try:
-        async with neo4j_session() as session:
-            purged = await purge_project(session, str(project_id))
+        async with graph_session() as session:
+            purged = await get_graph_store(session).purge_project(project_id=str(project_id))
+        # `indexes_skipped` is present only when the engine has no index administration to
+        # look at, and saying so is the point: `indexes_dropped: 0` alone cannot distinguish
+        # "there were none" from "this store cannot look", and on the default backend the
+        # second was being logged as a failed purge while the nodes had in fact gone.
         logger.info(
-            "purged neo4j for deleted project %s: %s nodes, %s indexes",
+            "purged graph for deleted project %s: %s nodes, %s indexes%s",
             project_id, purged["nodes_deleted"], purged["indexes_dropped"],
+            f" ({purged['indexes_skipped']})" if purged.get("indexes_skipped") else "",
         )
     except Exception:  # noqa: BLE001 — best-effort; the Postgres delete is authoritative
         logger.warning(

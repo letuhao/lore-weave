@@ -34,8 +34,20 @@ export class PlaceGraphPage {
     this.page = page;
     this.studio = new StudioPage(page);
     this.panel = page.getByTestId('studio-place-graph-panel');
-    this.noWork = page.getByTestId('place-graph-nowork');
-    this.setupCowriter = page.getByTestId('place-graph-setup-cowriter');
+    // MERGE RECONCILIATION (2026-08-31). `feat/game-logic`'s "studio onboarding Part A"
+    // (0655c7bf3) replaced every per-panel empty-state with the shared <BookNotReadyDoor>,
+    // so `place-graph-nowork` and `place-graph-setup-cowriter` no longer exist anywhere in
+    // the app. That side updated its own PlaceGraphPanel unit test and never ran this
+    // Playwright spec; this spec kept asserting testids that had been deleted. Neither
+    // suite was wrong on its own branch — the drift only exists in the merge.
+    //
+    // The door reuses the PANEL's testid (`studio-place-graph-panel` marks the loading,
+    // door AND ready states alike), so the no-Work state cannot be identified by that
+    // alone. It is identified by what only the `need="work"` door renders: <WorkSetupCta>.
+    this.setupCowriter = page.getByTestId('work-setup-cta');
+    this.noWork = page
+      .getByTestId('studio-place-graph-panel')
+      .filter({ has: page.getByTestId('work-setup-cta') });
     this.authorOther = page.getByTestId('place-graph-author-other');
 
     this.worldmap = page.getByTestId('composition-worldmap');

@@ -58,8 +58,13 @@ one, and do not retry discovery hoping a different name appears.
 genre_tags?)` — only the fields you pass change; omitted fields keep their current \
 value. Refused if the book isn't in an editable (`active`) lifecycle state.
 - `book_chapter_create(book_id, original_language, title?, sort_order?, body?)` — \
-`original_language` is required; `body` is optional plain text (empty is fine — save \
-prose later with `book_chapter_save_draft`). `sort_order=0` appends at the end.
+`original_language` is required. **If you have written the chapter, PASS IT AS `body` on this \
+call** — that is the whole chapter in ONE tool call, and it is the reliable path. `body` is \
+optional only because a deliberately empty chapter (a skeleton you will fill later) is a real \
+thing to create; a create without `body` leaves a chapter of 0 words that the author cannot \
+read, and it stays that way until a `book_chapter_save_draft` supplies the text. Do not create \
+the chapter and then promise to save the prose "next" — MEASURED live, that promise was kept 0 \
+times out of 4 and left four empty chapters behind. `sort_order=0` appends at the end.
 - `book_chapter_bulk_create(book_id, chapters:[{content, title?, \
 original_filename?}], original_language?)` — up to 500 plain-text chapters in one \
 call. It is idempotent on `original_filename` WITHIN the book: an item whose filename \
@@ -71,6 +76,25 @@ trashed first, a bulk-create can recreate it; that's expected, not a bug to work
 - `book_chapter_update_meta(book_id, chapter_id, title?, sort_order?, \
 original_language?)` — chapter METADATA only (title/order/language). Refused unless \
 both the book and the chapter are `active`.
+
+## Length: one pass has a ceiling, and the platform has a path for what exceeds it
+A single reply holds roughly **1,200-1,500 words** of prose before quality falls off — this is \
+the model's limit, not a setting, and it cannot be argued past. When the user asks for more \
+than that in one chapter:
+- **Say the ceiling up front**, before writing, so they are not told afterwards that they got \
+less than they asked for.
+- **Offer the composition path**, which is the platform's actual answer to a long chapter: an \
+outline of scenes, each generated and grounded against the book's lore (`composition_*` — see \
+the composition assistant skill; do not re-derive it here). A chapter written as scenes is not \
+a workaround, it is the designed route.
+- **Or write one complete chapter at the length a pass holds** and save it in the same turn. A \
+shorter chapter that reaches the manuscript beats a longer one that does not.
+
+🔴 **Do NOT announce a multi-part split in chat** — "I am writing this in two parts, I will \
+save Part Two immediately after". MEASURED live across two runs: Part Two arrived **0 times out \
+of 4**. The turn ends after Part One and the author is left holding a promise. If one pass \
+cannot do it, use the composition path or write less — never commit to a second half you \
+cannot deliver in this turn.
 
 ## Two different tools, do not conflate: metadata vs draft body
 - **`book_chapter_update_meta`** changes a chapter's title, sort order, or language — \

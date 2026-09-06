@@ -1,0 +1,301 @@
+{
+  "measured": "2026-08-24",
+  "what": "QC-5 clause 1a, the FIRST measurement carrying its matched planted_control arm",
+  "how": "POST /v1/composition/jobs/{job}/critique on lw-iso against a REBUILT composition image; 8 real flow-produced drafts of the acceptance book (chapters 10,11,12,13); each draft measured twice, once with the canon antagonist swapped for a character who does not exist (arm=planted) and once untouched (arm=planted_control)",
+  "critic": "019eb620 qwen2.5-7b-instruct (the book's own)",
+  "verifier_role": "51ea9fd7 google/gemma-4-26b-a4b (ModelRole.CRITIC_VERIFIER, C33)",
+  "verdict": "1a UNSCORABLE — the control flags as often as the plant",
+  "post_verification": {
+    "planted_flagged": 3,
+    "planted_control_flagged": 5,
+    "n_per_arm": 8
+  },
+  "pre_verification": {
+    "planted_flagged": 8,
+    "planted_control_flagged": 7,
+    "n_per_arm": 8
+  },
+  "diagnosis": "the discrimination failure is the CRITIC's, not the verification pass's: the control already flags 7/8 before any verification runs",
+  "runs": [
+    {
+      "arm": "planted",
+      "canon": 4,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "019ffad4",
+      "unverified": 2
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "019ffad4",
+      "unverified": 1
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 1,
+      "rev": "01a02513",
+      "unverified": 1
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "01a02513",
+      "unverified": 2
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "01a02514",
+      "unverified": 2
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "01a02514",
+      "unverified": 2
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 3,
+      "rev": "01a0255e",
+      "unverified": 2
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a0255e",
+      "unverified": 1
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "01a02d1e",
+      "unverified": 2
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a02d1e",
+      "unverified": 1
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a02d20",
+      "unverified": 1
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a02d20",
+      "unverified": 1
+    },
+    {
+      "arm": "planted",
+      "canon": 5,
+      "attributed": 1,
+      "raw": 1,
+      "rev": "01a02d21",
+      "unverified": 0
+    },
+    {
+      "arm": "planted_control",
+      "canon": 5,
+      "attributed": 0,
+      "raw": 0,
+      "rev": "01a02d21",
+      "unverified": 0
+    },
+    {
+      "arm": "planted",
+      "canon": 2,
+      "attributed": 2,
+      "raw": 3,
+      "rev": "01a02d23",
+      "unverified": 1
+    },
+    {
+      "arm": "planted_control",
+      "canon": 2,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a02d23",
+      "unverified": 1
+    }
+  ],
+  "second_measurement_target_tier_critic": {
+    "critic": "51ea9fd7 google/gemma-4-26b-a4b — the PO's stated target tier",
+    "verdict": "1a UNSCORABLE, same as the 7B",
+    "post_verification": {
+      "planted_flagged": 3,
+      "planted_control_flagged": 5,
+      "n_per_arm": 8
+    },
+    "pre_verification": {
+      "planted_flagged": 7,
+      "planted_control_flagged": 7,
+      "n_per_arm": 8
+    },
+    "diagnosis": "the model TIER is not the cause: pre-verification the two arms are identical. The critic reports ~2 findings on nearly every draft, planted or not, so the plant does not rise above its own false-positive floor.",
+    "runs": [
+      {
+        "arm": "planted",
+        "canon": 4,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "019ffad4",
+        "unverified": 2
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "019ffad4",
+        "unverified": 1
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 1,
+        "rev": "01a02513",
+        "unverified": 1
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "01a02513",
+        "unverified": 2
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "01a02514",
+        "unverified": 2
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "01a02514",
+        "unverified": 2
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 3,
+        "rev": "01a0255e",
+        "unverified": 2
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 3,
+        "raw": 3,
+        "rev": "01a0255e",
+        "unverified": 0
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "01a02d1e",
+        "unverified": 2
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "01a02d1e",
+        "unverified": 1
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "01a02d20",
+        "unverified": 1
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "01a02d20",
+        "unverified": 1
+      },
+      {
+        "arm": "planted",
+        "canon": 5,
+        "attributed": 0,
+        "raw": 0,
+        "rev": "01a02d21",
+        "unverified": 0
+      },
+      {
+        "arm": "planted_control",
+        "canon": 5,
+        "attributed": 0,
+        "raw": 0,
+        "rev": "01a02d21",
+        "unverified": 0
+      },
+      {
+        "arm": "planted",
+        "canon": 2,
+        "attributed": 2,
+        "raw": 3,
+        "rev": "01a02d23",
+        "unverified": 1
+      },
+      {
+        "arm": "planted_control",
+        "canon": 2,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "01a02d23",
+        "unverified": 1
+      }
+    ]
+  },
+  "plant_validity_check": {
+    "question": "is the plant INERT on some drafts? A name swap only contradicts R1 where the draft attributes the trap to the antagonist — if it does not, the planted arm is indistinguishable from the control BY CONSTRUCTION and the failure would be the plant's, not the critic's",
+    "method": "for each draft, does a betrayal/trap term appear within 400 chars of the antagonist's name",
+    "result": "ACTIVE on all 8 drafts (near-hits 1,4,5,4,3,2,3,3)",
+    "calibration": "a first, sentence-level version of this proxy said INERT on all 8 — and was WRONG, because C34 had already proved the plant works on 01a02d23 (4/4 R1 findings with correct reasons). The betrayal claim spans sentences. The widened proxy agrees with that known case; the narrow one contradicted it.",
+    "conclusion": "the plant is not the cause. 1a's failure is the critic's false-positive floor."
+  }
+}

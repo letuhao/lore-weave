@@ -55,8 +55,31 @@ func EmitGo(reg *events.Registry, outDir string) error {
 	for _, n := range reg.EventTypes() {
 		b.WriteString(fmt.Sprintf("\t%q,\n", n))
 	}
-	b.WriteString("}\n")
+	b.WriteString("}\n\n")
 
+	// ── event-type NAME constants ────────────────────────────────────────────
+	//
+	// Added for T30/OD-1 (2026-08-12). Until then the generated output carried
+	// payload types and a dispatch map but NO name surface in any language, so a
+	// producer or consumer that wanted to name an event had no option but to write
+	// its own string literal. `D-GLOSSARY-EVENTS-NO-SOT` recorded the result — one
+	// const block in glossary-service, hand-mirrored by five consumers across four
+	// services — and that was never a discipline failure by those five authors: it
+	// was the only thing the contract made possible.
+	//
+	// Generating the names from the registry makes the registry the single owner,
+	// which is what "the registry is authoritative" was always supposed to mean.
+	b.WriteString("// Event-type name constants, generated from the registry.\n")
+	b.WriteString("//\n")
+	b.WriteString("// Import these instead of writing the literal. A rename in the registry\n")
+	b.WriteString("// then becomes a COMPILE error at every use site — the property a string\n")
+	b.WriteString("// literal can never give you, because the old spelling stays valid Go\n")
+	b.WriteString("// forever and the handler simply stops running.\n")
+	b.WriteString("const (\n")
+	for _, n := range reg.EventTypes() {
+		b.WriteString(fmt.Sprintf("\t%s = %q\n", goEventConstName(n), n))
+	}
+	b.WriteString(")\n")
 	outPath := filepath.Join(outDir, "registry_generated.go")
 	return os.WriteFile(outPath, []byte(b.String()), 0o644)
 }
@@ -74,4 +97,24 @@ func swapVersionSuffix(base string, v uint32) string {
 		return fmt.Sprintf("%sV%d", base[:i-1], v)
 	}
 	return fmt.Sprintf("%sV%d", base, v)
+}
+
+// goEventConstName turns an event_type into an exported Go identifier:
+// "glossary.entity_updated" -> "EventGlossaryEntityUpdated".
+//
+// Both `.` and `_` are word separators, so the two naming styles in the registry
+// ("npc.said", "glossary.entity_updated") produce the same shape. The `Event`
+// prefix is not decoration: without it "npc.said" would generate `NpcSaid`, which
+// collides with nothing today but sits one event away from colliding with a
+// payload struct name in the same package.
+func goEventConstName(eventType string) string {
+	var b strings.Builder
+	b.WriteString("Event")
+	for _, word := range strings.FieldsFunc(eventType, func(r rune) bool {
+		return r == '.' || r == '_'
+	}) {
+		b.WriteString(strings.ToUpper(word[:1]))
+		b.WriteString(word[1:])
+	}
+	return b.String()
 }

@@ -684,6 +684,11 @@
       "title": "Propuestas de flujo de trabajo",
       "desc": "Revisa los flujos de trabajo propuestos por el agente",
       "guideBody": "Lista las recetas de flujo de trabajo que el agente ha sugerido crear, basándose en secuencias de varios pasos que ha detectado que repites. Ábrelo para aprobar una propuesta — lo que genera el flujo de trabajo para que sea ejecutable — o para rechazarla. Aquí es donde un flujo de trabajo propuesto por el agente se vuelve realidad."
+    },
+    "world-setup": {
+      "title": "Configuración del mundo",
+      "desc": "Crea tu elenco, el mundo y sus relaciones a partir de una descripción",
+      "guideBody": "Convierte una descripción de tu historia en un lore real y organizado: el sistema planifica qué construir, tú apruebas o recortas la lista, y luego cada personaje, facción y término se redacta uno a uno (los más importantes reciben un perfil detallado) y se archiva para tu revisión. Finalmente, determina cómo se conectan todos y te pide que apruebes esas relaciones antes de guardarlas."
     }
   },
   "sceneRail": {

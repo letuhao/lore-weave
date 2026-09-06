@@ -1,6 +1,6 @@
-import { Controller, Get, Param, Post, Query, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, Body, Req, UseGuards, HttpCode, HttpException } from '@nestjs/common';
 import { ctxFromReq, glossary, knowledge } from './downstream.js';
-import { kgAsOfOrDrop, temporalCapability } from './temporal.js';
+import { temporalCapability } from './temporal.js';
 import { KalAuthGuard } from '../auth/kal-auth.guard.js';
 
 /** The inbound request shape ctxFromReq needs (identity headers + connection close event). */
@@ -76,7 +76,7 @@ export class KalReadController {
     )) as Record<string, unknown>;
     // Strict array coercion: a downstream object that lacks `items` must NOT pass through
     // whole as the bounded item array (the contract types items as array<Fact>). Never `?? data`.
-    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: temporalCapability() };
+    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: await temporalCapability(ctxFromReq(req)) };
   }
 
   // timeline — windowed change history (newest-first page).
@@ -130,6 +130,165 @@ export class KalReadController {
     return { items, next_cursor: data?.next_cursor ?? null };
   }
 
+  // cast — the DETAIL read (T38 B1/B2). `roster` answers "who is in this book" with
+  // id+name+kind; every one of T38's ten pinned consumers needs more than that, which is why
+  // 0 of 10 could migrate onto `roster` and four of them went straight to the glossary's
+  // `entities/by-ids` instead. This is the missing rung.
+  //
+  // ── WHY IT SITS BESIDE `roster` AND `by-ids` RATHER THAN REPLACING EITHER ────────────────
+  // `roster` is DELIBERATELY projection-restricted and drains a whole book; widening it would
+  // put aliases and descriptions on the enumeration path every indexing pass walks. And
+  // `entities/by-ids` is a POST keyed by an id LIST — a different question ("these specific
+  // entities"), not a page of a book. `cast` is the page-shaped detail read: same keyset
+  // cursor as `roster`, richer projection, one book.
+  //
+  // ── THE HONEST CAP ──────────────────────────────────────────────────────────────────────
+  // `truncated` is returned EXPLICITLY rather than left to be inferred from a short page. A
+  // caller that stops when `items.length < limit` is guessing, and the guess is wrong exactly
+  // when the upstream capped it — the silent-truncation shape that once cut a deep book's cast
+  // at ~100 and reported a complete-looking count.
+  @Get('cast')
+  async cast(
+    @Param('bookId') bookId: string,
+    @Query('cursor') cursor: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Req() req: InboundReq,
+  ) {
+    const qs = new URLSearchParams();
+    if (cursor) qs.set('cursor', cursor);
+    if (limit) qs.set('limit', limit);
+    const data = (await glossary.get(
+      `/internal/books/${bookId}/entities?${qs.toString()}`,
+      ctxFromReq(req),
+    )) as Record<string, unknown>;
+    const raw = (data?.items as Array<Record<string, unknown>>) ?? [];
+    const items = raw.map((e) => ({
+      entity_id: e.entity_id,
+      // `name` keeps `roster`'s meaning so a consumer can move between the two reads without
+      // relearning the field; `cached_name` is carried as well because two of the pinned
+      // consumers ask for it BY THAT NAME and silently dropping it would look like a null.
+      name: e.name ?? e.cached_name ?? null,
+      cached_name: e.cached_name ?? e.name ?? null,
+      kind: e.kind_code ?? e.kind ?? null,
+      // ⚠️ The LIST endpoint returns `aliases`; `cached_aliases` is the by-ids /
+      // select-for-context shape. The first cut read only `cached_aliases` and every entity
+      // came back with [] — invisible to the unit tests, because the mock was written from the
+      // same wrong assumption. The LIVE SMOKE caught it: 36 entities, 0 with a surface form,
+      // on a book whose entities have them. Both keys are accepted so this read cannot be
+      // broken again by whichever upstream shape it is pointed at.
+      aliases: Array.isArray(e.aliases)
+        ? e.aliases
+        : Array.isArray(e.cached_aliases)
+          ? e.cached_aliases
+          : [],
+      short_description: e.short_description ?? null,
+    }));
+    return {
+      items,
+      next_cursor: data?.next_cursor ?? null,
+      // Explicit, never inferred. See the cap note above.
+      truncated: data?.next_cursor != null,
+    };
+  }
+
+  // cast-by-ids — the SAME projection as `cast`, keyed by an id list (T38 B5).
+  //
+  // B1 argued that `entities/by-ids` "stays because it answers a different question — these
+  // specific entities, not a page of this book". That is still true, and it is exactly why
+  // this exists: the question is legitimate and the KAL had no way to ask it, so FIVE of the
+  // eight remaining pinned call sites were reaching past the boundary to glossary's
+  // `/internal/.../entities/by-ids` because there was nowhere else to go. A boundary with a
+  // hole in it is not a boundary; consumers route around it and the gate records them forever.
+  //
+  // POST, not GET, and not a query param on `cast`: an id list is unbounded in principle, and
+  // a caller pinning 200 entities would build a URL long enough to be truncated by something
+  // in the middle — silently, and as a shorter answer rather than an error.
+  // 200, not Nest's default 201 for @Post. This is a READ that happens to carry its key set
+  // in a body, and a client checking `status != 200` gets zero rows from a 201 — measured
+  // live: "by-ids requested: 3 | names returned: 0", with the gateway answering 201 and the
+  // consumer discarding the payload as an error.
+  @HttpCode(200)
+  @Post('cast/by-ids')
+  async castByIds(
+    @Param('bookId') bookId: string,
+    @Body() body: { entity_ids?: string[]; language?: string; include_attributes?: boolean },
+    @Req() req: InboundReq,
+  ) {
+    const ids = Array.isArray(body?.entity_ids) ? body.entity_ids : [];
+    // An empty request is not an error and must not become "the whole book": that inversion
+    // would turn a no-op pin into a full-cast read on every empty call.
+    if (ids.length === 0) return { items: [] };
+    const payload: Record<string, unknown> = { entity_ids: ids };
+    if (body?.language) payload.language = body.language;
+    // T38 B8 — the authored attribute VALUES, off by default. The glossary passage producer
+    // needs them (a passage built from identity alone is the empty-lore bug it exists to fix);
+    // everyone else does not, and this sits on a hot path, so the flag is opt-in exactly as it
+    // is upstream rather than always-on here.
+    if (body?.include_attributes) payload.include_attributes = true;
+    const data = (await glossary.post(
+      `/internal/books/${bookId}/entities/by-ids`,
+      payload,
+      ctxFromReq(req),
+    )) as Record<string, unknown>;
+    const raw = (data?.items as Array<Record<string, unknown>>) ?? [];
+    // Same projection as `cast` — one shape for one concept. A second, subtly different entity
+    // shape on the same boundary is how a consumer ends up reading `name` from one route and
+    // `cached_name` from the other and finding they disagree.
+    return {
+      items: raw.map((e) => ({
+        entity_id: e.entity_id,
+        name: e.cached_name ?? e.name ?? null,
+        cached_name: e.cached_name ?? e.name ?? null,
+        kind: e.kind_code ?? e.kind ?? null,
+        aliases: Array.isArray(e.aliases)
+          ? e.aliases
+          : Array.isArray(e.cached_aliases)
+            ? e.cached_aliases
+            : [],
+        short_description: e.short_description ?? null,
+        // Present only when asked for, and `[]` rather than absent when asked and empty —
+        // a consumer distinguishing "no attributes" from "did not ask" reads the flag it
+        // sent, not the shape it got back.
+        ...(body?.include_attributes ? { attributes: e.attributes ?? [] } : {}),
+      })),
+    };
+  }
+
+  // state — the book-wide as-of read (AC1/AC2). One value per (entity, attribute) at story
+  // position N, across the whole cast.
+  //
+  // `as_of` is REQUIRED and the gateway does NOT enforce that itself. It forwards whatever
+  // arrived and glossary answers 400 (downstream 4xx is propagated faithfully by
+  // `downstream.ts`). Deliberate: a second copy of the rule in TypeScript is a rule that can
+  // drift out of agreement with the one that owns it, and decision B2 says the gateway carries
+  // no domain logic. Forwarding an empty `as_of` reaches the same refusal as omitting it —
+  // glossary treats both as "no story position".
+  //
+  // Unlike `roster`, this read is NOT projection-restricted to id+name: its whole purpose is to
+  // answer what was TRUE at a position, and a name-only projection cannot. It stays bounded by
+  // the position instead — only intervals covering N, one per attribute.
+  @Get('state')
+  async state(
+    @Param('bookId') bookId: string,
+    @Query('as_of') asOf: string | undefined,
+    @Req() req: InboundReq,
+  ) {
+    const qs = new URLSearchParams();
+    if (asOf !== undefined) qs.set('as_of', asOf);
+    const data = (await glossary.get(
+      `/internal/books/${bookId}/state?${qs.toString()}`,
+      ctxFromReq(req),
+    )) as Record<string, unknown>;
+    // Strict array coercion, same as get_facts: a downstream object without `entities` must not
+    // pass through whole as the bounded list. Never `?? data`.
+    return {
+      book_id: data?.book_id ?? bookId,
+      as_of_ordinal: data?.as_of_ordinal ?? null,
+      entities: Array.isArray(data?.entities) ? data.entities : [],
+      temporal_capability: await temporalCapability(ctxFromReq(req)),
+    };
+  }
+
   // search — bounded entity search (top-K).
   @Get('search')
   async search(
@@ -155,15 +314,28 @@ export class KalReadController {
     qs.set('entity_id', entityId);
     if (hops) qs.set('hops', hops);
     if (cap) qs.set('cap', cap);
-    // Guard parseInt: a non-numeric as_of must not forward literal "NaN" downstream — drop it.
-    const parsedAsOf = asOf !== undefined ? parseInt(asOf, 10) : undefined;
-    const effAsOf = kgAsOfOrDrop(Number.isFinite(parsedAsOf) ? parsedAsOf : undefined);
-    if (effAsOf !== undefined) qs.set('as_of_chapter', String(effAsOf));
+    // `as_of` is the SPOILER WINDOW, so a value it cannot read fails CLOSED. This used to
+    // parseInt and silently drop anything unreadable, which inverted the window: knowledge-
+    // service documents `as_of_chapter` omitted = latest (all open), so `as_of=abc` returned
+    // the PRESENT-DAY neighborhood to a caller who asked to be held at a story position.
+    // parseInt also read '2abc' as 2, moving the window without telling anyone. Refusing
+    // matches the sibling contract this gateway already keeps — kal-state propagates a 400
+    // for a missing as_of rather than defaulting it. Absent or empty stays 'no window': the
+    // FE omits the parameter entirely when nothing is selected.
+    if (asOf !== undefined && asOf !== '') {
+      if (!/^-?\d+$/.test(asOf)) {
+        throw new HttpException(
+          `as_of must be an integer story position; got ${JSON.stringify(asOf)}`,
+          400,
+        );
+      }
+      qs.set('as_of_chapter', asOf);
+    }
     const data = (await knowledge.get(
       `/internal/books/${bookId}/kg/neighborhood?${qs.toString()}`,
       ctxFromReq(req),
     )) as Record<string, unknown>;
-    return { edges: Array.isArray(data?.edges) ? data.edges : [], temporal_capability: temporalCapability() };
+    return { edges: Array.isArray(data?.edges) ? data.edges : [], temporal_capability: await temporalCapability(ctxFromReq(req)) };
   }
 
   // retrieve — semantic top-K over embedded episodes/segments.
@@ -178,6 +350,82 @@ export class KalReadController {
       body,
       ctxFromReq(req),
     )) as Record<string, unknown>;
-    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: temporalCapability() };
+    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: await temporalCapability(ctxFromReq(req)) };
+  }
+
+  // timeline — the PROJECT's narrative events before a reading position.
+  //
+  // T55/e, decided in spec §8.6. `entities/:entityId/timeline` above already federates ONE
+  // entity's timeline; leaving this one direct meant the KAL federated an entity's events and
+  // not the book's, which is the same domain question at a different grain.
+  //
+  // It fits this book-scoped controller with no new axis because the owning endpoint already
+  // takes `book_id` and resolves project + owner tenant from it server-side — which is also
+  // why the other three §8.6 federations do NOT land here: their callers hold a project id or
+  // a glossary id and no book at all.
+  // wiki-neighborhood — one glossary entity's 1-hop neighbourhood, for the wiki renderer.
+  //
+  // T55/i, the LAST of §8.6's four. It looked like it fitted neither scope axis: its caller
+  // `fetch_wiki_neighborhood(user_id, glossary_entity_id)` holds no book and no project. But
+  // that was the wrong boundary to measure — `build_context_brief(book_id, user_id, ...)` two
+  // frames up HAS the book and simply did not thread it through.
+  //
+  // ⚠️ The owning endpoint now takes `book_id` and resolves the project from it server-side,
+  // because a guard that checks a grant on the book in the PATH while the read answers from
+  // whatever project holds the glossary id is a path segment that is checked and does not
+  // constrain.
+  @Post('wiki-neighborhood')
+  @HttpCode(200)
+  async wikiNeighborhood(
+    @Param('bookId') bookId: string,
+    @Body() body: { glossary_entity_id: string; rel_cap?: number; as_of?: number },
+    @Req() req: InboundReq,
+  ) {
+    const ctx = ctxFromReq(req);
+    const data = (await knowledge.post(
+      `/internal/knowledge/wiki-neighborhood`,
+      {
+        user_id: ctx.userId,
+        glossary_entity_id: body?.glossary_entity_id,
+        book_id: bookId,
+        ...(body?.rel_cap !== undefined ? { rel_cap: body.rel_cap } : {}),
+        // T48ad -- the story window. This route ADVERTISED `temporal_capability.kg =
+        // ordinal_valid_time` while accepting no temporal parameter at all, which is T48s's
+        // sentence on the sibling route: an endpoint advertising a spoiler window it does not
+        // have. Omitted => the transaction-time head, exactly as before.
+        // T48ae -- `as_of` is a CHAPTER here, exactly as on `entities/:id/neighborhood`, and
+        // the owning endpoint converts it onto the reading axis. Sent under its unit-bearing
+        // internal name so the two cannot drift apart silently again.
+        ...(body?.as_of !== undefined ? { as_of_chapter: body.as_of } : {}),
+      },
+      ctx,
+    )) as Record<string, unknown>;
+    return { ...data, temporal_capability: await temporalCapability(ctx) };
+  }
+
+  @Post('timeline')
+  @HttpCode(200)
+  // `bookTimeline`, not `timeline`: `entities/:entityId/timeline` above already owns that
+  // METHOD name in this class. The compiler caught the collision (TS2393); the two ROUTES
+  // never collided, which is why it was easy to write.
+  async bookTimeline(
+    @Param('bookId') bookId: string,
+    @Body() body: { chapter_order: number; limit?: number },
+    @Req() req: InboundReq,
+  ) {
+    // `book_id` comes from the PATH, never the body: the path is what the guard scoped, and
+    // accepting it from the body would let a caller read one book while authorised for another.
+    const data = (await knowledge.post(
+      `/internal/knowledge/timeline`,
+      { book_id: bookId, chapter_order: body?.chapter_order, limit: body?.limit },
+      ctxFromReq(req),
+    )) as Record<string, unknown>;
+    return {
+      found: Boolean(data?.found),
+      events: Array.isArray(data?.events) ? data.events : [],
+      count: typeof data?.count === 'number' ? data.count : 0,
+      total: typeof data?.total === 'number' ? data.total : 0,
+      temporal_capability: await temporalCapability(ctxFromReq(req)),
+    };
   }
 }

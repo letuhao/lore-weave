@@ -58,6 +58,28 @@ Three Phase 4 questions cluster here because they share one state machine: a cha
 
 ### Schema additions
 
+⚠ **NOT MIGRATED, and that is a decision (`1b5-H1`, 2026-08-07).** `0019_channels`
+ships `DP-Ch2`'s registry; this block is a **second** locked `ALTER TABLE channels`
+that Phase 0 did not find, and none of its five columns has a writer anywhere in
+the tree — `paused_until`, `paused_reason`, `paused_by`, `became_dormant_at` and
+`dissolved_at_eid` are read by nothing and written by nothing. Adding them now
+would be apparatus with no subject — the shape this repo has been burned by, when
+seven `pc_*`/`npc_*` projection tables shipped with a full verification apparatus
+and no producer at all. ⚠ **This cited
+[`scripts/orphan-model-gate.py`](../../../../scripts/orphan-model-gate.py) as the
+mechanism covering that, and it does not** (`1b7gap-H2`): that gate asks whether
+an *event* has a producer, reads only `.rs`/`.ts`/`.go`, and never opens a `.sql`
+file — so a column with no writer is outside its subject entirely. The register
+below is the mechanism; the sentence above is a reason. It is registered as
+PENDING in
+[`scripts/dp-channels-schema-gate.py`](../../../../scripts/dp-channels-schema-gate.py)
+rather than ignored: the gate reds if a pending column silently appears in the
+migration (the row must then be retired), and reds if this block grows a column
+the register does not name. **Trigger to build it:** the first `DP-Ch32`
+auto-dormant scheduler or `pause_channel` caller. What `0019` DOES implement from
+this document is `DP-Ch31`'s terminal-Dissolved rule and `DP-Ch33`'s
+descendants-first rule — see `12_channel_primitives.md`, `1b5-L5`.
+
 ```sql
 -- channels table extended (per-reality DB)
 ALTER TABLE channels
@@ -168,7 +190,7 @@ Wakeup latency: ≤2 s p99 (snapshot reload + subscription reopen). Acceptable f
 
 Dissolved channel events follow the per-reality retention policy in [02_storage R1](../02_storage/R01_event_volume.md):
 
-- Events queryable via `event_log` table for full retention window (default 1 year)
+- Events queryable via `events` table for full retention window (default 1 year)
 - Redis Stream `dp:events:{reality}:{channel}` retained for original 7-day window then released (LRU eviction)
 - Dissolved channel registry row kept indefinitely (small) — used to answer "did this channel exist?" historical queries
 - Aggregator snapshots: kept for 90 days post-dissolution then GC'd (final state observable for that window)
@@ -446,7 +468,7 @@ Feature pattern recipes for LLM turns (Pattern 1 Strict / Pattern 2 Concurrent /
 
 ### Failover during lifecycle ops
 
-Any in-flight lifecycle op that the writer was processing when it died: pre-condition checks may have read stale state. New writer re-validates pre-conditions before continuing. UNIQUE constraints on event_log + writer_state prevent double-emit of state-transition events during recovery race.
+Any in-flight lifecycle op that the writer was processing when it died: pre-condition checks may have read stale state. New writer re-validates pre-conditions before continuing. UNIQUE constraints on events + writer_state prevent double-emit of state-transition events during recovery race.
 
 ### Audit trail
 

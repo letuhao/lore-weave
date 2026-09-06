@@ -37,11 +37,24 @@ class ModelRole(str, enum.Enum):
     EMBEDDING = "embedding"
     RERANK = "rerank"
     CRITIC = "critic"
+    #: QC-5 C33 — the model that AUDITS a critic verdict before an author sees it.
+    #: A seventh member rather than reuse of `critic`, because the two are
+    #: measurably different jobs: C31 measured a critic keeping 4/4 planted
+    #: violations while keeping 0/3 false ones when asked to audit its own output,
+    #: so a book may want breadth from one model and precision from another.
+    #: Named `critic_verifier`, not `verifier`: campaigns already owns a DIFFERENT
+    #: `verifier` role (its Model-Matrix vocabulary), and two closed sets sharing a
+    #: token that means two things is the mis-spelled-key failure this set exists
+    #: to prevent.
+    CRITIC_VERIFIER = "critic_verifier"
 
 
 # Roles whose Account default lives under their OWN capability key if present,
 # else falls back to the `chat` capability default (spec §3.4).
-_CHAT_CAPABILITY_ROLES = {ModelRole.CHAT, ModelRole.COMPOSER, ModelRole.PLANNER, ModelRole.CRITIC}
+_CHAT_CAPABILITY_ROLES = {
+    ModelRole.CHAT, ModelRole.COMPOSER, ModelRole.PLANNER, ModelRole.CRITIC,
+    ModelRole.CRITIC_VERIFIER,
+}
 
 # Source-tier labels used in the effective-value contract.
 TIER_TOOL = "tool"

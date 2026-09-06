@@ -82,7 +82,27 @@ async def _fetch_chapter_text(client: httpx.AsyncClient, book_id: str, chapter_i
 
 
 async def _fetch_entity_forms(client: httpx.AsyncClient, book_id: str) -> dict[str, list[str]]:
-    """Page the glossary internal entities list → {entity_id: folded surface forms}."""
+    """Drain the KAL `cast` read → {entity_id: folded surface forms}.
+
+    T38 B4 — this used to page glossary's `/internal/books/{id}/entities` directly. `cast`
+    carries the same projection (name + aliases) through the boundary consumers are told to
+    read (INV-KAL), and `roster` could not replace it: `roster` is id+name only, and surface
+    forms come from `aliases`.
+
+    ⚠️ **It REFUSES when no KAL is configured rather than returning `{}`.** An empty form map
+    is not a harmless degrade here — every mention count computed from it would be zero, and a
+    backfill that writes zeroes looks exactly like a book whose entities are never mentioned.
+    `settings.knowledge_gateway_url` defaults to EMPTY in this service, and the sibling KAL
+    client treats unset as "feature off, return nothing"; that posture is right for an
+    optional enrichment and wrong for the input to a COUNT.
+    """
+    base = settings.knowledge_gateway_url
+    if not base:
+        raise RuntimeError(
+            "mention_backfill: KNOWLEDGE_GATEWAY_URL is unset, so the entity surface forms "
+            "cannot be read (INV-KAL). Refusing rather than backfilling zero mention counts "
+            "from an empty form map."
+        )
     forms: dict[str, list[str]] = {}
     cursor = ""
     while True:
@@ -90,7 +110,7 @@ async def _fetch_entity_forms(client: httpx.AsyncClient, book_id: str) -> dict[s
         if cursor:
             params["cursor"] = cursor
         r = await client.get(
-            f"{settings.glossary_service_internal_url}/internal/books/{book_id}/entities",
+            f"{base.rstrip('/')}/v1/kal/books/{book_id}/cast",
             params=params,
         )
         r.raise_for_status()
@@ -108,7 +128,6 @@ async def _fetch_entity_forms(client: httpx.AsyncClient, book_id: str) -> dict[s
         if not cursor:
             break
     return forms
-
 
 async def _post_recounts(client: httpx.AsyncClient, book_id: str, counts: list[dict]) -> int:
     """POST a batch of {entity_id, chapter_id, mention_count} to glossary. Returns updated."""

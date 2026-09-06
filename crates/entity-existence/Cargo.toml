@@ -1,0 +1,36 @@
+# entity-existence — the shipped `GoneState` lattice, as a pure leaf crate.
+#
+# WHY THIS CRATE EXISTS
+# ---------------------
+# `GoneState` was defined in `dp-kernel::entity_status`, which also carries the
+# 4-layer resolver, its cache and its Postgres-backed callers — so the crate
+# pulls tokio, sqlx and a `SystemTime`. The actor hub's item 3 is EXISTENCE and
+# the contract names this exact enum: "GoneState — shipped: dp-kernel". A pure
+# hub cannot depend on a crate with an async runtime underneath it, and copying
+# the enum would create a second SSOT for a lattice whose precedence order is
+# mirrored in Go.
+#
+# So the enum moved DOWN rather than sideways. `dp-kernel` re-exports it and
+# `dp_kernel::entity_status::GoneState` still names this type — the same shape
+# `breaker-core` already has with `dp_kernel::resilience::CircuitBreaker`.
+#
+# What did NOT move: the resolver, the cascade, `EntityRef`, the envelope, the
+# cache. Those are platform concerns and they stay platform-side.
+[package]
+name = "entity-existence"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "GoneState — the entity existence lattice (Active/Severed/Archived/Dropped/UserErased) with its precedence order. Pure leaf crate: no I/O, no clock, no runtime."
+
+[lib]
+name = "entity_existence"
+path = "src/lib.rs"
+
+[dependencies]
+# Wire format only. The Go mirror `contracts/entity_status/gone_state.go` is
+# byte-equal snake_case, and that parity is asserted in dp-kernel's tests.
+serde = { workspace = true }

@@ -39,11 +39,20 @@ func makeExportToken(t *testing.T, userID string) string {
 	return s
 }
 
-func newExportServer(t *testing.T, pool *pgxpool.Pool) *Server {
+// newExportServer builds a Server for the export/handler tests. bookSvcURL is variadic so
+// the ~40 existing call sites stay exactly as they were: a test that never reaches the
+// ownership check does not need book-service at all, and passing one would only invite a
+// stub that nothing asserts on. A test that DOES reach it passes an httptest stub — see
+// TestExportEmptyResult, which used to skip for the want of one.
+func newExportServer(t *testing.T, pool *pgxpool.Pool, bookSvcURL ...string) *Server {
 	t.Helper()
 	cfg := &config.Config{
 		HTTPAddr:  ":0",
 		JWTSecret: exportTestSecret,
+	}
+	if len(bookSvcURL) > 0 {
+		cfg.BookServiceURL = bookSvcURL[0]
+		cfg.InternalServiceToken = "tok"
 	}
 	return NewServer(pool, cfg)
 }
@@ -580,14 +589,23 @@ func TestExportEmptyResult(t *testing.T) {
 	bookID := "00000000-dead-beef-0000-000000000001"
 	userID := "11111111-1111-1111-1111-111111111111"
 
-	// We need the book-service stub to accept this book + owner.
-	// Since the test server has a real book_client that calls book-service,
-	// skip this test if BOOK_SERVICE_INTERNAL_URL is not set / responds.
-	if os.Getenv("BOOK_SERVICE_INTERNAL_URL") == "" {
-		t.Skip("BOOK_SERVICE_INTERNAL_URL not set — skipping export endpoint test")
-	}
+	// 🔴 THIS TEST SKIPPED ON EVERY CI RUN SINCE IT WAS WRITTEN. It required
+	// `BOOK_SERVICE_INTERNAL_URL`, and NO workflow in the repo sets that variable — so the
+	// export endpoint, the thing the file is named for, was never exercised end to end
+	// anywhere. The package still reported ok, because a skip is indistinguishable from a
+	// pass in a Go summary line.
+	//
+	// The dependency was real but over-stated: the route asks book-service who owns the
+	// book, and that needs a book-service RESPONSE, not a deployed book-service. This
+	// package already stubs exactly that surface — `projection` is how every ownership test
+	// here runs. Standing it up removes the last env var in this suite that nothing
+	// provides, and the assertion below is unchanged.
+	book := uuid.MustParse(bookID)
+	owner := uuid.MustParse(userID)
+	ts := httptest.NewServer(projection(book, owner))
+	t.Cleanup(ts.Close)
 
-	srv := newExportServer(t, pool)
+	srv := newExportServer(t, pool, ts.URL)
 	token := makeExportToken(t, userID)
 
 	req := httptest.NewRequest(http.MethodGet,

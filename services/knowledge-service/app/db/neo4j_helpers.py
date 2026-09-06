@@ -29,8 +29,11 @@ module.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any, Protocol
+
+from app.db.cypher_dialect import Engine, assert_rendered, render
 
 __all__ = [
     "CypherSafetyError",
@@ -43,6 +46,7 @@ __all__ = [
     "parse_summary_index_name",
     "list_summary_vector_indexes",
     "drop_summary_index",
+    "require_neo4j_only",
 ]
 
 
@@ -111,6 +115,59 @@ def assert_user_id_param(cypher: str) -> None:
         )
 
 
+
+
+def require_neo4j_only(
+    session: CypherSession, operation: str, capability: str = "index administration",
+) -> None:
+    """Refuse an INDEX-ADMIN command on any engine that has no such command (rule 9).
+
+    `SHOW VECTOR INDEXES`, `CREATE VECTOR INDEX` and `DROP INDEX` are Neo4j index administration,
+    not Cypher — AGE wraps every statement in `SELECT * FROM cypher(...)`, where they are a SQL
+    parse error. Measured on iso: `PostgresSyntaxError: syntax error at or near "SHOW"`.
+
+    That raise was already happening; what it was not doing was SAYING anything. `purge_project`
+    is a general repo function that called these unconditionally, and its caller wraps the whole
+    purge in `except Exception` and logs "graph orphaned, re-sweep owed". On AGE -- the DEFAULT
+    backend since T54 -- every project delete therefore reported an orphaned graph whose nodes
+    had in fact been deleted, and the message could not be told apart from a real purge failure.
+
+    A refusal that names itself is the difference. Engine comes from `engine_of`, which is the
+    one home for it (§10.1: the session is the only thing that knows its dialect).
+    """
+    engine = engine_of(session)
+    if engine != "neo4j":
+        raise NotImplementedError(
+            f"{operation} — {capability} is a Neo4j-only capability and this session speaks "
+            f"{engine!r}, which has no such command: §3.1 moves the vector and passage layers "
+            f"to Postgres, where the equivalents are tables and SQL indexes. Callers that must "
+            f"tolerate this should catch NotImplementedError EXPLICITLY — a bare `except` here "
+            f"also swallows a real Neo4j failure and reports the two identically."
+        )
+
+
+def engine_of(session: Any) -> Engine:
+    """Which dialect `session` speaks.
+
+    ⚠️ **This function exists because "the dialect backlog is zero" did not mean "the layer is
+    engine-agnostic".** T77-T82 took every Neo4j-only construct out of `graph_repos`, and the
+    ratchet duly read 0 — while **51 call sites across 11 modules still said
+    `render(TEMPLATE, "neo4j")`**, naming the engine in a string literal the dialect scan
+    cannot see. Running a real repo function against AGE failed on `function datetime does not
+    exist`: the templates were portable and the RENDERING was pinned.
+
+    So the engine comes from the session, which is the only thing that knows it. A session that
+    declares `engine` is authoritative; one that does not is a Bolt `AsyncSession` or its
+    transaction — the Neo4j driver's own types, which cannot be anything else. That fallback is
+    a FACT about the type, not a default standing in for a missing declaration.
+    """
+    engine = getattr(session, "engine", None)
+    # Only a STRING counts as a declaration. A `MagicMock` answers every attribute with another
+    # mock, so `is not None` would hand `render` a mock and raise from inside two hundred unit
+    # tests that legitimately do not care which engine they are pretending to be.
+    return engine if isinstance(engine, str) else "neo4j"
+
+
 async def run_read(
     session: CypherSession,
     cypher: str,
@@ -124,7 +181,9 @@ async def run_read(
     is structurally impossible. The `assert_user_id_param` call is
     the belt to the driver's suspenders.
     """
+    cypher = render(cypher, engine_of(session))
     assert_user_id_param(cypher)
+    assert_rendered(cypher)
     return await session.run(cypher, user_id=user_id, **params)
 
 
@@ -162,6 +221,8 @@ async def run_read_any_owner(
         raise CypherSafetyError(
             "cypher references $user_id — use run_read(), which enforces the filter"
         )
+    cypher = render(cypher, engine_of(session))
+    assert_rendered(cypher)
     return await session.run(cypher, **params)
 
 
@@ -177,180 +238,63 @@ async def run_write(
     future read/write transaction router (K11.2) can route queries
     to different Neo4j routing contexts without parsing the cypher.
     """
+    cypher = render(cypher, engine_of(session))
     assert_user_id_param(cypher)
+    assert_rendered(cypher)
     return await session.run(cypher, user_id=user_id, **params)
 
 
-# ── P3 — per-project per-level summary vector index helpers (H1+M7+SR-2) ──
+# ── transient-failure retry (T80) ────────────────────────────────────
 
-import re
-from typing import Literal as _Literal
+#: Neo4j's retryable class. Matched by CODE and by class NAME rather than by importing the
+#: driver, because this module is deliberately importable without the `neo4j` package (see
+#: `CypherSession`) — and because the same duck-typing lets a test raise a stand-in.
+_TRANSIENT_CODE_PREFIX = "Neo.TransientError."
+_TRANSIENT_CLASS_NAMES = frozenset({"TransientError", "ServiceUnavailable", "SessionExpired"})
 
-_SUMMARY_LEVELS = ("chapter", "part", "book")
-# Cypher index names: ASCII letters, digits, underscores only.
-_SAFE_NAME_RE = re.compile(r"^[a-z0-9_]+$")
+
+def is_transient(exc: BaseException) -> bool:
+    """Is `exc` the kind of failure that succeeds on a retry?"""
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code.startswith(_TRANSIENT_CODE_PREFIX):
+        return True
+    return type(exc).__name__ in _TRANSIENT_CLASS_NAMES
 
 
-def summary_index_name(
-    project_id: str,
-    embedding_model_uuid: str,
-    level: _Literal["chapter", "part", "book"],
-) -> str:
-    """Build the Neo4j vector index name for a per-project per-level summary.
+async def in_retried_transaction(
+    session: Any,
+    op: Any,
+    *,
+    attempts: int = 3,
+    base_delay: float = 0.02,
+) -> Any:
+    """Run `op(tx)` in an explicit transaction, retrying the whole transaction on a deadlock.
 
-    Spec D2 (H1+M7+SR-2 fixes): full dash-stripped UUIDs for zero collision;
-    namespaced by embedding_model_uuid so model change creates a NEW family.
+    ⚠️ **A deadlock here is expected, not exceptional.** T80's optimistic-concurrency path
+    takes an exclusive lock and then reads under it, which is the only measured shape that
+    stops two concurrent editors both being told their edit landed. The cost is that two
+    transactions racing for the same node can form a lock cycle, and Neo4j resolves that by
+    killing one with a `TransientError` — which is a *retryable* outcome and, unretried, is
+    a 500 for a request that would have succeeded a millisecond later.
 
-    Format: `<level>_summary_emb_p<32hex>_e<32hex>`
+    So the whole transaction is replayed, not just the failed statement: on the retry the
+    version is read again, and if the other writer won in the meantime the caller correctly
+    gets a version mismatch instead of a stale success. Retrying is therefore safe for OCC
+    specifically BECAUSE the operation re-derives its decision from the re-read state.
+
+    `op` must be idempotent-on-replay for that reason. Non-transient errors — including
+    `VersionMismatchError` when a caller raises inside — propagate on the first attempt.
     """
-    if level not in _SUMMARY_LEVELS:
-        raise ValueError(f"unknown level {level!r}; allowed: {_SUMMARY_LEVELS}")
-    proj_short = project_id.replace("-", "").lower()
-    emb_short = embedding_model_uuid.replace("-", "").lower()
-    name = f"{level}_summary_emb_p{proj_short}_e{emb_short}"
-    if not _SAFE_NAME_RE.match(name):
-        # Defense-in-depth — should never trigger given UUID inputs.
-        raise ValueError(f"unsafe index name: {name!r}")
-    return name
-
-
-# Parser for summary_index_name output. Used by the prune-orphans admin
-# endpoint to extract (level, project_id_hex, embedding_model_uuid_hex)
-# from an existing index name. Mirror of `summary_index_name`'s output
-# format; the regex MUST stay in lockstep.
-_SUMMARY_INDEX_NAME_RE = re.compile(
-    r"^(?P<level>chapter|part|book)_summary_emb_p(?P<proj>[0-9a-f]{32})_e(?P<emb>[0-9a-f]{32})$"
-)
-
-
-def parse_summary_index_name(name: str) -> dict[str, str] | None:
-    """Parse a summary vector index name into its components.
-
-    Returns dict with `level`, `project_id` (hex without dashes), and
-    `embedding_model_uuid` (hex without dashes) — or None if the name
-    doesn't match the summary-index pattern (so non-P3 indexes are
-    skipped, not misclassified).
-
-    Inverse of `summary_index_name`; if the format ever changes, both
-    must be updated together.
-    """
-    match = _SUMMARY_INDEX_NAME_RE.match(name)
-    if match is None:
-        return None
-    return {
-        "level": match.group("level"),
-        "project_id": match.group("proj"),
-        "embedding_model_uuid": match.group("emb"),
-    }
-
-
-async def list_summary_vector_indexes(
-    session: CypherSession,
-) -> list[dict[str, str]]:
-    """Return all Neo4j vector indexes whose names match the P3 summary
-    pattern.
-
-    Each item: {name, level, project_id, embedding_model_uuid}. Non-summary
-    indexes (e.g. entity-embedding indexes) are filtered out by the parser
-    so the admin endpoint never accidentally targets them.
-
-    Uses `SHOW VECTOR INDEXES` (Neo4j 5+); fallback callers can adjust
-    the cypher per their server version. Direct `session.run` because
-    SHOW/DROP are admin ops without `$user_id` semantics — mirrors
-    `ensure_summary_indexes` which does the same.
-    """
-    rows = await session.run("SHOW VECTOR INDEXES YIELD name")
-    parsed: list[dict[str, str]] = []
-    async for record in rows:
-        name = record["name"]
-        components = parse_summary_index_name(name)
-        if components is None:
-            continue
-        parsed.append({"name": name, **components})
-    return parsed
-
-
-async def drop_summary_index(session: CypherSession, name: str) -> None:
-    """Idempotent DROP for a summary vector index.
-
-    `DROP INDEX … IF EXISTS` is the no-op-on-missing form; tolerates
-    concurrent drops (someone else pruned the same index between SHOW
-    and DROP). Index name MUST come from `parse_summary_index_name` or
-    `summary_index_name` — `_SUMMARY_INDEX_NAME_RE` constrains it to
-    [a-z0-9_], structurally injection-safe.
-    """
-    if parse_summary_index_name(name) is None:
-        # Defense-in-depth — only summary indexes are eligible here.
-        raise ValueError(f"refusing to DROP non-summary index {name!r}")
-    await session.run(f"DROP INDEX {name} IF EXISTS")
-
-
-async def purge_project(session: CypherSession, project_id: str) -> dict[str, int]:
-    """Delete ALL Neo4j nodes for a project + drop its per-project summary vector
-    indexes — `D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN`: deleting a knowledge project
-    must not orphan its graph.
-
-    Every project node carries `project_id` (Entity/Event/Fact/Passage/
-    ExtractionSource/EntityStatus — verified: no node connected to the project's nodes
-    lacks `project_id`), so a single `project_id`-scoped `DETACH DELETE` is complete.
-    The SHARED dimension-bucketed indexes (`entity_embeddings_1024`,
-    `passage_embeddings_384`, …) are NEVER touched — other projects share them; only
-    THIS project's `<level>_summary_emb_p<id>_e<model>` indexes are dropped (reusing the
-    name-validated helpers). Returns `{nodes_deleted, indexes_dropped}`.
-
-    The CALLER runs this best-effort: the authoritative owner-gated delete is the
-    Postgres row removal; a Neo4j failure must not fail it (it just leaves an orphan to
-    re-sweep). Perf follow-up: a very large graph is one `DETACH DELETE` transaction —
-    batch via `CALL { … } IN TRANSACTIONS` if a huge project ever needs it.
-    """
-    rows = await session.run(
-        "MATCH (n {project_id: $pid}) RETURN count(n) AS n", pid=project_id
-    )
-    nodes = 0
-    async for rec in rows:
-        nodes = int(rec["n"])
-    if nodes:
-        # count-then-delete: RETURN-after-DELETE isn't reliable across drivers.
-        await session.run("MATCH (n {project_id: $pid}) DETACH DELETE n", pid=project_id)
-    proj_hex = project_id.replace("-", "").lower()
-    dropped = 0
-    for idx in await list_summary_vector_indexes(session):
-        if idx["project_id"] == proj_hex:
-            await drop_summary_index(session, idx["name"])
-            dropped += 1
-    return {"nodes_deleted": nodes, "indexes_dropped": dropped}
-
-
-async def ensure_summary_indexes(
-    session: CypherSession,
-    project_id: str,
-    embedding_model_uuid: str,
-    embedding_dimension: int,
-) -> dict[str, str]:
-    """Idempotent CREATE of the 3 per-project per-level summary vector indexes.
-
-    Returns dict mapping level -> index name (caller persists for Mode-3 query).
-
-    Spec D2 lifecycle: called lazily by extraction-job-processor BEFORE the
-    first summary write for a given (project, embedding_model) pair. Safe
-    to call every job start — `CREATE VECTOR INDEX IF NOT EXISTS` is no-op
-    on existing indexes.
-    """
-    if embedding_dimension <= 0:
-        raise ValueError(f"invalid embedding_dimension {embedding_dimension!r}")
-    names: dict[str, str] = {}
-    for level in _SUMMARY_LEVELS:
-        idx_name = summary_index_name(project_id, embedding_model_uuid, level)
-        node_label = level.capitalize()  # Chapter / Part / Book
-        # Index name MUST be safely templated — Cypher doesn't support $ for names.
-        # _SAFE_NAME_RE validation above guarantees safety.
-        cypher = (
-            f"CREATE VECTOR INDEX {idx_name} IF NOT EXISTS "
-            f"FOR (n:{node_label}) ON (n.summary_embedding) "
-            "OPTIONS {indexConfig: {"
-            "`vector.dimensions`: $dim, "
-            "`vector.similarity_function`: 'cosine'}}"
-        )
-        await session.run(cypher, dim=embedding_dimension)
-        names[level] = idx_name
-    return names
+    last: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            async with await session.begin_transaction() as tx:
+                out = await op(tx)
+                await tx.commit()
+            return out
+        except BaseException as exc:  # noqa: BLE001 — re-raised unless retryable
+            if not is_transient(exc) or attempt == attempts - 1:
+                raise
+            last = exc
+            await asyncio.sleep(base_delay * (2 ** attempt))
+    raise last  # pragma: no cover — the loop always returns or raises above

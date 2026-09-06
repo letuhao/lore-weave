@@ -1,0 +1,13 @@
+# A crate that DISCARDS a Result<_, DpError>. `R-6` must fire.
+#
+# It declares its own `DpError` rather than depending on `dp`, and that is the
+# same choice the lint makes: matching by TYPE NAME instead of DefId, because
+# resolving `dp::DpError` by id would require every linted crate to depend on
+# `dp` — and the crates this rule exists for are exactly the ones that have not
+# adopted it yet.
+[package]
+name = "swallower"
+version = "0.0.0"
+edition = "2021"
+publish = false
+[workspace]

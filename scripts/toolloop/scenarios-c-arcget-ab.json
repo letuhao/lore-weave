@@ -1,0 +1,48 @@
+{
+  "_note": "D-THE-ONLY-SUPPLIER-OF-node_id-IS-NEVER-ADVERTISED-WITH-arc_get — the A/B arm, the SAME scenario verbatim as the one that produced the BEFORE measurement. Before the fix, 16 of 16 runs (c-silenttrigger1/2) called composition_arc_get, got 'missing required argument(s): [node_id]', and told the author it needed the ID. The only change under test is one line of argument_emitters declaring composition_arc_list as the emitter, which makes the refusal NAME it and therefore ARM it.",
+  "_what_would_refute_the_fix": "composition_arc_list still absent from the wire, OR present and not called, OR called and the model still fails to pass a node_id back to composition_arc_get. Any of those means naming the emitter did not close the chain, and the row's other option (put the id in composition_package_tree's payload) is the one to take.",
+  "scenarios": [
+    {
+      "id": "composition-arc-get-v2",
+      "tool_under_test": "composition_arc_get",
+      "expect_tool": "composition_arc_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+      "prompt_source": "_meta.synonyms['read arc'] + ['arc detail'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Hollow Keep"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc' AND title LIKE '%Hollow Keep%'",
+          "expect": "1",
+          "why": "THE ARC MUST EXIST — this is the fixture that batch 4 could not build, which is why composition_conformance_run refused correctly and was scored as a miss. The tool takes a node_id, so the model must resolve the arc's NAME to it."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Hollow Keep"
+        ],
+        "why": "The seeded arc is the only one; naming it is the minimum evidence that the arc was actually read rather than described."
+      },
+      "falsifier": "RE-RUN AFTER THE WHITESPACE ARM (an `*_id` containing a space is a NAME). v1 was called 3/3 with node_id='The Hollow Keep' and node_id='arc_1'; the tool refused correctly but only after a round trip, and one reply told the author the arc 'hasn't been planned yet' while the seed assertion proved it exists. REFUTED IF a NAME again reaches the tool as node_id. EXPECTED: it is dropped and reported missing, so the model lists the arcs and resolves the id.",
+      "ship_audit": {
+        "absent_case": "OWED — a node_id that does not exist must be refused, and must be distinguishable from an arc that exists but is empty (D-ABSENT-ENTITY-READS-AS-UNUSED).",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

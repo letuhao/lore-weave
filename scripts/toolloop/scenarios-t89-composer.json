@@ -1,0 +1,34 @@
+{
+  "scenarios": [
+    {
+      "id": "composition-generate-account-composer",
+      "tool_under_test": "composition_generate",
+      "expect_tool": "composition_generate",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Write chapter — use the cowrite engine to draft the prose for \"Chapter I — The Ember Codex\".",
+      "prompt_source": "The b18 generate control, with approve=approved_once. The first arm (t89-composer) stopped at composition_create_work's card on 5 of 5 -- the fixture book has no Work, so the turn ended before composition_generate's turn came. That is a PRECONDITION, not a result: it measures the fixture, not the fallback. Approving lets the turn continue to the tool under test.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM generation_job WHERE project_id='{project_id}'",
+          "expect": "0",
+          "why": "ZERO generation jobs before. This tool SPENDS: it runs the grounded cowrite engine and persists prose to the book draft. The card is never approved, so this count must still be 0 afterwards — that is the whole cost control."
+        }
+      ],
+      "falsifier": "REFUTED IF composition_generate returns 'neither this Work nor your account has a model to write with'. The account composer default IS set (verified: PUT 200 through /v1/model-registry/default-models/composer, and it round-trips in the GET), and the fixture Work carries no model_roles -- so this is exactly the 98% case DQ-T89 (b) was ruled for. CONTROL: before this change the same shape refused, and the refusal text named only the Work.",
+      "ship_audit": {
+        "gate": "The card IS the audit — this is the most expensive per-call tool in the batch.",
+        "absent_case": "OWED — a chapter_id/outline_node_id that does not exist must be refused, and its description says the two are alternatives, so passing NEITHER must also be refused rather than defaulted.",
+        "tenancy": "OWED — book-scoped, and the spend lands on the caller."
+      },
+      "defects": [],
+      "_control_note": "CONTROL A/B for the 5/5 finding. In the first arm the model said 'I need to know which chapter you'd like me to work on' — while the book had exactly ONE chapter — and then proposed book_chapter_save_draft with prose it wrote itself. This arm names the chapter explicitly, so if chapter identity was the real blocker the tool should now be called. If it STILL proposes save_draft, the blocker is elsewhere and my required-model-args hypothesis stays unproven rather than becoming a fix."
+    }
+  ]
+}

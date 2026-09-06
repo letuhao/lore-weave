@@ -436,7 +436,7 @@ def test_semantic_oversized_bucket_falls_back_to_lexical(monkeypatch):
 async def test_unify_subgraph_semantic_runs_ondemand_embed(monkeypatch):
     """/review-impl #4 — the full unify_subgraph → _ondemand_embed → cluster chain for
     semantic mode uses the passed embedding_client (a discovered recurrence clusters)."""
-    from app.db.neo4j_repos.relations import Subgraph, SubgraphNode
+    from app.db.graph_repos.relations import Subgraph, SubgraphNode
 
     async def _fake_load(session, *, user_id, project_id, entity_ids):
         if project_id == "P1":
@@ -465,7 +465,7 @@ async def test_unify_subgraph_semantic_runs_ondemand_embed(monkeypatch):
 async def test_unify_subgraph_notes_node_cap(monkeypatch):
     """/review-impl #6 — when the subgraph hit its node cap, the unify result says so
     (a low-salience recurrence below the cap is invisible; don't imply full coverage)."""
-    from app.db.neo4j_repos.relations import Subgraph, SubgraphNode
+    from app.db.graph_repos.relations import Subgraph, SubgraphNode
 
     async def _fake_load(session, *, user_id, project_id, entity_ids):
         return [_seed(project_id, f"e-{project_id}", "Alice")]

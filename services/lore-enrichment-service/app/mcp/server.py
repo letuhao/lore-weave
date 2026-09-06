@@ -32,6 +32,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from mcp.server.fastmcp import Context as MCPContext
+from pydantic import Field
 
 from loreweave_mcp import (
     ForbidExtra,
@@ -61,19 +62,57 @@ def _ctx(ctx: MCPContext) -> ToolContext:
 
 
 class _AutoEnrichArgs(ForbidExtra):
-    book_id: str
-    embedding_model_ref: str
-    generation_model_ref: str
-    technique: str = "retrieval"
-    max_gaps: int = 10
-    coverage_limit: int = 200
-    max_spend_tokens: float | None = None
-    eval_reserve_fraction: float = 0.15
-    top_k: int = 5
-    # Optional explicit gaps to enrich (the per-row "enrich →"); omit to auto-detect
-    # the top-N under-described entities. Each item: {canonical_name, target_ref?,
-    # entity_kind?, mention_count?, present_dimensions?}.
-    targets: list[dict[str, Any]] | None = None
+    """Every field carries a Field(description=...) on purpose.
+
+    These are the ONLY words a tool-calling model gets: a bare `title`/`type` pair tells it
+    nothing about what a technique is, what coverage_limit bounds, or what shape a `targets`
+    entry takes. The targets shape used to be documented in a source COMMENT here — accurate,
+    and invisible on the wire, which is the same discard this loop keeps finding between a
+    computed value and the caller.
+    """
+
+    book_id: str = Field(description="The book whose glossary entities to enrich.")
+    embedding_model_ref: str = Field(
+        description="provider-registry user_model UUID of an EMBEDDING model you own "
+                    "(retrieval grounds the draft in the book's own text)."
+    )
+    generation_model_ref: str = Field(
+        description="provider-registry user_model UUID of the LLM that drafts the enrichment."
+    )
+    technique: str = Field(
+        default="retrieval",
+        description="How to draft: 'retrieval' (default — grounded in the book's own text), "
+                    "'template', 'fabrication' (invents beyond the corpus), 'recook'. "
+                    "'compose_draft' is the draft-expansion input's technique and is rejected "
+                    "here.",
+    )
+    max_gaps: int = Field(
+        default=10, description="How many under-described entities to enrich in this job."
+    )
+    coverage_limit: int = Field(
+        default=200,
+        description="How many entities the gap DETECTION scans before ranking the top-N.",
+    )
+    max_spend_tokens: float | None = Field(
+        default=None,
+        description="Hard token ceiling for the whole job. Omit for the account default; the "
+                    "job stops rather than exceeding it.",
+    )
+    eval_reserve_fraction: float = Field(
+        default=0.15,
+        description="Fraction of max_spend_tokens held back for evaluating the drafts "
+                    "(0.15 = 15%).",
+    )
+    top_k: int = Field(
+        default=5, description="Passages retrieved per entity to ground its draft."
+    )
+    targets: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Optional explicit gaps to enrich (the per-row 'enrich →'); omit to "
+                    "auto-detect the top-N under-described entities. Each item: "
+                    "{canonical_name, target_ref?, entity_kind?, mention_count?, "
+                    "present_dimensions?}.",
+    )
 
 
 @mcp_server.tool(

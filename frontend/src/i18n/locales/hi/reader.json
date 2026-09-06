@@ -43,8 +43,8 @@
         "desc": "गर्म कागज़ जैसा रंग"
       },
       "oled": {
-        "name": "OLED",
-        "desc": "OLED स्क्रीन के लिए असली काला"
+        "desc": "OLED स्क्रीन के लिए असली काला",
+        "name": "OLED"
       },
       "parchment": {
         "name": "पर्चमेंट",
@@ -69,9 +69,9 @@
   "tts": {
     "source": {
       "attached": "संलग्न",
-      "ai": "AI TTS",
       "browser": "ब्राउज़र",
-      "inline": "ऑडियो"
+      "inline": "ऑडियो",
+      "ai": "AI TTS"
     },
     "prev_block": "पिछला ब्लॉक (Shift+Left)",
     "play": "प्ले (Space)",
@@ -105,10 +105,10 @@
   "audio": {
     "source": {
       "attached": "संलग्न",
-      "ai": "AI TTS",
       "browser": "ब्राउज़र",
       "inline": "ऑडियो ब्लॉक",
-      "none": "कोई नहीं"
+      "none": "कोई नहीं",
+      "ai": "AI TTS"
     },
     "coverage": "ऑडियो कवरेज",
     "summary": "{{speakable}} बोलने योग्य ब्लॉक · {{missing}} ब्राउज़र TTS का उपयोग करके",

@@ -241,3 +241,80 @@ func TestSyncTool_NonGranteeDenied(t *testing.T) {
 		t.Error("non-grantee sync_apply must be denied")
 	}
 }
+
+// 🔴 MINT-TIME VALIDATION STOPPED AT THE SHAPE OF AN ID, so a Tier-W card could be minted for
+// rows that are not available updates at all. Measured 2026-08-24 over MCP against the deployed
+// tool: an id that exists nowhere, a book with ZERO available updates, and book A's row applied
+// against book B ALL minted a card. Each row on that card decides whether the author's own value
+// is overwritten, so this is approve-then-fail on a destructive write.
+//
+// The control arm matters as much as the three refusals: a row that IS available must still mint,
+// or the check has simply broken the tool.
+func TestSyncTool_ApplyRejectsRowsThatAreNotAvailableUpdates(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	a := newActionFixture(t, pool)
+	b := newActionFixture(t, pool)
+	octxA := ctxWithUser(a.ownerID)
+	octxB := ctxWithUser(b.ownerID)
+
+	// A divergence, scoped to book A's OWN adopted rows: source_hash is the book's record of
+	// what it adopted, so staling it makes the upstream row differ without touching any shared
+	// standard. This is the same per-book seed the toolloop fixture uses.
+	stale := func(bookID uuid.UUID) {
+		t.Helper()
+		if _, err := pool.Exec(ctx,
+			`UPDATE book_kinds SET source_hash='STALE-TEST-HASH'
+			   WHERE book_id=$1 AND source_ref IS NOT NULL`, bookID); err != nil {
+			t.Fatalf("seed divergence: %v", err)
+		}
+	}
+	stale(a.bookID)
+
+	avail, err := a.srv.syncKindsAvailable(ctx, a.bookID, a.ownerID)
+	if err != nil {
+		t.Fatalf("available: %v", err)
+	}
+	if len(avail) == 0 {
+		t.Fatal("the fixture has no available update, so this test would prove nothing")
+	}
+	realRow := avail[0].ID
+
+	item := func(id string) []syncApplyItemToolIn {
+		return []syncApplyItemToolIn{{Entity: "kind", ID: id, Choice: "take_theirs"}}
+	}
+
+	// 🔴 ASSERT THE REASON, NOT MERELY THAT IT FAILED. With the check disabled this assertion
+	// still passed — something else in the mint path refuses an unknown id on a book that HAS
+	// updates — so "err != nil" would have credited this check with a refusal it did not make.
+	// The message is what distinguishes them.
+	_, _, err = a.srv.toolBookSyncApply(octxA, nil,
+		syncApplyToolIn{BookID: a.bookID.String(), Items: item(uuid.NewString())})
+	if err == nil {
+		t.Error("an id that is not an available update must be rejected at mint")
+	} else if !strings.Contains(err.Error(), "not an available update") {
+		t.Errorf("rejected for the wrong reason (this check did not fire): %v", err)
+	}
+
+	// Book B is UP TO DATE — nothing is available, so nothing may be proposed for it.
+	if _, _, err := b.srv.toolBookSyncApply(octxB, nil,
+		syncApplyToolIn{BookID: b.bookID.String(), Items: item(uuid.NewString())}); err == nil {
+		t.Error("a book with zero available updates must be rejected at mint, not carded")
+	}
+
+	// Book A's REAL row, offered against book B: well-formed, live, and not book B's business.
+	if _, _, err := b.srv.toolBookSyncApply(octxB, nil,
+		syncApplyToolIn{BookID: b.bookID.String(), Items: item(realRow)}); err == nil {
+		t.Error("another book's sync row must be rejected at mint")
+	}
+
+	// 🔴 THE CONTROL RUNS LAST, AND THE ORDER IS LOAD-BEARING. sync_apply is single-use, so a
+	// card minted for the control changes what a LATER mint on the same book does — with the
+	// control first and the guard disabled, the unknown-id assertion passed because the second
+	// mint failed for an unrelated reason, crediting this check with a refusal it never made.
+	// Refusals first, against untouched state; the control after them.
+	if _, _, err := a.srv.toolBookSyncApply(octxA, nil,
+		syncApplyToolIn{BookID: a.bookID.String(), Items: item(realRow)}); err != nil {
+		t.Fatalf("a genuinely available row must still mint a card: %v", err)
+	}
+}

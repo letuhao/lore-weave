@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.neo4j_repos.passages import (
+from app.db.graph_repos.passages import (
     KNOWN_SOURCE_TYPES,
     count_passages_by_source_type,
 )
@@ -30,7 +30,7 @@ def _make_result_stub(records: list[dict] | None = None):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.passages.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.passages.run_read", new_callable=AsyncMock)
 async def test_count_pads_missing_keys_to_zero(mock_run_read):
     """Neo4j returns only the keys that exist; helper MUST pad the
     rest with 0 so the FE pill row stays layout-stable."""
@@ -50,7 +50,7 @@ async def test_count_pads_missing_keys_to_zero(mock_run_read):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.passages.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.passages.run_read", new_callable=AsyncMock)
 async def test_count_drops_unknown_source_type_with_warning(
     mock_run_read, caplog,
 ):
@@ -64,7 +64,7 @@ async def test_count_drops_unknown_source_type_with_warning(
             {"source_type": "lore_doc", "n": 5},  # ← drift
         ],
     )
-    with caplog.at_level(logging.WARNING, logger="app.db.neo4j_repos.passages"):
+    with caplog.at_level(logging.WARNING, logger="app.db.graph_repos.passages"):
         counts = await count_passages_by_source_type(
             session=MagicMock(),
             user_id="u-1",
@@ -80,7 +80,7 @@ async def test_count_drops_unknown_source_type_with_warning(
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.passages.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.passages.run_read", new_callable=AsyncMock)
 async def test_count_empty_result_returns_all_zeros(mock_run_read):
     """Newly-created project with no passages yet → every key at 0."""
     mock_run_read.return_value = _make_result_stub(records=[])
@@ -93,7 +93,7 @@ async def test_count_empty_result_returns_all_zeros(mock_run_read):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.passages.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.passages.run_read", new_callable=AsyncMock)
 async def test_count_forwards_embedding_model_to_cypher(mock_run_read):
     """Router passes project.embedding_model so counts reflect what
     the vector search can actually reach. Regression lock: dropping

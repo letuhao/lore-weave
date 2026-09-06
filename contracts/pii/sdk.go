@@ -34,12 +34,39 @@ const (
 	// this tag without an explicit Bulk SDK method (NOT shipped this
 	// cycle — admin-cli will add the bulk surface separately).
 	TagBulkPIIRead SensitiveReadTag = "bulk_pii_read"
+
+	// TagActorBindingCrossUser — reading `actor_control_binding` by ACTOR
+	// rather than by user, i.e. "who drives this actor". Registered in
+	// meta-sensitive-read-paths.yml since 035 renamed it off
+	// `player_index_cross_user`, with NO constant here until 2026-08-14 —
+	// so the audited path was unreachable for this table and the first
+	// cross-user reader bypassed the discipline by default rather than by
+	// choice. An owner-scoped read (`WHERE user_ref_id = $caller`) is NOT
+	// this tag; the yml's own description is the `!=` case.
+	TagActorBindingCrossUser SensitiveReadTag = "actor_binding_cross_user"
 )
 
-// IsValid is the SDK-side guard. Mirrors the cycle-3 yml `paths` keys.
+// IsValid is the SDK-side guard. A strict SUBSET of the cycle-3 yml `paths`
+// keys — four of seven — and the three with no constant are declared in
+// `ymlPathsWithNoGoCaller` beside the mirror test, each with the reason no Go
+// caller writes that row yet.
+//
+// It used to say *"Mirrors the cycle-3 yml `paths` keys"*, which was false in
+// both directions: three yml paths had no constant, and one CONSTANT was
+// missing from this switch.
+//
+// ⚠️ `TagActorBindingCrossUser` was declared above on 2026-08-14 and not added
+// here, so for a week the only way to use the registered name was to fail
+// validation. Measured 2026-08-21 by finally wiring the auditor that calls it:
+// every audited cross-user read of `actor_control_binding` came back
+// `invalid query_type "actor_binding_cross_user"`, the row was dropped, and
+// `meta_read_audit` held ZERO rows since `014` created it. Four layers of one
+// discipline — the migration that declared it, the yml that registered it, the
+// constant that named it, the interface that guarded it — with an empty table
+// underneath, because the one thing nobody had done was CALL it.
 func (t SensitiveReadTag) IsValid() bool {
 	switch t {
-	case TagPIIUserGet, TagPIIUserErase, TagBulkPIIRead:
+	case TagPIIUserGet, TagPIIUserErase, TagBulkPIIRead, TagActorBindingCrossUser:
 		return true
 	}
 	return false

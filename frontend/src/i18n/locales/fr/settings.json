@@ -482,7 +482,8 @@
       "adding": "Ajout en cours...",
       "submit": "Ajouter le modèle",
       "pricing_summary": "Coût : entrée ${{input}}/1M · sortie ${{output}}/1M",
-      "pricing_missing": "Le fournisseur ne publie pas de tarifs — ajoutez-les manuellement une fois le modèle enregistré."
+      "pricing_missing": "Le fournisseur ne publie pas de tarifs — ajoutez-les manuellement une fois le modèle enregistré.",
+      "context_too_small": "Trop petit pour discuter : les seuls outils de l'assistant demandent environ {{floor}} tokens avant même votre livre, la discussion échouera donc d'emblée. Utilisez une fenêtre plus grande, ou réservez ce modèle à d'autres tâches."
     },
     "edit": {
       "aria": "Modifier le modèle",
@@ -554,7 +555,9 @@
     "plannerHint": "Le modèle de chat utilisé par l'assistant de glossaire pour élaborer des plans multi-étapes. Choisissez un modèle puissant et capable d'utiliser des outils — sinon, la planification basculera sur un modèle de chat arbitraire et échouera souvent.",
     "none": "Aucun",
     "empty": "Aucun modèle compatible configuré.",
-    "saved": "Par défaut mis à jour"
+    "saved": "Par défaut mis à jour",
+    "composer": "Compositeur par défaut",
+    "composerHint": "Le modèle qui rédige votre prose lorsqu'un livre n'a pas de modèle propre. Définissez-le avec soin — la génération est l'opération la plus coûteuse ici, et rien ne consommera votre crédit de modèle de chat à votre place."
   },
   "external_services": {
     "delete_blocked": "Ce service ne peut pas être supprimé : son modèle est utilisé par {{count}} tâche(s) active(s). Arrêtez-les d'abord.",

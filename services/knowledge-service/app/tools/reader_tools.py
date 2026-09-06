@@ -28,16 +28,17 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.clients.glossary_client import (
+    KNOWN_ENTITIES_MAX_PAGE,
     GlossaryAnchorMalformed,
     GlossaryAnchorUnavailable,
     get_glossary_client,
 )
 from app.clients.grant_client import GrantLevel
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import resolve_kg_entity_id_by_glossary_id
-from app.db.neo4j_repos.entity_status import statuses_detail_at_order
-from app.db.neo4j_repos.events import list_events_filtered
-from app.db.neo4j_repos.facts import list_facts_for_entity
+from app.db.graph import graph_session
+from app.db.graph_repos.entities import resolve_kg_entity_id_by_glossary_id
+from app.db.graph_repos.entity_status import statuses_detail_at_order
+from app.db.graph_repos.events import list_events_filtered
+from app.db.graph_repos.facts import list_facts_for_entity
 from app.search.retriever import run_hybrid_search
 from app.spoiler_window import resolve_before_order, resolve_before_sort_order
 from app.tools.argbase import ProjectScopedArgs
@@ -113,6 +114,15 @@ async def _windowed_canon(scope: _ReaderScope, *, kind: str | None, limit: int) 
     Glossary outage degrades to [] — never leak, never raise."""
     if scope.book_id is None or scope.before_sort_order < 0:
         return []
+    # The `kind` filter runs HERE, in Python, because known-entities has no kind parameter
+    # (alive / min_frequency / before_chapter_index / recency_window / limit / offset only).
+    # So fetching `limit` rows and filtering them would filter an arbitrary PREFIX of the
+    # window, not the window. Measured on a reader pinned at chapter 5 of the Fengshen book:
+    # the window holds 101 entities — 24 characters and 12 locations — and asking for
+    # kind='character' with limit=50 returned 15, kind='location' returned 3. The caller asked
+    # for 50 and got 15, so nothing looked capped: a silent under-count indistinguishable from
+    # "that is all there is". Fetch the whole window when filtering, then truncate.
+    fetch_limit = KNOWN_ENTITIES_MAX_PAGE if kind else limit
     try:
         rows = await get_glossary_client().list_known_entities_for_chapter(
             scope.book_id,
@@ -124,7 +134,7 @@ async def _windowed_canon(scope: _ReaderScope, *, kind: str | None, limit: int) 
             # before_chapter_index spoiler cutoff.
             recency_window=0,
             min_frequency=1,
-            limit=limit,
+            limit=fetch_limit,
         )
     except (GlossaryAnchorUnavailable, GlossaryAnchorMalformed) as exc:
         logger.warning("reader canon window unavailable (degrading to empty): %s", exc)
@@ -138,6 +148,9 @@ async def _windowed_canon(scope: _ReaderScope, *, kind: str | None, limit: int) 
             r for r in rows
             if str(r.get("kind_code") or r.get("kind") or "").lower() == want
         ]
+        # Truncate AFTER filtering, so `limit` bounds what the caller receives rather than
+        # what we happened to fetch.
+        rows = rows[:limit]
     return rows
 
 
@@ -217,7 +230,7 @@ class LoreEntityArgs(ProjectScopedArgs):
 
 async def _handle_lore_entity(ctx: "ToolContext", args: LoreEntityArgs) -> dict:
     scope = await _resolve_reader(ctx)
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # The reader holds a GLOSSARY entity id (from the canon cast). Resolve it to
         # the anchored KG :Entity.id — SCOPED to the reader's project — before reading
         # KG facts/status. This (a) fixes the glossary-id≠KG-id mismatch that made
@@ -275,7 +288,7 @@ async def _handle_lore_timeline(ctx: "ToolContext", args: LoreTimelineArgs) -> d
     # rather than relying on the repo's before_order=-1 semantics to return nothing.
     if scope.before_order < 0:
         return {"events": [], "total": 0, "window_available": scope.position_pinned}
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         events, total = await list_events_filtered(
             session, user_id=str(scope.owner), project_id=scope.project_id,
             after_order=None, before_order=scope.before_order,

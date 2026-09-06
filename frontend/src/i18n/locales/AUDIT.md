@@ -6,39 +6,124 @@ both present and non-empty.
 
 | locale | keys | missing | echoed |
 |---|---:|---:|---:|
-| vi | 7319 | 0 | 0 |
-| ja | 7319 | 0 | 0 |
-| ko | 7319 | 0 | 0 |
-| zh-CN | 7319 | 0 | 0 |
-| zh-TW | 7319 | 0 | 0 |
-| es | 7319 | 0 | 1 |
-| pt-BR | 7319 | 0 | 1 |
-| fr | 7319 | 0 | 0 |
-| de | 7319 | 0 | 2 |
-| ru | 7319 | 0 | 0 |
-| id | 7319 | 0 | 2 |
-| ms | 7319 | 0 | 1 |
-| tr | 7319 | 0 | 0 |
-| ar | 7319 | 0 | 0 |
-| hi | 7319 | 0 | 0 |
-| bn | 7319 | 0 | 0 |
-| th | 7319 | 0 | 0 |
+| vi | 945 | 7 | 0 |
+| ja | 945 | 7 | 4 |
+| ko | 945 | 7 | 4 |
+| zh-CN | 945 | 7 | 3 |
+| zh-TW | 945 | 7 | 3 |
+| es | 945 | 7 | 0 |
+| pt-BR | 945 | 7 | 0 |
+| fr | 945 | 7 | 0 |
+| de | 945 | 7 | 1 |
+| ru | 945 | 7 | 3 |
+| id | 945 | 7 | 0 |
+| ms | 945 | 7 | 0 |
+| tr | 945 | 7 | 0 |
+| ar | 945 | 7 | 2 |
+| hi | 945 | 7 | 4 |
+| bn | 945 | 7 | 4 |
+| th | 945 | 7 | 5 |
 
-**12/17 locales clean.**
+**0/17 locales clean.**
+
+### vi
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### ja
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `ECHOED` settings.model_modal.add.ctx
+  - `ECHOED` settings.model_modal.edit.verify_ok
+  - `ECHOED` settings.providers.add_dialog.api_key_ph
+  - `ECHOED` settings.providers.edit_dialog.api_key_ph
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### ko
+  - `ECHOED` chat.context_panel.tok
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `ECHOED` settings.model_modal.add.ctx
+  - `ECHOED` settings.providers.add_dialog.api_key_ph
+  - `ECHOED` settings.providers.edit_dialog.api_key_ph
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### zh-CN
+  - `ECHOED` chat.context_panel.tok
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `ECHOED` settings.providers.add_dialog.api_key_ph
+  - `ECHOED` settings.providers.edit_dialog.api_key_ph
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### zh-TW
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `ECHOED` settings.model_modal.add.ctx
+  - `ECHOED` settings.providers.add_dialog.api_key_ph
+  - `ECHOED` settings.providers.edit_dialog.api_key_ph
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
 
 ### es
-  - `ECHOED` kgOntology.schema.temporalField
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
 
 ### pt-BR
-  - `ECHOED` kgOntology.schema.temporalField
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### fr
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
 
 ### de
-  - `ECHOED` campaigns.review.tokens
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
   - `ECHOED` settings.model_modal.edit.pricing_suggestion_found
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### ru
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `ECHOED` settings.model_modal.add.ctx
+  - `ECHOED` settings.providers.add_dialog.api_key_ph
+  - `ECHOED` settings.providers.edit_dialog.api_key_ph
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
 
 ### id
-  - `ECHOED` common.voice.ttsSection
-  - `ECHOED` kgOntology.schema.temporalField
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
 
 ### ms
-  - `ECHOED` kgOntology.schema.temporalField
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### tr
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### ar
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `ECHOED` settings.providers.add_dialog.api_key_ph
+  - `ECHOED` settings.providers.edit_dialog.api_key_ph
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### hi
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `ECHOED` settings.model_modal.add.ctx
+  - `ECHOED` settings.providers.add_dialog.api_key_ph
+  - `ECHOED` settings.providers.edit_dialog.api_key_ph
+  - `ECHOED` settings.providers.toast.verify_ok
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### bn
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `ECHOED` settings.model_modal.add.ctx
+  - `ECHOED` settings.providers.add_dialog.api_key_ph
+  - `ECHOED` settings.providers.edit_dialog.api_key_ph
+  - `ECHOED` settings.providers.toast.verify_ok
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+
+### th
+  - `ECHOED` chat.inspector.title
+  - `MISSING` chat: 5 (e.g. ['disambiguation.cancel', 'disambiguation.empty', 'disambiguation.label'])
+  - `ECHOED` settings.model_modal.add.ctx
+  - `ECHOED` settings.providers.add_dialog.api_key_ph
+  - `ECHOED` settings.providers.edit_dialog.api_key_ph
+  - `ECHOED` settings.services.add_dialog.key_ph
+  - `MISSING` settings: 2 (e.g. ['defaultModels.composer', 'defaultModels.composerHint'])
+

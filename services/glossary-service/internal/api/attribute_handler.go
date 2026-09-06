@@ -244,7 +244,7 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 				"attr_value_id", attrValueID.String(), "error", err.Error())
 		}
 		if attrCode == "description" {
-			if err := s.regenerateAutoShortDescription(ctx, tx, entityID); err != nil {
+			if _, err := s.regenerateAutoShortDescription(ctx, tx, entityID); err != nil {
 				slog.Warn("regenerate short_description failed",
 					"entity_id", entityID.String(), "error", err.Error())
 			}
@@ -317,7 +317,12 @@ type pgxExecQuerier interface {
 // summary in sync. `q` is the pool (post-commit callers) or the open tx
 // (patchAttributeValue, so the regenerated summary lands in the SAME tx as the
 // edit and is captured by the entity_updated before/after snapshot).
-func (s *Server) regenerateAutoShortDescription(ctx context.Context, q pgxExecQuerier, entityID uuid.UUID) error {
+// Returns whether the summary ACTUALLY changed, which the POST-COMMIT callers need and the
+// in-tx ones can ignore (plan T29). `short_description` is a consumer-mirrored column — it is
+// the one field the composition packer reads for a cast bio — so a caller that rewrites it
+// after its `entity_updated` has already been emitted leaves the mirror holding a stale
+// summary with no event that would ever correct it. Two callers did exactly that.
+func (s *Server) regenerateAutoShortDescription(ctx context.Context, q pgxExecQuerier, entityID uuid.UUID) (bool, error) {
 	var (
 		name     string
 		desc     string
@@ -355,14 +360,14 @@ func (s *Server) regenerateAutoShortDescription(ctx context.Context, q pgxExecQu
 		WHERE e.entity_id = $1`, entityID,
 	).Scan(&name, &desc, &kindName, &auto)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !auto {
-		return nil
+		return false, nil
 	}
 	sd := shortdesc.Generate(name, desc, kindName, shortdesc.DefaultMaxChars)
 	if sd == "" {
-		return nil
+		return false, nil
 	}
 	// Guard with short_description_auto so a race with a user PATCH can't
 	// clobber a just-set manual value. T2-close-7 / P-K2a-02 also adds
@@ -373,14 +378,20 @@ func (s *Server) regenerateAutoShortDescription(ctx context.Context, q pgxExecQu
 	// on top of the eav-trigger's one. Reduces the common description-PATCH
 	// path from 3 recalcs down to 1 (when short_description is unchanged)
 	// or 2 (when it legitimately changed).
-	_, err = q.Exec(ctx, `
+	// `IS DISTINCT FROM` already makes this a no-op when nothing moved, so RowsAffected is
+	// exactly the "did the mirror go stale" signal — no extra read, and it cannot disagree
+	// with the write it reports on.
+	tag, err := q.Exec(ctx, `
 		UPDATE glossary_entities
 		SET short_description = $1
 		WHERE entity_id = $2
 		  AND short_description_auto = true
 		  AND short_description IS DISTINCT FROM $1`,
 		sd, entityID)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // ── POST /v1/glossary/books/{book_id}/entities/{entity_id}/attributes/{attr_value_id}/translations

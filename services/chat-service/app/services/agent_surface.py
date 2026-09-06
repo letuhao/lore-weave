@@ -16,7 +16,7 @@ from typing import Any, Iterable
 
 from app.db.conversation_search import CONVERSATION_SEARCH_NAME
 from app.db.session_search import CHAT_SEARCH_SESSIONS_NAME
-from app.services.frontend_tools import is_browser_executed
+from app.services.browser_tools import is_browser_executed
 from app.services.tool_discovery import FIND_TOOLS_NAME
 
 

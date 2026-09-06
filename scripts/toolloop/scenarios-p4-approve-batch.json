@@ -1,0 +1,270 @@
+{
+  "_note": "P4's single-turn finding, applied to the five remaining PREREQUISITE-CARD tools. The ONLY changed fields are `approve` and `max_approvals`; prompts, seeds and falsifiers are carried over UNEDITED, because a re-run must measure the same request the original conclusion was drawn from.\n\nProven on kg_propose_edge first: it read called 0/5 for the whole loop because every scenario was approve=None and single-turn, so the turn ended at the PREREQUISITE's card and the tool was unreachable by construction. With the card approved it went 0/5 -> 5/5 called and 5/5 landed, and is now proven through every gate bar.\n\nWHAT WOULD REFUTE THIS: a tool still called 0/5 with its prerequisite approved. Then its block is NOT the approval gate and the P4 reading is wrong for that tool — recorded per tool, not explained away.",
+  "scenarios": [
+    {
+      "id": "composition-entity-override-edit",
+      "tool_under_test": "composition_entity_override_edit",
+      "expect_tool": "composition_entity_override_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Override entity field — in this book Aldric Vane should be a cartographer, not a soldier.",
+      "prompt_source": "meta.synonyms['override entity field'] + ['add entity override'], verbatim, plus the entity's name so the target is unambiguous.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist — the tool takes a target_entity_id and the model has to resolve the NAME to it, which is the step that has failed repeatedly in this loop."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM entity_override WHERE project_id='{project_id}'",
+          "expect": "0",
+          "why": "ZERO overrides before, so any override is attributable to this turn — and, the card never being approved, the count must still be 0 afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: an override lands with NO confirm card (Tier A), OR the model invents a target_entity_id rather than resolving 'Aldric Vane', OR the op chosen is not `add` when the entity has no override yet — its enum spans add|update|delete|restore, and `delete` on a request to ADD a field change would be the worst outcome. Store check: entity_override stays 0.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a target_entity_id or override_id that does not exist must be refused.",
+        "idempotency": "OWED — deleting an already-deleted override must refuse, not report a second success. Checked deliberately: that is the exact shape of the arc_template archive defect found in batch 15.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "max_approvals": 6,
+      "_carried_from": "scenarios-batch18.json"
+    },
+    {
+      "id": "composition-glossary-build",
+      "tool_under_test": "composition_build_cast_and_graph",
+      "expect_tool": "composition_build_cast_and_graph",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Build the knowledge graph for this book — extract the cast from my story.",
+      "prompt_source": "meta.synonyms['build the knowledge graph'] + ['extract the cast from my story'], verbatim.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "ZERO entities before. This tool runs a WHOLE PIPELINE (plan a worklist, build it, project a knowledge graph) and spends on every stage, so the card is never approved and the glossary must be untouched afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: entities are created with NO confirm card, OR the op chosen is not `start` on a first request — its enum spans start|approve_plan|status|project_kg|approve_edges|cancel, and `approve_plan` or `approve_edges` would be approving a plan the author has never seen, which is the worst outcome for a tool whose whole design is a human checkpoint between stages — OR the model invents a run_id for a run that has not started. CONTROL: a fresh book has no story text beyond one seeded chapter, so a build with nothing to extract from is itself worth seeing.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, multi-stage, and it spends at every stage.",
+        "absent_case": "OWED — op=status/approve_plan with a run_id that does not exist must be refused.",
+        "idempotency": "OWED — op=start twice must not launch two runs for the same book.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "max_approvals": 6,
+      "_carried_from": "scenarios-batch18.json"
+    },
+    {
+      "id": "glossary-create-chapter-link",
+      "tool_under_test": "glossary_create_chapter_link",
+      "expect_tool": "glossary_create_chapter_link",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Aldric Vane appears in this chapter — mark where he shows up.",
+      "prompt_source": "_meta.synonyms['this character appears in this chapter'] + ['mark where this character shows up'].",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist; the tool takes an entity_id and the model has to resolve the NAME to it."
+        },
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM chapter_entity_links WHERE entity_id IN (SELECT entity_id FROM glossary_entities WHERE book_id='{book_id}')",
+          "expect": "0",
+          "why": "ZERO links before, so any link is attributable to this turn — and, since the card is never approved, the count must still be 0 afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: the link lands with NO confirm card (Tier A), OR the model invents an entity_id or chapter_id rather than resolving them, OR it links to a chapter that is not the one open in the editor. The store check is glossary_chapter_links: unchanged, because the card is never approved.",
+      "ship_audit": {
+        "absent_case": "EXERCISED by direct probe (MCPDirect, 2026-08-23): an absent entity_id is refused, 'entity not found in this book'. NOTE the first probe did NOT reach this case — I guessed relevance='primary' and the enum refusal (major|appears|mentioned) arrived before the entity was ever looked at. A refusal that lands before the boundary is not that boundary.",
+        "tenancy": "EXERCISED by direct probe: a book_id the caller cannot access is refused, 'book not accessible' — a DIFFERENT message from the absent case, so the two are distinguishable and the tenancy check runs before the entity lookup.",
+        "empty_case": "EXERCISED by direct probe: an empty entity_id is refused by NAME — 'entity_id must be a UUID'.",
+        "idempotency": "EXERCISED and STRICTLY IDEMPOTENT (docs/eval/toolloop/2026-08-14/p4-chapterlink-idem.json), measured from the STORE rather than from the tool's replies: the first call wrote exactly one chapter_entity_links row, the second was refused ('entity is already linked to this chapter') and its store diff is EMPTY. It does not double the link.",
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/p4-batch.json): this is a class-W tool — 'additive, takes effect immediately; Edit' — so it mints no confirm card BY DESIGN and its gate is the Edit permission plus the book guard. The tenancy probe is that gate firing: a book outside the caller's reach is refused before anything is written. Recorded as what it IS rather than forced into the card-shaped case, which this tool does not have."
+      },
+      "defects": [],
+      "max_approvals": 6,
+      "_carried_from": "scenarios-batch12.json"
+    },
+    {
+      "id": "glossary-create-evidence",
+      "tool_under_test": "glossary_create_evidence",
+      "expect_tool": "glossary_create_evidence",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Back up Aldric Vane's role with a passage from the chapter — cite where it says he climbed the black stair.",
+      "prompt_source": "_meta.synonyms['back this up with a passage'] + ['cite where this is stated'].",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist. NOTE the deeper precondition this scenario is really testing: evidence attaches to an ATTRIBUTE VALUE (attr_value_id), not to the entity, so the model must first find or create an attribute value. If it cannot, that is a PRECONDITION-CHAIN finding like kg_propose_edge's, not a defect in this tool."
+        }
+      ],
+      "falsifier": "REFUTED IF: evidence lands with NO confirm card, OR the quoted original_text is not actually in the chapter (a fabricated citation is the worst outcome here), OR the model invents an attr_value_id. CONTROL: the fixture has no attribute values, so a turn that cannot proceed is the precondition chain, and that must be recorded as such rather than as a tool failure.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an attr_value_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "max_approvals": 6,
+      "_carried_from": "scenarios-batch12.json"
+    },
+    {
+      "id": "plan-bootstrap-apply",
+      "tool_under_test": "plan_bootstrap_apply",
+      "expect_tool": "plan_bootstrap_apply",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Create the chapters — make the plan real for this book.",
+      "prompt_source": "meta.synonyms['create the chapters'] + ['make the plan real'], verbatim.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "ONE chapter — the fixture's own — before anything is applied. This tool CREATES real book chapters from a previewed proposal, so the count moving is the whole signal. The card is never approved, so it must still be 1 afterwards. CONTROL: `proposal_id` comes from plan_bootstrap_propose, which has NOT been run here, so the honest outcome may be a refusal naming the missing proposal — a PRECONDITION finding rather than a tool defect."
+        }
+      ],
+      "falsifier": "REFUTED IF: chapters are created with NO confirm card (Tier A — this materialises real book content), OR the model invents a proposal_id, OR the reply claims chapters were created while the card is still pending. Store check: loreweave_book.chapters stays at 1.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and it creates real chapters.",
+        "absent_case": "OWED — a proposal_id that does not exist must be refused.",
+        "idempotency": "OWED — applying the same proposal twice must not create the chapters twice.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "max_approvals": 6,
+      "_carried_from": "scenarios-batch22.json"
+    }
+  ]
+}

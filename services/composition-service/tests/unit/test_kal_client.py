@@ -197,3 +197,77 @@ async def test_roster_strict_raises_on_incomplete_drain():
         assert await c.roster(BOOK, user_id=USER, strict=True) == []
     finally:
         await c.aclose()
+
+
+def _cast_url() -> str:
+    return f"{BASE}/v1/kal/books/{BOOK}/cast"
+
+
+@respx.mock
+async def test_cast_carries_ALIASES_which_is_the_whole_reason_it_is_not_roster():
+    """`roster` is deliberately projection-restricted to id+name+kind — the gateway says
+    widening it "would put aliases and descriptions on the enumeration path every indexing pass
+    walks". For `audit_names` that projection is not merely thin, it is WRONG: an alias-free
+    truth set reports every legitimate alias as an invented name, and `name_grounding` says
+    which error direction matters ("a name missing from `known` becomes a false accusation an
+    author reads"). So the name check reads `cast`, and this pins that it keeps the aliases.
+    """
+    e1 = str(uuid.uuid4())
+    respx.get(_cast_url()).mock(return_value=httpx.Response(200, json={
+        "items": [{"entity_id": e1, "name": "Aurelia", "aliases": ["The Grey Wren"],
+                   "kind": "character"}],
+        "next_cursor": None}))
+    c = _client()
+    try:
+        rows = await c.cast(BOOK, user_id=USER)
+    finally:
+        await c.aclose()
+    assert rows == [{"entity_id": e1, "name": "Aurelia",
+                     "aliases": ["The Grey Wren"], "kind": "character"}]
+
+
+@respx.mock
+async def test_cast_accepts_the_OTHER_alias_key_too():
+    """The LIST endpoint returns `aliases`; by-ids and select-for-context return
+    `cached_aliases`. Reading only one of them is how "36 entities, 0 with a surface form"
+    shipped once already — invisible to unit tests because the mock was written from the same
+    wrong assumption, and caught only by a live smoke. Both keys, so it cannot recur.
+    """
+    e1 = str(uuid.uuid4())
+    respx.get(_cast_url()).mock(return_value=httpx.Response(200, json={
+        "items": [{"entity_id": e1, "cached_name": "Halvard", "cached_aliases": ["Hal"]}],
+        "next_cursor": None}))
+    c = _client()
+    try:
+        rows = await c.cast(BOOK, user_id=USER)
+    finally:
+        await c.aclose()
+    assert rows[0]["name"] == "Halvard" and rows[0]["aliases"] == ["Hal"]
+
+
+@respx.mock
+async def test_cast_STRICT_raises_on_a_partial_drain_rather_than_returning_a_short_cast():
+    """A truncated cast does not merely miss names — every name in a dropped page becomes an
+    INVENTED name in the author's report. The name check must take the degrade path (fall back
+    to the proxy and say so) rather than accuse people, so it drains strict.
+    """
+    from app.clients.kal_client import RosterIncomplete
+    e1 = str(uuid.uuid4())
+    respx.get(_cast_url()).mock(side_effect=[
+        httpx.Response(200, json={"items": [{"entity_id": e1, "name": "Aurelia"}],
+                                  "next_cursor": "c1"}),
+        httpx.Response(503),
+    ])
+    c = _client()
+    try:
+        with pytest.raises(RosterIncomplete):
+            await c.cast(BOOK, user_id=USER, strict=True)
+        respx.get(_cast_url()).mock(side_effect=[
+            httpx.Response(200, json={"items": [{"entity_id": e1, "name": "Aurelia"}],
+                                      "next_cursor": "c1"}),
+            httpx.Response(503),
+        ])
+        assert len(await c.cast(BOOK, user_id=USER)) == 1, (
+            "non-strict must still degrade to the partial-so-far, like roster")
+    finally:
+        await c.aclose()

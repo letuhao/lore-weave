@@ -20,10 +20,8 @@ from uuid import UUID
 
 from app.clients.embedding_client import EmbeddingClient
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.passages import (
-    SUPPORTED_PASSAGE_DIMS,
-    find_passages_by_vector,
-)
+from app.ports.vector_store import VectorFilter
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 
 from .core import ScoredResult
 
@@ -71,6 +69,10 @@ class Mode3QueryRunner:
                 f"embedding_dim {embedding_dim} not in {SUPPORTED_PASSAGE_DIMS}"
             )
         self._session = session
+        # T17 A11 — resolved lazily in `_search`, not here: the provider is async (it may have
+        # to pick an adapter per scope) and a constructor cannot await. Holding the session too
+        # keeps the harness's other repo reads working unchanged.
+        self._vectors = None
         self._embedding_client = embedding_client
         self._user_id = user_id
         self._project_id = project_id
@@ -98,20 +100,35 @@ class Mode3QueryRunner:
         #    a longer list so MRR can still see hits at rank 4+ if
         #    the golden set has unusually noisy query → target
         #    mappings.
-        hits = await find_passages_by_vector(
-            self._session,
+        # T17 A11 — through `VectorStore`, not the Neo4j repo. This harness measures RETRIEVAL
+        # QUALITY (MRR over a golden set), which is a property of the corpus and the embedding,
+        # not of the store — so it must keep working when §3.1 finishes moving passages to
+        # Postgres. Its two sibling benchmarks stay on the repo deliberately: they measure the
+        # BACKEND (ANN recall, a per-engine corpus dump) and need `oversample_factor`, which the
+        # port refuses to expose because it is one engine's weakness.
+        if self._vectors is None:
+            from app.adapters.vector_store_provider import get_vector_store
+
+            self._vectors = await get_vector_store(self._session)
+        hits = await self._vectors.search(
+            scope="passage",
             user_id=self._user_id,
-            project_id=self._project_id,
-            query_vector=query_vector,
+            embedding=query_vector,
             dim=self._embedding_dim,
-            embedding_model=self._embedding_model,
-            limit=self._limit,
+            k=self._limit,
+            filter=VectorFilter(project_id=self._project_id,
+                                embedding_model=self._embedding_model),
         )
 
         # 3. Map passage.source_id (which we set to entity_id at
         #    fixture load time) back to a `ScoredResult`. `raw_score`
         #    is the Neo4j cosine, same shape `BenchmarkRunner` needs.
+        # A BRACKET, not `.get` — the A9 rule. `PgVectorStore` omits a key by design when it
+        # genuinely has no value, so a consumer that needs one must RAISE rather than silently
+        # score every hit against a missing id. `source_id` is in `_PASSAGE_ATTRS` on both real
+        # adapters and the fake; if that ever stops being true this harness must fail loudly,
+        # not report a quietly empty MRR.
         return [
-            ScoredResult(entity_id=h.passage.source_id, score=h.raw_score)
+            ScoredResult(entity_id=h.attributes["source_id"], score=h.score)
             for h in hits
         ]

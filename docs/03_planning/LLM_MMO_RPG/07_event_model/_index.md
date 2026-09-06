@@ -1,8 +1,34 @@
 # 07_event_model — Index
 
+<!-- design-lint: ok prefix EV — `EV-*` are the event-causality round's ids, owned by docs/specs/2026-08-02-event-causality.md (79 occurrences there). They are CITED here, not declared. Registering EV in this track's id catalog would claim ownership of another document's namespace, which is the opposite of what the catalog is for — same reasoning as the ML allowlist in SESSION_HANDOFF.md. -->
+
 > **Purpose:** Domain-shaped layer above the Data Plane. Owns event TAXONOMY, PRODUCER rules, VALIDATOR pipeline, per-category CONTRACTS, LIFECYCLE (proposal → validation → commit → fan-out), and SCHEMA VERSIONING. Sits on top of [`../06_data_plane/`](../06_data_plane/) (LOCKED) which owns transport (ordering, durability, fan-out, channel hierarchy).
 >
-> **Status:** **Phases 1-6 LOCKED 2026-04-25.** Foundation: **12 axioms** (EVT-A1..A12) + **6 active categories** (T1/T3/T4/T5/T6/T8) + EVT-P1..P11 (6 active) + EVT-V1..V7 + EVT-L1..L19 + EVT-S1..S6 + **EVT-G1..G6** (Phase 6 Generator Framework + Coordinator spec, late evening). 5 retired (T2/T7/T9/T10/T11 + matching P*) per I15. Closed-set proof holds under redesigned taxonomy. **All Phase deferrals + original-goal #4 (generate event theo điều kiện + xác suất) RESOLVED at systematic level.** Folder closed for design (re-opened briefly for Phase 6 fail-fast pass; closed again post-Phase-6).
+> **Status:** **Phases 1-6 LOCKED 2026-04-25.** Foundation: **12 axioms** (EVT-A1..A12) + **6 active categories** (T1/T3/T4/T5/T6/T8) + EVT-P1..P11 (6 active) + EVT-V1..V7 + EVT-L1..L19 + EVT-S1..S6 + **EVT-G1..G6** (Phase 6 Generator Framework + Coordinator spec, late evening). 5 retired (T2/T7/T9/T10/T11 + matching P*) per I15. Closed-set proof holds under redesigned taxonomy. All Phase deferrals + original goal #4 (generate an event by condition + probability) resolved **at the systematic level** — i.e. **designed, not verified**.
+
+> ## 🔴 REOPENED 2026-08-02 — rot sweep, 31 findings
+>
+> This folder previously said *"folder closed for design"* and *"all Phase deferrals RESOLVED"*. That was
+> **closure on twelve unbuilt mechanisms and a circular SSOT**, and the distinction between *designed* and
+> *verified* was never drawn. A sweep against three months of shipped code and against the
+> 2026-08-02 decisions `D-1..D-109` found **31 rot rows** — 12 contradicted by shipped code, 10 by those
+> decisions, 9 self-contradictions.
+>
+> **The full ledger, with `file:line` + cause + action for every row, is §7 of
+> [`docs/specs/2026-08-02-event-causality.md`](../../../specs/2026-08-02-event-causality.md); §8 of the
+> same document names the 15 items that SURVIVE and must not be re-decided.** Corrections are being
+> applied in place in this folder, each tagged with its rot id.
+>
+> The four sharpest, so a reader of this index is not misled before reaching them:
+> - **`E-1`** — the runtime category check was **built and then removed as a security defect**; the trust
+>   class is a property of the **producer**, never carried by the message.
+> - **`E-2`** — **eight of the twelve specified envelope fields do not exist**, and the shipped envelope
+>   carries one (`ruleset_digest`) this folder never mentions.
+> - **`E-23`** — the validator ordering has **no owner**: this folder and `_boundaries/03` each name the
+>   other as authoritative. A circular SSOT deadlock, three months old, with the T1 chain consequently
+>   stated **four times in four different orders** (`E-24`).
+> - **`E-31`/`EV-2`** — the closed-set proof is **stale**, and `StatusProposed` is a live counterexample.
+>   `EVT-T*` discriminates on *origination*; a world occurrence is *subject-side* and has no home here.
 >
 > **Relationship to DP:** DP is "TCP/IP for game state". Event Model is "HTTP semantic for game state". DP guarantees a totally-ordered durable event stream per channel; Event Model defines what TYPES of events exist, who produces them, how they're validated, and how their schemas evolve.
 
@@ -33,7 +59,7 @@ Without this folder, every feature has to relitigate event semantics. With it, f
 1. [`00_AGENT_BRIEF.md`](00_AGENT_BRIEF.md) — work commission (read FIRST to understand scope of the agent's work and its boundaries)
 2. [`00_preamble.md`](00_preamble.md) — context, relation to DP / 05_llm_safety / 03_multiverse / 02_storage
 3. [`01_scope_and_boundary.md`](01_scope_and_boundary.md) — IN/OUT scope (S1-S10 / O1-O9) + drift watchpoints
-4. [`02_invariants.md`](02_invariants.md) — **EVT-A1..A8** axioms (closed-set, layered above DP, validated commits, producer binding, fixed validator order, typed causal-refs, LLM proposal pre-validation, flavor narration is non-canonical)
+4. [`02_invariants.md`](02_invariants.md) — **EVT-A1..A12** axioms (closed-set, layered above DP, validated commits, producer binding, fixed validator order, typed causal-refs, untrusted-origin pre-validation, non-canonical regenerable content, probabilistic-generation determinism, event as SSOT, sub-type ownership, extensibility) — ⚠️ **corrected 2026-08-02 (rot `E-26`)**: this line said *"A1..A8"* and described A8 as *"flavor narration"*, both of which the Option C redesign superseded in this same folder; the status table below has said A1..A12 since.
 5. [`03_event_taxonomy.md`](03_event_taxonomy.md) — **EVT-T1..T11** closed-set categories with closed-set proof + per-category lifecycle + DP commit primitive mapping
 6. [`99_open_questions.md`](99_open_questions.md) — EVT-Q1..Q10 deferred items + cross-folder pointers + MV12-D8..D11 candidate landing points
 

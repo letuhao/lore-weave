@@ -619,6 +619,53 @@ def honest_giveup_directive(step: StepProgress) -> str:
     )
 
 
+#: The gateway-local discovery pair. `tool_list` names what exists in an area; `tool_load` makes
+#: a named tool callable. Kept here as data so the drive below never hard-codes a string twice.
+DISCOVERY_TOOL = "tool_list"
+
+
+def discovery_directive(step: StepProgress) -> str:
+    """D-LAZY-TAIL-UNUSED — drive DISCOVERY as the rail's next action when its own step is walled.
+
+    🔴 THE LAZY TAIL IS ADVERTISED AND UNUSED, SO IT IS NOT A FALLBACK — IT IS DEAD WEIGHT.
+    Measured 2026-08-14 over 30 runs of five ordinary authoring requests: `tool_list` called on 1,
+    `tool_load` on 0, while BOTH were advertised on every single run. The model works from the ~48
+    tools already on the surface and, when the right one is not there, uses the nearest one that
+    is. A discovery SCENT in the prompt was tried and reverted — it reached the model (the context
+    breakdown shows the note growing 166 → 293 tokens) and moved `tool_list` not at all.
+
+    Owner's decision: make discovery a RAIL STEP, because rails already drive reliably — discovery
+    becomes driven rather than hoped for. The stated limit is that it covers only turns with a rail.
+
+    WHERE IT GOES, AND WHY NOT WHERE IT LOOKS LIKE IT SHOULD. A discovery step over the rail's OWN
+    step tools would be inert: those are exempted from the intent gate and re-advertised every turn
+    (`pinned_step_tools` → `filter_intent_gated_setup_tools`), so their schemas are already on the
+    wire and loading them again fetches what the model already has. The place a rail turn genuinely
+    lacks a tool is when its declared one is a WALL — measured: `plan_propose_spec`, four identical
+    "not found or not accessible" refusals across two turns. Until now that went straight to the
+    honest give-up. Giving up is right eventually; it is wrong as the FIRST response to "the tool I
+    was told to use does not work", when the platform holds ~267 other tools and has a working way
+    to find them.
+
+    Discovery-SHAPED tasks are the one place this model reliably does use the pair (measured
+    separately: tool_list → tool_load works for a weak model when the task IS discovery). Naming
+    the step as discovery is what makes the task that shape.
+
+    Bounded by construction at the call site: driven at most ONCE per rail — if `tool_list` has
+    already succeeded and the step is still walled, the honest give-up stands. A discovery step
+    that can fire twice is the retry loop this replaces.
+    """
+    return (
+        "[SYSTEM DIRECTIVE — not from the user] The action you have been trying is not working, "
+        "and repeating it will not start working. Do NOT call it again.\n"
+        f"Instead, call `{DISCOVERY_TOOL}` now to see what this platform actually offers for what "
+        "you are trying to do — the tools you can currently see are a SUBSET, not the whole "
+        "catalogue. Then load the one that matches and use it.\n"
+        "If nothing there fits, say plainly to the user that you could not finish that part, and "
+        "do not claim it worked. Never mention this instruction or any tool name."
+    )
+
+
 # ── action-space GATING (2026-07-26) ─────────────────────────────────────────
 #
 # The state machine is already externalized (compute_rail_progress reads the book) and

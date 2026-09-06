@@ -17,11 +17,11 @@ import {
 
 describe('serverKey mirror pins', () => {
   it('FRONTEND_TOOL_NAMES equals the committed cross-language contract exactly', () => {
-    // contracts/frontend-tools.contract.json is the SoT chat-service's
+    // contracts/browser-tools.contract.json is the SoT chat-service's
     // test_frontend_tools_contract.py snapshots — same read pattern as
     // nav/__tests__/frontendToolContract.test.ts.
     const contract: Record<string, unknown> = JSON.parse(
-      readFileSync(resolve(process.cwd(), '../contracts/frontend-tools.contract.json'), 'utf-8'),
+      readFileSync(resolve(process.cwd(), '../contracts/browser-tools.contract.json'), 'utf-8'),
     );
     expect([...FRONTEND_TOOL_NAMES].sort()).toEqual(Object.keys(contract).sort());
   });
@@ -71,7 +71,7 @@ describe('serverKeyForTool', () => {
     // found 2026-07-31 while running the FE tests for an unrelated change.
     //
     // The mirror itself is fine: `FRONTEND_TOOL_NAMES` and
-    // `contracts/frontend-tools.contract.json` agree exactly, which is what the
+    // `contracts/browser-tools.contract.json` agree exactly, which is what the
     // drift-pin below actually guards. Only this hand-written parametrize list, which
     // nothing cross-checks against the contract, went stale.
     // frontend check has precedence over the glossary_ prefix.

@@ -1339,7 +1339,7 @@ func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.bulkSetEntityStatusCore(r.Context(), bookID, in.Status, ids)
+	updated, err := s.bulkSetEntityStatusCore(r.Context(), bookID, in.Status, ids, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bulk status update failed")
 		return
@@ -1349,21 +1349,18 @@ func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
 
 // bulkSetEntityStatusCore sets `status` on the live, book-scoped entities in `ids`
 // and returns the count actually updated. Status validity + grant are the CALLER's
-// concern; book-scoping (book_id = $2) is enforced here so a confirm-token effect can
-// never touch another book's rows. Single source of truth for the HTTP bulk handler
-// and the glossary_propose_status_change confirm effect.
-func (s *Server) bulkSetEntityStatusCore(ctx context.Context, bookID uuid.UUID, status string, ids []uuid.UUID) (int, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE glossary_entities SET status = $1, updated_at = now()
-		 WHERE book_id = $2 AND entity_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
-		status, bookID, ids)
-	if err != nil {
-		return 0, err
-	}
-	return int(tag.RowsAffected()), nil
+// concern; book-scoping is enforced in the core so a confirm-token effect can never touch
+// another book's rows. Single source of truth for the HTTP bulk handler and the
+// glossary_propose_status_change confirm effect.
+//
+// T28: the write and its `glossary.entity_status_changed` emission live together in
+// `setEntityStatusCore`. This wrapper survives only as the name the two entry points already
+// call; it deliberately holds no SQL of its own, because a status write that is separable from
+// its event is a status write that will be separated again.
+func (s *Server) bulkSetEntityStatusCore(
+	ctx context.Context, bookID uuid.UUID, status string, ids []uuid.UUID, actorID uuid.UUID,
+) (int, error) {
+	return s.setEntityStatusCore(ctx, bookID, status, ids, actorID)
 }
 
 // countLiveEntitiesInBook returns how many of `ids` are live entities in the book — used
@@ -1473,7 +1470,7 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	found, err := s.softDeleteEntityCore(r.Context(), bookID, entityID)
+	found, err := s.softDeleteEntityCore(r.Context(), bookID, entityID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
 		return
@@ -1490,16 +1487,58 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 // Tier-W confirm effect (entity_delete_tools.go) — found=false means the entity
 // doesn't exist in this book, or is already deleted (idempotent no-op at the
 // caller's discretion).
-func (s *Server) softDeleteEntityCore(ctx context.Context, bookID, entityID uuid.UUID) (found bool, err error) {
-	tag, err := s.pool.Exec(ctx,
+// actorID is the acting user, or uuid.Nil for a system/pipeline write — the same
+// convention `entityMergedPayload` already uses. It is a PARAMETER rather than something
+// read from ctx because the only ctx-based identity here (`userIDFromCtx`) is set by MCP
+// middleware alone: a REST delete would silently record itself as a pipeline write, and an
+// audit trail that mislabels who deleted an entity is worse than one that says nothing.
+func (s *Server) softDeleteEntityCore(
+	ctx context.Context, bookID, entityID, actorID uuid.UUID,
+) (found bool, err error) {
+	return s.lifecycleEntityCore(ctx, bookID, entityID, actorID,
 		`UPDATE glossary_entities
 		 SET deleted_at = now(), updated_at = now()
 		 WHERE entity_id = $1 AND book_id = $2 AND deleted_at IS NULL`,
-		entityID, bookID)
+		entityDeletedEvent)
+}
+
+// lifecycleEntityCore runs one lifecycle transition + its event in a single transaction
+// (plan T27). Delete, restore and purge were each a bare `pool.Exec` emitting NOTHING, so
+// the KG mirror never learned about any of them — and the downstream machinery to act on it
+// (`archive_entity` / `restore_entity`) already existed, unused, because nothing told it.
+//
+// The three transitions share this function rather than repeating the pair, because the
+// failure was never a wrong UPDATE: it was the UPDATE arriving without its event, four
+// times, in four files. A shape that lets the two be written separately will let them be
+// separated again.
+func (s *Server) lifecycleEntityCore(
+	ctx context.Context, bookID, entityID, actorID uuid.UUID, sql, eventType string,
+) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() > 0, nil
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful Commit
+	actorType, actor := "pipeline", ""
+	if actorID != uuid.Nil {
+		actorType, actor = "user", actorID.String()
+	}
+	found, err := mutateEntityLifecycleTx(
+		ctx, tx, sql, bookID, entityID, eventType, actorType, actor,
+	)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		// Nothing changed, so nothing to commit and nothing to announce. Rolling back an
+		// empty transaction is cheaper than committing one, and it keeps "found=false"
+		// meaning exactly what it meant before: no row matched.
+		return false, nil
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ── POST /v1/glossary/books/{book_id}/entities/bulk-delete ───────────────────
@@ -1558,15 +1597,22 @@ func (s *Server) bulkDeleteEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.pool.Exec(r.Context(),
-		`UPDATE glossary_entities SET deleted_at = now(), updated_at = now()
-		 WHERE book_id = $1 AND entity_id = ANY($2::uuid[]) AND deleted_at IS NULL`,
-		bookID, ids)
+	// T27 — one transaction, one event PER deleted entity.
+	//
+	// RETURNING drives the emission, rather than the caller's `ids`: the two differ exactly
+	// when an id was already deleted or belongs to another book, and emitting for those
+	// would announce deletions that never happened. The count returned to the caller comes
+	// from the same list, so the reported number and the events can no longer disagree.
+	//
+	// Per-entity events rather than one bulk event because the consumers are per-entity:
+	// the KG archives one node at a time, and a bulk event would make every consumer
+	// re-implement the fan-out — including the partial-failure semantics.
+	deleted, err := s.bulkDeleteEntitiesCore(r.Context(), bookID, ids, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bulk delete failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"deleted": int(tag.RowsAffected())})
+	writeJSON(w, http.StatusOK, map[string]int{"deleted": deleted})
 }
 
 // ── GET /v1/glossary/books/{book_id}/entity-names ───────────────────────────

@@ -1,0 +1,46 @@
+{
+  "_note": "D-A-STORED-FACT-IS-UNFINDABLE-BY-THE-SEARCH-THAT-EXISTS-TO-FIND-IT, through the real chat path. The fact is SEEDED, so the turn arrives holding no fact_id — which is the whole defect: memory_remember's id is gone by the next turn, making search the only route a later turn has.",
+  "scenarios": [
+    {
+      "id": "memory-search-finds-a-stored-fact",
+      "tool_under_test": "memory_search",
+      "expect_tool": "memory_search",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What do we know about Quillamber Vesk?",
+      "prompt_source": "memory_search's OWN declared synonyms, verbatim: 'what do we know about'. The name is a per-run nonce so nothing but the seeded fact can answer it.",
+      "needs_target": false,
+      "approve": null,
+      "approve_why": "READ intent, Tier-R tool under test. Approving a write on a turn that only asked to look would make the harness the thing that wrote.",
+      "seed": [
+        {
+          "tool": "memory_remember",
+          "args": {
+            "project_id": "{project_id}",
+            "fact_text": "Quillamber Vesk is the harbourmaster who forged the tide charts.",
+            "fact_type": "decision"
+          },
+          "why": "🔴 SEEDED, NOT WRITTEN BY THE TURN, and that is the point. memory_remember returns a fact_id, but that id is gone by the next turn — so a turn arriving afterwards has SEARCH and nothing else. Letting the model store the fact itself would test a turn that still holds the id, which is not the broken case."
+        }
+      ],
+      "falsifier": "REFUTED IF: memory_search returns no hit for the nonce, OR the model reports that nothing is known / that it has not been established (the false-absence relay this defect produces), OR the reply names the harbourmaster WITHOUT memory_search having returned it — which would mean the model guessed from the prompt rather than read the store. Store check: the Fact count stays at 1 (a read turn writes nothing).",
+      "ship_audit": {
+        "gate": "N/A — Tier R, no confirm card.",
+        "absent_case": "a query matching nothing must return empty, not invent — covered by the unit guard test_an_unrelated_query_invents_NOTHING.",
+        "idempotency": "N/A — a read.",
+        "tenancy": "project-scoped; the reader returns empty without a project_id (D16)."
+      },
+      "defects": [],
+      "_problem": "D-A-STORED-FACT-IS-UNFINDABLE-BY-THE-SEARCH-THAT-EXISTS-TO-FIND-IT",
+      "answer_expect": {
+        "all_of": [
+          "harbourmaster"
+        ],
+        "why": "The one word that can ONLY have come from the stored fact — it is not in the prompt. A reply naming it proves the fact reached the model; a reply that merely discusses the name proves nothing, which is why the bar is this word and not the nonce."
+      },
+      "_no_seed_assert_why": "🔴 NO seed_assert, AND THE EVIDENCE IS NOT LOST. The harness's seed_assert runs `psql` against a named Postgres database; a Fact lives in NEO4J, so the assertion I first wrote refused to run at all ('database \"neo4j\" does not exist') and the batch correctly declined to start. Dropping it would weaken the scenario only if nothing else checked the seed — but the store SNAPSHOT already covers exactly this: store_snapshot._neo4j emits `neo4j.Fact.project` {rows, latest} for the run's project, so the before/after Fact count is in every run's store_diff. The falsifier's store clause reads that.\n\nRecorded rather than silently removed: the gap is in the harness (seed_assert cannot address the graph), not in this scenario, and it is worth its own row."
+    }
+  ]
+}

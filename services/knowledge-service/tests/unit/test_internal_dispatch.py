@@ -22,7 +22,7 @@ from app.routers.internal_dispatch import (
     InternalCancelPayload,
     SetCampaignModelsPayload,
 )
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.db.graph_repos.passages import SUPPORTED_PASSAGE_DIMS
 
 _GOOD_DIM = next(iter(SUPPORTED_PASSAGE_DIMS))
 EMB = UUID("44444444-4444-4444-4444-444444444444")
@@ -257,7 +257,7 @@ async def test_scm_fresh_project_sets_embedding_no_delete(mocker):
 async def test_scm_conflict_without_confirm_409(mocker):
     # See the note on test_scm_confirm_deletes_graph_then_sets — vectors present is the
     # signal, and it is what makes the confirm mandatory here.
-    mocker.patch("app.db.neo4j_repos.graph_state.project_has_embedded_passages",
+    mocker.patch("app.db.graph_repos.graph_state.project_has_embedded_passages",
                  new_callable=AsyncMock, return_value=True)
     probe = mocker.patch("app.routers.internal_dispatch.probe_embedding_dimension",
                          new_callable=AsyncMock, return_value=_GOOD_DIM)
@@ -275,7 +275,7 @@ async def test_scm_confirm_deletes_graph_then_sets(mocker):
     # 2026-07-23 (D-EMB-MODEL-REF-04): "has a graph" is a PASSAGE-EXISTENCE probe now,
     # not `extraction_status != 'disabled'` — a graph-preserving `POST /extraction/disable`
     # leaves 'disabled' on a project still full of vectors.
-    mocker.patch("app.db.neo4j_repos.graph_state.project_has_embedded_passages",
+    mocker.patch("app.db.graph_repos.graph_state.project_has_embedded_passages",
                  new_callable=AsyncMock, return_value=True)
     mocker.patch("app.routers.internal_dispatch.app_settings",
                  SimpleNamespace(neo4j_uri="bolt://x"))

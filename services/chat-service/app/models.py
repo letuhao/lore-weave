@@ -459,6 +459,16 @@ class EditorContext(BaseModel):
     # scene_match steering entries (case-insensitive substring). Additive:
     # older FEs simply never send it and scene_match entries stay dormant.
     chapter_title: str | None = None
+    # D-PROPOSE-EDIT-ACTS-ON-EDITOR-STATE-THE-TURN-CANNOT-SEE — propose_edit's two operations
+    # (insert_at_cursor / replace_selection) presuppose editor state the turn never carried, so a
+    # model asked to rewrite a passage could not tell whether a selection existed to replace.
+    # The browser already reads this at propose/apply time (TiptapEditorHandle.getSelection());
+    # sent here ADDITIVELY, exactly as chapter_title was — older FEs simply never send it and the
+    # model falls back to today's behaviour (declining a guessed replace_selection in prose).
+    has_selection: bool | None = None
+    # Truncated by the FE to a short preview — enough for the model to confirm it is grounding on
+    # the right span, not a payload-sized echo of the editor's contents.
+    selected_text: str | None = None
 
 
 class BookContext(BaseModel):
@@ -581,6 +591,13 @@ class ChatMessage(BaseModel):
     # suspend was abandoned/expired/refused. Lets the FE badge an incomplete reply
     # instead of the reply vanishing.
     finish_reason: str | None = None
+    # R6 — the CP-0.4 outcome, and it is the only signal an ORPHANED turn leaves.
+    # When a turn dies before the model answers there is NO assistant row at all: the
+    # failure is stamped on the USER message instead. Measured live 2026-09-04 — the author
+    # saw their own message and nothing else, no bubble, no badge, no error, while the
+    # backend held a precise diagnosis. D2's empty-turn badge cannot reach that case because
+    # it renders on an assistant message that does not exist, so the FE needs this field.
+    outcome: str | None = None
     parent_message_id: UUID | None
     created_at: datetime
 

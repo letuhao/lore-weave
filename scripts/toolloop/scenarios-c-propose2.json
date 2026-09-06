@@ -1,0 +1,29 @@
+{
+  "_note": "propose_edit re-measured after its declared synonyms were added and the gateway re-federated.",
+  "scenarios": [
+    {
+      "id": "propose-edit-declared",
+      "tool_under_test": "propose_edit",
+      "expect_tool": "propose_edit",
+      "intent": "write",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+      "prompt_source": "NO _meta.synonyms are declared for this tool at all. That is itself the finding to check: per R2, answerability cannot reach it, so it is on the wire only because it is a FRONTEND tool advertised on the editor surface. The prompt is therefore ordinary editing prose, and the scenario runs WITH editor_context so the surface is the one where it lives.",
+      "needs_target": false,
+      "editor_context": true,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the chapter body CHANGES — propose_edit shows an Apply button and must never write by itself; the store diff is the whole test. Also REFUTED IF the turn ends claiming the edit was made rather than proposed (the D-NARRATED-WRITE shape, which this tool is uniquely able to produce). CONTROL: it declares no synonyms, so if it is NOT surfaced the finding is about the frontend-tool advertisement path, not about answerability.",
+      "ship_audit": {
+        "gate": "The Apply button IS the gate — the proposal must reach the user unapplied.",
+        "empty_case": "OWED — a proposal identical to the current text should be refused or reported as a no-op, not shown as an edit.",
+        "tenancy": "n/a by construction — it edits the chapter open in the caller's own editor."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P6-DESCRIBE-NOT-RECORD"
+    }
+  ]
+}

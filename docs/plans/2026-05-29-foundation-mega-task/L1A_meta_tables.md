@@ -168,14 +168,14 @@
 ### 2.4 `player_character_index` — cross-reality PC lookup
 
 - **Purpose:** user-facing PC index — which user owns which PCs across realities (for dashboard, fraud-prevention, cross-reality nav)
-- **Owning chunks:** 04_player_character §A (PC-A1..A3) + S04 §12T.3 CHECK
+- **Owning chunks:** _superseded/04_player_character §A (PC-A1..A3) + S04 §12T.3 CHECK
 - **Key columns (sketch):** `pc_index_id UUID PK`, `user_ref_id UUID`, `reality_id UUID`, `pc_id UUID` (per-reality), `pc_name TEXT`, `status TEXT` (CHECK: `active|offline|hidden|npc_converted|deceased|deleted`), `created_at`, `last_seen_at`
 - **Retention:** Operational (until deleted)
 - **Written by:** `world-service` via `MetaWrite()`
 - **Read by:** `world-service` (PC lookup), gateway-BFF (dashboard), other PCs' prompt assembly
 - **Events:** `pc.index.created`, `pc.index.status.*`
 - **Risk:** **identity manipulation attack** (alter rows → impersonation, cross-user data leak) — S4 §12T.6 sensitive-read audit on non-owner queries
-- **Open:** schema details — read 04_player_character/A_identity.md cycle
+- **Open:** schema details — read _superseded/04_player_character/A_identity.md cycle
 
 ---
 

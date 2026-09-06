@@ -286,14 +286,15 @@ WHERE platform_model_id=$1 AND status='active'
 			estimateInput["max_tokens"] = float64(*in.MaxTokens)
 		}
 	}
-	var pricing billing.Pricing
-	if len(pricingRaw) > 0 {
-		if uErr := json.Unmarshal(pricingRaw, &pricing); uErr != nil {
-			writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "invalid model pricing")
-			return
-		}
+	// billing.DecodePricing, not a bare Unmarshal: a model served from a LOCAL
+	// endpoint is free whatever its stored price table says. endpointBaseURL is ""
+	// for a platform_model, which DecodePricing treats as remote (billable).
+	pricing, uErr := billing.DecodePricing(pricingRaw, endpointBaseURL)
+	if uErr != nil {
+		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "invalid model pricing")
+		return
 	}
-	guard, ok := s.preflightStream(w, r, userID, op, in.ModelSource, modelRef, pricing, estimateInput)
+	guard, ok := s.preflightStream(w, r, userID, op, in.ModelSource, modelRef, pricing, estimateInput, providerKind)
 	if !ok {
 		return // preflightStream wrote the rejection
 	}
@@ -406,7 +407,9 @@ func buildChatStreamInput(in streamRequest) map[string]any {
 		input["max_tokens"] = *in.MaxTokens
 	}
 	if in.Tools != nil {
-		input["tools"] = in.Tools
+		// A no-argument tool's schema must carry `properties: {}` or LM Studio rejects the
+		// WHOLE request. See tool_schema_normalize.go for the measurement.
+		input["tools"] = normalizeToolParameters(in.Tools)
 	}
 	if in.ToolChoice != nil {
 		input["tool_choice"] = in.ToolChoice

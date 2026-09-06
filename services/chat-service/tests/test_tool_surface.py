@@ -226,10 +226,17 @@ from app.services.tool_surface import (  # noqa: E402
 )
 
 
-def _tool_big(name: str, desc_len: int) -> dict:
-    return {"type": "function",
-            "function": {"name": name, "description": "x" * desc_len,
-                         "parameters": {"type": "object", "properties": {}}}}
+def _tool_big(name: str, desc_len: int, tier: str | None = None) -> dict:
+    """CP-4.d — `tier` is how a federated tool DECLARES its lane, so the fixture carries it.
+
+    Optional rather than required: the tests that do not rank on lane say nothing about it, and a
+    fixture that silently declared one everywhere would make the undeclared arm untestable.
+    """
+    fn: dict = {"name": name, "description": "x" * desc_len,
+                "parameters": {"type": "object", "properties": {}}}
+    if tier is not None:
+        fn["_meta"] = {"tier": tier}
+    return {"type": "function", "function": fn}
 
 
 class TestTokenBudgetedSeed:
@@ -246,13 +253,36 @@ class TestTokenBudgetedSeed:
         assert 0 < len(out) < len(names)
 
     def test_read_tools_prioritized_over_writes(self):
-        # equal-size read + write tools; a budget that fits only some → reads win
-        cat = ([_tool_big(f"glossary_search_{i}", 3000) for i in range(3)]
-               + [_tool_big(f"glossary_propose_{i}", 3000) for i in range(3)])
+        """Equal-size read + write tools; a budget that fits only some → reads win.
+
+        🔴 **CP-4.d — THE FIXTURE USED TO EXPRESS "READ" AS THE SUBSTRING `search` IN THE NAME**, so
+        it passed by agreeing with the heuristic it was checking. The lane is now declared, and the
+        names here are deliberately kept the way they were: the tools are told apart ONLY by
+        `_meta.tier`, so if the name ever regained influence this test would go red rather than keep
+        agreeing with it.
+        """
+        cat = ([_tool_big(f"glossary_search_{i}", 3000, tier="R") for i in range(3)]
+               + [_tool_big(f"glossary_propose_{i}", 3000, tier="W") for i in range(3)])
         names = {t["function"]["name"] for t in cat}
         out = budget_names_by_tokens(cat, names, token_budget=2200)  # ~ fits ~3
-        # every kept catalog tool should be a read tool (writes deprioritized)
         assert out and all("search" in n for n in out)
+
+    def test_A_DECLARED_WRITE_OUTRANKS_A_READLOOKING_NAME(self):
+        """The 4.d defect itself, as a ranking outcome — the falsifier for the test above.
+
+        `glossary_deep_research` matches the deleted verb list on *search*; the provider declares it
+        tier W. `jobs_summary` matches no verb at all and is declared tier R. Under the heuristic the
+        budget kept exactly the wrong one of the two, and this is the shape that put `memory_forget`
+        and `kg_view_delete` in the always-advertised hot set.
+        """
+        cat = [_tool_big("glossary_deep_research", 3000, tier="W"),
+               _tool_big("jobs_summary", 3000, tier="R")]
+        names = {t["function"]["name"] for t in cat}
+        out = budget_names_by_tokens(cat, names, token_budget=800)  # fits one
+        assert out == {"jobs_summary"}, (
+            f"kept {out} — the declared read must outrank the declared write, and the only signal "
+            f"pointing the other way is the substring 'search' in the write's name"
+        )
 
     def test_non_catalog_names_pass_through_free(self):
         cat = [_tool_big("glossary_search", 200)]
@@ -397,11 +427,47 @@ class TestTokenBudgetedSeed:
         # sanity on the extractor: the glossary skill really does name the tool
         assert "glossary_propose_entities" in skill_named_tools(["glossary"], cat)
 
-    def test_recall_and_timeline_classified_as_reads(self):
-        from app.services.tool_surface import _is_read_tool
-        assert _is_read_tool("memory_recall_entity")
-        assert _is_read_tool("memory_timeline")
-        assert not _is_read_tool("glossary_propose_entities")
+    def test_THE_LANE_IS_DECLARED_DATA_AND_THE_NAME_NEVER_DECIDES(self):
+        """CP-4.d · C-1 — *lane is data at registration, never inferred from a name*.
+
+        This replaces `test_recall_and_timeline_classified_as_reads`, which asserted the deleted
+        substring heuristic on three names. That test could only ever confirm the verb list matched
+        itself: it was added by WS-1b **because** `recall` and `timeline` had been misclassified, and
+        it froze the two names someone happened to report rather than the property.
+
+        The property is that the DECLARATION decides. So the cases here are the ones where name and
+        declaration disagree — every one taken from the live catalogue, where the old heuristic got
+        29 of 315 wrong.
+        """
+        from app.services.tool_discovery import declared_lane
+
+        # The name says READ and the provider says otherwise. The heuristic put all four in the
+        # always-advertised hot set; `memory_forget` matched on *get*, the `kg_view_*` writes on
+        # *view*, `glossary_deep_research` on *search*.
+        for name, tier in [("memory_forget", "A"), ("kg_view_delete", "A"),
+                           ("kg_view_upsert", "A"), ("glossary_deep_research", "W")]:
+            td = {"type": "function",
+                  "function": {"name": name, "description": name, "_meta": {"tier": tier}}}
+            assert declared_lane(td) != "read", (
+                f"{name} declares tier {tier} and must not reach the read lane; reads sort FIRST "
+                f"into the hot set, so a destructive declaration promoted there is the rule "
+                f"inverted"
+            )
+
+        # The name says WRITE and the provider declares a read. These were demoted behind every
+        # write, against a budget that ends in a hard `break`.
+        for name in ("lore_ask", "jobs_summary", "plan_validate", "tool_load"):
+            td = {"type": "function",
+                  "function": {"name": name, "description": name, "_meta": {"tier": "R"}}}
+            assert declared_lane(td) == "read", f"{name} declares tier R and is a read"
+
+        # 🔴 The fail-safe arm. `tool_tier` answers a DIFFERENT question and defaults an unknown
+        # tier to "R"; reusing it here would promote an untiered tool into the safe set on a value
+        # nobody declared. An undeclared lane is `None` and sorts with the writes.
+        assert declared_lane(_tool("memory_recall_entity")) is None, (
+            "a tool carrying no `_meta.tier` has no declared lane — inferring one from the name is "
+            "the defect this row deleted, and defaulting it to read is fail-OPEN"
+        )
 
     def test_sticky_domain_reseeds_book_when_not_book_scoped(self):
         # D-DOMAIN-HOTSET-NOT-STICKY — a universal chat (book_scoped=False) that

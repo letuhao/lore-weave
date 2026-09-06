@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -16,10 +17,13 @@ from app.clients.llm_client import close_llm_client, get_llm_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.neo4j import close_neo4j_driver, get_neo4j_driver, init_neo4j_driver
+from app.adapters.graph_store_provider import init_age_pool
+from app.db.graph_backend import configured_backend
 from app.db.neo4j_schema import run_neo4j_schema
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.db.seed_graph_schemas import seed_system_graph_schemas
 from app.logging_config import setup_logging, trace_id_var
+from app.metrics import vector_dual_write_armed
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     context,
@@ -33,7 +37,11 @@ from app.routers import (
     internal_job_control,
     internal_enrichment,
     internal_extraction,
+    internal_kal_temporal,
+    internal_kg_neighborhood,
     internal_kg_state,
+    internal_project_access,
+    internal_mirror,
     internal_parse,
     internal_parse_pdf,
     internal_summarize,
@@ -73,6 +81,19 @@ from app.mcp.server import build_mcp_app, mcp_server
 # (/mcp/admin) RS256-gated at the transport before tools/list (INV-T6). Its
 # session manager is run alongside mcp_server in the lifespan below.
 from app.mcp.admin_server import build_admin_mcp_app, mcp_admin_server
+# ⚠️ Event names come from the CONTRACT (T30/OD-1, 2026-08-12): generated into
+# `loreweave_events` from contracts/events/_registry.yaml. These were hand-written
+# literals, and a producer rename left them registering handlers for a name nothing
+# emits — valid Python forever, every mocked test still green, the handler simply
+# never running. A rename is now an ImportError at startup instead.
+from loreweave_events import (
+    EVENT_GLOSSARY_ENTITY_DELETED,
+    EVENT_GLOSSARY_ENTITY_MERGED,
+    EVENT_GLOSSARY_ENTITY_PURGED,
+    EVENT_GLOSSARY_ENTITY_RESTORED,
+    EVENT_GLOSSARY_ENTITY_STATUS_CHANGED,
+    EVENT_GLOSSARY_ENTITY_UPDATED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +125,46 @@ async def _close_all_startup_resources() -> None:
                 "startup cleanup: failed to close %s (non-fatal)",
                 close_fn_name, exc_info=True,
             )
+
+
+def _same_database(a: str, b: str) -> bool:
+    """Do two Postgres DSNs address the same host:port/database? Credentials are ignored."""
+    from urllib.parse import urlsplit
+
+    def key(dsn: str):
+        u = urlsplit(dsn)
+        return ((u.hostname or "").lower(), u.port or 5432, (u.path or "").lstrip("/"))
+
+    return key(a) == key(b)
+
+
+def _warn_if_graph_and_vectors_are_split() -> None:
+    """T46/§6.3c — the AGE graph and the vector tables must share ONE database.
+
+    ⚠️ This is a CONFIGURATION invariant with a silent failure mode, which is why it is a
+    startup check and not a comment. §3.3c decided that `anchor_score` is JOINED from its
+    authority rather than copied onto the vector row, and T25r's resolver reads the graph for
+    the ids a vector search returned. Split the two across databases and the resolver queries a
+    database with no graph — or worse, an EMPTY one — and an empty answer is indistinguishable
+    from "nothing is anchored". `glossary.py` then multiplies every score by 0.0 and the
+    two-layer ranking silently degrades to raw cosine order.
+
+    The PO chose (2026-08-23) to keep AGE on its own `knowledge-pg` instance rather than move
+    it to the shared `postgres`, and this is the half of that decision a deployment can get
+    wrong: moving ONE of the two DSNs looks like a tidy-up and breaks the join.
+    """
+    age_dsn = os.environ.get("KNOWLEDGE_AGE_DB_URL", "")
+    vec_dsn = os.environ.get("KNOWLEDGE_VECTOR_DB_URL", "")
+    if not age_dsn or not vec_dsn:
+        return                       # a missing DSN is the other check's business
+    if not _same_database(age_dsn, vec_dsn):
+        logger.error(
+            "T46/§6.3c: KNOWLEDGE_AGE_DB_URL and KNOWLEDGE_VECTOR_DB_URL address DIFFERENT "
+            "databases. The anchor_score resolver (§3.3c) reads the graph for the ids a vector "
+            "search returned, so it will answer NOTHING and two-layer entity ranking will "
+            "silently fall back to raw cosine order. Point both at one database, or move them "
+            "together."
+        )
 
 
 @asynccontextmanager
@@ -148,6 +209,37 @@ async def lifespan(app: FastAPI):
         # Track 1 mode skips this entirely.
         if settings.neo4j_uri:
             await run_neo4j_schema(get_neo4j_driver())
+        # T54 — build the AGE pool when AGE is the selected backend, so a missing DSN fails
+        # HERE rather than on the first graph read. The provider refuses to fall back to
+        # Neo4j, and a backend that silently is not the one you selected is the defect this
+        # row exists to fix: T42/T43 closed green while `age` could not be selected at all.
+        # RESOLVED THROUGH `configured_backend`, which is the same function the provider and
+        # the session factory use. This line used to be its own
+        # `os.environ.get("KNOWLEDGE_GRAPH_BACKEND", "age")` — a THIRD copy of the default,
+        # in the one place whose job is to report the engine at startup. An operator reading
+        # this log line has to be reading the same answer the request path will use.
+        _backend = configured_backend()
+        _explicit = os.environ.get("KNOWLEDGE_GRAPH_BACKEND") is not None
+        logger.info(
+            "graph backend: %s (%s)", _backend,
+            "explicit KNOWLEDGE_GRAPH_BACKEND" if _explicit
+            else "inferred from what this deployment has provisioned — set "
+                 "KNOWLEDGE_GRAPH_BACKEND to pin it",
+        )
+        if _backend == "age":
+            if not await init_age_pool():
+                logger.warning(
+                    "KNOWLEDGE_GRAPH_BACKEND=age but KNOWLEDGE_AGE_DB_URL is unset — graph "
+                    "reads will refuse. Set the DSN or select neo4j explicitly."
+                )
+            _warn_if_graph_and_vectors_are_split()
+        # T25c — publish whether the vector secondary is ARMED, from configuration.
+        # `knowledge_vector_dual_write_total` is pre-seeded at import, so it reads 0.0 on
+        # an unarmed service exactly as it does on an armed-but-unwritten one; without
+        # this gauge `soak-armed-gate` cannot tell the two apart and the T25 cutover
+        # would be cleared by a measurement that cannot fail. Config-derived, so it is
+        # correct before the lazily-built store has been constructed.
+        vector_dual_write_armed.set(1 if settings.knowledge_vector_db_url else 0)
         # D-P2-STALE-CLAIM-LIFESPAN-HOOK. Reset extraction_leaves rows
         # stuck in status='running' for >30 min back to 'pending' so
         # new workers can pick them up. Idempotent + multi-replica safe
@@ -234,6 +326,10 @@ async def lifespan(app: FastAPI):
             handle_chapter_scenes_reparsed,
             handle_chapter_deleted,
             handle_chat_message_feedback,
+            handle_glossary_entity_deleted,
+            handle_glossary_entity_purged,
+            handle_glossary_entity_restored,
+            handle_glossary_entity_status_changed,
             handle_glossary_entity_updated,
             handle_glossary_entity_merged,
             handle_translation_published,
@@ -285,12 +381,30 @@ async def lifespan(app: FastAPI):
         # glossary.entity_updated on every entity write (single + bulk
         # extract); this triggers the existing glossary_sync → Neo4j.
         dispatcher.register(
-            "glossary.entity_updated", handle_glossary_entity_updated,
+            EVENT_GLOSSARY_ENTITY_UPDATED, handle_glossary_entity_updated,
         )
         # mui #1c — glossary.entity_merged consolidates the KG: merge the loser
         # :Entity into the winner + entity_alias_map (anti-resurrection).
         dispatcher.register(
-            "glossary.entity_merged", handle_glossary_entity_merged,
+            EVENT_GLOSSARY_ENTITY_MERGED, handle_glossary_entity_merged,
+        )
+        # T27 — the entity lifecycle. Delete/restore/purge were silent in glossary-service,
+        # so the KG mirror never learned about any of them: a restored entity stayed
+        # archived here forever while the glossary showed it live.
+        dispatcher.register(
+            EVENT_GLOSSARY_ENTITY_DELETED, handle_glossary_entity_deleted,
+        )
+        dispatcher.register(
+            EVENT_GLOSSARY_ENTITY_RESTORED, handle_glossary_entity_restored,
+        )
+        dispatcher.register(
+            EVENT_GLOSSARY_ENTITY_PURGED, handle_glossary_entity_purged,
+        )
+        # T28 — the curation axis. `status` is a liveness predicate in glossary-service
+        # (every consumer read filters `status = 'active'`), so retiring an entity removed
+        # it from the glossary's own canon reads while this mirror kept answering about it.
+        dispatcher.register(
+            EVENT_GLOSSARY_ENTITY_STATUS_CHANGED, handle_glossary_entity_status_changed,
         )
 
         consumer = EventConsumer(
@@ -309,11 +423,11 @@ async def lifespan(app: FastAPI):
     refresh_task = None
     if settings.neo4j_uri:
         try:
-            from app.db.neo4j import neo4j_session
+            from app.db.graph import graph_session
             from app.jobs.anchor_refresh_loop import run_anchor_refresh_loop
 
             def _anchor_session_factory():
-                return neo4j_session()
+                return graph_session()
 
             refresh_task = asyncio.create_task(
                 run_anchor_refresh_loop(
@@ -345,7 +459,7 @@ async def lifespan(app: FastAPI):
     global_regen_task = None
     if settings.neo4j_uri:
         try:
-            from app.db.neo4j import neo4j_session
+            from app.db.graph import graph_session
             from app.db.repositories.summaries import SummariesRepo
             from app.db.repositories.summary_spending import SummarySpendingRepo
             from app.jobs.summary_regen_scheduler import (
@@ -354,7 +468,7 @@ async def lifespan(app: FastAPI):
             )
 
             def _summary_session_factory():
-                return neo4j_session()
+                return graph_session()
 
             # C16-BUILD — single SummarySpendingRepo instance shared
             # across both regen loops. Wires D-K20α-01 budget pre-check
@@ -425,9 +539,10 @@ async def lifespan(app: FastAPI):
     # 001-003 so all schedulers can run concurrently without blocking.
     reconcile_sweep_task = None
     quarantine_sweep_task = None
+    mirror_drift_task = None
     if settings.neo4j_uri:
         try:
-            from app.db.neo4j import neo4j_session
+            from app.db.graph import graph_session
             from app.db.repositories.sweeper_state import SweeperStateRepo
             from app.jobs.reconcile_evidence_count_scheduler import (
                 run_reconcile_loop,
@@ -437,7 +552,7 @@ async def lifespan(app: FastAPI):
             )
 
             def _scheduler_session_factory():
-                return neo4j_session()
+                return graph_session()
 
             # C14b — pass the sweeper_state repo so reconciler's
             # per-user cursor resumes mid-sweep on restart.
@@ -463,9 +578,32 @@ async def lifespan(app: FastAPI):
             logger.info(
                 "C14a: quarantine-cleanup loop started as background task"
             )
+
+            # D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER — the glossary→KG mirror had a
+            # detector and a repairer, both /internal endpoints, so a PERSON had to
+            # ask. The 17-entity hole that started this was found by hand a day late,
+            # during an investigation into something else. This is what runs it.
+            from app.clients.glossary_client import get_glossary_client
+            from app.jobs.mirror_drift_scheduler import run_mirror_drift_loop
+
+            mirror_drift_task = asyncio.create_task(
+                run_mirror_drift_loop(
+                    get_knowledge_pool(),
+                    _scheduler_session_factory,
+                    get_glossary_client(),
+                    auto_repair=settings.knowledge_mirror_auto_repair,
+                    sweeper_state_repo=_sweeper_state_repo,
+                    interval_s=settings.knowledge_mirror_sweep_interval_s,
+                    startup_delay_s=settings.knowledge_mirror_sweep_startup_delay_s,
+                )
+            )
+            logger.info(
+                "mirror-drift loop started as background task (auto_repair=%s)",
+                settings.knowledge_mirror_auto_repair,
+            )
         except Exception:
             logger.warning(
-                "C14a: reconcile/quarantine loops failed to start (non-fatal)",
+                "C14a: reconcile/quarantine/mirror loops failed to start (non-fatal)",
                 exc_info=True,
             )
 
@@ -664,6 +802,16 @@ async def lifespan(app: FastAPI):
                     "C14a: error stopping quarantine sweep loop",
                     exc_info=True,
                 )
+        if mirror_drift_task is not None:
+            mirror_drift_task.cancel()
+            try:
+                await mirror_drift_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "error stopping mirror-drift sweep loop", exc_info=True,
+                )
 
         # Stop event consumer next.
         if consumer_task is not None:
@@ -749,6 +897,7 @@ app.include_router(context.router)
 app.include_router(working_memory.router)
 app.include_router(coref.router)
 app.include_router(internal_admin.router)
+app.include_router(internal_project_access.router)
 app.include_router(internal_backfill.router)
 app.include_router(internal_canon.router)
 app.include_router(internal_benchmark.router)
@@ -756,7 +905,10 @@ app.include_router(internal_dispatch.router)
 app.include_router(internal_job_control.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
+app.include_router(internal_kal_temporal.router)
+app.include_router(internal_kg_neighborhood.router)
 app.include_router(internal_kg_state.router)
+app.include_router(internal_mirror.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_parse_pdf.router)
 app.include_router(internal_summarize.router)

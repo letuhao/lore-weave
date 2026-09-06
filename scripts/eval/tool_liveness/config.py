@@ -47,7 +47,12 @@ INTERNAL_TOKEN = os.environ.get("TLE_INTERNAL_TOKEN", "dev_internal_token")
 DOMAIN_BASE = {
     "glossary": os.environ.get("TLE_GLOSSARY", "http://localhost:8211"),
     "book": os.environ.get("TLE_BOOK", "http://localhost:8205"),
-    "translation": os.environ.get("TLE_TRANSLATION", "http://localhost:8207"),
+    # 🔴 8207 IS catalog-service, AND IT ANSWERED /health WITH 200. Corrected 2026-08-14 after a
+    # REST seed 404'd: the "translation" domain had been pointed at the catalog service, and no
+    # health check could ever have caught it — the Go services (book 8205, catalog 8207, glossary
+    # 8211) all return a bare "ok" with no identity in it. Verified by ROUTE instead: 8210 answers
+    # POST /v1/translation/books/{id}/jobs with 401 (exists, needs auth) while 8207 answers 404.
+    "translation": os.environ.get("TLE_TRANSLATION", "http://localhost:8210"),
     "composition": os.environ.get("TLE_COMPOSITION", "http://localhost:8217"),
     "knowledge": os.environ.get("TLE_KNOWLEDGE", "http://localhost:8216"),
 }

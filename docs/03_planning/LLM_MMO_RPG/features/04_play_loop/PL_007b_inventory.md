@@ -48,8 +48,22 @@ had no answer. Three concrete consequences that this file removes:
 
 ## §2 The two representations in practice
 
-Per PL_007 ITM-A2, every valuable thing in a reality is **either** a fungible balance **or** an
-instanced entity, chosen by the author at declaration time and enforced at bootstrap (ITM-V10).
+> **⚠ ROT SWEEP 2026-08-02 (`IR-14`) — the premise of this section is replaced.** `ITM-A2` is superseded
+> by [`ITD-2`](../../../../specs/2026-08-02-item-data-structure.md): **stackability is EARNED by the data,
+> not declared by the author**. There is **one store with two shapes** — a **quantum**
+> `(owner, location, def_id, count)` with no row per unit, and an **instance** with an id — and a thing
+> moves between them by an *operation* (`assemble` / `repackage`), not by a declaration made once and
+> forever.
+>
+> **This section is why.** It is the document that identified the hole, in its own words: a merchant's 50
+> identical daggers are *"the awkward middle"*, deferred to ITM-Q3 / ITM-D1. **Both close as ANSWERED, not
+> deferred** — packaged, they are one row with count 50; a buyer assembles one and it becomes theirs. The
+> table below survives as an accurate description of the **two shapes**; what changes is **who decides,
+> and when**. `ITM-V10` / `ITM-C2` are withdrawn with the boundary they policed (`IR-18`).
+
+Per PL_007 ITM-A2 *(superseded — see above)*, every valuable thing in a reality is **either** a fungible
+balance **or** an instanced entity, chosen by the author at declaration time and enforced at bootstrap
+(ITM-V10).
 
 | | Fungible — `resource_inventory` | Instanced — `entity_binding` + `item_instance` |
 |---|---|---|
@@ -69,10 +83,20 @@ the awkward middle: declare it fungible (`Valuable`/`Material` kind, sold as a n
 individual daggers must be equippable and traceable. This tradeoff is measured, not assumed —
 ITM-Q3 / ITM-D1.
 
-> **ITM-A8 — One inventory, two stores, no third.** The player-facing inventory is a **derived
-> union** of the two stores above. It is a projection, never an authoritative aggregate. Nothing may
-> introduce a third store, and nothing may write "the inventory" — writes go to
-> `resource_inventory` or to `entity_binding`/`item_instance`, and the union follows.
+> **ITM-A8 — ⚠ AMENDED 2026-08-02 (`IR-15`): ONE store, two SHAPES — and the projection half survives.**
+>
+> **Withdrawn:** *"one inventory, two stores"*. The union projection existed **because the two stores had
+> different identity models** — a `ResourceBalance` keyed by `(owner, kind)` and an entity keyed by an id.
+> Under `ITD-2` they are two shapes of one row, so there is nothing to union across.
+>
+> **Survives, and is the durable half:** the player-facing inventory is a **projection, never an
+> authoritative aggregate**; nothing may write *"the inventory"*. That is `P-F`/`D-39`'s rule for every
+> derived copy — *rebuildable · carries the `(reality_id, seq)` it was taken at · discarded on divergence,
+> never reconciled* — and it now applies with the `seq` requirement `D-53` adds.
+>
+> **Also survives, restated:** *"nothing may introduce a third store"*. Under `ITD-1` the **owner** is a
+> second field on the same row, not a second store — and §3's read-view gains the query it could never
+> express: *what am I carrying that is not mine?*
 
 ---
 
@@ -139,6 +163,19 @@ slots_used = (count of DISTINCT resource kinds with amount > 0 in resource_inven
            + (count of held item_instances WHERE equipped_slot IS NONE)
 ```
 
+> **⚠ RESTATED 2026-08-02 (`IR-16`) over the new shape — and the rule survives in substance.** Under
+> `ITD-2` there is no `resource_inventory` to count separately; the accounting becomes:
+>
+> ```
+> slots_used = count of ROWS at location = HeldBy(actor) WHERE equipped_slot IS NONE
+> ```
+>
+> **A quantum stack is one row whatever its count**, so *"a resource kind costs one slot regardless of
+> amount"* falls out of the storage shape instead of being a special case beside it — 1 copper and 10 000
+> copper are still one row, and `Scheduled:CellProduction` still cannot fail on slot count. **The rule
+> stopped needing to be a rule**, which is the same thing that happened to `ITM-C4` and to §8.4's item-side
+> cascade in this sweep.
+
 Two consequences, both deliberate:
 
 - **A resource kind costs one slot regardless of amount.** 1 copper and 10,000 copper both cost one
@@ -197,10 +234,27 @@ discovered at implementation time.
 is that `max_slots`/`max_weight` become **resolved stats** (base + progression + equipment + status)
 rather than manifest constants — a strong actor, or one wearing a bag-of-holding, carries more. That
 composes cleanly with §4.1 as written: the accounting rule does not change, only where the limit comes
-from. Two coordination points recorded so activation is not a redesign:
-`inventory_defaults.default_cap` becomes the **fallback** when `CarryCapacity` is unresolved, and a
-`CarryCapacity` change must invalidate any cached `slots_used` comparison the same way
-`equipment_version` invalidates `StatEpoch` (PL_007 §6.3).
+from.
+
+> **⚠ 2026-08-02 (`IR-17`): the INTENT is right and gets a better home; the mechanism is condemned.**
+> `StatSlot` is two concepts sharing one array (`D-105`) and is being dismantled — and the measurement
+> that found it is directly about this case: **`MaxHp`/`MaxStamina` were never combat's**, they are the
+> slots a declared resource binds its **ceiling** to. `C-2a` replaces `CeilingBinding::Slot(StatSlot)` with
+> `Derived(quantity_ordinal)`, so a capacity becomes **a declared derived quantity of the reality**, not a
+> reserved engine slot.
+>
+> ⇒ `max_slots` / `max_weight` become exactly that, and the intent this paragraph states — *a limit that
+> is resolved, not a manifest constant* — is preserved **and stops being blocked on a V1+ reservation**.
+> It also means a granary's capacity gets a name that is not `max_stamina`, which is the wall all four
+> author agents hit (`D-82`). Two coordination points recorded so activation is not a redesign:
+`inventory_defaults.default_cap` becomes the **fallback** when the capacity quantity is unresolved, and a
+capacity change must be visible to any cached `slots_used` comparison.
+
+> ⚠ **2026-08-02 (`IR-17`): the second coordination point DISSOLVES.** It read *"… the same way
+> `equipment_version` invalidates `StatEpoch` (PL_007 §6.3)"* — a cache-invalidation analogy pointing at a
+> cache that no longer exists (`IR-9`). A capacity is a **derived quantity** now: it is recomputed at
+> **phase 0** with every other derived field (`D-49`), so there is no staleness window to coordinate
+> across. **The coordination point was an artefact of the cache, not a requirement of the feature.**
 
 ### 4.4 Boundary behaviour — single vs bulk (the part usually got wrong)
 

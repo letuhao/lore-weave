@@ -116,7 +116,12 @@ export interface GridSize {
   height: number;
 }
 
-export type ChannelTier = 'continent' | 'country' | 'district' | 'town';
+// SPG-R14, 2026-08-22: the retired MapKind ladder's five rungs become three
+// MapKinds plus recursion. The two tilemap-bearing rungs collapse to Region
+// (Continent/Country/District were three DEPTHS, not three kinds) and Locale
+// (Town). Wire values are the snake_case MapKind the service now emits and the
+// same set 0024_map_layout's CHECK accepts.
+export type MapKind = 'region' | 'locale';
 
 export type ZoneRole =
   | 'capital'
@@ -229,7 +234,7 @@ export interface RenderRequest {
   /** Full TilemapTemplate JSON. Loaded from /public/templates/*.json fixture. */
   template: unknown;
   channel_id: string;
-  tier: ChannelTier;
+  tier: MapKind;
   grid_size: GridSize;
   seed: number;
 }
@@ -237,7 +242,7 @@ export interface RenderRequest {
 /** Wire shape for `POST /internal/v1/tilemaps/render` response body. */
 export interface TilemapView {
   channel_id: string;
-  tier: ChannelTier;
+  tier: MapKind;
   grid_size: GridSize;
   template_id: string;
   seed: number;

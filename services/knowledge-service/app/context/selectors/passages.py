@@ -52,14 +52,25 @@ from app.context.intent.classifier import Intent, IntentResult
 from app.context.query_embedding import embed_query_cached
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.passages import (
-    PassageSearchHit,
-    SUPPORTED_PASSAGE_DIMS,
-    find_passages_by_vector,
-)
+from app.adapters.vector_store_provider import get_vector_store
+from app.ports.vector_store import VectorFilter, VectorHit
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
+
+
+def _attr(hit: VectorHit, key: str):
+    """One scope-specific field off a port hit.
+
+    `.get`, never `[...]`: the port says `attributes` is a plain mapping whose keys are
+    scope-specific, so a backend that omits one must produce a degraded passage rather than a
+    KeyError that takes out the whole L3 selection. Which keys a passage hit carries is not
+    left to trust — `test_the_two_real_backends_agree_on_a_passage_hits_attribute_KEYS` reds
+    by name when one adapter drifts from the other.
+    """
+    return (hit.attributes or {}).get(key)
+
 
 __all__ = [
     "L3Passage",
@@ -201,14 +212,18 @@ async def select_l3_passages(
     # the cheap text-Jaccard fallback. The extra list[float] per hit
     # adds ~4-12 KB per response at pool_size * dim; fine at pool<=40.
     pool_size = _POOL_SIZE.get(intent.intent, 30)
-    hits = await find_passages_by_vector(
-        session,
+    # T24b-b — through the PORT. `include_vectors=True` is the parameter that did not exist
+    # until T24b-a: MMR's redundancy term is embedding cosine between hits, so without the
+    # stored vectors this selector silently falls back to word-Jaccard on every hit — a
+    # degradation with no error, on the main context path.
+    store = await get_vector_store(session)
+    hits = await store.search(
+        scope="passage",
         user_id=user_id,
-        project_id=project_id,
-        query_vector=query_vector,
+        embedding=query_vector,
         dim=embedding_dim,
-        embedding_model=embedding_model,
-        limit=pool_size,
+        k=pool_size,
+        filter=VectorFilter(project_id=project_id, embedding_model=embedding_model),
         include_vectors=True,
     )
 
@@ -224,8 +239,8 @@ async def select_l3_passages(
     ref_chapter = current_chapter_index
     if ref_chapter is None:
         chapter_indices = [
-            h.passage.chapter_index for h in hits
-            if h.passage.chapter_index is not None
+            _attr(h, "chapter_index") for h in hits
+            if _attr(h, "chapter_index") is not None
         ]
         ref_chapter = max(chapter_indices) if chapter_indices else None
     scored = [
@@ -244,7 +259,7 @@ async def select_l3_passages(
     # 6. MMR diversification (greedy).
     #    Relevance = post-filter score; redundancy term = embedding
     #    cosine between hits (P-K18.3-02). The repo round-trips the
-    #    stored vector onto each PassageSearchHit when include_vectors
+    #    stored vector onto each VectorHit when include_vectors
     #    is set at the query site above, so MMR gets real semantic
     #    distance. Word-Jaccard stays as the fallback if any hit
     #    somehow lacks a vector (e.g., a future caller opts out).
@@ -272,13 +287,13 @@ async def select_l3_passages(
     )
     passages = [
         L3Passage(
-            text=hit.passage.text,
-            source_type=hit.passage.source_type,
-            source_id=hit.passage.source_id,
-            chunk_index=hit.passage.chunk_index,
+            text=_attr(hit, "text") or "",
+            source_type=_attr(hit, "source_type") or "",
+            source_id=_attr(hit, "source_id") or "",
+            chunk_index=_attr(hit, "chunk_index") or 0,
             score=score,
-            is_hub=hit.passage.is_hub,
-            chapter_index=hit.passage.chapter_index,
+            is_hub=bool(_attr(hit, "is_hub")),
+            chapter_index=_attr(hit, "chapter_index"),
         )
         for score, hit in final
     ]
@@ -330,7 +345,7 @@ async def select_l3_passages(
 
 
 def _apply_post_filters(
-    hit: PassageSearchHit,
+    hit: VectorHit,
     hub_penalty: float,
     recency_weight: float,
     current_chapter: int | None,
@@ -359,13 +374,13 @@ def _apply_post_filters(
     is the EDITOR's open chapter (not the recency `current_chapter` fallback,
     which is the newest passage in the pool when the caller supplies none).
     """
-    score = hit.raw_score
-    if hit.passage.is_hub:
+    score = hit.score
+    if _attr(hit, "is_hub"):
         score *= hub_penalty
 
-    if recency_weight != 0.0 and hit.passage.chapter_index is not None:
+    if recency_weight != 0.0 and _attr(hit, "chapter_index") is not None:
         ref = current_chapter if current_chapter is not None else 0
-        age = max(0, ref - hit.passage.chapter_index)
+        age = max(0, ref - _attr(hit, "chapter_index"))
         decay = 1.0 / (1.0 + age)
         # Scale by recency_weight. `1 + w * (decay - 0.5)` centers
         # decay around 0 so weight -1 inverts the preference rather
@@ -375,9 +390,9 @@ def _apply_post_filters(
     if (
         working_boost > 0.0
         and working_chapter is not None
-        and hit.passage.chapter_index is not None
+        and _attr(hit, "chapter_index") is not None
     ):
-        dist = abs(working_chapter - hit.passage.chapter_index)
+        dist = abs(working_chapter - _attr(hit, "chapter_index"))
         if dist <= working_window:
             # Linear falloff over (window + 1): dist=0 → full boost;
             # dist=window → boost * 1/(window+1); beyond window → no change.
@@ -405,11 +420,11 @@ def _jaccard(a: str, b: str) -> float:
 
 
 def _mmr_rerank(
-    scored: Iterable[tuple[float, PassageSearchHit]],
+    scored: Iterable[tuple[float, VectorHit]],
     lam: float,
     *,
     top_n: int | None = None,
-) -> list[tuple[float, PassageSearchHit]]:
+) -> list[tuple[float, VectorHit]]:
     """Greedy MMR. Picks next passage maximizing
     `lam * relevance - (1-lam) * max(similarity_to_selected)`.
 
@@ -439,7 +454,7 @@ def _mmr_rerank(
     # Sort candidates by relevance score so the first pick is the
     # unambiguous top relevance row.
     candidates.sort(key=lambda pair: pair[0], reverse=True)
-    selected: list[tuple[float, PassageSearchHit]] = [candidates.pop(0)]
+    selected: list[tuple[float, VectorHit]] = [candidates.pop(0)]
 
     while candidates:
         if top_n is not None and len(selected) >= top_n:
@@ -455,7 +470,7 @@ def _mmr_rerank(
                         sel_hit.vector, norms[id(sel_hit)],
                     )
                 else:
-                    red = _jaccard(hit.passage.text, sel_hit.passage.text)
+                    red = _jaccard(_attr(hit, "text") or "", _attr(sel_hit, "text") or "")
                 if red > redundancy:
                     redundancy = red
             mmr = lam * rel - (1.0 - lam) * redundancy

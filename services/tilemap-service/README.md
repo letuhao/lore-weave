@@ -18,7 +18,7 @@ Per [TMP_001](../../docs/03_planning/LLM_MMO_RPG/features/00_tilemap/TMP_001_til
 ## What this service does in Phase 0a (today)
 
 - Compiles ✅
-- Defines TMP_001 §2 core types in Rust (`ChannelTier`, `ZoneRole`, `PassageKind`, `TileState`, `TerrainKind`, `TilemapTemplate`, `TilemapView`, etc.) ✅
+- Defines TMP_001 §2 core types in Rust (`MapKind`, `ZoneRole`, `PassageKind`, `TileState`, `TerrainKind`, `TilemapTemplate`, `TilemapView`, etc.) ✅
 - Implements TMP-A4 deterministic seed helper using blake3 (`derive_seed`) with 6 unit tests + 4 smoke tests ✅
 - Defines LLM gateway HTTP client **signature** mirroring [`contracts/api/llm-gateway/v1/openapi.yaml`](../../contracts/api/llm-gateway/v1/openapi.yaml) `StreamRequest` + `StreamEvent` shape ✅
 - Returns `LlmError::NotImplementedPhase0a` from `GatewayClient::stream()` — the call site exists; actual SSE parsing lands at Phase 0b ⏸

@@ -94,9 +94,14 @@ describe('handleListTools', () => {
     // then the catalog. F17 — find_tools is no longer advertised to the LLM (handler retained).
     expect(res.tools[0].name).toBe('tool_list');
     // DEPRECATED 2026-07-25 — the ui_* GUI-nav directive tools are NO LONGER advertised (GUI
-    // control is user/logic-driven). Only tool_list/tool_load + propose_edit are consumer-local now.
+    // control is user/logic-driven).
+    // V7 / DQ-V9 2026-09-03 — the three KIND-C human-gate tools moved here from chat-service's
+    // frontend_tools.py as DIRECTIVE tools (no server executor, so the human gate survives).
+    // The ORDER is asserted, not just membership: consumer-local tools precede the catalog.
     expect(res.tools.map((t: any) => t.name)).toEqual([
-      'tool_list', 'tool_load', 'propose_edit', 'memory_search',
+      'tool_list', 'tool_load', 'propose_edit',
+      'confirm_action', 'glossary_confirm_action', 'glossary_propose_entity_edit',
+      'memory_search',
     ]);
     expect(res._meta).toEqual({ unavailable_providers: [], partial: false });
   });
@@ -111,6 +116,9 @@ describe('handleListTools', () => {
       'tool_list',
       'tool_load',
       'propose_edit',
+      'confirm_action',
+      'glossary_confirm_action',
+      'glossary_propose_entity_edit',
       'memory_search',
       'u_deadbeef_search',
     ]);
@@ -239,7 +247,12 @@ describe('handleCallTool', () => {
     expect(env.mcpKeyId).toBe('key-xyz');
   });
 
-  it('handles find_tools LOCALLY (never routes downstream) and returns matched tools', async () => {
+  // RETIRED 2026-08-25 (owner decision). This test used to assert find_tools RAN and returned
+  // matched tools, and it kept asserting that for the eight days after the tool was retired —
+  // red the whole time, in a suite nobody could get to green. A test that describes a retired
+  // tool as working is the same poison as a doc that does: the next reader believes the tool is
+  // a live option. It now asserts the retirement, and the PROPERTY that made retiring it safe.
+  it('refuses find_tools with a message naming the replacement, and never routes it downstream', async () => {
     const executeTool = jest.fn();
     const fed = fakeFederation({
       executeTool,
@@ -250,12 +263,18 @@ describe('handleCallTool', () => {
         ] as any,
     });
     const res = await handleCallTool(fed, 'find_tools', { intent: 'create a book' }, { 'x-user-id': 'u1' });
-    // Consumer-local: find_tools must NOT be routed to a provider (which would throw "unknown tool").
+    // Consumer-local: still never routed to a provider (which would throw "unknown tool").
     expect(executeTool).not.toHaveBeenCalled();
-    const payload = res.structuredContent as { tools: Array<{ name: string }> };
-    expect(payload.tools.map((t) => t.name)).toContain('book_create');
-    // It also returns the standard MCP content block (a text JSON of the payload).
+    // 🔴 A REFUSAL, NOT AN EMPTY RESULT. An empty `tools: []` is indistinguishable from "this
+    // capability does not exist here", which is what sends a caller looking for a workaround.
+    expect(res.isError).toBe(true);
     expect(res.content[0].type).toBe('text');
+    expect(res.content[0].text).toContain('RETIRED');
+    // It must name what to use INSTEAD — the deterministic pair, not just "don't".
+    expect(res.content[0].text).toContain('tool_list');
+    expect(res.content[0].text).toContain('tool_load');
+    // And it must not hand back a result shape a caller could mistake for a successful search.
+    expect(res.structuredContent).toBeUndefined();
   });
 
   it('handles tool_list LOCALLY and returns the deterministic category list (WS-1a)', async () => {

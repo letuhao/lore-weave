@@ -1,5 +1,29 @@
 # 06_pc_systems — Index
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 > **Category:** PCS — PC Systems
 > **Catalog reference:** [`catalog/cat_06_PCS_pc_systems.md`](../../catalog/cat_06_PCS_pc_systems.md) (owns `PCS-*` stable-ID namespace)
 > **Purpose:** PC-specific substrate post-ACT_001 unification — `pc_user_binding` (user_id + current_session + body_memory xuyên không) + `pc_mortality_state` (handoff from WA_006) + (V1+ pc_stats_v1_stub TBD) + `PcXuyenKhongCompleted` event integrating TDIL_001 clock-split. Builds on ACT_001 stable base for IDENTITY (actor_core absorbs persona + canonical_traits + flexible_state) + bilateral opinion (actor_actor_opinion) + session memory (actor_session_memory).
@@ -53,7 +77,7 @@ So: PCS_001 follows the **parallel agent pattern** established by 07_event_model
 
 ## Kernel touchpoints (shared across PCS features)
 
-- `04_player_character/` (entire subfolder) — PC-A1..E3 decisions already locked
+- `_superseded/04_player_character/` (entire subfolder) — PC-A1..E3 decisions already locked
 - `decisions/locked_decisions.md` — PC-A1..E3 + PC-C3 "simple state-based" + F4 "minimal RPG mechanics"
 - `02_storage/R08_npc_memory_split.md` — `npc_pc_relationship` edge carries PC-side state too
 - `02_storage/SR11_turn_ux_reliability.md` — TurnState + PresenceState apply per-PC

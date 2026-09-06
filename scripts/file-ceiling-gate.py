@@ -60,6 +60,16 @@ TIER = [
     "crates/ruleset-core",
     "crates/ruleset-loader",
     "crates/sim-core",
+    # Added 2026-08-02 with the actor hub (feature #1). A tier directory, not a
+    # file list, so every module the hub grows tomorrow is covered on its first
+    # line. Registered in the same change that created the crates rather than
+    # after the fact — the `load.rs` note below is what that policy exists to
+    # avoid, and it applied here: `fold.rs` and `registry.rs` were BOTH over the
+    # ceiling on their first run and were SPLIT (their test modules became
+    # integration tests, which also narrowed them to the public surface) rather
+    # than allowlisted.
+    "crates/actor-hub",
+    "crates/entity-existence",
     "services/commit-service",
 ]
 
@@ -77,7 +87,7 @@ ALLOWLIST: dict[str, tuple[int, str]] = {
              "the parent's private fields (a sibling would have forced them "
              "`pub(crate)`, widening the kernel's mutable surface across the "
              "whole crate to satisfy a line count). The row does not grow: the "
-             "split paid for the addition rather than the allowlist absorbing it. `B2b` did it AGAIN — `island/registry.rs` — and the row went 650 -> 616 rather than up: two consecutive slices both paid in splits, which is what a ceiling is for. Then the RLS-I1 audit fix did it a THIRD time - `new` joined `restore` in `island/lifecycle.rs`, where the two constructors belong within reading distance of each other - and the row went 616 -> 577"),
+             "split paid for the addition rather than the allowlist absorbing it. `B2b` did it AGAIN — `island/registry.rs` — and the row went 650 -> 616 rather than up: two consecutive slices both paid in splits, which is what a ceiling is for. Then the RLS-I1 audit fix did it a THIRD time - `new` joined `restore` in `island/lifecycle.rs`, where the two constructors belong within reading distance of each other - and the row went 616 -> 577. And a FOURTH time: `M1` added `rules()` - a domain's state accessors began needing the rules to answer at all, since a quantity is addressed by a ROLE and the role->ordinal binding lives in `D::Rules` - and the whole READ SURFACE moved to `island/view.rs` rather than the row absorbing 16 lines. Everything there is `&self` and total; everything left is the loop. Four slices, four splits."),
     "crates/sim-core/src/types.rs": (
         400, "the kernel's shared type vocabulary. `Q0b B2a` moved the ruleset "
              "vocabulary (digest, epoch, the two refusals) to `ruleset.rs` and "
@@ -90,11 +100,27 @@ ALLOWLIST: dict[str, tuple[int, str]] = {
         610, "a measurement binary — one long table of scenarios, which is the "
              "shape that file is FOR"),
     "services/commit-service/src/bin/spine.rs": (
-        425, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
+        375, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
              "one linear sequence that reads worse cut in half. RETIGHTENED "
              "445 -> 425 after Q1 B2b moved the RLS-A3 startup path into "
-             "src/ruleset_boot.rs — same rule as digest.rs: a cap left at its old "
-             "value after a split is a silent licence to regrow into it"),
+             "src/ruleset_boot.rs, then 425 -> 370 after 3E moved the argument "
+             "parser into src/spine_args.rs and the reality bind into "
+             "src/reality_bind.rs. THE GATE FORCED BOTH: 3E's bind pushed the "
+             "file to 435 and this row refused it, so the responsibilities moved "
+             "rather than the cap — which is what the sentence below has been "
+             "asking for since it was written. Same rule as digest.rs: a cap left "
+             "at its old value after a split is a silent licence to regrow into "
+             "it. The parser gained its first three tests on the way out; nothing "
+             "in a `bin` is reachable from a test. "
+             "LOOSENED 370 -> 375, and the honest reason is that 370 was measured "
+             "one commit too early: the file was 363 when it was set, and the "
+             "capability-refresh loop (DP-K10 step 4) legitimately needs nine "
+             "lines in `main`'s loop. The refresh POLICY moved to "
+             "src/reality_bind.rs; what stays is the call and the `?` that makes "
+             "a revoked session stop, which cannot live anywhere but the loop. "
+             "A cap raised to fit real work is not the failure this row warns "
+             "about — a cap raised INSTEAD of moving work is, and that is what "
+             "the 425 -> 370 step refused"),
     "crates/ruleset-core/tests/digest.rs": (
         455, "the digest verification suite; the per-field mutation tables are "
              "long by design (v2_every_*_field_reaches_the_digest). RETIGHTENED "
@@ -217,8 +243,11 @@ def main() -> int:
         return 1
 
     scanned = sum(1 for d in TIER for f in (REPO / d).rglob("*.rs") if "target" not in f.parts)
+    # T56(b) — the CEILING is printed on the PASS path, not only when it is breached. A
+    # threshold nobody sees on a green run drifts invisibly until it breaks, which is the
+    # `port-adoption-gate` floor bug generalised.
     print(f"file-ceiling-gate: OK — {scanned} file(s) across {len(TIER)} tier directories, "
-          f"{len(ALLOWLIST)} carrying recorded debt")
+          f"{len(ALLOWLIST)} carrying recorded debt (ceiling {CEILING} lines/file)")
     return 0
 
 

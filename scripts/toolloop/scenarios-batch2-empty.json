@@ -1,0 +1,147 @@
+{
+  "scenarios": [
+    {
+      "id": "composition-outline-node-edit-empty",
+      "tool_under_test": "composition_outline_node_edit",
+      "expect_tool": "composition_outline_node_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Rename the chapter called The Ember Codex in my outline to The Ember Codex Opens.",
+      "prompt_source": "_meta.synonyms['edit outline node'] + the fixture's own seeded node",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [],
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with op=update, the real project_id/node_id and the correct expected_version: refused 'not found or not accessible', and the node's title was re-read UNCHANGED ('Mine').",
+        "gate": "Tier A — approval card required before any write."
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the ABSENT case must actually be absent — the whole point is that the store is empty"
+        }
+      ],
+      "answer_expect": null
+    },
+    {
+      "id": "glossary-ontology-upsert-empty",
+      "tool_under_test": "glossary_ontology_upsert",
+      "expect_tool": "glossary_ontology_upsert",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "I want to start tracking the factions in this world. Add Factions as a new category alongside characters and items.",
+      "prompt_source": "_meta.synonyms + the fixture's adopted kinds",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [],
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with a schema-valid item (level=kind, name, code): refused 'book not accessible', and book_kinds was re-read with 0 rows for code='hijack'.",
+        "gate": "Tier A — writes immediately once approved, per its own description."
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the ABSENT case must actually be absent — the whole point is that the store is empty"
+        }
+      ],
+      "answer_expect": null
+    },
+    {
+      "id": "plan-compile-empty",
+      "tool_under_test": "plan_compile",
+      "expect_tool": "plan_compile",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Turn the plan I've got for this book into a proper planning package.",
+      "prompt_source": "_meta.synonyms['build plan'] + the fixture's seeded arc",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [],
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'not found or not accessible' against another user's book.",
+        "gate": "Tier A."
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the ABSENT case must actually be absent — the whole point is that the store is empty"
+        }
+      ],
+      "answer_expect": null
+    },
+    {
+      "id": "glossary-list-system-standards-empty",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "expect_tool": "glossary_list_system_standards",
+      "prompt": "What kinds of things can I track in a story bible here — what categories does the system offer out of the box?",
+      "prompt_source": "description (declares no _meta.synonyms — R2). Its own text: 'List the SYSTEM standards catalogue — the entity kinds a book can adopt'.",
+      "approve": null,
+      "seed": [],
+      "editor_context": false,
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "answer_expect": null,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the ABSENT case must actually be absent — the whole point is that the store is empty"
+        }
+      ],
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. NO BOOK BOUNDARY BY DESIGN: scope=none, it lists the SYSTEM standards catalogue, which is identical for every user and carries no per-user data. Recorded as not-applicable rather than as a pass — there is nothing here to leak, and calling that a tenancy pass would be a category error.",
+        "gate": "Tier R."
+      }
+    },
+    {
+      "id": "glossary-extract-entities-from-doc-empty",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "expect_tool": "glossary_extract_entities_from_doc",
+      "prompt": "Here are my notes — turn them into glossary entries please:\nKessa Duhrin is a salt-cartographer from the drowned city of Ilmarch. She carries the Tidewrit, a chart that redraws itself. Her rival is Warden Sabel.",
+      "prompt_source": "_meta.synonyms['turn my notes into glossary entries'] + a pasted document, which is the shape its description names",
+      "approve": null,
+      "seed": [],
+      "editor_context": false,
+      "falsifier": "ABSENT CASE. The fixture is a book with one chapter and nothing else — no entities, no outline, no arc, no ontology beyond the default. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors instead of saying plainly that there is nothing yet.",
+      "answer_expect": null,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the ABSENT case must actually be absent — the whole point is that the store is empty"
+        }
+      ],
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'book not accessible' against another user's book.",
+        "gate": "Tier R — its own description states it WRITES NOTHING; the falsifier checks that."
+      }
+    }
+  ]
+}

@@ -53,9 +53,10 @@ from app.context.formatters.stopwords import (
 )
 from app.extraction.scripts import CJK_FAMILY_RUN_RE, LATIN_NAME_RE
 from app.db.models import Project
-from app.db.neo4j import neo4j_session
+from app.db.graph import graph_session
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import find_entities_by_vector
+from app.adapters.vector_store_provider import get_vector_store
+from app.ports.vector_store import VectorFilter
 
 logger = logging.getLogger(__name__)
 
@@ -261,14 +262,16 @@ async def select_glossary_semantic(
         return []
 
     try:
-        hits = await find_entities_by_vector(
-            session,
+        store = await get_vector_store(session)
+        hits = await store.search(
+            scope="entity",
             user_id=str(user_id),
-            project_id=str(project_id),
-            query_vector=vector,
+            embedding=vector,
             dim=embedding_dimension,
-            embedding_model=embedding_model,
-            limit=max_entities,
+            k=max_entities,
+            filter=VectorFilter(
+                project_id=str(project_id), embedding_model=embedding_model,
+            ),
         )
     except Exception:
         logger.warning(
@@ -276,17 +279,37 @@ async def select_glossary_semantic(
         )
         return []
 
-    # weighted_score = raw_score * anchor_score (two-layer). Sort defensively
-    # in case the index query order isn't relied upon, then keep the first
-    # occurrence of each glossary-anchored id.
-    hits.sort(key=lambda h: h.weighted_score, reverse=True)
+    # T17 — the two-layer product is computed HERE, because the port returns `raw_score` and
+    # the anchor value separately and says why: a backend that had to reproduce a scoring
+    # formula to be swappable would not be swappable.
+    #
+    # ⚠️ `attributes["anchor_score"]` is read with a BRACKET, not `.get`. `PgVectorStore`
+    # OMITS the key by design (D-T25B-PG-ANCHOR-SCORE) so a consumer that ranks by it RAISES
+    # instead of silently multiplying every score by nothing and returning cosine order.
+    # Defaulting here would defeat the one safeguard standing between this ranking and a
+    # silent collapse. This block sits OUTSIDE the `try` above, so the KeyError PROPAGATES
+    # rather than degrading to an empty semantic block — louder than this selector's usual
+    # non-fatal behaviour, and deliberately so: an empty glossary block is visible, whereas a
+    # block ranked by raw cosine looks exactly like a correct one. Entity reads stay on Neo4j
+    # until that decision is closed (SPEC §3.3), so the key is present on the path this runs.
+    #
+    # A None anchor (un-anchored entity) is NOT the same as a missing key, and the repo's
+    # `weighted_score` treated it as a real number — `or 0.0` keeps that arithmetic identical.
+    def _weighted(h) -> float:
+        return h.score * float(h.attributes["anchor_score"] or 0.0)
+
+    ranked: list[tuple[float, str]] = []
+    for h in hits:
+        gid = h.attributes.get("glossary_entity_id")
+        if gid:
+            ranked.append((_weighted(h), gid))
+    ranked.sort(key=lambda t: t[0], reverse=True)
     ranked_ids: list[str] = []
     score_by_id: dict[str, float] = {}
-    for h in hits:
-        gid = h.entity.glossary_entity_id
-        if not gid or gid in score_by_id:
+    for score, gid in ranked:
+        if gid in score_by_id:
             continue
-        score_by_id[gid] = h.weighted_score
+        score_by_id[gid] = score
         ranked_ids.append(gid)
     if not ranked_ids:
         return []
@@ -345,7 +368,7 @@ async def _semantic_with_pinned(
 ) -> list[GlossaryEntityForContext]:
     """mui #4 K-2: vector-ranked entities + pinned merged ahead. Returns []
     if semantic yielded nothing (caller falls back to FTS)."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         semantic = await select_glossary_semantic(
             session=session,
             embedding_client=embedding_client,

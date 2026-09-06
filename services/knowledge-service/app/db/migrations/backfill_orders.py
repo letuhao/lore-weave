@@ -27,7 +27,7 @@ from uuid import UUID
 
 from app.clients.book_client import BookClient
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.events import (
+from app.db.graph_repos.events import (
     EVENT_ORDER_CHAPTER_STRIDE,
     rerank_chronological_order,
 )

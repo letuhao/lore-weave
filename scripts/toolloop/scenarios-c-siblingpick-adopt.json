@@ -1,0 +1,30 @@
+{
+  "_note": "The ADOPT-ALLOWED arm of DQ-T72's founding scenario. Built after the kg-propose-edge instance was withdrawn: what looked like the model picking the wrong sibling turned out to be a Tier-A card terminating the turn before the right tool was reached. This asks whether the founding instance is the same illusion.\n\nCopied verbatim from scenarios-c-siblingpick.json except for tool_under_test/expect_tool, so the prompt and seed are unchanged and the two arms are comparable.",
+  "scenarios": [
+    {
+      "id": "glossary-propose-batch-ADOPT-ALLOWED",
+      "tool_under_test": "glossary_adopt_standards",
+      "expect_tool": "glossary_adopt_standards",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set up several kinds and attributes at once for this book's ontology — I want to do it in one batch, not one at a time.",
+      "prompt_source": "_meta.synonyms['several kinds and attributes at once'] + ['batch of glossary changes'].",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [],
+      "falsifier": "REFUTED (the founding instance is supplier-then-act, not substitution) IF glossary_propose_batch is called once glossary_adopt_standards' write lands.\n\nCONFIRMED (a real substitution) IF adopt_standards completes and glossary_propose_batch is still never called — the model had the tool on the wire, no longer had a card in the way, and chose something else anyway.\n\n🔴 CHECK THE PRECONDITION FIRST: if adopt_standards does not actually WRITE under allow-under-test, neither reading is available. Two arms failed on exactly that today.",
+      "ship_audit": {
+        "gate": "OWED — the whole point of this tool is ONE confirm for MANY changes.",
+        "empty_case": "OWED — an empty `ops` must be refused, not minted as an empty confirm.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scripts/toolloop/scenarios-rebaseline.json",
+      "_problem": "P9-INTENT-GATE",
+      "approve_why": "🔴 approve SET, and the reason is a measurement error this batch exists to correct. Each of these five was recorded 'surfaced 5/5, called 0/5, suspended-on-card 5/5' with approve=None — and the card is NEVER for the tool under test. Read off their own raw evidence: composition_entity_override_edit died on kg_project_create / glossary_entity_set_attributes cards; tool_load died on a kg_project_create card 5/5; composition_generate on composition_arc_edit / book_chapter_save_draft / glossary_deep_research.\n\nSo 'called 0/5' did not measure whether the model can reach this tool. It measured whether the model can reach it BEFORE ANY OTHER TOOL RAISES A CARD — and an unrelated tool's card decided the result. A user would click; the turn would continue.\n\nLegitimate under the standing rule: intent is WRITE, and the target is the run's OWN throwaway book, provisioned and torn down. Bounded by max_approvals (default 3), so a model that re-proposes the same write forever still cannot spend the run.\n\ntool-load KEEPS approve=None on purpose: it is READ intent, and approving a write on a turn that only asked to look would make the harness the thing that wrote. That a read-only question raises a kg_project_create card on 5 of 5 runs is a FINDING about the product, not an obstacle to approve away.",
+      "_why_this_arm": "🔴 THE TOOL UNDER TEST IS THE ONE THE MODEL CHOOSES, NOT THE ONE THE PROMPT NAMES — the same construction that overturned the kg-propose-edge instance today. There, '0 of 10 called while on the wire 10 of 10' looked like a substitution and was a CARD ENDING THE TURN: the model called the precursor, that carded, and the intended tool was never reached. Allowing the precursor's write made the intended tool follow 5 of 5.\n\nDQ-T72's FOUNDING instance has the same silhouette: glossary_propose_batch advertised on 36 of 36 passes, called 0 of 5, while glossary_adopt_standards was used 4 of 5. If adopting the standard kinds is a PRECURSOR to proposing a batch of kinds — and the prompt does ask to set kinds up — then the founding instance is not a selection defect either."
+    }
+  ]
+}

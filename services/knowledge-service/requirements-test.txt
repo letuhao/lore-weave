@@ -6,3 +6,11 @@ respx>=0.22
 
 # ACP A0.2 (RW-6) — both-sides executive contract test
 jsonschema>=4.18
+
+# T42 — Kuzu, one of X1's two engine candidates for the GraphStore bake-off.
+# TEST-ONLY on purpose. It is NOT in requirements.txt: the engine is chosen by T43's
+# measurement, and shipping a candidate's driver in the runtime image would make that choice a
+# deployment fact instead of a configuration one. `app/db/kuzu_bootstrap.py` imports it lazily
+# for the same reason, and the tests `importorskip` so a host that never heard of it still
+# runs the other two adapters' suites green.
+kuzu>=0.11.3

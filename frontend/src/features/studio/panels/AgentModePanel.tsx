@@ -6,7 +6,7 @@
 //
 // Palette/agent-openable (catalog.ts has no hiddenFromPalette here): 'agent-mode'
 // is registered in chat-service's `ui_open_studio_panel` panel_id enum +
-// contracts/frontend-tools.contract.json (regenerated), so panelCatalogContract.test.ts's
+// contracts/browser-tools.contract.json (regenerated), so panelCatalogContract.test.ts's
 // palette-openable-set === backend-enum check stays green (DOCK-6). Also still
 // reachable via PlannerPanel's "Autonomous Agent Runs" link.
 //

@@ -80,12 +80,12 @@ Mismatch → `DpError::CapabilityDenied`.
 | Tier | Store | Retention | Latency | Purpose |
 |---|---|---|---|---|
 | Live tail | **Redis Streams** `dp:events:{reality_id}:{channel_id}` | 7 days or 1M entries | ≤50 ms publish-to-deliver | Default subscribe path |
-| Historical | **Postgres `event_log` table** | per [02_storage R1](../02_storage/R01_event_volume.md) (years) | Query latency, ~ms per page | Catch-up when resume token > Redis retention |
+| Historical | **Postgres `events` table** | per [02_storage R1](../02_storage/R01_event_volume.md) (years) | Query latency, ~ms per page | Catch-up when resume token > Redis retention |
 
 Both are populated by the channel's writer ([DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25)) on every channel event commit:
 
 ```text
-1. Writer commits event to event_log (DB tx) -- canonical.
+1. Writer commits event to events (DB tx) -- canonical.
 2. Same tx (or outbox per 02_storage R6) appends to Redis Stream
    dp:events:{reality}:{channel} with channel_event_id as the stream entry id.
 3. On Redis-write failure, writer retries via outbox; live tail subscribers
@@ -108,7 +108,7 @@ Fields:
   timestamp     unix-ms
 ```
 
-Postgres `event_log` carries the same data verbatim (canonical) per the schema extension in [DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism).
+Postgres `events` carries the same data verbatim (canonical) per the schema extension in [DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism).
 
 ### Retention sizing
 
@@ -120,7 +120,7 @@ Postgres `event_log` carries the same data verbatim (canonical) per the schema e
 
 Per [DP-F4 cache failure](07_failure_and_recovery.md#dp-f4--cache-layer-failure):
 - Live subscribers see `StreamEnd { reason: BackingFailover }`.
-- Subscribers reconnect with their last `channel_event_id`; SDK falls back to Postgres `event_log` query (see DP-Ch18 catch-up).
+- Subscribers reconnect with their last `channel_event_id`; SDK falls back to Postgres `events` query (see DP-Ch18 catch-up).
 - Once Redis Streams recover, SDK switches back to live tail.
 
 ---
@@ -167,7 +167,7 @@ When `from_event_id = N` and Redis Stream contains entries from `M..max` where `
 
 ```text
 1. SDK opens DB query:
-     SELECT * FROM event_log
+     SELECT * FROM events
      WHERE reality_id = $1 AND channel_id = $2 AND channel_event_id > N
      ORDER BY channel_event_id ASC
      LIMIT 1000  -- page size
@@ -349,7 +349,7 @@ A channel with no recent events (turn-based pacing, idle tavern at 3am in-game-t
 | ID | What it locks |
 |---|---|
 | DP-Ch16 | `subscribe_channel_events_durable<S: ChannelEvent>` primitive returning `DurableEventStream<S>` of `DurableStreamItem` (Event / Heartbeat / StreamEnd); visibility check via session capability + ancestor chain |
-| DP-Ch17 | Hybrid backing: Redis Streams `dp:events:{reality}:{channel}` for live tail (7-day or 1M-entry retention) + Postgres `event_log` for historical catchup; populated by channel writer in same tx as commit; outbox-resilient |
+| DP-Ch17 | Hybrid backing: Redis Streams `dp:events:{reality}:{channel}` for live tail (7-day or 1M-entry retention) + Postgres `events` for historical catchup; populated by channel writer in same tx as commit; outbox-resilient |
 | DP-Ch18 | Resume token = `channel_event_id`, client-side cursor; monotonic delivery, no duplicates, no gaps within a connected stream; explicit `ResumeTokenExpired` error rather than silent gap; catchup → live transition via parallel DB-page + Redis-stream merge with `channel_event_id` deduplication |
 | DP-Ch19 | `subscribe_session_channels` convenience for ancestor-chain auto-multiplex; per-channel ordering preserved, cross-channel arbitrary; `resubscribe_for_new_context` helper on `move_session_to_channel`; `ChannelEnd { AncestorChainChanged }` on session move |
 | DP-Ch20 | TCP-level backpressure + 60s stall threshold; client-driven explicit reconnect; idle-channel heartbeat every 30s; `StreamEndReason` taxonomy distinguishing retryable vs non-retryable terminations |
@@ -363,7 +363,7 @@ A channel with no recent events (turn-based pacing, idle tavern at 3am in-game-t
 - [DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) — single-writer-per-channel publishes to both Redis Stream + Postgres in same tx
 - [DP-K6](04c_subscribe_and_macros.md#dp-k6--subscription-primitives) — extended with `subscribe_channel_events_durable` + `subscribe_session_channels`
 - [DP-Ch10](12_channel_primitives.md#dp-ch10--channel-tree-change-invalidation) — `ChannelDissolved` `StreamEndReason` plugs into channel-tree-change handling
-- [DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism) — `event_log` schema this file consumes
+- [DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism) — `events` schema this file consumes
 - [DP-Ch15](13_channel_ordering_and_writer.md#dp-ch15--causal-references-for-bubble-up-preview-full-design--q27) — `causal_refs` carried in stream items, foundation for Q27 bubble-up
 - [DP-X2](06_cache_coherency.md#dp-x2--invalidation-message-protocol) — invalidation pub/sub remains separate; **this file does NOT replace `subscribe_invalidation`**
 - [DP-F4](07_failure_and_recovery.md#dp-f4--cache-layer-failure) — Redis Streams failover behavior plugs into existing cache-failure semantics

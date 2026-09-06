@@ -26,6 +26,17 @@ type Props = {
   onAdded: () => void;
 };
 
+/** R7 — the smallest context window a CHAT model can actually work in.
+ *
+ *  Measured 2026-09-04 on a real turn: the advertised tool surface was 9,732 input tokens and the
+ *  preflight adds a 1,228-token safety margin, so an 8,192-window model failed before the book was
+ *  even considered. 12,000 is that measurement plus headroom, not a round number chosen by feel.
+ *
+ *  It is a WARNING THRESHOLD, never a gate: the true floor rises with the number of tools a turn
+ *  advertises, so treating one measurement as a hard limit would let a harness constant decide a
+ *  product rule. */
+const CHAT_CONTEXT_FLOOR = 12_000;
+
 export function AddModelModal({ provider, onClose, onAdded }: Props) {
   const { t } = useTranslation('settings');
   const { accessToken } = useAuth();
@@ -261,7 +272,40 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium">{t('model_modal.add.context_length')}</label>
-              <input type="number" value={contextLength} onChange={(e) => setContextLength(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
+              <input type="number" data-testid="model-context-length" value={contextLength} onChange={(e) => setContextLength(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
+              {/* R7 — a CHAT model with too small a window cannot chat AT ALL, and until now
+                  nothing said so. MEASURED live 2026-09-04: registering an 8K model and sending
+                  one message got
+
+                    the assembled prompt overflows this model's context window:
+                    input=9732 + safety=1228 = 10960 > context_length=8192
+
+                  The tool surface ALONE is ~9.7K before a single word of the book. The author
+                  learned this by watching a message vanish (R6), which is the worst possible
+                  place to find out.
+
+                  ADVISORY, NOT BLOCKING, and deliberately so: the real floor moves with how many
+                  tools a turn advertises, so a hard gate keyed on one measurement would be a
+                  harness constant deciding a product rule. It warns and lets the user proceed.
+
+                  CHAT-CAPABLE ONLY. A reranker or embedding model legitimately has a small
+                  window — bge-reranker-v2-m3 is registered on this very account — and warning
+                  there would be noise that teaches people to ignore the banner. */}
+              {flags.chat && contextLength && Number(contextLength) > 0
+                && Number(contextLength) < CHAT_CONTEXT_FLOOR && (
+                <p
+                  data-testid="model-context-too-small"
+                  className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200"
+                >
+                  {t('model_modal.add.context_too_small', {
+                    defaultValue:
+                      'Too small for chat: the assistant tools alone need about {{floor}} tokens '
+                      + 'before any of your book is added, so a chat here will fail before it starts. '
+                      + 'Use a larger window, or keep this model for non-chat work.',
+                    floor: CHAT_CONTEXT_FLOOR.toLocaleString(),
+                  })}
+                </p>
+              )}
             </div>
           </div>
 

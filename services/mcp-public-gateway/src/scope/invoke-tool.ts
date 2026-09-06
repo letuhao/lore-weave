@@ -94,7 +94,9 @@ export function detectInvokeToolCall(body: unknown): InvokeToolDetection | null 
  * a self-referential `invoke_tool(name: "invoke_tool", ...)` never dead-ends HERE — it is
  * NOT a no-op, though: `gateRequestBody` denies it downstream (no TOOL_POLICY entry for
  * `invoke_tool`), same fail-closed outcome as any other unclassified tool name. */
-const ALWAYS_AVAILABLE = new Set(['find_tools', 'confirm_action', INVOKE_TOOL_NAME]);
+// RETIRED 2026-08-25 — 'find_tools' removed. It is no longer allowed by isToolAllowed, so
+// exempting it from the activation check only produced a longer path to the same refusal.
+const ALWAYS_AVAILABLE = new Set(['confirm_action', INVOKE_TOOL_NAME]);
 
 /** True iff `name` must have been find_tools-activated this session before invoke_tool may
  * call it. Scope-safe by construction: `toolActivation`'s activated set can only ever contain

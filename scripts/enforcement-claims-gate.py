@@ -67,7 +67,7 @@ UNWIRED = re.compile(r"NOT\s+WIRED", re.IGNORECASE)
 #: The index writes that cell TWO ways — a backticked path (`contracts/cache/keys.yaml`) and
 #: a markdown link ([contracts/language-rule.yaml](../../contracts/language-rule.yaml)) — and
 #: this pattern only ever matched the first. It therefore skipped four rows, including BOTH
-#: LOCKED contracts (`language-rule.yaml`, `frontend-tools.contract.json`), while reporting
+#: LOCKED contracts (`language-rule.yaml`, `browser-tools.contract.json`), while reporting
 #: "8 registered contract(s)" as though that were the set. A gate that silently narrows its
 #: own input is the failure it exists to catch, so the link form is matched explicitly rather
 #: than by loosening the path class (which would start swallowing prose).

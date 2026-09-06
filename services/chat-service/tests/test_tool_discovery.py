@@ -15,8 +15,9 @@ from uuid import uuid4
 import pytest
 
 from app.client.embedding_client import EmbeddingResult
-from app.services import frontend_tools, tool_discovery as td
-from app.services.frontend_tools import FRONTEND_TOOL_NAMES, frontend_tool_defs
+from app.services import tool_discovery as td
+from tests import _v1_tool_fixtures as frontend_tools
+from tests._v1_tool_fixtures import FRONTEND_TOOL_NAMES, frontend_tool_defs
 from app.services.stream_service import (
     TIER_A_AGGREGATE_CAP,
     TIER_A_SAME_OP_CAP,
@@ -134,7 +135,8 @@ def _run_discovery(
 
 def _kc(catalog_meta: dict | None = None) -> AsyncMock:
     kc = AsyncMock()
-    kc.get_catalog_meta = lambda: (catalog_meta or {})
+    # U-4 — mirrors the real per-user signature (see TestCatalogMetaIsPerUser).
+    kc.get_catalog_meta = lambda user_id: (catalog_meta or {})
     return kc
 
 
@@ -414,7 +416,7 @@ class TestTierAVolumeCapH7:
     @pytest.mark.asyncio
     async def test_sixth_same_op_tier_a_escalates_to_batch_confirm(self):
         """After TIER_A_SAME_OP_CAP auto-writes of the SAME op, the next one
-        suspends on a batch confirm_action instead of auto-applying (H7/H2)."""
+        suspends on a batch_confirm instead of auto-applying (H7/H2)."""
         kc = _kc()
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
 
@@ -434,7 +436,9 @@ class TestTierAVolumeCapH7:
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
         pending = suspends[0]["suspend"]["pending_tool_call"]
-        assert pending["name"] == "confirm_action"
+        # DQ-V4 — the PLATFORM cap gate, not a confirm the model asked for. It has its own
+        # name so the frontend stops telling it apart by "the confirm_token is empty".
+        assert pending["name"] == "batch_confirm"
         assert pending["args"]["items"]  # batch card carries the held op
         assert pending["args"]["domain"] == "chapter"
 
@@ -486,7 +490,9 @@ class TestTierAVolumeCapH7:
         suspends = [c for c in chunks if "suspend" in c]
         assert len(suspends) == 1
         pending = suspends[0]["suspend"]["pending_tool_call"]
-        assert pending["name"] == "confirm_action"
+        # DQ-V4 — the PLATFORM cap gate, not a confirm the model asked for. It has its own
+        # name so the frontend stops telling it apart by "the confirm_token is empty".
+        assert pending["name"] == "batch_confirm"
         assert pending["args"]["items"]  # batch card carries the held op
 
 
@@ -669,14 +675,24 @@ class TestToolListLoadDispatch:
 
 class TestGenericFrontendTools:
     def test_generic_tools_in_frontend_name_set(self):
-        # The chat-service-owned frontend tool set after two migrations: P3.2 moved the
-        # ui_* nav tools to ai-gateway (federated), and auto-gate M5 retired the generic
-        # propose_record_edit. What chat-service still owns as frontend (human-gated) tools:
+        # 🔴 EMPTY SINCE V7 (2026-09-03), AND THAT IS THE ASSERTION NOW. The last three
+        # chat-service-intercepted tools — confirm_action, glossary_confirm_action,
+        # glossary_propose_entity_edit — moved to ai-gateway as consumer-local DIRECTIVE tools
+        # (src/mcp/confirm-tools.ts). They still exist, are still advertised, and still gate on a
+        # human; chat-service simply holds no schema for them and intercepts nothing.
+        #
+        # Asserting EMPTINESS rather than deleting the test: this is the clause that would go
+        # quietly true again if someone re-added a name here, which is the whole failure mode
+        # architecture v1 was.
+        assert set(FRONTEND_TOOL_NAMES) == set(), (
+            f"chat-service is intercepting tools again: {sorted(FRONTEND_TOOL_NAMES)}. A tool the "
+            f"model can call must come from the federated catalogue, not from a local dict.")
+        # And they must be BROWSER-EXECUTED still — moving a tool's home does not change who runs
+        # it. Losing this is what handed a headless sub-run a human-gate tool (V7, caught by
+        # test_subagent_runtime.py:69).
+        from tests._v1_tool_fixtures import is_browser_executed
         for name in ("confirm_action", "glossary_propose_entity_edit", "glossary_confirm_action"):
-            assert name in FRONTEND_TOOL_NAMES
-        # ui_* (P3.2 → ai-gateway) and propose_record_edit (M5, deleted) are NOT here:
-        for gone in ("ui_navigate", "ui_open_book", "ui_show_panel", "propose_record_edit"):
-            assert gone not in FRONTEND_TOOL_NAMES
+            assert is_browser_executed(name), f"{name} is no longer browser-executed"
 
     def test_universal_core_advertises_generic_frontend_tools(self):
         """The always-on core (advertised every universal /chat pass) carries the
@@ -720,7 +736,9 @@ class TestGenericFrontendTools:
         # `generic_frontend_tool_def` returns None), so it can no longer land — it was only
         # still NAMED in ALWAYS_ON_CORE_NAMES, which additionally made the skill-claims lint
         # exempt it and let four skills keep instructing the agent to call it.
-        assert "tool_list" in names and "confirm_action" in names
+        # confirm_action left ALWAYS_ON_CORE_NAMES in V7 — it arrives through the FEDERATED
+        # catalogue now, so a fake catalog in this test has no reason to carry it.
+        assert "tool_list" in names
         for gone in ("ui_navigate", "ui_open_book", "ui_show_panel", "ui_watch_job"):
             assert gone not in names, f"{gone} is deprecated — it must never be advertised"
 
@@ -823,6 +841,9 @@ _MIXED_CATALOG = [
     _tool("glossary_search", "Search glossary entities", tier="R"),
     _tool("glossary_get_entity", "Read one entity", tier="R"),
     _tool("glossary_propose_batch", "Batch glossary ops", tier="W"),
+    # V7 — federated since the KIND-C tools moved to ai-gateway; it reaches a book-scoped
+    # surface through the catalogue rather than a chat-service local def.
+    _tool("glossary_propose_entity_edit", "Propose edits to an entity", tier="W"),
     _tool("book_create", "Create a book", tier="A"),
     _tool("book_list", "List books", tier="R"),
     _tool("composition_outline_create", "Create an outline", tier="A"),
@@ -890,7 +911,11 @@ class TestHotToolNames:
 
     def test_picks_only_matching_prefixes(self):
         hot = td.hot_tool_names(_MIXED_CATALOG, {"glossary"})
-        assert hot == {"glossary_search", "glossary_get_entity", "glossary_propose_batch"}
+        # glossary_propose_entity_edit joined _MIXED_CATALOG in V7 (it is federated now), and
+        # it matches the glossary_ prefix like its siblings — the assertion is about WHICH
+        # PREFIXES are picked, so a new glossary tool belongs in the expected set.
+        assert hot == {"glossary_search", "glossary_get_entity", "glossary_propose_batch",
+                       "glossary_propose_entity_edit"}
         # the long tail is excluded — it stays lazy (find_tools).
         assert "book_create" not in hot
         assert "translation_start_job" not in hot
@@ -1574,13 +1599,22 @@ def _patch_embedding_model(ref: tuple[str, str] | None = ("user_model", "embed-m
     """HIGH-2 fix: `search_catalog_semantic` no longer takes the turn's chat
     `model_source`/`model_ref` — it resolves the user's configured
     embedding-capable model via `provider_client.get_provider_client()
-    .get_default_model("embedding", user_id)` first. Tests must patch THAT
+    .resolve_embedding_model(user_id)` first. Tests must patch THAT
     resolution (never the real provider-registry) — pass `ref=None` to
-    simulate "user has no embedding model configured" (the fast pre-network
-    skip path); the default `ref` simulates a configured model so the
-    pre-existing embedding-blend tests keep exercising the embed call."""
+    simulate "user has no embedding-capable model at all" (the fast
+    pre-network skip path); the default `ref` simulates a resolved model so
+    the pre-existing embedding-blend tests keep exercising the embed call.
+
+    D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE renamed the
+    resolution call from the strict `get_default_model("embedding", ...)`
+    (404s unless the user EXPLICITLY set a default — measured 2026-08-28:
+    zero accounts on the deployment ever had) to `resolve_embedding_model`,
+    which falls back to the user's best ACTIVE embedding-capable model
+    server-side. Mocking the OLD name here left it unpatched and the real
+    (unmocked) method ran, returning something the caller could not unpack —
+    fixed by mocking the name that is actually called now."""
     mock_provider = AsyncMock()
-    mock_provider.get_default_model = AsyncMock(return_value=ref)
+    mock_provider.resolve_embedding_model = AsyncMock(return_value=ref)
     return patch("app.client.provider_client.get_provider_client", return_value=mock_provider)
 
 

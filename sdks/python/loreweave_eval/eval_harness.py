@@ -23,7 +23,7 @@ from typing import Any, Iterable
 import yaml
 
 # Q0 lift: import canonicalize_entity_name from the SDK directly.
-# knowledge-service's app.db.neo4j_repos.canonical is itself a back-compat
+# knowledge-service's app.db.graph_repos.canonical is itself a back-compat
 # re-export of this same function, so this is identical behavior with no
 # knowledge-service dependency.
 from loreweave_extraction.canonical import canonicalize_entity_name

@@ -190,6 +190,24 @@ MODEL_BACKEND_ENV = re.compile(
 )
 
 
+
+def _excluded_dir(name: str) -> bool:
+    """EXCLUDE_DIRS, plus the VARIANTS of a build-output directory.
+
+    🔴 Measured 2026-08-30 (T48n): this gate reported **38** violations, and every one was a
+    minified bundle in `frontend/dist-s01/` or `frontend/dist-s6/` — build output from the
+    isolated-stack builds. `dist` was excluded by exact name; `dist-s01` was not, so the gate
+    was reading provider names out of compiled JavaScript and reporting them as SDK imports.
+
+    Not one of the 38 was a real finding, and the sweep carried them for weeks. A gate whose
+    findings are all artifacts of its own scan scope is worse than a silent one: it trains
+    the reader to skip the output. Prefix-matching the build dirs is the fix, because the
+    next variant will be `dist-s7` and nobody will remember this.
+    """
+    if name in EXCLUDE_DIRS:
+        return True
+    return any(name == b or name.startswith(b + "-") for b in ("dist", "build", "coverage"))
+
 def model_backend_env_names(line: str) -> list[str]:
     """Env-var names READ in `line` that look like a model-backend wired as
     platform config (Rule 1b). Empty when none — used by scan + tested."""
@@ -282,7 +300,7 @@ def iter_full_scan():
         if not os.path.isdir(root):
             continue
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [x for x in dirnames if x not in EXCLUDE_DIRS]
+            dirnames[:] = [x for x in dirnames if not _excluded_dir(x)]
             for fn in filenames:
                 if fn.endswith(SCAN_EXTS):
                     full = os.path.join(dirpath, fn)
@@ -304,7 +322,7 @@ def iter_staged():
             continue
         if not rel.startswith(tuple(d + "/" for d in SEARCH_DIRS)):
             continue
-        if any(part in EXCLUDE_DIRS for part in rel.split("/")):
+        if any(_excluded_dir(part) for part in rel.split("/")):
             continue
         full = os.path.join(REPO_ROOT, rel)
         if os.path.isfile(full):

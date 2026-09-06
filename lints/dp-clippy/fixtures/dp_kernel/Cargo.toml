@@ -1,0 +1,10 @@
+[package]
+name = "dp_kernel"
+version = "0.0.0"
+edition = "2021"
+publish = false
+[workspace]
+[package.metadata.dp]
+dp-crate = true
+[dependencies]
+sqlx = { version = "0.8", default-features = false, features = ["postgres"] }

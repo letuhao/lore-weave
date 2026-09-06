@@ -100,7 +100,7 @@ The service tables here are hand-maintained and therefore driftable. `contracts/
 | Service | Purpose | Compose |
 |---|---|---|
 | **chat-service** | Chat sessions/messages, voice, tool permissions, AI settings, evaluate/feedback. | `8212` |
-| **knowledge-service** | Project-scoped memory/KG context — the derived fuzzy/semantic layer (Postgres SSOT + Neo4j). | `8216` |
+| **knowledge-service** | Project-scoped memory/KG context — the extracted, story-positioned graph (Postgres + Neo4j), joined to glossary by the `glossary_entity_id` anchor. **Not a derived layer**: it holds events, statuses and unanchored entities that `entity_facts` cannot represent (T44, measured). | `8216` |
 | **translation-service** | Translation domain — v2 text/block + V3 verify/correct; decoupled LLM path, P5 WFQ. | `8210` |
 | **composition-service** | LOOM co-writer — RAG-packs canon, motif/arc conformance, PlanForge. | `8217` |
 | **lore-enrichment-service** | Lore enrichment — retrieval/generation/verify/gaps/compose + MCP surface. | `8221` |

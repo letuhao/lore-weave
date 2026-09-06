@@ -43,8 +43,11 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.events import Event, list_events_in_order
+from app.db.graph import graph_session
+from app.adapters.graph_store_provider import get_graph_store
+# T17 — the model comes from the engine-neutral domain module, so this file no longer
+# imports `graph_repos` at all.
+from app.domain.graph_models import Event
 from app.db.pool import get_knowledge_pool
 
 logger = logging.getLogger(__name__)
@@ -202,12 +205,15 @@ async def derive_motif_beat_sequences(
         return []
 
     sequences: list[list[dict]] = []
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _container_book_id in containers:
-            events = await list_events_in_order(
-                session,
+            # T17 — through the port. Unbounded narrative order is exactly
+            # `events_in_window(axis="narrative")` with no bounds, and the adapter routes
+            # that straight to the same repo query, so this is behaviour-identical.
+            events = await get_graph_store(session).events_in_window(
                 user_id=str(user_id),
                 project_id=str(project_id),
+                axis="narrative",
                 limit=_MAX_EVENTS_PER_SEQUENCE,
             )
             # list_events_in_order already orders by event_order (nulls last)

@@ -26,8 +26,13 @@ const versionTestSecret = "test_jwt_secret_at_least_32_characters_long"
 // versionFixture seeds an owned entity with a name attribute and returns the
 // wired server, a valid bearer token, and the ids needed to drive PATCH.
 type versionFixture struct {
-	srv         *Server
-	token       string
+	srv   *Server
+	token string
+	// ownerID is the same subject the token carries. T28's curation tests call the `*Core`
+	// funcs directly (that is the whole point — the core is the converged seam), and those
+	// now take an explicit actor, so the fixture has to expose the identity its own token
+	// already asserts.
+	ownerID     uuid.UUID
 	bookID      uuid.UUID
 	entityID    uuid.UUID
 	nameAttrVal uuid.UUID
@@ -93,7 +98,10 @@ func newVersionFixture(t *testing.T, pool *pgxpool.Pool) *versionFixture {
 		t.Fatalf("sign token: %v", err)
 	}
 
-	return &versionFixture{srv: srv, token: signed, bookID: book, entityID: entityID, nameAttrVal: nameAttrVal}
+	return &versionFixture{
+		srv: srv, token: signed, ownerID: owner,
+		bookID: book, entityID: entityID, nameAttrVal: nameAttrVal,
+	}
 }
 
 // currentVersion returns the entity's updated_at formatted exactly as the JSON

@@ -154,6 +154,7 @@ class TriageGroupOut(BaseModel):
     count: int
     status: TriageStatus
     sample_payload: dict[str, Any] = Field(default_factory=dict)
+    sample_triage_id: str | None = None
     suggested_actions: list[str] = Field(default_factory=list)
 
 
@@ -446,10 +447,11 @@ async def _reapply_batch(
         resolved; the live re-apply is a no-op, never a 500).
       * a single item that can't be reconstructed / whose endpoint is missing →
         log + continue (one bad park never breaks the batch)."""
-    from app.db.neo4j import Neo4jNotConfiguredError, neo4j_session
+    from app.db.graph import graph_session
+    from app.db.neo4j import Neo4jNotConfiguredError
 
     try:
-        session_cm = neo4j_session()
+        session_cm = graph_session()
     except Neo4jNotConfiguredError:
         logger.warning(
             "triage re-apply skipped — Neo4j not configured (Track-1); PG state "

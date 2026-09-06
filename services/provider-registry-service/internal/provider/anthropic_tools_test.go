@@ -87,7 +87,7 @@ func TestConvertAnthropicTools_AbsentOrBad(t *testing.T) {
 	// A malformed entry (no function object, or empty name) is skipped;
 	// an all-malformed array yields nil.
 	bad := []any{
-		map[string]any{"type": "function"},                              // no function
+		map[string]any{"type": "function"},                               // no function
 		map[string]any{"type": "function", "function": map[string]any{}}, // empty name
 	}
 	if got := convertAnthropicTools(bad); got != nil {

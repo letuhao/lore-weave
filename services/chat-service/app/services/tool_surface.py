@@ -11,12 +11,14 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from functools import lru_cache
 
 from app.services.token_budget import estimate_tokens, scale_by_window
 from app.services.tool_discovery import (
     _domain_of,
+    declared_lane,
     hot_tool_names,
     surface_hot_domains,
     tool_name,
@@ -59,14 +61,11 @@ HOT_SEED_TOKEN_BUDGET = int(os.environ.get("LW_HOT_SEED_TOKEN_BUDGET", "2000")) 
 RAIL_STEP_TOKEN_BUDGET = int(os.environ.get("LW_RAIL_STEP_TOKEN_BUDGET", "6000"))
 ACTIVATED_TOOLS_TOKEN_BUDGET = 6000  # cap the find_tools-accumulated set by tokens
 
-# Read/query verbs → the tools safe to keep hot (writes/proposes are discovered on
-# demand and usually confirmation-gated anyway).
-# WS-1b: `recall`/`timeline` are semantically READS (memory_recall_entity, memory_timeline)
-# but contain no other read-verb substring, so they were misclassed as writes and starved.
-_READ_VERBS = (
-    "search", "list", "get", "read", "find", "lookup",
-    "show", "view", "fetch", "describe", "query", "recall", "timeline",
-)
+# 🔴 **`_READ_VERBS` IS GONE — the twelve-verb list CP-4.d deleted.** Its history is the argument
+# against keeping it: `recall` and `timeline` were appended by WS-1b because `memory_recall_entity`
+# and `memory_timeline` "contain no other read-verb substring, so they were misclassed as writes and
+# starved". That is the maintenance mode of a heuristic — a starved tool is reported, a verb is
+# added, and the 29 rows nobody reported stay misclassified. The lane is declared; see `_READ_LANE`.
 
 # WS-1b — the hot-path write-tool allowlist (OQ7 / contracts.md C2, §4.4). The read-first
 # token trim structurally starves WRITE tools (reads exhaust the budget first), so a mid-tier
@@ -105,21 +104,111 @@ ALWAYS_HOT_WRITES: frozenset[str] = frozenset({
     "book_update_details",
 })
 
+#: D-FJ-23 — the PRIMARY READ of each domain, kept hot for the same reason and by the same
+#: mechanism as ALWAYS_HOT_WRITES. The mirror was missing, and the asymmetry had a cost.
+#:
+#: The size tie-break in `_budget_names_impl` orders reads by ASCENDING schema size, which is
+#: inversely correlated with how central a tool is: a primary read takes filters (project_id,
+#: detail, limit, include_archived) and documents them, while a peripheral one takes a single
+#: id. Measured on the live 315-tool catalogue, the editor seed filled with `book_scene_get`,
+#: `glossary_entity_get_genres` and `glossary_book_sync_available` while `book_read`,
+#: `book_list`, `composition_list_outline` and `composition_list_canon_rules` were all dropped.
+#: Fitting the MOST tools is not fitting the RIGHT ones.
+#:
+#: What that cost, both measured live 2026-08-13 on the editor surface with the tool absent
+#: from the wire and the model answering from nothing:
+#:   "I checked the consistency rules for this book, and you haven't declared any canon rules
+#:    yet"  — the store held one.
+#:   "I checked your current outline, and it is currently empty" — the store held seven nodes.
+#: A fabricated absence is the read-side twin of a hallucinated write, and worse in one way:
+#: the author is told their own data is not there, so they have no reason to go and look.
+#:
+#: Deliberately SMALL and explicit, like ONESHOT_CREATE_TOOLS and ALWAYS_HOT_WRITES — one
+#: entry per domain, each the tool a plain question about that domain must land on, and each
+#: one measured as starved (hot_seed withholds across the corpus: book_search 175, book_list
+#: 147, composition_list_outline 149, composition_list_canon_rules 145, book_read 137). Not a
+#: heuristic, and not a place to add a tool because it seems useful: every addition spends the
+#: authoring surface's prefix.
+ALWAYS_HOT_READS: frozenset[str] = frozenset({
+    # book — what is IN this book, and what does a chapter say
+    "book_list",
+    "book_read",
+    # composition — the two questions an author asks about their own plan
+    "composition_list_outline",
+    "composition_list_canon_rules",
+    # NOTE: `book_search` is starved hardest of all (175) and is DELIBERATELY NOT here yet.
+    # It is a query tool, not the answer to "what have I got" — the model reaches it through
+    # discovery once it knows what it is looking for, and the four above are what a cold
+    # question needs. Revisit with evidence, not with intuition.
+})
+
+
 
 def _tool_tokens(td: dict) -> int:
-    return estimate_tokens(json.dumps(td, ensure_ascii=False))
+    """U-1 · **count the COMPOSED form.** `estimate_tokens` weights per codepoint and its Vietnamese
+    band spans the combining-mark block, so the same grapheme costs ~1.44× decomposed — and this
+    number is both the sort key and the accumulator of a budget that ends in a hard `break`. A
+    declaration arriving in NFD sorts later and is cut from the wire, with no revision or budget
+    value changing anywhere.
+
+    The door (`knowledge_client._nfc_text`) normalises the text a third party sends us, but it
+    deliberately does NOT touch tool names, schema keys, `enum` or `pattern` — those are wire
+    identifiers owned by the remote server, and rewriting them would break the call the model then
+    makes. Normalising HERE closes that residual without touching a stored value: this function
+    returns a count, so the composed form never leaves it.
+    """
+    return estimate_tokens(unicodedata.normalize("NFC", json.dumps(td, ensure_ascii=False)))
 
 
-def _is_read_tool(name: str) -> bool:
-    # ML-2 FALSE POSITIVE (documented, NOT an active pragma — language-bias-gate
-    # exempts via its BASELINE fingerprint set, not inline markers, so writing one
-    # here would be a claim that silences nothing). `name` is an MCP TOOL NAME,
-    # ASCII by contract
-    # (closed-set snake_case per the Frontend-Tool Contract), never user prose. On
-    # ASCII, .lower() and the NFKC+casefold spine are identical, and routing tool
-    # dispatch through an entity-name normalizer would imply it can carry prose.
-    n = name.lower()
-    return any(v in n for v in _READ_VERBS)
+#: 🔴 **CP-4.d — `_is_read_tool` IS DELETED, NOT IMPROVED, AND SO IS `_READ_VERBS`.**
+#:
+#: It was a twelve-verb substring test over a tool NAME, which is the defect **C-1** forbids by name:
+#: *"group and lane are data at registration, never inferred from a name."* Replacing it with a
+#: better verb list would have been the third retrofit of a property that is not a naming problem.
+#: The lane is **declared** — every federated tool carries `_meta.tier`, set by the provider — so the
+#: name no longer reaches this decision at all. `declared_lane` is the only reader.
+#:
+#: **Measured against the 315 live federated tools before the change, because "C-1 forbids it" is a
+#: rule and a rule with no measured consequence is the kind of claim this run has learned to
+#: distrust.** The stated falsifier was *agreement on every row* — that would have made the heuristic
+#: a correct implementation of the declared fact and 4.d a no-op refactor. It disagreed on **29 of
+#: 315**, and the direction is what matters:
+#:
+#: * **7 tools the heuristic called READS and the provider declares otherwise** — `memory_forget`
+#:   (matches *get*), `kg_view_delete` / `kg_view_edit` / `kg_view_upsert` (match *view*),
+#:   `glossary_deep_research` (matches *search*), `composition_authoring_run_review`,
+#:   `plan_review_checkpoint`. Reads sort FIRST into the always-advertised hot set, so a substring
+#:   was promoting **destructive** declarations into the safe set — the opposite of the rule's intent.
+#: * **22 declared reads the heuristic called writes** — `lore_ask`, `jobs_summary`, `plan_validate`,
+#:   `translation_coverage`, `tool_load` and others — demoted behind every write, against a budget
+#:   that ends in a hard `break`.
+_READ_LANE = "read"
+
+
+def budget_names_by_tokens_ex(
+    catalog: list[dict],
+    names: set[str] | list[str],
+    *,
+    token_budget: int,
+) -> tuple[set[str], list[str]]:
+    """CP-0.2 — :func:`budget_names_by_tokens`, but it also returns what it DROPPED.
+
+    Returns ``(kept, dropped)``, matching :func:`budget_rail_tools` twenty lines below, whose own
+    docstring already states the principle: whatever gets dropped is *"REPORTED so the caller can log
+    it rather than pretend"*. That was true for rails and silently untrue for every other surface.
+
+    **Why this is the founding defect of the runtime rebuild.** In POC arm E the budgeter deleted the
+    one tool the model needed, mid-turn, and returned only the survivors — so the tool was gone from
+    the surface and gone from the record simultaneously. The model then failed the task 3/3 while
+    looking, in every log we had, as though it had simply chosen not to call the tool. A narrowing
+    the caller cannot see is indistinguishable from a decision the model made.
+
+    The behaviour of the kept set is UNCHANGED: this is the same function with its second return
+    value no longer discarded, so the surface cannot shift as a side effect of instrumenting it.
+    """
+    kept = _budget_names_impl(catalog, names, token_budget=token_budget)
+    dropped = sorted(n for n in set(names) if n not in kept)
+    return kept, dropped
 
 
 def budget_names_by_tokens(
@@ -136,22 +225,333 @@ def budget_names_by_tokens(
     schema in `catalog` (core/frontend tools, counted elsewhere) pass through
     free. At least one budgeted tool is always kept (a single oversized schema
     can't zero the seed).
+
+    Kept unchanged, returning only the survivors, so its nine call sites and their tests stay
+    untouched — an instrument must not move the thing it measures. Callers that need to RECORD the
+    narrowing use :func:`budget_names_by_tokens_ex`, which wraps this and reports the dropped names.
     """
+    return _budget_names_impl(catalog, names, token_budget=token_budget)
+
+
+#: Words that carry no discriminating power and differ freely between a user's phrasing and a
+#: tool's declared vocabulary. Stripped from BOTH sides before matching — measured: the v1
+#: incident phrase "update the description of my book" failed a raw substring test against the
+#: declared synonym "update description" purely on an article, and that near-miss is the whole
+#: difference between catching the defect and shipping it.
+_ANSWER_STOPWORDS = re.compile(
+    r"\b(?:the|a|an|my|your|our|this|that|of|for|in|to|please)\b"
+)
+
+#: Hard ceiling on how many tools one request may force hot. The forced set is bounded by what
+#: the user actually said (measured: 1-3 tools on real prompts, 0 on chitchat), but a ceiling
+#: keeps a pathological message from spending the whole prefix.
+ANSWERABLE_MAX = 8
+
+
+#: A HYPHEN IS PUNCTUATION BETWEEN WORDS, NOT A LETTER — and treating it as a letter cost a
+#: whole live batch. `plan_validate` declares the synonym "golden rules"; a scenario prompt
+#: written *"Run the GOLDEN-RULES validation on my plan"* — the compound form a careful writer
+#: actually uses — left it NOT answerable, while the spaced form made it answerable. Measured
+#: against the deployed matcher, one character apart:
+#:
+#:     'the golden-rules validation…'  ->  answerable {book_steering_list}      plan_validate NO
+#:     'the golden rules validation…'  ->  answerable {plan_validate, …}        plan_validate YES
+#:
+#: The batch ran K=5 with ZERO errors and 0/5 called: a clean-looking run that measured nothing,
+#: because the tool was never on the wire.
+#:
+#: 🔴 WIDENING THIS NORMALISER IS THE THING THAT MANUFACTURED THE TIES, so the widening was
+#: measured before it was written rather than after. Stripping ARTICLES collapsed
+#: "write chapter" / "write A chapter" / "write THE chapter" into one string and destroyed the
+#: distinction their authors had drawn between create and edit. Collapsing hyphens does not do
+#: that — over the 1,194 synonyms declared by the 199 LIVE tools (legacy excluded per the
+#: catalogue-census rule; the whole-catalogue figure would be a different and wrong number):
+#:
+#:     colliding normalised synonyms today        13
+#:     colliding after hyphen -> space            13      NEW COLLISIONS: 0
+#:
+#: What it buys: 10 synonyms are declared WITH a hyphen and were unreachable from the spaced
+#: form — `co-write`, `re-translate changed`, `un-index chapter`, `reverse-engineer arc` — and
+#: 1,095 multi-word synonyms were unreachable from a hyphenated request.
+#:
+#: 🔴 UNDERSCORES ARE DELIBERATELY NOT INCLUDED, AND THE CONTROL IS WHY. The obvious version of
+#: this fix collapses both. `_exact_name_pattern` guards a tool NAME with `(?<![a-z0-9_])`
+#: precisely because a name is an IDENTIFIER — its own docstring records `book_list` matching
+#: inside `book_list_chapters` before it shipped. Turning `_` into a space makes that boundary
+#: a space, and the bug returns. Measured over the live names: hyphen-only leaves 0 names
+#: matching inside another name; hyphen AND underscore produces 3, among them `book_list` inside
+#: `composition_motif_book_list` and `world_map_update` inside `world_map_update_marker` — a
+#: tool this ledger already records reporting a write it never made. So the broader fix would
+#: have dragged a destructive sibling onto the wire to solve a punctuation problem.
+_ANSWER_HYPHEN = re.compile(r"[‐-―\-]+")
+
+
+def _answer_norm(text: str) -> str:
+    return re.sub(
+        r"\s+", " ",
+        _ANSWER_STOPWORDS.sub(" ", _ANSWER_HYPHEN.sub(" ", text.lower())),
+    ).strip()
+
+
+#: DQ-T6 (i), owner ruling 2026-09-02 — a trailing `s` on a word of 4+ characters, and nothing
+#: else. No stemmer, no plural table, no irregulars. The 3-char floor keeps `is`/`as`/`us` and
+#: every two-letter word intact; it is the smallest guard that stops the rule inventing words.
+_TRAILING_S = re.compile(r"(\w{3,})s\b")
+
+
+def _depluralised(text: str) -> str:
+    """The request with simple plurals folded — used BESIDE the raw form, never instead of it.
+
+    🔴 THE DEFECT, measured 2026-09-02. `composition_arc_suggest` declares "suggest an arc
+    structure". Asked "Suggest some arc structures for this book.", the answerable set was
+    [composition_arc_list] — the tool that answers was not in it, was advertised 0/5, and the
+    model used a WRITE (composition_structure_template_edit) on 5 of 5 runs. One letter.
+
+    🔴 WHY BESIDE AND NOT INSTEAD, WHICH IS THE WHOLE DESIGN. The ruling reads "match a declared
+    synonym against a lightly normalised request", and the literal reading — normalise the
+    request and match against that — was BUILT AND MEASURED FIRST. It is catastrophic: over 410
+    recorded prompts it LOSES a tool on 169 of them (41%) and gains 2, because a request folded
+    to the singular stops matching every synonym that is itself plural (`composition_motif_link_
+    edit` declares "link motifs" and lost 131). Prompts with no answerable set at all went 6 → 18.
+
+    Normalising BOTH sides is worse in the other direction: 83.9% of prompts gain a tool, because
+    the synonym "list my books" folds to "list my book" and then matches "…add a character to my
+    book". That is precisely the false-positive class `_synonym_pattern` exists to prevent.
+
+    So the request is matched in BOTH forms and the DECLARATION IS NEVER REWRITTEN. That is
+    additive by construction — it cannot lose a match, which the measurement confirms at 0 — and
+    it keeps the property this matcher is valued for: what a tool declares is what it means.
+
+    THE COST, measured before it shipped, as the ruling required: 138 of 410 prompts gain a tool
+    (33.7%), and 131 of those are ONE repeated fixture scenario ("Link motifs — …") gaining
+    `composition_motif_search` alongside the link tool it already had. The remaining 7 are
+    outline_node_edit ×3, memory_remember ×3, book_read ×1. Re-run with
+    scripts/toolloop/measure_plural_normalisation.py --mode additive.
+    """
+    return _TRAILING_S.sub(r"\1", text)
+
+
+#: A synonym written entirely in latin script. `\b` is only meaningful for these.
+_LATIN_SYNONYM = re.compile(r"^[a-z0-9][a-z0-9 \-_'/]*$")
+
+
+@lru_cache(maxsize=4096)
+def _synonym_pattern(syn: str):
+    """A word-boundary matcher for a latin synonym, or None when boundaries do not apply.
+
+    🔴 A RAW SUBSTRING TEST MAKES SHORT SYNONYMS MATCH INSIDE LONGER WORDS, AND IT COST A LIVE
+    RUN. Measured 2026-08-14 on "I want to start tracking the factions in this world. Add
+    Factions as a new category alongside characters and items.":
+
+        book_read           declares "cat"  →  matches inside "**cat**egory"
+        book_media_generate declares "art"  →  matches inside "st**art**"
+
+    Those two were the ENTIRE answerable set for that request. `glossary_ontology_upsert`, which
+    declares "add a kind"/"add a genre"/"new entity type" and is precisely the tool for it, was
+    surfaced on 0 of 3 runs — so the model reached for `glossary_adopt_standards` instead and
+    adopted a whole genre pack: kinds 4→5, attributes 29→36, genres 1→3, kind_genres 4→13, from
+    a request to add ONE category.
+
+    The failure is worst exactly where the surface is weakest: when the right tool declares
+    nothing matchable, the noise is all that is left, and a set of confident false positives is
+    indistinguishable from a correct answer.
+
+    CJK is deliberately exempt. `\\b` is defined on word characters with spaces around them, and
+    Vietnamese/Chinese requests are a first-class case here — a boundary rule would silently stop
+    matching for them, which is the same defect with a different victim.
+    """
+    if not _LATIN_SYNONYM.match(syn):
+        return None
+    return re.compile(rf"(?<![a-z0-9]){re.escape(syn)}(?![a-z0-9])")
+
+
+#: Score for a request that spells out a tool's whole name. Larger than any synonym can
+#: be, so an explicit reference always survives the ANSWERABLE_MAX truncation.
+_EXACT_NAME_WEIGHT = 10_000
+
+
+@lru_cache(maxsize=4096)
+def _exact_name_pattern(name: str):
+    """Whole-IDENTIFIER matcher. Deliberately NOT `_synonym_pattern`.
+
+    That one guards with `(?<![a-z0-9])...(?![a-z0-9])`, which is right for a synonym —
+    "add chapter" should still match next to punctuation or an underscore — and wrong for a
+    tool name, because `_` is not in its character class. Caught by the prefix check before
+    this shipped: `book_list` matched INSIDE `book_list_chapters`, so asking for the
+    chapters tool also dragged its shorter sibling onto the wire. A tool name is an
+    identifier, so `_` has to be a boundary character too.
+    """
+    if not _LATIN_SYNONYM.match(name):
+        return None
+    return re.compile(rf"(?<![a-z0-9_]){re.escape(name)}(?![a-z0-9_])")
+
+
+def answerable_tools(request_text: str | None, catalog: list[dict]) -> set[str]:
+    """The tools whose OWN declared vocabulary says they answer THIS request.
+
+    🔴 THE INVARIANT THIS SERVES: a surface must be able to answer the request it is given.
+    Twice now the opposite has reached an author's book, and both times the tool had already
+    DECLARED that it was the right one:
+
+      v1 (2026-07-21) — `book_update_details` declares "update description"/"change the
+        description". It was starved out of the hot seed by its 5-field schema, so "every
+        model mis-routed 'update the description' to book_chapter_create/save_draft — the
+        tool it could actually see" (tool_surface.py's own words).
+      v2 (2026-08-13) — `composition_list_outline` declares synonyms ["outline", "chapters",
+        "beats", "story structure", …]. Asked "Show me the outline … what chapters and
+        scenes", it was withheld at domain_not_selected in every pass while the Tier-A
+        outline WRITE stayed on the wire. Measured 5/5: the model used the write it could
+        see and created three chapters in the store.
+
+    Five mechanisms shape the surface (domain selection, the seed budget, the write allowlist,
+    rail pre-activation, the suppressors). Each is locally correct and none is accountable for
+    whether the RESULT can answer the question. This is that accountability, and it reads the
+    tool's DECLARATION — never its name, which is the classifier `CP-4.d` deleted on purpose.
+
+    Precise by construction rather than by tuning: multi-word synonyms discriminate on their
+    own. Measured against the live 315-tool catalogue — "Add a chapter called X" forces the two
+    CREATE tools (correct: they asked to create), the v2 read-question forces three reads and
+    no writes (`outline_node_edit`'s synonyms are all phrases like "create chapter"), and
+    chitchat forces nothing.
+    """
+    if not request_text or not catalog:
+        return set()
+    lp = _answer_norm(request_text)
+    if not lp:
+        return set()
+    # DQ-T6 (i) — the request in BOTH forms. `_depluralised` carries the measurement and the
+    # reason this widens rather than replaces. Identical when the request has no plural, so the
+    # common case costs one extra `search` against the same string.
+    lp_dep = _depluralised(lp)
+    _forms = (lp,) if lp_dep == lp else (lp, lp_dep)
+    hits: list[tuple[int, str]] = []
+    for td in catalog:
+        name = tool_name(td)
+        if not name:
+            continue
+        fn = td.get("function") or {}
+        # 🔴 AN EXACT TOOL NAME IN THE REQUEST IS A REFERENCE, NOT A NAME HEURISTIC — and this
+        # is NOT the classifier CP-4.d deleted. That one was a twelve-verb SUBSTRING test that
+        # INFERRED A PROPERTY (the read/write lane) from fragments of a name: it matched "get"
+        # inside `memory_forget` and "view" inside `kg_view_delete`, promoting destructive
+        # tools into the safe set, and it disagreed with the declared lane on 29 of 315 tools.
+        # C-1 forbids exactly that: "lane is data at registration, never inferred from a name."
+        #
+        # Nothing is inferred here. The WHOLE identifier has to appear, on word boundaries, and
+        # the only conclusion drawn is the one the writer stated: they named this tool.
+        #
+        # MEASURED 2026-08-25, and it is why this exists: sampling 25 tools and asking for each
+        # one BY NAME ("Please use the <name> tool for me"), 24 of 25 were NOT answerable — so
+        # naming a tool did not put it on the wire. Live at K=5, a prompt saying "Use the
+        # composition_build_cast_and_graph tool to build the cast and the knowledge graph" left
+        # that tool surfaced 0/5 and the model walked a six-call chain instead, never once
+        # calling `tool_load` to go and fetch the thing it had just been told to use.
+        nn = _answer_norm(name)
+        npat = _exact_name_pattern(nn) if nn else None
+        if nn and (npat.search(lp) if npat is not None else nn in lp):
+            # Beats every synonym: naming the tool is the strongest evidence a request can
+            # carry, and it must never be the entry ANSWERABLE_MAX truncates away.
+            hits.append((_EXACT_NAME_WEIGHT, name))
+            continue
+        for syn in ((fn.get("_meta") or {}).get("synonyms") or []):
+            if not isinstance(syn, str):
+                continue
+            ns = _answer_norm(syn)
+            pat = _synonym_pattern(ns) if ns else None
+            # The DECLARATION is matched as written, against each form of the request.
+            if ns and any((pat.search(f) if pat is not None else ns in f) for f in _forms):
+                # longest match wins the ceiling — a 3-word synonym is far stronger evidence
+                # than a 1-word one, so a truncated set keeps the most specific answers.
+                hits.append((len(ns), name))
+                break
+    hits.sort(key=lambda h: (-h[0], h[1]))
+    chosen = {n for _, n in hits[:ANSWERABLE_MAX]}
+
+    # 🔴 R2 — A SUPERSEDED TOOL MUST NOT OUT-DECLARE ITS SUCCESSOR, AND 59 OF 62 PAIRS DO.
+    #
+    # Measured live 2026-08-14. "Rename the chapter called The Ember Codex in my outline to The
+    # Ember Codex Opens" matched `composition_outline_node_update` — which carries
+    # `superseded_by: composition_outline_node_edit`. The DEPRECATED tool declares the words a
+    # user actually says ("rename chapter", "edit scene", "update node"); its SUCCESSOR, the
+    # unified entry point the platform intends to serve those words, declares "edit outline
+    # node", "manage outline node" and a set of CREATE verbs. So the successor was surfaced on
+    # 0 of 3 runs, and the request that names its exact job could not reach it.
+    #
+    # Swept across the live catalogue: of 62 pairs carrying `superseded_by`, 59 orphan at least
+    # one phrasing — `book_get`→`book_read` loses "open book"/"show book", `book_scene_list`→
+    # `book_list` loses "scenes"/"scene index", `composition_arc_create`→`composition_arc_edit`
+    # loses "create story arc"/"start a saga". This is not a per-tool slip; it is what happens
+    # every time a tool is split or unified and the synonyms stay with the old name.
+    #
+    # THE INVARIANT: whatever phrasing reaches A must also be able to reach the tool that
+    # REPLACED A. Enforced here, at the one place answerability is decided, rather than by
+    # editing 59 synonym lists — a hand-edit is correct the day it is made and silent the next
+    # time a tool is superseded. `scripts/lint_superseded_synonyms.py` fails the pair at build
+    # time so the declarations converge; this keeps the SURFACE correct meanwhile, and stays
+    # correct for whatever pair is added next.
+    #
+    # Deliberately a UNION, not a redirect: the deprecated tool keeps working (existing callers
+    # depend on it) and the successor merely becomes reachable by the same words.
+    by_name = {tool_name(td): td for td in catalog}
+    for name in list(chosen):
+        td = by_name.get(name) or {}
+        succ = ((td.get("function") or {}).get("_meta") or {}).get("superseded_by")
+        if isinstance(succ, str) and succ and succ in by_name:
+            chosen.add(succ)
+    return chosen
+
+
+def _budget_names_impl(
+    catalog: list[dict],
+    names: set[str] | list[str],
+    *,
+    token_budget: int,
+) -> set[str]:
+    """The selection itself — one body, so the reporting variant cannot drift from the plain one."""
     want = set(names)
     defs = {tool_name(td): td for td in catalog if tool_name(td) in want}
     kept: set[str] = {n for n in want if n not in defs}  # non-catalog → passthrough
     used = 0
     # WS-1b: keep the allowlisted canon-write tools hot UNCONDITIONALLY (they were starved by
-    # the read-first ordering below). Only those already candidates for this surface, and their
-    # (small) token cost is charged against the budget so the remaining reads still fit.
-    for nm in ALWAYS_HOT_WRITES:
+    # the read-first ordering below). Only those already candidates for this surface.
+    #
+    # 🔴 D-FJ-23 — THEIR COST NO LONGER CHARGES THE DISCOVERY SEED, because charging it made
+    # the reservation eat the whole budget on the ONE surface that matters most.
+    #
+    # The comment on HOT_SEED_TOKEN_BUDGET says 2000 "keeps ~4-6 common tools hot". Measured
+    # 2026-08-13 against the live 315-tool catalogue, per surface:
+    #
+    #   editor (glossary+composition+book)  196 candidates → 4 kept, ALL 4 the reservation
+    #                                       (1986 of 2000 tokens), READS THAT FIT: ZERO
+    #   book-scoped (glossary)               54 candidates → 8 kept, 2 reserved, 6 reads
+    #   knowledge                            36 candidates → 8 kept, 3 reserved, 5 reads
+    #
+    # The allowlist is declared per TOOL but its cost compounds per SURFACE, and the editor is
+    # the only surface carrying glossary + composition + book writes at once. So on the surface
+    # built for authoring, the hot seed was 100% writes and a plain question — "what canon
+    # rules have I set?", "show me my outline" — landed on a model with no read tool at all.
+    # It answered from nothing: "you haven't declared any canon rules yet" with one in the
+    # store, "your outline is currently empty" with seven nodes in it.
+    #
+    # Two halves tuned in the same week and never against each other: the budget was halved
+    # 4000→2000 (F12 A/B, 2026-07-21) while `book_update_details` was ADDED to this allowlist
+    # (dogfood 2026-07-21) precisely because the budget had starved it. Every such rescue eats
+    # the seed that starves the next tool.
+    #
+    # An unconditional allowlist competing for a budget is a contradiction in terms. This is
+    # the same call D-RAIL-OWN-BUDGET already made twenty lines below for a pinned rail: a
+    # curated, bounded set gets its own ceiling instead of competing with discovery. The cost
+    # is explicit and bounded by the allowlist itself (7 tools, ~3.1K tokens if a surface
+    # carries them all) rather than silently deleting the read surface.
+    for nm in ALWAYS_HOT_WRITES | ALWAYS_HOT_READS:
         td = defs.get(nm)
         if td is not None:
             kept.add(nm)
-            used += _tool_tokens(td)
     ordered = sorted(
         ((n, td) for n, td in defs.items() if n not in kept),
-        key=lambda kv: (0 if _is_read_tool(kv[0]) else 1, _tool_tokens(kv[1]), kv[0]),
+        # CP-4.d — the DEFINITION is read, never the name. `kv[1]` is the tool def and it was
+        # already in scope; the heuristic was reading `kv[0]` with the declared fact one slot away.
+        key=lambda kv: (0 if declared_lane(kv[1]) == _READ_LANE else 1, _tool_tokens(kv[1]), kv[0]),
     )
     for nm, td in ordered:
         t = _tool_tokens(td)
@@ -175,6 +575,43 @@ class SessionToolPins:
     # advertised set regardless of curated/auto mode — a manual pin is a
     # deliberate per-session override, not part of the discovery heuristic.
     pinned_legacy: list[str] = field(default_factory=list)
+
+
+def _budget_and_register(
+    sink: list[dict] | None,
+    stage: str,
+    catalog: list[dict],
+    names: set[str] | list[str],
+    *,
+    token_budget: int,
+) -> set[str]:
+    """CP-0.2 — budget a set AND register what the budget deleted, in one call.
+
+    Exists because the first fix was scoped to the wrong file. The four activation-path budget calls
+    in ``stream_service`` were converted to the reporting variant while these four — the SURFACE
+    ASSEMBLY calls, which run on **every turn** rather than only after a ``tool_load`` — went on
+    discarding their drops. The largest of them trims a 315-tool catalog to a **2,000-token** hot
+    seed, so it is not a smaller instance of the arm-E defect; it is the bigger one, and it fires
+    unconditionally.
+
+    ``sink`` is optional so a caller with nowhere to put the record still gets identical selection
+    behaviour. That is a real hole and it is the honest one: dropping the ``sink`` argument makes a
+    narrowing unrecorded, which is visible at the call site, rather than silently unrecordable.
+    """
+    kept, dropped = budget_names_by_tokens_ex(catalog, names, token_budget=token_budget)
+    reason = f"did not fit the {stage} token budget ({token_budget} tok)"
+    if dropped:
+        if sink is not None:
+            sink.extend({"tool": n, "stage": stage, "reason": reason} for n in dropped)
+        else:
+            # No explicit sink: fall back to the request-scoped one. This branch is why the hole
+            # closed. `withheld_sink` was optional and BOTH production call sites omitted it, so the
+            # `is not None` guard never fired and three rounds of verification found the same
+            # narrowing unrecorded. Registration must not depend on a caller remembering.
+            from app.services.instrument import record_surface_withheld
+            for n in dropped:
+                record_surface_withheld(n, stage=stage, reason=reason)
+    return kept
 
 
 def budget_rail_tools(
@@ -256,6 +693,9 @@ def discovery_seed_for_surface(
     rail_next_step_tools: set[str] | None = None,
     sticky_domains: set[str] | None = None,
     injected_skill_codes: list[str] | None = None,
+    # CP-0.2 — where this function's narrowings register. Optional; see _budget_and_register.
+    refusal_named_tools=None,
+    withheld_sink: list[dict] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
 
@@ -293,10 +733,47 @@ def discovery_seed_for_surface(
     # FIX (context-explosion): token-budget the hot-seed instead of seeding the
     # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a
     # session model with a larger real context_length via scale_by_window).
-    raw_hot_seed = budget_names_by_tokens(
+    raw_hot_seed = _budget_and_register(
+        withheld_sink, 'hot_seed',
         catalog, hot_tool_names(catalog, hot_domains),
         token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
     )
+    # 🔴 EIGHTH FRAME, and it was MY OWN registration hiding inside a branch. This block
+    # sat under `if binding_categories:` — so on every turn without binding categories it
+    # never ran, and the tools it was written to record went unregistered exactly as before.
+    # A control turn disproved the intent-gate diagnosis; this is what the control was
+    # pointing at. Registration must be UNCONDITIONAL and placed after every mutation of
+    # `hot_domains`, never inside the branch that happened to be open when it was written.
+    # ── P1 · THE NARROWING NOBODY INSTRUMENTED ────────────────────────────────────────────────
+    # Live measurement: 237 of the frozen 315 catalogue tools were in NEITHER the advertised nor
+    # the withheld set. Every stage I had instrumented — hot_seed, rail gate, oneshot, failure
+    # breaker, permission mode — sits BELOW this line. The selection that decides which DOMAINS
+    # are candidates at all sits above it, and registered nothing.
+    #
+    # It is query-dependent, which is what made it visible: 87 candidate tools for one message and
+    # 101 for another, differing by 17 names — `jobs_*` and `translation_*` appear only when the
+    # message text mentions them. So ~100 of 315 are chosen by relevance and the other ~215 are
+    # dropped before any budget runs. The decisive case is `world_map_create`: absent from both
+    # records at passes 1-2, then carrying a `token_budget` withheld record at pass 3 — the
+    # runtime's own record proving it had been a candidate all along.
+    #
+    # Registered here as `domain_not_selected`. This is the LARGEST narrowing in the system and it
+    # was the last one found, because it does not look like a filter — it looks like a set being
+    # built. A narrowing that never says no is the hardest kind to see.
+    _selected = hot_tool_names(catalog, hot_domains)
+    _unselected = sorted({tool_name(td) for td in catalog} - set(_selected))
+    if _unselected:
+        _reason = f"domain not in this turn's hot set ({', '.join(sorted(hot_domains)) or 'none'})"
+        if withheld_sink is not None:
+            withheld_sink.extend(
+                {"tool": n, "stage": "domain_not_selected", "reason": _reason}
+                for n in _unselected
+            )
+        else:
+            from app.services.instrument import record_surface_withheld
+            for n in _unselected:
+                record_surface_withheld(n, stage="domain_not_selected", reason=_reason)
+
     eff_pins = pins.effective_enabled
     if pins.curated_mode:
         # In curated mode the hot set only enters via this union; the studio surface's
@@ -340,7 +817,8 @@ def discovery_seed_for_surface(
             # drift risk the standalone constant carried.
             from app.services.skill_registry import SYSTEM_SKILLS
             plan_domains = set(SYSTEM_SKILLS["plan_forge"].hot_domains)
-            plan_hot = budget_names_by_tokens(
+            plan_hot = _budget_and_register(
+                withheld_sink, 'hot_seed_plan_forge',
                 catalog, hot_tool_names(catalog, plan_domains),
                 token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
             )
@@ -381,7 +859,8 @@ def discovery_seed_for_surface(
             if _skill and _skill.hot_domains and _skill_visible(_skill, active_surface):
                 extra_domains |= set(_skill.hot_domains) - covered_domains
         if extra_domains:
-            extra_hot = budget_names_by_tokens(
+            extra_hot = _budget_and_register(
+                withheld_sink, 'hot_seed_skill',
                 catalog, hot_tool_names(catalog, extra_domains),
                 token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
             )
@@ -456,6 +935,25 @@ def discovery_seed_for_surface(
     # handful of tools, and only skills actually injected THIS turn contribute.
     if injected_skill_codes:
         names = names | skill_named_tools(injected_skill_codes, catalog)
+    # 🔴 A REFUSAL IS AN INJECTED INSTRUCTION TOO, and the rule directly above already covers
+    # it: "an INJECTED instruction must never name a tool that is not on the wire". A refusal is
+    # the RUNTIME's own words telling the model what to call next — the strongest case of the
+    # three, and the only one that was not riding.
+    #
+    # MEASURED 2026-08-24, batch c-override12, K=5, from chat_messages.withheld_tools:
+    #     composition_entity_override_edit   advertised 5 of 5
+    #     composition_list_derivatives       withheld 5 of 5, for TWO reasons —
+    #         domain_not_selected | domain not in this turn's hot set
+    #         hot_seed            | did not fit the hot_seed token budget (2000 tok)
+    # and its refusal says "Call composition_list_derivatives and pass it THIS SAME project_id".
+    #
+    # The union goes HERE, after both filters, because the withholding came from both: a
+    # budget-only exemption would still have left it out of the hot set. Bounded the same way
+    # skill-named tools are — a refusal names a handful of tools, resolved against the catalogue
+    # by whole-word match, and only a refusal actually issued THIS turn contributes.
+    if refusal_named_tools:
+        _cat_names = {tool_name(td) for td in catalog}
+        names = names | {t for t in refusal_named_tools if t in _cat_names}
     # CAT-4 Part D — a manually-pinned legacy tool rides every turn of THIS
     # session regardless of curated/auto mode; it bypasses find_tools entirely
     # (the whole point of the escape hatch is that the tool is otherwise
@@ -496,6 +994,7 @@ def effective_enabled_tools(
     catalog: list[dict],
     hot_domains: set[str],
     context_length: int | None = None,
+    withheld_sink: list[dict] | None = None,
 ) -> list[str]:
     """When glossary skill is active in curated mode, auto-union glossary hot tools.
 
@@ -510,7 +1009,8 @@ def effective_enabled_tools(
         return list(enabled_tools)
     # FIX (context-explosion): budget the auto-unioned hot set too, so curated
     # sessions with the glossary skill don't re-inflate the whole domain.
-    hot = budget_names_by_tokens(
+    hot = _budget_and_register(
+        withheld_sink, 'hot_seed_glossary',
         catalog, hot_tool_names(catalog, hot_domains),
         token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
     )

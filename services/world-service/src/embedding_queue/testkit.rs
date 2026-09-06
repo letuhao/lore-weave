@@ -179,7 +179,7 @@ impl MemWriter {
 impl EmbeddingWriter for MemWriter {
     async fn write_embedding(
         &self,
-        reality_id: Uuid,
+        reality_id: dp::RealityId,
         npc_id: Uuid,
         session_id: Uuid,
         vector: &[f32],
@@ -194,7 +194,7 @@ impl EmbeddingWriter for MemWriter {
         self.rows
             .lock()
             .unwrap()
-            .insert((reality_id, npc_id, session_id), vector.to_vec());
+            .insert((reality_id.as_uuid(), npc_id, session_id), vector.to_vec());
         Ok(())
     }
 }
@@ -207,7 +207,7 @@ pub struct NoopWriter;
 impl EmbeddingWriter for NoopWriter {
     async fn write_embedding(
         &self,
-        _reality_id: Uuid,
+        _reality_id: dp::RealityId,
         _npc_id: Uuid,
         _session_id: Uuid,
         _vector: &[f32],

@@ -5,8 +5,11 @@ subset); the human confirms via /v1/kg/actions/confirm.
 
   * ``preview_build_wiki`` — entity count + an estimated cost range.
   * ``apply_build_wiki`` — resolves the entity set (explicit subset, else ALL of the book's
-    active glossary entities — the backend's generate path requires explicit ids), creates
-    a wiki-gen job, and enqueues it. Returns the job id.
+    glossary entities regardless of triage status — the backend's generate path requires
+    explicit ids), creates a wiki-gen job, and enqueues it. Returns the job id.
+    NOT "active": `_resolve_entity_ids` passes status_filter=None deliberately, and the
+    reason is in its own comment — both creation paths insert status='draft', so an
+    active-only filter would produce an empty wiki.
 
 Entity resolution happens at CONFIRM (not mint) for the "all" case so the token stays small
 and reflects current state. Deps (glossary client, jobs repo, redis) are built by the
@@ -142,8 +145,15 @@ async def preview_build_wiki(
         "destructive": False,
         "title": "Generate wiki articles",
         "preview_rows": [
+            # NOT "active". `_resolve_entity_ids` passes status_filter=None on purpose (both
+            # entity creation paths insert status='draft', so filtering to active would empty
+            # the wiki), and the count endpoint this row reads has no status filter either.
+            # Measured 2026-08-11: 6393 draft / 925 active / 10 rejected across the instance —
+            # a human told "active" on a 3000-entity book would picture a fraction of the bill.
             {"label": "entities", "value": str(count),
-             "note": "all active glossary entities" if not params.entity_ids else "selected"},
+             "note": "every glossary entity of this book, whatever its triage status "
+                     "(draft included) — not just the active ones"
+                     if not params.entity_ids else "selected"},
             {"label": "wiki generation (PAID)", "value": f"${low}–${high}",
              "note": "estimated LLM cost (draft + revise per entity, caller-paid)"},
         ],

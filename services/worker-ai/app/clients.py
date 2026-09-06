@@ -29,6 +29,8 @@ from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
 from loreweave_extraction.schema_projection import ExtractionSchema
 
+from app.config import settings
+
 __all__ = [
     "BookClient",
     "KnowledgeClient",
@@ -1123,7 +1125,11 @@ class GlossaryClient:
         caller should treat this as "stop iteration; rely on what's
         been synced so far".
         """
-        url = f"{self._base_url}/internal/books/{book_id}/entities"
+        # T38 B6 — through the KAL's `cast`, which carries the same projection this branch
+        # reads (kind_code + aliases) and is the boundary consumers are told to use (INV-KAL).
+        # `roster` could not have served it: this sync needs kind and aliases, and roster is
+        # id+name.
+        url = f"{settings.knowledge_gateway_url.rstrip('/')}/v1/kal/books/{book_id}/cast"
         params: dict[str, str] = {"limit": str(limit)}
         if cursor:
             params["cursor"] = cursor
@@ -1141,7 +1147,11 @@ class GlossaryClient:
                 GlossaryEntity(
                     entity_id=item["entity_id"],
                     name=item.get("name") or "",
-                    kind_code=item.get("kind_code") or "",
+                    # T38 B6 — the KAL's `cast` names this field `kind`; the glossary LIST
+                    # payload named it `kind_code`. Both accepted: the live smoke read
+                    # `with kind: 0` on a book whose entities all have one, because only the
+                    # old key was being looked up.
+                    kind_code=item.get("kind") or item.get("kind_code") or "",
                     aliases=tuple(item.get("aliases") or []),
                     short_description=item.get("short_description"),
                 )
@@ -1176,7 +1186,10 @@ class GlossaryClient:
         """
         if not entity_ids:
             return []
-        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        # T38 B6 — through the KAL's `cast/by-ids` (built in B5 because five pinned sites
+        # needed it). Same projection as `cast`, so `cached_name` means here what it means
+        # there.
+        url = f"{settings.knowledge_gateway_url.rstrip('/')}/v1/kal/books/{book_id}/cast/by-ids"
         try:
             resp = await self._http.post(url, json={"entity_ids": entity_ids})
             if resp.status_code != 200:

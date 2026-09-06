@@ -15,6 +15,8 @@
 //! Gated on `LOREWEAVE_TEST_PG_URL`; skips cleanly when unset. Requires
 //! migration 0015. Append-only against random reality UUIDs.
 
+mod hub_fixture;
+
 use std::sync::Arc;
 
 use sqlx::postgres::PgPoolOptions;
@@ -22,13 +24,18 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use commit_service::manager::{AdoptOutcome, Manager};
-use commit_service::{Actor, CombatDomain, CombatPayload, Ruleset, CombatState};
+use commit_service::combat::Side;
+use commit_service::{CombatDomain, CombatPayload, CombatState, RealityRules};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{
+
     RulesetEpoch,
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
     Outcome, Producer, QueuedInput, SeenWindow, Seq,
 };
+
+mod support;
+use support::verified_reality;
 
 fn dsn() -> Option<String> {
     std::env::var("LOREWEAVE_TEST_PG_URL").ok()
@@ -46,10 +53,10 @@ async fn pool(url: &str) -> Arc<PgPool> {
 fn build_island() -> Island<CombatDomain> {
     // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
     // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
-    let rules = Arc::new(Ruleset::engine_default());
+    let rules = Arc::new(RealityRules::proving_ground());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
-    state.actors.insert(EntityId(2), Actor::new(&rules, 100_000));
+    state.actors.insert(EntityId(1), hub_fixture::actor(&rules, EntityId(1), Side::A, 100));
+    state.actors.insert(EntityId(2), hub_fixture::actor(&rules, EntityId(2), Side::B, 100_000));
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xFA1_10,
@@ -127,6 +134,43 @@ fn envelope(reality: Uuid, ver: u64, input_id: u128, turn: u64, ts: &str) -> Eve
 
 /// **The failover property, end to end.**
 ///
+/// Seed the `channels` row a writer lease now REQUIRES.
+///
+/// 🔴 `0027_channel_writer_state_fk` enforces `channel_writer_state -> channels` on every NEW
+/// write. Its header calls the pre-existing orphans "the DEFECT the key exists to prevent": a
+/// lease was being adopted on a channel that did not exist, and nothing said so until the key
+/// landed. `NOT VALID` leaves history alone, so these suites started failing on their own
+/// inserts - the ratchet working, not a regression.
+///
+/// A ROOT channel (`parent` NULL, `depth` 0). `ON CONFLICT (reality_id, id)`, NOT a bare clause:
+/// `channels_root_single` is UNIQUE (reality_id) WHERE parent IS NULL, so a bare one would
+/// swallow a second root and turn this seed into a silent no-op.
+/// A CHILD of `parent`, for the tests holding two channels in ONE reality.
+async fn seed_child_channel(pool: &PgPool, reality: Uuid, channel: i64, parent: i64) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, $3, 'cell', 1, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(channel)
+    .bind(parent)
+    .execute(pool)
+    .await
+    .expect("seed child channel");
+}
+
+async fn seed_channel(pool: &PgPool, reality: Uuid, channel: i64) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, NULL, 'reality', 0, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(channel)
+    .execute(pool)
+    .await
+    .expect("seed channel");
+}
+
 /// A commits an intent and dies. B cannot take the channel while A's lease is
 /// healthy; once it expires B claims, recovers, and the redelivered intent is
 /// a recorded duplicate rather than a second attack.
@@ -139,11 +183,12 @@ async fn a_dead_writer_is_replaced_without_applying_anything_twice() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let channel = 1i64;
+    seed_channel(&pool, reality, channel).await;
     let ts = db_now(&pool).await;
     let in_flight: u128 = 0xF0_1105;
 
     // ── A adopts the channel with a HEALTHY lease and commits one turn ──
-    let mut a = Manager::new(pool.clone(), reality);
+    let mut a = Manager::new(pool.clone(), verified_reality(reality));
     assert!(matches!(
         a.adopt(channel, build_island).await.unwrap(),
         AdoptOutcome::Adopted { .. }
@@ -158,7 +203,7 @@ async fn a_dead_writer_is_replaced_without_applying_anything_twice() {
     }
 
     // ── B cannot steal a HEALTHY lease ──
-    let mut b = Manager::new(pool.clone(), reality);
+    let mut b = Manager::new(pool.clone(), verified_reality(reality));
     assert_eq!(
         b.adopt(channel, build_island).await.unwrap(),
         AdoptOutcome::HeldByAnother,
@@ -169,11 +214,12 @@ async fn a_dead_writer_is_replaced_without_applying_anything_twice() {
     expire_lease(&pool, reality, channel).await;
 
     // ── B takes over: claim → recover → step ──
-    let mut b2 = Manager::new(pool.clone(), reality);
+    let mut b2 = Manager::new(pool.clone(), verified_reality(reality));
     let outcome = b2.adopt(channel, build_island).await.unwrap();
     let AdoptOutcome::Adopted { recovered_ids, turn_number } = outcome else {
         panic!("an expired lease must be claimable — this IS failover, got {outcome:?}");
     };
+
     assert!(recovered_ids >= 1, "B recovered what A committed");
     assert_eq!(turn_number, 1, "and resumed the turn counter instead of rewinding to 0");
 
@@ -209,12 +255,13 @@ async fn after_failover_new_intents_still_resolve() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let channel = 2i64;
+    seed_channel(&pool, reality, channel).await;
 
-    let mut dead = Manager::new(pool.clone(), reality);
+    let mut dead = Manager::new(pool.clone(), verified_reality(reality));
     dead.adopt(channel, build_island).await.unwrap();
     expire_lease(&pool, reality, channel).await;
 
-    let mut successor = Manager::new(pool.clone(), reality);
+    let mut successor = Manager::new(pool.clone(), verified_reality(reality));
     assert!(matches!(
         successor.adopt(channel, build_island).await.unwrap(),
         AdoptOutcome::Adopted { .. }
@@ -242,11 +289,12 @@ async fn relinquish_hands_over_immediately() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let channel = 3i64;
+    seed_channel(&pool, reality, channel).await;
 
-    let mut a = Manager::new(pool.clone(), reality);
+    let mut a = Manager::new(pool.clone(), verified_reality(reality));
     a.adopt(channel, build_island).await.unwrap();
 
-    let mut b = Manager::new(pool.clone(), reality);
+    let mut b = Manager::new(pool.clone(), verified_reality(reality));
     assert_eq!(
         b.adopt(channel, build_island).await.unwrap(),
         AdoptOutcome::HeldByAnother,
@@ -270,15 +318,17 @@ async fn losing_one_lease_does_not_drop_the_others() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
 
-    // A holds two channels.
-    let mut a = Manager::new(pool.clone(), reality);
+    // A holds two channels — 10 as the reality's single root, 11 as its child.
+    seed_channel(&pool, reality, 10).await;
+    seed_child_channel(&pool, reality, 11, 10).await;
+    let mut a = Manager::new(pool.clone(), verified_reality(reality));
     a.adopt(10, build_island).await.unwrap();
     a.adopt(11, build_island).await.unwrap();
 
     // Channel 11's lease lapses (A stalled on that one); someone else claims
     // it, fencing A out of 11 ONLY.
     expire_lease(&pool, reality, 11).await;
-    let mut thief = Manager::new(pool.clone(), reality);
+    let mut thief = Manager::new(pool.clone(), verified_reality(reality));
     thief.adopt(11, build_island).await.unwrap();
 
     let lost = a.renew_all().await.unwrap();
@@ -295,7 +345,8 @@ async fn adopt_is_idempotent_per_channel() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
 
-    let mut m = Manager::new(pool.clone(), reality);
+    seed_channel(&pool, reality, 20).await;
+    let mut m = Manager::new(pool.clone(), verified_reality(reality));
     m.adopt(20, build_island).await.unwrap();
     m.adopt(20, build_island).await.unwrap();
     assert_eq!(m.hosted(), vec![20], "one channel, one island");

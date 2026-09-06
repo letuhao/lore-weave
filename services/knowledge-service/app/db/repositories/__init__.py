@@ -4,7 +4,7 @@ D-K8-03 optimistic-concurrency errors live here so both the projects
 and summaries repos can raise them and the routers can catch them
 without importing each repo's module. C9 (D-K19d-γa-01) extended
 ``current`` to also cover Neo4j :Entity writes; we avoid importing
-Entity here to skirt the neo4j_repos ↔ repositories import cycle and
+Entity here to skirt the graph_repos ↔ repositories import cycle and
 instead type it structurally (the router casts to the type it knows
 it put in).
 """

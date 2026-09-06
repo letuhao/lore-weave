@@ -77,14 +77,73 @@ describe('ProjectPicker (W4)', () => {
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
-  it('filters out non-matching names', async () => {
-    listProjectsMock.mockResolvedValue(PROJECTS);
+  // ── the name filter is the SERVER'S ──────────────────────────────────────
+  //
+  // This used to mock `listProjects` to return every project whatever was asked
+  // for, and assert that typing hid the non-matches — which only passes while
+  // the filtering happens in the browser. That is exactly the shape the picker
+  // was fixed away from: it asks for `limit: 200`, the route clamps to 100, and
+  // a project past the ceiling was unfindable by name with no symptom.
+  //
+  // So the mock now behaves like the endpoint, and the assertions below pin the
+  // REQUEST as well as the render. A test that only checked the render would go
+  // on passing if someone re-added a client-side `.filter()`.
+  const serverSideList = (params: { search?: string }) => {
+    const q = (params.search ?? '').toLowerCase();
+    return Promise.resolve({
+      items: q
+        ? PROJECTS.items.filter((p) => p.name.toLowerCase().includes(q))
+        : PROJECTS.items,
+      next_cursor: null,
+    });
+  };
+
+  it('sends the typed name to the server rather than filtering in the browser', async () => {
+    listProjectsMock.mockImplementation((params: { search?: string }) => serverSideList(params));
     render(<ProjectPicker value={null} onChange={vi.fn()} />);
     await waitFor(() => expect(listProjectsMock).toHaveBeenCalled());
     fireEvent.focus(screen.getByRole('combobox'));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'eastern' } });
+
+    // The REQUEST carried it. Without this the test cannot distinguish a
+    // server-side search from a client-side one over a full list.
+    await waitFor(() =>
+      expect(listProjectsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'eastern' }),
+        'tok-test',
+      ),
+    );
     await waitFor(() => expect(screen.queryByText('Silk Road Codex')).toBeNull());
     expect(screen.getByText('Eastern Sea Lore')).toBeInTheDocument();
+  });
+
+  it('renders what the server returned even when it does not contain the typed text', async () => {
+    // THE DISCRIMINATING CASE. A client-side `includes()` would hide this row;
+    // the server is the authority on what matches, and a real one does things
+    // the browser cannot — accent folding, trigram similarity, aliases. If this
+    // test goes red, filtering has crept back into the component.
+    listProjectsMock.mockResolvedValue({
+      items: [{ project_id: 'p-dddd', name: 'Silk Road Codex' }],
+      next_cursor: null,
+    });
+    render(<ProjectPicker value={null} onChange={vi.fn()} />);
+    await waitFor(() => expect(listProjectsMock).toHaveBeenCalled());
+    fireEvent.focus(screen.getByRole('combobox'));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'eastern' } });
+    // Wait PAST the 180ms debounce. Asserting straight away passed by racing it:
+    // a re-added client-side filter had not run yet, so the row was still on
+    // screen and the test agreed with the bug. Measured — under a deliberate
+    // revert to client-side filtering this assertion stayed green until the wait
+    // was added.
+    await new Promise((r) => setTimeout(r, 320));
+    expect(screen.getByText('Silk Road Codex')).toBeInTheDocument();
+  });
+
+  it('an empty box asks for no search at all, rather than searching for ""', async () => {
+    listProjectsMock.mockImplementation((params: { search?: string }) => serverSideList(params));
+    render(<ProjectPicker value={null} onChange={vi.fn()} />);
+    await waitFor(() => expect(listProjectsMock).toHaveBeenCalled());
+    expect(listProjectsMock.mock.calls[0][0]).not.toHaveProperty('search');
   });
 
   it('resolves a linked-but-unlisted (archived) project by id for the chip', async () => {

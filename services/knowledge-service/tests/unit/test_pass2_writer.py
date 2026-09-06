@@ -85,7 +85,7 @@ def _fact(
     # |'negation'). Was 'description' — never a valid type; it only survived
     # because merge_fact is mocked here, but pass2_writer now (correctly) filters
     # off-taxonomy facts BEFORE merge_fact, so the invalid default produced 0
-    # merges. See app/db/neo4j_repos/facts.py:FACT_TYPES.
+    # merges. See app/db/graph_repos/facts.py:FACT_TYPES.
     content: str, type: str = "milestone",
     subject: str | None = None, subject_id: str | None = None,
     confidence: float = 0.9,
@@ -1050,7 +1050,7 @@ async def test_full_pipeline_all_candidate_types(
 
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch("app.extraction.entity_resolver.merge_entity", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_anchor_hit_skips_merge_entity(
     mock_upsert_source, mock_merge_entity, mock_add_evidence,
@@ -1103,7 +1103,7 @@ async def test_anchor_hit_skips_merge_entity(
 
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch("app.extraction.entity_resolver.merge_entity", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_anchor_miss_still_mints_new_entity(
     mock_upsert_source, mock_merge_entity, mock_add_evidence,
@@ -1154,19 +1154,21 @@ def _hierarchy_paths(chapter_index: int, chapter_id: str = "ch-1"):
 
 
 @pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.max_event_order_in_band", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_event_order_from_hierarchy_chapter_index(
-    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank, mock_max,
 ):
     """CM4: event_order = chapter_index×1e6 + within-chapter index, advancing
     per written event (the chapter ordinal comes from hierarchy_paths)."""
     mock_src.return_value = _make_source_result()
     mock_merge.return_value = _make_event_result("e")
     mock_evid.return_value = _make_evidence_result(True)
+    mock_max.return_value = None          # an empty band — this is the FIRST job
 
     await write_pass2_extraction(
         _fake_session(),
@@ -1180,13 +1182,142 @@ async def test_event_order_from_hierarchy_chapter_index(
     assert orders == [3_000_000 + 0, 3_000_000 + 1]
 
 
+# ── event_order must not collide across extraction jobs ───────────────
+#
+# Measured on 封神演義 ch.1 in the iso store (2026-08-30): three jobs wrote one chapter,
+# and because `idx` restarted at 0 on every call while `chapter_base` depends only on the
+# chapter, 20 events carried 7 duplicate `event_order` values — every collision cross-job,
+# none within a job. `event_order` is the reading axis, so duplicates make every consumer's
+# ordering fall through to the store's row order and the axis stops being an order with
+# nothing failing anywhere.
+
+
 @pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.max_event_order_in_band", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_second_job_on_a_chapter_does_not_reuse_event_orders(
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank, mock_max,
+):
+    """THE REGRESSION. A second job over a chapter that already holds events numbered
+    3_000_000..3_000_004 must continue at 3_000_005, not restart at 3_000_000."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+    mock_max.return_value = 3_000_004     # five events already written by an earlier job
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id="job-2",
+        events=[_event("Sixth", ["x"]), _event("Seventh", ["y"])],
+        hierarchy_paths=_hierarchy_paths(chapter_index=3),
+    )
+
+    orders = [c.kwargs["event_order"] for c in mock_merge.call_args_list]
+    assert orders == [3_000_005, 3_000_006]
+    # And the band it asked about is THIS chapter's, not the whole project's.
+    assert mock_max.await_args.kwargs["lo"] == 3_000_000
+    assert mock_max.await_args.kwargs["hi"] == 4_000_000
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.max_event_order_in_band", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_event_orders_written_by_two_jobs_are_disjoint(
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank, mock_max,
+):
+    """The property the fix exists for, stated as a property: run two jobs over one
+    chapter and no number appears twice. This is the assertion that fails on the old
+    code — the per-call assertion above only fails because it pins exact values."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    written: list[int] = []
+    for job, names in (("job-1", ["A", "B", "C"]), ("job-2", ["D", "E"])):
+        # The store's answer between runs: the highest slot the previous run consumed.
+        mock_max.return_value = max(written) if written else None
+        mock_merge.reset_mock()
+        await write_pass2_extraction(
+            _fake_session(),
+            user_id=USER_ID, project_id=PROJECT_ID,
+            source_type="chapter", source_id="ch-1", job_id=job,
+            events=[_event(n, ["x"]) for n in names],
+            hierarchy_paths=_hierarchy_paths(chapter_index=3),
+        )
+        written += [c.kwargs["event_order"] for c in mock_merge.call_args_list]
+
+    assert len(written) == len(set(written)), f"event_order collided: {written}"
+    assert written == sorted(written), "the axis must stay non-decreasing across jobs"
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.max_event_order_in_band", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_exhausted_chapter_band_raises_instead_of_overflowing(
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank, mock_max,
+):
+    """A full band must NOT spill into the next chapter's. Overflowing would reorder
+    every chapter after this one, and nothing downstream could tell it had happened."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+    mock_max.return_value = 3_999_999     # the last slot in chapter 3's band
+
+    with pytest.raises(ValueError, match="exhausted"):
+        await write_pass2_extraction(
+            _fake_session(),
+            user_id=USER_ID, project_id=PROJECT_ID,
+            source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+            events=[_event("OneTooMany", ["x"])],
+            hierarchy_paths=_hierarchy_paths(chapter_index=3),
+        )
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.max_event_order_in_band", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_positionless_source_does_not_query_the_band(
+    mock_src, mock_merge, mock_evid, mock_rerank, mock_max,
+):
+    """A chat turn has no chapter ordinal, so there is no band to continue — and asking
+    the store about one would be a read whose answer could never be used."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chat_turn", source_id="t-1", job_id=JOB_ID,
+        events=[_event("Untethered", ["x"])],
+    )
+    mock_max.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.max_event_order_in_band", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_event_order_none_without_hierarchy(
-    mock_src, mock_merge, mock_evid, mock_rerank,
+    mock_src, mock_merge, mock_evid, mock_rerank, mock_max,
 ):
     """Legacy/chat path (no hierarchy_paths) → event_order None → the timeline
     null-sinks the event (coalesce(event_order, 2147483647))."""
@@ -1209,8 +1340,10 @@ async def test_event_order_none_without_hierarchy(
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.max_event_order_in_band", new_callable=AsyncMock,
+       return_value=None)
 async def test_chrono_rerank_runs_when_dated_event_written(
-    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
+    mock_max, mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
 ):
     """Debounce: a chapter that writes ≥1 dated event triggers the project
     chronological rerank."""
@@ -1236,8 +1369,10 @@ async def test_chrono_rerank_runs_when_dated_event_written(
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.max_event_order_in_band", new_callable=AsyncMock,
+       return_value=None)
 async def test_chrono_rerank_skipped_when_no_dated_event(
-    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
+    mock_max, mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
 ):
     """Debounce: an all-undated chapter (or chat turn) must NOT trigger the
     O(project-events) rerank."""

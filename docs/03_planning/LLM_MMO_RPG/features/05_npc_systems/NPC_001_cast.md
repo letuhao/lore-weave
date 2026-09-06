@@ -1,5 +1,29 @@
 # NPC_001 — Cast (NPC Foundation)
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
 > V2+ NPC routing on non-cell tilemap reservation (TMP_001 §14 cross-feature integration). NPC scripted-travel paths at non-cell tiers consume `tilemap_view.road_segments` + free-path connectivity (TMP-A8 "never seal a gap" connectivity invariant). NPC_001 owns the NPC routing intent + scheduler binding (V1+ DF1 daily life feature); TMP_001 owns the tile-level pathfinding surface (road segments + walkable tiles + obstacles). At cell tier, NPC paths stay on CSC_001 16×16 grid (V1 already). At non-cell tier V2+, NPC paths cross `tilemap_view.road_segments`. Direction: NPC_001 → TMP_001 (NPC reads tilemap, doesn't write). NO NPC_001 V1+30d surface change; reservation only. Annotation only. See §16 row.
 

@@ -1,0 +1,68 @@
+# meta-worker/bridge-server — the Rust→Go meta-write bridge.
+#
+# WHY THIS EXISTS
+# ---------------
+# `reality_registry` may only be written through Go MetaWrite, so the
+# `meta_write_audit` row lands in the SAME transaction (**I8**).
+# `services/world-service/src/provisioner_live.rs` states it as a rule, not a
+# preference: *"Rust cannot write reality_registry directly. This is the
+# centerpiece of W1.5."*
+#
+# So the bridge is on the critical path of creating a reality, and until
+# 2026-08-08 it had no Dockerfile and was in no compose file — which is one of
+# the reasons zero realities have ever existed.
+#
+# Separate from a future `Dockerfile` for `cmd/meta-worker` (the Redis-stream
+# consumer): they are different processes with different lifecycles, and giving
+# the bridge its own file avoids a build arg deciding which binary you get.
+#
+# Repo-root build context, like every other Go service here — the go.mod
+# `replace` directives point at ../../contracts/* and ../../sdks/go/metapg and
+# must resolve inside the container.
+
+FROM golang:1.25-alpine AS build
+WORKDIR /src
+RUN apk add --no-cache git
+
+COPY sdks/go/metapg              /src/sdks/go/metapg
+COPY contracts/events            /src/contracts/events
+COPY contracts/canon/timeline    /src/contracts/canon/timeline
+COPY contracts/lifecycle         /src/contracts/lifecycle
+COPY contracts/realityreg        /src/contracts/realityreg
+COPY contracts/meta              /src/contracts/meta
+# RA1/RA3 — the cross-user read writes a `meta_read_audit` row through the PII
+# SDK, so the module now needs these three. Their ABSENCE did not fail loudly:
+# `go mod download` exited 1, and `docker compose up -d` then started the OLD
+# image and printed "Started", so the stack ran stale code and said it had not.
+COPY contracts/pii               /src/contracts/pii
+COPY sdks/go/piikms              /src/sdks/go/piikms
+COPY sdks/go/metaoutbox          /src/sdks/go/metaoutbox
+COPY services/meta-worker        /src/services/meta-worker
+
+WORKDIR /src/services/meta-worker
+RUN go mod download
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/bridge-server ./cmd/bridge-server
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates wget
+
+COPY --from=build /out/bridge-server /bridge-server
+# The allowlist and the transition graph are CONTRACTS the bridge loads at
+# startup and fails closed without. They are copied rather than mounted so the
+# image is self-contained and a missing host path cannot silently change which
+# events are permitted.
+COPY contracts/meta/events_allowlist.yaml /contracts/meta/events_allowlist.yaml
+COPY contracts/meta/transitions.yaml      /contracts/meta/transitions.yaml
+
+ENV METAWORKER_BRIDGE_ADDR=0.0.0.0:8090 \
+    META_ALLOWLIST_PATH=/contracts/meta/events_allowlist.yaml \
+    META_TRANSITIONS_PATH=/contracts/meta/transitions.yaml
+EXPOSE 8090
+USER nobody
+# The bridge is fail-closed on config (`META_DB_URL` + token required), so a
+# process that is up has already proven it can reach meta and parse both
+# contracts. A TCP probe is therefore a real readiness signal.
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=5 \
+  CMD wget -qO- --timeout=2 http://127.0.0.1:8090/healthz 2>/dev/null || \
+      nc -z 127.0.0.1 8090 || exit 1
+CMD ["/bridge-server"]

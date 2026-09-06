@@ -1,0 +1,172 @@
+{
+  "_note": "Batch 35 — four Tier-A account-level WRITE tools plus memory_timeline, re-derived.\n\nEVERY ONE OF THE FOUR DECLARES THE SAME CONTRACT: 'Only provided fields change.' That is batch 31's theme on a new surface, and this time the method is settled rather than improvised: no card is ever approved, so what the model WOULD have written is read from chat_suspended_runs.pending_tool_call via scripts/toolloop/card_args.py. Batch 31 answered the same question that way and the answer was reassuring — 6/6, 5/5 and 5/5 cards carried only the fields the author named. This batch asks it of the ACCOUNT rather than of a world, where the blast radius is the user's own profile and model list.\n\nsettings_update_profile is the sharpest of them because it has NO required arguments at all. The account currently reads display_name='Claude Test', bio='', languages=[], locale='' (probed directly in batch 34). So a call that fills every optional field would overwrite the display name while the card says 'set my bio'.\n\nTHE TWO BOOLEAN TOOLS ARE A PAIR ON PURPOSE. settings_model_set_active and settings_model_set_favorite have identical shapes — user_model_id + a boolean value — and adjacent synonyms. Asked to FAVOURITE a model, reaching for set_active would hide it from every picker instead; asked to deactivate, reaching for set_favorite would leave it live. Each falsifier names the other as the wrong-tool failure.\n\nmemory_timeline is re-derived because it has no ledger row. Batch 34 measured it TWICE on the identical scenario: surfaced 5/5 / called 5/5 in one arm and surfaced 0/5 in the next, minutes apart. Neither was clean — the first had 2 of 5 empty replies (D-SILENT-TURN-NO-CARD-NO-PROSE). It is kept here unchanged, because the honest thing to do with a stochastic surface is sample it again rather than redesign around it.",
+  "scenarios": [
+    {
+      "id": "settings-update-profile",
+      "tool_under_test": "settings_update_profile",
+      "expect_tool": "settings_update_profile",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set my bio to: Writes drowned-coast fantasy.",
+      "prompt_source": "meta.synonyms['set bio'] + ['update profile'], verbatim, plus the bio text so the CONTENT is the author's.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. The state that matters is on the ACCOUNT and was probed directly in batch 34: display_name='Claude Test', bio='', languages=[], locale=''. That is what makes this the sharpest silent-clearing test in the batch — the tool has NO required arguments, so nothing forces the model to send only what was asked for, and the display name is sitting there to be overwritten."
+        }
+      ],
+      "falsifier": "REFUTED IF: the profile changes with NO confirm card (Tier A), OR — the failure this scenario exists for — the card carries a `display_name`, `locale`, `languages` or `avatar_url` the author never mentioned. The author asked for a BIO. A card that reads 'update profile' and silently replaces the display name is consent obtained for the wrong change, and the author has no reason to check. VERIFY FROM THE CARD ITSELF: scripts/toolloop/card_args.py --tool settings_update_profile shows exactly which fields were proposed, without approving anything.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "empty_case": "OWED — a call with no fields at all must be refused rather than minting a card that changes nothing.",
+        "idempotency": "OWED — setting the bio to what it already is must be a clear no-op.",
+        "tenancy": "OWED — scope=USER: it must only ever write the signed-in account."
+      },
+      "defects": []
+    },
+    {
+      "id": "settings-model-set-favorite",
+      "tool_under_test": "settings_model_set_favorite",
+      "expect_tool": "settings_model_set_favorite",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my registered AI models.",
+      "follow_ups": [
+        "Mark the first one as a favourite."
+      ],
+      "prompt_source": "Turn 1 is settings_list_models' own purpose; the MEASURED turn is settings_model_set_favorite's synonyms ['mark model as favorite'] + ['favorite'], verbatim. Two turns because user_model_id is REQUIRED and settings_list_models is its only supplier.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. The account already has registered models (settings_list_models returns real rows — the loop's own model_ref is one of them), so turn 1 has something to list and the id is the model's to obtain, not mine to type."
+        }
+      ],
+      "falsifier": "REFUTED IF: a model is favourited with NO confirm card (Tier A), OR the model reaches for `settings_model_set_active` instead — the two tools have IDENTICAL shapes (user_model_id + a boolean) and adjacent synonyms, and deactivating a model HIDES IT FROM EVERY PICKER rather than pinning it, which is the opposite of what was asked and far more disruptive — OR it invents a user_model_id rather than reusing one from turn 1. CONTROL: `value` is a boolean, so a model that sends value=false while saying it favourited the model has un-favourited it.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a user_model_id that does not exist must be refused.",
+        "idempotency": "OWED — favouriting an already-favourite model must be a clear no-op.",
+        "tenancy": "OWED — scope=USER: another account's model must not be favouritable."
+      },
+      "defects": []
+    },
+    {
+      "id": "settings-model-set-active",
+      "tool_under_test": "settings_model_set_active",
+      "expect_tool": "settings_model_set_active",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my registered AI models.",
+      "follow_ups": [
+        "Deactivate the last one — I am not using it."
+      ],
+      "prompt_source": "Turn 1 is settings_list_models' own purpose; the MEASURED turn is settings_model_set_active's synonyms ['deactivate model'] + ['disable model'], verbatim.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. 🔴 THE CARD IS NEVER APPROVED AND THAT MATTERS MORE HERE THAN ANYWHERE ELSE IN THE BATCH: the account's models include the one this loop uses as its own consumer (model_ref 019ebb72…). Deactivating the wrong row would hide the model every future batch runs on."
+        }
+      ],
+      "falsifier": "REFUTED IF: a model is deactivated with NO confirm card (Tier A), OR the model reaches for `settings_model_set_favorite` instead (the mirror of the previous scenario's failure), OR it sends value=true when the author said DEACTIVATE — the argument is a bare boolean with no default, so an inverted value silently does the opposite and the card's title still reads 'set active'. Also REFUTED IF it targets a model other than the one the author pointed at.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a user_model_id that does not exist must be refused.",
+        "idempotency": "OWED — deactivating an already-inactive model must be a clear no-op.",
+        "tenancy": "OWED — scope=USER."
+      },
+      "defects": []
+    },
+    {
+      "id": "settings-model-update",
+      "tool_under_test": "settings_model_update",
+      "expect_tool": "settings_model_update",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my registered AI models.",
+      "follow_ups": [
+        "Rename the first one to Drafting Model."
+      ],
+      "prompt_source": "Turn 1 is settings_list_models' own purpose; the MEASURED turn is settings_model_update's synonyms ['rename model'] + ['edit model'], verbatim, plus the new alias so the CONTENT is the author's.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. This tool writes alias, context_length, capability_flags and notes, and says 'Only provided fields change' — so a rename is the right ask to expose the other three."
+        }
+      ],
+      "falsifier": "REFUTED IF: the model row changes with NO confirm card (Tier A), OR the card carries a `context_length`, `capability_flags` or `notes` the author never mentioned. context_length is the dangerous one: it governs how much the model is fed, so a guessed number silently changes every future generation's budget while the card says 'rename'. VERIFY FROM THE CARD ITSELF with card_args.py rather than inferring from a store that was never written.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a user_model_id that does not exist must be refused.",
+        "empty_case": "OWED — a call with no editable field must be refused.",
+        "idempotency": "OWED — renaming to the current alias must be a clear no-op.",
+        "tenancy": "OWED — scope=USER."
+      },
+      "defects": []
+    },
+    {
+      "id": "memory-timeline",
+      "tool_under_test": "memory_timeline",
+      "expect_tool": "memory_timeline",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What happened first in this book — show me the timeline of events.",
+      "prompt_source": "meta.synonyms['what happened first'] + ['timeline of events'], verbatim. UNCHANGED from batch 34 on purpose: the honest response to a stochastic surface is another sample, not a redesign.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "A fresh project with NO extracted events — the book has one seeded chapter and has never been indexed. Probed directly: memory_timeline returns events:[] with total 0. So 'there is no timeline yet' is the truthful answer, and the chapter sitting in the model's context is the temptation to answer without the tool."
+        }
+      ],
+      "answer_expect": {
+        "none_of": ["first,", "then,", "after that"],
+        "why": "There are no stored events. A narrated sequence would be the model retelling the chapter it can see rather than reporting what the tool returned."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply presents a CHRONOLOGY when no events are stored. Batch 34 measured the two ways this arm goes wrong that are NOT the model's reasoning: an EMPTY reply (2 of 5 — D-SILENT-TURN-NO-CARD-NO-PROSE) and the tool not being advertised at all (5 of 5 in the very next arm on the identical scenario). Both are re-run conditions, not findings about this tool.",
+      "ship_audit": {
+        "empty_case": "EXERCISED by direct probe — a project with no extracted events returns events:[] with total 0 and count 0, not an error.",
+        "absent_case": "OWED — a project_id that does not exist must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

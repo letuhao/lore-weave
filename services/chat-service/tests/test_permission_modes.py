@@ -22,7 +22,7 @@ from uuid import uuid4
 import pytest
 
 from app.db.suspended_runs import SuspendedRun
-from app.services.frontend_tools import PROPOSE_EDIT_TOOL
+from tests._v1_tool_fixtures import PROPOSE_EDIT_TOOL
 from app.services.stream_service import (
     _advertise_discovery_tools,
     _catalog_index,
@@ -56,6 +56,31 @@ from tests.test_stream_tools import (
     tool_frag,
     usage,
 )
+
+
+# V7 re-vehicle (2026-09-03) — a tool result carrying the ai-gateway CONFIRM directive.
+#
+# These tests assert that a SUSPEND persists the turn's mode. They used a chat-service-intercepted
+# frontend tool as the vehicle, and their docstrings record that the vehicle was ALREADY swapped
+# once (P2.2 moved propose_edit out). V7 moved the last three out too, so interception produces no
+# suspend at all — the mechanism under test is untouched, only its vehicle died.
+#
+# The replacement drives the LIVE path: ai-gateway returns a gated directive, chat-service detects
+# it in the RESULT and suspends. Strictly better than the old vehicle, which exercised a branch
+# that no longer exists.
+def _confirm_directive_client(kc):
+    """Make `kc.mcp_execute_tool` answer with a gated confirm directive."""
+    from app.services.task_detect import CONFIRM_DIRECTIVE_TYPE
+    kc.mcp_execute_tool = AsyncMock(return_value={
+        "success": True,
+        "result": {
+            "type": CONFIRM_DIRECTIVE_TYPE,
+            "confirm_token": "tok-1", "descriptor": "glossary.adopt",
+            "title": "Adopt standards", "domain": "glossary",
+        },
+    })
+    return kc
+
 
 
 # ── representative catalog (the C-TOOL tier spread) ──────────────────────────
@@ -191,7 +216,10 @@ class TestAdvertiseSurfaceSnapshot:
             idx, ALL_CATALOG_NAMES, [PROPOSE_EDIT_TOOL], permission_mode="ask",
         ))
         assert "tool_list" in out and "tool_load" in out
-        assert "confirm_action" in out
+        # confirm_action left the chat-service-local advertisement in V7 — it comes from the
+        # FEDERATED catalogue now, which this fixture does not carry. What ask-mode must
+        # still keep is the browser-executed survivor asserted just below.
+        assert "confirm_action" not in out
         # propose_record_edit was RETIRED in auto-gate M5 (2026-07-21) — the generic record
         # diff card is gone; each domain edits via its own direct-write tool. `propose_edit`
         # (the prose write-back) is the browser-executed survivor and is asserted above.
@@ -760,7 +788,14 @@ class TestSuspendPersistsMode:
         # book-scoped frontend confirm tool is re-advertised → the suspend path works.
         # (propose_edit is no longer a frontend tool since Phase 2 — it routes to
         # ai-gateway — so a still-frontend tool drives this suspend-persists check.)
-        kc = _patched_knowledge(tool_defs=[])
+        # V7 re-vehicle: the tool is served by ai-gateway now, so it must be ADVERTISED to
+        # reach dispatch, and the suspend comes from the DIRECTIVE in its result.
+        kc = _confirm_directive_client(_patched_knowledge(tool_defs=[
+            {"type": "function", "function": {
+                "name": "glossary_confirm_action",
+                "parameters": {"type": "object", "properties": {}},
+            }},
+        ]))
 
         scripts = [[
             tool_frag(index=0, id="c1", name="glossary_confirm_action"),
@@ -1063,6 +1098,57 @@ class TestApprovalResume:
         tool_msg = next(m for m in msgs if m.get("role") == "tool"
                         and m.get("tool_call_id") == "c1")
         assert json.loads(tool_msg["content"]) == {"error": "denied by user"}
+
+    @pytest.mark.asyncio
+    async def test_denied_is_recorded_REFUSED_not_failed(self):
+        """TOOL-V2 LOOP #2 — a human's "no" is not a tool failure.
+
+        🔴 MEASURED: 21 calls / 17 sessions / 4 tools are this branch, and every one was
+        recorded `failed`. `source` was stamped here, the typed outcome was not, so
+        `ensure_tool_call_instrumented` fell through to its fail-closed default. It reads as
+        the tool breaking. `kg_propose_edge` shows 0 successes in 17 calls and 14 of them are
+        this — a Tier-A tool that has never once been permitted to dispatch, whose "0% success
+        rate" was measuring the approval card.
+
+        The falsifier: drop `stamp_refused` at the denial site and the outcome infers to
+        `failed` with `call_outcome_inferred`, which is what 21 rows already say.
+        """
+        from app.services import instrument as _inst
+
+        pool = self._pool()
+        kc = self._kc()
+        scripts = [[tok("Okay, I won't."), done("stop")]]
+        # Spy the CP-0.3 chokepoint every persisted call passes through, so the assertion is
+        # about what REACHES PERSISTENCE — not about the wire, which never carried the outcome.
+        seen: list[dict] = []
+        _real = _inst.ensure_tool_call_instrumented
+
+        def _spy(tc):
+            out = _real(tc)
+            seen.append(dict(out))
+            return out
+
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.approve_tool", AsyncMock()), \
+             patch("app.services.stream_service.instrument.ensure_tool_call_instrumented", _spy), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_approval_suspended())), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            async for _ in _resume(pool, kc, "denied"):
+                pass
+
+        denial = next(c for c in seen if c.get("error") == "denied by user")
+        assert denial["call_outcome"] == "refused", (
+            f"a user denial must be typed `refused`, got {denial.get('call_outcome')!r} "
+            f"(inferred={denial.get('call_outcome_inferred')!r})"
+        )
+        # separable from the breaker refusals — "the human said no" and "we short-circuited a
+        # repeat" must never merge into one number
+        assert denial["refusal_kind"] == "denied_by_user"
+        # and it is still OUR refusal, not a dispatch
+        assert denial["source"] == "breaker"
+        assert denial.get("call_outcome_inferred") is None
 
     @pytest.mark.asyncio
     async def test_denied_always_persists_a_deny_and_never_executes(self):

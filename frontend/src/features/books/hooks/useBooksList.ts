@@ -42,13 +42,31 @@ export function useBooksList() {
   const [langFilter, setLangFilter] = useState('');
   const [bookLangs, setBookLangs] = useState<Record<string, string[]>>({});
 
-  const load = async () => {
+  // The search term the LAST fetch was made with. Kept separate from `search`
+  // (which updates on every keystroke) so the debounce below has something to
+  // compare against, and so `filteredBooks` never claims to have filtered a
+  // term the server has not answered yet.
+  const [appliedSearch, setAppliedSearch] = useState('');
+
+  const load = async (q = appliedSearch) => {
     if (!accessToken) return;
     setLoading(true);
     try {
-      const res = await booksApi.listBooks(accessToken);
+      // `q` goes to the SERVER. It used to be filtered here, in the browser,
+      // over whatever listBooks happened to return — and listBooks was called
+      // with no limit, so that was the endpoint's default of 20 rows. The page
+      // then displayed `total` (the real count) beside a search that had only
+      // ever seen the first page: 83 books shown, 20 searched, and a book at
+      // rank 32 simply could not be found by name.
+      // No search term => the call is byte-identical to what it always was.
+      // Passing an explicit `undefined` would be equivalent to the API and NOT
+      // equivalent to its callers' expectations, which is a needless break.
+      const res = q
+        ? await booksApi.listBooks(accessToken, { q })
+        : await booksApi.listBooks(accessToken);
       setBooks(res.items);
       setTotal(res.total || res.items.length);
+      setAppliedSearch(q);
       setError('');
     } catch (e) {
       setError((e as Error).message);
@@ -58,6 +76,14 @@ export function useBooksList() {
   };
 
   useEffect(() => { void load(); }, [accessToken]);
+
+  // Refetch when the search term settles. A keystroke must not become a request.
+  useEffect(() => {
+    if (!accessToken) return;
+    if (search === appliedSearch) return;
+    const id = setTimeout(() => { void load(search); }, 300);
+    return () => clearTimeout(id);
+  }, [search, appliedSearch, accessToken]);
 
   useEffect(() => {
     if (!accessToken || !newFB2ImportJob || newFB2ImportStage !== 'processing') return;
@@ -123,8 +149,10 @@ export function useBooksList() {
     return () => { cancelled = true; };
   }, [accessToken, bookIds]);
 
+  // Title matching is the SERVER's job now (see load()). Only the language
+  // facet is still local, and that one is honest: `bookLangs` is derived from
+  // the rows in hand, so it can only ever narrow what the server returned.
   const filteredBooks = books.filter((b) => {
-    if (search && !b.title.toLowerCase().includes(search.toLowerCase())) return false;
     if (langFilter && b.original_language !== langFilter) return false;
     return true;
   });

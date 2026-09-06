@@ -1,0 +1,70 @@
+{
+  "_note": "composition_arc_apply with a template that exists and is NAMED — the buildable half of p4-confirm's 'not measurable as written'. Recorded as a different question, not smuggled in as a re-run.",
+  "scenarios": [
+    {
+      "id": "composition-arc-apply-named-single-turn",
+      "tool_under_test": "composition_arc_apply",
+      "expect_tool": "composition_arc_apply",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Apply arc template — use my library arc template 'The {run_word} Ascent' on this book.",
+      "prompt_source": "_meta.synonyms['apply arc template'] verbatim, plus the template's own name so the request HAS an answer. {run_word} is the harness's pronounceable per-run nonce, which exists precisely for text a model reads in a sentence.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "tool": "composition_arc_template_create",
+          "args": {
+            "code": "loop-arc-{run_id}",
+            "name": "The {run_word} Ascent",
+            "summary": "A three-chapter ascent: the closed-door breakthrough, its cost, and the reckoning.",
+            "chapter_span": 3,
+            "threads": [
+              {
+                "key": "ascent",
+                "label": "The Ascent"
+              }
+            ],
+            "layout": [
+              {
+                "motif_code": "cultivation.closed_door_breakthrough",
+                "thread": "ascent",
+                "span_start": 1,
+                "span_end": 3,
+                "ord": 0
+              }
+            ],
+            "visibility": "private"
+          },
+          "why": "🔴 THE SEED IS THE WHOLE FIX. p4-confirm blocked this tool as 'an unanswerable prompt, and the model is right': the prompt said 'use ONE OF my library arc templates', named no target, and seeded nothing — while the SYSTEM arc-template library is empty and the account's 31 active templates are mostly test debris, so no template could be the obvious answer. The model replied 'which one?', which is correct; guessing on a WRITE is worse than asking. A pre-registered re-run adding 'Yes, go ahead and do it.' stayed 0/5, because a bare affirmative cannot answer a which-one question.\n\nSo the scenario seeds its OWN template and NAMES it. composition_arc_template_list is then a real supplier of the arc_template_id, exactly as the falsifier requires.\n\nlayout[].motif_code must be a REAL motif: 'cultivation.closed_door_breakthrough' is one of the 84 active system motifs, read from the store rather than invented.\n\n🔴 ACCOUNT-SCOPED, DELIBERATELY NONCED. An arc template lives in the caller's library, not in the book. {run_id} in the code and {run_word} in the name keep repeats from colliding — batch 20 lost 4 of 5 runs to a fixed account-scoped code.\n\nCLEANUP, MEASURED RATHER THAN ASSUMED. This note first claimed the rows persist because the book teardown cannot see them. That is wrong on the normal path: after seven runs the store held zero loop-arc-% rows, so the per-run teardown does remove them. It IS right for --keep-fixtures, and `provision.py --sweep` does NOT cover arc templates — it swept the book and the world and left the template behind. So after a --keep-fixtures run, clean up by hand:\n    DELETE FROM arc_template WHERE owner_user_id='<harness>' AND code LIKE 'loop-arc-%';"
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
+          "expect": "0",
+          "why": "ZERO arcs before, so an applied template is attributable."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM arc_template WHERE code='loop-arc-{run_id}'",
+          "expect": "1",
+          "why": "The template this run's prompt NAMES must exist, or the run measures the same unanswerable question p4-confirm already measured. Keyed on the run's own nonce, so it cannot pass on one of the 31 pre-existing account templates."
+        }
+      ],
+      "falsifier": "REFUTED IF: an arc is materialised with NO confirm card, OR the model invents an arc_template_id rather than listing the library first (composition_arc_template_list is the supplier), OR it applies one of the account's 31 OTHER templates instead of the one named.\n\nCONTROL: the seed assertion keys on this run's nonce, so 'the template exists' cannot be satisfied by the pre-existing debris.",
+      "ship_audit": {
+        "gate": "OWED — Tier A; applying a template materialises structure.",
+        "absent_case": "OWED — an arc_template_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped, and the template library is account-scoped: another account's template must not apply."
+      },
+      "defects": [],
+      "max_approvals": 6,
+      "_carried_from": "scenarios-batch14.json",
+      "follow_up_removed_why": "🔴 THE FOLLOW-UP WAS INHERITED FROM p4-confirm AND IT TAKES THE TOOL OFF THE WIRE. It read 'Yes, go ahead and do it.', added there as an attempt to get past the model's 'which template?' question, and recorded as REFUTED ('a bare affirmative cannot answer a which-one question').\n\nMeasured 2026-08-23 with R1 instrumented, the mechanism is simpler and is about the SURFACE, not the model: the MEASURED turn is the last one, an affirmative matches no tool's declared vocabulary, so R1 finds nothing, forces nothing - and the transitive supplier forcing, which seeds from the answerable set, is inert too. This run showed it exactly: composition_arc_template_list was on the wire (30 forcing lines) and composition_arc_apply was on NO pass of the measured turn. See D-R1-IS-KEYED-ON-THIS-TURN-SO-A-CONFIRMATION-TURN-LOSES-THE-TOOL.\n\nSo the scenario is single-turn now. The prompt already NAMES the template, which is what p4-confirm said was missing, and there is no question left for an affirmative to answer."
+    }
+  ]
+}

@@ -1042,7 +1042,7 @@ POST /internal/worlds/maps/{id}/image
   across nine files: the two panel components · <code>catalog.ts</code> (<code>category</code> <b>and</b> <code>guideBodyKey</code> are both
   mandatory) · <code>en/studio.json</code> + 17 locales via <code>scripts/i18n_translate.py</code> (never hand-written) ·
   <code>frontend_tools.py</code> (the <code>panel_id</code> <b>enum</b> <i>and</i> the description prose — that gloss is the model's only
-  hint) · <code>contracts/frontend-tools.contract.json</code> (<b>never hand-edit — regenerate</b> with
+  hint) · <code>contracts/browser-tools.contract.json</code> (<b>never hand-edit — regenerate</b> with
   <code>WRITE_FRONTEND_CONTRACT=1 pytest</code>, committed in the same commit) · <code>studioLinks.ts</code>
   <b>+ its <code>StudioLinkContext</code> + <code>KgOverviewPanel.tsx:44</code> + <code>studioLinks.test.ts</code></b>
   (three files, not one — see the rule callout above) ·

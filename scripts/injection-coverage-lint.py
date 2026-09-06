@@ -445,9 +445,12 @@ def flagged_files(files) -> list[str]:
     return sorted(set(out))
 
 
-def iter_full_scan():
+def iter_full_scan(repo_root: str | None = None):
+    # `repo_root` defaults to the real tree; the self-test passes a synthetic one so
+    # it can assert the walk's floor without the repo itself being the fixture.
+    repo_root = repo_root or REPO_ROOT
     for d in SCAN_DIRS:
-        root = os.path.join(REPO_ROOT, d)
+        root = os.path.join(repo_root, d)
         if not os.path.isdir(root):
             continue
         for dirpath, dirnames, filenames in os.walk(root):
@@ -455,7 +458,7 @@ def iter_full_scan():
             for fn in filenames:
                 if fn.endswith(SCAN_EXTS) and not fn.startswith("test_"):
                     full = os.path.join(dirpath, fn)
-                    rel = os.path.relpath(full, REPO_ROOT).replace(os.sep, "/")
+                    rel = os.path.relpath(full, repo_root).replace(os.sep, "/")
                     yield full, rel
 
 
@@ -482,15 +485,221 @@ def iter_staged():
             yield full, rel
 
 
+MIN_SCANNED = 200
+
+
+def check_reach(root: str, scanned: int, flagged: set[str]) -> list[str]:
+    """What separates "no unsanitized module" from "no module looked at".
+
+    This gate's silent-nothing path is `iter_full_scan`'s `continue`: a SCAN_DIRS
+    entry that does not exist is skipped without a word, so renaming
+    `services/chat-service/app` would retire the lint over that whole service
+    while it went on printing *"every retrieved-text prompt-assembly module
+    routes through the sanitizer"*. For a security gate that is the worst
+    available failure — it reports coverage and silences review.
+    """
+    problems: list[str] = []
+
+    for d in SCAN_DIRS:
+        if not os.path.isdir(os.path.join(root, d)):
+            problems.append(
+                f"PHANTOM SCAN DIR: `{d}` is in SCAN_DIRS and does not exist. The walk skips a "
+                f"missing directory silently, so that whole service is now unscanned while this "
+                f"lint reports OK.")
+
+    if scanned < MIN_SCANNED:
+        problems.append(
+            f"REACH FLOOR: scanned only {scanned} module(s) (floor {MIN_SCANNED}, measured 766). "
+            f"With nothing scanned nothing is flagged, and this lint prints its success line — "
+            f"a clean tree and a blind one are byte-identical here.")
+
+    # The BASELINE is a list of TRACKED HOLES, so it must shrink. Two ways a row
+    # rots, and both leave a security exemption standing over nothing:
+    for rel in sorted(BASELINE):
+        if not os.path.isfile(os.path.join(root, rel)):
+            problems.append(
+                f"PHANTOM BASELINE ROW: `{rel}` is baselined as a tracked injection hole and the "
+                f"file does not exist. It was moved or deleted; the row now pre-excuses whatever "
+                f"next takes that path.")
+        elif rel not in flagged:
+            problems.append(
+                f"BASELINE ROW NO LONGER FLAGGED: `{rel}` is listed as an unsanitized "
+                f"prompt-assembly module and it no longer trips the detector. Either it adopted "
+                f"the sanitizer — delete the row, that is the register shrinking — or it stopped "
+                f"assembling prompts. Leaving it is how an exemption outlives its reason.")
+
+    return problems
+
+
+def self_test() -> int:
+    """Detectors on synthetic modules, reach on a synthetic tree.
+
+    Every reach arm is unreachable on the real repo — all four SCAN_DIRS exist,
+    766 modules are scanned and all 16 baseline rows are live and still flagged.
+    So nothing in this tree can tell a working arm from a deleted one, which is
+    exactly when a check quietly stops working.
+    """
+    import tempfile
+    fails: list[str] = []
+
+    def w(d: str, name: str, body: str) -> str:
+        p = os.path.join(d, name)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        return p
+
+    # ── (a) prompt assembly, every form the docstring claims ──────────────────
+    for src, want in [
+        ('msg = {"role": "system", "content": x}', True),
+        ("msg = {'role': 'user'}", True),
+        ("SystemMessage(content=x)", True),
+        ("HumanMessage(content=x)", True),
+        ("messages = []", True),
+        ("messages.append(m)", True),
+        ("messages.extend(m)", True),
+        ('role = "admin"', False),
+        ("message = x", False),
+    ]:
+        if bool(MESSAGE_ASSEMBLY.search(src)) is not want:
+            fails.append(f"MESSAGE_ASSEMBLY on {src!r} = {not want}, want {want}")
+
+    # ── (b) retrieved text, and the generic words it deliberately excludes ────
+    for src, want in [
+        ("for passage in ps:", True), ("chunks = f()", True), ("tool_result", True),
+        ("retrieved = f()", True), ("book_text", True), ("entity_summary", True),
+        ("context = x", False), ("text = x", False), ("message_text", False),
+        # A PINNED LIMITATION, not an oversight. Every marker is `\b`-anchored
+        # and `_` is a word character, so a COMPOUND name built around a marker
+        # does not match: `retrieved_docs`, `retrieved_chunks`, `passage_list`
+        # are all invisible. Recorded here rather than fixed, because widening
+        # the markers is a heuristic-retuning decision with a false-positive
+        # cost on a security gate — and a false positive here means a BASELINE
+        # row, i.e. an exemption. If the compound shape ever appears in a real
+        # unsanitized module, THAT is the evidence to widen on. This case exists
+        # so the limit is a measured fact rather than a surprise.
+        ("retrieved_docs", False), ("retrieved_chunks", False),
+    ]:
+        if bool(RETRIEVED_TEXT.search(src)) is not want:
+            fails.append(f"RETRIEVED_TEXT on {src!r} = {not want}, want {want}")
+
+    # ── (c) the sanitizer must be CALLED, not merely imported ─────────────────
+    # This is the 2026-07-29 tightening, and it is the one that matters most:
+    # `knowledge-service/.../canon_check.py` assembled a judge prompt from
+    # chapter text with no sanitizer, and adding the import alone would have
+    # turned this lint green while changing nothing.
+    for src, want in [
+        ("neutralize_injection(t)", True), ("neutralize_proposal_text(t)", True),
+        ("scan_injection(t)", True), ("sanitize_prose_context(t)", True),
+        ("from x.injection_defense import neutralize_injection", False),
+        ("import sanitize", False),
+        ('"""mentions neutralize_injection in prose"""', False),
+    ]:
+        if bool(SANITIZER_REF.search(src)) is not want:
+            fails.append(f"SANITIZER_REF on {src!r} = {not want}, want {want} "
+                         f"(a bare import is a claim, not a defense)")
+
+    with tempfile.TemporaryDirectory() as td:
+        app = os.path.join(td, "services", "chat-service", "app")
+        for d in SCAN_DIRS:
+            os.makedirs(os.path.join(td, d), exist_ok=True)
+
+        # ── the three-way classification, one fact different each time ────────
+        hole = w(app, "hole.py", 'm = {"role": "system"}\nfor passage in ps: pass\n')
+        if flagged_files([(hole, "services/chat-service/app/hole.py")]) != \
+                ["services/chat-service/app/hole.py"]:
+            fails.append("a module assembling a prompt from retrieved text was NOT flagged")
+
+        ok = w(app, "ok.py",
+               'm = {"role": "system"}\nfor passage in ps: pass\nx = neutralize_injection(passage)\n')
+        if flagged_files([(ok, "a.py")]):
+            fails.append("a module that CALLS the sanitizer was flagged")
+
+        imp = w(app, "imp.py",
+                'from d import neutralize_injection\nm = {"role": "system"}\nfor passage in ps: pass\n')
+        if not flagged_files([(imp, "a.py")]):
+            fails.append("a module that only IMPORTS the sanitizer was NOT flagged — this is the "
+                         "hole the 2026-07-29 tightening closed and it has reopened")
+
+        only_a = w(app, "only_a.py", 'm = {"role": "system"}\nx = 1\n')
+        if flagged_files([(only_a, "a.py")]):
+            fails.append("a module with prompt assembly but no retrieved text was flagged")
+        only_b = w(app, "only_b.py", "for passage in ps: pass\n")
+        if flagged_files([(only_b, "a.py")]):
+            fails.append("a module with retrieved text but no prompt assembly was flagged")
+
+        # ── THE REACH FAMILY ──────────────────────────────────────────────────
+        scanned = sum(1 for _ in iter_full_scan(td))
+        if not any("REACH FLOOR" in p for p in check_reach(td, scanned, set())):
+            fails.append("the reach floor did NOT red on a tree of 5 modules — this is the arm "
+                         "that stops 'nothing scanned' printing the success line")
+
+        import shutil
+        shutil.rmtree(os.path.join(td, "services", "knowledge-service"))
+        if not any("PHANTOM SCAN DIR" in p for p in check_reach(td, 999, set())):
+            fails.append("a vanished SCAN_DIRS entry did NOT red — the walk skips it silently, so "
+                         "nothing else would ever notice that service went unscanned")
+
+        # ── the BASELINE must shrink, both ways it rots ───────────────────────
+        probs = check_reach(td, 999, set())
+        if not any("PHANTOM BASELINE ROW" in p for p in probs):
+            fails.append("a baseline row whose file does not exist did NOT red")
+        # ...and the clean twin: the row's file exists, but it is no longer flagged.
+        one = sorted(BASELINE)[0]
+        w(td, one, "# adopted the sanitizer; no longer trips the detector\n")
+        probs = check_reach(td, 999, set())
+        if not any("NO LONGER FLAGGED" in p and one in p for p in probs):
+            fails.append(f"a baseline row that stopped being flagged ({one}) did NOT red — a "
+                         f"security exemption would outlive its reason")
+        if any("PHANTOM BASELINE ROW" in p and one in p for p in probs):
+            fails.append("a row whose file EXISTS was still called phantom")
+        # ...and with it flagged, neither arm fires for it.
+        probs = check_reach(td, 999, {one})
+        if any(one in p for p in probs):
+            fails.append(f"a live, still-flagged baseline row was reported: {one}")
+
+    # The floor must be live and unsaturated against the real tree (`BDR-82`).
+    real = sum(1 for _ in iter_full_scan(REPO_ROOT))
+    if not 0 < MIN_SCANNED < real:
+        fails.append(f"MIN_SCANNED {MIN_SCANNED} is not between 0 and the real {real}")
+
+    for f in fails:
+        print(f"FAIL: {f}")
+    if fails:
+        return 1
+    print(f"injection-coverage-lint: SELFTEST PASS — 25 detector case(s) plus a reach family "
+          f"proven on synthetic modules: it flags assembly+retrieved-without-sanitizer, clears a "
+          f"module that CALLS the sanitizer, still flags one that only IMPORTS it, ignores either "
+          f"half alone, and reds on a starved walk, a vanished SCAN_DIR, a phantom baseline row "
+          f"and a baseline row that stopped being flagged. Floor calibrated "
+          f"live-but-unsaturated against {real} real module(s)")
+    return 0
+
+
 def main() -> int:
     args = sys.argv[1:]
     if "--help" in args or "-h" in args:
         print(__doc__)
         return 0
+    if "--self-test" in args or "--selftest" in args:
+        return self_test()
     list_mode = "--list" in args
     staged = "--staged" in args
-    files = iter_staged() if staged else iter_full_scan()
+    files = list(iter_staged() if staged else iter_full_scan())
     flagged = flagged_files(files)
+
+    # Before any verdict: can this gate still SEE its corpus? A missing SCAN_DIRS
+    # entry is skipped without a word, and for a security lint a blind tree and a
+    # clean one print the same success line. Full scans only — a staged run
+    # legitimately sees a handful of files.
+    if not staged:
+        reach = check_reach(REPO_ROOT, len(files), set(flagged))
+        if reach:
+            print("injection-coverage-lint: FAIL — the gate cannot see its corpus, or its "
+                  "baseline has rotted\n")
+            for p in reach:
+                print(f"  - {p}")
+            return 1
 
     if list_mode:
         print(f"# {len(flagged)} flagged module(s) — assemble a prompt from "

@@ -47,7 +47,7 @@ async def test_repeated_query_hits_cache_and_skips_embedding_call(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=[]),
     )
 
@@ -69,7 +69,7 @@ async def test_different_message_misses_cache(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=[]),
     )
 
@@ -90,7 +90,7 @@ async def test_different_project_misses_cache(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=[]),
     )
 
@@ -115,7 +115,7 @@ async def test_different_model_misses_cache(monkeypatch):
         side_effect=[_embed_result(1024), _embed_result(1536)],
     )
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=[]),
     )
 
@@ -149,7 +149,7 @@ async def test_embedding_error_not_cached(monkeypatch):
         ],
     )
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=[]),
     )
 
@@ -177,7 +177,7 @@ async def test_different_user_misses_cache(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=[]),
     )
 
@@ -205,7 +205,7 @@ async def test_empty_embeddings_response_not_cached(monkeypatch):
         ],
     )
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=[]),
     )
 

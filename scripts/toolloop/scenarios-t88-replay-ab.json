@@ -1,0 +1,28 @@
+{
+  "scenarios": [
+    {
+      "id": "t88-replay-a-prior-turns-result-is-needed",
+      "tool_under_test": "composition_arc_template_get",
+      "expect_tool": "composition_arc_template_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List the arc templates I can use.",
+      "follow_ups": [
+        "Read the first one you found and tell me what it contains."
+      ],
+      "prompt_source": "🔴 THE ONLY SHAPE WHERE REPLAY CAN MATTER, and it is built to be exactly that. Turn 1 calls a LIST tool, whose result carries arc_template ids. Turn 2 needs one of those ids and CANNOT re-derive it: on this platform a rehydrated conversation carries ZERO tool results, because a result lives on the assistant row rather than as its own turn — measured, 1,503 of 5,655 sessions lose them. The MEASURED turn is the last one (the runner keeps earlier turns in prior_turns), so what is scored is precisely 'could turn 2 use what turn 1 was told?'.\n\nThe pair is deliberate rather than incidental: composition_arc_template_get carries a KNOWN LIVE RESIDUE — it fails with missing required argument ['arc_id'] at 41.7%, never improved, while its supplier composition_arc_template_list requires NOTHING. So this is the argument most likely to show a difference if replay helps at all.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "THE A/B, not a pass/fail. CONTROL = REPLAY_PRIOR_TOOL_RESULTS=false (the shipped path). ARM = true. Both K=5, same image, ONE env var apart, set on the REAL compose service — a previous attempt used `docker compose run --service-ports`, which is on the network but is NOT the service name the gateway routes to, so it measured the stopped container (3 errors, 0/3 surfaced, zero replay log lines) and is recorded as a failed attempt rather than a result.\n\nSCORED ON: did turn 2 call composition_arc_template_get WITH an arc_id it was handed in turn 1 (rather than omitting it, fabricating one, or re-calling the list)? 🔴 THE ARM MUST BEAT THE CONTROL BY MORE THAN NOISE. This harness's measured run-to-run floor is ~6 points (DQ-T90), so a 1-2 run difference at K=5 establishes nothing and must NOT be read as a win. If the arm does not clearly beat the control the flag STAYS OFF — which is a real outcome, because the owner's own correction is that replaying is replaying the thing that made storing unattractive.",
+      "ship_audit": {
+        "gate": "not owed — Tier R on both turns.",
+        "empty_case": "OWED — a project with no arc templates makes turn 2 vacuous, so the fixture must have at least one for the arm to be measurable at all.",
+        "tenancy": "book-scoped throwaway fixture per run, torn down."
+      },
+      "defects": []
+    }
+  ]
+}

@@ -155,7 +155,10 @@ func compWriteErr(status int, action string) error {
 	case 0, http.StatusServiceUnavailable:
 		return fmt.Errorf("could not %s — composition is unavailable; try again shortly", action)
 	case http.StatusNotFound:
-		return errBookNotAccessible
+		// A 404 from composition on a STRUCTURE write means the target part/chapter is gone —
+		// not the book, whose EDIT grant this path already checked. Measured live: archiving an
+		// absent part answered 'book not accessible' on a book being written all session.
+		return errStructureTargetNotInBook
 	case http.StatusConflict:
 		return errors.New("the part order must be EXACTLY the book's active parts, each listed once")
 	default:

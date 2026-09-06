@@ -269,18 +269,18 @@ OPTIONS {
   }
 };
 
-// Event embeddings — only the 1024-dim variant in Track 2 because
-// the event extractor uses bge-m3 by default. Other dimensions
-// can be added later if needed.
-
-CREATE VECTOR INDEX event_embeddings_1024 IF NOT EXISTS
-FOR (e:Event) ON (e.embedding_1024)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 1024,
-    `vector.similarity_function`: 'cosine'
-  }
-};
+// ── EVENT VECTOR INDEX — DELETED 2026-08-23 (plan T25 ④) ─────────────────
+// `event_embeddings_1024` indexed `(:Event).embedding_1024`, a property NOTHING
+// writes and NOTHING reads. Measured before deleting: 0 producers and 0 readers
+// in any language, and on the live graphs 1186 events / 0 embeddings (dev) and
+// 110 / 0 (iso). The only references left were three tests asserting the DDL
+// existed.
+//
+// It survived this long by being named beside the entity family — "entity/event
+// vector DDL stays" — and the entity half is TRUE: T25t proved with a live bite
+// that dropping `entity_embeddings_*` turns the Neo4j entity fallback into a
+// ProcedureCallFailed. Event has no fallback to protect, because it has no read
+// path at all. Same sentence, two different facts.
 
 // ─────────────────────────────────────────────────────────────────
 // K18.3 :Passage — L3 semantic-search surface.
@@ -306,47 +306,36 @@ FOR (p:Passage) ON (p.user_id, p.project_id);
 CREATE INDEX passage_user_source IF NOT EXISTS
 FOR (p:Passage) ON (p.user_id, p.source_type, p.source_id);
 
-CREATE VECTOR INDEX passage_embeddings_384 IF NOT EXISTS
-FOR (p:Passage) ON (p.embedding_384)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 384,
-    `vector.similarity_function`: 'cosine'
-  }
-};
-
+// ── PASSAGE VECTOR INDEX — RESTORED 2026-08-24 (T25z). The deletion's premise was FALSE ──
+//
+// ~~DELETED 2026-08-22 (T25 ③ step 3) because "dev and iso both read them from pgvector now,
+// so this DDL had no reader left."~~ **The index's own read counter refutes that**, measured
+// on the dev graph 2026-08-24 — the day after, and two days after the deletion:
+//
+//   passage_embeddings_1024   VECTOR   readCount 4090   lastRead 2026-08-23T17:05:40Z
+//
+// Dev declares no `KNOWLEDGE_VECTOR_READ_PRIMARY`, so it runs the compose default `neo4j`
+// (docker-compose.yml:1251) and serves passage search from `Neo4jVectorStore`. Its Postgres
+// secondary holds **0** passage rows against **1051** embedded `:Passage` in the graph. The
+// index survived only as RESIDUE in an existing database: nothing recreates it, so the next
+// Neo4j rebuild would have made dev passage search a `ProcedureCallFailed` 500 — precisely
+// the breakage §9.1 predicted and the reason step 3 was a PO call in the first place.
+//
+// ⚙️ **THE EXIT IS A COUPLING, NOT A SCHEDULE — §9.2's rule, applied to the passage scope.**
+// This DDL goes when no declared deployment reads passages from `neo4j`, and that condition
+// is now CHECKED rather than asserted: `port-adoption-gate` prints
+// `passage read-primary declarations N non-postgres`. Today N is 1 (the compose default), so
+// the index stays for a measured reason.
+//
+// 📐 Only `_1024` is restored, and that is the same probe used the right way. T25u deleted
+// `event_embeddings_1024` on `readCount 0, lastRead NULL` — a sound method. The other four
+// passage dimensions read exactly that on both dev and iso, so they STAY deleted; 1024 is
+// the one with 4090 reads.
 CREATE VECTOR INDEX passage_embeddings_1024 IF NOT EXISTS
 FOR (p:Passage) ON (p.embedding_1024)
 OPTIONS {
   indexConfig: {
     `vector.dimensions`: 1024,
-    `vector.similarity_function`: 'cosine'
-  }
-};
-
-CREATE VECTOR INDEX passage_embeddings_1536 IF NOT EXISTS
-FOR (p:Passage) ON (p.embedding_1536)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 1536,
-    `vector.similarity_function`: 'cosine'
-  }
-};
-
-CREATE VECTOR INDEX passage_embeddings_2560 IF NOT EXISTS
-FOR (p:Passage) ON (p.embedding_2560)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 2560,
-    `vector.similarity_function`: 'cosine'
-  }
-};
-
-CREATE VECTOR INDEX passage_embeddings_3072 IF NOT EXISTS
-FOR (p:Passage) ON (p.embedding_3072)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 3072,
     `vector.similarity_function`: 'cosine'
   }
 };

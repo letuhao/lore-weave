@@ -25,18 +25,33 @@
 //! and must keep passing (they are statements about correct behaviour, not
 //! about the bug).
 
+mod hub_fixture;
+
 use std::sync::Arc;
 use std::time::Duration;
 
+use commit_service::combat::Side;
 use commit_service::admission::{admit_engine_turn_end as engine_end_turn, admit_t6, AdmissionOutcome, DedupCache};
+
+/// The shipped reality's declared verbs — admission judges against the rules in
+/// force (`M2`).
+fn verbs() -> ruleset_core::VerbTable {
+    RealityRules::proving_ground().rules().verbs
+}
 use commit_service::{
-    Actor, CombatDomain, CombatEvent, Ruleset, CombatState, Vocabulary, COMBAT_V1_JSON,
+    CombatDomain, CombatEvent, CombatState, RealityRules, Vocabulary, COMBAT_V1_JSON,
 };
 use sim_core::{
+
     RulesetEpoch,
     DiscardReason, EntityId, Island, IslandId, Lane, Outcome, PreconditionKind,
     SeenWindow, StepStatus,
 };
+
+/// The submitter. Any uuid — these suites are about admission, not identity.
+/// Before `SEALED-SUBJECT` the proposal carried `"actor": 1` and admission
+/// believed it; the SUBJECT is now a parameter the CALLER supplies.
+const TEST_USER: &str = "7e57ab1e-0000-4000-8000-00000000ac70";
 
 const SPAM: usize = 100;
 /// Fixed seed — replay-exact, no ambient randomness (SC-A1).
@@ -53,7 +68,7 @@ fn strike(client_request_id: &str) -> String {
         "producer_service": "game-server",
         "proposal_id": client_request_id,
         "target_channel": 1,
-        "actor": 1,
+        "user_ref_id": TEST_USER,
         "candidates": [[2, "hostile-2"]],
         "event_category": "T1",
         "decision": {
@@ -71,10 +86,10 @@ fn strike(client_request_id: &str) -> String {
 fn island() -> Island<CombatDomain> {
     // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
     // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
-    let rules = Arc::new(Ruleset::engine_default());
+    let rules = Arc::new(RealityRules::proving_ground());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
-    state.actors.insert(EntityId(2), Actor::new(&rules, 100_000));
+    state.actors.insert(EntityId(1), hub_fixture::actor(&rules, EntityId(1), Side::A, 100));
+    state.actors.insert(EntityId(2), hub_fixture::actor(&rules, EntityId(2), Side::B, 100_000));
 
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
@@ -101,7 +116,7 @@ fn distinct_client_request_ids_all_pass_idempotency() {
     let admitted = (0..SPAM)
         .filter(|i| {
             matches!(
-                admit_t6(&strike(&format!("req-{i}")), &v, &mut dedup).outcome,
+                admit_t6(&strike(&format!("req-{i}")), EntityId(1), &v, &verbs(), &mut dedup).outcome,
                 AdmissionOutcome::Admitted(_)
             )
         })
@@ -126,10 +141,11 @@ fn spam_is_gated_by_the_turn_economy() {
     let mut isle = island();
 
     for i in 0..SPAM {
-        let rec = admit_t6(&strike(&format!("req-{i}")), &v, &mut dedup);
+        let rec = admit_t6(&strike(&format!("req-{i}")), EntityId(1), &v, &verbs(), &mut dedup);
         let AdmissionOutcome::Admitted(input) = rec.outcome else {
             continue;
         };
+
         isle.submit(Lane::Live, *input);
     }
     while matches!(isle.step(), StepStatus::Processed(_)) {}
@@ -165,7 +181,7 @@ fn refused_spam_is_recorded_as_a_precondition_failure() {
 
     for i in 0..SPAM {
         if let AdmissionOutcome::Admitted(a) =
-            admit_t6(&strike(&format!("req-{i}")), &v, &mut dedup).outcome
+            admit_t6(&strike(&format!("req-{i}")), EntityId(1), &v, &verbs(), &mut dedup).outcome
         {
             isle.submit(Lane::Live, *a);
         }
@@ -200,13 +216,13 @@ fn end_turn_refills_the_slot_so_legitimate_play_continues() {
     for turn in 0..5 {
         // One legitimate action for this turn.
         if let AdmissionOutcome::Admitted(a) =
-            admit_t6(&strike(&format!("turn-{turn}")), &v, &mut dedup).outcome
+            admit_t6(&strike(&format!("turn-{turn}")), EntityId(1), &v, &verbs(), &mut dedup).outcome
         {
             isle.submit(Lane::Live, *a);
         }
         // …plus a spam attempt in the SAME turn, which must not land.
         if let AdmissionOutcome::Admitted(a) =
-            admit_t6(&strike(&format!("turn-{turn}-spam")), &v, &mut dedup).outcome
+            admit_t6(&strike(&format!("turn-{turn}-spam")), EntityId(1), &v, &verbs(), &mut dedup).outcome
         {
             isle.submit(Lane::Live, *a);
         }

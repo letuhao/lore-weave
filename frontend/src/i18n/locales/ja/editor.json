@@ -19,8 +19,8 @@
   "mode": {
     "classic": "クラシック",
     "classic_title": "クラシックモード — 集中執筆",
-    "ai": "AI",
-    "ai_title": "AIアシスタントモード — 全機能"
+    "ai_title": "AIアシスタントモード — 全機能",
+    "ai": "AI"
   },
   "workmode": {
     "write": "執筆",
@@ -90,7 +90,6 @@
     "underline": "下線 (Ctrl+U)",
     "inline_code": "インラインコード",
     "link": "リンク",
-    "url_prompt": "URL:",
     "highlight": "ハイライト (Ctrl+Shift+H)",
     "subscript": "下付き文字",
     "superscript": "上付き文字",
@@ -103,7 +102,8 @@
     "code_block": "コードブロック",
     "horizontal_rule": "水平線",
     "undo": "元に戻す (Ctrl+Z)",
-    "redo": "やり直し (Ctrl+Shift+Z)"
+    "redo": "やり直し (Ctrl+Shift+Z)",
+    "url_prompt": "URL:"
   },
   "slash": {
     "paragraph": {

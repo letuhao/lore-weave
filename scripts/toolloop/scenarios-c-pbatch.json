@@ -1,0 +1,54 @@
+{
+  "_note": "glossary_propose_batch with v1's gate-opening words and v2's concrete ask, on a book whose ontology already exists.",
+  "scenarios": [
+    {
+      "id": "glossary-propose-batch-adopted-and-named",
+      "tool_under_test": "glossary_propose_batch",
+      "expect_tool": "glossary_propose_batch",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set up several kinds and attributes at once for this book's ontology — I want to do it in one batch, not one at a time: a kind called Faction with an attribute Allegiance, and a kind called Artifact with an attribute Origin.",
+      "prompt_source": "v1's OPENING kept verbatim and v2's CONCRETE ASK appended — deliberately, because DQ-T31 measured the two separately and they fail in opposite ways:\n    v1 'Set up several kinds and attributes at once for this book's ONTOLOGY — in one batch'\n       -> intent_gate withheld 0. Gate OPEN. But the ask is abstract, and on 5/5 runs the model ran glossary_list_system_standards -> glossary_adopt_standards, which is a reasonable reading of 'set up my ontology' when the book has none.\n    v2 'a kind called Faction with an attribute Allegiance, and a kind called Artifact with an attribute Origin'\n       -> intent_gate withheld 4, INCLUDING this tool. Gate CLOSED. The concrete ask never reaches the tool that performs it.\n\nSo the tool is caught between a prompt that opens the gate and cannot be acted on, and one that can be acted on and closes the gate. Keeping v1's phrases (which is what the skill router matches) and appending v2's specifics tests whether the two can hold at once. If the gate CLOSES on this wording, that is DQ-T31 confirmed from a third angle and the tool is unreachable by any phrasing.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          },
+          "why": "🔴 MAKES THE SIBLING REDUNDANT RATHER THAN FORBIDDEN. The measured failure is the model running glossary_adopt_standards instead of this tool, and on a book with NO kinds that is the correct first move - so the old runs were measuring an empty book, not a choice. With `character` already adopted, 'set up several kinds at once' can only mean NEW kinds, which adopt_standards cannot create.\n\nNote what this does NOT do: it does not remove adopt_standards from the wire. The model may still pick it, and if it does with the ontology already present, that is a clean sibling-wins reading rather than a precondition one."
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool applies ontology changes WITHOUT a confirm card (its own description says MANY changes on ONE confirm), OR it invents `ops` the user never described. 🔴 CONTROL FIRST, BEFORE ANY CONCLUSION: this is one of the five INTENT-GATED setup tools. Read chat_messages.withheld_tools for stage='intent_gate'. If the count is >0 the tool was WITHHELD and the run measures the DQ-T3 stamp instead of the tool — a different finding, recorded as such. If it is 0 the setup wording opened the gate and the tool is genuinely under test.",
+      "ship_audit": {
+        "gate": "OWED — the whole point of this tool is ONE confirm for MANY changes.",
+        "empty_case": "OWED — an empty `ops` must be refused, not minted as an empty confirm.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P9-INTENT-GATE",
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT (count(*) > 0)::text FROM book_kinds WHERE book_id = '{book_id}' AND code = 'character'",
+          "expect": "true",
+          "why": "The `character` kind must be adopted BY CODE, or the book is empty and the run measures the precondition again."
+        }
+      ],
+      "approve_why": "Tier W and confirm-gated. The target is this run's OWN throwaway book, torn down after."
+    }
+  ]
+}

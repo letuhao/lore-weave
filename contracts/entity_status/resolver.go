@@ -15,8 +15,19 @@ type EntityRef struct {
 	// EntityID is the aggregate's primary key (UUID string).
 	EntityID string
 
-	// AggregateType is one of {pc, npc, region, world_kv, session} — matches
-	// the 5 per-aggregate projection skeletons shipped cycle 13.
+	// AggregateType is an OPEN string: whatever kind the declaring feature
+	// says it is. It is NOT a closed set, and the closed set it used to name —
+	// {pc, npc, region, world_kv, session} — was retired 2026-08-06 for two
+	// reasons that both matter.
+	//
+	// 1. Every one of those five named a projection that migrations 0017 and
+	//    0018 DROPPED. The list outlived all of its subjects.
+	// 2. A closed set here means a new aggregate kind needs an ENGINE RELEASE,
+	//    which breaks the plugin architecture at its lowest layer. `D-2`: the
+	//    engine closes on MECHANISM, the manifest closes on VOCABULARY — and a
+	//    kind name is vocabulary.
+	//
+	// REQUIRED and non-empty (checked below): open is not the same as absent.
 	AggregateType string
 
 	// RealityID is the home reality. Required: a missing reality_id forces

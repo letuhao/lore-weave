@@ -1,0 +1,57 @@
+{
+  "_note": "batch 6 remainder — translation_job_status with a REST-seeded job.",
+  "scenarios": [
+    {
+      "id": "translation-job-status",
+      "tool_under_test": "translation_job_status",
+      "expect_tool": "translation_job_status",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is my translation done yet? Check the job.",
+      "prompt_source": "_meta.synonyms['is my translation done'] + ['translation job'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "translation",
+            "method": "POST",
+            "path": "/v1/translation/books/{book_id}/jobs",
+            "json": {
+              "chapter_ids": [
+                "{chapter_id}"
+              ],
+              "target_language": "vi"
+            }
+          }
+        },
+        {
+          "wait": {
+            "db": "loreweave_translation",
+            "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}'",
+            "expect": "1",
+            "timeout": 120,
+            "poll": 2,
+            "why": "The job row must EXIST before the turn runs. THE MCP TOOL CANNOT SEED THIS: translation_start_job is Tier W and mints a confirm_token, writing nothing at call time — measured, job rows 0 immediately after a successful call. Same reason provision.py seeds glossary_adopt_standards over REST. No confirm tool is federated, so the token cannot be redeemed from a seed step."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "Exactly one job, so 'the job' is unambiguous and a status reported for the wrong one would be visible."
+        }
+      ],
+      "falsifier": "REFUTED IF: the reply states a job status without translation_job_status being called on the turn — jobs_list carries a summary, and answering from it while claiming the job's detail is the registry-vs-live shape already filed as D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY. CONTROL: the tool REQUIRES job_id, which the model must obtain from a listing, so a correct turn is a two-call chain.",
+      "ship_audit": {
+        "absent_case": "OWED — a job_id that does not exist must be refused with one string that does not distinguish 'not yours' from 'no such job'.",
+        "tenancy": "OWED — another account's job_id must be refused."
+      },
+      "defects": []
+    }
+  ]
+}

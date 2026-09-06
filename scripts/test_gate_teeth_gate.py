@@ -62,7 +62,19 @@ def test_shell_gate_whose_check_is_an_embedded_python_heredoc(tmp_path):
 # ── the gate must not be its own witness ──────────────────────────────────────────────────
 
 def test_a_gate_cannot_certify_itself_by_mentioning_selftest_in_prose(tmp_path):
-    """A docstring or comment saying "selftest" is a claim; an `echo SELFTEST` is a proof."""
+    """Only a SHAPE is a proof: a `def`, a `selftest()` function, or a CLI flag.
+
+    This test used to assert that an `echo "SELFTEST PASS"` line counted — the
+    idea being that prose claims and literals differ. **It does not hold, and
+    the counter-example was live:** `dp-oracle-bite-gate.py` contains
+    `"SELFTEST FAIL" in out`, a literal it uses to read the COVERAGE GATE's
+    output, and on that string it was certified as carrying a self-test it did
+    not have. A literal is not evidence about the file that contains it.
+
+    Narrowing to the three shapes cost exactly one certification — that one.
+    Every genuine shell self-test here defines `selftest()`, so the echo line
+    they all also have was never what was carrying them.
+    """
     claimed = _write(tmp_path, "claim-lint.py",
                      '"""This gate has a SELFTEST built in."""\nimport sys\nsys.exit(1)\n')
     assert gtg.teeth_proof("claim-lint.py", claimed) is None
@@ -71,9 +83,21 @@ def test_a_gate_cannot_certify_itself_by_mentioning_selftest_in_prose(tmp_path):
                        "#!/usr/bin/env bash\n# SELFTEST: flags a bad input\nexit 1\n")
     assert gtg.teeth_proof("claim2-lint.sh", commented) is None
 
+    # The live shape, reduced: a literal used to READ SOMEONE ELSE's verdict.
+    reader = _write(tmp_path, "reader-gate.py",
+                    "import sys\nout = run_other_gate()\n"
+                    'if "SELFTEST FAIL" in out:\n    sys.exit(2)\n')
+    assert gtg.teeth_proof("reader-gate.py", reader) is None, \
+        "a literal naming another gate's selftest output is not a proof about THIS file"
+
     real = _write(tmp_path, "real-lint.sh",
-                  '#!/usr/bin/env bash\necho "[x] SELFTEST PASS — flags a bad input"\nexit 1\n')
+                  "#!/usr/bin/env bash\nselftest() {\n"
+                  '  echo "[x] SELFTEST PASS — flags a bad input"\n}\nexit 1\n')
     assert gtg.teeth_proof("real-lint.sh", real) == "built-in selftest"
+
+    flagged = _write(tmp_path, "flag-gate.py",
+                     'import sys\nif "--self-test" in sys.argv:\n    sys.exit(0)\n')
+    assert gtg.teeth_proof("flag-gate.py", flagged) == "built-in selftest"
 
 
 def test_the_analyzer_does_not_certify_itself():
@@ -95,6 +119,53 @@ def test_only_enforcement_scripts_count_as_gates(name, is_gate):
     assert bool(gtg._IS_GATE.search(name)) is is_gate
 
 
+# ── the Python proof detector, PARSED rather than regexed ─────────────────────────────────
+
+def test_the_python_proof_detector_reads_the_ast_not_the_text():
+    """Each shape ALONE, which the real tree cannot test.
+
+    Every proven gate in the repo carries BOTH a `def self_test` and a
+    `--self-test` flag, so breaking either one on the live tree changes no
+    count — measured. The arms are only separable on synthetic source, and an
+    arm nothing can distinguish is an arm nobody has checked.
+    """
+    # each shape on its own
+    assert gtg._py_selftest_proof("def self_test():\n    return 0\n")
+    assert gtg._py_selftest_proof("def selftest():\n    return 0\n")
+    assert gtg._py_selftest_proof('import sys\nif "--self-test" in sys.argv:\n    pass\n')
+    assert gtg._py_selftest_proof('p.add_argument("--selftest", action="store_true")\n')
+    # and neither
+    assert not gtg._py_selftest_proof("def main():\n    return 0\n")
+
+
+def test_a_docstring_mention_is_not_a_proof_but_a_deep_definition_is():
+    """The exact defect the AST replaced, in both directions.
+
+    `_PY_DOCSTRING` matched between ANY two triple-quote marks, so it deleted
+    the text between two unrelated ones. On `deferral-gate.py` that removed 87%
+    of the file — `def self_test` included — and the gate was reported as
+    carrying no proof while shipping a `--self-test` with eleven bite cases.
+    """
+    claim = '"""This gate has a --self-test built in."""\ndef main():\n    return 0\n'
+    assert not gtg._py_selftest_proof(claim), "a docstring MENTION is a claim, not a proof"
+
+    # A real definition sitting AFTER a docstring that itself contains triple
+    # quotes — the shape that defeated the regex. The AST does not care.
+    tricky = (
+        '"""Module doc.\n\n'
+        "    Explains a pattern written as ''' in prose, which used to re-pair\n"
+        "    the quote marks and swallow everything below.\n"
+        '"""\n'
+        "def helper():\n    return 1\n\n"
+        "def self_test():\n    return 0\n"
+    )
+    assert gtg._py_selftest_proof(tricky), \
+        "a real `def self_test` below a quote-confusing docstring must still count"
+
+    # Unparseable source must not crash the gate on a file it merely cannot read.
+    assert not gtg._py_selftest_proof("def broken(:\n")
+
+
 # ── the live repo state this gate is asserting ────────────────────────────────────────────
 
 def test_every_ci_invoked_gate_in_this_repo_can_fail():
@@ -106,3 +177,65 @@ def test_every_ci_invoked_gate_in_this_repo_can_fail():
         and not gtg.has_failure_path(gtg.ROOT / "scripts" / rel)
     ]
     assert toothless == [], f"wired into CI but cannot report a violation: {toothless}"
+
+
+def test_an_empty_discovery_is_a_failure_not_a_clean_bill(monkeypatch, capsys):
+    """`main()` must refuse a run that discovered nothing, and say why.
+
+    Every verdict `main()` prints is a fact about `ci_invoked_scripts()`. When
+    that set is empty the verdict loop runs zero times and the gate printed
+    *"PASS -- 0 CI-invoked gate(s), every one able to return non-zero"* -- the
+    passes-over-nothing shape, in the gate that exists to hunt it.
+
+    It was covered by ACCIDENT until 2026-08-12: `NO_PROOF_BASELINE` was 34, so
+    an empty discovery mismatched the baseline and exited 1. Taking the baseline
+    to 0 made `0 == 0` and retired that second, unstated job. `NV-4` -- an
+    adjacent decision defeating a guard that leaned on it.
+    """
+    monkeypatch.setattr(gtg, "ci_invoked_scripts", dict)
+    monkeypatch.setattr(sys, "argv", ["gate-teeth-gate.py"])
+
+    rc = gtg.main()
+    out = capsys.readouterr().out
+
+    assert rc == 1, "an empty discovery reported success"
+    assert "discovery found only 0" in out, out[-400:]
+    # ...and the old accident must not be what's carrying it: the failure has to
+    # survive the baseline being anything at all.
+    monkeypatch.setattr(gtg, "NO_PROOF_BASELINE", 0)
+    assert gtg.main() == 1
+
+
+def test_the_floor_is_below_the_real_gate_count_but_not_trivially_low():
+    """A floor above the truth reds a healthy tree; one at zero is decoration."""
+    live = len(gtg.ci_invoked_scripts())
+    assert gtg.CI_GATE_FLOOR < live, (
+        f"floor {gtg.CI_GATE_FLOOR} is at or above the live count {live} — it would red "
+        f"a healthy tree")
+    assert gtg.CI_GATE_FLOOR > live // 2, (
+        f"floor {gtg.CI_GATE_FLOOR} would pass with more than half of {live} gates gone")
+
+
+def test_the_verify_proofs_floor_has_not_gone_stale_by_success():
+    """A floor decays when the population it guards GROWS and it does not.
+
+    `VERIFY_PROOF_FLOOR` was 30 when 42 gates carried a built-in self-test. The
+    teeth board took that to 90 and nobody re-measured, so it would have passed
+    with two-thirds of every certification in the repo gone. Nothing said
+    anything, because a stale floor fails only in the direction no one tests.
+
+    This binds the constant to the live count instead of to a memory of it.
+    """
+    certified = [
+        rel for rel in gtg.ci_invoked_scripts()
+        if (gtg.ROOT / "scripts" / rel).exists()
+        and Path(rel).name not in gtg.NOT_A_GATE
+        and (gtg.teeth_proof(rel, gtg.ROOT / "scripts" / rel) or "").startswith("built-in")
+    ]
+    live = len(certified)
+    assert gtg.VERIFY_PROOF_FLOOR < live, (
+        f"floor {gtg.VERIFY_PROOF_FLOOR} is at or above the live count {live} — CI would red "
+        f"on a healthy tree")
+    assert gtg.VERIFY_PROOF_FLOOR > live * 2 // 3, (
+        f"floor {gtg.VERIFY_PROOF_FLOOR} is stale against {live} certified self-test(s): it "
+        f"would pass with a third of them gone. Re-measure it.")

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -87,6 +88,20 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 	argIdx++
 	limitParam := "$" + strconv.Itoa(argIdx)
 	args = append(args, limit)
+	argIdx++
+	// The STORY POSITION this read answers at (plan T52). `before_chapter_index` omitted (or
+	// -1) means "the whole book", and a whole-book read has NO single position — asking for a
+	// name "as of the whole book" is not a question. Then the position is NULL, the as-of
+	// lateral below matches nothing, and the current value is used, which is the CORRECT read
+	// rather than a degradation. Same reasoning composition's `_cast_roster` records for its
+	// untimed catalogue read.
+	asOfParam := "$" + strconv.Itoa(argIdx)
+	var asOfArg any
+	if beforeIdx >= 0 {
+		asOfArg = int64(beforeIdx)
+	}
+	args = append(args, asOfArg)
+	fellBackName, fellBackAlias, fellBackLife := 0, 0, 0
 
 	query := `
 		SELECT
@@ -96,8 +111,15 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 			-- does not exist on every kind (terminology identifies itself with term),
 			-- so this rendered an empty name. cached_name is trigger-maintained and
 			-- already kind-aware.
-			COALESCE(NULLIF(name_av.original_value, ''), e.cached_name, '')  AS entity_name,
-			COALESCE(alias_av.original_value, '') AS aliases_raw,
+			-- T52 — resolve the name AS OF the requested chapter, not as of now. The as-of
+			-- fact wins; the current attribute value is the FALLBACK, and the handler warns
+			-- when it is used, because a silently-current name in a canon-at-chapter panel is
+			-- a spoiler that looks like data.
+			COALESCE(NULLIF(name_asof.value, ''), NULLIF(name_av.original_value, ''), e.cached_name, '')  AS entity_name,
+			COALESCE(NULLIF(alias_asof.value, ''), alias_av.original_value, '') AS aliases_raw,
+			(name_asof.value IS NULL)  AS name_fell_back,
+			(alias_asof.value IS NULL) AS alias_fell_back,
+			(life_asof.value IS NULL)  AS life_fell_back,
 			COUNT(DISTINCT cl.chapter_id)         AS frequency,
 			MIN(cl.chapter_index)                 AS first_chapter_index,
 			MAX(cl.chapter_index)                 AS last_chapter_index,
@@ -120,9 +142,68 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 				WHERE ba.kind_id = e.kind_id AND ba.code = 'aliases'
 				ORDER BY (g.code = 'universal') DESC LIMIT 1
 			)
+		-- ── the as-of resolution (T52 / decision D0) ──────────────────────────────────
+		-- Same predicate as state@as_of: the half-open story interval
+		-- [valid_from_ordinal, valid_to_eff). ORDER BY valid_from DESC so an
+		-- overlapping-interval substrate bug degrades to "freshest wins" rather than
+		-- "random wins" — the reasoning state_handler.go already records.
+		LEFT JOIN LATERAL (
+			SELECT f.value
+			  FROM entity_facts f
+			 WHERE f.entity_id = e.entity_id AND f.book_id = e.book_id
+			   AND f.fact_kind = 'name'
+			   AND f.invalidated_at IS NULL
+			   AND ` + asOfParam + `::bigint IS NOT NULL
+			   AND f.valid_from_ordinal <= ` + asOfParam + `::bigint
+			   AND ` + asOfParam + `::bigint < f.valid_to_eff
+			 ORDER BY f.valid_from_ordinal DESC
+			 LIMIT 1
+		) name_asof ON TRUE
+		LEFT JOIN LATERAL (
+			SELECT f.value
+			  FROM entity_facts f
+			 WHERE f.entity_id = e.entity_id AND f.book_id = e.book_id
+			   AND f.fact_kind = 'alias'
+			   AND f.invalidated_at IS NULL
+			   AND ` + asOfParam + `::bigint IS NOT NULL
+			   AND f.valid_from_ordinal <= ` + asOfParam + `::bigint
+			   AND ` + asOfParam + `::bigint < f.valid_to_eff
+			 ORDER BY f.valid_from_ordinal DESC
+			 LIMIT 1
+		) alias_asof ON TRUE
+		-- -- liveness AS OF the position (T32) ----------------------------------------
+		-- The third as-of source, and the one D-T32-ALIVE-NO-FACTS said could not be
+		-- built yet. It could not be SWAPPED for the alive column; that deferral's
+		-- dichotomy -- fail closed (every entity reads not-alive: a total outage) or fail
+		-- open (identical to alive=true: proving nothing) -- assumed replacement.
+		-- CONJOINING is the third path: alive still gates the author's explicit hide, and
+		-- a gone fact covering this position removes the entity on top of that.
+		--
+		-- Strictly NARROWING, so it cannot regress: an entity with no status fact is
+		-- unaffected (every entity but three today), and alive is 7523 true / 0 false, so
+		-- nothing that reads today stops reading. What changes is that a character the
+		-- story has killed stops appearing in a canon panel dated AFTER their death --
+		-- the spoiler class this whole handler exists to remove.
+		LEFT JOIN LATERAL (
+			SELECT f.value
+			  FROM entity_facts f
+			 WHERE f.entity_id = e.entity_id AND f.book_id = e.book_id
+			   AND f.attr_or_predicate = 'life_status'
+			   AND f.invalidated_at IS NULL
+			   AND ` + asOfParam + `::bigint IS NOT NULL
+			   AND f.valid_from_ordinal <= ` + asOfParam + `::bigint
+			   AND ` + asOfParam + `::bigint < f.valid_to_eff
+			 ORDER BY f.valid_from_ordinal DESC
+			 LIMIT 1
+		) life_asof ON TRUE
 		JOIN chapter_entity_links cl ON ` + linkWhere + `
 		WHERE e.book_id = $1 AND e.alive = true AND e.deleted_at IS NULL
-		GROUP BY e.entity_id, k.code, name_av.original_value, alias_av.original_value
+		  -- NULL means "no fact covers this position", never "gone". An UNTIMED read has
+		  -- no position to answer at, so the lateral yields NULL and this filter is inert
+		  -- -- which is what the editor view must keep doing.
+		  AND (life_asof.value IS NULL OR life_asof.value <> 'gone')
+		GROUP BY e.entity_id, k.code, name_av.original_value, alias_av.original_value,
+		         name_asof.value, alias_asof.value, life_asof.value
 		HAVING COUNT(DISTINCT cl.chapter_id) >= ` + minFreqParam + `
 		ORDER BY COUNT(DISTINCT cl.chapter_id) DESC, e.entity_id
 		LIMIT ` + limitParam
@@ -142,8 +223,10 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var rr row
 		var aliasesRaw string
+		var nameFellBack, aliasFellBack, lifeFellBack bool
 		if err := rows.Scan(
 			&rr.out.EntityID, &rr.out.KindCode, &rr.out.Name, &aliasesRaw,
+			&nameFellBack, &aliasFellBack, &lifeFellBack,
 			&rr.out.Frequency, &rr.out.FirstChapterIndex, &rr.out.LastChapterIndex,
 			&rr.distinctChapters,
 		); err != nil {
@@ -161,11 +244,55 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 			aliases = []string{}
 		}
 		rr.out.Aliases = aliases
+		if beforeIdx >= 0 {
+			if nameFellBack {
+				fellBackName++
+			}
+			if aliasFellBack {
+				fellBackAlias++
+			}
+			if lifeFellBack {
+				fellBackLife++
+			}
+		}
 		collected = append(collected, rr)
 	}
 	if err := rows.Err(); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "row error")
 		return
+	}
+
+	// T52's logging contract. DEBUG the resolved position and the per-field as-of source;
+	// WARN when any field fell back to a CURRENT value, because that is the defect this task
+	// exists to fix and it is otherwise invisible: a current name in a canon-at-chapter panel
+	// is well-formed, plausible, and wrong — a spoiler that looks like data.
+	//
+	// Liveness USED to be reported as a permanent fallback, with this line hardcoded to say
+	// "no liveness facts exist". That was true when T52 wrote it and stopped being true the
+	// moment T32's producer landed -- a log that STATES a precondition instead of MEASURING
+	// it goes stale silently, and this one asserted the opposite of the truth. Counted per
+	// read now, exactly like name and alias.
+	if beforeIdx >= 0 {
+		slog.Debug("known-entities resolved at a story position",
+			"book_id", bookID.String(), "as_of", beforeIdx,
+			"entities", len(collected),
+			"name_source", "entity_facts(fact_kind=name)",
+			"alias_source", "entity_facts(fact_kind=alias)",
+			"kind_source", "book_kinds (CURRENT - no kind facts exist)",
+			"liveness_source", "entity_facts(life_status) AND glossary_entities.alive",
+			"liveness_fallbacks", fellBackLife)
+		if fellBackName > 0 || fellBackAlias > 0 {
+			slog.Warn("known-entities fell back to CURRENT values on a timed read",
+				"book_id", bookID.String(), "as_of", beforeIdx,
+				"entities", len(collected),
+				"name_fallbacks", fellBackName, "alias_fallbacks", fellBackAlias,
+				"why", "no name/alias fact covers this position; the value shown is today's")
+		}
+		// Not conditional: these two have NO as-of source at all yet, so every timed read is
+		// answering them with a current value.
+		slog.Warn("known-entities cannot resolve kind or liveness as-of",
+			"book_id", bookID.String(), "as_of", beforeIdx,
+			"deferral", "D-T32-ALIVE-NO-FACTS")
 	}
 
 	// coverage_pct = distinct linked chapters / total book chapters, in [0,1]. Prefer

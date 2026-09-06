@@ -1,0 +1,81 @@
+{
+  "model": "google/gemma-4-26b-a4b-qat",
+  "repeats": 4,
+  "verdict": "NO-SHIFT",
+  "per_premise": [
+    {
+      "premise_idx": 0,
+      "cast_size": {
+        "control_mean": 6.75,
+        "treatment_mean": 6.5,
+        "control_range": 1,
+        "treatment_range": 1,
+        "delta": 0.25,
+        "p": 1.0,
+        "exact": true,
+        "shifted": false
+      },
+      "is_new": {
+        "control_mean": 3.75,
+        "treatment_mean": 3.5,
+        "control_range": 1,
+        "treatment_range": 1,
+        "delta": 0.25,
+        "p": 1.0,
+        "exact": true,
+        "shifted": false
+      },
+      "treatment_roles_rows": 27
+    },
+    {
+      "premise_idx": 1,
+      "cast_size": {
+        "control_mean": 6.5,
+        "treatment_mean": 6,
+        "control_range": 1,
+        "treatment_range": 0,
+        "delta": 0.5,
+        "p": 0.4286,
+        "exact": true,
+        "shifted": false
+      },
+      "is_new": {
+        "control_mean": 3.5,
+        "treatment_mean": 3,
+        "control_range": 1,
+        "treatment_range": 0,
+        "delta": 0.5,
+        "p": 0.4286,
+        "exact": true,
+        "shifted": false
+      },
+      "treatment_roles_rows": 28
+    },
+    {
+      "premise_idx": 2,
+      "cast_size": {
+        "control_mean": 7,
+        "treatment_mean": 7,
+        "control_range": 0,
+        "treatment_range": 0,
+        "delta": 0,
+        "p": 1.0,
+        "exact": true,
+        "shifted": false
+      },
+      "is_new": {
+        "control_mean": 4,
+        "treatment_mean": 4,
+        "control_range": 0,
+        "treatment_range": 0,
+        "delta": 0,
+        "p": 1.0,
+        "exact": true,
+        "shifted": false
+      },
+      "treatment_roles_rows": 46
+    }
+  ],
+  "unparsed": [],
+  "shifted_premises": []
+}

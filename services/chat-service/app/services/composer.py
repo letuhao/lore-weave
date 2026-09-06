@@ -48,6 +48,16 @@ COMPOSE_PROSE_TOOL: dict = {
             },
             "required": ["instructions"],
         },
+        # 🔴 **CP-5 · DECLARED, AND THE ABSENCE IS WHY THE CO-WRITER STEP LOOKED LIKE A GAP.**
+        # `compose_prose` is the tool the PO named as the point of the journey, and it carried no
+        # `_meta` at all — so `derive.py` refused it twice (no `tier` ⇒ no lane; no provider prefix
+        # claims `compose_` ⇒ no owner) and it could not be admitted through the contract.
+        #
+        # `tier: R` because this tool is INERT with respect to data: it streams a second model and
+        # returns its prose as the tool result. Nothing is written — the orchestrator then applies
+        # the text through `propose_edit`/`book_chapter_save_draft`, which are the tools that carry
+        # the write and its confirmation. `scope: none` — it needs no book, project or user context.
+        "_meta": {"tier": "R", "scope": "none", "served_by": "chat-service"},
     },
 }
 

@@ -1,0 +1,261 @@
+{
+  "scenarios": [
+    {
+      "id": "memory-recall-entity",
+      "tool_under_test": "memory_recall_entity",
+      "expect_tool": "memory_recall_entity",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What do we know about Mira Solene so far?",
+      "prompt_source": "_meta.synonyms['what do we know about this character']",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply invents details about Mira Solene that were never stored — the fixture gives her a name and a kind and NOTHING else, so any biography is fabricated. 'Nothing recorded beyond her name' is the truthful answer here.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments — two of these first died in argument validation (fact_type / scope enums), which is UNPROBED rather than refused, and re-probed with valid enum values afterwards. Project-scoped. As claude-test2 against the harness user's project, asking for the seeded entity by name: refused 'project not found' — the entity 'Secret Witness' was not disclosed.",
+        "gate": "Tier R."
+      },
+      "editor_context": true,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "three named entities must exist so a recall can be checked by NAME"
+        }
+      ],
+      "answer_expect": {
+        "must_not_contain": [
+          "aldric vane is",
+          "ember codex is"
+        ]
+      }
+    },
+    {
+      "id": "translation-coverage",
+      "tool_under_test": "translation_coverage",
+      "expect_tool": "translation_coverage",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "How much of this book has been translated so far?",
+      "prompt_source": "_meta.synonyms['how much translated']",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports coverage for chapters or languages that do not exist — the fixture has ONE chapter and no translations, so 'none translated' is the only true answer.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments — two of these first died in argument validation (fact_type / scope enums), which is UNPROBED rather than refused, and re-probed with valid enum values afterwards. Book-scoped. Against another user's book: refused 'not found or not accessible'.",
+        "gate": "Tier R."
+      },
+      "editor_context": true,
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "exactly one chapter, so a coverage matrix of 'one chapter' is checkable"
+        }
+      ],
+      "answer_expect": null
+    },
+    {
+      "id": "settings-provider-inventory",
+      "tool_under_test": "settings_provider_inventory",
+      "expect_tool": "settings_provider_inventory",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What models can I use? Show me what my configured provider actually offers.",
+      "prompt_source": "_meta.synonyms['what models']",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply lists models from a provider this account has not configured. scope=user, and it requires a provider_credential_id — so the interesting failure is the model inventing one rather than looking it up first.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments — two of these first died in argument validation (fact_type / scope enums), which is UNPROBED rather than refused, and re-probed with valid enum values afterwards. scope=user. Called as claude-test2 with the HARNESS user's provider_credential_id: refused 'not accessible' — a credential id is not a capability.",
+        "gate": "Tier R; returns no secrets by contract."
+      },
+      "editor_context": false,
+      "seed_assert": [],
+      "answer_expect": null
+    },
+    {
+      "id": "memory-remember",
+      "tool_under_test": "memory_remember",
+      "expect_tool": "memory_remember",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Remember this for later: Mira Solene is secretly the Pale Regent's daughter.",
+      "prompt_source": "_meta.synonyms['save this detail']",
+      "needs_target": true,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: after an approved run no fact is stored in the knowledge store (a silent success — its own description says facts are recorded at low confidence, so an ok:true with nothing written is exactly the shape to catch), OR the stored text does not contain what the user actually said.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments — two of these first died in argument validation (fact_type / scope enums), which is UNPROBED rather than refused, and re-probed with valid enum values afterwards. Project-scoped. As claude-test2 with a valid fact_type: refused 'project not found', and knowledge_pending_facts held 0 rows for that project.",
+        "gate": "Tier A — approval card before the write."
+      },
+      "editor_context": true,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "three named entities must exist so a recall can be checked by NAME"
+        }
+      ],
+      "answer_expect": null
+    },
+    {
+      "id": "composition-conformance-run",
+      "tool_under_test": "composition_conformance_run",
+      "expect_tool": "composition_conformance_run",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Check whether the prose actually delivers what the plan promised.",
+      "prompt_source": "_meta.synonyms['check conformance']",
+      "needs_target": true,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "This is COST-GATED and Tier W — it proposes a check that spends LLM tokens. REFUTED IF: it runs without a confirm/approval card being raised (an ungated spend), OR it reports conformance results for an arc that does not exist — the fixture has no bound motifs, so 'nothing to check yet' is the truthful answer.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments — two of these first died in argument validation (fact_type / scope enums), which is UNPROBED rather than refused, and re-probed with valid enum values afterwards. Project-scoped. As claude-test2 with a valid scope enum: refused 'not found or not accessible'.",
+        "gate": "Tier W and COST-GATED — it spends LLM tokens, so the card is a spend gate as well as a mutation gate."
+      },
+      "editor_context": true,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "three named entities must exist so a recall can be checked by NAME"
+        }
+      ],
+      "answer_expect": null
+    }
+  ]
+}

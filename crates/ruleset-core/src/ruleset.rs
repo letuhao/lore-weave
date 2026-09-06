@@ -7,6 +7,7 @@ use crate::combat::CombatRules;
 use crate::provenance::{Provenance, RulesetEpoch};
 use crate::quantity::QuantityTable;
 use crate::resource::ResourceTable;
+use crate::verb::VerbTable;
 use crate::progression::ProgressionDigest;
 use crate::stats::StatRules;
 
@@ -14,7 +15,7 @@ use crate::stats::StatRules;
 /// is not itself a rules change. Written first into every canonical stream, so
 /// an encoding change can never be mistaken for a rules change: both move the
 /// digest, but only one of them moves it for every reality at once.
-pub const RULESET_SCHEMA_VERSION: u32 = 5;
+pub const RULESET_SCHEMA_VERSION: u32 = 7;
 
 /// The oldest schema version this engine can still DECODE.
 ///
@@ -121,72 +122,23 @@ pub struct Ruleset {
     /// second end for bytes that arrive by another route
     /// (`D-PROGRESSION-EMPTY-PIN`, CLOSED by `PGN-R2a`).
     pub progression: Option<ProgressionDigest>,
+    /// **`M2` — `CMD-1`: the declared verbs, and their ordinals.**
+    ///
+    /// Inside the hashed bytes, and it has to be: two realities whose verbs
+    /// differ are two different sets of rules, and `RLS-A13` says an event is
+    /// pinned to the rules that produced it. A verb table living outside the
+    /// digest would let a reality gain an action with nothing going red.
+    ///
+    /// **A TABLE and not a POINTER, unlike `progression`, and the difference is
+    /// measured rather than stylistic.** A `TierDecl` transitively owns
+    /// `String`/`Vec`/`HashMap`, so it can never be `Copy`, never be
+    /// `const`-constructed, and cannot be seen by `size_of` at all — the
+    /// `QTY-A6 ⊥ QTY-A12` trap, which is why that one is a content address. A
+    /// `VerbDecl` is a fixed-size POD: a 32-byte name, two ordinals, three small
+    /// rows. It fits inline, so it is inline, and `size_of` can still see it.
+    pub verbs: VerbTable,
 }
 
-// QTY-A12 (doc 35 §6.4) — see the rationale on `StatBlock` in
-// `services/commit-service/src/stats.rs`.
-//
-// A ruleset is interned per reality, not per actor, so its budget is generous
-// by comparison — but it is the struct L2 will grow (declared quantities, the
-// ordinal table, the O(n^2) element interaction table which QTY-A6.1 places
-// HERE and not on the actor). It also backs a claim with an expiry date:
-// `digest()` recomputes BLAKE3 on every call and justifies that with "the whole
-// artifact is ~200 bytes". Watch this number.
-//
-// REPIN LOG — each entry is a decision someone had to write down, which is the
-// entire mechanism. The assertion is not here to forbid growth.
-//
-// * 216 -> 224, 2026-07-29 (`Q0a`), for `law_version` (QTY-D13). Four bytes of
-//   field, eight of struct after alignment. It bit on the very next slice after
-//   it was added, which is the only evidence that a guard works.
-// * 224 -> 1280, 2026-07-29 (`Q1`), for `quantities: QuantityTable` — and this
-//   is the growth the paragraph above PREDICTED BY NAME. A 32-entry table of
-//   32-byte identifiers is ~1 KB.
-//
-//   **Why that is affordable here and would not be on `Actor`:** QTY-A6.1 —
-//   `O(n)` per ACTOR, `O(n²)` per RULESET. A `Ruleset` is interned once per
-//   reality; ten thousand resident actors pay nothing for it. The same 1 KB on
-//   `Actor` would be 10 MB and would be the exact mistake chaos made, where a
-//   `[[f64;50];50]` interaction matrix sat INLINE on every actor and consumed
-//   47 % of the struct.
-//
-//   **Boxing the table to keep the number small is FORBIDDEN.** That is
-//   `QTY-A6 ⊥ QTY-A12` (non-vacuity register row 6): a heap pointer makes
-//   `size_of` 16 bytes for every `n`, so this assertion would compile, always
-//   pass, and never be able to fire again — for every future slice, not just
-//   this one.
-//
-// * 1280 -> 2312, 2026-07-30 (`Q2`), for `resources: ResourceTable` — 32 rows
-//   of a 32-byte `ResourceDecl`, plus its length. Measured, not estimated.
-//
-//   `ResourceDecl` is 32 B rather than the ~20 its fields sum to, because
-//   `CeilingBinding::Slot(StatSlot)` inherits `StatSlot`'s `#[repr(usize)]`
-//   8-byte alignment. Storing the slot as a bare `u8` would recover ~256 B
-//   across the table and was NOT done: it would put an untyped ordinal in the
-//   hashed bytes with nothing checking it against the enum, which is precisely
-//   the drift `slots.rs` exists to prevent — and 256 B on a struct interned
-//   ONCE PER REALITY is not worth buying with an untyped index.
-//
-//   **The paragraph above about `digest()` and "~200 bytes" is now stale, and
-//   the distinction it glosses matters more than the number.** The STRUCT is
-//   2.3 KB; the ENCODED bytes are not, because only `0..n` is written. A
-//   reality declaring no pools encodes one extra length prefix over Q1 — four
-//   bytes — and BLAKE3 hashes what is encoded, not what is resident. Watch the
-//   encoded size, which is what `digest()` actually pays for.
-// * 2312 -> 2344, 2026-07-30 (`S-1b`), for `progression: Option<ProgressionDigest>`.
-//   Measured by probe, not estimated: `Option<[u8; 32]>` is 33 bytes and
-//   `Ruleset` aligns to 8, so 2312 + 33 rounds to 2344.
-//
-//   **This is the whole reason progression is a POINTER and not a table.** The
-//   old bound was `<= 2312` and `size_of` was EXACTLY 2312 — zero headroom,
-//   which a bite-test confirmed (`<= 2311` fails to compile). Inlining even one
-//   `TierDecl` was never on the table: `PROG_001` §5.6's worked example is 24
-//   tiers in one kind, and a `TierDecl` transitively owns `String`/`Vec`/
-//   `HashMap`, so it can never be `Copy`, never be `const`-constructed, and
-//   cannot be measured by `size_of` AT ALL — the `QTY-A6 ⊥ QTY-A12` trap. 33
-//   bytes of pointer buys a table of unbounded shape without giving up the
-//   property this assertion exists to hold.
-const _: () = assert!(core::mem::size_of::<Ruleset>() <= 2344);
 
 impl Ruleset {
     /// The priority-0 `engine_default` layer (RLS-D2), resolved with no
@@ -207,7 +159,11 @@ impl Ruleset {
             // they stay exactly where they are.
             resources: ResourceTable::EMPTY,
             // The engine declares no progression. `None`, never a zero digest.
+            // The engine declares no verbs. A verb in the engine default would
+            // enter every reality in existence and QTY-A10(c) forbids removing
+            // it -- the same call `resources` makes one field up.
             progression: None,
+            verbs: VerbTable::EMPTY,
         }
     }
 
@@ -266,15 +222,29 @@ impl CanonEncode for Ruleset {
         // `law_version` broke this line until it was named here, which is the
         // mechanism doing its job: a new field cannot silently stay out of the
         // digest.
-        let Self { schema_version, law_version, combat, stats, quantities, resources, progression } =
-            self;
+        let Self {
+            schema_version,
+            law_version,
+            combat,
+            stats,
+            quantities,
+            resources,
+            progression,
+            verbs,
+        } = self;
         c.u32(*schema_version);
         c.u32(*law_version);
         combat.canon(c);
         stats.canon(c);
         quantities.canon(c);
-        resources.canon(c);
+        // The version is passed explicitly rather than read from `self`:
+        // `schema_version` is destructured above and is the CURRENT constant by
+        // construction here, while `canon_bytes_at` must be able to ask for an
+        // older layout. One encoder, two callers, no branch on a struct field
+        // that a decoded-then-upcast value would have already overwritten.
+        resources.canon_at(c, crate::ruleset::RULESET_SCHEMA_VERSION);
         crate::ruleset_codec::canon_progression(c, progression);
+        verbs.canon_at(c, crate::ruleset::RULESET_SCHEMA_VERSION);
     }
 }
 
@@ -314,3 +284,4 @@ impl ResolvedRuleset {
         self.ruleset.digest()
     }
 }
+

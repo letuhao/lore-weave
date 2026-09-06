@@ -38,8 +38,12 @@ def _read_tool(name: str = "glossary_list_system_standards") -> dict:
     }
 
 
-def _fake_client_repeating(tool_name: str, times: int):
-    """A model that calls the SAME read, with the SAME args, `times` times in a row."""
+def _fake_client_repeating(tool_name: str, times: int, offered: list | None = None):
+    """A model that calls the SAME read, with the SAME args, `times` times in a row.
+
+    `offered` (when given) collects the tool NAMES advertised on each pass, so a test can assert
+    what actually reached the wire rather than trusting a flag on the result chunk.
+    """
     from loreweave_llm import DoneEvent, TokenEvent, ToolCallEvent
 
     passes = {"n": 0}
@@ -54,6 +58,12 @@ def _fake_client_repeating(tool_name: str, times: int):
         def stream(self, request):
             i = passes["n"]
             passes["n"] += 1
+            if offered is not None:
+                _t = getattr(request, "tools", None)
+                offered.append(sorted(
+                    (td.get("function") or {}).get("name")
+                    for td in (_t or [])
+                ))
 
             async def gen():
                 if i < times:
@@ -68,14 +78,14 @@ def _fake_client_repeating(tool_name: str, times: int):
     return FakeClient
 
 
-async def _drive(times: int):
+async def _drive(times: int, offered: list | None = None):
     import app.services.stream_service as ss
 
     tool = _read_tool()
     name = tool["function"]["name"]
     kc = _kc()
     chunks = []
-    with patch.object(ss, "Client", _fake_client_repeating(name, times)):
+    with patch.object(ss, "Client", _fake_client_repeating(name, times, offered)):
         async for ch in ss._stream_with_tools(
             model_source="user_model", model_ref=TEST_MODEL_REF, user_id="u",
             messages=[{"role": "user", "content": "set up my world"}],
@@ -192,3 +202,4 @@ class TestPollingIsNotALoop:
         assert kc.mcp_execute_tool.await_count < 8, "an unchanging poll must eventually stop"
         errs = [tc["error"] for tc in _tool_calls(chunks) if not tc["ok"]]
         assert any("IDENTICAL result" in (e or "") for e in errs)
+

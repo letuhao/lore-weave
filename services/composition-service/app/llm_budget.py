@@ -91,6 +91,17 @@ PROFILES: dict[str, CallProfile] = {
     "judge_plan_conflict": CallProfile(OutputKind.VERDICT, 1024, 768,
                                        why="one verdict + a short why per cast member"),
     "judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536, why="the critic's scored findings"),
+    # Its own key, not a reuse of `judge_prose`, for the reason `judge_plan_conflict` states
+    # beside it: this judge answers a DIFFERENT question over a DIFFERENT input. `judge_prose`
+    # scores four dimensions and hunts violations across a whole chapter; this one audits ONE
+    # flagged span against ONE rule and answers `{contradicts, reason}` — a far smaller output
+    # whose size does not scale with the rule count.
+    #
+    # 400 was a flat literal at the call site until 2026-08-30 (T48r). It came in with C31's
+    # precision pass, which took `budgets not traceable to call_budget()` from 1 to 2 and left
+    # that ratchet unmoved — rule 5, on this plan's own commit.
+    "judge_prose_verify": CallProfile(OutputKind.VERDICT, 512, 400,
+                                      why="one contradicts-verdict + a one-sentence why"),
     "pairwise_judge": CallProfile(OutputKind.VERDICT, 1536, 1024, why="A/B verdict + rationale"),
     # MISLABELLED until 2026-08-03, and the label was the smaller half of the problem.
     # Its two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a

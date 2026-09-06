@@ -1,0 +1,158 @@
+{
+  "_note": "D-SILENT-TURN-NO-CARD-NO-PROSE — three of the EIGHT trigger scenarios the row names, extracted VERBATIM and run together so the trigger is exercised deliberately rather than hoped for. The row's own caution is why: 'a zero is the absence of the TRIGGER unless the trigger is shown to have fired', and its recent zeros were all incidental.",
+  "scenarios": [
+    {
+      "id": "composition-arc-get-v2",
+      "tool_under_test": "composition_arc_get",
+      "expect_tool": "composition_arc_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+      "prompt_source": "_meta.synonyms['read arc'] + ['arc detail'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Hollow Keep"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc' AND title LIKE '%Hollow Keep%'",
+          "expect": "1",
+          "why": "THE ARC MUST EXIST — this is the fixture that batch 4 could not build, which is why composition_conformance_run refused correctly and was scored as a miss. The tool takes a node_id, so the model must resolve the arc's NAME to it."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Hollow Keep"
+        ],
+        "why": "The seeded arc is the only one; naming it is the minimum evidence that the arc was actually read rather than described."
+      },
+      "falsifier": "RE-RUN AFTER THE WHITESPACE ARM (an `*_id` containing a space is a NAME). v1 was called 3/3 with node_id='The Hollow Keep' and node_id='arc_1'; the tool refused correctly but only after a round trip, and one reply told the author the arc 'hasn't been planned yet' while the seed assertion proved it exists. REFUTED IF a NAME again reaches the tool as node_id. EXPECTED: it is dropped and reported missing, so the model lists the arcs and resolves the id.",
+      "ship_audit": {
+        "absent_case": "OWED — a node_id that does not exist must be refused, and must be distinguishable from an arc that exists but is empty (D-ABSENT-ENTITY-READS-AS-UNUSED).",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-curation-list-v2",
+      "tool_under_test": "glossary_curation_list",
+      "expect_tool": "glossary_curation_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is there anything waiting for my review in this book?",
+      "prompt_source": "_meta.synonyms['waiting for my review'] + ['anything to review'] — phrasings this tool gained in D-DECLARE-THE-USERS-WORD, which took it from surfaced 0/3 to called 3/3.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "location",
+                "name": "Hollow Keep"
+              }
+            ]
+          }
+        },
+        {
+          "sql": {
+            "db": "loreweave_glossary",
+            "statement": "UPDATE glossary_entities SET tags = '{}' WHERE book_id='{book_id}' AND cached_name <> 'Mira Solene'",
+            "why": "🔴 INVERTED, because glossary_propose_entities TAGS EVERY PROPOSED ENTITY 'ai-suggested' itself — measured directly. The first version tagged Mira and expected the other two to be untagged; all three were tagged and the seed assertion failed loudly, which is the batch-2 lesson working. Strip the tag from the two that must NOT be in the queue instead."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "THREE entities exist."
+        },
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND 'ai-suggested' = ANY(tags)",
+          "expect": "1",
+          "why": "EXACTLY ONE is ai-suggested. 🔴 Batch 2 measured the alternative: with all three tagged, 'three suggested entries' was CORRECT and a fabrication could not be told from a reading. One-of-three is what makes the count discriminate."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Mira"
+        ],
+        "none_of": [
+          "three suggested",
+          "3 suggested",
+          "three entries"
+        ],
+        "why": "Exactly one entry is awaiting review and it is Mira Solene. Reporting three is reporting the entity count, which is the batch-2 defect reproducing."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports a review-queue size other than 1, OR it names an entity that is not tagged ai-suggested.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with nothing awaiting review must say so rather than list every entity.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "jobs-get",
+      "tool_under_test": "jobs_get",
+      "expect_tool": "jobs_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the full detail of my most recent job — status, cost, and whether anything failed.",
+      "prompt_source": "_meta.synonyms['job detail'] + ['job status'].",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the reply reports a job's status, cost or error WITHOUT jobs_get being called on the turn — jobs_list carries a summary, so an answer assembled from the list while claiming full detail is the registry-vs-live shape again. CONTROL: jobs_get REQUIRES service + job_id, and only jobs_list supplies them, so a correct turn is a two-call chain; a turn calling only jobs_list has not reached the tool under test. If the account has no jobs at all the run is VOID, not a pass — check before concluding.",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no jobs must say so, not invent one.",
+        "absent_case": "OWED — a job_id that does not exist must return 'not found or not accessible', and that string must not distinguish another user's job from a nonexistent one.",
+        "tenancy": "OWED — user-scoped; another account's job_id must be refused."
+      },
+      "defects": []
+    }
+  ]
+}

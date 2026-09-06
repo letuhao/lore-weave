@@ -16,10 +16,19 @@
 | # | Slice | State | Evidence |
 |---|---|---|---|
 | S1 | **Phase 0 — MCP-native validation seam** (reject bad frontend-tool args before suspend; standard `required: missing properties` signal) | **DONE (live-E2E proven)** | 149 mock + 15 validator/seam tests; live HTTP E2E both paths |
-| S2 | Phase 1 — KIND C → native MCP + task-shaped gate | pending | — |
-| S3 | Phase 2 — KIND B (`propose_edit`) → MCP tool + elicitation | pending | — |
-| S4 | Phase 3 — KIND A (`ui_*`) → validated directive tools (ai-gateway-local) | pending | — |
-| S5 | Phase 4 — retire `frontend_tools.py` schemas + contract; `tools/list` = single contract | pending | — |
+| S2 | Phase 1 — KIND C → native MCP + task-shaped gate | **DONE 2026-07-20** (gate only) | the durable ext-tasks gate is the PRIMARY confirm path — `mcp-tool-io.md` GATE-1. ⚠ **the three KIND-C TOOLS were not migrated** — they are still chat-service-local; that is what `2026-09-03-retire-v1-BUILD.md` finishes |
+| S3 | Phase 2 — KIND B (`propose_edit`) → MCP tool + elicitation | **DONE 2026-07-20**, "+ elicitation" SUPERSEDED | `0608baecb` — `ai-gateway/src/mcp/propose-edit-tool.ts`; chat-service stops intercepting (`frontend_tools.py:55`). Shipped as a gated **directive**, not elicitation: ai-gateway has zero elicitation code and its capabilities block still advertises `{tools, resources, prompts}` only |
+| S4 | Phase 3 — KIND A (`ui_*`) → validated directive tools (ai-gateway-local) | **DONE 2026-07-20** | `0276a0de8` — `ai-gateway/src/mcp/ui-tools.ts` + drift test; **de-advertised 2026-07-25** (`handlers.ts:72`), so the model never sees them |
+| S5 | Phase 4 — retire `frontend_tools.py` schemas + contract; `tools/list` = single contract | **PARTIAL — the tail is open** | the 5 nav `ui_*` defs were retired; the 2 studio `ui_*` + `propose_edit` defs remain as an ai-gateway-down fallback, tracked as `D-P3-RETIRE-UI-FRONTEND-DEFS`. `tools/list` is NOT yet the single contract |
+
+> 🔴 **THIS BOARD READ `pending` FOR S2/S3/S4 UNTIL 2026-09-03**, six weeks after they shipped, because
+> it was typed and never re-derived — and this file instructs the reader to re-read it first after a
+> compaction, so a resuming agent would have re-implemented finished work. Corrected from git history
+> and the code. **Successor:** phases 2–4 were re-planned in
+> [`2026-07-20-frontend-tools-phases-2-4-BUILD.md`](2026-07-20-frontend-tools-phases-2-4-BUILD.md),
+> which this file never named. The remaining work is
+> [`2026-09-03-retire-v1-BUILD.md`](2026-09-03-retire-v1-BUILD.md), whose board is **generated**
+> (`python scripts/v1_retire/runstate.py`) so it cannot go stale this way again.
 | SP-0a | Python `mcp` pin → 1.28.1 (chat + knowledge) | **DONE** | containers already run 1.28.1; native elicitation+tasks present |
 | SP-0b | Go 5 svcs `go-sdk` v1.6.1 → v1.7.0-pre.3 | **DONE** | all build + full test suites green; only a new transitive dep (x/time/rate) |
 | SP-0c | ai-gateway TS `sdk@1.29.0` → `server`+`client@2.0.0-beta.4` | **NEEDS-DECISION** | NOT a repackage — a real API redesign of the load-bearing gateway proxy (setRequestHandler method-string, web-standard transport, ctx shape). Client side trivial; server side a rewrite. |

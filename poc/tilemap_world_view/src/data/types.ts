@@ -1,7 +1,7 @@
 // Mirror SPIKE_03 §4 aggregate sketch (preliminary; not boundary-locked)
 // When TMP_001 graduates, regenerate from canonical contracts/api/tilemap/
 
-export type ChannelTier = 'Continent' | 'Country' | 'District' | 'Town' | 'Cell';
+export type MapKind = 'region' | 'region' | 'region' | 'locale' | 'domain';
 
 export type TerrainKind =
   | 'Grass'
@@ -24,7 +24,7 @@ export type MapObjectKind =
   | 'Portal'
   | 'Ruin';
 
-export type CellKind = 'capital' | 'fortress' | 'temple' | 'tavern' | 'port' | 'cell' | 'cave';
+export type CellKind = 'capital' | 'fortress' | 'temple' | 'tavern' | 'port' | 'domain' | 'cave';
 
 export type RoadKind = 'Highway' | 'Path' | 'Trade';
 
@@ -48,7 +48,7 @@ export interface ZoneSpec {
 
 export interface CellAnchor {
   channel_id: string;
-  tier: ChannelTier;
+  tier: MapKind;
   position: TileCoord;
   kind: CellKind;
   display_name: string;
@@ -91,7 +91,7 @@ export interface CellPlacement {
   position: TileCoord;
   display_name: string;
   kind: CellKind;
-  tier: ChannelTier;
+  tier: MapKind;
 }
 
 export interface MapObjectPlacement {
@@ -107,7 +107,7 @@ export type Layer3Source =
 
 export interface TileMapView {
   channel_id: string;
-  tier: ChannelTier;
+  tier: MapKind;
   grid_size: GridSize;
   skeleton_id: string;
   procedural_seed: number;

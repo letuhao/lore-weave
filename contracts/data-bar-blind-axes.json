@@ -1,0 +1,16 @@
+{
+ "_what": "Which store axes cannot see an in-place edit — the DATA bar's own blind spots.",
+ "_derived_by": "python scripts/toolloop/blind_axes.py",
+ "considered": 78,
+ "count": 8,
+ "axes": [
+  "loreweave_composition.decompose_commit",
+  "loreweave_composition.divergence_spec",
+  "loreweave_composition.entity_override",
+  "loreweave_composition.generation_correction",
+  "loreweave_composition.motif_application",
+  "loreweave_composition.reference_source",
+  "loreweave_composition.scene_link",
+  "loreweave_translation.extraction_raw_outputs"
+ ]
+}

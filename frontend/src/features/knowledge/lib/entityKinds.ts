@@ -8,7 +8,7 @@ import type { TFunction } from 'i18next';
 // Contract rule).
 //
 // `AUTHORABLE_ENTITY_KINDS` MUST equal the server gate
-// `AUTHORABLE_KINDS` (services/knowledge-service app/db/neo4j_repos/
+// `AUTHORABLE_KINDS` (services/knowledge-service app/db/graph_repos/
 // entities.py) — the create REST route + the agent `kg_create_node` both gate
 // to it. A drift here ships a picker option that 422s (the silent-no-op bug
 // class this file exists to kill). The membership contract test asserts the

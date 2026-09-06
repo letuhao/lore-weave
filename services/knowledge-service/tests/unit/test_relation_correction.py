@@ -14,7 +14,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.relations import Relation, recreate_relation
+from app.db.graph_repos.relations import Relation, recreate_relation
 
 _TEST_USER = uuid4()
 _SUBJ = "ent-subj-1"
@@ -51,16 +51,23 @@ def test_recreate_cypher_resurrects_valid_until():
     """F5 regression-lock: the recreate Cypher MUST clear valid_until on ON
     MATCH (resurrect), and it MUST be a DIFFERENT query than create_relation
     (whose ON MATCH never touches valid_until — so extraction can't resurrect)."""
-    from app.db.neo4j_repos import relations as m
-    assert "r.valid_until = NULL" in m._RECREATE_RELATION_CYPHER
-    assert "ON MATCH SET" in m._RECREATE_RELATION_CYPHER
+    from app.db.graph_repos import relations as m
+    import re as _re
+    # whitespace-insensitive: the merged SET aligns its `=` signs (T71), and pinning that
+    # alignment would make a cosmetic reformat look like a broken invariant.
+    assert _re.search(r"r\.valid_until\s*=\s*NULL", m._RECREATE_RELATION_CYPHER)
+    # RESTATED (T71): the branch keyword is gone; the RULE is that re-creating an EXISTING
+    # edge clears valid_until, which the unconditional assignment does.
+    assert _re.search(r"r\.valid_until\s*=\s*NULL", m._RECREATE_RELATION_CYPHER)
     # create_relation's ON MATCH must NOT clear valid_until (the invariant F5 protects).
-    create_on_match = m._CREATE_RELATION_CYPHER.split("ON MATCH SET")[1]
-    assert "valid_until" not in create_on_match
+    assert "r.valid_until" not in m._CREATE_RELATION_CYPHER, (
+        "create_relation must not assign valid_until at all — merged into one SET, any "
+        "assignment fires on match and resurrects an invalidated edge (F5)."
+    )
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_recreate_relation_builds_edge(mock_run):
     mock_run.return_value = _make_result({
         "rel": {"id": "rel-1", "user_id": str(_TEST_USER), "subject_id": _SUBJ,
@@ -78,7 +85,7 @@ async def test_recreate_relation_builds_edge(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_recreate_relation_none_when_endpoint_missing(mock_run):
     mock_run.return_value = _make_result(None)
     rel = await recreate_relation(
@@ -109,16 +116,16 @@ def _client():
     return TestClient(app, raise_server_exceptions=False)
 
 
-@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.relations.get_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.get_relation", new_callable=AsyncMock)
 def test_get_relation_404(mock_get):
     mock_get.return_value = None
     assert _client().get("/v1/knowledge/relations/rel-x").status_code == 404
 
 
-@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.relations.invalidate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.get_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.invalidate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.get_relation", new_callable=AsyncMock)
 def test_invalidate_relation_happy(mock_get, mock_invalidate):
     mock_get.return_value = _relation()
     mock_invalidate.return_value = _relation(valid_until=datetime.now(timezone.utc))
@@ -127,9 +134,9 @@ def test_invalidate_relation_happy(mock_get, mock_invalidate):
     mock_invalidate.assert_awaited_once()
 
 
-@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.relations.invalidate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.get_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.invalidate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.get_relation", new_callable=AsyncMock)
 def test_invalidate_relation_404(mock_get, mock_invalidate):
     mock_get.return_value = None
     mock_invalidate.return_value = None
@@ -137,10 +144,10 @@ def test_invalidate_relation_404(mock_get, mock_invalidate):
     assert resp.status_code == 404
 
 
-@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.invalidate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.get_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.invalidate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.get_relation", new_callable=AsyncMock)
 def test_correct_relation_happy(mock_get, mock_invalidate, mock_recreate):
     old = _relation(predicate="ally_of", rid="rel-old")
     new = _relation(predicate="enemy_of", rid="rel-new")
@@ -158,10 +165,10 @@ def test_correct_relation_happy(mock_get, mock_invalidate, mock_recreate):
     mock_recreate.assert_awaited_once()
 
 
-@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.invalidate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.get_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.invalidate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.get_relation", new_callable=AsyncMock)
 def test_correct_relation_old_missing_404(mock_get, mock_invalidate, mock_recreate):
     mock_get.return_value = None  # old not found
     resp = _client().post("/v1/knowledge/relations/correct", json={
@@ -172,10 +179,10 @@ def test_correct_relation_old_missing_404(mock_get, mock_invalidate, mock_recrea
     mock_recreate.assert_not_awaited()
 
 
-@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.invalidate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.get_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.invalidate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.get_relation", new_callable=AsyncMock)
 def test_correct_relation_recreate_endpoint_missing_409(mock_get, mock_invalidate, mock_recreate):
     mock_get.return_value = _relation(rid="rel-old")  # old exists
     mock_invalidate.return_value = _relation(rid="rel-old")

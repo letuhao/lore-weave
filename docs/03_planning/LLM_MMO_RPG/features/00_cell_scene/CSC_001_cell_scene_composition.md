@@ -22,8 +22,22 @@
 > classifier → narration). The v3→v4 evidence in `_ui_drafts/CELL_SCENE_v1..v4` — 31,448 tokens and
 > **0 successful renders** for LLM-as-grid-generator versus **2,471 tokens and 6/6 entities placed** for
 > LLM-as-zone-classifier — remains the single strongest empirical result in this track, and `SPG-*`
-> depends on it rather than revisiting it. **CANDIDATE-LOCK preserved**; `SPG-R5` is PROPOSED, not
-> applied. Annotation only.
+> depends on it rather than revisiting it. **CANDIDATE-LOCK preserved.**
+>
+> **⚠ STATUS CORRECTED 2026-08-22 — `SPG-R5` half (2) is now APPLIED, and finding out took reading the
+> declaration rather than the summary.** This block said *"PROPOSED, not applied. Annotation only"*, and
+> the §2 summary rows had ALREADY been rewritten to `Grid<char>` and `0..w-1` on 2026-07-30 — while
+> §4.2's actual `struct SkeletonTemplate` still declared `pub tiles: [[char; 16]; 16]`. **The doc
+> described a default in one place and enforced an invariant in another, for three weeks.** The
+> declaration now matches, and `Grid<T>` is defined rather than assumed.
+>
+> **Half (1), the `cell` → `Domain` VOCABULARY, is still PROPOSED and deliberately so.** The aggregate
+> `cell_scene_layout` and the `csc.*` rule namespace are **registered machine contracts** in
+> [`_boundaries/`](../../_boundaries/01_feature_ownership_matrix.md). An id is a contract and the words
+> inside it are not — the same trade `SPG-R14` took when it left
+> `place.invalid_place_type_for_channel_tier` standing. Renaming them is a `_boundaries` claim of its
+> own, and doing it in the same pass as a type correction is the scope creep that folder exists to
+> prevent.
 
 > **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
 > TMP_001 is the **non-cell-tier sibling** to CSC_001. Tier delineation (per TMP-A1): cell tier has NO `tilemap_view` — CSC_001 owns cell rendering; non-cell tiers (continent / country / district / town) have NO `cell_scene_layout` — TMP_001 owns them. From the parent-tilemap perspective, cells appear as `TilemapObjectKind::Town` or `TilemapObjectKind::Landmark` markers; clicking such a marker drills into the cell's CSC_001 16×16 interior. CSC_001 surface is unchanged; the drill-down arrow points FROM TMP_001 TO CSC_001. CSC's own 4-layer LLM architecture (CSC-A1: zone-classifier pattern) is what TMP_008b §2's 3-segment cacheable-prefix structure was deliberately modeled after (cross-feature pattern reuse — AIT-A4 hybrid 2-stage). No CSC contract change — annotation only.
@@ -209,8 +223,52 @@ pub struct SkeletonTemplate {
     pub id: SkeletonId,                                   // canonical id
     pub display_name: String,                             // human-readable name
     pub place_type_compat: Vec<PlaceType>,                // which PF_001 PlaceTypes accept this
-    pub tiles: [[char; 16]; 16],                          // single-char alphabet, 16×16
+    // SPG-R5, APPLIED 2026-08-22. Was `[[char; 16]; 16]` -- a fixed-size array,
+    // i.e. an INVARIANT. The summary table at section 2 was updated on 2026-07-30
+    // and THIS DECLARATION WAS NOT, so for three weeks the doc described a
+    // default in one place and enforced an invariant in another.
+    //
+    // A tavern is 16x16. A palace, a cave system and a ship's hold are not --
+    // and `Domain` is explicitly RECURSIVE (`SPG-A3`'s matrix permits
+    // `Domain -> Domain`), so a palace is a Domain OF Domains rather than one
+    // oversized grid. R-62 is the quantitative reason: Edgar's constraint-solving
+    // layout is documented as "fewer than 30 rooms; not suitable for large
+    // levels", so recursion is not a nicety, it is what makes layout tractable.
+    //
+    // The 16x16 DEFAULT stays, because it is what the v4 evidence was measured
+    // on (section 1 Gap 2) and what every V1 skeleton uses. Nothing in the
+    // 4-layer pipeline depends on the number being fixed at the TYPE level.
+    //
+    // AND RECURSION HAS A PRICE (`SDF-R6`, R-48). Barotrauma's own developers
+    // document that over-fragmenting into many small linked hulls makes a
+    // CONTINUOUS FIELD numerically unstable -- "large spikes of water throwing
+    // the crew about before it eventually equalises" -- and their fix is to
+    // collapse linked hulls into ONE computational entity. A palace as a
+    // Domain-of-Domains carrying an atmosphere or temperature layer IS that
+    // graph, so `SPG-R5` bought tractable layout at the cost of a harder field.
+    //
+    // `SDF-A27` is what pays it, and it costs no new authoring surface: a
+    // layer's SIMULATION GROUP is the connected components of the graph
+    // restricted to edges where its own `EdgePolicy` says Propagates. A palace
+    // of 30 chambers with open archways is therefore ONE air group, not 30 --
+    // automatically, because an author who said "this door blocks air" has
+    // already declared the grouping. Barotrauma had to add `linked hulls` by
+    // hand to get the same result.
+    //
+    // Both halves are stated together ON PURPOSE. A justification without its
+    // cost reads as "recursion is free", and it is not.
+    pub tiles: Grid<char>,                                // default 16x16; see SPG-R5
+
     pub zones_decl: HashMap<String, ZoneBounds>,          // declarative zone bounds
+}
+
+/// A rectangular grid whose extent is DATA rather than type. The extent is
+/// carried, so a reader of one template never has to consult a constant to know
+/// how big it is -- which is the difference between a default and an invariant.
+pub struct Grid<T> {
+    pub width: u32,
+    pub height: u32,
+    pub cells: Vec<T>,                                    // len == width * height
 }
 
 pub enum ZoneBounds {

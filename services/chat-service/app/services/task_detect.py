@@ -1,4 +1,4 @@
-"""ext-tasks client DETECTION (T1c(3), dormant until caps are declared).
+"""ext-tasks client DETECTION — 🟢 LIVE. This is the PRIMARY confirm path.
 
 When chat-service declares the ext-tasks extension in a tool call, a task-capable
 domain (e.g. composition_create_derivative) may answer `tools/call` with a durable
@@ -8,11 +8,30 @@ carrying a `Task`), or, before the CreateTaskResult wrap, the gate HANDLE dict
 normalises it to a *task envelope* the tool loop suspends on — mirroring how a
 frontend tool suspends today, but driven by the domain-owned durable task.
 
-Pure + import-light so it unit-tests without a live transport. It is NOT wired into
-`mcp_execute_tool` yet and chat-service does NOT yet declare tasks capability, so on
-the current stack a task never comes back and this never fires (dormant-safe). The
-wiring + the capability declaration (the activation switch) land with the gateway
-forwarding (T2) as one coordinated, live-E2E'd slice.
+Pure + import-light so it unit-tests without a live transport.
+
+🔴 THIS DOCSTRING USED TO SAY THE OPPOSITE, AND IT WAS READ AND BELIEVED. Until
+2026-09-03 it read: "It is NOT wired into `mcp_execute_tool` yet and chat-service does
+NOT yet declare tasks capability, so on the current stack a task never comes back and
+this never fires (dormant-safe)." Every clause of that is false and had been since
+2026-07-20:
+
+    app/config.py:166               tasks_gate_enabled: bool = True
+    app/client/knowledge_client.py  calls tasks_capability_meta() and passes it as the
+                                    call's `_meta` — the ACTIVATION switch, thrown
+    docs/standards/mcp-tool-io.md   GATE-1: "the durable ext-tasks gate is the PRIMARY
+                                    path for high-impact (Tier-W / KIND-C) confirms"
+
+The cost was not hypothetical. A 2026-09-03 audit of whether architecture v1 could be
+retired had to establish from scratch which of the two confirm paths was live, because
+the file implementing the replacement said the replacement was dormant — the exact
+belief that makes a reader conclude the legacy path is the only one and reverse the
+migration. See `docs/specs/2026-09-03-retire-architecture-v1.md` §6.
+
+WHAT IS STILL TRUE: the `confirm_token` fallback is PERMANENT (GATE-2). A domain returns
+a durable task only to a client that declared the capability; the public MCP edge and
+external agents cannot drive tasks, so they still get a `confirm_token` card. Task-vs-
+token is negotiated per call — never "the old way is gone".
 """
 from __future__ import annotations
 
@@ -29,6 +48,31 @@ GATE_RESULT_TYPE = "io.loreweave/task-handle"
 # the outcome) — no `task` marker, no provide-input drive.
 PROPOSE_EDIT_DIRECTIVE_TYPE = "io.loreweave/propose-edit"
 
+# V7 / DQ-V9 (2026-09-03) — the two markers the three KIND-C human-gate tools now return, once
+# they moved out of chat-service into ai-gateway as DIRECTIVE tools (confirm-tools.ts). Kept in
+# sync with that module's exported constants.
+#
+# Like propose_edit and UNLIKE a durable task: there is no server executor and no `task` marker.
+# The client GATES on the human, then commits through the domain's own confirm route — which is
+# exactly why these could not become domain MCP tools (a server executor would let the model
+# confirm its own action). See docs/plans/2026-09-03-retire-v1-BUILD.md DQ-V9.
+CONFIRM_DIRECTIVE_TYPE = "io.loreweave/confirm-action"
+GLOSSARY_CONFIRM_DIRECTIVE_TYPE = "io.loreweave/glossary-confirm-action"
+RECORD_EDIT_DIRECTIVE_TYPE = "io.loreweave/propose-record-edit"
+
+#: marker -> the suspend `name` the FE already renders a card for. The suspend keeps the OLD tool
+#: name on purpose: `ConfirmActionCard`, `GlossaryDiffCard` and the resume driver key on it, so the
+#: browser half of this move is a no-op. The tool's HOME changed; its identity did not.
+_GATED_DIRECTIVES = {
+    CONFIRM_DIRECTIVE_TYPE: "confirm_action",
+    # 🔴 A THIRD ENTRY, BECAUSE TWO TOOLS SHARING ONE MARKER SHARE ONE NAME. Until 2026-09-03
+    # `glossary_confirm_action` emitted CONFIRM_DIRECTIVE_TYPE, so it suspended as
+    # `confirm_action` — and cms-frontend's admin card, which gates on the exact string
+    # `glossary_confirm_action` and has no auto-confirm fallback, silently stopped rendering.
+    GLOSSARY_CONFIRM_DIRECTIVE_TYPE: "glossary_confirm_action",
+    RECORD_EDIT_DIRECTIVE_TYPE: "glossary_propose_entity_edit",
+}
+
 # ext-tasks extension id + the per-request client-capability envelope keys — the
 # SAME wire keys loreweave_mcp.tasks_wire.client_supports_tasks reads server-side.
 _TASKS_EXTENSION = "io.modelcontextprotocol/tasks"
@@ -37,9 +81,11 @@ _CLIENT_CAPS_KEY = "io.modelcontextprotocol/clientCapabilities"
 __all__ = [
     "GATE_RESULT_TYPE",
     "PROPOSE_EDIT_DIRECTIVE_TYPE",
+    "GLOSSARY_CONFIRM_DIRECTIVE_TYPE",
     "task_envelope_from_result",
     "task_envelope_from_content",
     "propose_edit_suspend_args_from_result",
+    "gated_directive_suspend_args",
     "tasks_capability_meta",
 ]
 
@@ -72,9 +118,43 @@ def tasks_capability_meta() -> dict[str, Any]:
     DECLARE it can drive ext-tasks (the domain's `client_supports_tasks` reads
     exactly this to decide task-vs-confirm_token). Attaching this is the ACTIVATION
     switch — done only once the detect + suspend + drive path is wired end to end,
-    so a declared-but-undriven task can never strand. Until then this is defined but
-    unused (dormant)."""
+    so a declared-but-undriven task can never strand.
+
+    🔴 THE SWITCH IS THROWN. This trailed "Until then this is defined but unused
+    (dormant)" until 2026-09-03, while `knowledge_client.py` had been calling it under
+    `settings.tasks_gate_enabled` (default True) since the gate went primary. Verify with
+    the caller, not with this sentence:
+
+        git grep -n tasks_capability_meta -- services/chat-service/app
+    """
     return {_CLIENT_CAPS_KEY: {"extensions": {_TASKS_EXTENSION: {}}}}
+
+
+def gated_directive_suspend_args(payload: Any) -> tuple[str, dict[str, Any]] | None:
+    """A gated CONFIRM or RECORD-EDIT directive → `(suspend_name, args)`, else None.
+
+    The args are the directive MINUS its `type` marker, which reproduces byte-for-byte the shape
+    chat-service's own v1 intercept used to freeze into the suspended run — so `ConfirmActionCard`,
+    `GlossaryDiffCard`, the admin card and the resume driver all keep working with no FE change.
+
+    🔴 `domain` IS NOT DERIVED HERE. It rides the directive, and for `glossary_confirm_action`
+    ai-gateway pins it to "glossary" regardless of what the model passed. Re-deriving it on this
+    side would reintroduce the one-name-two-behaviours surface the move exists to remove.
+    """
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(payload, dict):
+        return None
+    name = _GATED_DIRECTIVES.get(payload.get("type"))
+    if name is None:
+        return None
+    args = {k: v for k, v in payload.items() if k != "type"}
+    if not args:
+        return None
+    return name, args
 
 
 def _task_envelope(task_id: str, status: str, input_requests: Any = None,

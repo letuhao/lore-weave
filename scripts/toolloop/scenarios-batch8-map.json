@@ -1,0 +1,35 @@
+{
+  "_note": "world_map_create re-run to prove the declared-UUID fix live.",
+  "scenarios": [
+    {
+      "id": "world-map-create-v2",
+      "tool_under_test": "world_map_create",
+      "expect_tool": "world_map_create",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Make a new map called Saltmarsh in my Ashfall world.",
+      "prompt_source": "_meta.synonyms['create map'] + ['new map'].",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "LOOP-THROWAWAY-ashfall8",
+            "description": "batch 8 map fixture"
+          }
+        }
+      ],
+      "falsifier": "RE-RUN AFTER D-DECLARED-UUID-IN-PROSE-ONLY (1e942280f). v1 was called 3/3 with world_id='Ashfall' — the world's NAME — and a Tier-A card was minted for a call the service can only reject. REFUTED IF: a card is again minted carrying a non-UUID world_id. EXPECTED: the argument is dropped and reported missing, so the model looks the world up (world_list) and calls again with the real id.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a world_id that does not exist must be refused.",
+        "tenancy": "OWED — another account's world must be refused."
+      },
+      "defects": []
+    }
+  ]
+}

@@ -36,6 +36,24 @@ members = [
     # --cfg loom). dp-kernel re-exports CircuitBreaker from here; public path
     # dp_kernel::resilience::CircuitBreaker is unchanged.
     "crates/breaker-core",
+    # 2026-08-07 (slice 1 of the sealed SDK build order) — `dp`, the data-plane
+    # SDK CONTRACT the 25 LOCKED docs of 06_data_plane/ name and nothing had
+    # built. NOT `dp-kernel`: that crate is 02_storage in Rust (event store,
+    # outbox, snapshot, projection runner) and took this prefix five weeks after
+    # the DP lock, by a different track — see FLOW-7 / REC-100. `dp` holds the
+    # tiers, the scopes and the aggregate contract, and NO I/O by design.
+    "crates/dp",
+    # 5C (2026-08-09) — `DP-C3`'s gRPC control-plane surface. The proto in
+    # contracts/proto/ is the contract; server AND client are generated from it,
+    # so the two sides cannot drift the way two hand-written structs can. The
+    # client is what keeps the server from being a surface with no consumer.
+    "crates/dp-control-plane",
+    # 2026-08-02 (actor hub, feature #1) — the `GoneState` existence lattice,
+    # extracted DOWN out of dp-kernel::entity_status so a PURE crate can hold
+    # it. dp-kernel re-exports it; `dp_kernel::entity_status::GoneState` is
+    # unchanged. Same shape as breaker-core above, and for the same reason:
+    # the consumer could not take the runtime that came with the definition.
+    "crates/entity-existence",
     "crates/dp-kernel",
     # S1a (2026-07-26) — the simulation kernel per 14_sim_core_spec.md: pure,
     # zero-dep, deterministic island scheduler (Domain trait w/ Rules seam per
@@ -56,6 +74,14 @@ members = [
     # crate, not a module, so "a law cannot read a file" is a link error rather
     # than a promise. Guarded by scripts/crate-purity-gate.py.
     "crates/game-rules",
+    # Feature #1 of the game tier (2026-08-02) — the actor HUB, per
+    # docs/specs/2026-08-02-actor-hub/. Features are PLUGINS; the actor is the
+    # HUB that holds identity + intrinsic quantities + existence + attachment
+    # and FOLDS contributions without knowing what any of them mean.
+    # PURE, like `game-rules`, and for the same reason (IMP-D2) — guarded by
+    # scripts/crate-purity-gate.py. It deliberately does NOT depend on
+    # `game-rules`: the hub is beneath the features, and combat is a feature.
+    "crates/actor-hub",
     # F2 (2026-07-28) — the loader: layer stack, TOML artifacts, normalization,
     # load-time validation, and the content-addressed immutable ruleset store.
     # The I/O half `ruleset-core` deliberately has none of (IMP-D2).
@@ -66,15 +92,12 @@ members = [
     # ⚠ SHIP RULE: build with `--profile release-commit` (panic="unwind") —
     # NEVER plain --release (panic="abort" kills SC-A8 containment).
     "services/commit-service",
-    # Cycle 13 — L3.B per-aggregate projection skeletons (consume
-    # `crates/dp-kernel::Projection` trait shipped cycle 12; write to the
-    # `contracts/migrations/per_reality/0006_projections.sql` tables shipped
-    # this cycle). Full event coverage lands with L4-L7 domain cycles.
-    "crates/projections/pc",
-    "crates/projections/npc",
-    "crates/projections/region",
-    "crates/projections/world_kv",
-    "crates/projections/session",
+    # Cycle 13's L3.B projection skeletons are GONE. `0017` removed the seven
+    # `pc_*`/`npc_*` crates and `0018` removed `region`, `session` and `world_kv`:
+    # none of them had a producer, and `session_participants` was membership for a
+    # world/map feature being redesigned. `canon` below is the only projection
+    # left, and the only one anything writes.
+
     # Cycle 23 — L5.D.3 canon projection (11th projection table; consumes the
     # cycle-13 cycle-12 `Projection` trait + writes to the cycle-23 L5.D.1
     # `canon_projection` table in per-reality DB). Glossary-service authoring
@@ -169,6 +192,18 @@ sha2 = "0.10"
 # TilemapSeed (TMP_002 §8). rand provides the SeedableRng/Rng traits.
 rand = "0.9"
 rand_chacha = "0.9"
+
+# DP-C3 (slice 5C) — the control plane's gRPC surface. `tonic` brings its own
+# `prost` and its own `hyper`; both are pinned here rather than in the member
+# crate so a second gRPC consumer cannot arrive on a different major and give
+# the workspace two incompatible `prost::Message` traits.
+tonic = "0.12"
+prost = "0.13"
+tonic-build = "0.12"
+# The `Stream` trait the two streaming RPCs' associated types name. Taken
+# directly rather than through tonic's re-exports so the bound is visible at the
+# signature instead of hidden behind a path that changes between tonic minors.
+tokio-stream = "0.1"
 
 # Error handling
 thiserror = "2.0"

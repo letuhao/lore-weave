@@ -20,28 +20,60 @@ The mechanisms here build on [12_channel_primitives.md](12_channel_primitives.md
 
 ### Event log schema extension
 
-The per-reality `event_log` table (existing per [02_storage 00](../02_storage/00_overview_and_schema.md)) gains channel-aware columns:
+The per-reality `events` table (existing per [02_storage 00](../02_storage/00_overview_and_schema.md)) gains channel-aware columns:
 
 ```sql
-ALTER TABLE event_log
-    ADD COLUMN channel_id          UUID,            -- NULL = reality-scoped event
+ALTER TABLE events
+    -- ⚠ AMENDED 2026-08-08 (1b7gap-M3): was UUID. The SHIPPED migration
+    -- 0014_channel_ordering.up.sql:19 says BIGINT, and has since Phase 4 — the
+    -- doc never followed the code. Found by widening dp-channels-schema-gate to
+    -- read every fence and the prose between them; the previous scan read only
+    -- ```sql blocks containing `REFERENCES channels`, and this block has none.
+    ADD COLUMN channel_id          BIGINT,          -- NULL = reality-scoped event
     ADD COLUMN channel_event_id    BIGINT,          -- NULL = reality-scoped event
     ADD COLUMN writer_epoch        BIGINT,          -- monotonic per channel; for fence
     ADD COLUMN causal_refs         JSONB DEFAULT '[]'::jsonb,  -- see DP-Ch15
     ADD COLUMN turn_number         BIGINT NOT NULL DEFAULT 0;   -- per-channel turn counter (DP-A17 / DP-Ch22)
 
--- Channel-scoped events have a strict total order per channel:
-ALTER TABLE event_log
-    ADD CONSTRAINT event_log_channel_order
-        UNIQUE (reality_id, channel_id, channel_event_id)
-        WHERE channel_id IS NOT NULL;
+-- ⚠ AMENDED 2026-08-07 (REC-99b) — the UNIQUE CONSTRAINT THIS FILE ORIGINALLY ASKED FOR
+-- CANNOT BE CREATED. `events` is PARTITION BY RANGE (recorded_at), and Postgres requires
+-- the partition key inside any unique constraint on the parent. Superseded by the pair
+-- below, which is what `contracts/migrations/per_reality/0014_channel_ordering.up.sql`
+-- shipped 2026-07-27 and what the invariant is actually held by:
+--
+--   (a) `channel_writer_state` — one row per (reality, channel). A single atomic CAS
+--       UPDATE is BOTH the channel_event_id allocator AND the DP-A16 epoch fence, so a
+--       stale writer fails at the DB layer (see DP-Ch13, which describes this table).
+--   (b) `channel_event_index` — NON-partitioned, PK = the exact triple this constraint
+--       wanted, written in the SAME TRANSACTION as the event row. This is where the
+--       hard uniqueness lives.
+--
+-- The index below stays, unchanged in effect and renamed to the shipped name: a PARTIAL
+-- NON-UNIQUE index on a partitioned table is legal (PG creates one per partition), and
+-- it is the channel-ordered scan support DP-Ch18's catch-up query needs.
 
-CREATE INDEX event_log_channel_order_idx
-    ON event_log(reality_id, channel_id, channel_event_id ASC)
+CREATE TABLE channel_event_index (          -- (b): the uniqueness, off the partitioned table
+    reality_id       UUID   NOT NULL,
+    channel_id       BIGINT NOT NULL,
+    channel_event_id BIGINT NOT NULL,
+    event_id         UUID   NOT NULL,
+    recorded_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (reality_id, channel_id, channel_event_id)
+);
+
+CREATE INDEX events_channel_order_idx
+    ON events(reality_id, channel_id, channel_event_id ASC)
     WHERE channel_id IS NOT NULL;
 ```
 
 Reality-scoped events leave `channel_id` and `channel_event_id` as `NULL` and rely on existing per-aggregate ordering (R7).
+
+> **⚠ AMENDMENT NOTE (REC-99b, 2026-08-07).** The correction above is not new — the migration that
+> shipped it carried it as a header comment on 2026-07-27, labelled *"REC-80 candidate"*. `REC-80`
+> was already taken, the register's highest id was `REC-98`, and so **a correct correction to a
+> LOCKED axiom lived for eleven days as a SQL comment.** What survives from the original text is the
+> *invariant* (`DP-A15`: per-channel total order, gapless, DB-enforced); what changed is **where the
+> constraint lives**, forced by the partitioning this file did not account for.
 
 ### Allocation algorithm (single-writer, by DP-A16)
 
@@ -59,14 +91,14 @@ struct ChannelWriterState {
 **On writer takeover** (initial assignment or post-failover):
 
 1. CP grants writer lease: `(channel_id, epoch)` pair signed by CP.
-2. Writer queries `SELECT MAX(channel_event_id) FROM event_log WHERE reality_id = $1 AND channel_id = $2` → seeds `last_event_id`.
+2. Writer queries `SELECT MAX(channel_event_id) FROM events WHERE reality_id = $1 AND channel_id = $2` → seeds `last_event_id`.
 3. Writer ready to accept writes; subsequent allocation increments in-memory.
 
 **On each write:**
 
 ```text
 1. allocated_id = self.last_event_id + 1
-2. Insert into event_log: (reality_id, channel_id, allocated_id, writer_epoch, ...)
+2. Insert into events: (reality_id, channel_id, allocated_id, writer_epoch, ...)
 3. Commit transaction
 4. On commit success: self.last_event_id = allocated_id
 5. On commit failure (UNIQUE violation — rare race during failover overlap):
@@ -163,7 +195,7 @@ let cached_lease = self.writer_lease(channel_id);
 let cached_epoch = cached_lease.epoch;
 
 let result = pg_tx
-    .execute("INSERT INTO event_log (..., writer_epoch, ...) VALUES (..., $epoch, ...)
+    .execute("INSERT INTO events (..., writer_epoch, ...) VALUES (..., $epoch, ...)
               WHERE NOT EXISTS (
                   SELECT 1 FROM channel_writer_state
                   WHERE channel_id = $cid AND current_epoch > $epoch
@@ -177,15 +209,43 @@ if result.rows_affected() == 0 {
 
 **`channel_writer_state` table** (per-reality DB):
 
+⚠ **AMENDED 2026-08-07 (`1b5-H1`) — this block declared a table that does not
+exist, in a document `0019_channels`'s own header cites by name.**
+<!-- schema-gate: ok — the next line QUOTES the superseded declaration in order
+     to name what was wrong with it; the corrected table is in the fence below. -->
+It said
+`channel_id UUID PRIMARY KEY REFERENCES channels(id)`, which is wrong three
+times over: the type (`REC-103` settled `ChannelId` as `i64`), the arity (`REC-105`
+— every per-reality table keys on `(reality_id, …)`), and the reference itself
+(`channels` had no migration at all until `0019`; that is `FLOW-9`). The column
+set was also superseded by `0014_channel_ordering` and `0015_writer_lease_liveness`
+without this block moving — `writer_node`/`assigned_at`/`last_heartbeat` were never
+built, and `last_event_id`/`holder_id`/`lease_expires_at` were. Below is the
+SHIPPED table. **`FLOW-2` is exactly this**: the correction reached the migration
+and not the document, and the document is what the next reader believes.
+
 ```sql
+-- 0014_channel_ordering.up.sql + 0015_writer_lease_liveness.up.sql
 CREATE TABLE channel_writer_state (
-    channel_id      UUID PRIMARY KEY REFERENCES channels(id),
-    current_epoch   BIGINT NOT NULL,
-    writer_node     TEXT NOT NULL,
-    assigned_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_heartbeat  TIMESTAMPTZ NOT NULL DEFAULT now()
+    reality_id       UUID   NOT NULL,
+    channel_id       BIGINT NOT NULL,
+    current_epoch    BIGINT NOT NULL DEFAULT 1,
+    last_event_id    BIGINT NOT NULL DEFAULT 0,   -- allocation is DB-authoritative
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    holder_id        UUID,                        -- IMG-A2, 0015: lease holder
+    lease_expires_at TIMESTAMPTZ,                 -- IMG-A2, 0015: NULL = claimable
+    PRIMARY KEY (reality_id, channel_id)
 );
 ```
+
+⚠ **There is still no foreign key to `channels` — that is `FLOW-19`, and it is
+now WRITABLE rather than inexpressible.** It could not have existed before
+`0019`, because there was nothing to reference; with `channels` keyed
+`(reality_id, id)` at `BIGINT` the reference `(reality_id, channel_id) →
+channels (reality_id, id)` finally type-checks. Whether to add it is a decision
+about pre-existing rows (a lease row whose channel was never registered would be
+refused by the new constraint), not about expressibility, and it is tracked as
+`FLOW-19` rather than assumed here.
 
 CP updates this table on every reassignment. Writer node updates `last_heartbeat` periodically (every 10s); CP detects stale heartbeats as a secondary signal in addition to gRPC health probes.
 

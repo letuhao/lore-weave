@@ -16,7 +16,6 @@
   "next_in": "{{seconds}}초 후 다음 장이 시작됩니다...",
   "cancel": "취소",
   "progress": "{{total}}장 중 {{current}}장 · {{percent}}% 완료",
-  "ch_short": "{{n}}장",
   "history": {
     "title": "읽기 기록",
     "subtitle": "최근에 읽은 책과 장 목록입니다.",
@@ -43,8 +42,8 @@
         "desc": "따뜻한 종이 질감"
       },
       "oled": {
-        "name": "OLED",
-        "desc": "OLED 화면을 위한 완전한 블랙"
+        "desc": "OLED 화면을 위한 완전한 블랙",
+        "name": "OLED"
       },
       "parchment": {
         "name": "양피지",
@@ -69,9 +68,9 @@
   "tts": {
     "source": {
       "attached": "첨부됨",
-      "ai": "AI TTS",
       "browser": "브라우저",
-      "inline": "오디오"
+      "inline": "오디오",
+      "ai": "AI TTS"
     },
     "prev_block": "이전 블록 (Shift+Left)",
     "play": "재생 (Space)",
@@ -105,10 +104,10 @@
   "audio": {
     "source": {
       "attached": "첨부됨",
-      "ai": "AI TTS",
       "browser": "브라우저",
       "inline": "오디오 블록",
-      "none": "없음"
+      "none": "없음",
+      "ai": "AI TTS"
     },
     "coverage": "오디오 범위",
     "summary": "{{speakable}}개 블록 읽기 가능 · {{missing}}개 브라우저 TTS 사용",
@@ -143,6 +142,7 @@
       "passage": "본문 구절"
     }
   },
+  "ch_short": "{{n}}장",
   "lore": {
     "heading": "지금까지의 설정"
   }

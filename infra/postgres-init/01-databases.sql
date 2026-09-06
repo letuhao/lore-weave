@@ -100,3 +100,11 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_roleplay')\
 -- created by agent-registry-service migrate.go on startup)
 SELECT 'CREATE DATABASE loreweave_agent_registry'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_agent_registry')\gexec
+
+-- Meta / control plane (the game tier's registry: reality_registry,
+-- instance_schema_migrations, lifecycle audit, actor/control binding).
+-- Added 2026-08-08: `migrations/meta/` held 35 migrations and this database had
+-- never existed, so the provisioner's first step -- writing reality_registry --
+-- could not run, and no reality has ever been created.
+SELECT 'CREATE DATABASE loreweave_meta'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_meta')\gexec

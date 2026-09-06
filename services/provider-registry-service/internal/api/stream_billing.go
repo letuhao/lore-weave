@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -46,6 +47,10 @@ type streamGuard struct {
 	modelRef    uuid.UUID
 	op          string // "chat" | "tts"
 	pricing     billing.Pricing
+	// providerKind — D-BILL-PROVIDER-KIND. The chat stream is the highest-volume
+	// producer of usage_logs rows; without this the /record payload hardcoded "" and
+	// the dominant traffic was unattributable.
+	providerKind string
 
 	// chat-only running tally.
 	inputCostUSD float64 // fixed: estimated input tokens × input price
@@ -55,6 +60,13 @@ type streamGuard struct {
 	outNonASCII  int
 	finalUsage   *provider.StreamChunk // last usage chunk seen, if any
 	aborted      bool                  // observe tripped the hard-abort
+	// D-UPSTREAM-ERROR-WITH-NO-MESSAGE - an error chunk was forwarded to the caller. The
+	// streamers report a provider failure by EMITTING one and then returning the normal
+	// end-of-stream sentinel, so streamErr is nil and the terminal classifier below scored
+	// the failure as `success`. See finalizeOutcome.
+	errorEmitted bool
+	errorCode    string
+	errorMessage string
 
 	// P0-2 (B1/B2 — full request/response logging). requestPayload is the assembled
 	// provider request (post-injection, bounded); completion accumulates the visible
@@ -63,6 +75,10 @@ type streamGuard struct {
 	requestPayload map[string]any
 	completion     strings.Builder
 	requestStatus  string
+
+	// startedAt stamps the stream's open so finalizeOutcome can say how long a
+	// silent one stayed silent. See the terminal log line there.
+	startedAt time.Time
 }
 
 // preflightStream runs the streaming spend-guardrail pre-flight: estimate the
@@ -74,7 +90,7 @@ type streamGuard struct {
 func (s *Server) preflightStream(
 	w http.ResponseWriter, r *http.Request,
 	userID uuid.UUID, op, modelSource string, modelRef uuid.UUID,
-	pricing billing.Pricing, inputMap map[string]any,
+	pricing billing.Pricing, inputMap map[string]any, providerKind string,
 ) (*streamGuard, bool) {
 	if s.guardrail == nil {
 		return nil, true
@@ -84,7 +100,11 @@ func (s *Server) preflightStream(
 	// max_tokens (or the config default); tts cost is exact.
 	estimate, err := s.estimator.EstimateUSD(op, inputMap, pricing, 1)
 	if errors.Is(err, billing.ErrUnpriced) {
-		writeError(w, http.StatusPaymentRequired, "LLM_QUOTA_EXCEEDED", "model pricing not configured")
+		// LLM_MODEL_UNPRICED, not LLM_QUOTA_EXCEEDED. Both are 402, but they are
+		// OPPOSITE problems: "you have spent your budget" (raise the limit, or wait
+		// for the daily window) vs "this model has no price table" (set its pricing).
+		// Sharing one code made every author-facing message wrong for one of them.
+		writeError(w, http.StatusPaymentRequired, "LLM_MODEL_UNPRICED", "model pricing not configured")
 		return nil, false
 	}
 	if err != nil {
@@ -146,6 +166,7 @@ func (s *Server) preflightStream(
 	}
 
 	g := &streamGuard{
+		startedAt:     time.Now(),
 		guardrail:     s.guardrail,
 		reservationID: res.ReservationID,
 		jobID:         jobID,
@@ -154,6 +175,7 @@ func (s *Server) preflightStream(
 		modelRef:      modelRef,
 		op:            op,
 		pricing:       pricing,
+		providerKind:  providerKind,
 		abortUSD:      minFloat(res.DailyAvailable, res.MonthlyAvailable),
 	}
 	if op == "chat" {
@@ -193,6 +215,27 @@ func (g *streamGuard) observe(chunk provider.StreamChunk) (abort bool) {
 	case provider.StreamChunkUsage:
 		uc := chunk // copy — chunk is a loop-scoped value at the call site
 		g.finalUsage = &uc
+	case provider.StreamChunkError:
+		// 🔴 THE WITNESS REPORTED SUCCESS ON THE FAILURE IT WAS BUILT TO DESCRIBE. Every
+		// streamer signals a provider failure the same way: emit a StreamChunkError, then
+		// `return errStreamDone` — the SAME sentinel a clean end-of-stream returns. So
+		// streamChat hands finalizeOutcome a nil error and the stream is recorded `success`
+		// in usage_logs and in the terminal log line.
+		//
+		// MEASURED 2026-09-01 on the first reproducible instance this row has had. A turn
+		// that died with `upstream sent "error" with no error message` logged, from this
+		// process: status='success' usage=false chars=0 duration_ms=431. Two rows spent
+		// weeks narrowing to this hop, and when they finally got a line out of it, the line
+		// said the opposite of what happened.
+		//
+		// Recorded here rather than in each streamer because this is the one place every
+		// streamer's chunks pass through — the openai, anthropic and responses paths all
+		// return the same sentinel from their own error branch, and a per-streamer fix would
+		// have to be repeated three times and remembered for the fourth.
+		if !g.errorEmitted {
+			g.errorEmitted = true
+			g.errorCode, g.errorMessage = chunk.Code, chunk.Message
+		}
 	}
 	return false
 }
@@ -225,8 +268,58 @@ func (g *streamGuard) finalizeOutcome(streamErr error) {
 		g.requestStatus = "cancelled"
 	case streamErr != nil:
 		g.requestStatus = "provider_error"
+	case g.errorEmitted:
+		// The stream told its CALLER it had failed and then returned the clean-finish
+		// sentinel. A success here is not a mislabel, it is the audit row disagreeing with
+		// what the client was actually sent.
+		g.requestStatus = "provider_error"
 	default:
 		g.requestStatus = "success"
+	}
+
+	// ── D-TURN-STALLS-AFTER-THE-SURFACE-IS-BUILT / D-UPSTREAM-ERROR-WITH-NO-MESSAGE ──
+	//
+	//	THE INVARIANT. A stream that logged its START logs how it ENDED.
+	//
+	// This is the one hop two defect rows spent weeks narrowing to and then could not cross.
+	// Both recorded the same wall: provider-registry emits `chat context preflight` and then
+	// NOTHING — the identical single line for a turn that completes and for a turn that hangs
+	// forever — so "did the call to the provider ever return?" had no witness on either side,
+	// and a call that was never made was indistinguishable from one that never came back.
+	//
+	// THE MECHANISM WAS ALREADY HERE AND MERELY SILENT. The terminal status is computed right
+	// above and has been recorded to `usage_logs` all along; it was simply never emitted, and
+	// `streamErr` — the only place the provider's actual failure exists in this process — was
+	// classified into one word and then dropped on the floor. Nothing new is measured below.
+	// Every field was already in hand at the moment the information was being destroyed.
+	//
+	// `usage` is the field those rows actually needed: it says whether the provider sent a
+	// final usage chunk, which distinguishes "the call returned" from "the stream opened and
+	// nothing ever came back". `duration_ms` gives a silent stream a length.
+	lg := []any{
+		"status", g.requestStatus,
+		"op", g.op,
+		"model_ref", g.modelRef.String(),
+		"duration_ms", time.Since(g.startedAt).Milliseconds(),
+		"output_chars", g.outChars,
+		"usage", g.finalUsage != nil,
+	}
+	if streamErr != nil {
+		// The provider's own words, not a category. A row that reads "provider reported a
+		// failure without saying why" was written because this string had nowhere to go.
+		lg = append(lg, "err", streamErr.Error())
+	}
+	if g.errorEmitted {
+		// The error the CALLER was sent. On every streamer this travels as a chunk and never
+		// as `streamErr`, so without these two fields the failure the client saw appears in
+		// this process's log as nothing at all — which is how a turn that died upstream came
+		// to be recorded here as a success with no err field to contradict it.
+		lg = append(lg, "chunk_err_code", g.errorCode, "chunk_err", g.errorMessage)
+	}
+	if g.requestStatus == "success" {
+		slog.Info("chat stream finished", lg...)
+	} else {
+		slog.Warn("chat stream finished", lg...)
 	}
 }
 
@@ -331,6 +424,7 @@ func (g *streamGuard) settle(ctx context.Context) {
 		if err := g.guardrail.RecordUsage(ctx, billing.UsageRecord{
 			RequestID:     g.jobID,
 			OwnerUserID:   g.ownerUserID,
+			ProviderKind:  g.providerKind,
 			ModelSource:   g.modelSource,
 			ModelRef:      g.modelRef,
 			Operation:     g.op,

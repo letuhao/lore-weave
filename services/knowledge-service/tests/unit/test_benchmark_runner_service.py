@@ -45,7 +45,7 @@ from app.benchmark.runner import (
     run_project_benchmark,
 )
 from app.db.models import Project
-from app.db.neo4j_repos.passages import KNOWN_SOURCE_TYPES
+from app.db.graph_repos.passages import KNOWN_SOURCE_TYPES
 from app.benchmark.fixture_loader import BENCHMARK_SOURCE_TYPE
 
 
@@ -178,7 +178,17 @@ def _patch_happy_path(monkeypatch):
     monkeypatch.setattr(runner_module, "persist_benchmark_report", _fake_persist)
     monkeypatch.setattr(runner_module, "load_golden_set", _fake_load_golden_set)
     monkeypatch.setattr(runner_module, "AsyncBenchmarkRunner", _FakeAsyncRunner)
-    monkeypatch.setattr(runner_module, "neo4j_session", lambda: _FakeSession())
+    # T54c: the benchmark PINS its engine — it exists to COMPARE engines, so it must name
+    # one rather than follow the configured backend. The double takes `**kw` so that pin
+    # is visible here instead of being swallowed, and the assertion below reads it.
+    seen_engine: dict = {}
+
+    def _fake_session(*, engine=None, **kw):
+        seen_engine["engine"] = engine
+        return _FakeSession()
+
+    monkeypatch.setattr(runner_module, "graph_session", _fake_session)
+    monkeypatch.setattr(runner_module, "_SEEN_ENGINE", seen_engine, raising=False)
     # Mode3QueryRunner ctor is called but the runner object is only
     # used by AsyncBenchmarkRunner which we've swapped; stub ctor.
     monkeypatch.setattr(
@@ -451,7 +461,7 @@ def test_known_source_types_cover_every_real_upsert_passage_callsite():
     assert not unknown, (
         f"passage_ingester writes source_type values not in "
         f"KNOWN_SOURCE_TYPES: {unknown}. Extend KNOWN_SOURCE_TYPES in "
-        f"app/db/neo4j_repos/passages.py so the empty-project guard in "
+        f"app/db/graph_repos/passages.py so the empty-project guard in "
         f"app/benchmark/runner.py catches them."
     )
 
@@ -465,10 +475,37 @@ def test_real_passage_count_cypher_has_safety_clauses():
     the guard a no-op. Pin the three clauses that matter: tenant
     filter, project scope, and the source-type IN list.
     """
-    cypher = runner_module._REAL_PASSAGE_COUNT_CYPHER
-    assert "p.user_id = $user_id" in cypher, \
-        "tenant filter missing from _REAL_PASSAGE_COUNT_CYPHER"
-    assert "p.project_id = $project_id" in cypher, \
-        "project scope missing from _REAL_PASSAGE_COUNT_CYPHER"
-    assert "p.source_type IN $real_types" in cypher, \
-        "source_type IN list missing from _REAL_PASSAGE_COUNT_CYPHER"
+    # The query moved to `graph_repos/passages.py` (plan T17) and its parameter was renamed
+    # `$real_types` -> `$source_types` to match the repo's vocabulary. The GUARD follows the
+    # query rather than being deleted with it: the `IN` vs `=` typo it protects against is
+    # just as silent in the new home, and this is still the only test that reads the literal.
+    from app.db.graph_repos.passages import _COUNT_BY_SOURCE_TYPES_CYPHER as cypher
+
+    assert "p.user_id = $user_id" in cypher, "tenant filter missing"
+    assert "p.project_id = $project_id" in cypher, "project scope missing"
+    assert "p.source_type IN $source_types" in cypher, (
+        "source_type IN list missing -- `=` instead of `IN` returns no rows and turns the "
+        "benchmark's does-this-project-hold-real-content guard into a no-op"
+    )
+
+
+def test_alias_collision_precheck_excludes_the_two_merge_participants():
+    """C17's pre-check asks "does a THIRD live entity already claim this alias?".
+
+    Both merge participants must be excluded by id — they are ALLOWED to collide with each
+    other, since that is precisely what merging them means. Without those two clauses the
+    pre-check finds the source colliding with the target and refuses every merge with 409
+    `alias_collision`: the feature stops working entirely, and the message blames a
+    non-existent third entity.
+
+    Added in T17 after a bite showed the clause had NO test at all — the query was only
+    ever exercised against a live graph.
+    """
+    from app.db.graph_repos.entities import _ALIAS_COLLISION_CYPHER as cypher
+
+    assert "e.id <> $source_id" in cypher, "the merge SOURCE is not excluded"
+    assert "e.id <> $target_id" in cypher, "the merge TARGET is not excluded"
+    assert "e.archived_at IS NULL" in cypher, (
+        "an archived entity must not block a merge — it is not a live claimant"
+    )
+    assert "e.user_id = $user_id" in cypher, "tenant filter missing"

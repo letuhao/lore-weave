@@ -1,0 +1,81 @@
+{
+ "_note": "CAN AN AUTHOR FIND A DELETED SCENE-LINK BEFORE RESTORING IT? D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE, owner ruling 2026-08-31 (DQ-T44 (a)): wire composition_list_outline's ALREADY-EXISTING `include_archived` through to the scene-links query it already makes.\n\nWHY IT WAS A GAP. composition_scene_link_edit ships ops ['create','delete','restore'] and NOTHING listed what `restore` could act on -- `list_by_project` is repo/router-only, never MCP, and it filtered archived edges unconditionally. The only way to hold the id was to have written it down before deleting, which is the shape measured live on the sibling glossary family: the model correctly answered 'I can't see her in the trash without an ID'.\n\nWHAT THE SEED BUILDS AND WHY EACH STEP IS THERE: a chapter, TWO scenes (op=create needs from_node_id AND to_node_id -- with one node the edge cannot exist), the edge itself, and then its DELETE. The archived edge is the thing the turn has to find; seeding it live would make the read a no-op and measure nothing.\n\n🔴 THE SEED DELETES, THE TURN MUST DISCOVER. Nothing in the prompt carries the link id -- that is the entire defect. A prompt naming the id would pass before the fix and after it, and prove nothing.",
+ "scenarios": [
+  {
+   "id": "t44-what-deleted-scene-links-can-i-bring-back",
+   "tool_under_test": "composition_list_outline",
+   "expect_tool": "composition_list_outline",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+   "prompt_source": "Written for this fix. It deliberately names NO id: holding the id already is the workaround the defect forces on the author, so a prompt that carried one would pass identically before and after and measure nothing.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_outline_node_edit",
+     "args": {
+      "op": "create", "project_id": "{project_id}", "kind": "chapter",
+      "title": "Outline Chapter {run_word}", "chapter_id": "{chapter_id}"
+     },
+     "why": "A scene needs a parent. Copied from scenarios-idem-scenelink.json, where this same three-step outline is proven to make an edge creatable on a throwaway book."
+    },
+    {
+     "tool": "composition_outline_node_edit",
+     "args": {
+      "op": "create", "project_id": "{project_id}", "kind": "scene",
+      "parent_id": "{step:0:id}", "chapter_id": "{chapter_id}", "title": "Setup {run_word}"
+     },
+     "why": "The edge's FROM endpoint."
+    },
+    {
+     "tool": "composition_outline_node_edit",
+     "args": {
+      "op": "create", "project_id": "{project_id}", "kind": "scene",
+      "parent_id": "{step:0:id}", "chapter_id": "{chapter_id}", "title": "Payoff {run_word}"
+     },
+     "why": "The edge's TO endpoint. Two scenes are required: op=create needs both ids, and with one node the edge cannot be built."
+    },
+    {
+     "tool": "composition_scene_link_edit",
+     "args": {
+      "op": "create", "project_id": "{project_id}",
+      "from_node_id": "{step:1:id}", "to_node_id": "{step:2:id}", "kind": "setup_payoff"
+     },
+     "why": "The edge that will be deleted. Created by the SEED rather than by the turn so the turn's only job is discovery."
+    },
+    {
+     "tool": "composition_scene_link_edit",
+     "args": {
+      "op": "delete", "project_id": "{project_id}", "link_id": "{step:3:id}"
+     },
+     "why": "🔴 THE ARCHIVE IS THE WHOLE FIXTURE. `delete` soft-archives, and before this fix an archived edge was filtered out of every read the platform exposes — so the author could not name it and `restore` had no reachable candidate. Deleting in the seed puts the fixture in exactly the state the defect describes."
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM scene_link WHERE project_id='{project_id}' AND is_archived",
+     "expect": "1",
+     "why": "EXACTLY ONE ARCHIVED EDGE, and `is_archived` is asserted rather than a bare count: a fixture whose delete silently failed would leave a LIVE edge, the turn would find it through the ordinary read, and a clean arm would prove nothing about the fix. This asserts the fixture is in the broken state before the turn starts."
+    },
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM scene_link WHERE project_id='{project_id}' AND NOT is_archived",
+     "expect": "0",
+     "why": "And no LIVE edge, for the same reason from the other side — the turn must have nothing to find except the archived one."
+    }
+   ],
+   "falsifier": "REFUTED IF: the turn cannot surface the deleted edge — it answers that there is nothing deleted, asks the author for a link id (the workaround the defect forces), or calls composition_list_outline WITHOUT include_archived and reports an empty set. Any of those is the defect, live.\n\nCONFIRMED IF: the turn calls composition_list_outline with include_archived=true and the archived edge comes back in `scene_links`, so the author can name it.\n\n🔴 THE READ IS TIER R AND THE TURN MUST NOT WRITE. This scenario proves DISCOVERY only. Whether the model then goes on to call `restore` is a SEPARATE question this loop already tracks — the sibling family measured restore called on 0 of 5 runs, with the model correctly asking which candidate to restore when several exist. A run that discovers the edge and stops is a PASS here.",
+   "ship_audit": {
+    "gate": "N/A — Tier R read.",
+    "empty_case": "OWED — a work with nothing archived must say so plainly rather than returning an empty list with no explanation.",
+    "idempotency": "N/A — read.",
+    "tenancy": "OWED — another owner's project must be refused with the uniform not-accessible answer."
+   },
+   "defects": []
+  }
+ ]
+}

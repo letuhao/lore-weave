@@ -72,11 +72,18 @@ WORKFLOW_LIST_TOOL: dict = {
     "type": "function",
     "function": {
         "name": WORKFLOW_LIST_NAME,
+        # D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN, OWNER 2026-08-28
+        # (DQ-T39): the RUNNER half. registry_list_workflows (federated) is the CATALOGUE half —
+        # every workflow the platform ships. This one is scoped to THIS turn's book/surface —
+        # exactly the workflows runnable right now, and the one workflow_load can load. Neither
+        # tool is retired; only what each says it is changed.
         "description": (
-            "List the curated multi-step WORKFLOWS available here — named, ordered recipes for "
-            "common jobs (e.g. \"set up a glossary for this book\"). Returns {slug, title, "
-            "description} per workflow. Prefer a workflow over improvising a long tool sequence; "
-            "then call workflow_load(slug) to get its exact steps."
+            "List the multi-step WORKFLOWS runnable in THIS book/surface right now — named, "
+            "ordered recipes for common jobs (e.g. \"set up a glossary for this book\"), scoped "
+            "to what the current turn can actually run. Returns {slug, title, description, tier, "
+            "surfaces} per workflow. For the platform's FULL catalogue regardless of surface, use "
+            "registry_list_workflows instead. Prefer a workflow over improvising a long tool "
+            "sequence; then call workflow_load(slug) to get its exact steps."
         ),
         "parameters": {
             "type": "object",
@@ -110,13 +117,32 @@ WORKFLOW_LOAD_TOOL: dict = {
 
 
 def workflow_list_result(workflows: list[dict]) -> dict:
-    """Deterministic list of the visible workflows (slug/title/description/tier). Unranked."""
+    """Deterministic list of the visible workflows (slug/title/description/tier/surfaces).
+    Unranked.
+
+    🔴 `surfaces` USED TO BE DROPPED HERE, AND THE MODEL ANSWERED WRONG BECAUSE OF IT. Measured
+    2026-08-24: asked "What workflows are available on the studio surface?", the model answered
+    from this listing on 4 of 5 runs and named NINE workflows as studio-available. Five of them
+    are not — the studio has six. It was not guessing badly; with only {slug, title, description,
+    tier} it was structurally unable to know, and said so confidently anyway.
+
+    The rows arrive carrying the field: verified at runtime, the registry client hands over
+    {description, inputs, notes_md, slug, steps, surfaces, tier, title} with surfaces like
+    ['book','editor','studio']. And the FEDERATED sibling already returns it — registry_list_
+    workflows' own L1 query selects `slug, title, description, tier, status, surfaces`. So two
+    listings of the same rows disagreed about the reference shape; this is not an L1 economy
+    being relaxed, it is an inconsistency being closed, for 1-3 short strings per row.
+
+    It is deliberately NOT a `surface` ARGUMENT: this listing still cannot filter server-side.
+    It only stops hiding what it already holds, so the model can narrow truthfully.
+    """
     items = [
         {
             "slug": wf.get("slug", ""),
             "title": wf.get("title") or wf.get("slug", ""),
             "description": wf.get("description", ""),
             "tier": wf.get("tier", ""),
+            "surfaces": wf.get("surfaces") or [],
         }
         for wf in workflows
         if wf.get("slug")

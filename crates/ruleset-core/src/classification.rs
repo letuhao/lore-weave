@@ -142,6 +142,9 @@ macro_rules! classify {
     };
 }
 
+mod forbidden;
+pub use forbidden::{FORBIDDEN_KEYS, FORBIDDEN_VERB_KEYS};
+
 use crate::combat::CombatRules;
 use crate::ruleset::Ruleset;
 use crate::stats::StatRules;
@@ -212,44 +215,16 @@ classify!(Ruleset {
     // against. When `PGN-R2` gives the loader a form, this row changes and that
     // test reds.
     progression    => Floor::EngineDefault, Mutability::Frozen, Strategy::Forbidden, "progression_digest";
+    // `M2` — the same class as `quantities` and `resources`, and the reason is
+    // sharper here than for either: a verb ordinal IS the verb's identity
+    // (`CMD-1`, append-only and never reused), and committed history already
+    // names one. `Replace` would let a higher layer renumber a verb a stored
+    // fact points at; `AdditiveOnly`/`Union` cannot, because the merge has no
+    // verb for removal. The property is enforced BY CONSTRUCTION rather than by
+    // a validator that could be forgotten -- the same call `QuantityTable::push`
+    // makes.
+    verbs          => Floor::Preset, Mutability::AdditiveOnly, Strategy::Union, "(L2 declared)";
 });
-
-/// Top-level keys **no layer may declare**, with the reason an author gets told.
-///
-/// Both identify the ENCODING and the ENGINE, not the rules. They are refused
-/// rather than merged because a layer that could set them could make an
-/// artifact assert something untrue about itself:
-///
-/// * `schema_version` selects which codec reads the bytes (`QTY-A11`
-///   version dispatch). An author choosing it chooses how their own file is
-///   interpreted.
-/// * `law_version` is a claim about **which engine laws produced this ruleset**
-///   (`QTY-D13`, added by `Q0a`). An author who could set it could ship an
-///   artifact claiming laws it was never built with — and since `Q0a` put it
-///   inside the hashed bytes, that claim would travel with the digest.
-///
-/// Today the absence of these keys from `RulesetPatch` already refuses them, as
-/// a side effect of `deny_unknown_fields`. That is an **incidental** guarantee,
-/// one refactor from gone, and it answers with *"unknown field"* — wrong twice:
-/// the field is not unknown, and the author is not told why they may never set
-/// it. `NV-4` is precisely a guard defeated by an adjacent decision, so this one
-/// is made explicit and tested.
-pub const FORBIDDEN_KEYS: &[(&str, &str)] = &[
-    (
-        "progression",
-        "progression is pinned by DIGEST, and the digest is COMPUTED from the table's bytes rather than authored; a layer writing one would be naming bytes it did not produce (RLS-A4 Forbidden). The authoring form lands with the loader, PGN-R2",
-    ),
-    (
-        "schema_version",
-        "schema_version identifies the ENCODING (which codec reads these bytes), not the rules; \
-         no layer may declare it (RLS-A4 Forbidden)",
-    ),
-    (
-        "law_version",
-        "law_version is the engine's claim about which LAWS produced this ruleset (QTY-D13) and \
-         is inside the hashed bytes; no layer may declare it (RLS-A4 Forbidden)",
-    ),
-];
 
 #[cfg(test)]
 mod tests {
@@ -270,11 +245,11 @@ mod tests {
 
         assert_eq!(CombatRules::CLASSES.len(), 15);
         assert_eq!(StatRules::CLASSES.len(), 5);
-        // S-1b added `progression`. The count is pinned rather than derived so a
-        // field added WITHOUT a classify! row reds here even though the macro's
-        // exhaustive pattern would have caught it first - two independent proofs
-        // of the same property, which is the point.
-        assert_eq!(Ruleset::CLASSES.len(), 7);
+        // S-1b added `progression`; `M2` added `verbs`. The count is pinned
+        // rather than derived so a field added WITHOUT a classify! row reds here
+        // even though the macro's exhaustive pattern would have caught it first
+        // - two independent proofs of the same property, which is the point.
+        assert_eq!(Ruleset::CLASSES.len(), 8);
     }
 
     /// **THE S1b TRIGGER FIRED, 2026-07-29, on `Q1`. This is what it became.**
@@ -330,7 +305,15 @@ mod tests {
             //              reason `quantities` is: the fold appends, and
             //              `ResourceTable` has no verb for removal, so a lower
             //              layer's pool cannot be taken away by a higher one.
-            vec!["quantities", "resources"],
+            // `M2` added `verbs`, and it owes the same two enforcements:
+            //   * floor  — `resolve` refuses a below-preset layer that declares
+            //              one (`a_verb_below_the_preset_floor_is_refused`)
+            //   * class  — AdditiveOnly, enforced BY CONSTRUCTION and more
+            //              sharply than for either neighbour: a verb ordinal IS
+            //              the verb's identity (`CMD-1`, never reused) and
+            //              committed history already names one, so `VerbTable`
+            //              has no verb for removal and the fold only appends.
+            vec!["quantities", "resources", "verbs"],
             "the set of fields needing S1b enforcement changed. Every entry here must have a              floor rule and a mutability rule in `ruleset-loader::validate`, or it is a class              the table CLAIMS to govern and nothing enforces"
         );
     }

@@ -6,7 +6,7 @@
 //! therefore where every "you wrote X, the legal values are Y" message lives.
 
 use ruleset_core::{
-    CeilingBinding, RegenType, ResourceDecl, ResourceError, StatSlot, ZeroBehaviour,
+    CeilingBinding, EngineRole, RegenType, ResourceDecl, ResourceError, StatSlot, ZeroBehaviour,
 };
 
 /// One authored pool declaration.
@@ -49,6 +49,15 @@ pub struct ResourcePatch {
     /// `hp`, and `Q2` leaves it exactly as it is.
     #[serde(default)]
     pub zero_behaviour: Option<String>,
+    /// `none` | `vital` | `initiative` | `action_budget`. Absent = `none`.
+    ///
+    /// **Which engine law reads this pool** — the binding `Q2`'s exit criterion
+    /// asked for (*"a reality binds `Vital → qi` and the defeat law is
+    /// unchanged"*) and nothing could express until `M1`. The author picks
+    /// which of THEIR quantities fills each engine role; they never invent a
+    /// role. See `ruleset_core::EngineRole`.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 
@@ -106,6 +115,18 @@ impl ResourcePatch {
                 })
             }
         };
+        // The legal set is READ OFF the enum rather than restated, so the values
+        // a refusal lists and the values it accepts cannot drift — the drift
+        // `EngineRole::as_str` exists to make impossible.
+        let role = match self.role.as_deref() {
+            None => EngineRole::None,
+            Some(s) => EngineRole::from_str(s).ok_or(ResourceError::BadBounds {
+                ordinal: quantity,
+                reason: "role must be one of none, vital, initiative, action_budget. \
+                         A typo silently becoming `none` would unbind an engine law from \
+                         its number, and the symptom is a law that appears never to run",
+            })?,
+        };
         Ok(ResourceDecl {
             quantity,
             min: self.min,
@@ -114,6 +135,7 @@ impl ResourcePatch {
             regen_rate: self.regen_rate,
             regen_type,
             zero_behaviour,
+            role,
         })
     }
 }

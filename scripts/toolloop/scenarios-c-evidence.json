@@ -1,0 +1,64 @@
+{
+  "_note": "glossary_create_evidence re-measured. Its recorded row says surfaced 5/5, called 0/5 and I had twice written a WRONG cause for it — first 'the entity was never seeded' (the seed creates Aldric Vane and its assertion passed), then leaving it undiagnosed.\n\nVerified before spending runs: its prompt matches its declared synonyms ('cite where', 'back up') and answerable_tools surfaces it as the ONLY match. So the block is not surfacing.\n\nSeveral platform fixes have landed since it was last measured — the frontend branch now runs the non-identifier drop and name-repair, and a dropped NAME comes back as the query to search with. Nothing about the scenario changes.\n\nWHAT WOULD REFUTE A FIX: still 0/5. Then none of those repairs is what it needed.",
+  "scenarios": [
+    {
+      "id": "glossary-create-evidence-recheck",
+      "tool_under_test": "glossary_create_evidence",
+      "expect_tool": "glossary_create_evidence",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Back up Aldric Vane's role with a passage from the chapter — cite where it says he climbed the black stair.",
+      "prompt_source": "_meta.synonyms['back this up with a passage'] + ['cite where this is stated'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist. NOTE the deeper precondition this scenario is really testing: evidence attaches to an ATTRIBUTE VALUE (attr_value_id), not to the entity, so the model must first find or create an attribute value. If it cannot, that is a PRECONDITION-CHAIN finding like kg_propose_edge's, not a defect in this tool."
+        }
+      ],
+      "falsifier": "REFUTED IF: evidence lands with NO confirm card, OR the quoted original_text is not actually in the chapter (a fabricated citation is the worst outcome here), OR the model invents an attr_value_id. CONTROL: the fixture has no attribute values, so a turn that cannot proceed is the precondition chain, and that must be recorded as such rather than as a tool failure.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an attr_value_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION"
+    }
+  ]
+}

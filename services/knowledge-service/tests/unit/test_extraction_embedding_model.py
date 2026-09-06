@@ -87,7 +87,7 @@ def test_without_confirm_returns_warning():
 
 @patch("app.routers.public.extraction.probe_embedding_dimension",
        new_callable=AsyncMock, return_value=1024)
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 @patch("app.routers.public.extraction.app_settings")
 def test_with_confirm_deletes_graph_and_updates_model(
     mock_settings, mock_neo4j, mock_probe,
@@ -126,7 +126,7 @@ def test_with_confirm_deletes_graph_and_updates_model(
 
 
 @patch("app.routers.public.extraction.probe_embedding_dimension")
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 @patch("app.routers.public.extraction.app_settings")
 def test_confirm_probe_failure_aborts_with_422_no_delete(
     mock_settings, mock_neo4j, mock_probe,
@@ -150,7 +150,7 @@ def test_confirm_probe_failure_aborts_with_422_no_delete(
 
 @patch("app.routers.public.extraction.probe_embedding_dimension",
        new_callable=AsyncMock, return_value=768)
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 @patch("app.routers.public.extraction.app_settings")
 def test_confirm_unsupported_dimension_aborts_with_422(
     mock_settings, mock_neo4j, mock_probe,

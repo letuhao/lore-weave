@@ -1,0 +1,46 @@
+{
+  "_note": "Surface-scoped arm for registry_list_workflows, 2026-08-24. Written after the 'it is a duplicate of workflow_list' reason was retracted: the twin declares no arguments and cannot filter by surface.",
+  "scenarios": [
+    {
+      "id": "registry-list-workflows-by-surface",
+      "tool_under_test": "registry_list_workflows",
+      "expect_tool": "registry_list_workflows",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What workflows are available on the studio surface?",
+      "prompt_source": "meta.synonyms['what workflows'] VERBATIM AND CONTIGUOUS, plus the one thing this tool can do that its always-on twin cannot: filter by SURFACE.\n\n🔴 THIS IS NOT AN EASIER PROMPT, IT IS A DIFFERENT QUESTION — and the twin gets it WRONG. workflow_list declares properties:{} and cannot narrow; registry_list_workflows takes surface: book|editor|studio. Measured by calling it: 12 / book 12 / editor 11 / STUDIO 6. So answering this with the twin means reporting 12 where 6 is the truth.\n\nVerified against the deployed matcher before this scenario was written: this wording makes registry_list_workflows answerable and it is the ONLY tool in that set.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. Probed directly: the registry returns curated System workflows with slug + title + description — 'autonomous-drafting' among them — so the list is non-empty and its titles are checkable."
+        }
+      ],
+      "answer_expect": {
+        "none_of": [
+          "no workflows",
+          "you don't have any workflows",
+          "couldn't find"
+        ],
+        "why": "The registry returns several System workflows to every account. Reporting none would be a false absence."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports no workflows, OR it describes a workflow's STEPS — the L1 listing returns slug + title + description and explicitly NOT the step list, so an account of what a workflow does step by step in this turn came from the model, not the tool. That is the same L1/L2 boundary registry_get_workflow exists to cross.\n\nADDED FOR THIS ARM: REFUTED IF the reply reports ALL TWELVE workflows for a question that named the STUDIO surface — the studio has 6 — or if it answers from workflow_list, which cannot filter and would therefore be reporting a number it had no way to narrow. A confident wrong count is worse here than a refusal.",
+      "ship_audit": {
+        "empty_case": "OWED — System defaults are always visible, so an empty registry is not reachable and must not be claimed.",
+        "tenancy": "OWED — scope=USER.",
+        "surface_filter": "OWED — the filter is the whole reason this arm exists: book|editor|studio must each return their own set, and an invalid surface must be refused rather than silently ignored (ignoring it would return 12 and read as success)."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P5-SIBLING-WINS",
+      "_control_note": "SURFACE-SCOPED ARM. It does NOT replace registry-list-workflows and does not retire its finding: asked 'What workflows are available to me?', the model answered with workflow_list on 5 of 5 and the answer was TRUE and COMPLETE. That is correct behaviour against an always-on consumer-local twin, and it stays on file.\n\nWhat that arm could not do is reach this tool, because for the UNFILTERED question the twin is a complete answer. This arm asks the question the twin cannot answer."
+    }
+  ]
+}

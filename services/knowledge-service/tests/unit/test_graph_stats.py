@@ -61,7 +61,7 @@ def _url():
 
 
 def _mock_neo4j(record_value):
-    """Build a patched neo4j_session context manager that returns the
+    """Build a patched graph_session context manager that returns the
     given `record_value` from result.single().
     """
     mock_result = AsyncMock()
@@ -74,7 +74,7 @@ def _mock_neo4j(record_value):
     return mock_ctx
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 def test_graph_stats_happy_path(mock_neo4j_session):
     mock_neo4j_session.return_value = _mock_neo4j(
         {
@@ -98,7 +98,7 @@ def test_graph_stats_happy_path(mock_neo4j_session):
     assert data["last_extracted_at"].startswith("2026-04-19T12:00:00")
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 def test_graph_stats_empty_graph_returns_zeros(mock_neo4j_session):
     mock_neo4j_session.return_value = _mock_neo4j(
         {"entity_count": 0, "fact_count": 0, "event_count": 0, "passage_count": 0}
@@ -113,7 +113,7 @@ def test_graph_stats_empty_graph_returns_zeros(mock_neo4j_session):
     assert data["passage_count"] == 0
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 def test_graph_stats_null_last_extracted_at_passes_through(mock_neo4j_session):
     mock_neo4j_session.return_value = _mock_neo4j(
         {"entity_count": 0, "fact_count": 0, "event_count": 0, "passage_count": 0}
@@ -131,7 +131,7 @@ def test_graph_stats_project_not_found_returns_404():
     assert resp.json()["detail"] == "project not found"
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 def test_graph_stats_handles_missing_cypher_record(mock_neo4j_session):
     # Defensive: if result.single() returns None for some reason, the
     # handler should still return a 200 with zeros + the project's
@@ -146,7 +146,7 @@ def test_graph_stats_handles_missing_cypher_record(mock_neo4j_session):
     assert data["last_extracted_at"] is not None
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 def test_graph_stats_handles_null_count_values(mock_neo4j_session):
     # Defensive: Cypher SUM over empty sets can return None in some
     # versions. The int(... or 0) guard should make this safe.

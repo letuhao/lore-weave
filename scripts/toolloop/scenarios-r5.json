@@ -1,0 +1,7 @@
+{"scenarios": [
+  {"id": "outline-read-must-not-write", "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "book_id": "019ff8f5-ae59-71f9-acb9-ad607b363ef7",
+   "chapter_id": "019ff8f5-ee89-75ef-a894-ff9462332bc0",
+   "prompt": "Show me the outline I've planned for this book — what chapters and scenes are in it?",
+   "expect_tool": "composition_list_outline"}
+]}

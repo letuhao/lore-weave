@@ -14,6 +14,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
+from loreweave_jobs import JobStatus
 
 from ..config import settings
 from ..deps import get_current_user, get_db
@@ -656,7 +657,13 @@ async def cancel_campaign(
     gc=Depends(get_grant_client_dep),
 ):
     row = await _grant_campaign(db, gc, campaign_id, user_id, GrantLevel.MANAGE)
-    if row["status"] in ("completed", "failed", "cancelled"):
+    # 🔴 DERIVED, NOT RETYPED — DQ-T86 (c), owner ruling 2026-08-31. This read a hand-written
+    # ("completed", "failed", "cancelled"): a second copy of a set whose own definition in
+    # `loreweave_jobs.contract` is annotated "The single source of truth (no parallel set to
+    # drift)". Six places had drifted from it anyway, and the failure mode is SILENT — add one
+    # member to JobStatus and this check goes on believing the old vocabulary, so a campaign in
+    # the new terminal state would be treated as still running.
+    if JobStatus.is_terminal(row["status"]):
         raise HTTPException(
             status_code=409,
             detail={"code": "CAMPAIGN_TERMINAL",

@@ -1,4 +1,4 @@
-import type { TileMapSkeleton, TerrainKind, CellKind, MapObjectKind, RoadKind, ChannelTier } from '../data/types';
+import type { TileMapSkeleton, TerrainKind, CellKind, MapObjectKind, RoadKind, MapKind } from '../data/types';
 import { TERRAIN_KIND_ORDER } from '../data/types';
 import type { ValidationResult } from './types';
 
@@ -8,7 +8,7 @@ const VALID_CELL_KINDS: readonly CellKind[] = [
   'temple',
   'tavern',
   'port',
-  'cell',
+  'domain',
   'cave',
 ];
 
@@ -24,12 +24,12 @@ const VALID_OBJECT_KINDS: readonly MapObjectKind[] = [
 
 const VALID_ROAD_KINDS: readonly RoadKind[] = ['Highway', 'Path', 'Trade'];
 
-const VALID_TIERS: readonly ChannelTier[] = [
-  'Continent',
-  'Country',
-  'District',
-  'Town',
-  'Cell',
+const VALID_TIERS: readonly MapKind[] = [
+  'region',
+  'region',
+  'region',
+  'locale',
+  'domain',
 ];
 
 /**
@@ -274,7 +274,7 @@ function validateCellAnchor(c: unknown, idx: number, seenIds: Set<string>): stri
     seenIds.add(cell.channel_id);
   }
 
-  if (!VALID_TIERS.includes(cell.tier as ChannelTier)) {
+  if (!VALID_TIERS.includes(cell.tier as MapKind)) {
     errs.push(`cell_anchors[${idx}].tier must be one of: ${VALID_TIERS.join(', ')}`);
   }
 
@@ -376,7 +376,7 @@ function checkConnectivity(
   // without a dedicated road segment.
   const unreachable = cells
     .filter((c) => !visited.has(c.channel_id))
-    .filter((c) => c.tier !== 'Cell')
+    .filter((c) => c.tier !== 'domain')
     .map((c) => c.channel_id);
 
   if (unreachable.length > 0) {

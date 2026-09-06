@@ -1,5 +1,22 @@
 # TVL_001 — Travel Mechanics
 
+> **⚠ AMENDED 2026-08-22 — `progress_fraction: f32` → `progress_permille: u16`
+> ([`SPG-R12`](../../36_map_architecture.md)'s second finding). THE ROOT WAS HERE, NOT AT `TVL_004`.**
+>
+> The row pointed at `TVL_004`, whose encounter schedule carries its own fraction. Following it upstream
+> found that **the encounter points are COMPARED AGAINST this field** — *"a tick whose advancement crosses
+> a scheduled point"* — so converting `TVL_004` alone would have left the crossing test on a float and
+> fixed nothing. **Half a fix here reads exactly like a whole one**, which is why the root matters.
+>
+> [`WDS-A7`](../../37_world_data_storage.md) ruled f32 determinism **unproven cross-platform** and
+> `SDF-R2` removed the same type from `SpaceNode.Transform` on the same day. This value is **advanced per
+> tick, compared for ordering, and (via `TVL_004`) hashed into an `EncounterId`** — the three things
+> `SDF-A4` prohibits a float for.
+>
+> **Permille rather than basis points or a rational:** `MAP_001` already uses a `0..1000` parent-relative
+> frame, so the corpus has one convention for *"a position along something"* and this shares it. `u16`
+> holds it exactly, advancement and comparison are integer, and a hash input is bit-identical everywhere.
+
 > **Conversational name:** "Travel" (TVL). V1+ primary consumer of GEO_004 ROUTE_001 V1+30d Route graph. Implements inter-settlement travel via atomic single-segment route traversal — actor at from_cell issues `Travel:Initiate { route_id }`; system advances TDIL clocks (actor + body + realm; soul preserved unless BodyOrSoul::Soul form) over `route.default_fiction_duration` × per-turn scheduler ticks; actor arrives at to_cell when journey reaches 100%. Composes with SET_001 Settlement.role for hospitality availability at arrival (Hamlet has no inn → forced outdoor camp narration); RES_001 food/water consumption per league traveled; PL_006 status-effect application (Exhausted on overnight travel without inn); AIT_001 Tracked tier discipline (Untracked NPCs excluded — no travel state). Narrative-only V1+30d (LLM generates journey description via S9 prompt-assembly with route + biome + culture context already populated by V1+30d activation triangle); mechanical encounter generation deferred V1+30d+. PC + Tracked NPC parity V1+30d.
 >
 > **Category:** TVL — Travel Mechanics (V1+ foundation-adjacent consumer feature; first feature consuming V1+30d activation triangle POL + SET + ROUTE; unblocked by ROUTE_001 V1+30d shipping)
@@ -73,7 +90,11 @@ pub struct ActorTravelState {
     pub mode: TravelMode,                                   // OnFoot V1+30d; ByBoat V1+30d+ schema-reserved
     pub direction: TravelDirection,                         // Forward (from_cell → to_cell) OR Backward (to_cell → from_cell); requires route.is_bidirectional == true for Backward
     pub status: TravelStatus,                               // Active | Arrived | Canceled
-    pub progress_fraction: f32,                             // [0.0, 1.0] — advanced per Scheduled:TravelTick
+    // SPG-R12 second finding, APPLIED 2026-08-22. Was `f32`. THE ROOT IS HERE:
+    // TVL_004's encounter points are compared against THIS value, so making
+    // those integers while this stayed a float would leave the crossing test on
+    // a float and fix nothing.
+    pub progress_permille: u16,                             // [0, 1000] — advanced per Scheduled:TravelTick
     pub initiated_at_fiction_time: FictionTime,             // actor_clock at Travel:Initiate (replay-deterministic)
     pub expected_arrival_fiction_time: FictionTime,         // initiated_at_fiction_time + route.default_fiction_duration × actor.time_flow_rate
     pub elapsed_duration: FictionDuration,                  // cumulative tick advancement; equals route.default_fiction_duration at arrival
@@ -93,7 +114,7 @@ pub enum TravelDirection {                                  // closed enum 2 V1+
 }
 
 pub enum TravelStatus {                                     // closed enum 3 V1+30d
-    Active,                                                 // journey in progress; per-turn ticks advance progress_fraction
+    Active,                                                 // journey in progress; per-turn ticks advance progress_permille
     Arrived,                                                // journey reached 100%; actor.current_cell_id updated; row retained for audit until reality-cleanup or per-row retention policy
     Canceled,                                               // admin Forge:CancelJourney OR actor self-cancel (V1+30d+ self-cancel deferred per TVL-D9); provisions partial-refund per refund policy (TVL-Q3)
 }

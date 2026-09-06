@@ -1,5 +1,15 @@
 # Wave 4 — Arc Templates + 拆文 — adjudicated decisions
 
+> **V1-PATH-REDIRECT — `services/chat-service/app/services/frontend_tools.py` NO LONGER EXISTS.**
+> Deleted 2026-09-03 by the architecture-v1 retirement. Every path below that names it is a
+> RECORD of where the schema lived when this was decided: **the decisions still stand, the file
+> path does not.** The schemas now live in `services/ai-gateway/src/mcp/` — `ui-tools.ts`,
+> `confirm-tools.ts`, `propose-edit-tool.ts` — all read from the UNCHANGED source of truth
+> `contracts/frontend-tools.contract.json`. Do not rewrite the lines below to "fix" the paths:
+> a decision record is evidence, and editing it destroys what it is evidence of. See
+> [`docs/specs/2026-09-03-retire-architecture-v1.md`](../../specs/2026-09-03-retire-architecture-v1.md).
+
+
 > 46 items · 42 DECIDED · 4 not-a-question · 0 deferred · 0 escalated.
 
 > **These are INSTRUCTIONS, not suggestions.** Each was settled by reading source. Do not re-open a

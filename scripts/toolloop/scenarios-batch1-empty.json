@@ -1,0 +1,99 @@
+{
+  "scenarios": [
+    {
+      "id": "composition-package-tree-empty",
+      "tool_under_test": "composition_package_tree",
+      "expect_tool": "composition_package_tree",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What is in this book?",
+      "prompt_source": "_meta.synonyms['what is in this book']",
+      "approve": null,
+      "seed": [],
+      "falsifier": "ABSENT CASE. The fixture has a book and one chapter and NOTHING else. REFUTED IF: the reply describes content that does not exist (the failure this loop has seen twice, in reverse), or the store changes on a read-intent turn, or the turn errors rather than saying plainly that there is nothing yet.",
+      "ship_audit": {
+        "empty_case": "owed — a book with no chapters and no entities",
+        "refusals": "owed — a book_id owned by another user must refuse, not return an empty tree"
+      }
+    },
+    {
+      "id": "plan-propose-spec-empty",
+      "tool_under_test": "plan_propose_spec",
+      "expect_tool": "plan_propose_spec",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please plan a novel. The idea: a courier named Aldric carries a book that rewrites whoever reads it, and the Pale Regent wants it back. Grimdark fantasy, one continent, about thirty chapters.",
+      "prompt_source": "_meta.synonyms['plan a novel']",
+      "approve": "approved_once",
+      "seed": [],
+      "falsifier": "ABSENT CASE. The fixture has a book and one chapter and NOTHING else. REFUTED IF: the reply describes content that does not exist (the failure this loop has seen twice, in reverse), or the store changes on a read-intent turn, or the turn errors rather than saying plainly that there is nothing yet.",
+      "ship_audit": {
+        "empty_case": "owed — no source_markdown supplied",
+        "refusals": "owed — another user's book_id",
+        "gate": "the Tier-A approval card must be raised BEFORE any row is written"
+      }
+    },
+    {
+      "id": "glossary-entity-set-attributes-empty",
+      "tool_under_test": "glossary_entity_set_attributes",
+      "expect_tool": "glossary_entity_set_attributes",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please change an existing entity's attribute. Set Aldric Vane's rank to Knight of the Ember.",
+      "prompt_source": "_meta.synonyms[\"change an existing entity's attribute\"]",
+      "approve": "approved_once",
+      "seed": [],
+      "falsifier": "ABSENT CASE. The fixture has a book and one chapter and NOTHING else. REFUTED IF: the reply describes content that does not exist (the failure this loop has seen twice, in reverse), or the store changes on a read-intent turn, or the turn errors rather than saying plainly that there is nothing yet.",
+      "ship_audit": {
+        "empty_case": "owed — an entity_id that does not exist",
+        "refusals": "owed — an entity in another user's book",
+        "gate": "Tier-A card before the attribute write"
+      }
+    },
+    {
+      "id": "composition-diagnostics-empty",
+      "tool_under_test": "composition_diagnostics",
+      "expect_tool": "composition_diagnostics",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What needs fixing?",
+      "prompt_source": "_meta.synonyms['what needs fixing']",
+      "approve": null,
+      "seed": [],
+      "falsifier": "ABSENT CASE. The fixture has a book and one chapter and NOTHING else. REFUTED IF: the reply describes content that does not exist (the failure this loop has seen twice, in reverse), or the store changes on a read-intent turn, or the turn errors rather than saying plainly that there is nothing yet.",
+      "ship_audit": {
+        "empty_case": "owed — a project with nothing wrong",
+        "refusals": "owed — another user's book_id"
+      }
+    },
+    {
+      "id": "book-chapter-create-chat-panel-empty",
+      "tool_under_test": "book_chapter_create",
+      "expect_tool": "book_chapter_create",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please write a chapter. Add a new one after what I have, called The Drowned Road, about Mira leading Aldric through the marsh.",
+      "prompt_source": "_meta.synonyms['write a chapter']",
+      "approve": "approved_once",
+      "seed": [],
+      "falsifier": "ABSENT CASE. The fixture has a book and one chapter and NOTHING else. REFUTED IF: the reply describes content that does not exist (the failure this loop has seen twice, in reverse), or the store changes on a read-intent turn, or the turn errors rather than saying plainly that there is nothing yet.",
+      "ship_audit": {
+        "empty_case": "owed — a book with no chapters yet (this fixture has 1)",
+        "refusals": "owed — another user's book_id",
+        "idempotency": "a single request must create exactly one chapter",
+        "gate": "Tier-A card before the insert"
+      },
+      "editor_context": false
+    }
+  ]
+}

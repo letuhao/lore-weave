@@ -50,8 +50,10 @@ async def test_returns_deletion_count(monkeypatch):
         assert kwargs["limit"] == 10
         return result
 
+    # The query moved to the maintenance repo (plan T17), so the seam moved with it. The
+    # job module now owns SCHEDULING only; patching it would patch nothing.
     monkeypatch.setattr(
-        "app.jobs.orphan_extraction_source_cleanup.run_write", fake_run_write,
+        "app.db.graph_repos.maintenance.run_write", fake_run_write,
     )
 
     n = await delete_orphan_extraction_sources(
@@ -70,7 +72,7 @@ async def test_zero_deletion_count_is_valid(monkeypatch):
         return result
 
     monkeypatch.setattr(
-        "app.jobs.orphan_extraction_source_cleanup.run_write", fake_run_write,
+        "app.db.graph_repos.maintenance.run_write", fake_run_write,
     )
 
     n = await delete_orphan_extraction_sources(MagicMock(), user_id="u-1")
@@ -88,7 +90,7 @@ async def test_none_record_raises_anomaly(monkeypatch):
         return result
 
     monkeypatch.setattr(
-        "app.jobs.orphan_extraction_source_cleanup.run_write", fake_run_write,
+        "app.db.graph_repos.maintenance.run_write", fake_run_write,
     )
 
     with pytest.raises(RuntimeError, match="driver or session anomaly"):
@@ -107,7 +109,7 @@ async def test_none_limit_forwards_through(monkeypatch):
         return r
 
     monkeypatch.setattr(
-        "app.jobs.orphan_extraction_source_cleanup.run_write", fake_run_write,
+        "app.db.graph_repos.maintenance.run_write", fake_run_write,
     )
 
     await delete_orphan_extraction_sources(MagicMock(), user_id="u-1")

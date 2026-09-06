@@ -149,10 +149,49 @@ async def preview_schema_edit(
     if drift:
         rows.append({"label": "⚠ drift", "value": "yes",
                      "note": "the schema changed since you proposed — confirming will be rejected"})
+
+    # The third way a confirm can be rejected, alongside `drift` and "no active schema": the
+    # code is already in the state the verb wants to put it in. apply_schema_edit raises
+    # DuplicateChildError (add an existing code) / ChildNotFoundError (deprecate a missing one),
+    # and the card said nothing — it rendered "will bump to N+1" and, for a deprecate,
+    # destructive:true, over a change that cannot happen. Measured: adding an existing fact_type
+    # confirmed to 409, deprecating a code that never existed was refused, and BOTH cards
+    # promised the bump first.
+    exists = await _code_exists(schemas, project_id, params)
+    conflict = (params.verb == "add") == exists  # add+present, or deprecate+absent
+    if conflict:
+        rows.append({
+            "label": "⚠ no-op",
+            "value": "already present" if exists else "not in this schema",
+            "note": (
+                f"a {params.level} '{params.code}' already exists here — confirming will be "
+                "rejected; nothing is added twice"
+                if exists else
+                f"no {params.level} '{params.code}' exists here — confirming will be rejected; "
+                "nothing is removed"
+            ),
+        })
     return {
         "descriptor": "kg_schema_edit",
         "title": title,
-        "destructive": params.verb == "deprecate",
+        # A deprecate that cannot find its target destroys nothing. Flagging it destructive asks
+        # a human to weigh a loss that will not occur.
+        "destructive": params.verb == "deprecate" and not conflict,
         "drift": drift,
         "preview_rows": rows,
     }
+
+
+async def _code_exists(
+    schemas: GraphSchemasRepo, project_id: str, params: SchemaEditParams
+) -> bool:
+    """Is `params.code` already a live type of this project's effective schema?
+
+    Uses `resolve_for_project` — the same effective view the extraction path validates
+    against — so the card answers the question the confirm will actually ask. Deprecated
+    types are NOT in the resolved view, which is the behaviour we want: re-adding a
+    deprecated code is a real add, and re-deprecating one is a real no-op.
+    """
+    resolved = await schemas.resolve_for_project(project_id)
+    pool = resolved.edge_types if params.level == "edge_type" else resolved.fact_types
+    return any(t.code == params.code for t in pool)

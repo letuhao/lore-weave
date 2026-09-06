@@ -35,6 +35,7 @@ import (
 	"github.com/loreweave/foundation/contracts/meta"
 	"github.com/loreweave/foundation/contracts/realityreg"
 	"github.com/loreweave/foundation/sdks/go/metapg"
+	"github.com/loreweave/foundation/sdks/go/piikms"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/bridge"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/canon_writer"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/consumer"
@@ -144,10 +145,15 @@ func run() error {
 	}
 
 	// ── user-erased cascade (P2/071): xreality.user.erased → scrub PII ──────────
-	// Per-reality pc_projection scrub (always) + meta player_character_index.pc_name
-	// scrub via MetaWrite (only when META_ALLOWLIST_PATH is set → graceful degrade:
-	// the canon path + the per-reality scrub work without it; the meta-index scrub
-	// needs the allowlist/MetaWrite Config).
+	// Meta actor_control_binding erasure via MetaWrite (only when
+	// META_ALLOWLIST_PATH is set → graceful degrade: the canon path works without
+	// it; the meta-index scrub needs the allowlist/MetaWrite Config).
+	//
+	// The per-reality leg is still wired but has had NOTHING TO SCRUB since 0017
+	// dropped pc_projection, the last per-reality table with a user reference. It
+	// resolves the pool (an unreachable reality is still worth surfacing) and
+	// returns. TestNoPerRealityTableCarriesAUserReference fails the day that
+	// changes.
 	uerCfg := user_erased_writer.Config{
 		Lookup: pglive.NewPgUserRealityLookup(metaPool),
 		DB: pglive.NewPgPerRealityScrubber(func(rid uuid.UUID) (*pgxpool.Pool, error) {
@@ -170,7 +176,7 @@ func run() error {
 		}
 		uerCfg.MetaScrubber = pglive.NewPgMetaScrubber(metaPool, mwCfg, "meta-worker")
 	} else {
-		slog.Warn("[meta-worker] META_ALLOWLIST_PATH unset — user.erased per-reality scrub wired, but the meta player_character_index.pc_name scrub is DISABLED (set it to complete erasure)")
+		slog.Warn("[meta-worker] META_ALLOWLIST_PATH unset — user.erased per-reality scrub wired, but the meta actor_control_binding erasure is DISABLED (set it to complete erasure)")
 	}
 	uer, uerr := user_erased_writer.New(uerCfg)
 	if uerr != nil {
@@ -264,7 +270,14 @@ func buildBridge(cfg config, metaPool *pgxpool.Pool) (*http.Server, error) {
 		DB: metapg.New(metaPool), Allowlist: allow, Transitions: graph,
 		QueryBuilder: meta.PostgresQueryBuilder{}, Clock: sysClock{}, UUIDGen: randUUID{},
 	}
-	reg := bridge.MetaRegistrar{Cfg: mwCfg, Caller: bridge.WorldServiceActorID}
+	reg := bridge.MetaRegistrar{Cfg: mwCfg, Caller: bridge.WorldServiceActorID, Pool: metaPool,
+		// ReadAudit is NOT optional in production, and it was missing here.
+		// `liveBinding` writes the `actor_binding_cross_user` row only
+		// `if m.ReadAudit != nil`, and no construction ever set it — measured
+		// 2026-08-21 on the live dev stack: meta_read_audit held ZERO rows
+		// after grants, revokes and previews that all took the cross-user read.
+		// The discipline existed at every layer above and produced nothing.
+		ReadAudit: bridge.PgReadAuditor{W: piikms.NewPgReadAuditWriter(metaPool)}}
 	audit := bridge.PgAuditSink{Pool: metaPool, Callee: "meta-worker"}
 	bsrv, err := bridge.New(reg, audit, cfg.BridgeToken, "world-service")
 	if err != nil {
@@ -347,10 +360,10 @@ type config struct {
 	HTTPAddr         string
 	// W1.5 Rust→Go meta-write bridge. Disabled (not exposed) unless
 	// BridgeToken is set — fail-closed: no secret, no internal write surface.
-	BridgeAddr       string
-	BridgeToken      string
-	AllowlistPath    string
-	TransitionsPath  string
+	BridgeAddr      string
+	BridgeToken     string
+	AllowlistPath   string
+	TransitionsPath string
 }
 
 func loadConfig() (config, error) {

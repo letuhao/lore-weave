@@ -33,3 +33,10 @@ path = "src/bin/progression_validate.rs"
 [[bin]]
 name = "progression-pin"
 path = "src/bin/progression_pin.rs"
+
+[dev-dependencies]
+# The authorable-surface contract is YAML, and the behavioural half of its check
+# reads it to BUILD the document it feeds the loader. A real parser: the source
+# half of the same check learned this the hard way, where a line-oriented reader
+# mis-attributed every section's key to the previous type.
+serde_yaml = "0.9"

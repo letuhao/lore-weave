@@ -110,7 +110,7 @@ def _patch_session(monkeypatch):
     @asynccontextmanager
     async def fake_session():
         yield MagicMock()
-    monkeypatch.setattr("app.context.anchors.neo4j_session", fake_session)
+    monkeypatch.setattr("app.context.anchors.graph_session", fake_session)
 
 
 @pytest.mark.asyncio

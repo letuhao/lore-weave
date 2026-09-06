@@ -109,7 +109,6 @@
       "authentication": "身分驗證",
       "authNone": "無",
       "authBearer": "Bearer 令牌",
-      "authOauth": "OAuth 2.1",
       "noAuthHint": "無須身分驗證 — 此伺服器為公開狀態。繼續進行註冊與掃描。",
       "bearerLabel": "Bearer 令牌 (將儲存在保險箱中；不會再次顯示)",
       "bearerPlaceholder": "貼上權杖",
@@ -126,7 +125,8 @@
       "continue": "繼續",
       "authKind": "驗證方式：{{kind}}",
       "enable": "為我的工作階段啟用",
-      "done": "完成"
+      "done": "完成",
+      "authOauth": "OAuth 2.1"
     }
   },
   "commands": {

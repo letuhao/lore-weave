@@ -94,26 +94,147 @@ migrations:
   # npc_session_memory_embedding.embedding BYTEA → VECTOR(1536) (conditional
   # — skips if cycle 13's path-A already created with VECTOR), (c) CREATE
   # HNSW INDEX (m=16, ef_construction=64). Closes the L3 layer.
+  # ⚠ RE-REGISTERED 2026-08-08. It was unregistered earlier the same day
+  # (`1b14-05`) because `postgres:18-alpine` has no pgvector, so once the
+  # provisioner began applying the whole manifest it died here on every new
+  # reality. The image now BUILDS pgvector against its own pg_config
+  # (`infra/postgres-pgvector.Dockerfile`) -- same musl, so the existing
+  # PGDATA keeps its collation -- and the exclusion has been deleted from
+  # `scripts/migration-manifest-gate.py`, which reds if it lingers.
+  #
+  # ⚠ WHAT THIS MIGRATION STILL DOES, measured rather than assumed: only
+  # `CREATE EXTENSION vector`. Its actual subject --
+  # `npc_session_memory_embedding` -- was DROPPED by `0017`, the no-producer
+  # sweep. Its DO block finds no column, RAISEs a NOTICE and returns, and
+  # after the full chain NO vector column survives anywhere. It is kept
+  # because the extension is a real capability the tier is specified against,
+  # not because the ALTER still has work to do.
   - id: "0008_pgvector_setup"
     version: 8
     breaking: false
     dependencies: ["0006_projections"]
-    description: "L3 cycle 16 — L3.I pgvector finalizer: CREATE EXTENSION vector + ALTER npc_session_memory_embedding.embedding to VECTOR(1536) when BYTEA placeholder still present + HNSW(m=16, ef_construction=64). Q-L3I-1 dim=1536 LOCKED. Closes L3 layer."
+    description: "L3 cycle 16 — CREATE EXTENSION vector (+ an embedding ALTER whose table 0017 dropped, so the DO block is now a no-op). Requires an image providing pgvector: see infra/postgres-pgvector.Dockerfile."
 
-  # ── L2.A integrity — stored payload checksum (Wave 3 — W3.4)
-  #
-  # NOTE the version gap (8 → 13): the per-reality migration FILES 0009–0012
-  # (canon_projection, its indexes, archive_state, outbox_prune_index) are NOT
-  # registered here — they are applied by the projection/test harnesses directly,
-  # not the orchestrator's manifest-driven `migrate` path. That pre-existing gap
-  # is out of W3.4 scope (tracked as D-MANIFEST-0009-0012-UNREGISTERED). This
-  # entry keeps the established `version == filename-stem number` convention
-  # (0013 → 13); the manifest's monotonic check only requires version > prev.
-  #
-  # Additive nullable column on `events` ⇒ metadata-only catalog change on the
-  # partitioned table (no rewrite); back-compat, hence breaking: false.
   - id: "0013_events_content_sha256"
     version: 13
     breaking: false
     dependencies: ["0002_events_table"]
     description: "L2.A Wave-3 W3.4 — events.content_sha256 CHAR(64) (nullable). Stored SHA-256 of the canonical jsonb text of jsonb_build_object(p:payload, m:metadata) — covers payload AND metadata — set at INSERT by both the dp-kernel append + the Go emit path via the identical SQL expression. PG is the single canonicalizer (Go≡Rust agree, no cross-lang JSON lib). PLAIN column (not generated) so a later payload/metadata UPDATE doesn't mask byte-rot; the ledger -check-checksum re-derives + compares. NULL pre-0013 rows skipped."
+
+  # ── 0014–0019 REGISTERED 2026-08-08 (`1b7gap-H1`, found by a cold-start refuter)
+  #
+  # These six shipped over months and NONE of them was registered here, so the
+  # orchestrator never applied any of them: `channels`, the writer lease, the
+  # ruleset digest and both projection drops could not exist in a real
+  # per-reality database. The note above tracks 0009–0012 as a known gap
+  # (`D-MANIFEST-0009-0012-UNREGISTERED`) — and six more files drifted straight
+  # past that row while it sat there, because a ROW is not a MECHANISM. The
+  # mechanism is now `scripts/migration-manifest-gate.py`: every
+  # `per_reality/*.up.sql` must have an entry here or a reasoned exclusion, and
+  # the exclusion list must SHRINK.
+  #
+  # ⚠ This CHANGES WHAT THE ORCHESTRATOR APPLIES. That is the point — it was
+  # applying an eight-month-old schema — but it is a deployment-affecting edit
+  # and is called out rather than slipped in. Verified: the full 0001→0019 chain
+  # applies to a throwaway database, each migration re-applies cleanly, and the
+  # down chain reverses to an empty schema (`scripts/dp-migration-chain-smoke.py`).
+  - id: "0014_channel_ordering"
+    version: 14
+    breaking: false
+    dependencies: ["0002_events_table"]
+    description: "DP-Ch13 channel ordering — events.channel_id/channel_event_id/writer_epoch/causal_refs + channel_writer_state (epoch fence, DB-authoritative allocator) + channel_event_index."
+
+  - id: "0015_writer_lease_liveness"
+    version: 15
+    breaking: false
+    dependencies: ["0014_channel_ordering"]
+    description: "IMG-A2 — channel_writer_state.holder_id + lease_expires_at (nullable = unheld/claimable) + expiry index. Gives the writer lease LIVENESS; DP-A16's epoch fence already gave it safety."
+
+  - id: "0016_events_ruleset_digest"
+    version: 16
+    breaking: false
+    dependencies: ["0002_events_table"]
+    description: "events.ruleset_digest — pins each event to the ruleset version that admitted it."
+
+  - id: "0017_drop_pc_npc_projections"
+    version: 17
+    breaking: true
+    dependencies: ["0006_projections"]
+    description: "Drops the seven pc_*/npc_* projection tables. Every one had a projector, a rebuilder, a golden fixture, an oracle and a benchmark — and NO PRODUCER: every pc.created/npc.created in the tree was a fixture. DROP ... IF EXISTS, so it is safe whether or not 0006 ran."
+
+  - id: "0018_drop_region_session_world_kv_projections"
+    version: 18
+    breaking: true
+    dependencies: ["0006_projections"]
+    description: "Drops region_projection / world_kv_projection / session_participants — the same no-producer finding as 0017, one sweep later. DROP ... IF EXISTS."
+
+  - id: "0019_channels"
+    version: 19
+    breaking: false
+    dependencies: []
+    description: "DP-Ch2 channel registry, per reality (FLOW-9). id BIGINT per REC-103; composite (reality_id, id) per REC-105; cycles unrepresentable via a generated parent_depth in the parent FK (REC-106); DP-Ch31/33/34 lifecycle rules as triggers. References no other table, hence no dependencies."
+
+  - id: "0020_turn_boundary"
+    version: 20
+    breaking: false
+    dependencies: ["0014_channel_ordering"]
+    description: "DP-Ch22 per-channel turn counter: events.turn_number + channel_writer_state.last_turn_number + a non-unique partial index. Pays the DEFERRED_EVENT_COLUMNS register row, whose recorded reason named this work as its unblocking condition. Depends on 0014, which creates channel_writer_state and events.channel_id. NOT the dp-kernel TurnContext lifecycle - see the 2026-08-11 turn-loop run-state 1.1."
+
+  - id: "0021_turn_slot"
+    version: 21
+    breaking: false
+    dependencies: ["0014_channel_ordering"]
+    description: "DP-Ch51 advisory turn slot: four nullable columns on channel_writer_state (current_turn_actor JSONB, turn_started_at, turn_expected_until, turn_slot_reason). Advisory only - it does not block writes; that is channel_pause (DP-Ch35), unbuilt. No ActorId type is introduced (SF-6): four spellings of who-is-acting already exist, so the occupant is opaque JSON that DP does not interpret."
+
+  - id: "0022_actors"
+    version: 22
+    breaking: false
+    dependencies: []
+    description: "S-9's missing conversion site: the per-reality actor registry mapping the platform's actor_id UUID (what meta/034 actor_control_binding points at) to the island's sim-core EntityId(u64). Not a fifth spelling under SF-6 - it mints no vocabulary, it writes down the mapping between two that already exist, which is the conversion site S-9 measured as having zero instances. The registry ALLOCATES entity_id (GENERATED BY DEFAULT AS IDENTITY) so it is the SSOT rather than a second copy of a number the island also assigns."
+
+  - id: "0023_actors_entity_id_nonneg"
+    version: 23
+    breaking: false
+    dependencies: ["0022_actors"]
+    description: "CHECK (entity_id >= 0) on actors. 0022 omitted it for a reason true at the time - the identity sequence only allocates positives - but GENERATED BY DEFAULT exists so an explicit value can be supplied, and adopt_actor passes an operator's --entity-id straight through. A negative was creatable, grantable, and then permanently unresolvable, because -1 as u64 is u64::MAX and commit_service::subject refuses it at turn time. checked_island_id guards both code edges and is bitten; this closes the path a future writer that skips the helper would take, which is NV-3 (an enumerated set of call sites is default-uncovered). NOT VALID is deliberately not used: a failure here would mean the invariant was already broken, which is worth knowing."
+  - id: "0024_map_layout"
+    version: 24
+    breaking: false
+    dependencies: ["0019_channels"]
+    description: "map_layout - the first row of the space spine. MapKind was designed 2026-07-29 (SPG-A3) and until now appeared in zero .rs files and zero tables: channels (0019) ships the TREE, and nothing shipped what a node IS. One row per channel carrying kind (closed set, CHECK, replacing MAP_001's retired ChannelTier ladder per SPG-R1/SPG-R14) plus a parent-RELATIVE 0..1000 position (SPG-A5). It is a FEATURE table rather than a DP column because SPG-R2 was retired the day it was written - DP-A13 keeps the data plane agnostic to level semantics so a reality keeps its own words for its levels. NO materialization column, deliberately: SDF-R1 makes the live set an INDEX and the node carry nothing, and it is the only amendment in doc 36 backed by a measurement (92.4x at 0.1% live, collapsing to 0.7x at 100% live - the limits travel with the number). Applied before this file precisely because a column is cheap to add and expensive to remove. Vessel is reserved in doc 36 and deliberately NOT in the CHECK: a kind the engine cannot interpret should not be writable. tier_metadata, the three asset slots and connections are deferred - connections especially, because SDF-R3 (PortalSet) is still PROPOSED and shipping a connection column would decide the connective-adjacency relation by accident."
+
+  - id: "0025_entity_binding"
+    version: 25
+    breaking: false
+    dependencies: ["0019_channels", "0022_actors"]
+    description: "entity_binding - WHERE THINGS ARE. 0024 gave a node a KIND; nothing said where anything IS, and actors (0022) was checked first and is a pure identity bijection with no location column. Implements EF_001 3.1 rather than inventing a table: the space tier own T7 node_occupancy was STRUCK by SDF-A34 because entity_binding already existed, is richer, and had already settled the question T7 re-opened. NO FINE POSITION COLUMN - EF_001 2026-06-20 reconciliation makes InCell the COARSE membership, layer 1 of ILR-A2, with continuous position realtime-owned per RTM-A1 and never per-tick in the log; EntityLocation own InCell variant carries cell_id and nothing else, so the enum had already refused what T7 proposed. EntityLocation is stored as a discriminator plus per-variant columns with a CHECK asserting exactly one variant is populated - a discriminator without that CHECK is a sum type that can hold two variants at once. FK to channels is RESTRICT and not CASCADE, deliberately: deleting a node in 0024 removed a description of it, deleting one here would silently delete the things standing in it, and R-52 says evacuate, never delete. owner/owner_node/affordance_overrides/cell_owner/inventory_cap and the fiction_time columns are deferred with reasons - each is an ALTER later, and local_pos would not have been."
+
+  - id: "0026_place"
+    version: 26
+    breaking: false
+    dependencies: ["0024_map_layout"]
+    description: "place - SEMANTIC IDENTITY. 0024 gave a node a kind and 0025 said where things are; neither says what a node MEANS, which is what an LLM needs to narrate a scene an actor walked into. Implements PF_001 3.1 (CANDIDATE-LOCK 2026-04-26), the doc that resolves the spawn-empty-place gap and defers spawn itself as consumer responsibility. place_id IS the channel id: PF_001 declared PlaceId(pub ChannelId) in April and SDF-A31 reached the same rule from the id side in August, so no new id space and no allocator. ONE PLACE PER Domain, STRUCTURALLY: a CHECK cannot see another table, so the rule uses the device 0019_channels already uses for its anti-cycle guard - a GENERATED column pinned to the constant domain, carried into a composite FK whose target is a UNIQUE index including kind (added here by ALTER). The same honesty 0019 had to add later is written in up front: DROP EXPRESSION needs only table ownership, so this is stronger than a check and NOT unrepresentable. PlaceType closed at ten and StructuralState at four; the state MACHINE is deliberately not enforced, because Destroyed to Pristine is forbidden only via Restored and a CHECK cannot see the previous value - half a state machine in the schema would be worse than none. FK is CASCADE where 0025 was RESTRICT, and the asymmetry is the point: a place is a DESCRIPTION of a node and dies with it, an occupant is a THING STANDING IN IT and must be evacuated first (R-52). connections and fixture_seed deferred as child tables - connections for the same reason 0024 deferred its column, because SDF-R3 PortalSet is still PROPOSED and shipping edges would decide the connective-adjacency relation by accident."
+
+  - id: "0027_channel_writer_state_fk"
+    version: 27
+    breaking: false
+    dependencies: ["0014_channel_ordering", "0019_channels"]
+    description: "FLOW-19 discharged, by a gate that watched for its own trigger. The recorded reason for NOT adding this key was measurable (1b.9): acquire_writer_lease INSERTs into channel_writer_state on every lease acquisition and NOTHING wrote channels, so the key would have made every lease fail against an empty table. 1b7gap-H4 turned that into a check that reds the moment channels gains a non-test writer. world_seed.rs is the first, and the gate refused the commit that introduced it. NOT VALID rather than a strict ADD, and the choice is MEASURED not cautious: dp_kernel_test holds 456 writer-state rows of which 313 are ORPHANS, both dp-kernel smoke databases are 100 percent orphans, and the two live realities are clean - exactly the distribution 1b.9 predicted, because leases were acquired against a table nothing populated. 0023 faced the same fork and chose strict, reasoning that a failure would mean the invariant was already broken and that is worth knowing; that reasoning points the other way here, because the answer is already known and a strict ADD would refuse to migrate any database that ever acquired a lease. NOT VALID is a ratchet, not an amnesty: no NEW orphan can be created. VALIDATE CONSTRAINT is OWED once the historical rows are reconciled. No ON DELETE clause on purpose - current_epoch is a FENCE, and dropping it while an id could be reused would reset it."
+
+  - id: "0028_portal"
+    version: 28
+    breaking: false
+    dependencies: ["0019_channels"]
+    description: "portal - the CONNECTIVE relation. 0019 ships CONTAINMENT, a strict acyclic tree where parent is the only edge, and parent cannot express a door. SPG-A18 (SDF-R3, applied to doc 36 section 3.2 in this same commit) states the rule: containment and connectivity are TWO relations over one node set. Both 0024 and 0026 deliberately left a connections column out and said why - shipping edges before this amendment landed would have decided the connective-adjacency relation BY ACCIDENT, twice. ONE ROW, TWO ENDS: Bethesda XTEL stores a destination reference and a transform and never a destination cell id, so a door pair is two independent one-way records nothing keeps in step, which R-59 names as the reason one-sided door links are a classic mod bug. Two directed rows would reproduce it; one row with two ends makes it UNREPRESENTABLE, and a unique index over LEAST/GREATEST of the pair stops the same defect arriving by duplication. Ends are named a/b rather than from/to on purpose, because from/to invites the directed reading that produced the bug. NO WORLD COORDINATES - an end is (node, anchor) in the parent-relative 0..1000 frame, so with SPG-A5 a mobile Domain can move and every portal into it stays valid with zero fixups. FKs are RESTRICT for the same reason as 0025: silently deleting the way into a place is how a world quietly becomes unreachable. gate: Option<LayerId> deferred because the layer registry T4 is not built and a column pointing at a registry that does not exist is a dangling reference with a type."
+
+  - id: "0029_layer_registry"
+    version: 29
+    breaking: false
+    dependencies: ["0024_map_layout"]
+    description: "T4 the layer registry, and with it SDF-R5 - which had been PROPOSED since 2026-08-02 for one reason: there was no registry to require anything of. home_kinds is the highest-leverage column in the file, and R-29 is the whole argument: weather on a Region is 200 rows, weather on every node is 300000. Almost nothing wants a value on every node; scale is axis 1 and density only axis 2. NEVER EMPTY is a CHECK, because an empty set means every node - the 300000-row outcome arriving as an OMISSION rather than a decision - and every member must be a real MapKind, the same closed set 0024 accepts, with Vessel excluded for the same reason. EVERY POLICY COLUMN IS NOT NULL WITH NO DEFAULT, deliberately: SDF-A6 says omitting a field must be a compile error, and R-30 is why - 150 Unreal components doing literally nothing cost 1ms on console, 18 layers x 16384 nodes is 295000 attachments, so a default of tick is ~2000x over budget before any work. A column with a DEFAULT is that mistake with a database behind it. layer_id is blake3-128 of the fully-qualified name, derived rather than allocated and never reused (R-19: removing a plugin must not renumber the survivors or every recorded event log misroutes), and SDF-A12 retires rather than deletes, which is why retired_at exists. Scope is PER-RULESET per SDF-A30/WDS-A10, so ruleset_digest is in the primary key - two epochs of one reality may legitimately disagree about what layers exist."
+
+  - id: "0030_encounter"
+    version: 30
+    breaking: false
+    dependencies: ["0019_channels"]
+    description: "T9 the encounter closure, and with it SDF-R4 - the last of the nine. Doc 41 section 5 lists T9 as one of the two tables the sealed design does not merely LACK but has the WRONG SHAPE for. SPG-A19 states the rule: an Encounter is not an Arena. The Encounter ALWAYS exists during a fight; the Arena node is OPTIONAL, merely a space it may point at - Foundry VTT is the shipped proof, its Combat document holds scene as a FOREIGN KEY not ownership, and multiple Combats run on one Scene. carved_arena IS the whole branch: NULL is in place, a value is carved, everything else identical, which turns SPG-D1 hybrid siting into a one-line branch instead of two code paths. opening_frame carries the closure R-7 found missing: XCOM 2 replay works because a tactical mission is a CLOSED world, while an in-place fight in a shared Locale is an OPEN one, so SPG-D1 as written was NOT SATISFIABLE - in place means no separate SPACE, not no ISOLATION BOUNDARY. DELIBERATELY ABSENT: damage, initiative, turn order, action budgets, participants. Those are COMB_*s. This tier states that a boundary exists, where it sits and what crosses it; what happens inside is not the maps to design and a column here would decide it by accident."

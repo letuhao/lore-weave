@@ -1,0 +1,34 @@
+{
+ "_what": "Tools that say — in their OWN description or their OWN schema — that calling them costs money, and declare `_meta.paid: False`. SHRINK-ONLY: an entry may leave when the tool is fixed; nothing may be added. The gate is scripts/test_a_tool_that_says_it_costs_money_declares_it.py.",
+ "_why_it_matters": "`_required_kinds` only gains 'spend' when tool_paid() is true, so for these the SPEND gate is never consulted and the confirm card is never marked spend:True — the FE cannot render 'this costs money' as distinct from 'this modifies data'.",
+ "_the_decision_to_re_declare_them_is": "DQ-T60 — it changes how often authors are prompted for money.",
+ "measured": "2026-08-27",
+ "tools": [
+  "composition_authoring_run_create",
+  "composition_authoring_run_manage",
+  "translation_job_control",
+  "translation_retranslate_dirty",
+  "translation_start_extraction",
+  "translation_start_job"
+ ],
+ "why_each": {
+  "composition_authoring_run_create": [
+   "its schema takes ['budget_usd']"
+  ],
+  "composition_authoring_run_manage": [
+   "its schema takes ['budget_usd']"
+  ],
+  "translation_job_control": [
+   "its description says 'SPEND money'"
+  ],
+  "translation_retranslate_dirty": [
+   "its description says 'COSTS money'"
+  ],
+  "translation_start_extraction": [
+   "its description says 'COSTS money'"
+  ],
+  "translation_start_job": [
+   "its description says 'COSTS money'"
+  ]
+ }
+}

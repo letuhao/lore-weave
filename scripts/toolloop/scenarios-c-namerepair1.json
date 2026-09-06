@@ -1,0 +1,61 @@
+{
+ "_note": "D-THE-NAME-REPAIR-WORKS-AND-ITS-BENEFIT-IS-UNDEMONSTRATED. The A/B the row needs. Scenario copied VERBATIM. The PRE-FIX baseline is batch19-v5: 5 of 5 runs ended with the model asking the AUTHOR for ids ('I need the specific IDs ... rather than just their names'). This measures the same rate after the refusal repair. Nothing about the scenario is changed.",
+ "scenarios": [
+  {
+   "id": "composition-motif-link-edit",
+   "tool_under_test": "composition_motif_link_edit",
+   "expect_tool": "composition_motif_link_edit",
+   "intent": "write",
+   "tier": "A",
+   "scope": "user",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Link motifs — mark Throwaway Loop Alpha {run_word} as coming before Throwaway Loop Beta {run_word}.",
+   "prompt_source": "meta.synonyms['link motifs'] + ['set succession'], verbatim, plus both motif names so the endpoints are unambiguous.",
+   "needs_target": false,
+   "editor_context": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_motif_edit",
+     "args": {
+      "op": "create",
+      "code": "throwaway-loop-alpha-b19-{run_id}",
+      "name": "Throwaway Loop Alpha {run_word}",
+      "kind": "trope"
+     }
+    },
+    {
+     "tool": "composition_motif_edit",
+     "args": {
+      "op": "create",
+      "code": "throwaway-loop-beta-b19-{run_id}",
+      "name": "Throwaway Loop Beta {run_word}",
+      "kind": "trope"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif WHERE status='active' AND code IN ('throwaway-loop-alpha-b19-{run_id}','throwaway-loop-beta-b19-{run_id}')",
+     "expect": "2",
+     "why": "BOTH endpoints must exist and both must be the caller's own — the tool's description requires it ('both endpoints must be YOUR own motifs'). The model must resolve two NAMES to two ids, which is the resolution step that has failed repeatedly in this loop, and it must get them the right way round: `precedes` is directional.\n\n🔴 status='active' ADDED 2026-08-23. Without it this assertion counted ARCHIVED rows and passed while the tool could not see them: get_by_codes filters status='active', so the two names the prompt asks the model to link resolved to nothing, for fifteen runs. A fixture assertion that cannot see the same rows the tool sees is not an assertion."
+    },
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif_link WHERE from_motif_id IN (SELECT id FROM motif WHERE code LIKE 'throwaway-loop-%-b19-{run_id}') OR to_motif_id IN (SELECT id FROM motif WHERE code LIKE 'throwaway-loop-%-b19-{run_id}')",
+     "expect": "0",
+     "why": "SCOPED TO THE THROWAWAYS, not to the account's 63 existing links. My first draft asserted the global motif_link count and that is a fixture that fails for the wrong reason: motifs are ACCOUNT-scoped, every scenario in this batch seeds into the SAME library, and the runs are sequential — so any account-wide total drifts as the batch proceeds. Scoping to the seeded codes makes the assertion true regardless of what ran before it. The store diff the harness takes before/after each run is what catches an unexpected global change.\n\n🔴 status='active' ADDED 2026-08-23. Without it this assertion counted ARCHIVED rows and passed while the tool could not see them: get_by_codes filters status='active', so the two names the prompt asks the model to link resolved to nothing, for fifteen runs. A fixture assertion that cannot see the same rows the tool sees is not an assertion.\n\n🔴 THE LIKE WAS NONCED TOO, 2026-08-23. When the seed codes gained {run_id} this pattern stopped matching them, and an assertion that matches nothing and expects 0 passes for the wrong reason — it can never go red. A gate that cannot fail is not measuring the fixture, it is describing it."
+    }
+   ],
+   "falsifier": "REFUTED IF: an edge lands with NO confirm card, OR the model invents a from_motif_id/to_motif_id rather than resolving the two names, OR `kind` is not `precedes` when the user said 'coming before' (its enum spans composed_of|precedes|variant_of, and variant_of would assert the two motifs are versions of each other, which is a different claim), OR the DIRECTION is reversed — Alpha precedes Beta, not the other way round, and a reversed edge is a wrong fact quietly stored.",
+   "ship_audit": {
+    "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/c2-arc.json): called 4/5, left SUSPENDED on a Tier-A approval card on 2 of 5 runs, store unchanged.",
+    "absent_case": "EXERCISED by targeted probe (docs/eval/toolloop/2026-08-14/c2-ship-probe-opdispatch.txt), for the same op-dispatch reason: op=create with absent from/to motif ids is refused 'not found or not accessible'.",
+    "tenancy": "EXERCISED by targeted probe (docs/eval/toolloop/2026-08-14/c2-ship-probe-opdispatch.txt): foreign ids refuse IDENTICALLY."
+   },
+   "defects": [],
+   "_rerun_of": "batch19-v5"
+  }
+ ]
+}

@@ -1,0 +1,181 @@
+{
+  "_note": "Batch 7, derived in RUNBOOK order. The two world_map tools were UNTESTABLE until this cycle: their fixture is a chain (world_create -> world_map_create -> the tool), and a seed could not use a value an earlier seed returned. `{step:N:path}` closes that, and teardown now sweeps the world it minted — worlds are account-scoped and do not die with the book.",
+  "scenarios": [
+    {
+      "id": "jobs-list",
+      "tool_under_test": "jobs_list",
+      "expect_tool": "jobs_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What background jobs do I have running right now?",
+      "prompt_source": "_meta.synonyms['background jobs'] + ['running jobs'].",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "translation",
+            "method": "POST",
+            "path": "/v1/translation/books/{book_id}/jobs",
+            "json": {"chapter_ids": ["{chapter_id}"], "target_language": "vi"}
+          }
+        },
+        {
+          "wait": {
+            "db": "loreweave_translation",
+            "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}'",
+            "expect": "1", "timeout": 120, "poll": 2,
+            "why": "One KNOWN job must exist, so 'you have jobs running' is checkable against something rather than against whatever the account happened to hold."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "Exactly one job for THIS fixture. jobs_list is account-scoped so it will show others too; the seeded one is the row whose presence in the answer is attributable."
+        }
+      ],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports a job count while jobs_list was never called (the registry-vs-live shape), OR it claims no jobs are running when the seeded one is. NOTE: the account holds unrelated historical jobs, so the answer naming OTHER jobs is not a defect — only a missing or invented one is.",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no jobs must say so plainly.",
+        "tenancy": "OWED — user-scoped; another account's jobs must never appear."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-add-nodes",
+      "tool_under_test": "kg_add_nodes",
+      "expect_tool": "kg_add_nodes",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Add Aldric Vane to the knowledge graph as a character.",
+      "prompt_source": "_meta.synonyms['add characters to the knowledge graph'] + ['add a node'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "kg_project_create",
+          "args": {"name": "LOOP-THROWAWAY-kg7", "book_id": "{book_id}", "project_type": "book"}
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool reports a node added while Neo4j gains none, OR it creates the node WITHOUT a confirm card (Tier A). CONTROL, learned from batch 5: kg_propose_edge was never called there because the model went off to bootstrap the KG project first — this seed creates it, so a turn that STILL bootstraps is a finding about the seed not taking, not about the tool. Check the seed result before concluding.",
+      "ship_audit": {
+        "gate": "OWED — Tier A: the card must be raised, not bypassed.",
+        "absent_case": "OWED — mode='manual' without a name/kind must be refused, not create an unnamed node.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "story-search",
+      "tool_under_test": "story_search",
+      "expect_tool": "story_search",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Which chapter mentions the Obsidian Trench?",
+      "prompt_source": "_meta.synonyms['which chapter mentions'] — its own phrase, and pointedly NOT 'what do we know about', which is memory_search's job. story_search finds where something is WRITTEN; memory_search finds what is KNOWN.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_chapter_create",
+          "args": {
+            "book_id": "{book_id}",
+            "original_language": "en",
+            "title": "Chapter II — The Waterline",
+            "body": "The Obsidian Trench lay bare at low tide, a black seam in the mud. Aldric Vane walked it once and never spoke of what he found there."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO chapters, exactly ONE of which contains the phrase. With a single chapter, 'which chapter' has only one possible answer and a search that returned everything would look correct."
+        }
+      ],
+      "answer_expect": {
+        "all_of": ["Waterline"],
+        "why": "Only Chapter II contains the phrase. Naming Chapter I, or 'both', is the search failing to discriminate — which the two-chapter fixture exists to expose."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply names the wrong chapter or both, OR it answers from the chapter text being in context without story_search being called — that last is the tool being unnecessary on this fixture and must be recorded as such, not as a pass.",
+      "ship_audit": {
+        "empty_case": "OWED — a phrase that appears nowhere must return no hits and say so, not offer the nearest chapter.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-map-add-marker",
+      "tool_under_test": "world_map_add_marker",
+      "expect_tool": "world_map_add_marker",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+      "prompt_source": "_meta.synonyms['add pin'] + ['place marker']. The POSITION is described in the user's own words; the x/y the tool needs are derived by the model, never typed here.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {"name": "LOOP-THROWAWAY-ashfall", "description": "batch 7 map fixture"}
+        },
+        {
+          "tool": "world_map_create",
+          "args": {"world_id": "{step:0:world.world_id}", "name": "Ashfall"}
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool reports a marker placed while the map gains none, OR the marker's x/y fall outside the map's coordinate space, OR a Tier-A write lands with no confirm card. CONTROL: the model must find map_id itself (world_map_list) — a turn that never lists is a DISCOVERY failure, not a failure of this tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a map_id that does not exist must be refused.",
+        "tenancy": "OWED — another account's map must be refused."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-map-add-region",
+      "tool_under_test": "world_map_add_region",
+      "expect_tool": "world_map_add_region",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Draw an area on my Ashfall map covering the whole eastern half and call it The Trench.",
+      "prompt_source": "_meta.synonyms['draw area'] + ['add region']. The SHAPE is described in prose; the polygon is the model's to derive.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {"name": "LOOP-THROWAWAY-ashfall-r", "description": "batch 7 region fixture"}
+        },
+        {
+          "tool": "world_map_create",
+          "args": {"world_id": "{step:0:world.world_id}", "name": "Ashfall"}
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool reports a region added while the map gains none, OR the polygon is degenerate (fewer than 3 points, or all points identical) — a region that cannot enclose anything is the no-op-confirm shape already found in translation_start_extraction, and must be recorded as the same class.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a polygon with fewer than 3 points must be refused.",
+        "tenancy": "OWED — another account's map must be refused."
+      },
+      "defects": []
+    }
+  ]
+}

@@ -496,12 +496,23 @@ func (w *Worker) Process(
 
 	finishReason, _ := result["finish_reason"].(string)
 
-	// A clean transport result without generated content is retryable provider
-	// failure, never a completed job: downstream consumers must not have to
-	// guess whether an apparently successful job produced an answer.
+	// A call that produced NOTHING is not a success. The stream can end cleanly while the
+	// provider sent an empty body — a cold model still loading, a backend that answered 200
+	// with no choices — and this path used to record that as `completed` with no error_code
+	// and no finish_reason. Downstream then cannot tell "the model declined to say anything"
+	// from "the request never really ran", so it guesses: the diary distiller reported
+	// `model_no_output` and advised "a reasoning model? use a non-reasoning distill model"
+	// for a job whose real problem was an empty upstream response. A silent success is the
+	// worst of the three outcomes, because it is the only one nobody can act on.
 	if emptyCompletion(result, outputTokens) {
-		logger.Error("provider returned an empty completion — finalizing failed, not completed",
+		logger.Error("provider returned an EMPTY completion — finalizing FAILED, not completed",
 			"job_id", jobID.String(), "operation", operation)
+		// LLM_UPSTREAM_ERROR, not a new code: it is already in the llm-gateway contract, already
+		// mapped in the Python SDK's code→class table, and already on its transient-retry
+		// whitelist — which is the right classification here (a cold model that answered with an
+		// empty body will answer properly on the next attempt). A fresh `LLM_EMPTY_COMPLETION`
+		// would be an orphan no consumer knows how to handle, and would need the 5-place
+		// registration sync. The specificity belongs in the message.
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", result,
 			"LLM_UPSTREAM_ERROR",
 			"the provider returned an empty completion — no content and no tokens", finishReason)
@@ -511,36 +522,47 @@ func (w *Worker) Process(
 	w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "completed", result, "", "", finishReason)
 }
 
-// emptyCompletion reports whether a terminal chat result carries no output at all.
-// Non-chat results and tool-call payloads do not match this condition.
+// emptyCompletion reports whether a terminal CHAT result carries nothing at all.
+//
+// The distinction it draws is the load-bearing part, so it is deliberately narrow:
+//
+//   - a REASONING model that spends its budget thinking returns `output_tokens > 0` and a
+//     non-empty `reasoning_content` with empty `content`. That is a real, billable answer and
+//     a model-fit problem for the caller — it stays `completed`, exactly as before.
+//   - an EMPTY UPSTREAM RESPONSE returns no text, no reasoning, no finish_reason and zero
+//     output tokens. Nothing happened. That is a failure.
+//
+// Non-chat results (embeddings, reranks — a `listField` aggregator, no "messages") are never
+// judged here, and a message carrying any non-string payload (tool_calls, images) counts as
+// real output. A tool-call reply also sets `finish_reason: "tool_calls"`, so it exits early.
 func emptyCompletion(result map[string]any, outTok int) bool {
 	if outTok > 0 {
 		return false
 	}
-	if finishReason, _ := result["finish_reason"].(string); finishReason != "" {
+	if fr, _ := result["finish_reason"].(string); fr != "" {
 		return false
 	}
-	messages, ok := result["messages"].([]any)
-	if !ok || len(messages) == 0 {
-		return false
+	msgs, ok := result["messages"].([]any)
+	if !ok || len(msgs) == 0 {
+		return false // not chat-shaped — not this check's business
 	}
-	for _, message := range messages {
-		fields, ok := message.(map[string]any)
+	for _, m := range msgs {
+		mm, ok := m.(map[string]any)
 		if !ok {
 			return false
 		}
-		for key, value := range fields {
-			if key == "role" {
+		for k, v := range mm {
+			if k == "role" {
 				continue
 			}
-			if text, isString := value.(string); isString {
-				if strings.TrimSpace(text) != "" {
+			if s, isStr := v.(string); isStr {
+				if strings.TrimSpace(s) != "" {
 					return false
 				}
 				continue
 			}
-			if value != nil {
-				return false
+			if v != nil {
+				return false // a non-string payload IS output
 			}
 		}
 	}

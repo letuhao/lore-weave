@@ -19,8 +19,8 @@
   "mode": {
     "classic": "Классический",
     "classic_title": "Классический режим — сосредоточенное письмо",
-    "ai": "ИИ",
-    "ai_title": "Режим AI-ассистента — полный функционал"
+    "ai_title": "Режим AI-ассистента — полный функционал",
+    "ai": "ИИ"
   },
   "workmode": {
     "write": "Писать",
@@ -90,7 +90,6 @@
     "underline": "Подчеркнутый (Ctrl+U)",
     "inline_code": "Внутристрочный код",
     "link": "Ссылка",
-    "url_prompt": "URL:",
     "highlight": "Выделение (Ctrl+Shift+H)",
     "subscript": "Подстрочный",
     "superscript": "Надстрочный",
@@ -103,7 +102,8 @@
     "code_block": "Блок кода",
     "horizontal_rule": "Горизонтальная линия",
     "undo": "Отменить (Ctrl+Z)",
-    "redo": "Повторить (Ctrl+Shift+Z)"
+    "redo": "Повторить (Ctrl+Shift+Z)",
+    "url_prompt": "URL:"
   },
   "slash": {
     "paragraph": {

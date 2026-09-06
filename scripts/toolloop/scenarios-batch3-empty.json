@@ -1,0 +1,121 @@
+{
+  "scenarios": [
+    {
+      "id": "tool-load-empty",
+      "tool_under_test": "tool_load",
+      "expect_tool": "tool_load",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+      "prompt_source": "description (gateway-local, declares no synonyms). Its own text: 'Load the exact input schema(s) for one or more tools ... so you can call them correctly.'",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "ABSENT CASE — a book with one chapter and nothing else. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors rather than saying plainly there is nothing.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). NOT APPLICABLE by design: it loads TOOL SCHEMAS, which are identical for every caller and contain no user data. Recorded as such rather than as a pass.",
+        "gate": "Tier R, gateway-local."
+      },
+      "needs_prompt": true,
+      "editor_context": false,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the absent case must actually be absent"
+        }
+      ],
+      "answer_expect": null
+    },
+    {
+      "id": "kg-project-list-empty",
+      "tool_under_test": "kg_project_list",
+      "expect_tool": "kg_project_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Which knowledge projects do I have?",
+      "prompt_source": "_meta.synonyms['which projects do i have']",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "ABSENT CASE — a book with one chapter and nothing else. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors rather than saying plainly there is nothing.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). scope=user, so the boundary is the CALLER, not a book. Called as claude-test2: returned only that account's own projects and did NOT include the harness user's project id.",
+        "gate": "Tier R."
+      },
+      "editor_context": false,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the absent case must actually be absent"
+        }
+      ],
+      "answer_expect": null
+    },
+    {
+      "id": "kg-schema-read-empty",
+      "tool_under_test": "kg_schema_read",
+      "expect_tool": "kg_schema_read",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What kinds of relationships can I record between characters in this book?",
+      "prompt_source": "_meta.synonyms['what relationships can i use']",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "ABSENT CASE — a book with one chapter and nothing else. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors rather than saying plainly there is nothing.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). Project-scoped. Called as claude-test2 against the harness user's project: refused 'project not found'.",
+        "gate": "Tier R."
+      },
+      "editor_context": false,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the absent case must actually be absent"
+        }
+      ],
+      "answer_expect": null
+    },
+    {
+      "id": "composition-list-outline-empty",
+      "tool_under_test": "composition_list_outline",
+      "expect_tool": "composition_list_outline",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the outline I've planned for this book — what chapters and scenes are in it?",
+      "prompt_source": "_meta.synonyms['story structure']",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "ABSENT CASE — a book with one chapter and nothing else. REFUTED IF: the reply describes content that does not exist, or a read-intent turn changes the store, or the turn errors rather than saying plainly there is nothing.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). Project-scoped. Called as claude-test2 against the harness user's project: refused 'not found or not accessible', and the seeded node titled 'My Secret Chapter' was not disclosed.",
+        "gate": "Tier R."
+      },
+      "editor_context": true,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the absent case must actually be absent"
+        }
+      ],
+      "answer_expect": null
+    }
+  ]
+}

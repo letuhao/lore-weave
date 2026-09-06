@@ -12,7 +12,7 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     ENTITIES_DETAIL_REL_CAP,
     MergeEntitiesError,
     archive_entity,
@@ -23,7 +23,7 @@ from app.db.neo4j_repos.entities import (
     merge_entity,
     update_entity_fields,
 )
-from app.db.neo4j_repos.relations import create_relation
+from app.db.graph_repos.relations import create_relation
 
 
 @pytest_asyncio.fixture
@@ -1118,7 +1118,7 @@ async def test_merge_entities_is_atomic_on_mid_flight_failure(
     Assertion axes (3) — so a regression that moves ANY single step
     out of the tx is caught, not just step 6.
     """
-    from app.db.neo4j_repos import entities as _entities_mod
+    from app.db.graph_repos import entities as _entities_mod
 
     async with neo4j_driver.session() as session:
         source_ent = await merge_entity(

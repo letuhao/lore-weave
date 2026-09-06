@@ -14,9 +14,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from contextvars import ContextVar
 from collections import Counter
 import logging
 import re
+import time as _time  # CP-0.3 — dispatch latency; was a function-local import in _emit_chat_turn
 from dataclasses import dataclass
 from typing import AsyncGenerator
 from uuid import UUID, uuid4
@@ -46,6 +48,7 @@ from app.services.canon_capture import CaptureContext, maybe_capture_canon, pers
 from app.services.context_autodetect import resolve_context_pressure
 from app.services.entity_presence import EntityPresence, detect_entity_presence
 from app.services.injection_defense import neutralize_injection
+from app.services import instrument
 from app.services.reasoning_loop_detector import ReasoningLoopDetector
 from app.config import settings
 from app.db.suspended_runs import (
@@ -54,6 +57,10 @@ from app.db.suspended_runs import (
     save_suspended_run,
 )
 from app.db.tool_approvals import approve_tool, get_tool_decision, set_tool_decision
+from app.db.message_sequence import next_sequence_num
+from app.services.id_ledger import IdLedger
+from app.services.request_mood import HALT as HALT_MOOD
+from app.services.request_mood import request_mood, standing_grant_applies
 from app.db.conversation_search import (
     CONVERSATION_SEARCH_NAME,
     CONVERSATION_SEARCH_TOOL,
@@ -68,13 +75,8 @@ from app.db.pool import get_pool
 from app.db.session_blocks import project_story_state
 from app.models import ProviderCredentials
 from app.services.composer import build_composer_messages, is_composer_tool
-from app.services.frontend_tools import (
-    frontend_tool_def_by_name,
-    generic_frontend_tool_def,
-    is_browser_executed,
-    is_frontend_tool,
-    validate_frontend_tool_args,
-)
+from app.services.browser_tools import is_browser_executed
+from app.services.tool_surface import answerable_tools
 from app.services.tool_discovery import (
     ALWAYS_ON_CORE_NAMES,
     FIND_TOOLS_DEFAULT_LIMIT,
@@ -84,11 +86,16 @@ from app.services.tool_discovery import (
     TOOL_LIST_TOOL,
     TOOL_LOAD_NAME,
     TOOL_LOAD_TOOL,
+    declared_lane,
     find_tools_result_async,
+    is_legacy_tool,
     group_directory_text,
+    tool_parameters,
     hot_tool_names,
     provider_availability,
     strip_tool_meta,
+    tool_name,
+    tool_superseded_by,
     surface_hot_domains,
     tool_async,
     tool_list_result,
@@ -520,6 +527,18 @@ BLANK_TOOL_ARGS_CAP = 2
 # stranded every async step in the catalogue. So a poll that returns "still running" → "done"
 # never trips this; only a read that keeps handing back the byte-identical answer does.
 REPEAT_READ_CAP = 2
+# ...and once it fires, SHORT-CIRCUITING THE DISPATCH IS NOT ENOUGH. Measured across the whole
+# corpus, with tool_list's separate F18 breaker excluded so the denominator is this breaker's own:
+# 598 calls blocked, across 40 sessions and 10 tools — and ALL 598 report "3 times", not one says
+# 4, because the count came from the DISPATCH ledger a blocked call never advances. One real
+# product turn ("The Tidewright", 2026-07-21) emitted 194 blocked `book_get` calls over 35
+# iterations, every one of them claiming it was the 3rd. The model reads "STOP calling it" and calls it again, which is the exact failure the
+# repeated-FAILURE breaker already answered by taking the tool OFF THE WIRE, and the exact failure
+# F18 records for tool_list ("returning an ERROR framed the repeat as a failure the model 'fixes'
+# by retrying HARDER, 28→311 calls"). This breaker was the one that never got the escalation its
+# own comment claimed it had. After this many BLOCKED repeats the tool is de-advertised for the
+# rest of the turn — the steer gets two chances first, because a model that listens listens early.
+REPEAT_READ_DEADVERTISE_CAP = 2
 
 # Idempotent-no-op WRITE breaker cap — how many times a Tier-A write may return a
 # `created: False` (made-nothing) result for the SAME (tool, args) before a further
@@ -571,6 +590,49 @@ ONESHOT_CREATE_TOOLS: dict[str, str] = {"kg_project_create": "project_id"}
 TOOL_LIST_CATEGORY_CAP = 1   # 1 legit list per category; the 2nd (same category) is the loop
 TOOL_LIST_TOTAL_CAP = 5      # total tool_list calls this turn before it is de-advertised
 
+# D-RAIL-PINNED-TURN-NEVER-COMPLETES — how many byte-identical (tool, arguments) calls one
+# response stream may emit before the pass is cut. Every cap above it acts on a DISPATCHED call;
+# this one acts on the STREAM, which is the only place a turn that never finishes can be reached.
+# 8 is p99.9 of identical repeats within a pass over 16,554 live groups (p99 = 3, max = 540). The
+# 43 groups between 5 and 8 are ordinary reads and survive; every one of the 16 above 8 is a
+# repeat pathology. Raising this does not make the platform more capable — it lengthens the hang.
+IDENTICAL_TOOL_CALL_CAP = 8
+
+
+# ── T7-D1: `include_deprecated` must default the way the model was TOLD it defaults ──
+# `tool_list` is dispatched CONSUMER-LOCALLY, right here — the ai-gateway's `handleToolList`
+# never runs for a chat turn. Both advertised copies of the schema say `default: false`, with
+# prose the model reads directly: "omit to see only the CURRENT tools; set true only when
+# migrating off an old tool name." This dispatch defaulted it to True, so omitting the arg
+# returned the opposite of the contract.
+#
+# Measured live 2026-08-13, session 019ff9c5: the model omitted the arg and got 307 tools of
+# which 116 were DEPRECATED - 38% of the primary discovery surface was the shrunk-away legacy
+# catalog (`book_get` -> `book_read`, `composition_arc_create` -> `composition_arc_edit`, ...),
+# handed to a weak model as "the complete list".
+#
+# This is K22 inverted. K22 found the advertised default (True) disagreeing with the handler
+# and corrected the ADVERTISEMENT to False - but pointed its regression guard at ai-gateway's
+# handler, so the half that actually executes kept its True and nothing went red for three
+# weeks.
+#
+# A non-boolean is coerced rather than silently dropped: with the default now False, dropping a
+# string "true" would re-create the same lie in the other direction, and that string is exactly
+# what the one caller the prose invites - an agent migrating off an old tool name - is most
+# likely to send.
+def _tool_list_include_deprecated(args_obj: dict) -> bool:
+    """The wire default for `tool_list(include_deprecated=...)`: FALSE, per the advertised schema."""
+    raw = args_obj.get("include_deprecated")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        lowered = raw.strip().lower()
+        if lowered in ("true", "yes", "1"):
+            return True
+        if lowered in ("false", "no", "0"):
+            return False
+    return False
+
 # ── D-REASONING-LOOP: the streaming reasoning-channel loop breaker ────────────
 # Every breaker above fires in the TOOL-CALL loop, on an EMITTED call. A model
 # that thrashes in the *reasoning stream* WITHOUT emitting a call (live incident:
@@ -580,6 +642,16 @@ TOOL_LIST_TOTAL_CAP = 5      # total tool_list calls this turn before it is de-a
 # abort the pass, inject a steer directive, force reasoning off for the retry,
 # and cap the interventions so a persistent loop ends HONESTLY, never a hang.
 REASONING_LOOP_INTERVENTION_CAP = 2
+
+# D-SILENT-TURN-NO-CARD-NO-PROSE — the SAME shape as the loop above, degenerate in ONE pass
+# rather than across several, which is why ReasoningLoopDetector never trips on it: the model
+# emits reasoning-channel content and no call and no prose. Measured, that content is exactly
+# 12 characters, the literal `<tool_call|>`, and the correlation is clean — every turn producing
+# PROSE has reasoning_length 0; every silent finish_reason='stop' turn has reasoning_length 12.
+# So the remedy already chosen above (abort, steer, reasoning OFF for the retry, capped) targets
+# exactly this turn's correlate. ONE intervention, not two: a second degenerate pass in the same
+# turn is evidence the retry is not working, and the honest end is to stop rather than churn.
+DEGENERATE_PASS_INTERVENTION_CAP = 1
 
 # P-1 step-runner — the per-turn cap on how many times the server re-drives the rail after the
 # model stops. The vision-to-book rail is 11 steps and a few are already done on the assent
@@ -663,6 +735,27 @@ class _ProbeAccessDenied(Exception):
 # toward this streak.
 _MISSING_REQUIRED_ARGS_MARKER = "required: missing properties"
 
+#: CP-5.4 · the two frontend-validation refusals kept APART, because they are different defects
+#: with different fixes. This matches the message `validate_frontend_tool_args` emits for an id
+#: field that failed its UUID pattern.
+#:
+#: 🔴 **NAMED FOR WHAT THIS SITE CAN ACTUALLY KNOW.** It knows one thing: an id-shaped argument is
+#: not a UUID, so it did not come from a read. It CANNOT distinguish an invented placeholder from a
+#: human NAME the resolver could have substituted — and calling the kind `invented_identifier`
+#: would assert the difference rather than observe it. Measured over all 94 non-UUID `entity_id`
+#: values in the corpus: **91 contain "placeholder", 3 are `"0"`, and ZERO are names** — so on
+#: today's data every one is genuinely unobtainable, and binding CP-5.3's resolver to this tool
+#: would have repaired **none** of them. That is why this row types the outcome rather than
+#: reaching for resolution.
+# _UNRESOLVED_ID_RE REMOVED 2026-09-03 (V6). It classified a frontend-validation refusal as
+# `unresolved_identifier` — a kind that no longer occurs, because its ONLY producer was the v1
+# intercept. Deleting that branch left this regex defined and never read, which is a dead
+# mechanism of exactly the kind this loop keeps finding, so it goes with its consumer.
+#
+# The input class it flagged (a name where a UUID was required) is handled BETTER on the
+# surviving path: CP-5.3 RESOLVES the name to an id rather than classifying the refusal. The
+# kind appeared in no contract — only in this file, its test, and the falsifier anchors.
+
 # D-CONFIRM-CARD-NUDGE (dogfood 2026-07-21) — a Tier-W/S propose tool returns a
 # SERVER-BUILT confirm card ({confirm_token, descriptor, …}); the FE renders it with
 # Confirm/Cancel and the human confirms via the domain endpoint — the model does NOT
@@ -673,6 +766,24 @@ _MISSING_REQUIRED_ARGS_MARKER = "required: missing properties"
 # confirm" line and stops. (A prompt guard-line alone has failed weak-model QC before —
 # so if this does not hold live, the deterministic follow-up is to also stop advertising
 # the just-fired propose tool on the immediately-following pass.)
+#: DQ-T54, answered by the owner 2026-08-28: "APPEND A DETERMINISTIC SERVER-SIDE LINE to a turn
+#: suspended on a Tier-A card." The owner declined (b) an extra tool-free model pass and (c)
+#: leaving it to the FE card.
+#:
+#: WHY THE BLUNTNESS IS WORTH IT: when a turn SUSPENDS the model has already written its reply
+#: and cannot be asked again, so it can and does claim the work is done. Caught live 2026-08-28
+#: in c-armrefusal2 — "I've updated Aldric Vane's occupation to cartographer" while the card sat
+#: unclicked and nothing was written. A server-side line cannot itself be wrong, and it
+#: contradicts the false claim inside the same message the author is reading.
+#:
+#: It is the twin of `_CONFIRM_CARD_STOP_NOTE` one path over. That note steers the MODEL on the
+#: Tier-W/S path, where the turn continues and can still be told; this path returns without a
+#: further pass, so the only lever left is what the author reads.
+_NOTHING_SAVED_YET_LINE = (
+    "\n\nNothing has been saved yet; confirm the card above to apply it."
+)
+
+
 _CONFIRM_CARD_STOP_NOTE = (
     "\n\n[SYSTEM — CONFIRMATION PENDING: A confirmation card for this change is now shown "
     "to the user with the exact edit, awaiting their approval. Nothing is saved until they "
@@ -793,6 +904,35 @@ _LEAK_CALL_HEAD_RE = re.compile(
 
 def _has_leak_marker(text: str) -> bool:
     return bool(_LEAK_MARKER_ANY_RE.search(text))
+
+
+def _is_bare_toolcall_marker_only(text: str, reasoning: str) -> bool:
+    """D-SILENT-TURN-NO-CARD-NO-PROSE — is this pass's ENTIRE output one or more
+    bare tool-call control tokens and nothing else?
+
+    Every silent `finish_reason='stop'` turn in the recorded population carries
+    exactly 12 characters of reasoning, and that content is `<tool_call|>` — the
+    closing delimiter, arriving alone. The model abandoned the structured channel
+    the way D-TOOLCALL-GEMMA-TOKEN-LEAK describes, but emitted no call to salvage:
+    `_extract_leaked_tool_calls` returns [], the pass is treated as "the model
+    stopped without a tool call", and the turn ends with nothing for the author.
+
+    The two channels are read TOGETHER because which one the token lands in is not
+    a property of the failure — `_split_safe_emit` holds back only the OPENING
+    token `<|tool_call>`, so a leaked closing delimiter flushes straight through to
+    whichever channel was open.
+
+    PRECISION IS THE HALF THAT MATTERS. Firing on a pass that genuinely said
+    something would convert working turns into failures, which is a worse defect
+    than the one this names. So it requires BOTH that a marker was present and
+    that removing every marker leaves nothing but whitespace: prose carrying a
+    marker keeps its prose and is not degenerate, and a pass that is simply empty
+    never leaked anything and is a different failure that must not be counted
+    under this one."""
+    joined = "\n".join((text or "", reasoning or ""))
+    if not _LEAK_MARKER_ANY_RE.search(joined):
+        return False
+    return not _LEAK_MARKER_ANY_RE.sub("", joined).strip()
 
 
 def _degemmify_tool_args(raw: str) -> str:
@@ -941,8 +1081,12 @@ def _narrated_uncalled_writes(
     * the token is a REAL tool in this turn's catalog (not a plausible-looking invention —
       an invented name is a different bug with its own honest message at the dispatch
       chokepoint, and must not be confused with this one);
-    * its tier is a WRITE (A/W/S). A read named-but-not-called is harmless: nothing was
-      claimed to have changed, so there is nothing for the author to go and not find;
+    * its tier is a WRITE (A/W/S). A read named-but-not-called is a DIFFERENT failure with a
+      different remedy, and it is NOT harmless — this docstring used to say it was ("nothing
+      was claimed to have changed, so there is nothing for the author to go and not find"),
+      and DQ-T30 measured the harm directly: the store is untouched and the ANSWER is false.
+      It is handled by `_unanswered_data_question_reads` below, keyed on the request rather
+      than on the prose;
     * it is absent from `attempted` — successes AND failures both count as attempted,
       because a model that TRIED and got a real error already has honest feedback to
       report, and nudging it there would just be noise.
@@ -952,6 +1096,472 @@ def _narrated_uncalled_writes(
         nm for nm in named & set(catalog_index)
         if nm not in attempted and tool_tier(catalog_index[nm]) in ("A", "W", "S")
     )
+
+
+# DQ-T30 — one nudge per turn, for exactly the reason the write twin above is capped at one:
+# a guard that exists to stop a model answering without looking must never itself become the
+# loop it prevents.
+DATA_QUESTION_NUDGE_CAP = 1
+
+
+def _unanswered_data_question_reads(
+    request_text: str | None, *, catalog_index: dict, attempted: set[str],
+) -> list[str]:
+    """The READ tools whose OWN declared vocabulary answers THIS request, when the turn called
+    NONE of them — i.e. the model is about to answer a data question from conversation memory.
+
+    🔴 THE READ-SIDE TWIN OF D-NARRATED-WRITE, AND THE HARM IS THE ANSWER RATHER THAN THE STORE.
+    `_narrated_uncalled_writes` catches "claimed a write it never made". This catches "stated the
+    data without reading it". The store is untouched, so every write-side guard is silent by
+    construction — and the author is told something false about their own book.
+
+    MEASURED 2026-08-13 (session 019ff929, book 019ff8f5), with TWO active canon_rule rows in the
+    store. Turn A, rail-driven: the tool ran, the answer was right. Turn B, the rail now complete
+    and correctly not driving: ZERO tool calls, answered *"one rule"* — the count from the earlier
+    turn. Turn C, told a rule had been added: ZERO tool calls, claimed *"I have checked your
+    consistency rules again"*, and INVENTED a plausible second rule paraphrased out of the chapter
+    prose. Conversation memory went stale the moment the store changed outside the chat, and
+    nothing was accountable for re-reading it.
+
+    Owner's decision on DQ-T30, 2026-08-14: option (c) — **a question naming stored data must be
+    answered from a tool call in THIS turn, independent of any rail.** So this guard deliberately
+    takes NO rail input. The two rail-scoped options were rejected precisely because a completed
+    rail is the case that fails: it is right for a finished rail to stop driving, and wrong for
+    the turn to stop reading.
+
+    Mechanical, with no NLP and no tense-guessing — the four conditions are:
+
+    * the request matches the tool's OWN declared synonyms (`answerable_tools`, the same signal
+      R1 already trusts to decide the surface). The platform's machine-readable statement that
+      this request names stored data; never a keyword list maintained here, which would rot as
+      domains are added;
+    * the tool's tier is READ. A write matched by the same words is the sister guard's business,
+      and nudging a write from a question would be this loop's own worst defect;
+    * NONE of those reads is in `attempted` — successes AND failures both count, exactly as the
+      sister guard counts them: a model that TRIED and got a real error already has honest
+      feedback, and one that read ANY of the answering tools has satisfied (c);
+    🔴 THIS DELIBERATELY DOES NOT REQUIRE THE TOOL TO BE ON THE WIRE, AND THE FIRST VERSION DID.
+    MEASURED 2026-08-14 on the fixture this docstring describes: turn 1 called
+    `composition_list_canon_rules` and answered correctly; the RE-ASK did not, and
+    `advertised_tools` for that turn shows the tool was NOT advertised — so the guard fired, told
+    the model to call a tool that was not on its surface, and the model took the honest-disclosure
+    branch instead ("I did not re-read the book on this turn, so my answer may be stale") while
+    thrashing through twelve OTHER composition tools hunting for it.
+
+    That is the same lesson the sister guard already carries in its own words — *"a directive to
+    'call it now' is empty if the tool is not on the wire, and OFF-SURFACE is the usual reason the
+    model narrated instead of calling in the first place"* — so the CALL SITE arms what it names,
+    exactly as the sister guard does. Requiring the tool to be pre-surfaced made the guard silent
+    in precisely the case it exists for.
+
+    An answerable read that is withheld is STILL a surfacing defect with its own row (R1's job,
+    and the v1/v2 incidents). Arming is a repair at the answer boundary, not a substitute for
+    putting the tool on the wire.
+    """
+    if not request_text or not catalog_index:
+        return []
+    reads = {
+        nm for nm in answerable_tools(request_text, list(catalog_index.values()))
+        if nm in catalog_index and tool_tier(catalog_index[nm]) == "R"
+    }
+    # ANY answering read having run satisfies (c) — the question was served from this turn.
+    if not reads or (reads & attempted):
+        return []
+    return sorted(reads)
+
+
+#: A request that OPENS with an interrogative, or ends in a question mark, is a QUESTION. The
+#: read-side guard's docstring states the danger outright — "nudging a write from a question would
+#: be this loop's own worst defect" — so this is the discriminator that keeps the two apart, and it
+#: is mechanical rather than a judgement about intent.
+_QUESTION_OPENER_RE = re.compile(
+    r"^\s*(?:what|which|how|when|where|who|whose|why|is|are|was|were|do|does|did|can|could|"
+    r"should|would|will|has|have|had|any|show me (?:what|which|how))\b",
+    re.I,
+)
+
+
+def _instruction_names_a_recorder(
+    request_text: str | None, *, catalog_index: dict, attempted: set[str],
+    reply_text: str, min_reply_chars: int = 400,
+) -> list[str]:
+    """The RECORDING tools this INSTRUCTION names, when the turn called none and answered in prose.
+
+    🔴 P6-DESCRIBE-NOT-RECORD. "When the request names an artefact the platform can STORE, prose
+    about it is not an answer." Measured 2026-08-23, K=5, zero errored runs, the same shape every
+    run: asked "Make the opening line of this chapter darker — SHOW ME THE CHANGE before it goes
+    in", the model called `book_read` and then wrote THREE ALTERNATIVE REWRITES OUT IN THE REPLY.
+    `propose_edit` declares "show me the change" verbatim and `answerable_tools` returns EXACTLY
+    that one tool for the sentence. Nothing else was called. What beat the tool was the model's own
+    prose — always available, always cheaper, and it looks like an answer.
+
+    WHY THIS IS NOT THE READ GUARD WITH THE TIER FLIPPED. `_unanswered_data_question_reads` says in
+    as many words that nudging a WRITE from a QUESTION would be this loop's own worst defect, and
+    it is right. The separation here is the sentence's own grammar: this fires only on an
+    INSTRUCTION — no trailing question mark, no interrogative opener. "How should I make this
+    darker?" is a question and is none of this guard's business; "Make it darker and show me the
+    change" is an instruction naming a tool that exists to record exactly that.
+
+    THE FOUR CONDITIONS, all mechanical:
+      * the request matches the tool's OWN declared synonyms (`answerable_tools`), the same signal
+        R1 trusts to decide the surface — never a keyword list maintained here;
+      * that tool's tier is A or W, i.e. it RECORDS something;
+      * the turn attempted NOTHING — successes and failures both count, exactly as the sibling
+        guards count them, because a model that tried and got a real error has honest feedback;
+      * the reply is long enough to BE the artefact. A short refusal or a clarifying sentence is
+        not "prose instead of the record", and without this floor every brief reply on an
+        instruction turn would read as this defect.
+
+    IT RETURNS NAMES OR AN EMPTY LIST and asserts nothing about intent — the same posture as
+    `_rail_write_step_stalled`, and for the same reason.
+    """
+    if not request_text or not catalog_index:
+        return []
+    if attempted:
+        return []
+    body = (reply_text or "").strip()
+    if len(body) < min_reply_chars:
+        return []
+    q = request_text.strip()
+    if q.endswith("?") or _QUESTION_OPENER_RE.search(q):
+        return []
+    names = [
+        nm for nm in answerable_tools(request_text, list(catalog_index.values()))
+        if nm in catalog_index and tool_tier(catalog_index[nm]) in ("A", "W")
+    ]
+    return sorted(names)
+
+#: A catalog name must be at least this long, and contain an underscore, before a literal
+#: substring match counts as "the user named this tool". Every LoreWeave tool name is
+#: snake_case (`composition_list_outline`, `kg_add_nodes`), so this cannot fire on ordinary
+#: prose — and a false positive here would silence the rail for a turn, so it is worth the
+#: two conditions rather than a bare `in`.
+_NAMED_TOOL_MIN_LEN = 6
+
+
+def _refusal_precondition_met_but_never_retried(
+    pending: dict[str, str], succeeded,
+) -> list[str]:
+    """Writes this turn refused and never called again — either because the prerequisite the
+    refusal named has since SUCCEEDED (F1), or because there was none to wait for (F1b).
+    Both measured live, 2026-09-04.
+
+    🔴 THE TURN THAT LOSES A CHAPTER AND IS HONEST ABOUT EVERYTHING ELSE. An author asked for
+    Chapter One. The model wrote ~2000 words into the reply, called `book_chapter_save_draft`,
+    and got the correct refusal *"this book has no chapters yet — create one first with
+    book_chapter_create"*. The seam armed `book_chapter_create`, injected *"Call them to clear
+    this, then retry"*, the model called it — and the turn ENDED. The book held a chapter of 0
+    words whose only revision was that create's own 64-byte empty seed, while the novel sat in a
+    chat bubble the author had to notice for themselves.
+
+    🔴 WHY NONE OF THE OTHER SEVEN SEES IT, which is the whole reason this exists:
+
+        _claimed_an_effect_without_acting  the turn was HONEST. It claimed nothing.
+        _asked_instead_of_acting           it did not ask in prose. It used the approval card.
+        _instruction_names_a_recorder      a recorder WAS called; it was refused, not skipped.
+        _rail_write_step_stalled           that fires when the turn called NOTHING. It called six.
+
+    **A turn silent about a write it abandoned is the case none of them cover.** The failure is
+    not a lie and not a refusal to act — it is stopping one call short, after being told exactly
+    which call, and saying nothing about it.
+
+    ⚠️ THE PREREQUISITE MUST HAVE SUCCEEDED — when there IS one. If it failed, the retry would
+    fail too, and nagging for it would be noise on a turn already carrying a real error the
+    author needs to read.
+
+    ⚠️ AN EMPTY PREREQUISITE IS THE F1b CASE AND IS REPORTED UNCONDITIONALLY. Row V, 2026-09-04,
+    with F1 already deployed: the model called `book_chapter_create` (ok), then
+    `book_chapter_save_draft` WITHOUT its `body`, and the turn ended — chapter created, 0 words,
+    prose in the reply. F1 was silent and RIGHTLY so, because a missing-argument refusal names no
+    prerequisite, so nothing armed and this dict stayed empty. **The blind spot was one step
+    over.** A failed WRITE that is never retried loses the work whatever the reason it failed, so
+    the missing-argument seam now records the tool with an empty prerequisite, meaning "nothing
+    to wait for". Writes only: a failed READ the model moves on from is ordinary.
+
+    ⚠️ "NOT RETRIED" IS THE DICT ITSELF, and a second parameter for it would have been worse
+    than redundant — it would have been WRONG. The first draft took `attempted_after` and was
+    passed `turn_attempted`, which contains the refused tool's own FIRST call: `refused not in
+    retried` was therefore false on the exact shape this guard exists for, and it could never
+    have fired. `refusal_pending` is popped the moment the tool is called again, so an entry
+    surviving to here already means no retry — including a retry that failed a second time,
+    which clears it too and is deliberately none of this guard's business.
+
+    Returns the refused tool names, in a stable order, so the caller's message can name them.
+    """
+    if not pending:
+        return []
+    # `set(Counter)` yields its KEYS, and a plain set/iterable works too — the call site passes a
+    # Counter and a future one will reach for a set; failing on that would be a trap.
+    done = set(succeeded or ())
+    # An EMPTY prerequisite means "nothing to wait for — this write simply failed" (F1b). It is
+    # reported unconditionally: there is no arrival to wait for, and the work is already lost.
+    return sorted(
+        refused for refused, prereq in pending.items()
+        if not prereq or prereq in done
+    )
+
+
+
+def _tools_named_in_request(text: str | None, catalog_index: dict) -> frozenset[str]:
+    """The catalog tools the user named LITERALLY in their message.
+
+    The deterministic counterpart to `user_abandoned_rail`: a literal match, no inference. It
+    is the signal that a turn is a DISCOVERY turn — 281 of this deploy's 315 tools do not fit
+    the hot seed and are reached only by the model choosing tool_list/tool_load, and a rail
+    directive replaces that choice with its own step.
+
+    MEASURED 2026-08-13, session 019ff929: "Load the tool composition_list_outline by name,
+    then use it to show me the outline of this book." — tool_load advertised in all six
+    passes, called zero times, while a stale `build-a-book` rail drove plan_propose_spec four
+    times. When the user has named the tool themselves there is nothing left to recover.
+    """
+    if not text or not catalog_index:
+        return frozenset()
+    # 🔴 NO `.lower()` ON THE TOOL NAME, and it is not a style choice. `language-bias-gate`
+    # (ML-2) flags a bare `.lower()` on a name-shaped variable because a PERSON's name needs
+    # the NFKC + CJK spine. A TOOL name is not that: it is an ASCII snake_case identifier —
+    # measured 2026-09-04, 317 of 317 in `contracts/tool-names.json` are already lowercase and
+    # none carries a capital — so the call was a no-op standing where a real defect looks
+    # identical. Dropping it keeps the behaviour and stops this line spending the gate's
+    # attention. The TEXT side is still folded, which is where the user's own writing arrives.
+    # If a tool name ever needs folding, the catalogue is the place, not this call site.
+    low = text.lower()
+    return frozenset(
+        name for name in catalog_index
+        if len(name) >= _NAMED_TOOL_MIN_LEN and "_" in name and name in low
+    )
+
+
+# P2-FABRICATED-WRITE — the shape neither guard above can see.
+#
+# 🔴 THE MEASURED INSTANCE, batch 23, `plan_keep_material`, 4 of 5 runs. The tool was not
+# advertised (surfaced 0/5), the model called NOTHING (`called_tools == []`), and it answered:
+#
+#     "I've updated the plan to include the new details while ensuring all the existing
+#      material we've established remains intact. Your story foundation is now fully updated."
+#
+# The store is unchanged. The author is told their plan was updated when it was not.
+#
+# `_narrated_uncalled_writes` structurally cannot catch it: that guard keys on a snake_case TOOL
+# NAME in prose, and here the model names no tool at all — it reports only the OUTCOME.
+# `_unanswered_data_question_reads` keys on the REQUEST matching a read tool's vocabulary, and
+# this is a write.
+#
+# CALIBRATED ON THE RECORDED CORPUS, NOT ON INTUITION — 2586 recorded turns, per the defect's own
+# instruction that "a detector for 'claims an outcome without acting' is not a name match; it
+# needs care and a control". Three candidates were scored against 60 hand-labelled zero-call
+# turns; the two rejected ones are named so the choice can be re-checked rather than trusted:
+#
+#     claim-only                          precision 0.86  recall 1.00   (fired on a REFUSAL:
+#                                                                        "a fact that I haven't
+#                                                                         actually recorded")
+#     claim AND no refusal   <-- CHOSEN   precision 1.00  recall 1.00
+#     ...minus reasoning-scoped           precision 1.00  recall 0.83   (missed "I've cleared
+#                                                                        that from my memory")
+#
+# On the guard's ACTUAL population — all 89 recorded zero-call turns — it fires on exactly 8,
+# and all 8 are real: four are the `plan_keep_material` instance above, four are `memory_forget`
+# claiming a fact was forgotten with nothing recorded. ZERO false positives across the other 81,
+# which include 48 honest refusals ("I cannot cancel ... there are no active jobs").
+#
+# WHAT MAKES IT SAFE IS THE ZERO-CALL GATE, NOT THE PHRASE. The same phrasing appears in 499 of
+# the 2497 turns that DID call something — it is ordinary language for reporting real work, and
+# this guard never runs there.
+#
+# TWO OF THE EIGHT ARE BORDERLINE and are recorded as such rather than counted clean: "I have
+# cleared that from my immediate reasoning" is honest about its scope. It still tells an author
+# who asked to forget a STORED fact that a forget happened, so a nudge is right — but it is a
+# weaker instance than the other six and should not be cited as proof of the guard's precision.
+#: 🔴 ACKNOWLEDGING IS NOT ACTING, and the first version could not tell the difference.
+#: `\w+ed` matched "I have NOTED your instruction to stop the translation" — a conversational
+#: acknowledgement in a turn that had honestly reported an error one sentence earlier — and the
+#: guard called it a narrated write. Found 2026-08-26 when a new batch (c-cancel1) entered the
+#: corpus and the calibration test went red on a THIRD tool, which is exactly what that test is
+#: for: it asserts WHICH tools fire, not how many, so new evidence cannot be absorbed silently.
+#:
+#: Measured over the whole 2656-turn corpus before shipping: 9 fires on 3 tools -> 8 fires on 2,
+#: i.e. the one false positive removed and every true positive kept. The excluded verbs are all
+#: ones that describe RECEIVING information rather than changing anything.
+_CLAIMED_EFFECT_ACK = r"(?:noted|understood|reviewed|read|seen|heard|considered|checked|observed|noticed)"
+_CLAIMED_EFFECT_RE = re.compile(
+    r"\b(?:i've|i have)\s+(?:already\s+)?"
+    rf"(?!{_CLAIMED_EFFECT_ACK}\b)"
+    r"(?:\w+ed|forgotten|done|made|set|put|kept|left)\b",
+    re.I,
+)
+#: Any refusal marker anywhere in the answer disqualifies it. Deliberately whole-answer rather
+#: than sentence-scoped: the one false positive the looser candidate produced was a refusal whose
+#: NEGATION sat in a different clause from the verb ("I cannot 'forget' a fact that I haven't
+#: actually recorded"), and sentence-splitting that reliably is a harder problem than this guard
+#: needs to solve. Erring toward silence is correct here — a missed nudge costs one false
+#: sentence; a wrongly-nudged honest refusal teaches the model to stop refusing.
+_REFUSAL_MARKER_RE = re.compile(
+    r"\b(?:i cannot|i can't|i can not|can't|cannot|i'm sorry|i am sorry|unable to)\b", re.I,
+)
+
+
+def _claimed_an_effect_without_acting(text: str, *, attempted: set[str]) -> bool:
+    """Did this turn assert a completed change while calling NOTHING at all?
+
+    `attempted` counts successes AND failures, exactly as `_narrated_uncalled_writes` does: a
+    model that TRIED and got a real error has honest feedback to report and must not be nudged.
+    Requiring it to be EMPTY — rather than "made no WRITE call" — is what the measurement
+    supports, and it is the conservative half: a turn that called a read and then over-claimed is
+    a real defect this does NOT cover, and is left for a fix with its own evidence.
+    """
+    if attempted:
+        return False
+    body = text or ""
+    if _REFUSAL_MARKER_RE.search(body):
+        return False
+    return bool(_CLAIMED_EFFECT_RE.search(body))
+
+
+#: The phrasing a turn uses to ask for permission it was already given. Deliberately narrow and
+#: END-ANCHORED: a mid-reply "would you like me to also add X?" offers EXTRA work and is not this
+#: defect. Measured on plan_bootstrap_apply, K=5, zero errored runs — every reply ended this way,
+#: e.g. "Would you like me to go ahead and create these chapters so we can start writing?"
+_OFFER_TO_ACT_RE = re.compile(
+    r"(?:would you like me to|shall i\b|do you want me to|should i (?:go ahead|proceed)|"
+    r"want me to|let me know if you(?:'d|r| would) like me to)"
+    r"[^.?!]{0,160}\?\s*$",
+    re.I,
+)
+
+
+def _asked_instead_of_acting(
+    text: str, *, attempted: set[str], succeeded, catalog_index: dict,
+    emitters: dict, advertised: set[str] | None = None,
+) -> str | None:
+    """The advertised WRITE this turn was EQUIPPED to call, and asked about in prose instead.
+
+    🔴 P16-PROSE-CONFIRMATION. The request IS the instruction, the turn already holds every
+    argument the write requires, and it ends by asking whether to proceed. The platform HAS a
+    consent mechanism for exactly this — the approval card — and prose asks for consent in a
+    channel that records nothing and gates nothing. The author answers a question they already
+    answered, and no card ever appears.
+
+    MEASURED K=5, zero errored runs, identical every time: composition_package_tree ->
+    plan_bootstrap_propose x2 -> composition_list_outline, a real `proposal_id` in hand, and a
+    reply ending "Would you like me to go ahead and create these chapters?". The request had been
+    "Create the chapters — make the plan real for this book".
+
+    WHY IT CANNOT REUSE THE EMPTY-`attempted` SHAPE of its two sibling guards. Those fire when the
+    turn called NOTHING. This turn called four tools; that is what makes it equipped. So the
+    mechanical condition is different, and it is taken from data the platform already declares
+    rather than from the prose:
+
+      * `argument_emitters` (contracts/agent-runtime-tool-contracts.json) says WHICH TOOL emits
+        each required opaque id — `plan_bootstrap_apply: {proposal_id: plan_bootstrap_propose}`.
+      * `turn_succeeded` says which tools actually returned a result THIS TURN.
+
+    So "the turn holds what it needs" is not inferred from the reply: every required argument of
+    the candidate has a declared emitter that SUCCEEDED on this turn. The prose test only decides
+    whether the turn ASKED — it never decides what the turn holds.
+
+    IT NAMES A TOOL OR RETURNS None. It does not accuse the model of anything, for the same
+    reason `_rail_write_step_stalled` refuses to: a runtime that asserts a claim the model did not
+    make is the same false-report defect pointed the other way, and this loop has fixed three.
+
+    NOT COVERED, deliberately: a write whose required args are ambient (book_id, project_id) and
+    therefore declare no emitter — those are always "held", so firing on them would make every
+    polite closing question a defect. Requiring at least one EMITTED argument is what keeps this
+    to turns that genuinely did the work and stopped one call short.
+    """
+    if not text or not _OFFER_TO_ACT_RE.search(text.strip()):
+        return None
+    ok = set(succeeded or ())
+    for name in sorted(advertised if advertised is not None else catalog_index):
+        if name in attempted:
+            continue
+        # 🔴 NOT `td = catalog_index.get(name)`. That exact line is the ANCHOR of
+        # test_cp0_instrument.py::test_the_catalog_miss_registers_before_the_early_return_swallows_it,
+        # which takes the FIRST occurrence in this module and scans 1800 chars for the
+        # registration that must follow it. This function sits ~4700 lines ABOVE that site, so
+        # writing the same line here silently stole the anchor and the guard could no longer see
+        # the code it guards. A distinct name keeps the anchor unambiguous.
+        cand_def = catalog_index.get(name)
+        if not cand_def or tool_tier(cand_def) not in ("A", "W"):
+            continue
+        required = (tool_parameters(cand_def) or {}).get("required") or []
+        emitted = emitters.get(name) or {}
+        # At least one required argument must be an EMITTED id, and every emitted one must have
+        # been produced this turn. An all-ambient write is not "equipped" in any meaningful sense.
+        # 🔴 AN ENTRY MAY BE A STRING OR A {tool, field} MAPPING, and reading only the string
+        # form would SILENTLY disable this guard for every pair upgraded to the mapping — the
+        # exact failure `declared_emitter`'s own docstring records for the refusal message.
+        # DQ-T76 needs the mapping form where the supplier returns the id under a different key
+        # (composition_arc_list returns nodes[].id for composition_arc_get's node_id).
+        wanted = {}
+        for a in required:
+            raw = emitted.get(a)
+            supplier = raw if isinstance(raw, str) else (raw or {}).get("tool")
+            if supplier:
+                wanted[a] = supplier
+        if not wanted:
+            continue
+        if all(v in ok for v in wanted.values()):
+            return name
+    return None
+
+
+def _rail_write_step_stalled(
+    rail_progress: list | None, *, catalog_index: dict, attempted: set[str],
+    intent_slugs: frozenset[str] = frozenset(),
+) -> str | None:
+    """The WRITE tool a rail is waiting on, when this turn called NOTHING AT ALL.
+
+    🔴 THE SISTER CASE `_narrated_uncalled_writes` STRUCTURALLY CANNOT SEE. That guard finds a
+    claimed write by intersecting the prose with real tool NAMES, which is the right design — no
+    NLP, no tense-guessing — but it only fires when the model names a tool. MEASURED LIVE
+    2026-08-12, book 019f9a02-f3a3…: asked "Please translate this book into Vietnamese for me now",
+    the model answered *"I've started the translation for Chapter 1 into Vietnamese. I'll monitor
+    the progress…"* with ZERO tool calls, outcome='completed', and no job row. It named no tool, so
+    the intersection was empty and nothing was logged. The plainer phrasing — the one a user
+    actually gets — was invisible.
+
+    This arm stays mechanical by refusing to read the prose at all. It uses only:
+
+    * `attempted` is EMPTY — the turn called nothing, so nothing can have changed. A turn that
+      tried and failed already has honest feedback and is deliberately excluded, exactly as the
+      sister guard excludes it.
+    * a rail has a next actionable step whose tool is a WRITE tier — so there was a concrete,
+      journey-declared action outstanding, not merely a conversation in progress.
+
+    It deliberately does NOT infer that the model *claimed* anything: the directive built from this
+    asserts only what is measured (no tool ran, this step is outstanding), because a runtime that
+    accuses the model of a claim it did not make is the same false-report defect pointed the other
+    way — and this loop has already fixed three of those.
+    """
+    if attempted or not rail_progress:
+        return None
+    # D-FJ-17 — when THIS turn's own words pinned a rail, only that rail may claim the
+    # nudge. `_pinned_slugs` is `binding + intent`, so the standing mode binding's rail
+    # always sorted FIRST and won a search that never looked at what was asked.
+    #
+    # Measured live 2026-08-13 (session 019ff929, throwaway book 019ff8f5): the author
+    # asked "What canon rules have I declared for this book?", which deterministically
+    # pinned `canon-check` (next step: composition_list_canon_rules, a READ, advertised
+    # in both passes). The turn called nothing, so this guard fired — and returned
+    # `kg_add_nodes`, the outstanding write of the STALE `vision-to-book` rail from an
+    # earlier journey. The directive sent pass 2 to answer that instead, and the author
+    # got a paragraph about a character named Vela Ostrand appended to a fabricated
+    # "you haven't declared any canon rules yet".
+    #
+    # A guard that drags a turn onto work the user did not ask about is worse than one
+    # that stays quiet: the honest outcome here is NO nudge, because the pinned rail's
+    # own next step is a read and this guard is deliberately writes-only.
+    _rails = rail_progress
+    if intent_slugs:
+        _rails = [p for p in rail_progress if getattr(p, "slug", None) in intent_slugs]
+    for prog in _rails:
+        step = getattr(prog, "next_step", None)
+        tool = getattr(step, "tool", None) if step is not None else None
+        if not tool or tool not in catalog_index:
+            continue
+        if tool_tier(catalog_index[tool]) in ("A", "W", "S"):
+            return tool
+    return None
 
 
 async def _flush_activated_tools(pool, session_id, activation_state: dict | None) -> None:
@@ -1000,6 +1610,7 @@ def _rail_is_in_flight(
     resumed_mid_rail: bool,
     step_tools_succeeded: list[str],
     step_tools_attempted: list[str],
+    asked_for_it_and_called_nothing: bool = False,
 ) -> bool:
     """D-RAIL-INFLIGHT-ON-ATTEMPT — is a pinned rail live enough for the P-1 step-runner
     to re-steer the model this turn?
@@ -1021,8 +1632,36 @@ def _rail_is_in_flight(
 
     **Intent is what makes a rail live: the model reached for the step.** Whether the
     platform let the call through is precisely the situation the directive exists to
-    re-steer — so a failed attempt must not read as "no rail here"."""
-    return bool(resumed_mid_rail or step_tools_succeeded or step_tools_attempted)
+    re-steer — so a failed attempt must not read as "no rail here".
+
+    D-FJ-18 — and the THIRD clause closes the rest of that same hole, because all three of
+    the above still require the model to have reached for SOMETHING. A turn that calls
+    nothing at all had no mechanism whatsoever when the outstanding step is a READ: the
+    D-FJ-8 narrated-write arm is deliberately writes-only ("nothing was claimed to have
+    changed, so there is nothing for the author to not find"), and this gate wanted an
+    attempt that never happened.
+
+    MEASURED LIVE 2026-08-13 (session 019ff929, book 019ff8f5): asked "What canon rules have
+    I declared for this book?", the turn pinned `canon-check` (next step
+    composition_list_canon_rules, advertised), called NOTHING, and answered *"I checked the
+    consistency rules for this book, and you haven't declared any canon rules yet"* while
+    the owning store held one active rule. A fabricated absence is the read-side twin of a
+    hallucinated write and is worse in one way: the author is told their own data is not
+    there, and has no reason to go and look.
+
+    `asked_for_it_and_called_nothing` is deliberately the narrowest possible opening — the
+    rail was pinned by THIS turn's own words (intent_pinned_workflows, deterministic, no
+    LLM) AND the turn emitted no tool call at all. It cannot hijack an ordinary
+    conversation, because an ordinary conversation pins no rail; and the drive it unlocks is
+    confined to the intent-pinned rail at the call site, so it can never re-steer the turn
+    onto some other journey's outstanding work (that is D-FJ-17, fixed in the same cycle).
+    """
+    return bool(
+        resumed_mid_rail
+        or step_tools_succeeded
+        or step_tools_attempted
+        or asked_for_it_and_called_nothing
+    )
 
 
 def _braces_balanced(text: str) -> bool:
@@ -1294,6 +1933,106 @@ def _project_ambient_book_schema(td: dict) -> dict:
     return {**td, "function": {**fn, "parameters": new_params}}
 
 
+def _agentruntime_wire_surface(*, pass_number: int) -> list[dict]:
+    """CP-2.7 · the new arm's advertised set for one pass. **The only implementation.**
+
+    Two call sites need it — the first-pass `tool_defs` (whose emptiness decides `use_tools`) and
+    the per-pass wire value — and they must not be two copies of the same decision. This repository
+    has recorded a hand-written second copy drifting from the first *inside a single commit*.
+    """
+    from app.agentruntime.manifest import load as _agentruntime_load
+    from app.agentruntime.serve import advertise as _agentruntime_advertise
+
+    payload, _surface = _agentruntime_advertise(_agentruntime_load(), pass_number=pass_number)
+    return payload
+
+
+#: The tools R1 answerability FORCED onto this pass, recorded by the builder and checked again at
+#: the wire. A ContextVar rather than a return value for the same reason `record_surface_withheld`
+#: is one: the two points are far apart, and threading a value through every caller in between is
+#: how a check ends up not being written at all.
+_R1_FORCED: "ContextVar[frozenset[str]]" = ContextVar("_r1_forced", default=frozenset())
+
+
+def prior_request_for_lookback(
+    messages: list[dict] | None,
+    prior_assistant_tool_calls: list | None,
+    prior_assistant_advertised: list | None,
+) -> str:
+    """The earlier USER request a bare confirmation is still about — or "" to stay inert.
+
+    DQ-T68 (a), owner ruling 2026-08-31: "R1 reconsiders the prior USER turn only when the
+    current turn's answerable set is EMPTY and the previous assistant turn left a CONCRETE
+    pending action — a minted card, or a surfaced-but-not-called tool. That is a structural
+    signal, not a guess about conversational topic drift."
+
+    🔴 WHY IT IS NEEDED AT ALL. R1 keys on the CURRENT turn's text, so a two-turn journey loses
+    the tool on the turn where the action is due. Measured against the shipped matcher: "Yes, go
+    ahead and do it.", "Yes, please create them.", "ok", "Yes", "Go ahead", "Do it" and "Confirm"
+    each return ZERO answerable tools. There is no phrasing of a bare affirmative that reaches a
+    tool, so this is not an optimisation — without it the confirmation turn is empty-handed by
+    construction.
+
+    🔴 WHAT THE MEASUREMENT SAYS, INCLUDING THE PART THAT DOES NOT FLATTER IT. Over 232
+    bare-affirmative turns in the live store, 192 of them empty-handed, with the shipped matcher
+    against the live 316-tool catalogue:
+
+        variant                                 fires   precision      recall
+        ungated (any empty-handed turn)           157   16/120 = 13%   157/192 = 82%
+        card pending only                          10    0/10  =  0%    10/192 =  5%
+        card OR surfaced-but-not-called  <- SHIPS 113   13/91  = 14%   113/192 = 59%
+
+    QUOTE THE GATED ROW, because it is the one that ships: 59% recall at 14% precision. An
+    earlier version of this docstring quoted the ungated 82% beside the gated mechanism, which
+    flattered a trade-off whose strict side had already been chosen.
+
+    THE GATE IS NARROWING, NOT PRECISION. It trades 23 points of recall for one point of
+    precision: firing 113 times instead of 157 at the same 14%, while the card-only form fires
+    ten times and hits none. It is kept because the owner ruled it and because firing less often
+    at equal precision spends less context — not because it makes the recovery more accurate.
+
+    THE ORACLE IS WEAK IN A KNOWN DIRECTION, so 14% is a floor: 85% of the "needed" tools in the
+    misses do declare synonyms, and they are dominated by `jobs_get` (a status poll, 28% of the
+    miss mass), ontology reads and standards lists — how the model DOES the work, not the tool
+    that IS the work. On the three instances this defect actually names it is 3 of 3.
+
+    R1 IS ADDITIVE, which is why 14% is not a veto: the recovered tools go ON the wire beside the
+    hot set. Nothing is removed, no call is forced, and a miss costs context, not correctness.
+    """
+    if not messages:
+        return ""
+    # A CONCRETE pending action: a call left awaiting a human, or a tool put on the wire and not
+    # used. Either means the turn stopped mid-journey with something still to do.
+    carded = any(isinstance(c, dict) and c.get("call_outcome") == "deferred"
+                 for c in (prior_assistant_tool_calls or []))
+    called = {c.get("tool") for c in (prior_assistant_tool_calls or [])
+              if isinstance(c, dict)}
+    # 🔴 `advertised_tools` IS A LIST OF PER-PASS OBJECTS, NOT A LIST OF NAMES:
+    # [{"pass": 1, "count": 58, "names": [...]}, ...]. Assuming names cost a broken platform
+    # — `set()` over a list of dicts raised `TypeError: unhashable type: 'dict'` on EVERY
+    # turn, and the batch meant to prove this fix came back 5 of 5 no_output_timeout.
+    #
+    # A CLAIM THAT STOOD HERE AND WAS WRONG, kept as a correction rather than deleted: this
+    # said the SQL measuring the gate shared the same bug, so the recorded precision was
+    # void. Re-derived against the real shape, the gate figures reproduce EXACTLY (113 fires
+    # at 13/91; card-only 10 at 0/10), where an objects-as-text bug would have fired the gate
+    # on all 157. The measurement was sound; only this helper had the bug. Generalising from
+    # "my code had this defect" to "my measurement must have too" is its own error.
+    surfaced: set = set()
+    for _p in (prior_assistant_advertised or []):
+        if isinstance(_p, dict):
+            surfaced.update(n for n in (_p.get("names") or []) if isinstance(n, str))
+        elif isinstance(_p, str):
+            surfaced.add(_p)  # tolerate a flat list, should the shape ever simplify
+    surfaced_unused = bool(surfaced - called)
+    if not (carded or surfaced_unused):
+        return ""
+    # The PREVIOUS user message — the request under discussion. `messages` ends with the current
+    # turn's own user row, so the one before it is the earlier request.
+    users = [m for m in messages if isinstance(m, dict) and m.get("role") == "user"]
+    return str(users[-2].get("content") or "") if len(users) >= 2 else ""
+
+
 def _advertise_discovery_tools(
     catalog_index: dict[str, dict],
     active_tool_names: set[str],
@@ -1303,6 +2042,13 @@ def _advertise_discovery_tools(
     suppress_tool_list: bool = False,
     suppress_names: set[str] | frozenset[str] = frozenset(),
     book_bound: bool = False,
+    # R1 (surface answerability) — THIS turn's request, so the chokepoint can guarantee that a
+    # tool whose own declared vocabulary answers it is on the wire. Empty ⇒ inert.
+    request_text: str = "",
+    # DQ-T68 (a) — the EARLIER request a bare confirmation is still about, supplied only
+    # when the previous assistant turn left something pending. Consulted ONLY if this
+    # turn's own text answers nothing; empty ⇒ inert. See `prior_request_for_lookback`.
+    prior_request_text: str = "",
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -1321,6 +2067,25 @@ def _advertise_discovery_tools(
     PlanForge ``plan_*`` server tools (plan artifacts, never prose).
     """
     restricted = permission_mode in ("ask", "plan")
+    # 🔴 CP-2.7 — THE ROUTE, AND IT IS A `return` RATHER THAN A MERGE.
+    #
+    # This function is the single ADVERTISE chokepoint for the discovery path, with three callers,
+    # which is why the branch is here and nowhere else: one edit covers every path a turn can take
+    # to the wire. On the new arm the advertised set comes from the manifest and from NOTHING
+    # else — not the always-on core, not `find_tools`, not `extra_frontend`.
+    #
+    # A merge would be the membrane leaking through its own route on day one, and it would make
+    # CP-2.7's item B (*no legacy declaration is reachable, by any route*) unmeasurable in exactly
+    # the place it most needs measuring. ARCHITECTURE §3: "old declarations are not hidden, they
+    # are ABSENT".
+    #
+    # Every argument above is deliberately unused on this branch. That is not an oversight to tidy
+    # up later: `catalog_index` IS the legacy catalog, and a branch that reads it — even to check
+    # something — is the code path §3 forbids. The membrane gate cannot see this file, so the
+    # separation rests on this `return` being first.
+    if settings.agentruntime_arm:
+        return _agentruntime_wire_surface(pass_number=1)
+
     plan = permission_mode == "plan"
     out: list[dict] = []
     seen: set[str] = set()
@@ -1342,9 +2107,13 @@ def _advertise_discovery_tools(
     # (ui_*/confirm/propose). find_tools is NOT federated, so it has no catalog
     # entry — source it from FIND_TOOLS_TOOL.
     for name in ALWAYS_ON_CORE_NAMES:
-        if name == FIND_TOOLS_NAME:
-            _add(FIND_TOOLS_TOOL)
-            continue
+        # RETIRED 2026-08-25. This branch has been UNREACHABLE since F17 (2026-07-20) pulled
+        # FIND_TOOLS_NAME out of ALWAYS_ON_CORE_NAMES — the tuple this loop iterates. It read
+        # like a live advertise path and was not one, which is precisely how a half-retired
+        # tool poisons whoever reads the file next. Kept as a comment so nobody re-adds it.
+        #   if name == FIND_TOOLS_NAME:
+        #       _add(FIND_TOOLS_TOOL)
+        #       continue
         # WS-1a — tool_list/tool_load are consumer-local meta-tools (not federated), like
         # find_tools; source their schemas from the module defs.
         if name == TOOL_LIST_NAME:
@@ -1358,7 +2127,13 @@ def _advertise_discovery_tools(
         if name == TOOL_LOAD_NAME:
             _add(TOOL_LOAD_TOOL)
             continue
-        _add(catalog_index.get(name) or generic_frontend_tool_def(name))
+        # V7 — CATALOGUE ONLY. This read `catalog_index.get(name) or
+        # generic_frontend_tool_def(name)`, and because `confirm_action` was absent from the
+        # catalogue the FALLBACK always fired — which is precisely how a chat-service-local
+        # schema reached the model on every turn, on every surface, for weeks. A core name that
+        # the catalogue does not carry is now simply omitted, which is what CD4 requires:
+        # advertising a tool that cannot execute is worse than advertising nothing.
+        _add(catalog_index.get(name))
     # WS-2b — advertise the workflow meta-tools ONLY when the turn actually has
     # curated workflows visible (keeps the default core lean when there are none).
     # Consumer-local like tool_list/tool_load; dispatched below.
@@ -1378,6 +2153,137 @@ def _advertise_discovery_tools(
     # inert by the C-TOOL convention); discovery still works, but a discovered
     # non-R tool is NOT advertised (DR-C2). Plan mode additionally advertises
     # the `plan_*` PlanForge tools regardless of tier (RAID B2).
+    # ── R1 · ANSWERABILITY, the last word on the surface ──────────────────────────────────
+    # Five mechanisms narrow this set before we get here — domain selection, the hot-seed
+    # budget, the write allowlist, rail step pre-activation, and the suppressors. Each is
+    # locally correct. NONE of them is accountable for whether what comes out can answer the
+    # question that went in, and twice that has put a defect in an author's book:
+    #
+    #   v1 2026-07-21 — book_update_details starved by its 5-field schema, so "every model
+    #     mis-routed 'update the description' to book_chapter_create/save_draft".
+    #   v2 2026-08-13 — composition_list_outline withheld at domain_not_selected in every pass
+    #     while the Tier-A outline WRITE stayed advertised. Measured 5/5: the model used the
+    #     write it could see and created three chapters in the store.
+    #
+    # Both tools had already DECLARED they answer those requests. So the guarantee is: if the
+    # user's words match a tool's own vocabulary, it is on the wire — whatever the budget, the
+    # domain selection or the rail decided. Bounded by what was actually said (1-3 tools on
+    # real prompts, 0 on chitchat) rather than by an allowlist that spends the prefix forever.
+    _answerable = answerable_tools(request_text, list(catalog_index.values()))
+    # DQ-T68 (a) — A CONFIRMATION TURN IS EMPTY-HANDED BY CONSTRUCTION. "Yes, please
+    # create them." matches no tool's declared vocabulary, so the guarantee above has
+    # nothing to guarantee and the tool the user is confirming falls off the wire on the
+    # very turn the action is due. Measured: surfaced 0/5, called 0/5 on plan_bootstrap_apply
+    # with its supplier and precondition both already fixed, so nothing else was in the way.
+    #
+    # ONLY when this turn answers NOTHING, and only when the caller judged a concrete
+    # action pending. Additive: whatever the earlier request answers joins the wire beside
+    # the hot set — nothing is removed and no call is forced.
+    _from_lookback: set[str] = set()
+    if not _answerable and prior_request_text:
+        _from_lookback = answerable_tools(prior_request_text, list(catalog_index.values()))
+        _answerable = _from_lookback
+        if _from_lookback:
+            logger.info(
+                "R1 look-back: this turn answers nothing; the earlier request matches %s",
+                sorted(_from_lookback))
+    # Distinct local names on purpose: `test_cp0_instrument` anchors its catalog-miss guard on
+    # the FIRST `td = catalog_index.get(name)` and windows the source after it. Reusing those
+    # names here moved that anchor and made an established narrowing-instrumentation test read
+    # the wrong block. New code must not shadow an existing guard's anchor.
+    # 🔴 R1 HAS NO OBSERVABILITY, AND THAT COST TWO MEASUREMENTS. The guarantee runs on
+    # every pass and logs nothing, so "the tool the request names is not on the wire" cannot be
+    # told apart from "the rescue fired and something downstream dropped it" — and a tool that IS
+    # advertised cannot be told apart from one the hot seed happened to include anyway. Measured
+    # 2026-08-23 on composition_arc_apply: answerable_tools picks it against the live 303-tool
+    # catalogue (with book_list and composition_arc_suggest), those two were advertised and it was
+    # not, and no evidence on hand could say which stage lost it.
+    #
+    # Logged at INFO with the reason, because a rescue that silently declines is the failure mode:
+    # every `continue` below is a decision to leave the answering tool off the wire.
+    if _answerable:
+        logger.info("R1 answerability: request matches %s", sorted(_answerable))
+    # 🔴 R1 STOPPED AT DEPTH 1, AND THAT IS WHY IT COULD NOT DELIVER THE TOOL IT FORCED.
+    #
+    # The guarantee puts the tool whose declared vocabulary answers the request on the wire. It
+    # carried NOTHING that tool needs. A user names a GOAL, not an intermediate step, so a supplier
+    # is matched only by accident — and every blocked tool in P14-SUPPLIER-NOT-ON-SURFACE failed on
+    # an id whose supplier the request's words do not describe:
+    #
+    #     plan_bootstrap_apply  needs proposal_id  <- plan_bootstrap_propose
+    #         measured 2026-08-23: apply advertised on 21 wire passes, propose on ZERO
+    #
+    # The tiers refute the tempting explanation ("the budget favours writes over reads"): the plan
+    # pair is Tier A on both sides and the arc-template pair is Tier R on both sides. It is DEPTH.
+    #
+    # AND IT MUST BE TRANSITIVE, which composition_reference_update proves: reference_id comes from
+    # composition_find_references, which was ALREADY on every pass and itself refused for its own
+    # missing entity_id. A one-hop fix would have looked right on the other instances and left that
+    # turn dying one call later.
+    #
+    # DECLARED DATA ONLY. The suppliers come from the contract registry's `argument_emitters` map —
+    # the same structured source `_missing_args_message` already reads to name an emitter in a
+    # refusal — never from a name, a prefix or a guess. A tool with no declaration adds nothing, so
+    # this can only widen the surface where the platform has already written down who supplies what.
+    _r1_seed = set(_answerable)
+    # What R1 actually put on this pass — recorded so the WIRE can check the guarantee held.
+    _r1_forced: set[str] = set()
+    _forced_suppliers: dict[str, str] = {}
+    if _r1_seed:
+        # Local import, mirroring the other reader of this registry a thousand lines below — the
+        # module-level import graph here is load-bearing and this file does not add to it lightly.
+        from app.agentruntime.toolcontract import declared_emitter
+
+        _reg = _tool_contract_registry()
+        _pending, _seen = list(_r1_seed), set(_r1_seed)
+        # Bounded: a declaration cycle (A emits for B, B for A) would otherwise loop, and a long
+        # chain is a fixture problem rather than something to advertise our way out of.
+        for _hop in range(4):
+            _next: list[str] = []
+            for _consumer in _pending:
+                _c_td = catalog_index.get(_consumer)
+                _params = ((_c_td or {}).get("function", {}).get("parameters", {}) or {})
+                for _arg in (_params.get("required") or []):
+                    _sup = declared_emitter(_reg, _consumer, _arg)
+                    if not _sup or _sup in _seen or _sup not in catalog_index:
+                        continue
+                    _seen.add(_sup)
+                    _next.append(_sup)
+                    _forced_suppliers[_sup] = f"{_consumer}.{_arg}"
+            if not _next:
+                break
+            _pending = _next
+        if _forced_suppliers:
+            logger.info(
+                "R1 answerability: also forcing declared supplier(s) %s — a tool whose required id "
+                "has a declared emitter is unusable without it",
+                sorted(f"{k} (for {v})" for k, v in _forced_suppliers.items()),
+            )
+            _answerable = _seen
+    for _ans_name in sorted(_answerable):
+        if _ans_name in suppress_names:
+            logger.info("R1 answerability: %s NOT forced — suppressed (loop breaker)", _ans_name)
+            # A suppressor is a LOOP breaker (repeated failure / repeated read / oneshot). It
+            # fires on tools the model is already hammering, so forcing one back would restart
+            # the loop this stage exists to stop. Answerability outranks a BUDGET, never a
+            # breaker.
+            continue
+        _ans_td = catalog_index.get(_ans_name)
+        if _ans_td is None:
+            logger.info(
+                "R1 answerability: %s NOT forced — absent from this turn's catalog, so the "
+                "guarantee cannot reach it however well it declared itself", _ans_name,
+            )
+            continue
+        if restricted and tool_tier(_ans_td) not in ("R", None) and not (
+            permission_mode == "plan" and _is_plan_tool(_ans_name)
+        ):
+            logger.info("R1 answerability: %s NOT forced — tier %s under %s mode",
+                        _ans_name, tool_tier(_ans_td), permission_mode)
+            # ask/plan mode still governs WHAT may run; answerability governs what is VISIBLE.
+            continue
+        _add(_ans_td)
+        _r1_forced.add(_ans_name)
     for name in active_tool_names:
         # oneshot-deadvertise (2026-07-25): a COMPLETED one-shot create is dropped from the
         # wire so a weak model cannot loop on it (schema-gating — "absent from the schema, the
@@ -1386,12 +2292,38 @@ def _advertise_discovery_tools(
         if name in suppress_names:
             continue
         td = catalog_index.get(name)
+        if td is None:
+            # P1 residual — TWO unregistered narrowings lived in these four lines, and they are the
+            # last frame of a defect that has now occupied six.
+            #
+            # This one: a name in the ACTIVE SET with no catalog entry. `_add(None)` returns at its
+            # first line, so the tool leaves the wire without a word — and it is downstream of
+            # domain selection, so `domain_not_selected` never sees it either. That is exactly the
+            # shape V-LIVE measured: four glossary tools, the SAME four in both runs, in a domain
+            # that WAS selected, in neither bucket. Deterministic, because a catalog miss is a
+            # property of the catalog rather than of the query.
+            instrument.record_surface_withheld(
+                name, stage="catalog_miss",
+                reason="in the active set but absent from this turn's catalog index",
+            )
+            continue
         if (
-            restricted and td is not None and tool_tier(td) != "R"
+            restricted and tool_tier(td) != "R"
             and not (plan and _is_plan_tool(name))
         ):
+            # And this one: ask/plan mode drops every non-tier-R tool here, silently. The
+            # permission-mode registration at the advertise chokepoint covers the OTHER branch
+            # only, so on a discovery surface this narrowing registered nowhere.
+            instrument.record_surface_withheld(
+                name, stage="permission_tier",
+                reason=f"tier {tool_tier(td)!r} not offered in restricted mode",
+            )
             continue
         _add(td)
+    # 🔴 R1 IS A GUARANTEE, SO IT HAS TO BE CHECKABLE DOWNSTREAM. Publish what this pass forced;
+    # the wire compares and records a narrowing for anything that vanished between here and there.
+    _R1_FORCED.set(frozenset(n for n in _r1_forced
+                             if n in {(d.get("function") or {}).get("name") for d in out}))
     return out
 
 
@@ -1433,7 +2365,10 @@ def _unwrap_wrapped_args(args_obj: dict, tool_def: dict | None) -> dict:
     if not isinstance(args_obj, dict) or len(args_obj) != 1:
         return args_obj
     key = next(iter(args_obj))
-    if key not in ("args", "arguments"):
+    # `params` measured 2026-08-09 (14 calls, book_read): the model wrapped the whole payload
+    # in the JSON-RPC envelope name it had just seen on the wire. Same shape, same guard — a
+    # tool that REALLY declares `params` is left alone by the `key in props` check below.
+    if key not in ("args", "arguments", "params"):
         return args_obj
     inner = args_obj[key]
     if not isinstance(inner, dict):
@@ -1453,7 +2388,73 @@ def _unwrap_wrapped_args(args_obj: dict, tool_def: dict | None) -> dict:
 _SCALAR_ID_ARGS = frozenset({
     "book_id", "project_id", "chapter_id", "entity_id", "world_id",
     "arc_id", "node_id", "outline_node_id", "run_id",
+    # 🔴 **MEASURED 2026-08-11 (tool-v2 loop #42): `model_ref` was missing from this set and has
+    # the defect it exists for.** `translation_start_extraction` was called 3 times with
+    # `model_ref: ["019ebb72-…"]` — a 1-element list holding a real model UUID — and the tool
+    # rejected it for the type, exactly as it rejected `project_id=["…"]` before that arg was
+    # added here. This set is an ENUMERATION of scalar-id args, so a missing member is an
+    # oversight rather than a decision; `model_ref` is a scalar UUID reference with no
+    # legitimately-array form, which is the same test `entity_ids` and `items` FAIL and are
+    # therefore correctly excluded. Small subject, stated plainly: 3 calls in 1 session.
+    "model_ref",
 })
+
+
+# ── T16-D1: the right id under the wrong KEY ────────────────────────────────────────────────
+#
+# `_coerce_listed_scalar_ids` above fixes a wrong VALUE shape under the right key. This fixes the
+# mirror case — the right value under a near-miss KEY — and it is the larger population.
+#
+# MEASURED 2026-08-09/10 on `book_read`, which refused 89 calls for a missing `book_id`. Only 33
+# of those were genuinely empty. The other 56 CARRIED THE CORRECT UUID:
+#
+#     {"id": "019fccd7-…"}          19 calls
+#     {"ids": ["019fccd7-…"]}       13 calls
+#     {"book_ids": ["019fccd7-…"]}   8 calls
+#     {"params": {"book_id": …}}    14 calls   (fixed by _unwrap_wrapped_args above)
+#
+# The model had the id, had just read it out of `book_list`, and named the field wrongly. The
+# runtime answered "is missing ['book_id'] … NOT yours to invent", which is true of the FIELD and
+# false of the situation.
+#
+# DECLINES ANYTHING IT CANNOT REASON ABOUT, the same rule the rest of this family follows,
+# because a wrong graft corrupts a call instead of refusing it:
+#   * exactly ONE required `*_id` property may be missing — with two, filling either is a guess;
+#   * the donor key must be `id`, `ids`, or the plural of the target (`book_id` -> `book_ids`);
+#   * the donor key must NOT itself be declared by the schema — a tool that really takes `ids`
+#     keeps it;
+#   * the value must be a string, or a ONE-element list of a string; a longer list is a genuine
+#     collection and is left alone.
+def _alias_id_keys(target: str) -> frozenset[str]:
+    """The near-miss donor keys for a required scalar id param."""
+    return frozenset({"id", "ids", target + "s"})
+
+
+def _repair_aliased_required_id(args_obj: dict, tool_def: dict | None) -> dict:
+    """Move a required `*_id` the model put under `id`/`ids`/`<param>s` back onto its own key."""
+    if not isinstance(args_obj, dict) or not tool_def:
+        return args_obj
+    params = ((tool_def.get("function") or {}).get("parameters") or {})
+    props = params.get("properties") or {}
+    required = params.get("required") or []
+    missing = [r for r in required if isinstance(r, str) and r.endswith("_id") and r not in args_obj]
+    if len(missing) != 1:
+        return args_obj
+    target = missing[0]
+    donors = _alias_id_keys(target)
+    present = [k for k in args_obj if k in donors and k not in props]
+    if len(present) != 1:
+        return args_obj
+    raw = args_obj[present[0]]
+    if isinstance(raw, list):
+        if len(raw) != 1:
+            return args_obj
+        raw = raw[0]
+    if not isinstance(raw, str) or not raw.strip():
+        return args_obj
+    repaired = {k: v for k, v in args_obj.items() if k != present[0]}
+    repaired[target] = raw
+    return repaired
 
 
 def _coerce_listed_scalar_ids(args_obj: dict) -> dict:
@@ -1537,6 +2538,159 @@ def _coerce_json_string_structs(args_obj: dict, tool_def: dict | None) -> dict:
     return args_obj
 
 
+def _crosswired_ids(
+    key: str, *, book_id: str | None, chapter_id: str | None, project_id: str | None,
+) -> frozenset[str]:
+    """D-FJ-20 — the OTHER context-ids of this turn, any of which in `key` is a cross-wiring.
+
+    Returns the turn's own ids EXCEPT the one that belongs in `key`, so an exact match means
+    the model swapped two ids the server is already holding. Deliberately not a similarity
+    check: only an id the server itself supplied can be identified this way, which is what
+    makes the substitution safe without knowing the surface.
+    """
+    known = {"book_id": book_id, "chapter_id": chapter_id, "project_id": project_id}
+    return frozenset(
+        str(v) for k, v in known.items() if v and k != key and str(v) != str(known.get(key) or "")
+    )
+
+
+#: The tools whose source document is the AUTHOR'S, never the model's (DQ-T55). Keyed by tool
+#: name because the rule is about a specific contract, not about an argument called
+#: `source_markdown` — `plan_propose_spec.source_markdown` carries 174 of the 686 measured
+#: prose-bearing arguments and is the model AUTHORING A PLAN, which is its job. Widening this by
+#: field name would break that tool while claiming to fix this one.
+_AUTHOR_SOURCED_TOOLS = {"glossary_extract_entities_from_doc"}
+
+#: The one reference the platform can resolve today. glossary-service refuses any other value by
+#: name, so the two sides agree on the vocabulary rather than each guessing.
+_SOURCE_REF_LAST_USER_MESSAGE = "last_user_message"
+
+
+def _halt_turn_refusal(
+    tool: str, tool_def: dict | None, request_text: str | None,
+) -> str | None:
+    """D-ASKED-TO-STOP-WORK-THE-MODEL-PROPOSED-STARTING-IT — a STOP request must not START work.
+
+    MEASURED: asked "Cancel my translation job — stop the runaway translation run", the model
+    checked jobs_list, found nothing running, and then called translation_start_job AND
+    translation_retranslate_dirty, minting a confirm token for each. On the sibling row
+    (D-A-STOP-REQUEST-PROPOSES-A-COST-BEARING-START) that shape is 5 of 5. Nothing executed — the
+    Tier-W cards held — but a confirm card is the LAST line, not the only one, and the click is a
+    human's to make on a card that says "start translation" when they asked to cancel one.
+
+    🔴 THE TEST IS THE TOOL'S OWN DECLARED VOCABULARY, never its name. There is no `starts_work`
+    flag to read: checked against the live catalogue, translation_start_job,
+    translation_retranslate_dirty, translation_start_extraction and
+    composition_authoring_run_create carry only {tier, scope, synonyms, async} — nothing that
+    separates starting from stopping. A `*_start_*` prefix rule would be exactly the name
+    classifier CP-4.d deleted for inferring a property from fragments of an identifier.
+
+    So the question asked is the one `answerable_tools` already answers everywhere else on this
+    surface — does THIS tool's declaration answer THIS request? Measured against the live
+    catalogue on the row's own two prompts:
+
+        translation_job_control          answerable   (synonyms: "cancel the translation", …)
+        jobs_cancel                      answerable   on "Stop the translation one."
+        translation_start_job            NOT          (synonyms: "translate", "start translation")
+        translation_retranslate_dirty    NOT
+        translation_start_extraction     NOT
+        composition_authoring_run_create NOT
+
+    Four for four on the wrong side, and the right tools on the right side, with no list of names
+    written anywhere.
+
+    SCOPED TO WRITES. A read on a halt turn is how the model FINDS the job to stop — jobs_list is
+    the correct first move and must stay free. Only a tiered W/A call is refused, which is also
+    the only kind that can spend or change anything.
+
+    Returns the refusal text, or None to let the call proceed.
+    """
+    if not request_text or request_mood(request_text) != HALT_MOOD:
+        return None
+    if tool_def is None:
+        return None
+    tier = tool_tier(tool_def)
+    if tier not in ("W", "A", "S"):
+        return None  # a READ is how the turn finds what to stop
+    if answerable_tools(request_text, [tool_def]):
+        return None  # its own declaration answers a stop request — this IS the right tool
+    return (
+        f"REFUSED: this turn asked to STOP work, and '{tool}' does not declare that it stops "
+        "anything — its own synonyms describe starting or changing work. Nothing was called. "
+        "If you meant to halt something, use the tool whose declared vocabulary matches the "
+        "request (a job-control or cancel tool); if the user's request was already satisfied "
+        "because nothing is running, SAY SO and stop — do not propose new work they did not ask "
+        "for."
+    )
+
+
+def _resolve_authors_source(
+    args_obj: dict, tool: str, user_message_content: str | None,
+) -> None:
+    """DQ-T55 — resolve `source_ref` into the author's own text, and DISCARD what the model wrote.
+
+    🔴 THE MEASURED DEFECT: asked to DELETE a glossary kind, the model instead called
+    `glossary_extract_entities_from_doc` with a `source_markdown` it invented wholesale — "a young
+    cultivator named Wei Wuxian who lives in the Azure Cloud Sect" — and the SAME invented
+    document was handed to the tool against several different books. A canned sample it reaches
+    for, not a slip. Extracting from it populates the author's world with a story they never
+    wrote, which the row calls the worst user-visible outcome this loop has measured.
+
+    FIVE PROSE INTERVENTIONS WERE MEASURED AND REFUTED FIRST, including the registry recipe
+    already saying it in the imperative — "feed it the user's notes VERBATIM (paste exactly what
+    they wrote)". That is why the remedy is structural: the field stops being the model's to fill.
+
+    The overwrite is UNCONDITIONAL, not a fill-if-blank like `_inject_context_ids` beside it. A
+    fill-if-blank would leave exactly the fabrication case untouched, because a fabricating model
+    always supplies text — the empty case was never the problem.
+    """
+    if tool not in _AUTHOR_SOURCED_TOOLS or not isinstance(args_obj, dict):
+        return
+    ref = str(args_obj.get("source_ref") or "").strip()
+    if not ref:
+        # No reference named. Leave the args ALONE so glossary-service issues its own refusal,
+        # which names the accepted value — one refusal, written once, on the side that owns the
+        # contract. Inventing a second message here would drift from it.
+        args_obj.pop("source_markdown", None)
+        return
+    if ref != _SOURCE_REF_LAST_USER_MESSAGE:
+        # Unresolvable reference: strip any text so the far side cannot extract from whatever the
+        # model happened to attach, and let it refuse by name.
+        args_obj.pop("source_markdown", None)
+        return
+    resolved = (user_message_content or "").strip()
+    _prior = args_obj.get("source_markdown")
+    args_obj["source_markdown"] = resolved
+    if isinstance(_prior, str) and _prior.strip() and _prior.strip() != resolved:
+        # WARNING, not info: the model composed a document and it was thrown away. That is the
+        # defect firing, and it must be visible — a silent discard would make this fix
+        # unmeasurable in exactly the way the five refuted prose fixes were.
+        logger.warning(
+            "DQ-T55: discarded %d chars of MODEL-AUTHORED source_markdown for %s and substituted "
+            "the author's own message (%d chars). The model wrote: %r",
+            len(_prior), tool, len(resolved), _prior[:200],
+        )
+
+
+def _group_already_satisfied(args_obj: dict, groups: list, key: str) -> bool:
+    """Does the call already carry an argument that `key` is mutually exclusive with?
+
+    Module-level, not a closure inside `_inject_context_ids`, deliberately: a nested def whose
+    parameter shadows a name the enclosing loop binds later reads to the CP0 instrument as
+    F-50 (a local read on a path that returns before it is assigned). The instrument is right
+    to distrust the pattern, so the pattern goes rather than the check.
+
+    A blank value is an absent argument wearing a key, and does not satisfy a group.
+    """
+    for g in groups:
+        if key not in g:
+            continue
+        for other in g:
+            if other != key and str(args_obj.get(other) or "").strip():
+                return True
+    return False
+
+
 def _inject_context_ids(
     args_obj: dict,
     tool_def: dict | None,
@@ -1545,6 +2699,7 @@ def _inject_context_ids(
     chapter_id: str | None,
     project_id: str | None,
     studio: bool = False,
+    id_ledger=None,
 ) -> dict:
     """S02 fix — fill known session context-ids into a backend tool's args when the tool's
     schema ACCEPTS them and the model OMITTED them.
@@ -1583,7 +2738,43 @@ def _inject_context_ids(
     _meta = fn.get("_meta") or {}
     ambient_book = bool(_meta.get("ambient_book"))
     ambient_project = bool(_meta.get("ambient_project"))  # composition: resolve project_id from X-Project-Id
+    # D-THE-RUNTIME-INJECTS-THE-ARG-THAT-SWITCHES-THE-MODE and
+    # D-THE-AMBIENT-PROJECT-IS-THE-WRONG-WORK-AND-THE-RUNTIME-SUPPLIES-IT — arguments a tool
+    # declares this backfiller must LEAVE ALONE. This whole function rests on an assumption that is true of almost every tool
+    # and not of all of them: that a context id merely SCOPES the call, so supplying one the
+    # model forgot can only help. For a tool where the id selects a different code path, filling
+    # it changes what the tool DOES, and the model cannot undo it.
+    #
+    # Measured 2026-08-24 on composition_motif_link_edit, whose `book_id` switches it from "link
+    # two motifs you own" to "link two motifs SHARED into that book": the model omitted it, this
+    # function put it back, the tool refused because the caller's private motifs are not shared,
+    # and its refusal said to call again WITHOUT book_id. The model did exactly that — and the
+    # id was injected again. Both runs then died on the repeat-breaker. The remedy a refusal
+    # names has to be reachable, or it is worse than no remedy at all.
+    _mode_args = _meta.get("no_context_fill")
+    _no_fill = {a for a in _mode_args if isinstance(a, str)} if isinstance(
+        _mode_args, (list, tuple)) else set()
+    # 🔴 THE RUNTIME CAN BUILD THE ONE SHAPE A TOOL REFUSES, and no wording stops it.
+    # composition_list_derivatives takes EXACTLY ONE of book_id/project_id; a studio book turn
+    # carries both, so this function supplied both and the tool refused "give EXACTLY ONE".
+    # Measured 2026-09-01, K=5: 24 of 24 calls carried both, every one refused; store-wide that
+    # shape is 0 done in 46 attempts. The previous cycle rewrote the refusal to say "call it with
+    # NO ARGUMENTS" and the live run was UNCHANGED — an obedient model gets the same shape,
+    # because with no arguments this loop fills both. The fix has to be here, where the shape is
+    # made.
+    #
+    # A group is completed at most once: whichever member is already present wins, and for an
+    # empty call that is the first this loop reaches (book_id — "the usual way in", and the only
+    # id every turn carries).
+    _groups = _meta.get("exclusive_args")
+    _groups = [g for g in _groups if isinstance(g, (list, tuple))] if isinstance(
+        _groups, (list, tuple)) else []
+
     for key, val in (("book_id", book_id), ("chapter_id", chapter_id), ("project_id", project_id)):
+        if key in _no_fill:
+            # The tool declares this argument mode-selecting: absent means something. Never
+            # supply it, and never correct one the model supplied — both are the model's call.
+            continue
         if key == "book_id" and ambient_book:
             # ambient_book: book_id resolves from X-Book-Id server-side; the model shouldn't
             # pass it. But a weak model DOES — and on a studio turn it invents a well-formed
@@ -1601,7 +2792,63 @@ def _inject_context_ids(
             continue
         if key == "project_id" and ambient_project:
             continue
-        if not val or key not in props:
+        if key not in props:
+            continue
+        if not val:
+            # 🔴 NO SUBSTITUTE IS NOT THE SAME AS NO KNOWLEDGE. This used to `continue` on a
+            # missing context value, which silently skipped the cross-wire check below — so a
+            # value the ledger KNEW was the wrong kind of id was forwarded untouched, and the
+            # model got back an opaque "not found or not accessible" for a call the runtime had
+            # already recognised as mis-wired.
+            #
+            # MEASURED 2026-08-24 (batch c-override9, K=5): the turn carries no project_id (it is
+            # populated only on studio/editor turns), the model sent
+            # composition_list_derivatives{project_id: <this turn's BOOK id>}, and
+            # `is_crosswired("project_id", book_id)` returns True — checked directly against the
+            # deployed function. The correction could not run for want of a value to put in, and
+            # the wrong one went out anyway.
+            #
+            # The runtime must not SEND an argument it knows is wrong. Dropping it makes the
+            # tool's own missing-argument refusal fire instead, which names the declared supplier
+            # and arms it — a path that already works — rather than an opaque domain 404. The
+            # evidence standard is unchanged and deliberately high: `is_crosswired` is true only
+            # for an id THIS TURN published under a DIFFERENT name, which is the same standard the
+            # branch below already treats as sufficient to OVERWRITE a value.
+            _sup = args_obj.get(key)
+            if not (isinstance(_sup, str) and id_ledger is not None
+                    and id_ledger.is_crosswired(key, _sup)):
+                continue
+            # 🔴 NARROWED AFTER A MEASURED SIDE EFFECT. Dropping is only better than forwarding
+            # when the refusal that follows can NAME A SUPPLIER — that was the whole argument for
+            # it. Where the tool declares no emitter for this argument, the model gets "missing
+            # required argument(s)" with nowhere to go, and blank-retries into the breaker.
+            #
+            # MEASURED 2026-08-24, batch c-override11: composition_list_outline declares no
+            # emitter for project_id, its project_id was dropped, and the run looped on
+            # "keeps being called with missing/blank required arguments" — a worse failure than
+            # the opaque 404 it replaced. composition_entity_override_edit DOES declare
+            # project_id <- composition_list_derivatives, and there the drop is exactly right.
+            try:
+                from app.agentruntime.toolcontract import declared_emitter
+                _has_supplier = bool(declared_emitter(
+                    _tool_contract_registry(), fn.get("name") or "", key))
+            except Exception:  # noqa: BLE001 — a contract lookup must never take the turn down
+                _has_supplier = False
+            if not _has_supplier:
+                logger.info(
+                    "tool arg %s=%r is cross-wired (%s) but %s declares no emitter for it — "
+                    "forwarding as-is rather than dropping, because the refusal would name "
+                    "nowhere to go", key, _sup[:64], id_ledger.describe(_sup),
+                    fn.get("name"),
+                )
+                continue
+            logger.warning(
+                "tool arg %s=%r is another of this turn's context-ids (%s) and there is no "
+                "%s to substitute — DROPPING it so the tool asks and its refusal names the "
+                "emitter, rather than sending an id the runtime knows is the wrong kind",
+                key, _sup[:64], id_ledger.describe(_sup), key,
+            )
+            args_obj.pop(key, None)
             continue
         # Coerce to str: `val` is a session context-id that can arrive as a UUID OBJECT
         # (asyncpg returns a uuid column as `uuid.UUID`, e.g. session_row["project_id"]),
@@ -1614,12 +2861,59 @@ def _inject_context_ids(
         val_s = str(val)
         supplied = args_obj.get(key)
         if not supplied:
+            # Only a FILL can complete an exclusive group. A substitution below replaces a value
+            # the model already put there, so it cannot add a member — and correcting a
+            # mistranscribed id is right whether or not the tool is exclusive.
+            if _group_already_satisfied(args_obj, _groups, key):
+                logger.info(
+                    "not filling %s on %s: it is exclusive with an argument the call already "
+                    "carries, and supplying both is the one shape that tool refuses",
+                    key, fn.get("name"),
+                )
+                continue
             args_obj[key] = val_s
             continue
         if isinstance(supplied, str) and not _is_uuid(supplied):
             logger.warning(
                 "tool arg %s=%r is not a UUID — the model mistranscribed it; substituting the "
                 "turn's known id", key, supplied[:64],
+            )
+            args_obj[key] = val_s
+        elif isinstance(supplied, str) and (
+            supplied in _crosswired_ids(
+                key, book_id=book_id, chapter_id=chapter_id, project_id=project_id,
+            )
+            # D-XWIRE-RESULT (2026-08-14) — the same cross-wire, but the offending id came from a
+            # TOOL RESULT rather than from the request envelope, so D-FJ-20's three-id evidence
+            # base could not see it. Measured 3/3: `book_list {kind:"chapters"}` returned
+            # `chapter_id: X`, the model then sent `book_chapter_create {book_id: X}`, and the
+            # refusal "book not accessible" gave it nothing to correct — it retried the identical
+            # call and then wandered into an unrelated book of the user's looking for one that
+            # would accept the write. The certainty standard is unchanged: only an id THIS
+            # PLATFORM published under a different name, never a guess at an unknown UUID.
+            or (id_ledger is not None and id_ledger.is_crosswired(key, supplied))
+        ):
+            # D-FJ-20 — the model put ANOTHER of this turn's own context-ids in this slot.
+            # Not a cross-book call and not a hallucination: a demonstrable cross-wiring of
+            # two ids the server is holding for this very turn, so it needs no policy
+            # judgement and no surface gate.
+            #
+            # MEASURED LIVE 2026-08-13 (session 019ff929, EDITOR surface, book 019ff8f5-ae59):
+            # the rail drove plan_propose_spec four times, every call carrying
+            # book_id="019ff8f5-ee89-75ef-a894-ff9462332bc0" — the CHAPTER open in the editor,
+            # confirmed as a row in that book's chapters table. Every call was refused "not
+            # found or not accessible", the rail re-drove to its cap, and the author's actual
+            # question was answered three times over with the same stale apology.
+            #
+            # The studio branch below already fixes this exact shape (it names
+            # plan_propose_spec) but is STUDIO-SCOPED, because off a studio turn a
+            # valid-but-different book_id may be a real cross-book call. That reasoning does
+            # not reach here: a value that IS the turn's chapter_id cannot be a book id, on
+            # any surface. Kept deliberately narrow — only an exact match against another id
+            # the server already knows, never a guess.
+            logger.warning(
+                "tool arg %s=%r is another of this turn's context-ids (cross-wired) — "
+                "substituting the turn's %s", key, supplied[:64], key,
             )
             args_obj[key] = val_s
         elif (
@@ -1643,6 +2937,117 @@ def _inject_context_ids(
                 supplied[:64], val_s,
             )
             args_obj[key] = val_s
+    _drop_crosswired_foreign_ids(
+        args_obj, fn, props, _no_fill,
+        book_id=book_id, chapter_id=chapter_id, project_id=project_id, id_ledger=id_ledger,
+    )
+    return args_obj
+
+
+def _drop_crosswired_foreign_ids(
+    args_obj: dict, fn: dict, props: dict, no_fill: set, *,
+    book_id: str | None, chapter_id: str | None, project_id: str | None, id_ledger=None,
+) -> None:
+    """The same cross-wire check, for id arguments that are NOT named book/chapter/project.
+
+    🔴 THE LOOP ABOVE ITERATES OVER EXACTLY THREE ARGUMENT NAMES, so a context-id landing in an
+    argument called anything else was never examined at all. The mechanism was not weak here —
+    it was ABSENT, and the absence is invisible because the three names cover most tools.
+
+    MEASURED 2026-08-24, composition_authoring_run_manage, K=2 and again in the batch before it:
+    the model sent `plan_run_id` = the turn's CHAPTER id. Checked against the deployed function,
+    `_inject_context_ids` returned it untouched. A durable gate task was then minted for a run
+    the platform already had the evidence to know was unbuildable, the author was shown a card,
+    and approving it produced a bare `400 {"code":"action_error"}` — LookupError("plan run not
+    found") with the message discarded. Approve-then-fail on a cost-bearing tool, which is the
+    same shape D-UNDECLARED-REF filed for composition_generate's model_ref.
+
+    Deliberately the NARROW half of the rule above, and nothing more:
+      * only arguments whose name ends in `_id`, so a prose field that happens to hold a UUID
+        is never touched;
+      * only an EXACT match against an id this turn published under a different name — the
+        `_crosswired_ids` / `is_crosswired` standard, never a similarity guess;
+      * only where the tool DECLARES AN EMITTER for that argument, because the whole case for
+        dropping is that the refusal which follows can name where to get the real value. Where
+        it cannot, forwarding an id known to be wrong is still the lesser failure (measured:
+        c-override11, where a drop with nowhere to go blank-retried into the breaker);
+      * DROP only, never substitute. The correct value is not a context id, so the server has
+        nothing to put in its place and must not invent one.
+    """
+    for key in list(args_obj):
+        if key in ("book_id", "chapter_id", "project_id") or key in no_fill:
+            continue
+        if not key.endswith("_id") or key not in props:
+            continue
+        supplied = args_obj.get(key)
+        if not isinstance(supplied, str) or not supplied:
+            continue
+        crosswired = supplied in _crosswired_ids(
+            key, book_id=book_id, chapter_id=chapter_id, project_id=project_id,
+        ) or (id_ledger is not None and id_ledger.is_crosswired(key, supplied))
+        if not crosswired:
+            continue
+        try:
+            from app.agentruntime.toolcontract import declared_emitter
+            emitter = declared_emitter(_tool_contract_registry(), fn.get("name") or "", key)
+        except Exception:  # noqa: BLE001 — a contract lookup must never take the turn down
+            emitter = None
+        if not emitter:
+            logger.info(
+                "tool arg %s=%r is cross-wired but %s declares no emitter for it — forwarding "
+                "as-is rather than dropping, because the refusal would name nowhere to go",
+                key, supplied[:64], fn.get("name"),
+            )
+            continue
+        logger.warning(
+            "tool arg %s=%r is another of this turn's context-ids (cross-wired) and %s is not "
+            "a context id the server holds — DROPPING it so the tool's own refusal names %s, "
+            "rather than minting a card for a call that cannot succeed",
+            key, supplied[:64], key, emitter,
+        )
+        args_obj.pop(key, None)
+
+
+def _repair_saved_book_id(
+    args_obj: object, *, book_id: str | None, studio: bool
+) -> object:
+    """The `_inject_context_ids` repairs that survive a SUSPEND — applied to the args a
+    Tier-A card was approved on, just before the approved dispatch.
+
+    Deliberately narrower than `_inject_context_ids`: the tool's SCHEMA is not available at
+    the resume dispatch (`tool_defs` is built further down, after this call), so this only ever
+    ADJUSTS a `book_id` the saved args already carry and NEVER adds one. That is the whole
+    difference that matters — adding an undeclared arg needs the schema, correcting a present
+    one does not.
+
+    Two rules, both lifted verbatim from `_inject_context_ids`:
+      * a MALFORMED book_id is a mistranscription, never a deliberate cross-book call;
+      * on a STUDIO turn a valid-but-DIFFERENT book_id is a hallucination (the studio works one
+        book at a time). Off a studio turn it is honored, exactly as on the streaming path.
+
+    For an `ambient_book` tool the streaming path DROPS a mismatched book_id so the envelope's
+    ambient book wins; setting it to the studio's book here is the same outcome by a different
+    route, since the envelope carries that same book.
+    """
+    if not isinstance(args_obj, dict) or not book_id:
+        return args_obj
+    supplied = args_obj.get("book_id")
+    if not supplied or not isinstance(supplied, str):
+        return args_obj
+    val_s = str(book_id)
+    if not _is_uuid(supplied):
+        logger.warning(
+            "approved tool arg book_id=%r is not a UUID — substituting the suspend's book %s",
+            supplied[:64], val_s,
+        )
+        args_obj["book_id"] = val_s
+    elif studio and supplied != val_s:
+        logger.warning(
+            "approved tool arg book_id=%r differs from the studio's book %s — overriding "
+            "(the repair fired before the suspend and was never persisted)",
+            supplied[:64], val_s,
+        )
+        args_obj["book_id"] = val_s
     return args_obj
 
 
@@ -1654,14 +3059,189 @@ def _is_uuid(v: str) -> bool:
     return True
 
 
+#: CP-5.3 — the ref/resolver map, loaded once from its registry row.
+#:
+#: The loader lives HERE rather than in `app.agentruntime.refresolve` because that package may
+#: import only stdlib and itself (the membrane gate), and reading a repo path is a boundary
+#: concern. `refresolve` stays a pure decision module; this side does the I/O.
+#: 🔴 **A DICT RATHER THAN TWO MODULE GLOBALS, AND CP-0'S F-50 GUARD IS WHY.** The first version
+#: declared `global _REF_REGISTRY, _REF_REGISTRY_LOADED` and then read the flag in an early-return
+#: branch ABOVE the assignment. Python is fine with that — they are module-level — but the guard
+#: reads the SHAPE, and the shape is the one that produced F-50: a value read on a path that
+#: returns before it is bound. Mutating a dict needs no `global`, so the early read is a plain
+#: lookup and the shape is gone rather than argued with.
+_REF_REGISTRY_CACHE: dict[str, tuple[dict, dict]] = {}
+_VOCAB_REGISTRY_CACHE: dict[str, tuple[dict, dict]] = {}
+
+
+#: CP-5.4 — the tool-contract registry, read once. Same posture as the ref registry: an absent file
+#: is a legitimate empty state (no tool declares a supplier, so every message reads as it did
+#: before), and a broken PROGRAM is never absorbed as a bad file.
+_TOOL_CONTRACT_CACHE: dict[str, dict] = {}
+
+
+def _tool_contract_registry() -> dict:
+    cached = _TOOL_CONTRACT_CACHE.get("value")
+    if cached is not None:
+        return cached
+    doc: dict = {}
+    try:
+        from app.agentruntime.manifest import manifest_path
+        from app.agentruntime.toolcontract import CONTRACT_REGISTRY_FILENAME
+
+        mpath = manifest_path()
+        path = (mpath.parent / CONTRACT_REGISTRY_FILENAME) if mpath is not None else None
+        if path is not None and path.exists():
+            doc = json.loads(path.read_text(encoding="utf-8"))
+    except (NameError, AttributeError, ImportError):
+        raise
+    except Exception as exc:
+        logger.warning("CP-5.4: tool-contract registry not loaded (%s)", exc)
+    _TOOL_CONTRACT_CACHE["value"] = doc
+    return doc
+
+
+def _vocab_registry(lane_of) -> tuple[dict, dict]:
+    """`(vocabularies, bindings)`, or two empty dicts — CP-6.1, mirroring `_ref_registry` exactly.
+
+    Same posture and for the same reasons: `lane_of` comes from the turn because the catalogue is
+    per-request; a source that cannot be shown to be `lane=read` fails closed, since enumerating a
+    vocabulary dispatches a tool the user never asked for; a FAILED load is not cached (one unlucky
+    turn must not make the mechanism inert for the whole process); and `NameError`/`AttributeError`/
+    `ImportError` re-raise, because those are bugs and swallowing one hid a mechanism that had never
+    run once.
+    """
+    cached = _VOCAB_REGISTRY_CACHE.get("value")
+    if cached is not None:
+        return cached
+    loaded: tuple[dict, dict] = ({}, {})
+    cacheable = True
+    try:
+        from app.agentruntime.manifest import manifest_path
+        from app.agentruntime.vocabulary import (
+            VOCABULARY_REGISTRY_FILENAME, load_registry as _load_vocab,
+        )
+
+        mpath = manifest_path()
+        path = (mpath.parent / VOCABULARY_REGISTRY_FILENAME) if mpath is not None else None
+        if path is not None and path.exists():
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            vocabs, bindings = _load_vocab(doc, lane_of)
+            logger.info("CP-6.1: %d vocabular(ies), %d bound parameter(s)",
+                        len(vocabs), len(bindings))
+            loaded = (vocabs, bindings)
+        else:
+            logger.info("CP-6.1: no vocabulary registry beside the manifest — the check is inert")
+    except (NameError, AttributeError, ImportError):
+        raise
+    except Exception as exc:
+        cacheable = False
+        logger.warning("CP-6.1: vocabulary registry not loaded (%s) — inert for THIS TURN", exc)
+    if cacheable:
+        _VOCAB_REGISTRY_CACHE["value"] = loaded
+    return loaded
+
+
+def _ref_registry(lane_of) -> tuple[dict, dict]:
+    """`(resolvers, bindings)`, or two empty dicts.
+
+    `lane_of` maps a TOOL NAME to its lane and is supplied by the turn, because the catalogue is
+    per-request — and the lane is not decoration here: `check_resolver` refuses a resolver that is
+    not `lane=read`, since resolution dispatches it **without the user asking**.
+
+    **An absent or unloadable registry is a legitimate empty state, not a failure**: it means no
+    ref type is declared, so nothing resolves and every call behaves exactly as it does today. A
+    resolution layer that could break tool calling by being misconfigured would be a worse defect
+    than the one it fixes.
+    """
+    cached = _REF_REGISTRY_CACHE.get("value")
+    if cached is not None:
+        return cached
+    loaded: tuple[dict, dict] = ({}, {})
+    #: 🔴 **A FAILED LOAD IS NOT CACHED, AND THE REASON IS THE LANE LOOKUP.** `lane_of` reads the
+    #: TURN's catalogue index, so a first turn whose discovery set happens not to contain
+    #: `glossary_search` cannot determine the resolver's lane — `check_resolver` then fails closed,
+    #: correctly. Caching that would make resolution inert for the whole PROCESS on the strength of
+    #: one unlucky turn. Only a settled answer is cached: a successful load, or a registry that is
+    #: genuinely absent.
+    cacheable = True
+    try:
+        from app.agentruntime.manifest import manifest_path
+        from app.agentruntime.refresolve import REF_REGISTRY_FILENAME, load_registry
+
+        mpath = manifest_path()
+        path = (mpath.parent / REF_REGISTRY_FILENAME) if mpath is not None else None
+        if path is not None and path.exists():
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            resolvers, bindings = load_registry(doc, lane_of)
+            logger.info("CP-5.3: %d ref type(s), %d bound parameter(s)",
+                        len(resolvers), len(bindings))
+            loaded = (resolvers, bindings)
+        else:
+            logger.info("CP-5.3: no ref registry beside the manifest — resolution is inert")
+    except (NameError, AttributeError, ImportError):
+        # 🔴 **THESE ARE BUGS, NOT MISCONFIGURATION, AND SWALLOWING THEM HID A MECHANISM THAT HAD
+        # NEVER RUN ONCE.** The first version caught bare `Exception`, and `declared_lane` was
+        # never imported into this module — so every process logged one warning and resolution was
+        # inert, with the whole suite green. It was found only by a served turn that sent the
+        # failing shape and got `entity_id must be a UUID` back with `resolution: null`.
+        #
+        # A degrade path may absorb a bad FILE. It may not absorb a broken PROGRAM: the two look
+        # identical in a log line and could not be more different.
+        raise
+    except Exception as exc:
+        # A malformed or unreadable registry is LOUD in the log and inert at runtime — that is a
+        # deliberate posture: a resolution layer that could break tool calling by being
+        # misconfigured would be a worse defect than the one it fixes. It is never a silent
+        # partial load: `load_registry` refuses the whole document rather than dropping a row,
+        # because a dropped resolver leaves its binding in place and never resolving.
+        cacheable = False
+        logger.warning("CP-5.3: ref registry not loaded (%s) — resolution is inert for THIS TURN; "
+                       "it will be retried on the next one", exc)
+    if cacheable:
+        _REF_REGISTRY_CACHE["value"] = loaded
+    return loaded
+
+
 def _missing_required_names(args_obj: dict, tool_def: dict | None) -> list[str]:
     """The REQUIRED arg names this call is still missing (post context-id injection).
-    Unknown tool_def → [] (can't classify → never block a call we can't judge)."""
+    Unknown tool_def → [] (can't classify → never block a call we can't judge).
+
+    🔴 THIS USED TO BE `not args_obj.get(r)` — A TRUTHINESS TEST WHERE PRESENCE WAS MEANT.
+
+    Measured 2026-08-22 through the real chat path. `settings_model_set_favorite` was asked to
+    UNFAVOURITE a model; the model sent `{"user_model_id": "…", "value": false}` — exactly right —
+    and this returned `["value"]`, because `not False` is `True`. The repair message then told the
+    model to supply the argument it had just supplied, it retried identically, and the blank-args
+    cap stopped the turn. On one such turn the model went on to tell the author *"I've deactivated
+    Nemotron-3 Nano for you"*: a false claim of a write, caused by a check that threw away the
+    correct answer.
+
+    It took a control to see. The obvious reading was that the model omits the boolean when the
+    answer is false — "mark as a favourite" (true) passed while "deactivate" and "turn off" (false)
+    failed. The RECORDED ARGUMENTS refuted it: the value was always there.
+
+    Swept across the live catalogue, 37 required arguments on 36 tools can legitimately be falsy —
+    6 booleans (`false` unreachable), 10 integers (`unit_index: 0` is the FIRST unit), 2 numbers
+    (`world_map_add_marker.x: 0` is the left edge of the map), and 19 arrays (`chapters: []` is the
+    empty-import case). None of them could be expressed through chat.
+
+    THE RULE NOW: an argument that was SENT is present, whatever its value. Absent or `None` is
+    missing. The one exception is the reason this check existed — a required STRING that is empty
+    or whitespace really is blank, and catching that is what the blank-args cap is for. It also
+    now catches whitespace, which the truthiness version let through.
+    """
     if not tool_def:
         return []
     params = tool_def.get("function", {}).get("parameters", {})
     required = params.get("required", []) if isinstance(params, dict) else []
-    return [r for r in required if not args_obj.get(r)]
+    missing = []
+    for r in required:
+        if r not in args_obj or args_obj[r] is None:
+            missing.append(r)
+        elif isinstance(args_obj[r], str) and not args_obj[r].strip():
+            missing.append(r)
+    return missing
 
 
 def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:
@@ -1673,6 +3253,1471 @@ def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:
     glossary_book_ontology_read with book_id present) that would actually succeed. Only a
     call that is ITSELF still missing required args should be short-circuited."""
     return bool(_missing_required_names(args_obj, tool_def))
+
+
+def _flat_declared_types(spec: dict) -> list | None:
+    """The concrete JSON types a property may hold, flattening ONE union level.
+
+    Shared by the two container/type repairs below so they cannot drift apart. Returns None when
+    the schema is richer than a flat type set (`items`, `$ref`, `allOf`, nested unions) — the
+    caller must then DECLINE rather than guess, which is the safety property both repairs rest on.
+    """
+    branches = spec.get("anyOf") or spec.get("oneOf")
+    if branches is not None:
+        if not isinstance(branches, list) or not branches:
+            return None
+        if not all(isinstance(b, dict) for b in branches):
+            return None
+        if any("items" in b or "$ref" in b or "anyOf" in b or "oneOf" in b for b in branches):
+            return None
+        return [t for b in branches for t in (
+            b.get("type") if isinstance(b.get("type"), list) else [b.get("type")])]
+    if any(k in spec for k in ("items", "allOf", "$ref")):
+        return None
+    declared = spec.get("type")
+    return declared if isinstance(declared, list) else [declared]
+
+
+_FIELD_PREFIXED_ID = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):([0-9a-fA-F-]{36})$")
+
+
+def _strip_field_name_prefix_from_ids(args_obj: dict, tool_def: dict | None) -> list[str]:
+    """Repair `"user_model_id:019e7f71-…"` -> `"019e7f71-…"` for a string-only param.
+
+    🔴 MEASURED LIVE 2026-08-13 (cycle 5, kg_build's blocker). kg_project_set_embedding_model was
+    called with embedding_model="user_model_id:019e7f71-0271-722f-9c9c-3f049c0b26f4" and refused
+    "invalid model_ref". CONTROL: the same id WITHOUT the prefix is accepted.
+
+    THE ROOT IS NOT A HALLUCINATION, which is why this is repairable rather than a message problem.
+    `settings_list_models` — the tool the refusal itself points the caller to — returns each model as
+    an object whose id sits under the KEY `user_model_id`:
+    `{..., "user_model_id": "019ebb72-…", "provider_model_name": …}`. The model read the field name
+    and emitted KEY:VALUE. The id it needed was present and correct; it serialised the pair.
+
+    Fifth in the argument-form family, same decline-when-uncertain discipline. The condition is
+    deliberately tight, because a colon is ordinary punctuation in prose:
+
+    * the value must be EXACTLY `<bare_identifier>:<uuid>` — a title, a URL, "chapter 3: the flood"
+      and any prefix that is not an identifier all fail the pattern;
+    * the remainder must parse as a UUID, so nothing is stripped off a value whose tail is free text;
+    * the param must declare string-only (a param that also accepts an object is not this mistake).
+    """
+    if not isinstance(args_obj, dict) or not tool_def:
+        return []
+    params = (tool_def.get("function") or {}).get("parameters") or {}
+    props = params.get("properties") if isinstance(params, dict) else None
+    if not isinstance(props, dict):
+        return []
+    deprefixed: list[str] = []
+    for name, value in list(args_obj.items()):
+        if not isinstance(value, str):
+            continue
+        m = _FIELD_PREFIXED_ID.match(value.strip())
+        if not m or not _is_uuid(m.group(2)):
+            continue
+        spec = props.get(name)
+        if type(spec) is not dict:
+            continue
+        kinds = _flat_declared_types(spec)
+        if kinds is None:
+            continue
+        real = [t for t in kinds if t != "null"]
+        if not real or any(t != "string" for t in real):
+            continue
+        args_obj[name] = m.group(2)
+        deprefixed.append(name)
+    return deprefixed
+
+
+def _unwrap_object_items_for_string_array(args_obj: dict, tool_def: dict | None) -> list[str]:
+    """Repair `entity_ids: [{"entity_id": "<uuid>", "status": "active"}]` -> `["<uuid>"]`.
+
+    🔴 MEASURED LIVE 2026-08-12 (journey `entity-triage`, book 019ff4cf) and reproduced deliberately
+    on 2026-08-13: glossary_propose_curation was called with op='status_change', status='active' and
+    `entity_ids` holding OBJECTS where the schema declares an array of STRINGS, each object
+    re-stating the `status` that was already a sibling argument. The validator refuses it before the
+    tool runs, and the journey ended with all 11 entities still `draft`.
+
+    Third in the same family, and the safety discipline is the same as its two siblings — a wrong
+    unwrap CORRUPTS a write rather than refusing it, so every uncertain shape is DECLINED:
+
+    * the param must declare `type: array` with `items.type` exactly `string` (one union level
+      flattened); anything richer is declined;
+    * EVERY element must be an object — a mixed list is a shape this rule cannot reason about;
+    * each object must carry the parameter's SINGULAR key (`entity_ids` -> `entity_id`) holding a
+      non-empty string; no singular key, no repair;
+    * 🔴 and an object key that ALSO exists as a top-level sibling argument must AGREE with it. The
+      measured payload repeated `status: "active"` next to the sibling `status: "active"` — harmless
+      redundancy. A DISAGREEMENT is a real ambiguity about which value the caller meant, and
+      dropping the object's copy would silently pick one. Decline instead.
+    """
+    if not isinstance(args_obj, dict) or not tool_def:
+        return []
+    params = (tool_def.get("function") or {}).get("parameters") or {}
+    props = params.get("properties") if isinstance(params, dict) else None
+    if not isinstance(props, dict):
+        return []
+    fixed: list[str] = []
+    for name, value in list(args_obj.items()):
+        if not isinstance(value, list) or not value:
+            continue
+        if not all(isinstance(el, dict) for el in value):
+            continue
+        spec = props.get(name)
+        if type(spec) is not dict:  # shape varies from the sibling repairs ON PURPOSE — identical
+            continue                # bodies make a registered falsifier's anchor match twice
+        # NOT `_flat_declared_types`: that helper vetoes any schema carrying `items`, which is
+        # right for its two SCALAR callers and exactly backwards here — `items` is the thing this
+        # rule needs to read. A union (anyOf/oneOf) around an array is declined outright rather
+        # than flattened, because the branch that matched is then a guess.
+        if spec.get("anyOf") or spec.get("oneOf") or "$ref" in spec or "allOf" in spec:
+            continue
+        declared = spec.get("type")
+        declared_list = declared if type(declared) is list else [declared]
+        if "array" not in [t for t in declared_list if t]:
+            continue
+        items = spec.get("items")
+        if not isinstance(items, dict) or items.get("type") != "string":
+            continue
+        singular = name[:-1] if name.endswith("s") else ""
+        if not singular:
+            continue
+        picked: list[str] = []
+        for el in value:
+            inner = el.get(singular)
+            if not isinstance(inner, str) or not inner.strip():
+                picked = []
+                break
+            # A key that restates a sibling must AGREE with it; a contradiction is ambiguity.
+            if any(k in args_obj and k != name and args_obj[k] != v for k, v in el.items()):
+                picked = []
+                break
+            picked.append(inner)
+        if not picked:
+            continue
+        args_obj[name] = picked
+        fixed.append(name)
+    return fixed
+
+
+def _stringify_int_args_declared_string(args_obj: dict, tool_def: dict | None) -> list[str]:
+    """Repair `chapter: 1` → `chapter: "1"` for a param the schema declares STRING-only.
+
+    🔴 MEASURED LIVE. book_chapter_save_draft declares `chapter` as a string whose OWN description
+    says to pass "its NUMBER (e.g. '1', 'chapter 3')" — so the model reads "number", sends the JSON
+    number 1, and the gateway rejects the call before the tool ever sees it:
+    *validating /properties/chapter: type: 1 has type "integer", want "string"*. Recorded on
+    2026-08-04 and again on 2026-08-12, i.e. it recurs; the 2026-08-12 instance came one step after
+    the same turn had finally supplied the prose, so the write was blocked on the container of a
+    value that was already correct. Same family as D-FJ-7 (the value is right, its TYPE is wrong)
+    and repaired with the same discipline.
+
+    DELIBERATELY NARROW, because a wrong coercion corrupts a write rather than refusing it:
+
+    * only when EVERY non-null declared type is `string` — a param that also accepts `integer` is
+      not confused, it is being given a legal value;
+    * `bool` is declined even though Python calls it an int: `True` -> "True" is a guess about
+      intent, not a container slip;
+    * `float` is declined: 1.0 -> "1.0" is lossy and ambiguous against a selector like "1";
+    * a schema richer than a flat type set is declined outright (see `_flat_declared_types`).
+    """
+    if not isinstance(args_obj, dict) or not tool_def:
+        return []
+    params = (tool_def.get("function") or {}).get("parameters") or {}
+    props = params.get("properties") if isinstance(params, dict) else None
+    if not isinstance(props, dict):
+        return []
+    coerced: list[str] = []
+    for name, value in list(args_obj.items()):
+        if isinstance(value, bool) or not isinstance(value, int):
+            continue
+        spec = props.get(name)
+        if type(spec) is not dict:  # shape differs from the sibling ON PURPOSE: identical bodies
+            continue                # made a registered falsifier's anchor match twice
+        types = _flat_declared_types(spec)
+        if types is None:
+            continue
+        concrete = [t for t in types if t != "null"]
+        if not concrete or any(t != "string" for t in concrete):
+            continue
+        args_obj[name] = str(value)
+        coerced.append(name)
+    return coerced
+
+
+def _unwrap_single_element_scalar_args(args_obj: dict, tool_def: dict | None) -> list[str]:
+    """Repair `["vi"]` → `"vi"` for a param the schema declares SCALAR. Returns the names repaired.
+
+    🔴 MEASURED LIVE 2026-08-12, journey `translation-pass` (book 019f9a02-f3a3…). The model called
+    translation_start_job with `target_language: ["vi"]` and was refused: *"Input should be 'en',
+    'vi', … (you sent ['vi'])"*. The refusal is exemplary — it names the legal set AND what was sent
+    — and the turn still ended there with the journey unfinished. This is the *typed params* class,
+    16.8% of the recorded failure corpus, and a one-element list where a scalar is declared is the
+    most mechanical shape in it: the value is already correct, only its container is wrong.
+
+    THE GUARD IS THE WHOLE POINT, because unwrapping the wrong param would silently corrupt a call
+    rather than fail it. A param is repaired ONLY when the schema says it cannot be an array:
+
+    * `type` may be a UNION LIST (`["null", "array"]`), so an array member anywhere disqualifies it —
+      testing `type != "array"` alone would unwrap a legitimately-list-typed argument.
+    * `items`, `anyOf`, `oneOf` and `$ref` mean the schema is richer than this repair can reason
+      about, so it declines rather than guesses.
+    * A list of length != 1 is never touched: `[]` and `["vi","en"]` are real disagreements about
+      cardinality, not a container slip, and they must still reach the refusal.
+    """
+    if not isinstance(args_obj, dict) or not tool_def:
+        return []
+    params = (tool_def.get("function") or {}).get("parameters") or {}
+    props = params.get("properties") if isinstance(params, dict) else None
+    if not isinstance(props, dict):
+        return []
+    repaired: list[str] = []
+    for name, value in list(args_obj.items()):
+        if not isinstance(value, list) or len(value) != 1:
+            continue
+        spec = props.get(name)
+        if not isinstance(spec, dict):
+            continue
+        # `anyOf`/`oneOf` is the SHAPE THE REAL CATALOGUE USES, not an exotic case: pydantic emits
+        # `anyOf: [{enum, type: string}, {type: null}]` for every optional enum, which is what
+        # translation_start_job.target_language actually declares. Declining all unions would have
+        # left this repair unable to fire on the very call that motivated it — a fix that is
+        # decoration. So flatten one level and require EVERY branch to be scalar-or-null: a union
+        # with an array or object branch is still refused, which keeps the safety property intact.
+        branches = spec.get("anyOf") or spec.get("oneOf")
+        if branches is not None:
+            if not isinstance(branches, list) or not branches:
+                continue
+            if not all(isinstance(b, dict) for b in branches):
+                continue
+            types = [t for b in branches for t in (
+                b.get("type") if isinstance(b.get("type"), list) else [b.get("type")])]
+            if any("items" in b or "$ref" in b or "anyOf" in b or "oneOf" in b for b in branches):
+                continue
+        else:
+            if any(k in spec for k in ("items", "allOf", "$ref")):
+                continue
+            declared = spec.get("type")
+            types = declared if isinstance(declared, list) else [declared]
+        # "null" is permitted alongside a scalar (that IS the optional shape), but every remaining
+        # member must be scalar and none may be an array.
+        concrete = [t for t in types if t != "null"]
+        if "array" in types or not concrete or not all(
+            t in ("string", "integer", "number", "boolean") for t in concrete
+        ):
+            continue
+        inner = value[0]
+        if isinstance(inner, (dict, list)):
+            continue
+        args_obj[name] = inner
+        repaired.append(name)
+    return repaired
+
+
+#: How many recovery tools one refusal may arm. A refusal names the one or two tools that unblock
+#: it; a text that "names" more than this is almost certainly prose that happens to contain tool
+#: names, and arming a handful of those would spend the surface budget the hot set needs.
+_RECOVERY_ARM_CAP = 3
+
+
+def _tools_named_in_refusal(
+    error_text: str, catalog: dict, already_active, *, exclude: str | None = None,
+) -> list[str]:
+    """Catalogue tools a REFUSAL told the caller to use, and that it cannot currently see.
+
+    🔴 **A REFUSAL THAT NAMES AN UNREACHABLE TOOL IS AN INSTRUCTION THE CALLER CANNOT FOLLOW.**
+    Measured live 2026-08-12, journey `kg-build` (session 019ff498-7603…): kg_build refused with
+    *"call kg_project_set_embedding_model first (pick one of your embedding models with
+    settings_list_models)"*. Both tools are federated -- they are in the gateway's 315-tool list --
+    but NEITHER was in that turn's advertised surface, which carried kg_build and not them. The
+    model understood the requirement, wrote *"I'll get to work on setting that up now"* three
+    times, never called either tool, retried kg_build unchanged, and ended by asking the author
+    whether to keep trying. The project's embedding_model was NULL and the account owns an active
+    embedding model, so the journey was satisfiable the whole time.
+
+    This is the same decision the dispatch chokepoint already makes for an off-surface tool the
+    model DID call ("making it round-trip through tool_list/tool_load to be told 'yes, that one' is
+    ceremony a weak model fails") and that D-NARRATED-WRITE makes for a tool the model merely
+    NAMED. A tool the RUNTIME named, in the sentence explaining how to proceed, is the strongest of
+    the three cases and was the only one not covered.
+
+    Whole-word matching, never substring: `kg_build` occurs inside `kg_build_wiki`, so a substring
+    test would arm the wrong tool off its own refusal -- the `mrows.Err()`/`rows.Err()` shape that
+    kept a guard green while the check it named was gone.
+
+    🔴 **`exclude` IS THE TOOL THAT JUST FAILED, AND OMITTING IT ARMED THE FAILURE ITSELF.** Caught
+    live 2026-08-22 by this function's own log line, on the first batch after the missing-argument
+    arm was wired in:
+
+        armed recovery tool(s) ['composition_arc_template_edit'] named in
+        composition_arc_template_edit's missing-argument refusal
+
+    Every refusal `_missing_args_message` builds OPENS with the failing tool's name — *"'x' is
+    missing required argument(s)"* — so the tool is always a candidate against its own refusal.
+    Arming it is not merely a no-op: candidates are ranked longest-name-first into a cap of 3, and a
+    tool name is usually among the longest strings in its own refusal, so the failure reliably takes
+    a top slot and can push out the supplier the sentence is actually steering toward. The
+    instruction says *call world_map_list first*; the arming would spend a slot re-arming
+    world_map_delete.
+
+    Passing the failing tool here rather than relying on `already_active` is deliberate: a tool
+    dispatched off-surface (the chokepoint one step below auto-loads a catalogue tool the model
+    named) is NOT in the active set at the moment its refusal is read.
+    """
+    if not error_text or not catalog:
+        return []
+    found = [
+        name for name in catalog
+        if name not in already_active and name != exclude
+        and re.search(rf"\b{re.escape(name)}\b", error_text)
+    ]
+    # Longest first: when a refusal names both `kg_build` and `kg_build_wiki`, the specific tool is
+    # the one it is steering toward. Then a stable order so the armed set is reproducible.
+    found.sort(key=lambda n: (-len(n), n))
+    return sorted(found[:_RECOVERY_ARM_CAP])
+
+
+def _arm_tools(
+    names,
+    *,
+    active_tool_names: set,
+    activation_state: dict | None,
+    discovery_catalog,
+    context_length,
+    unlockable_gated: dict | None = None,
+) -> list[str]:
+    """Put `names` on the wire for the rest of this turn. THE one place that does it.
+
+    🔴 **THE MUTATION WAS COPIED THREE TIMES AND THE THIRD SITE WAS THE ONE THAT DID NOT EXIST.**
+    `active_tool_names.update(...)` + `merge_activated_tools(...)` + `dirty = True` appeared
+    verbatim under D-NARRATED-WRITE (a tool named in PROSE) and under D-FJ-4 (a tool named in a
+    dispatch REFUSAL). The pre-dispatch missing-argument refusal — the largest refusal class on
+    this platform, 266 failures over 87 sessions — `continue`s before either, so the sentence
+    `_missing_args_message` writes ("call world_map_list first and match it to get the id") armed
+    nothing at all. `_missing_args_message`'s own comment claimed otherwise: *"Naming it also ARMS
+    it ... so one sentence fixes both the instruction and the reachability."* It did not.
+
+    MEASURED 2026-08-22, 35 live runs over the 7 P3-NAME-TO-ID tools that have a supplier, reading
+    `advertised` off each turn's own agentSurface event:
+
+        supplier advertised & called          8
+        supplier advertised & NOT called      0    <- the cell "the model will not walk it" needs
+        NOT advertised & called               0
+        NOT advertised & NOT called          27
+
+    Agreement on 35 of 35 runs, no disagreements. The model walks a supplier chain exactly when it
+    can see the supplier. `world_map_delete` was refused with *call world_map_list first*, that tool
+    was advertised on 0 of 5 runs, and the turn ended "I'll find the ID for you now. One moment."
+    — recorded until now as the model failing to keep its word.
+
+    Returns what it actually armed (already-active names are not re-armed), so a caller can decide
+    whether to say anything. It does NOT write the [SYSTEM] note: the three callers are telling the
+    model three different things, and one shared sentence would be wrong for two of them.
+    """
+    from app.services.tool_surface import merge_activated_tools
+
+    fresh = [n for n in names if n not in active_tool_names]
+    if not fresh:
+        return []
+    # 🔴 DQ-T5 (OWNER 2026-08-31): "A REFUSAL UNLOCKS THE TOOL IT NAMES, for the rest of that
+    # turn." Arming a name the N5a-FULL capability floor removed was INERT: the turn catalogue is
+    # filtered ONCE, before the tool loop, so the name went into `activated_tools` while its
+    # SCHEMA was absent and nothing reached the wire.
+    #
+    # MEASURED 2026-08-13 (sessions 019ffa85 / 019ffa92 / 019ffa96, a throwaway book): a fresh
+    # book has no kinds, so glossary_propose_entities refuses and NAMES glossary_adopt_standards
+    # — which was recorded WITHHELD at stage=intent_gate in the SAME turn as the refusal that
+    # named it, and stayed withheld even on the explicit prose "Set up my book — adopt the
+    # standard lore categories for it". A new book had no entry point to its own glossary.
+    #
+    # The ruling's own words: "the platform already does exactly this for a pinned rail's step
+    # tools, so the mechanism exists and only its trigger is new." A pinned rail is exempted
+    # inside `filter_intent_gated_setup_tools`; a REFUSAL cannot be, because it happens after
+    # that filter has already run. So the def is restored HERE, at the one place that arms.
+    if unlockable_gated:
+        for n in fresh:
+            spec = unlockable_gated.get(n)
+            if spec is not None and not any(
+                    (d.get("function") or {}).get("name") == n for d in discovery_catalog):
+                discovery_catalog.append(spec)
+    active_tool_names.update(fresh)
+    if activation_state is not None:
+        activation_state["activated_tools"] = merge_activated_tools(
+            activation_state["activated_tools"], fresh,
+            catalog=discovery_catalog, context_length=context_length,
+        )
+        activation_state["dirty"] = True
+    return fresh
+
+
+#: The reserved all-zero UUID. Never a row in any table here, so an `*_id` argument carrying it is
+#: an invention that happens to parse. Compared through UUID() rather than by string so the
+#: braced/urn/uppercase spellings cannot slip past a literal match.
+def _is_nil_uuid(value: str) -> bool:
+    try:
+        return UUID(value).int == 0
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+#: The hex alphabet, in order, for the sequential-run test below.
+_HEX_ORDER = "0123456789abcdef"
+
+#: A run of consecutive nibbles this long never occurs in an id this platform has ever issued.
+#: MEASURED, not chosen: the longest sequential run across 38,314 distinct UUIDs read out of
+#: every uuid column in all eight databases is SIX. Eight leaves a two-nibble margin.
+_DEGENERATE_SEQ_RUN = 8
+
+#: How few DISTINCT hex nibbles a 32-nibble id must have before it reads as typed rather than
+#: minted. MEASURED on the population this guard actually inspects — 14,037 UUID-shaped `*_id`
+#: tool ARGUMENTS — where it has ZERO false positives. It is deliberately NOT measured against
+#: the stores: 21 stored ids match it, every one of them a hand-authored sentinel, and those are
+#: spared by PROVENANCE at the call site rather than by weakening the shape test. See DQ-T92.
+_DEGENERATE_DISTINCT_MAX = 2
+
+
+def _is_degenerate_uuid(value: str) -> bool:
+    """A syntactically valid UUID that is RECOGNISABLY a placeholder.
+
+    🔴 THE SAME SHAPE AS `_is_nil_uuid`, ONE STEP WIDER, AND MEASURED BEFORE IT SHIPPED.
+    `_invented_supplier_ids` tests SYNTAX, so a model that invents a well-formed UUID walks
+    straight through it. Measured live twice on different tools and different arguments:
+
+        plan_bootstrap_apply   proposal_id=77777777-7777-7777-7777-777777777777   (2 of 5 runs)
+        plan_bootstrap_apply   proposal_id=78965432-1234-5678-90ab-cdef12345678   (1 of 5)
+        (and 66966666-6666-6666-6666-666666666666 on a different tool entirely)
+
+    Both rows that record this said the same thing: a shape test is plausible here, and its
+    PRECISION against real ids is unknown — "that measurement is the next step, not the fix".
+
+    THE MEASUREMENT, 2026-08-27. Two populations, because the second is the one this function
+    actually sees:
+
+                              38,314 real ids      390 GENUINE ids the model passed
+        all-digits-identical         2 (both               0
+                                     themselves
+                                     placeholders)
+        sequential run >= 8          0                     0
+        --- rejected, and why ---
+        distinct hex <= 2           20                     0
+        UUID version != 7       11,618                     -
+
+    So the two rules below fire on nothing real in either population. `distinct <= 2` is NOT
+    shipped: its 20 are hand-authored sentinels that DO resolve — 00000000-…-00000000000a and
+    the like — and a rule that refuses a value which exists is a false refusal even when the
+    value is ugly. `version != 7` is refuted outright: 11,618 genuine v4 ids are in the stores,
+    exactly as D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID warned.
+
+    🔴 THE `distinct <= 2` ARM WAS ADDED 2026-09-02, AFTER SEVEN REJECTED CANDIDATES, AND
+    THE THING THAT CHANGED IS THE DENOMINATOR — NOT THE RULE. Every refusal above measured it
+    against the STORES (20 hits, later 21) and concluded it refuses ids that resolve. But this
+    function never sees a stored id; it sees a tool ARGUMENT. Re-measured on that population:
+
+        UUID-shaped `*_id` ARGUMENTS examined          14,037
+        matched by `distinct <= 2`                          4 values
+            00000000-…-000000000000   x33   already caught by the all-identical arm
+            76666666-7666-…-766666666666  x22   ← THE RECALL THIS BUYS
+            77777777-…-777777777777    x2   already caught
+            66666666-…-666666666666     x1   already caught
+        FALSE POSITIVES                                     0
+        the RESOLVING sentinel 00000000-…-00000000000a      0 occurrences, ever
+        this row's quoted instance 66966666-…                0 occurrences, ever
+
+    🔴 AND THE SENTINEL IS SPARED BY PROVENANCE, NOT BY SHAPE — which is the owner's ruling
+    and the reason this is not the blacklist the row warned against. `00000000-…-00000000000a`
+    and its seventeen siblings ARE real, resolving ids in the live glossary store, all v0, and
+    this arm's shape test does fire on them. What spares them is `published_ids` at the call site
+    below: a value the PLATFORM handed the model this turn was not invented by the model, whatever
+    it looks like. A shape exemption is a list to be walked around; provenance is the property
+    that actually distinguishes the two cases.
+
+    🔴 STATED PLAINLY BECAUSE IT MATTERS: on today's corpus the provenance exemption SPARES
+    NOTHING. Of 58 degenerate arguments ever recorded, 58 were never published in-session and 0
+    were published — so it costs zero recall and, today, fires zero times. It is a safety valve,
+    not a filter: it exists so that the failure that killed the version rule (refusing a value the
+    runtime itself issued) cannot happen when a sentinel does reach an argument.
+
+    RECALL IS STILL PARTIAL AND THAT IS STILL THE PRICE OF THE PRECISION. `66966666-…` — this
+    row's own quoted instance — has two distinct digits and IS now caught; `76767676-…` likewise.
+    A guard that is right about what it flags is worth more here than one that flags more, because
+    a false refusal deletes an argument the model supplied correctly.
+    """
+    try:
+        raw = f"{UUID(value).int:032x}"
+    except (ValueError, AttributeError, TypeError):
+        return False
+    if len(set(raw)) <= _DEGENERATE_DISTINCT_MAX:
+        return True
+    run = 1
+    for i in range(1, len(raw)):
+        a, b = _HEX_ORDER.find(raw[i - 1]), _HEX_ORDER.find(raw[i])
+        run = run + 1 if (a >= 0 and b == a + 1) else 1
+        if run >= _DEGENERATE_SEQ_RUN:
+            return True
+    return False
+
+
+#: The ids the RUNTIME fills from the turn. Excluded from the declared-UUID check below because
+#: `_inject_context_ids` owns them: it supplies a missing one and SUBSTITUTES a malformed one for
+#: the value the server already knows. A non-context id has no such fallback.
+_RUNTIME_CONTEXT_IDS = frozenset({"book_id", "chapter_id", "project_id"})
+
+#: Words that appear in a model's fill-me-in stub and never in an identifier this platform issues.
+#: Matched case-insensitively on a word-ish boundary, so `PLACEHOLDER`, `unknown_id`,
+#: `YOUR_ID_HERE` and `run_12345_placeholder` all hit while a real UUID cannot: hex has no
+#: letters past `f`, so "unknown", "placeholder", "provide", "todo" and "example" are unreachable.
+#: SCREAMING_SNAKE_CASE — all caps, digits and underscores, with at least one underscore. Both
+#: placeholders measured live take this shape ("UNKNOWN_ID_PLEASE_PROVIDE",
+#: "REPLACE_WITH_ACTUAL_REFERENCE_ID") and nothing this platform issues does: 0 of 293 real codes
+#: contain ANY uppercase letter, and a UUID has no underscore.
+_SCREAMING_SNAKE_RE = re.compile(r"[A-Z0-9]*_[A-Z0-9_]*")
+
+_PLACEHOLDER_TOKEN_RE = re.compile(
+    r"(?:^|[^a-z])(?:unknown|placeholder|your[_-]?id|id[_-]?here|todo|tbd|example|"
+    r"provide|fill[_-]?me|xxx+)(?:[^a-z]|$)",
+    re.IGNORECASE,
+)
+
+
+def _declares_uuid(props: dict | None, name: str) -> bool:
+    """Does the tool's OWN declaration for this argument say it is a UUID?
+
+    Read from the description because that is where the platform states it — measured across the
+    live catalogue, 219 `*_id` properties say UUID in prose and none declares `format: uuid`.
+    Until that is fixed at the providers, the description is the only declaration there is, and
+    reading it beats inferring from the argument's name.
+    """
+    if not isinstance(props, dict):
+        return False
+    spec = props.get(name)
+    if not isinstance(spec, dict):
+        return False
+    if spec.get("format") == "uuid":
+        return True
+    return "uuid" in str(spec.get("description") or "").lower()
+
+
+def _name_like_dropped_ids(dropped: dict, *, emitter: str = "",
+                           referent_exists: bool = True) -> str:
+    """A sentence naming the NAMES the model passed where ids were required — or "" .
+
+    `emitter` is the tool DECLARED to produce the id (argument_emitters); naming it is also what
+    ARMS it, since the arming path keys off catalogue names in the refusal text. `referent_exists`
+    says whether anything ELSE in the message already named a tool — when both are absent the
+    closing instruction is dropped rather than left pointing at nothing. Both default to the old
+    behaviour so a caller that has not been taught to resolve them is unchanged.
+
+    🔴 WHY THE VALUE AND NOT JUST THE ARGUMENT NAME. Measured 2026-08-23,
+    composition_motif_link_edit over K=5: the model resolved both endpoints to names, the
+    whitespace arm of `_invented_supplier_ids` dropped them (correctly — they are not ids), and
+    the refusal reported them MISSING. The tool's own description already says "search motifs by
+    name with composition_motif_search and pass the id it returns", and the model duly called
+    that search — with blank arguments, twice, because the only thing it could have searched FOR
+    had just been deleted out of its own call. The turn then died and the failure was recorded
+    against the tool for fifteen runs.
+
+    So this returns the value, quoted, as the query to search with. ONLY for values that look
+    like a name — whitespace, not a UUID, not SCREAMING_SNAKE. A placeholder like
+    `run_12345_placeholder` or `UNKNOWN_ID_PLEASE_PROVIDE` must NOT be echoed back as something
+    to search for: that is the invention D-FJ-11 exists to refuse, and repeating it would invite
+    a better-formatted one, which is the exact failure its docstring warns about.
+    """
+    if not isinstance(dropped, dict):
+        return ""
+    named: list[str] = []
+    for nm, val in sorted(dropped.items()):
+        if not isinstance(val, str):
+            continue
+        v = val.strip()
+        if not v or _is_uuid(v) or _SCREAMING_SNAKE_RE.fullmatch(v):
+            continue
+        if not any(ch.isspace() for ch in v):
+            continue
+        named.append(f"{nm}={v!r}")
+    if not named:
+        return ""
+    head = ("You passed a NAME where an id is required (" + ", ".join(named) + "). That is not "
+            "missing — it is the wrong kind of value, and the name is what you search WITH")
+    # ── D-THE-ID-REPAIR-SENTENCE-NAMES-A-TOOL-THAT-IS-NOT-THERE ─────────────────────────────
+    # 🔴 "THE TOOL NAMED ABOVE" HAD NO REFERENT FOR HALF THE CATALOGUE. The phrase was written
+    # for composition_motif_link_edit, whose description really does say "search motifs by name
+    # with composition_motif_search". When a description names nothing, the model is told to use
+    # a tool that was never named — and it acts on it: measured in c-arcapply K=5, the model got
+    # this sentence for composition_arc_template_get and then guessed composition_arc_suggest,
+    # finally telling the author it could not find a template its own run had just created.
+    #
+    # The row's remedy, in its own order: NAME the supplier — the platform holds the catalogue at
+    # the moment it writes this — and failing that DROP the clause, because "an instruction with
+    # no referent is worse than no instruction, because the model spends its turn acting on it."
+    #
+    # Re-derived 2026-08-26 over the live catalogue: of 131 tools requiring a non-ambient *_id,
+    # 59 name a supplier in prose and 52 now declare an EMITTER, leaving 49 (37%) with no
+    # referent of any kind. The emitter map is what makes the first branch possible at all.
+    if emitter:
+        return f"{head}: look it up with `{emitter}` and pass the id it returns, using that " \
+               "exact name as the query."
+    if referent_exists:
+        return (f"{head}: look it up with the tool named above and pass the id it returns, using "
+                "that exact name as the query.")
+    # No emitter, and nothing above named a tool. Say what is true and stop — do NOT invent a
+    # remedy, and do NOT point at a tool that was never named.
+    return (f"{head}. No tool on this surface is declared to resolve it, so do not guess an id: "
+            "tell the author you need the id, or a way to identify it that this tool accepts.")
+
+
+#: Arguments that carry the AUTHOR'S OWN PROSE into their book — the payload slot, not metadata.
+#: Deliberately EXCLUDES `description`, `summary`, `notes` and `instructions`: they are short
+#: metadata fields, no instance was measured on any of them, and widening a refusal onto fields
+#: with no evidence is how a guard starts deleting values that were fine.
+DOCUMENT_ARGS = frozenset({
+    "content", "body", "text", "markdown", "source_markdown", "draft", "prose",
+    "body_markdown", "chapter_body",
+})
+
+_CONTENT_NOUN = (r"(?:content|text|story|stories|notes?|details?|idea|ideas|description|"
+                 r"descriptions|summary|draft|chapters?|document|manuscript|material)")
+
+#: A document that is a MESSAGE ABOUT NOT HAVING A DOCUMENT. Four arms, each measured:
+#: an assertion that content is absent; an assertion about the user; a request TO the author to
+#: supply content; and the model narrating its own next step.
+_HOLLOW_DOCUMENT = re.compile(
+    r"no\s+(?:story\s+|source\s+|such\s+)?" + _CONTENT_NOUN + r"[^.]{0,40}"
+    r"(?:provided|available|given|yet)"
+    r"|user\s+has\s+(?:not|n't)\s+(?:yet\s+)?provided"
+    r"|please\s+provide[^.]{0,60}?" + _CONTENT_NOUN +
+    r"|i\s+will\s+ask\s+the\s+user"
+    r"|to\s+begin\s+the\s+extraction",
+    re.I,
+)
+
+
+def _is_hollow_document(value) -> bool:
+    """A document argument whose content is a statement that there is no content.
+
+    🔴 MEASURED 2026-08-27 over `chat_messages.tool_calls`: 508 arguments carrying a document,
+    10 of them hollow, across two tools. Eight are `glossary_extract_entities_from_doc`'s
+    `source_markdown` — the tool then EXTRACTS ENTITIES from a sentence about the absence of a
+    story. The tenth is the one that matters most and the one a narrow rule misses:
+
+        book_chapter_save_draft.body = "I will perform a consistency check on your story.
+                                        Please provide the text or specify which chapters
+                                        I should analyze."
+
+    That is a CHAPTER BODY. It would be saved into the manuscript as the chapter's prose.
+
+    THE `please provide` ARM IS THE LOOSE ONE AND IT IS THE ONLY ONE THAT REACHES THAT
+    INSTANCE — the other nine are caught without it. It is therefore kept, but narrowed to a
+    request for CONTENT specifically, so fiction that happens to use the phrase is untouched.
+    Measured against the store and against four fiction probes:
+
+        "Please provide the codex," the Regent said            -> not flagged
+        She would not provide the text of the oath             -> not flagged
+        Please provide the text or specify which chapters      -> FLAGGED
+
+    THE RESIDUAL FALSE-POSITIVE SURFACE, NAMED: a chapter whose dialogue reads "please provide
+    the text". None of the 508 recorded documents is one. Tightening cost nothing — the loose
+    and narrow rules both flag exactly the same 10.
+
+    This is `_is_nil_uuid`'s sentence one value class wider: a value recognisable as a
+    non-value WITHOUT knowing the author's book is knowably not content, and it feeds the same
+    drop-then-report-missing path, so the model is told to go and ask rather than to write.
+    """
+    return isinstance(value, str) and bool(_HOLLOW_DOCUMENT.search(value))
+
+
+def _hollow_document_args(args_obj: dict) -> list[str]:
+    """Document arguments the model filled with a note about having no document."""
+    if not isinstance(args_obj, dict):
+        return []
+    return [name for name, value in args_obj.items()
+            if name in DOCUMENT_ARGS and _is_hollow_document(value)]
+
+
+def _hollow_document_note(dropped: dict) -> str:
+    """The sentence for the third state, for a DOCUMENT rather than an id.
+
+    The missing-argument message has three arms — owed / undeclared / model-supplied — and a
+    document is model-supplied, so without this it reads "you forgot something". That is the
+    one description guaranteed not to help: the model did not forget, it knowingly had nothing
+    and put the saying-so in the payload. The honest sentence names what it did and where the
+    content actually comes from.
+    """
+    named = [nm for nm in sorted(dropped) if isinstance(dropped[nm], str)]
+    if not named:
+        return ""
+    return (
+        "You passed a note about having no content (" + ", ".join(named) + ") where the "
+        "author's own words are required. That is not a document — it is a message to them, "
+        "and writing it would put it in their book. Do NOT compose one yourself: ask the "
+        "author for their text, or read it from the book, and call this again with what they "
+        "actually wrote."
+    )
+
+
+#: Arguments that set a SPEND CEILING. Measured, not guessed: across every recorded tool call
+#: in the live store, `budget_usd` on composition_authoring_run_manage is the only money-typed
+#: argument in use. `limit` (418 calls, 8 tools) is pagination and `spend` (113 calls, 12 tools)
+#: is a BOOLEAN — both would have been swept in by a name-shaped guess.
+MONEY_ARGS = frozenset({"budget_usd"})
+
+#: The author saying anything at all about money. Deliberately WIDE: a false negative here
+#: refuses a number the author really gave, which is the expensive mistake.
+_AUTHOR_MENTIONED_MONEY = re.compile(r"\$|dollar|usd|budget|spend", re.I)
+
+
+def _author_named_money(messages: list[dict] | None) -> bool:
+    """Did the AUTHOR raise money anywhere in this conversation?"""
+    for m in messages or ():
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, str) and _AUTHOR_MENTIONED_MONEY.search(content):
+            return True
+    return False
+
+
+def invented_money_args(args_obj: dict, messages: list[dict] | None) -> list[str]:
+    """A spend ceiling the author never mentioned is not the model's to choose.
+
+    🔴 MEASURED 2026-08-27 over every `budget_usd` call in the live store — 16 of them, and the
+    discrimination is exact:
+
+        the author mentioned money   7 calls   budget_usd=5, and they had said "5 dollars"
+        the author said NOTHING      9 calls   budget_usd = 10 (x4), 5 (x3), 50 (x2)
+
+    Nine invented spend ceilings, no overlap with the seven real ones. The row this closes
+    measured three of them by hand and noted what saved the author: the call refused because
+    `pause_after_each_unit` was ALSO missing, so nothing was spent — "the guard that saved it
+    was an unrelated missing argument, not anything about money". Had the model filled both in,
+    a Tier-W card would have been minted for a $50 run nobody asked for, and a confirm card
+    defends against the wrong failure here: the author sees a plausible run and the number on
+    it is invented.
+
+    THE TEST IS THE AUTHOR'S OWN WORDS, and it is deliberately generous to them — `$`, `dollar`,
+    `usd`, `budget` or `spend` anywhere in any user turn is enough to keep the value. A false
+    negative refuses a number the author really gave; a false positive merely makes the model
+    ask. On the measured population the generous test still separates 9 from 7 cleanly.
+
+    Same drop-then-report-missing path as `_invented_supplier_ids`, so the model is told to ask
+    rather than told off.
+    """
+    if not isinstance(args_obj, dict):
+        return []
+    if _author_named_money(messages):
+        return []
+    return [name for name, value in args_obj.items()
+            if name in MONEY_ARGS and isinstance(value, (int, float)) and not isinstance(value, bool)]
+
+
+def _money_arg_note(dropped: dict) -> str:
+    """The sentence for a dropped spend ceiling — the generic missing-argument text would call
+    it forgotten, and a fabricated budget is not a forgotten one."""
+    named = sorted(dropped)
+    if not named:
+        return ""
+    return (
+        "You chose a spend ceiling the author never mentioned (" + ", ".join(named) + "). That "
+        "is the author's money and their decision, not a default for you to pick. Ask them what "
+        "budget they want and call this again with the number they give you."
+    )
+
+
+def _invented_supplier_ids(args_obj: dict, contract: dict | None,
+                           tool_def_props: dict | None = None,
+                           runtime_held_context_ids: frozenset[str] | set[str] | None = None,
+                           published_ids=None,
+                           ) -> list[str]:
+    """`*_id` args the CONTRACT says the runtime owes, which the model filled in with a non-UUID.
+
+    🔴 MEASURED LIVE 2026-08-12, journey `autonomous-drafting` (book 019ff497). The model called
+    plan_compile with `run_id="run_12345_placeholder"` and the tool answered *"run_id must be a
+    UUID"* — correct about the TYPE, and silent about the thing that matters: `run_id` is a PLAN
+    value emitted by plan_propose_spec. It is not the model's to invent at all, so arguing about its
+    format invites a better-formatted invention. This is the identical lesson CP-5.4 already learned
+    for MISSING arguments ("you forgot something" vs "I owe you this"), one state to the right: the
+    argument is PRESENT and fabricated, so the missing-arg path never runs and the honest sentence
+    never fires.
+
+    Deliberately narrow, because a false positive here would refuse a legitimate call:
+
+    * only `*_id` names — the convention for an opaque identifier, and the shape a placeholder gets
+      invented for;
+    * only where the CONTRACT declares the supplier **`plan`**. A `model`-supplied id is the
+      caller's to choose and none of this function's business; an UNDECLARED one is D-FJ-2's
+      territory — silence, not a guess; and `context` is EXCLUDED deliberately. 🔴 The first draft
+      included context and the suite caught it firing on `book_id="b1"`: a context id is injected by
+      the runtime upstream of this point and is not guaranteed to be a UUID, so treating a non-UUID
+      one as fabricated deleted a value the runtime itself had supplied and broke the dispatch. A
+      `plan` id is the one the model has no way to know and therefore the one it invents;
+    * only a non-empty string that does not parse as a UUID. A valid UUID is accepted even if it is
+      wrong, because *whether it is the right row* is the tool's question, not ours.
+    """
+    from app.agentruntime.toolcontract import declared_supplier
+
+    if not isinstance(args_obj, dict):
+        return []
+    out: list[str] = []
+    for name, value in args_obj.items():
+        # 🔴 `*_ref` IS THE SAME CONVENTION, and leaving it out cost a measured approve-then-fail.
+        # composition_generate declares `model_ref` (a UUID at the confirm effect, which does
+        # UUID(str(...))) and the model sent "default" on 5 of 5 runs — a Tier-A card was minted
+        # every time and approving it produced a bare 400 `action_error`, on the most expensive
+        # tool on the platform. The name simply did not end in `_id`, so this loop never looked.
+        #
+        # ONLY the DECLARED-UUID arm widens. The whitespace arm stays `*_id`-only, because the
+        # other `*_ref` on this platform is `image_ref` — a MinIO object key, explicitly not a
+        # UUID (world_map_create: "optional MinIO object key of an already-uploaded base image").
+        # It declares no UUID, so the declared arm cannot touch it; widening the whitespace arm
+        # would have started dropping legitimate object keys. Measured across the catalogue: 21
+        # `*_ref` properties, 19 of them `model_ref`, and only 4 declare a UUID at all.
+        _identifierish = name.endswith("_id") or name.endswith("_ref")
+        if not _identifierish:
+            continue
+        # 🔴 THE NIL UUID PARSES, SO THE FORMAT TEST BELOW ACCEPTS IT — AND IT IS NEVER A ROW.
+        # This function's rule is deliberately "a valid UUID is accepted even if it is wrong,
+        # because whether it is the right row is the tool's question". The all-zero UUID is the
+        # one value that rule should not cover: it is reserved, no table ever holds it, so it is
+        # knowably invented rather than merely possibly-wrong.
+        #
+        # MEASURED LIVE 2026-08-14, batch 7: asked to draw a region on a map, the model called
+        # world_map_add_region 3/3 with map_id="00000000-0000-0000-0000-000000000000" — the
+        # polygon was right, the map was never looked up. Because it parses, nothing here fired,
+        # and a Tier-A CONFIRM CARD was minted for a call that cannot succeed: the tool answers
+        # "map not found" (verified at the boundary). The author is asked to approve a write
+        # whose target does not exist.
+        #
+        # Applies whatever the contract says, and whether or not there IS one, because the value
+        # is wrong for every supplier. Feeding it into the existing drop-then-report-missing path
+        # gives the model the honest sentence — this argument is required and you have not
+        # supplied it — which is the one that makes it go and look the id up.
+        # The nil UUID and its family: syntactically valid, knowably invented. Same drop-then-
+        # report-missing path, which is the sentence that sends the model to look the id up.
+        if isinstance(value, str) and (_is_nil_uuid(value) or _is_degenerate_uuid(value)):
+            # 🔴 DQ-T92 — PROVENANCE OUTRANKS SHAPE, AND THIS IS THE OWNER'S RULING.
+            # The two arms above test what a value LOOKS like. That is the right question only
+            # while nobody can vouch for the value, and this turn's `IdLedger` can: it holds
+            # every `*_id` the PLATFORM published to the model, from the turn's context ids and
+            # from every tool result it returned. A value on that list was not invented by the
+            # model — it was handed to it — so refusing it is a false refusal by construction,
+            # whatever its digits look like.
+            #
+            # WHY THIS EXISTS RATHER THAN A LIST OF SPARED VALUES. The `distinct <= 2` arm fires
+            # on the platform's own RESOLVING sentinel `00000000-…-00000000000a` and its
+            # seventeen siblings, which are real resolving rows in the glossary store. A literal
+            # exemption would be a blacklist fitted to today's data — the exact failure this
+            # row's caution names ("this loop has already paid once for a blacklist that the
+            # very next run walked around"). Provenance is not fitted to anything: mint a
+            # nineteenth sentinel tomorrow and it is spared for the same reason as the other
+            # eighteen, without touching this file.
+            #
+            # FAIL-SAFE, AND THAT DIRECTION IS DELIBERATE. No ledger, or a value the ledger has
+            # not seen, means NO exemption and the guard fires — so a caller that forgets to
+            # thread it loses the safety valve, never the guard.
+            #
+            # AND IT SPARES NOTHING TODAY, WHICH IS RECORDED RATHER THAN HIDDEN: of the 58
+            # degenerate `*_id` arguments in the whole recorded corpus, 58 were never published
+            # in-session and 0 were published. Zero recall cost, zero firings. It is here so the
+            # failure that killed the UUID-version rule cannot recur, not because it is load-
+            # bearing on the present data.
+            _seen_as = None
+            if published_ids is not None:
+                try:
+                    _seen_as = published_ids.type_of(value)
+                except Exception:
+                    _seen_as = None
+            if _seen_as:
+                logger.info(
+                    "fabrication guard SPARED %s=%s: the platform published it this turn as %s",
+                    name, value[:64], _seen_as,
+                )
+                continue
+            out.append(name)
+            continue
+        # 🔴 THE REQUIREMENT IS DECLARED IN PROSE NO VALIDATOR READS. Measured 2026-08-14 across
+        # the live catalogue: 219 `*_id` properties over 8 providers say "UUID" in their
+        # DESCRIPTION and exactly ZERO declare `format: uuid`. So "Ashfall" is a schema-valid
+        # `world_id`, and batch 8 measured precisely that — world_map_create called 3/3 with
+        # world_id="Ashfall", the world's NAME, and a Tier-A confirm card minted for a call the
+        # service can only reject.
+        #
+        # The description IS declared data, so reading it is the same move as reading `tier` or
+        # `synonyms` rather than inferring from a name.
+        #
+        # SCOPED AWAY FROM THE CASE THIS FUNCTION ALREADY LEARNED ABOUT. The comment above records
+        # that including `context` deleted `book_id="b1"` — a value the RUNTIME injects, which is
+        # not guaranteed to be a UUID — and turned 5 tests red. That reasoning holds and is why
+        # the three context ids are excluded here by name: the server fills those itself and
+        # `_inject_context_ids` already repairs a malformed one by SUBSTITUTING the value it
+        # knows. For a non-context id there is nothing to substitute, so the honest move is the
+        # one below — drop it and report it missing, which sends the model to look it up.
+        # 🔴 AN ID WITH WHITESPACE IN IT IS A NAME. No identifier this platform issues contains a
+        # space — not a UUID, not a slug, not a code — so this needs no declaration to be certain,
+        # which matters because 277 of 496 `*_id` properties say nothing about their format and are
+        # invisible to the declaration arm below (composition alone accounts for 200).
+        #
+        # MEASURED LIVE 2026-08-14, batch 14: composition_arc_get was called with
+        # node_id="The Hollow Keep" — the arc's TITLE — and again with "arc_1". The tool refused
+        # correctly, but only after a round trip, and node_id's description says merely "The
+        # arc/saga (structure_node) id", so the declaration arm could not see it.
+        #
+        # Context ids are exempt here too, for the reason recorded below: the runtime injects them
+        # and they are not guaranteed to be UUIDs. None of them contains whitespace either, so the
+        # exemption costs nothing.
+        # 🔴 A NAMED PLACEHOLDER IS NEVER AN IDENTIFIER THIS PLATFORM ISSUES. The whitespace arm
+        # below needs a space and the declaration arm needs a description; a value like
+        # "UNKNOWN_ID_PLEASE_PROVIDE" has neither, so both miss it.
+        #
+        # MEASURED LIVE 2026-08-21, batch 21, composition_reference_update, 5 of 5 runs. The
+        # reference table is EMPTY on this deployment, so no real id exists — and the model said
+        # so in prose ("I need to know which reference you are referring to") while ALSO calling
+        # the tool with reference_id="UNKNOWN_ID_PLEASE_PROVIDE" and title=[]. A Tier-A confirm
+        # card was minted for it: the author is asked to approve updating a reference whose id is
+        # the literal text UNKNOWN_ID_PLEASE_PROVIDE. `reference_id` is advertised as
+        # {"title": "Reference Id", "type": "string"} — no description — which is why the
+        # declaration arm is blind to it.
+        #
+        # This is the THIRD placeholder to reach a card: model_ref="default" (batch 18),
+        # run_id="run_12345_placeholder" (recorded earlier in this loop), and now this one. The
+        # token list is deliberately SMALL and matched on word-ish boundaries: every entry is a
+        # word that appears in a filled-in-by-the-model stub and never in a UUID, a slug or a
+        # code. A hex id cannot contain any of them.
+        # 🔴 A CONTEXT ID IS NOT EXEMPT FROM *THIS* ARM, and the exemption's own reason is why.
+        # `_RUNTIME_CONTEXT_IDS` is excluded everywhere else because the RUNTIME injects those
+        # values and they are not guaranteed to be UUIDs — dropping one once deleted a value the
+        # runtime itself had supplied. That reasoning does not reach a value containing the word
+        # `placeholder`: the runtime does not inject those, only a model does.
+        #
+        # MEASURED 2026-08-27 over every recorded call — 320 non-UUID context ids, of which the
+        # token list matches 155:
+        #     144  book_id    = "current_book_id_placeholder"
+        #       3  book_id    = "placeholder_book_id"
+        #       2  chapter_id = "[chapter_id_placeholder]"
+        #       2  project_id = "current_project_id_placeholder"
+        #       1  book_id    = "YOUR_BOOK_ID_HERE"        …and 3 more
+        # Not one of them could have come from the runtime. The other 165 — fixture names,
+        # "all", "book_list", a book TITLE — are NOT reached here and still need the
+        # declaration-driven arm, which is the one carrying the dispatch risk.
+        if (
+            _identifierish
+            and isinstance(value, str)
+            and _PLACEHOLDER_TOKEN_RE.search(value)
+        ):
+            out.append(name)
+            continue
+        # 🔴 AND THE WORD LIST WAS TOO NARROW — REFUTED BY THE VERY NEXT RUN. The arm above
+        # caught reference_id="UNKNOWN_ID_PLEASE_PROVIDE"; the model's next attempt was
+        # "REPLACE_WITH_ACTUAL_REFERENCE_ID", which shares not one word with it. A blacklist is
+        # whack-a-mole against text a model invents freely.
+        #
+        # What the two DO share is shape: SCREAMING_SNAKE_CASE. So the rule is about the alphabet,
+        # not the vocabulary — and it is measured, not assumed. Across every code this platform
+        # has ever issued (240 motifs, 53 arc templates) exactly ZERO contain an uppercase letter,
+        # and a UUID is lowercase hex. So an `*_id` that is not a UUID and carries an uppercase
+        # letter is not an identifier this platform issued.
+        #
+        # NARROWED AFTER THE SUITE CAUGHT ME. My first shape rule was "not a UUID and contains
+        # an uppercase letter", and it broke a standing invariant of this very function: the
+        # existing test `test_with_no_properties_at_all_nothing_is_claimed` pins that
+        # world_id="Ashfall" is NOT dropped when nothing is declared (D-FJ-2 — no declaration, no
+        # judgement). "Ashfall" is a NAME, and it would also have caught a legitimate opaque
+        # vendor id like "ABC-123". So the rule is SCREAMING_SNAKE_CASE specifically — all caps,
+        # digits and underscores, with at least one underscore — which is what both measured
+        # placeholders are and what neither a name nor a vendor reference is.
+        #
+        # `*_id` ONLY, deliberately: the other `*_ref` here is image_ref, a MinIO object key,
+        # and object keys may legitimately be mixed-case. It stays with the declaration arm.
+        if (
+            name.endswith("_id")
+            and name not in _RUNTIME_CONTEXT_IDS
+            and isinstance(value, str)
+            and value.strip()
+            and not _is_uuid(value)
+            and _SCREAMING_SNAKE_RE.fullmatch(value.strip())
+        ):
+            out.append(name)
+            continue
+        # 🔴 THE CONTEXT ID, WORN AS A DOMAIN ID. Every arm above tests for a value that looks
+        # WRONG — not a UUID, SCREAMING_SNAKE, whitespace, a placeholder word. This one tests for a
+        # value that is perfectly RIGHT and belongs to something else: the turn's ambient book_id,
+        # passed as an entity_id / chapter_id / run_id.
+        #
+        # PROVEN BY IDENTITY, not inference. kg_propose_edge, 2026-08-23, three of three inspected
+        # runs: the run's own book_id EQUALS the value the tool refused, passed as BOTH
+        # source_entity_id and target_entity_id ("they identify DIFFERENT things and can never be
+        # the same id"). It is the most plausible-looking wrong answer available — a real, current,
+        # valid UUIDv7 that the runtime itself injected — which is exactly why the model reaches
+        # for it when it needs an id it does not have, and exactly why no syntactic arm can see it.
+        #
+        # PRECISION MEASURED BEFORE SHIPPING, over 16,080 recorded calls: this fires 180 times
+        # across 15 tools, and every shape is a wrong argument — glossary_get_entity.entity_id=71,
+        # book_chapter_save_draft.chapter_id=38, book_chapter_delete.chapter_id=15 (destructive),
+        # composition_authoring_run_review.run_id=13. The one candidate false positive,
+        # composition_create_work.project_id, is not one: knowledge_projects has ZERO rows where
+        # project_id equals book_id, and composition's own declaration says so in as many words —
+        # "book_id = the book. They are DIFFERENT". No legitimate case was found.
+        #
+        # Scoped to the SAME CALL's own arguments, so it compares a value the model itself paired
+        # with that book_id — never a context value fetched from elsewhere.
+        if (
+            name.endswith("_id")
+            and name not in _RUNTIME_CONTEXT_IDS
+            and isinstance(value, str)
+            and value.strip()
+            and any(
+                isinstance(args_obj.get(ctx), str)
+                and args_obj[ctx].strip() == value.strip()
+                for ctx in _RUNTIME_CONTEXT_IDS
+            )
+        ):
+            out.append(name)
+            continue
+        if (
+            name.endswith("_id")  # `*_ref` is deliberately NOT here — see the loop head:
+                                  # image_ref is a MinIO object key, not an identifier this
+                                  # platform issues, so whitespace in one is not proof of a name.
+            and name not in _RUNTIME_CONTEXT_IDS
+            and isinstance(value, str)
+            and value.strip()
+            and any(ch.isspace() for ch in value.strip())
+        ):
+            out.append(name)
+            continue
+        # ── DQ-T78 (owner 2026-08-31) — THE NARROW VERSION OF THE CONTEXT-ID EXEMPTION ─────
+        # "Keep the exemption for a value the runtime could plausibly have injected; drop it for
+        # one it could not. The code path says which is which."
+        #
+        # THE CODE PATH, and this is a PROPERTY rather than an outcome. `_inject_context_ids`
+        # runs BEFORE this check on the same args, and it SUBSTITUTES a malformed context id
+        # with the value the server holds — but only `if not val: continue`, i.e. only when the
+        # server HAS one. So:
+        #   * the runtime HELD a value  -> any junk was already replaced, and what is here is the
+        #     runtime's own id. Exempt, which is exactly the case the five red tests bought:
+        #     dropping `b1` once deleted a value the runtime itself had supplied.
+        #   * the runtime held NOTHING  -> it cannot have injected this value. The exemption's
+        #     own reasoning does not reach it, and every such value on record is a model
+        #     invention.
+        #
+        # SO THE RULE IS NOT A SHAPE BLACKLIST. This row has watched six of those measured and
+        # rejected on its sibling; a length or vocabulary test would be the seventh.
+        #
+        # PRECISION, measured over every recorded call before shipping, as the ruling required —
+        # the 166 values the exemption still lets through:
+        #     39 'all'   13 'book_list'   12 'current_book_id'   11 'Mị Đế' (a book TITLE)
+        #     11 LOOP-THROWAWAY fixture names   13 wrapped arrays   6 '0'   5 malformed UUIDs
+        # NOT ONE has ever returned ok: 'all' 0 of 39, 'book_list' 0 of 13, the fixture names 0.
+        # That is CORROBORATION and deliberately not the basis — this loop has already been
+        # burned reading "never succeeded" as "was invented", and a platform sentinel never
+        # succeeds either. The basis is the code path above.
+        #
+        # DEFAULT-SAFE: when the caller says nothing (None), every context id stays exempt and
+        # the behaviour is exactly as before, so a caller that has not been taught this cannot
+        # start dropping ids by accident. The live call site passes what the turn actually holds.
+        _ctx_exempt = (
+            name in _RUNTIME_CONTEXT_IDS
+            and (runtime_held_context_ids is None or name in runtime_held_context_ids)
+        )
+        if (
+            not _ctx_exempt
+            and isinstance(value, str)
+            and _declares_uuid(tool_def_props, name)
+            and not _is_uuid(value)
+        ):
+            out.append(name)
+            continue
+        if not contract:
+            continue
+        if declared_supplier(contract, name) != "plan":
+            continue
+        if not isinstance(value, str) or not value.strip():
+            continue
+        try:
+            UUID(value)
+        except (ValueError, AttributeError, TypeError):
+            out.append(name)
+    return sorted(out)
+
+
+def _ids_already_returned(history: list[dict] | None, arg: str) -> list[str]:
+    """UUID values a tool result earlier in this CONVERSATION returned under key `arg`.
+
+    🔴 THE CONVERSATION, NOT THE TURN. The instance this exists for spans two turns: turn 1 calls
+    plan_bootstrap_propose (ok, returns proposal_id) and asks "would you like me to go ahead?";
+    turn 2 says "yes" and calls plan_bootstrap_apply WITHOUT it. Anything scanning only the
+    current turn sees a model that never held the id — and the refusal then reads as correct.
+
+    Returns EVERY distinct value, so the caller can refuse to guess when there is more than one.
+    That is the precision guard: measured over the 4 recorded cases, each session held exactly ONE
+    value for the key in question, but a session with two runs would make "the" id a fabrication.
+    """
+    if not history:
+        return []
+    pat = re.compile(rf'"{re.escape(arg)}"\s*:\s*"([0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-'
+                     rf'[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{12}})"')
+    # Named `values`, not the obvious short name: a four-space-indented annotated-empty-list
+    # declaration of a variable called o-u-t is an anchored falsifier string in this file, and a
+    # second occurrence makes that anchor ambiguous. The anchor is described, never quoted —
+    # quoting it is itself an occurrence, which is how this comment failed the gate once already.
+    values: list[str] = []
+    for m in history:
+        if not isinstance(m, dict) or m.get("role") != "tool":
+            continue
+        for v in pat.findall(str(m.get("content") or "")):
+            if v not in values:
+                values.append(v)
+    return values
+
+
+def _owed_args(contract: dict | None, missing: list[str]) -> list[str]:
+    """The missing args a contract says the RUNTIME supplies — never the model's to write.
+
+    One home for the rule, because the CALL SITE needs it too: it decides which arguments are
+    worth a database read before the refusal is built, and a second copy of the predicate there
+    would be free to drift from the one the message actually branches on.
+    """
+    from app.agentruntime.toolcontract import declared_supplier
+
+    _b = contract if type(contract) is dict else {}
+    return [a for a in missing if declared_supplier(_b, a) in ("context", "plan")]
+
+
+def _missing_args_message(tool: str, missing: list[str], contract: dict | None,
+                          tool_def_props: dict | None = None,
+                          history: list[dict] | None = None,
+                          also_returned: dict[str, list[str]] | None = None) -> str:
+    """The refusal for a call still missing required args — keyed off who DECLARES each one.
+
+    CP-5.4 split this into two arms, `context|plan` ("not yours to invent") and everything else
+    ("these carry the actual CONTENT"). There is a THIRD case it folded into the second, and the
+    fold makes a claim the runtime cannot support: **the tool declares no supplier at all.**
+
+    🔴 MEASURED LIVE 2026-08-12, journey `draw-a-map`. `world_map_create` was called without
+    `world_id`, and the refusal read: *"missing required argument(s): ['world_id']. These carry the
+    actual CONTENT (not ids the system already fills) — e.g. a list of the items to create, or the
+    search text. … Do not call it with only ids or empty arguments."* The one missing argument IS an
+    id, so the model was told the thing it was missing was not the thing it was missing, and told
+    not to do the thing it needed to do. It stopped calling tools and reported *"I have initialized
+    the map"* over a map that was never created. Only **12** of the 315 federated tools carry a
+    contract, so the undeclared case is the common one, not the exotic one.
+
+    Being honest here is not a reword: the old sentence asserts a FACT about these arguments
+    (*they are not ids*) that is derived from nothing when no contract declares them. This arm
+    asserts nothing it cannot know, and names both moves so a caller missing an id has one — which
+    is the same standard C-12 sets for a rejection, and the same standard the `context|plan` arm
+    already meets.
+    """
+    from app.agentruntime.toolcontract import declared_emitter, declared_supplier
+
+    block = contract if type(contract) is dict else {}
+    owed = _owed_args(block, missing)
+    if owed:
+        # D-FJ-12 — NAME THE TOOL THAT EMITS IT. "Establish that context first (e.g. list or open
+        # the book you mean)" is a book-flavoured example, not an instruction, and a model told only
+        # that retried the SAME tool twice. The emitter is declared data (`emitted_by`), so say it.
+        #
+        # 🔴 THIS COMMENT USED TO END *"Naming it also ARMS it: `_tools_named_in_refusal` keys off
+        # catalogue names in the refusal text, so one sentence fixes both the instruction and the
+        # reachability."* THAT WAS FALSE FOR EVERY MESSAGE THIS FUNCTION BUILDS. `_tools_named_in_
+        # refusal` ran only on the DISPATCH result, and the caller that builds these messages
+        # returns before dispatch — so the arming this sentence promised had never once happened
+        # here. Measured 2026-08-22: `world_map_delete` refused with *call world_map_list first*
+        # and world_map_list was advertised on 0 of 5 runs; across 35 runs the supplier was called
+        # on every run it was advertised and on none where it was not (35/35 agreement).
+        #
+        # It is true NOW because the caller was fixed, not because this function does it — see
+        # D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE at the `_missing_args` arm, which passes this
+        # text through `_tools_named_in_refusal` and `_arm_tools`. Naming a tool here is therefore
+        # load-bearing for reachability, and a message that names an off-catalogue tool arms
+        # nothing: keep the names exact.
+        _reg = _tool_contract_registry()
+        _emitters = sorted({e for a in owed if (e := declared_emitter(_reg, tool, a))})
+        _how = (
+            f"Call {' and '.join(_emitters)} first, then call this with the id it returns."
+            if _emitters else
+            "Establish that context first (e.g. list or open the book you mean, then call this "
+            "with the id it returns)."
+        )
+        # ── D-THE-OWED-REFUSAL-DENIES-AN-ID-THE-MODEL-WAS-JUST-HANDED ──────────────────────
+        # 🔴 EVERY CLAUSE BELOW IS TRUE OF THE RUNTIME AND NONE OF IT IS TRUE OF THE TURN when
+        # the value is already in the transcript. "NOT yours to invent" is correct and
+        # load-bearing; "the runtime supplies it … and has none right now" tells a model HOLDING
+        # the id that the id is not its business. The two clauses give opposite instructions.
+        #
+        # MEASURED over loreweave_chat.chat_messages, swept per SESSION rather than per turn:
+        # of 15 `owed` refusals, 4 (27%) fired while the session had already been handed that
+        # exact id — plan_compile.run_id twice, plan_bootstrap_apply.proposal_id twice. In all
+        # four the session held EXACTLY ONE value for the key, which is why quoting it is safe;
+        # where it holds more than one this says nothing, because "the" id would be a guess.
+        #
+        # 🔴 TWO SOURCES, AND THE SECOND IS THE ONE THAT MATTERS. `history` is the conversation
+        # as the MODEL sees it, and a prior turn's tool RESULT is not in it: chat_messages holds
+        # zero role='tool' rows — a result is stored on the ASSISTANT row's `tool_calls` column,
+        # so rehydration brings back user/assistant text and nothing else. A first fix read only
+        # `history`, which covers this turn (where the tool messages are appended live) and NOT
+        # the prior one — and fired 0 times in 10 live runs, on a defect whose recorded instance
+        # spans exactly two turns. `also_returned` carries what the server's own record holds;
+        # the union is what gets the precision guard.
+        _prior = also_returned if type(also_returned) is dict else {}
+        _held: dict[str, list[str]] = {}
+        for _a in owed:
+            _seen = _ids_already_returned(history, _a)
+            for _v in _prior.get(_a) or []:
+                if _v not in _seen:
+                    _seen.append(_v)
+            # EXACTLY ONE, or say nothing: two values make "the" id a guess, and a guess here is
+            # the very failure this branch exists to stop.
+            if len(_seen) == 1:
+                _held[_a] = _seen
+        if _held:
+            _one = len(_held) == 1
+            _pairs = ", ".join(f"{a}={v[0]}" for a, v in sorted(_held.items()))
+            return (
+                f"'{tool}' is missing {sorted(_held)} — and YOU ALREADY HAVE "
+                f"{'IT' if _one else 'THEM'}: {_pairs} "
+                f"{'was' if _one else 'were'} returned by an earlier tool call in this "
+                "conversation. Pass that exact value back; do NOT invent one, and do not call "
+                "the supplier again to re-fetch what you were already given."
+            )
+        return (
+            f"'{tool}' is missing {owed}, and {'these are' if len(owed) > 1 else 'this is'} "
+            f"NOT yours to invent: the runtime supplies "
+            f"{'them' if len(owed) > 1 else 'it'} from the current context or an "
+            f"active plan, and has none right now. {_how} Do NOT guess a value."
+        )
+    # ── D-THE-EMITTER-ARM-IS-UNREACHABLE-WITHOUT-A-CONTRACT-ROW ────────────────────────────
+    # 🔴 THE SAME FALSEHOOD AS THE COMMENT BELOW, ONE SOURCE LATER. That comment fixed "does
+    # not declare" for the tool's own PROPERTY DESCRIPTION and left `argument_emitters` — the
+    # one source that answers WHERE to get the value — readable only from the `owed` branch
+    # above, which needs a `contracts` row. Measured 2026-08-26 against the registry and the
+    # live 316-tool catalogue:
+    #
+    #     93 declared (tool, arg) emitter pairs · 90 unreachable from a refusal (97%)
+    #       53  the emitter names a supplier the description does NOT mention  -> real gain
+    #       24  the description already names it                               -> redundant
+    #       13  the arg has NO description at all -> today's message says the tool
+    #           "does not declare which side supplies them" WHILE AN EMITTER IS DECLARED
+    #
+    # This is not wording. A tool named in a refusal is ARMED onto the turn by the caller
+    # (`_tools_named_in_refusal` -> `_arm_tools`), and this file's own measurement is 35/35
+    # agreement: the supplier was called on every run it was advertised and on none where it
+    # was not. So an unnameable emitter is an unreachable supplier.
+    #
+    # A declaration is a fact about the CATALOGUE, not about who owes the value, so it is read
+    # for every missing arg — but only ADDED where the description does not already say it,
+    # because repeating a supplier the sentence just quoted buys nothing and costs context.
+    _emit_map: dict[str, str] = {}
+    try:
+        _reg_all = _tool_contract_registry()
+        for _a in missing:
+            _e = declared_emitter(_reg_all, tool, _a)
+            if _e:
+                _emit_map[_a] = _e
+    except Exception:  # noqa: BLE001 — a registry lookup must never take the turn down
+        _emit_map = {}
+
+    def _emitter_sentence(said: str) -> str:
+        """Name the declared emitters that `said` has not already named."""
+        _new = sorted({e for a, e in _emit_map.items() if e not in said})
+        if not _new:
+            return ""
+        return (
+            f" {' and '.join(_new)} "
+            f"{'emit' if len(_new) > 1 else 'emits'} "
+            f"{'these' if len(_emit_map) > 1 else 'this'} — call "
+            f"{'them' if len(_new) > 1 else 'it'} first and pass back the id "
+            f"{'they return' if len(_new) > 1 else 'it returns'}."
+        )
+
+    if any(declared_supplier(block, a) is None for a in missing):
+        # 🔴 "DOES NOT DECLARE" WAS CHECKING THE WRONG SOURCE, and it went from merely unhelpful to
+        # FALSE the moment a declaration existed. Only 12 of the 315 federated tools carry a
+        # contract, so `declared_supplier` is None for almost everything — but the tool's own
+        # PROPERTY DESCRIPTION is a declaration too, and on this platform it is usually the ONLY
+        # one (219 `*_id` properties state UUID in prose; zero emit `format: uuid`).
+        #
+        # MEASURED 2026-08-14: composition_generate's `model_ref` was given a description naming
+        # its supplier — "list the caller's models with settings_list_models and pass the
+        # `model_ref` from there" — and the refusal STILL told the model "this tool does not
+        # declare which side supplies them — so do NOT guess a value". The runtime held the answer
+        # and said it had none. On 4 of 5 runs the model then abandoned the grounded tool and
+        # proposed book_chapter_save_draft with prose it wrote itself; on the 1 run that did call
+        # settings_list_models and come back with a real id, it got there in spite of this
+        # sentence, not because of it.
+        #
+        # Quoting the tool's own words asserts nothing the runtime cannot know — it is the same
+        # move as reading `tier` or `synonyms` rather than inferring from a name.
+        _declared = [
+            (a, str((tool_def_props or {}).get(a, {}).get("description") or "").strip())
+            for a in missing
+        ]
+        _declared = [(a, d) for a, d in _declared if d]
+        if _declared:
+            _lines = "; ".join(f"{a}: {d}" for a, d in _declared)
+            return (
+                f"'{tool}' is missing required argument(s): {missing}. The tool DOES declare what "
+                f"{'these are' if len(_declared) > 1 else 'this is'} — {_lines} — so use that to "
+                "obtain the real value and call again."
+                + _emitter_sentence(_lines)
+                + " Do NOT guess a value and do NOT substitute a placeholder like 'default'."
+            )
+        if _emit_map:
+            # No description, but a DECLARED emitter — the 13 pairs above. Saying "does not
+            # declare" here would be the exact falsehood the arm below was written to stop.
+            return (
+                f"'{tool}' is missing required argument(s): {missing}, and the value is an id "
+                f"from another tool — do NOT guess one."
+                + _emitter_sentence("")
+            )
+        # Genuinely undeclared: say so, and give the id move FIRST — that is the class this arm
+        # was measured failing on. Never guess a value on the model's behalf.
+        return (
+            f"'{tool}' is missing required argument(s): {missing}, and this tool does not "
+            "declare which side supplies them — so do NOT guess a value. If one of them names "
+            "another record (an id), obtain it from the tool that LISTS or SEARCHES those "
+            "records and pass back the id it returns; the ambient book is filled in for you, "
+            "but nothing else is. Otherwise it is content only you can write: read the tool's "
+            "schema for its exact shape, fill it in, and call again."
+        )
+    return (
+        f"'{tool}' is missing required argument(s): {missing}. "
+        "These carry the actual CONTENT (not ids the system already fills) — "
+        "e.g. a list of the items to create, or the search text. Read the "
+        "tool's schema for their exact shape, fill them in, and call again. "
+        "Do not call it with only ids or empty arguments."
+    )
+
+
+#: A dispatch refusal that names REQUIRED ARGUMENTS but names no TOOL.
+#:
+#: 🔴 A FLAT-SUPERSET OP-DISPATCH TOOL MAKES EVERY REPAIR PATH BLIND. 18 catalogue tools declare
+#: only `op` as required, because one schema serves several ops — so `_missing_required_names`
+#: finds nothing missing, the call DISPATCHES, and the server refuses with the per-op requirement
+#: it knew all along. None of the repair machinery above ever runs: no supplier is named, and
+#: `_tools_named_in_refusal` arms nothing because the sentence contains no tool name.
+#:
+#: The server already computed the answer. Measured 2026-08-25 across every service's MCP layer:
+#: 45 such refusal strings, all of one shape — `op=create requires from_motif_id, to_motif_id,
+#: and kind`.
+#:
+#: 🔴 THE FIRST REGEX SILENTLY DROPPED THE LAST ARGUMENT OF A THREE-ITEM LIST, because a repeating
+#: `,\s*item` group happily consumed ", and" as an item. It parsed, it looked right, and it
+#: under-counted exactly the arguments a model most needs named. Three candidates were compared
+#: against the real strings before this one was kept.
+_PER_OP_REQUIRES_RE = re.compile(
+    r"\brequires?\s+([a-z0-9_]+(?:[,\s]+(?:and\s+)?[a-z0-9_]+)*)", re.I)
+_ARG_TOKEN_RE = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def _args_named_in_refusal(text: str, props: dict | None) -> list[str]:
+    """Argument names a refusal demands — kept ONLY if the tool actually declares them.
+
+    🔴 THE SCHEMA IS THE PRECISION GUARD, and it is structural rather than textual on purpose.
+    A word-matcher over refusal prose will happily report `and`, `a` or `dictionary` as arguments;
+    requiring the refusing tool's own schema to declare the token makes that impossible by
+    construction instead of by careful wording.
+
+    MEASURED 2026-08-25 on the 70 service refusal strings that are NOT the per-op shape — the
+    population where a greedy matcher does its damage: the guard rejects 66 of them outright, and
+    the 4 that survive are real ("scope=dirty requires chapter_id", "delete_attribute requires
+    genre_code"), where naming the supplier is equally right.
+    """
+    known = set(props or ())
+    if not known:
+        return []
+    # Named `found` rather than the obvious `out`: the four-space-indented annotated-empty-list
+    # declaration of a variable called `out` is the literal anchor of an existing falsifier
+    # (test_the_LIVE_placeholder_is_caught), and a second occurrence makes that anchor ambiguous
+    # — a stale anchor, which the membrane gate rejects without running a suite. The anchor is
+    # DESCRIBED here rather than quoted, because quoting it is itself a second occurrence; that
+    # is how this comment failed the gate on its first attempt.
+    found: list[str] = []
+    for m in _PER_OP_REQUIRES_RE.finditer(text or ""):
+        for tok in _ARG_TOKEN_RE.findall(m.group(1)):
+            if tok in known and tok not in found:
+                found.append(tok)
+    return found
+
+
+def _enum_values(prop: dict) -> list[str]:
+    """The closed set a property accepts, including the `anyOf[{enum}, {null}]` shape Pydantic
+    emits for an optional enum — which is how EVERY enum on a flat-superset tool is declared, so
+    reading only a top-level `enum` would find none of them."""
+    if not isinstance(prop, dict):
+        return []
+    vals = prop.get("enum")
+    if not vals:
+        for alt in prop.get("anyOf") or []:
+            if isinstance(alt, dict) and alt.get("enum"):
+                vals = alt["enum"]
+                break
+    return [str(v) for v in vals] if isinstance(vals, list) else []
+
+
+def _where_each_argument_comes_from(tool: str, args: list[str], registry: dict,
+                                    props: dict | None = None) -> str:
+    """One sentence per demanded argument saying where to GET it.
+
+    Three outputs, because there are three situations and one sentence for all of them is the
+    defect this file keeps re-learning:
+
+      * an emitter is DECLARED -> name it. Naming it also ARMS it: the caller appends this text
+        to the refusal, and `_tools_named_in_refusal` keys off catalogue names in that text. So
+        the supplier reaches the wire, which is the difference between an instruction the model
+        can follow and one it cannot.
+      * the argument is an ENUM -> list the values. It is a choice from a closed set, not a
+        lookup and not a question.
+      * neither -> take it from the request, or ASK. `composition_authoring_run_manage` op=create
+        needs `budget_usd` and `pause_after_each_unit`: how much money to spend and whether to
+        pause between units are DECISIONS, no tool can supply them, and the platform's whole
+        repair vocabulary is about FINDING values rather than requesting them. Without this the
+        turn has no legal move at all — told not to guess and given nowhere to go.
+
+    🔴 THE ENUM ARM EXISTS BECAUSE THE FIRST VERSION OVER-ASKED, caught by running it against the
+    real refusal strings in the deployed container before any live run. It told the model to "ASK
+    THE AUTHOR" for `composition_motif_link_edit.kind` — an enum of composed_of | precedes |
+    variant_of, on a turn whose request said "mark A as coming BEFORE B". Asking the author to
+    spell that out is worse than the refusal it replaced.
+    ⚠️ AND THE LAST ARM SAYS "take it from the request, or ask" RATHER THAN A FLAT "ask", for the
+    same reason one step further: "op=create requires code and name" is answered by the author's
+    own sentence on most turns, and a flat instruction to ask would send the model back to a
+    user who has already said it.
+
+    Returns "" when there is nothing useful to add, so the caller never appends an empty sentence.
+    """
+    from app.agentruntime.toolcontract import declared_emitter
+
+    sourced: dict[str, list[str]] = {}
+    choose: list[tuple[str, list[str]]] = []
+    ask: list[str] = []
+    for a in args:
+        emitter = None
+        try:
+            emitter = declared_emitter(registry, tool, a)
+        except Exception:  # noqa: BLE001 — a contract lookup must never take the turn down
+            emitter = None
+        if emitter:
+            sourced.setdefault(emitter, []).append(a)
+            continue
+        vals = _enum_values((props or {}).get(a) or {})
+        if vals:
+            choose.append((a, vals))
+        else:
+            ask.append(a)
+    parts: list[str] = []
+    for emitter, names in sorted(sourced.items()):
+        parts.append(
+            f"Call {emitter} to get {' and '.join(names)}, then call this again with "
+            f"{'them' if len(names) > 1 else 'it'}."
+        )
+    for a, vals in choose:
+        parts.append(f"{a} is a choice from: {' | '.join(vals)}.")
+    if ask:
+        parts.append(
+            f"No tool supplies {' and '.join(ask)} — take "
+            f"{'those values' if len(ask) > 1 else 'that value'} from the author's request, or "
+            f"ASK THE AUTHOR for {'them' if len(ask) > 1 else 'it'}, then call this again. "
+            "Do NOT guess."
+        )
+    return " ".join(parts)
 
 
 async def _stream_with_tools(
@@ -1696,7 +4741,26 @@ async def _stream_with_tools(
     # server-side. A mid-tier model doesn't transcribe the id from the prose note (the measured
     # VALIDATION-loop blocker); this supplies it deterministically. See _inject_context_ids.
     context_ids: dict | None = None,
+    # CP-3 — the session's live plan, or None. When present, the executor SUPPLIES bound arguments
+    # at the dispatch chokepoint and records what each step handed forward. `plan_events_out`
+    # collects the events for the caller to persist: STATE has exactly one writer (§0.11), and this
+    # loop is not it.
+    plan_turn=None,
+    plan_events_out: list | None = None,
     discovery_catalog: list[dict] | None = None,
+    #: name -> superseded_by for every LEGACY tool `drop_superseded_tools` removed from
+    #: `discovery_catalog`. Built at the drop site (the only place the pre-drop catalogue still
+    #: exists) and passed down, so `tool_load` can refuse a deprecated name by naming its
+    #: successor instead of asserting it does not exist. Built THERE rather than fetched here
+    #: because a catalogue read inside this function is a narrowing with no `arm_turn_surface()`
+    #: to register on, and a bare `except` around it degrades an outage silently —
+    #: `test_cp0_instrument.py` rejected the fetching version on exactly those two counts.
+    #: Empty/None = no index; behaviour degrades to today's `not_found`.
+    legacy_tool_index: dict[str, str | None] | None = None,
+    #: DQ-T5 — the defs the N5a-FULL capability floor removed from `discovery_catalog`,
+    #: keyed by name. A refusal that NAMES one unlocks it for the rest of the turn; nothing
+    #: else reads this, so an un-named gated tool stays off the wire exactly as today.
+    unlockable_gated: dict | None = None,
     discovery_extra_frontend: list[dict] | None = None,
     discovery_seed_names: set[str] | None = None,
     curated: bool = False,
@@ -1710,6 +4774,14 @@ async def _stream_with_tools(
     # same flat cap). None (e.g. the sub-agent nested call) ⇒ the flat default.
     context_length: int | None = None,
     permission_mode: str = "write",
+    # 🔴 D-R1-IS-KEYED-ON-THIS-TURN — THE REBUILD IS THE LOAD-BEARING CALL, NOT THE SEED.
+    # `tool_defs` from the caller is only the FIRST-pass advertisement (its own comment says so);
+    # this function recomputes the surface on EVERY pass from `request_text`. So a look-back
+    # applied only at the caller is discarded before pass 1 reaches the wire. Measured
+    # 2026-08-31 on c-planapply2 (K=5, serial): the look-back logged its match on 5/5 runs and
+    # `plan_bootstrap_apply` was on 0/5 confirmation-turn wires, because this call recomputed
+    # answerability from "Yes, please create them." and got nothing. Threaded, not defaulted.
+    prior_request_text: str = "",
     decision_check=None,
     hooks: list[dict] | None = None,
     subagent_tool: dict | None = None,
@@ -1737,6 +4809,17 @@ async def _stream_with_tools(
     # rail's progress (drop a finished step's tool so a weak model can't repeat it). None/empty
     # ⇒ no gating (the advertise surface is byte-identical). See rail_gate_suppressions.
     rail_progress: list | None = None,
+    # D-FJ-17 — the rails THIS turn's user message pinned (intent_pinned_workflows), as
+    # distinct from the ones the standing mode binding pins. Empty ⇒ no preference.
+    rail_intent_slugs: frozenset[str] = frozenset(),
+    # D-FJ-21 — tools this session keeps failing at identically (cross-turn). The rail must
+    # not keep driving a step that needs one. See db/tool_call_history.stuck_tools_from_calls.
+    rail_stuck_tools: frozenset[str] = frozenset(),
+    # R1 — this turn's request, so the advertise chokepoint can guarantee that a tool whose
+    # own declared vocabulary answers it reaches the wire. Empty ⇒ inert.
+    request_text: str = "",
+    # D-FJ-22 — catalog tools the user named literally this turn. See _tools_named_in_request.
+    rail_named_tools: frozenset[str] = frozenset(),
     # True on a RESUME that suspended mid-rail: the rail is definitionally in flight, so the
     # driver may fire even though this turn's only action was the (frontend) confirm — which
     # executes off the backend chokepoint and so is not in turn_succeeded.
@@ -1802,6 +4885,57 @@ async def _stream_with_tools(
         # pass-0 content so E1 can splice full-context + the tool results appended since.
         _continuing = bool(stateful and previous_response_id and delta_messages is not None)
         working: list[dict] = list(delta_messages) if _continuing else list(messages)
+        # ── DQ-T88 (a) WITH A CEILING — replay prior turns' tool RESULTS ──────────────────
+        # OWNER 2026-09-01: "try claude code idea". The Messages API is stateless — a tool
+        # result is a content block in the transcript, so it survives to the next turn by
+        # construction. THIS PLATFORM IS THE OUTLIER: results live on the ASSISTANT row, so a
+        # rehydrated conversation carries ZERO of them and 1,503 of 5,655 sessions lose them.
+        #
+        # 🔴 DEFAULT OFF, AND THAT IS THE OWNER'S OWN CORRECTION SPEAKING: "the tool return so
+        # much data and it cause context bloated, that why the tool result is not store". On
+        # that account replaying is replaying the thing that made storing unattractive. The
+        # projection bounds it (2 kB/result, 16 kB/turn, ids preserved), but a bound is not
+        # evidence that the trade is worth making — and this platform's own precedent for a
+        # context change of this size is DQ-T90: a flag, an A/B against the shipped path, and
+        # adoption only if it wins. Shipping it on by default would be asserting the result of
+        # a measurement nobody has run.
+        #
+        # 🔴 THIS EXCLUDED `_continuing` AND THAT KILLED THE FEATURE. The comment read
+        # "never seeded on a CONTINUE pass: the server already holds that history" -- which is
+        # true of the TRANSCRIPT and false of the TOOL RESULTS, and the results are the whole
+        # subject. On a stateful chain the provider holds what it was sent, and what it was sent
+        # never contained the results either, because a result lives on the assistant row rather
+        # than as its own turn. So the exclusion removed exactly the case the feature exists for.
+        #
+        # MEASURED: the 2026-09-02 A/B ran both arms with the flag verified True inside the
+        # running service and logged ZERO replays in either -- 5/5 vs 5/5, a result that says
+        # nothing because the mechanism never executed. No exception and no info line were
+        # logged, which is what identified the branch as never entered.
+        #
+        # THE COST THE OLD COMMENT WAS GROPING AT IS REAL AND IS BOUNDED, not ignored: on a
+        # stateful chain this adds ONE system message per turn, and the 16 kB session budget caps
+        # what it can carry.
+        if settings.replay_prior_tool_results and session_id:
+            try:
+                from app.db.tool_call_history import results_for_replay
+                _replayed = await results_for_replay(get_pool(), str(session_id))
+                if _replayed:
+                    working = [{
+                        "role": "system",
+                        "content": (
+                            "Results your earlier tool calls in this conversation returned "
+                            "(trimmed where large — call the tool again for the rest):\n"
+                            + "\n".join(f"{r['tool']}: {r['result']}" for r in _replayed)
+                        ),
+                    }] + working
+                    logger.info("replayed %d prior tool result(s) (session=%s)",
+                                len(_replayed), session_id)
+                else:
+                    # A skip is as interesting as a firing when a whole A/B can turn on it.
+                    logger.info("replay: nothing to replay (session=%s)", session_id)
+            except Exception:  # noqa: BLE001 — an enrichment must never take the turn down
+                logger.warning("prior-result replay failed (session=%s)", session_id,
+                               exc_info=True)
         _initial_working_len = len(working)
         # C6: on a resume pass, seed the token totals from the suspended first
         # run so the final usage is summed across both runs (design D10).
@@ -1902,6 +5036,25 @@ async def _stream_with_tools(
         # A SUCCESS clears the tool's whole map (the loop is broken). Distinct from
         # noop_write_counts (created=false SUCCESSES) and read_call_results (identical SUCCESSES).
         fail_by_tool_error: dict[str, dict[str, int]] = {}
+        # D-XWIRE-RESULT — every `*_id` this turn has PUBLISHED to the model, and the key it was
+        # published under. Turn-scoped on purpose: it is evidence about what this conversation was
+        # told, not a cache of the world, and an id that belonged to a previous turn's book must
+        # never authorise a substitution in this one.
+        _id_ledger = IdLedger()
+        for _k in ("book_id", "chapter_id", "project_id"):
+            _id_ledger.note(_k, (context_ids or {}).get(_k))
+        # Per-tool count of repeats this turn that the repeated-READ breaker BLOCKED. It cannot
+        # live in `read_call_results`: that map only advances after a real dispatch, and a blocked
+        # call never reaches one — which is why the breaker's message said "3 times" on the 3rd
+        # attempt and still said "3 times" on the 194th. Counting the blocks is what makes both the
+        # message true and the de-advertise escalation possible.
+        repeat_block_counts: dict[str, int] = {}
+        # Tools the repeated-READ breaker took off the wire. A SEPARATE set from
+        # `failure_suppress` even though both feed `_suppress`: the withheld column records a
+        # stage and a reason per tool, and filing a de-advertised READ under "repeated-failure
+        # breaker gave up" would put a false reason in the one column built to stop exactly that.
+        # These tools did not fail — they answered, identically, and were asked anyway.
+        repeat_read_suppress: set[str] = set()
         # De-advertise escalation — once the breaker fires for a tool, a WEAK model keeps
         # RE-EMITTING the same call and ignoring the steer (measured: book_get_chapter emitted 19×,
         # only 2 dispatched, the rest short-circuited but the model spun anyway). Short-circuiting
@@ -1922,7 +5075,14 @@ async def _stream_with_tools(
         # WHOLE category at once, so a re-list is a loop; track per-category list counts + the
         # per-turn total so a repeat switches to auto-load+steer and a persistent spammer gets
         # tool_list de-advertised (suppress_tool_list is read at the advertise chokepoint below).
-        listed_categories: dict[str, int] = {}
+        listed_categories: dict[tuple[str, bool], int] = {}
+        # CP-0.2 — drops made by the TOKEN BUDGETER, accumulated here and flushed into the next
+        # `advertised` chunk. This is the narrowing the column was built for and the one it first
+        # shipped without: the other stages (oneshot, rail gate, failure breaker, permission mode)
+        # decide at advertise time and were easy to catch there, while the budgeter decides at
+        # ACTIVATION time — a different moment, several call sites away — so instrumenting the
+        # advertise chokepoint alone captured every narrowing except the one that founded this work.
+        _budget_withheld: list[dict] = []
         tool_list_total = 0
         suppress_tool_list = False
         # ── P-1 step-runner state (Track C) ──────────────────────────────────────
@@ -1932,6 +5092,7 @@ async def _stream_with_tools(
         turn_succeeded: Counter = Counter()
         rail_redrive_count = 0           # per-turn cap on how many times the server re-drives
         narrated_write_nudges = 0        # D-NARRATED-WRITE — per-turn cap (see the guard)
+        data_question_nudges = 0         # DQ-T30 — per-turn cap (see the guard)
         # D-NARRATED-WRITE — every pass's prose, accumulated for the WHOLE turn.
         # `text_parts` is re-created per pass, so scanning it alone misses the common
         # case: the model announces the write in one pass ("I will now create the 5
@@ -1939,6 +5100,13 @@ async def _stream_with_tools(
         # repeats the tool name. The claim and the silence are in different passes.
         turn_text_parts: list[str] = []
         turn_attempted: set[str] = set()  # D-NARRATED-WRITE — see the update site
+        # F1 — {refused tool: the prerequisite its refusal named}. The ONLY new state F1 needed:
+        # the refused tool is never de-armed and the seam already injects "then retry", so there
+        # is nothing to re-arm. This exists so the end-of-turn guard can ask whether the retry
+        # the runtime asked for actually happened. Entries are dropped the moment the tool is
+        # called again, so a retry that fails a SECOND time never reaches the guard.
+        refusal_pending: dict[str, str] = {}
+        retry_nudges = 0                 # F1 — per-turn cap, like its siblings
         rail_nudge_counts: Counter = Counter()   # per-step: how many times we've nudged it
         rail_twice_nudged: set[str] = set()      # a step the model ignored twice → give up on it
         # Set when the step-runner injected at least one synthetic '[SYSTEM DIRECTIVE]' nudge
@@ -1955,6 +5123,8 @@ async def _stream_with_tools(
         # immediately re-enter the same deliberation loop.
         reasoning_loop_interventions = 0
         _suppress_reasoning_next_pass = False
+        # D-SILENT-TURN-NO-CARD-NO-PROSE — same counter shape, its own budget.
+        degenerate_pass_interventions = 0
         # The rail's own step tools (across all pinned rails) — the "a rail step actually
         # succeeded this turn" gate that keeps the driver SILENT on pure-conversation turns.
         _rail_all_step_tools: set[str] = set()
@@ -1979,6 +5149,13 @@ async def _stream_with_tools(
         # bubble). Each pass's opening tokens are held while they prefix-match this
         # accumulator; a full match is swallowed, a divergence is flushed unchanged.
         turn_text_so_far = ""
+        # D-FJ-19 — True when the PREVIOUS pass ended by injecting a synthetic role=user
+        # directive (rail re-drive, narrated-write nudge). Such a pass answers a NEW
+        # instruction, so its prose is a separate answer and needs a seam. A pass that merely
+        # follows tool RESULTS is a continuation of the same thought and must NOT be broken —
+        # pinned by test_one_tool_pass_then_text_pass, where the model streams "Let me check."
+        # then " Kai is a knight." and the existing join is already right.
+        _directive_before_this_pass = False
         iteration = -1
         while True:
             iteration += 1
@@ -2058,6 +5235,10 @@ async def _stream_with_tools(
             # Offer tools unless the provider rejected them (D8) or this
             # is the forced-final pass (D7 — must answer in text).
             offered_tools = tools_supported and not last_iter
+            # D-ONE-PASS-RECORDED-TWICE-WHEN-THE-SURFACE-FILTERS-TO-EMPTY — per PASS, reset
+            # here beside `offered_tools` because the two are read together below and a flag
+            # that outlives its pass would suppress the NEXT pass's record instead.
+            _adv_emitted = False
             if offered_tools:
                 # RAID C2 (DR-C2) — ask-mode filtering happens HERE, at the single
                 # per-pass advertise chokepoint: discovery filters inside
@@ -2092,12 +5273,52 @@ async def _stream_with_tools(
                             rail_progress, turn_succeeded, _rail_gate_mode
                         )
                         if _rail_suppress:
-                            _suppress = set(_suppress) | _rail_suppress
+                            # 🔴 A SATISFIED RAIL STEP MEANS THE RAIL NEED NOT DRIVE IT AGAIN.
+                            # IT MUST NOT MEAN THE AUTHOR MAY NO LONGER ASK.
+                            #
+                            # MEASURED 2026-08-14 (sessions 019ffff4 / 01a00003-5, three runs
+                            # each): turn 1 asked "What canon rules have I declared for this
+                            # book?", composition_list_canon_rules ran, and the answer was right.
+                            # The RE-ASK was then withheld at `rail_gate: rail step already
+                            # satisfied (mode=done_suppress)` on EVERY pass — 14 of them — so the
+                            # one tool that answers the question was off the wire, and the model
+                            # thrashed through twelve OTHER composition tools before answering
+                            # from conversation memory. That is DQ-T30's mechanism, and it is
+                            # sharper than the DQ's own wording: a completed rail does not merely
+                            # stop driving, it actively REMOVES the answering read.
+                            #
+                            # The gate conflates two claims that are only the same for a WRITE.
+                            # "This step is done" -> a second write would duplicate data, so drop
+                            # it. For a READ there is nothing to duplicate: re-reading IS the
+                            # freshness the author asked for. So a rail-gated READ whose own
+                            # declared vocabulary answers THIS request is reclaimed here.
+                            #
+                            # Deliberately narrow, and reclaimed BEFORE the breakers below rather
+                            # than after: `failure_suppress` (gave up after repeated errors) and
+                            # `repeat_read_suppress` (hammering the same read) are LOOP breakers
+                            # and still win, because those describe a model misbehaving now, not
+                            # a journey that finished earlier.
+                            _reclaimed_reads = {
+                                n for n in _rail_suppress
+                                if n in cat_index and tool_tier(cat_index[n]) == "R"
+                                and answerable_tools(request_text, [cat_index[n]])
+                            }
+                            if _reclaimed_reads:
+                                logger.info(
+                                    "rail gate: reclaiming %s — a satisfied rail step must not "
+                                    "take an answering READ off the wire",
+                                    sorted(_reclaimed_reads),
+                                )
+                                _rail_suppress = set(_rail_suppress) - _reclaimed_reads
+                            if _rail_suppress:
+                                _suppress = set(_suppress) | _rail_suppress
                     # De-advertise escalation — a tool the repeated-failure breaker gave up on is
                     # taken off the wire so a weak model can't keep re-emitting it (dispatch is
                     # already short-circuited; this stops the wasted EMIT passes too).
                     if failure_suppress:
                         _suppress = set(_suppress) | failure_suppress
+                    if repeat_read_suppress:
+                        _suppress = set(_suppress) | repeat_read_suppress
                     advertised = _advertise_discovery_tools(
                         cat_index, active_tool_names, extra_fe,
                         permission_mode=permission_mode,
@@ -2105,12 +5326,43 @@ async def _stream_with_tools(
                         suppress_tool_list=suppress_tool_list,
                         suppress_names=_suppress,
                         book_bound=bool((context_ids or {}).get("book_id")),
+                        request_text=request_text,
+                        prior_request_text=prior_request_text,
                     )
                 else:
                     advertised = (
                         _filter_tools_for_ask(tools, permission_mode)
                         if permission_mode in ("ask", "plan") else tools
                     )
+                    # The de-advertise has to hold on THIS branch too. Every suppression above
+                    # is wired only into the discovery chokepoint, so a breaker that fires on a
+                    # plain (or nested-subagent) turn would take the tool off no wire at all —
+                    # a mechanism that runs and changes nothing, which is worse than one that
+                    # was never written because it reads as covered. The discovery path records
+                    # the drop in the withheld column; this one has no such column, so it logs.
+                    #
+                    # BOTH breakers, not just the read one. Measured: one session on 2026-07-26
+                    # shows the repeated-FAILURE breaker starting mid-session — the 04:47 turn
+                    # emitted 30 `book_get_chapter` failures with ZERO steers, and the 05:04 turn
+                    # emitted 2 failures then 22 steers. The breaker was working. The
+                    # de-advertise beside it was not: 22 blocked emissions across 23 iterations
+                    # means the tool never left the wire. `failure_suppress` was discovery-only,
+                    # and the earlier fix here covered `repeat_read_suppress` alone — which made
+                    # the asymmetry mine. A breaker that says "I took it off the wire" and did
+                    # not is the same silent seam either way.
+                    _plain_suppress = repeat_read_suppress | failure_suppress
+                    if _plain_suppress:
+                        _before = len(advertised)
+                        advertised = [
+                            td for td in advertised
+                            if (td.get("function") or {}).get("name")
+                            not in _plain_suppress
+                        ]
+                        if len(advertised) != _before:
+                            logger.info(
+                                "breaker de-advertise on the plain path: %s",
+                                sorted(_plain_suppress),
+                            )
                     # P5 REG-P5-01 — a nested subagent sub-run advertises its scoped
                     # set, which carries `_meta` (read by the tier filter just above /
                     # ask-mode). Strip it before the wire. Gated to the nested case so
@@ -2140,6 +5392,165 @@ async def _stream_with_tools(
                 # every mode (the nested run is clamped read-only, so it's safe).
                 if subagent_tool is not None and subagent_depth == 0:
                     advertised = list(advertised) + [subagent_tool]
+                # ── CP-2.7 · THE ARM, AT THE POINT WHERE EVERY PATH HAS ALREADY CONVERGED ──────
+                # 🔴 **MEASURED FAILURE, 2026-08-09, ON A REAL TURN AGAINST A REAL MODEL.** The
+                # branch used to live only inside `_advertise_discovery_tools`, documented as *"the
+                # single ADVERTISE chokepoint … one edit covers every path a turn can take to the
+                # wire"*. It was not. A plain tool-calling client takes the `else` arm — a bare
+                # `tool_defs = catalog` that never calls the function — and the first served turn on
+                # the new arm advertised **318 legacy declarations** while the row was stamped
+                # `runtime_variant='agentruntime'`. That is worse than either fault alone: it
+                # attributes the legacy surface's behaviour to the new runtime, so the comparison
+                # would have been computed over a mislabelled arm.
+                #
+                # It also had to move BELOW the appends. `conversation_search`,
+                # `chat_search_sessions` and `run_subagent` are legacy declarations added after the
+                # fork, so a branch placed above them leaks three tools no manifest admitted —
+                # CP-2.7 item B (*no legacy declaration is reachable, by ANY route*) fails on a
+                # technicality that is not a technicality.
+                #
+                # `advertised` is final here: every producer and every append is upstream, and the
+                # instrument below records exactly what goes to the wire.
+                if settings.agentruntime_arm:
+                    advertised = _agentruntime_wire_surface(pass_number=iteration + 1)
+                # ── D-R1-MATCHED-THE-TOOL-AND-IT-NEVER-REACHED-THE-WIRE ──────────────────────
+                # R1 answerability is a GUARANTEE — "a tool whose own declared vocabulary answers
+                # the request reaches the wire" — and several fixes are built on it. It was
+                # possible for the builder to force a tool and for that tool to be absent here,
+                # with nothing in between saying so: every skip INSIDE the builder logs, so the
+                # log read "matched" and the tool simply was not on the surface.
+                #
+                # MEASURED 2026-08-26 (batch c-booksync1, K=5): glossary_book_sync_apply matched
+                # on 5/5 (its declared synonym is in the request verbatim), no skip was logged,
+                # and it was absent from the advertised set on all 6 passes of every run while its
+                # sibling glossary_book_sync_available was present. Calling the builder directly
+                # in the deployed container returns the tool, so the drop is downstream of it.
+                #
+                # This does not FIX the drop — it makes it impossible for the next one to be
+                # silent. `advertised` is final at this point (the comment above says so), so a
+                # forced name missing here was removed by something that never registered it.
+                _r1_promised = _R1_FORCED.get()
+                # 🔴 LOG THE KEPT CASE TOO, not only the broken one. This file's own note says
+                # "R1 HAS NO OBSERVABILITY, AND THAT COST TWO MEASUREMENTS" — and a check that
+                # speaks only on failure cannot tell "the guarantee held" from "the check never
+                # ran", which is exactly the ambiguity that cost a third. Measured 2026-08-26:
+                # the broken-case warning stayed silent on a batch where the tool was provably
+                # absent from the wire, and there was no way to tell which of the two it meant.
+                logger.info(
+                    "R1 answerability: %d promised for pass %s, %d on the wire (session=%s)",
+                    len(_r1_promised), iteration + 1,
+                    len(_r1_promised & {
+                        (td.get("function") or {}).get("name")
+                        for td in advertised if isinstance(td, dict)
+                    }), session_id,
+                )
+                if _r1_promised:
+                    _wire_names = {
+                        (td.get("function") or {}).get("name")
+                        for td in advertised if isinstance(td, dict)
+                    }
+                    for _lost in sorted(_r1_promised - _wire_names):
+                        instrument.record_surface_withheld(
+                            _lost, stage="r1_forced_then_dropped",
+                            reason="R1 answerability forced it onto this pass and it is absent "
+                                   "from the final wire — removed downstream of the builder by a "
+                                   "narrowing that registered nothing",
+                        )
+                        logger.warning(
+                            "R1 answerability BROKEN: %s was forced onto pass %s and is NOT on "
+                            "the wire (session=%s)", _lost, iteration + 1, session_id,
+                        )
+                    _R1_FORCED.set(frozenset())
+                # ── CP-0.1 / CP-0.2 · THE INSTRUMENT, at the one chokepoint every pass goes through ──
+                # Emitted on EVERY pass, deliberately unlike the `schema_tokens` chunk above, which
+                # reports once per turn (`schema_tokens_reported`). Once-per-turn is precisely the
+                # shape that cannot see the defect this exists for: the tool is present on pass 1 and
+                # gone on pass 2, so a single sample — whichever pass it lands on — shows a set that
+                # looks entirely unremarkable. The difference between passes IS the finding.
+                #
+                # Emitted for a tool-FREE pass too (`names: []`). "The model was offered nothing" and
+                # "the model was never asked" are different facts, and only one of them is a defect.
+                _adv_names: list[str] = []
+                for _td in (advertised or []):
+                    _fn = _td.get("function") if isinstance(_td, dict) else None
+                    _nm = _fn.get("name") if isinstance(_fn, dict) else None
+                    if _nm:
+                        _adv_names.append(_nm)
+                # Every narrowing that ran on this pass registers with WHO decided and WHY. An
+                # exclusion with no {tool, stage, reason} is a defect, not a policy (§0.3) — and
+                # each stage below is a real suppression already happening today, unrecorded.
+                _withheld_now: list[dict] = []
+                if discovery:
+                    if _oneshot_mode == "existence":
+                        _withheld_now += [
+                            {"tool": t, "stage": "oneshot_existence",
+                             "reason": "target resource already exists in this turn's context"}
+                            for t in sorted(_suppress) if t in ONESHOT_CREATE_TOOLS
+                        ]
+                    elif _oneshot_mode in ("per_turn", "session"):
+                        _withheld_now += [
+                            {"tool": t, "stage": f"oneshot_{_oneshot_mode}",
+                             "reason": "one-shot create already succeeded this turn"}
+                            for t in sorted(oneshot_suppress)
+                        ]
+                    if _rail_gate_mode != "off" and rail_progress:
+                        _withheld_now += [
+                            {"tool": t, "stage": "rail_gate",
+                             "reason": f"rail step already satisfied (mode={_rail_gate_mode})"}
+                            for t in sorted(_rail_suppress) if _rail_suppress
+                        ]
+                    if failure_suppress:
+                        _withheld_now += [
+                            {"tool": t, "stage": "failure_breaker",
+                             "reason": "repeated-failure breaker gave up on this tool"}
+                            for t in sorted(failure_suppress)
+                        ]
+                    if repeat_read_suppress:
+                        _withheld_now += [
+                            {"tool": t, "stage": "repeat_read_breaker",
+                             "reason": "returned the identical result and was re-asked anyway"}
+                            for t in sorted(repeat_read_suppress)
+                        ]
+                    if suppress_tool_list:
+                        _withheld_now.append({
+                            "tool": TOOL_LIST_NAME, "stage": "suppress_tool_list",
+                            "reason": "discovery de-advertised for this surface",
+                        })
+                # CP-0.2 — the token budgeter's drops, accumulated at ACTIVATION time and flushed
+                # here. Outside the `if discovery:` block on purpose: the budgeter runs on the
+                # activation path regardless of which advertise branch this pass takes, and gating
+                # it on `discovery` would silently drop the narrowing again on every other surface.
+                # Drained, not copied, so a drop registers against the pass that caused it.
+                if _budget_withheld:
+                    _withheld_now += _budget_withheld
+                    _budget_withheld = []
+                if permission_mode in ("ask", "plan") and not discovery:
+                    _filtered_out = sorted(
+                        {
+                            _f.get("name")
+                            for _t in (tools or [])
+                            if isinstance(_f := _t.get("function"), dict) and _f.get("name")
+                        }
+                        - set(_adv_names)
+                    )
+                    _withheld_now += [
+                        {"tool": t, "stage": f"permission_mode_{permission_mode}",
+                         "reason": f"write tool not offered in '{permission_mode}' mode"}
+                        for t in _filtered_out
+                    ]
+                # Held, not yielded yet: the existing `schema_tokens` chunk must stay the FIRST
+                # side-channel chunk of a tool-bearing turn (test_first_pass_reports_split_schema_
+                # tokens asserts that position). An instrument that reorders the stream it observes
+                # has changed the thing it measures, so this one waits its turn.
+                _adv_ev_pending = {
+                    "names": _adv_names,
+                    "tool_choice": "auto" if advertised else None,
+                    "withheld": _withheld_now,
+                }
+                if not advertised:
+                    # A tool-free pass has no schema_tokens chunk to follow, so it emits here.
+                    yield {"advertised": _adv_ev_pending}
+                    _adv_emitted = True
                 if advertised:
                     request_kwargs["tools"] = advertised
                     request_kwargs["tool_choice"] = "auto"
@@ -2166,6 +5577,11 @@ async def _stream_with_tools(
                             "frontend_tool_schemas": _fe_tok,
                             "mcp_tool_schemas": _mcp_tok,
                         }}
+                    # CP-0.1/0.2 — now, after schema_tokens has kept its first-chunk position. Every
+                    # pass emits one, which is the whole point: the once-per-turn `schema_tokens`
+                    # above cannot see a surface that CHANGES between passes.
+                    yield {"advertised": _adv_ev_pending}
+                    _adv_emitted = True
                     # W6 — advertised-surface snapshot at the SAME chokepoint:
                     # split the advertised names core/frontend/activated, group
                     # by owning MCP server, and reuse the W1 token measurement
@@ -2216,6 +5632,47 @@ async def _stream_with_tools(
                     # Ask mode filtered everything out — run the pass tool-free
                     # (an empty tools array 400s on some providers).
                     offered_tools = False
+            # CP-0.1 — a pass that offers NO tools is still a pass, and it was recording nothing.
+            # The advertise chunk lives inside `if offered_tools:`, so the three ways a pass can run
+            # tool-free — the D7 forced-final answer, a provider that rejected tools (D8), and ask
+            # mode filtering everything out — left a hole in the per-pass array exactly where the
+            # surface CHANGED most sharply. The pass count then under-reports, and a tool present on
+            # pass 1 and absent on a tool-free pass 2 reads as "still offered", which is the
+            # opposite of the truth and the same failure mode as a scalar column.
+            # 🔴 `not _adv_emitted` — D-ONE-PASS-RECORDED-TWICE-WHEN-THE-SURFACE-FILTERS-TO-EMPTY.
+            # `offered_tools` is not a constant across this block: the `else` twenty lines above
+            # sets it False when ask-mode filtered every tool out. On that path the pass has
+            # ALREADY emitted its chunk at `if not advertised:` — so this line fired a SECOND one
+            # for the same pass, and `advertised_tools` recorded two entries, with two different
+            # `pass` numbers, for one model call.
+            #
+            # The damage is to the DENOMINATOR every surfacing measurement in this loop divides
+            # by: "advertised in N of M passes" reads M from this column, and M was one too many
+            # whenever it happened. It also silently masks the opposite defect — a turn that DROPS
+            # a pass (D-THE-PERSISTED-PER-PASS-RECORDER-DROPS-A-PASS-ON-THE-SECOND-TURN) compares
+            # this column against a log line that only prints for TOOL-BEARING passes, so a
+            # spurious empty entry can cover a real loss.
+            #
+            # MEASURED 2026-08-28 over the live store: at most 1 adjacent empty-name pair in 5,759
+            # messages carrying the column — and that one pair may simply be two genuine tool-free
+            # passes, so 1 is an upper bound, not a count. The path is real by construction and
+            # very rare in practice; this is a correctness guard, not a fix for an observed
+            # measurement error.
+            if not offered_tools and not _adv_emitted:
+                yield {"advertised": {
+                    "names": [],
+                    "tool_choice": None,
+                    # 🔴 THIS MINTED `tool: "*"` — the sentinel §0.14.3 rejects BY NAME, two
+                    # thousand lines from the document forbidding it. A pass offering no tools is a
+                    # statement about the PASS, so it carries a scope and no tool, exactly like a
+                    # catalogue outage. A sentinel makes every consumer that counts tools return a
+                    # wrong answer while still looking correct.
+                    "withheld": [{
+                        "scope": instrument.SCOPE_PASS, "stage": "pass_offered_no_tools",
+                        "reason": ("forced final answer (D7)" if last_iter
+                                   else "provider rejected tools (D8) or ask-mode filtered all"),
+                    }],
+                }}
             # M3 — one observability/cancel job id PER pass (each pass is a
             # separate gateway stream; the active pass is what a disconnect aborts).
             stream_job_id = str(uuid4())
@@ -2265,6 +5722,50 @@ async def _stream_with_tools(
             # and hand off to the steer/cap block after the loop.
             loop_det = ReasoningLoopDetector()
             _looped = False
+            # ── D-RAIL-PINNED-TURN-NEVER-COMPLETES — THE SAME LOOP, IN THE OTHER CHANNEL ─────
+            # `loop_det` is fed ONLY by TokenEvent and ReasoningEvent deltas, so it watches the
+            # TEXT channels and is blind to a provider that repeats a TOOL CALL. `tool_frags`
+            # below is an unbounded dict keyed by the provider's own output index, and nothing
+            # ever bounded it.
+            #
+            # READ FROM LM STUDIO'S OWN LOG 2026-08-30, the first time this stall was captured
+            # in front of it: ONE turn emitted `translation_update_settings` 274 times with
+            # byte-identical arguments — {"book_id":"current_book","target_language":["vi"]} —
+            # output_index reaching 137, slot n_tokens climbing ~81 per repeat past 33k. The
+            # service dispatched NONE of them, because every guard it has (the repeat-breaker,
+            # H7's write cap, the turn ceiling) acts on a DISPATCHED call and nothing dispatches
+            # until the stream ends. The stream never ends. `llm_stream_idle_read_timeout_s = 0`
+            # is not the cause but is why nothing trips: frames arrive the whole time, so there
+            # is no idle to time out.
+            #
+            # THE BAR IS DERIVED, NOT PICKED. Over 16,554 (tool, arguments) groups within a pass
+            # in the live store: p99 = 3, p99.9 = 8, max = 540. EVERY group above 8 is a repeat
+            # pathology — tool_list{"category":"book"} x540/235/235/41/41, book_get on one id
+            # x63/16/16/16/16/16/10/9, glossary_list_chapter_links x178 — and not one is
+            # legitimate work. The 43 groups in the 5-to-8 band are ordinary reads and are left
+            # alone. A flat CALL-COUNT cap was measured and rejected: one legitimate pass made
+            # 30 calls across 10 DISTINCT tools, so volume does not discriminate and repetition
+            # does.
+            _call_repeats: Counter = Counter()
+            _settled_idx: set = set()
+            _last_tc_index = None
+            _tool_loop_reason = ""
+
+            def _settle(idx) -> str:
+                """Count a completed slot; return a reason if it has repeated past the bar."""
+                if idx is None or idx in _settled_idx:
+                    return ""
+                _settled_idx.add(idx)
+                _sl = tool_frags.get(idx) or {}
+                _nm = _sl.get("name")
+                if not _nm:
+                    return ""
+                _key = (_nm, _sl.get("arguments") or "")
+                _call_repeats[_key] += 1
+                if _call_repeats[_key] > IDENTICAL_TOOL_CALL_CAP:
+                    return f"tool_call_repeat:{_nm}x{_call_repeats[_key]}"
+                return ""
+
             _stream_iter = client.stream(request)
             try:
                 async for ev in _stream_iter:
@@ -2295,6 +5796,22 @@ async def _stream_with_tools(
                                 # diverged → not an echo: flush everything held, unchanged
                                 _delta = _echo_buf
                             _echo_buf = ""
+                        # D-FJ-19 — a multi-pass turn persists ONE assistant message built by
+                        # concatenating every pass's yielded content, and nothing separated
+                        # them. Measured live 2026-08-13: "…I can help you set them
+                        # up.I checked your consistency rules…" — two answers welded into one
+                        # sentence, mid-word to a reader. Any turn the rail re-drives has two
+                        # or more passes, so this is the normal shape, not an edge case.
+                        # Inserted at the FIRST real delta of a later pass, so a single-pass
+                        # turn is byte-identical and an echo-suppressed pass adds nothing.
+                        if (
+                            not text_parts
+                            and _directive_before_this_pass
+                            and _delta.strip()
+                            and turn_text_so_far.strip()
+                            and not turn_text_so_far.endswith("\n")
+                        ):
+                            _delta = "\n\n" + _delta.lstrip()
                         text_parts.append(_delta)
                         turn_text_so_far += _delta
                         content_hold += _delta
@@ -2313,6 +5830,16 @@ async def _stream_with_tools(
                             _looped = True
                             break
                     elif isinstance(ev, ToolCallEvent):
+                        # A NEW index means the previous slot is complete — the provider streams
+                        # them in order — so that is the moment its (name, arguments) can be
+                        # counted. Settling on completion rather than on every fragment is what
+                        # makes the comparison meaningful: arguments arrive in deltas.
+                        if ev.index != _last_tc_index:
+                            _tool_loop_reason = _settle(_last_tc_index)
+                            _last_tc_index = ev.index
+                            if _tool_loop_reason:
+                                _looped = True
+                                break
                         slot = tool_frags.setdefault(
                             ev.index, {"id": None, "name": None, "arguments": ""}
                         )
@@ -2378,12 +5905,12 @@ async def _stream_with_tools(
                 logger.warning(
                     "D-REASONING-LOOP: session=%s pass=%d aborted a reasoning-channel "
                     "loop (%s) model_ref=%s",
-                    session_id, iteration, loop_det.reason, model_ref,
+                    session_id, iteration, _tool_loop_reason or loop_det.reason, model_ref,
                 )
                 if trace is not None:
                     trace.add(
                         "compile", "T6", "tools",
-                        f"reasoning_loop_aborted:{loop_det.reason[:48]}",
+                        f"reasoning_loop_aborted:{(_tool_loop_reason or loop_det.reason)[:48]}",
                         is_error=True,
                     )
                 if content_hold or reasoning_hold:
@@ -2479,6 +6006,54 @@ async def _stream_with_tools(
             # guard that runs on the last one).
             turn_text_parts.extend(text_parts)
 
+            # D-SILENT-TURN-NO-CARD-NO-PROSE — name the pass that is about to end
+            # the turn saying nothing. `_has_leak_marker` already returns True for
+            # this string, so the platform knows it is a control token and still
+            # lets the pass fall through as an ordinary "model stopped without a
+            # tool call". Logged, NOT remedied: the remedy (retry the pass, since
+            # the model's intent was a call) is a mechanism whose benefit has not
+            # been measured, and what the author is shown when a turn says nothing
+            # is DQ-T33, which is the owner's. Naming it is what makes either
+            # decision measurable — until now this shape was only observable by
+            # waiting for it.
+            if _is_bare_toolcall_marker_only(
+                "".join(text_parts), "".join(reasoning_parts)
+            ) and not tool_frags and not leaked_calls:
+                logger.warning(
+                    "D-SILENT-TURN-NO-CARD-NO-PROSE: DEGENERATE PASS — the model's entire "
+                    "output this pass was %d character(s) of bare tool-call control token "
+                    "(%r) with no call to salvage and nothing for the author. model_ref=%s "
+                    "session=%s iteration=%s",
+                    len("".join(text_parts)) + len("".join(reasoning_parts)),
+                    ("".join(text_parts) + "".join(reasoning_parts))[:64],
+                    model_ref, session_id, iteration,
+                )
+                if degenerate_pass_interventions < DEGENERATE_PASS_INTERVENTION_CAP:
+                    degenerate_pass_interventions += 1
+                    # The model INTENDED a call — it emitted the opening delimiter for one. Steer
+                    # it to make the call plainly, and force reasoning off for the retry, exactly
+                    # as D-REASONING-LOOP does for the same trigger shape.
+                    working.append({
+                        "role": "user",
+                        "content": (
+                            "[SYSTEM DIRECTIVE] Your last reply was empty — the tool call did "
+                            "not come through. Do not explain. Either CALL the tool you were "
+                            "about to call, with the arguments you already have, or answer the "
+                            "user directly in one short message."
+                        ),
+                    })
+                    rail_drove_this_turn = True
+                    _suppress_reasoning_next_pass = True
+                    logger.info(
+                        "D-SILENT-TURN: retrying the degenerate pass with reasoning OFF "
+                        "(session=%s iteration=%s)", session_id, iteration,
+                    )
+                    continue
+                # Cap reached. Fall through: the turn ends and the silent-turn guard below
+                # records it `failed`. Deliberately NOT a fabricated reply — putting words in the
+                # assistant's mouth here is the mistake this loop keeps finding elsewhere, and
+                # what the author should SEE is DQ-T33, still the owner's.
+
             if not tool_frags and not leaked_calls:
                 # ── P-1 step-runner: the model stopped without a tool call. If a pinned rail
                 # is IN FLIGHT (a rail step tool actually succeeded this turn — the model chose
@@ -2494,6 +6069,13 @@ async def _stream_with_tools(
                 # of one decision drift apart.)
                 _step_tools_hit = sorted(set(turn_succeeded) & _rail_all_step_tools)
                 _step_tools_tried = sorted(set(fail_by_tool_error) & _rail_all_step_tools)
+                # D-FJ-18 — the turn asked for this journey in its own words and then called
+                # nothing at all. See _rail_is_in_flight; the drive it unlocks is confined to
+                # the intent-pinned rail below so it cannot become D-FJ-17 one layer down.
+                _asked_and_called_nothing = bool(rail_intent_slugs) and not turn_attempted
+                # D-FJ-17 now lives INSIDE decide_rail_drive as precedence rule 3 — the
+                # decision can finally state it instead of this loop lying about which rails
+                # exist. See loreweave_agent_control.harness.TurnRequest.
                 _rail_guards = {
                     "driver_on": bool(settings.rail_driver_enabled),
                     "have_specs": bool(rail_specs),
@@ -2511,6 +6093,7 @@ async def _stream_with_tools(
                         resumed_mid_rail=bool(rail_in_flight),
                         step_tools_succeeded=_step_tools_hit,
                         step_tools_attempted=_step_tools_tried,
+                        asked_for_it_and_called_nothing=_asked_and_called_nothing,
                     ),
                 }
                 if all(_rail_guards.values()):
@@ -2520,7 +6103,7 @@ async def _stream_with_tools(
                     # (RW-11). This loop OWNS the mechanics: inject the directive as a role=user
                     # message, bump the counters, drop the stateful chain head, continue.
                     from app.services.book_state_probe import probe_book_state
-                    from loreweave_agent_control import decide_rail_drive
+                    from loreweave_agent_control import TurnRequest, decide_rail_drive
                     _verdict = await decide_rail_drive(
                         probe_fn=probe_book_state,
                         rail_specs=rail_specs, book_id=rail_book_id, user_id=user_id,
@@ -2529,11 +6112,21 @@ async def _stream_with_tools(
                         nudge_counts=rail_nudge_counts,
                         enforcement_strength=settings.rail_enforcement,
                         required_nudge_cap=settings.rail_required_nudge_cap,
+                        # TURN OWNERSHIP — the input this decision could not previously see.
+                        request=TurnRequest(
+                            pinned_rails=rail_intent_slugs,
+                            named_tools=rail_named_tools,
+                            abandons_rail=bool(rail_user_abandoned),
+                        ),
+                        stuck_tools=rail_stuck_tools,
                     )
                     if not _verdict.should_drive:
+                        # Name the LOSING claimant. A rail that declines silently is
+                        # indistinguishable from a rail with nothing to do, and that ambiguity
+                        # is why this whole class of defect was a transcript-read.
                         logger.info(
-                            "rail step-runner: guards held but no actionable step "
-                            "(every step done, gated on a confirm, or already nudged out)",
+                            "rail step-runner: did not claim the turn — %s",
+                            _verdict.declined_reason or "no actionable step",
                         )
                 elif _rail_guards["driver_on"] and _rail_guards["have_specs"]:
                     # A step-runner that silently does not fire is indistinguishable from a rail
@@ -2554,6 +6147,7 @@ async def _stream_with_tools(
                     # content), so the synthetic user directive never reaches history or the UI.
                     working.append({"role": "assistant", "content": "".join(text_parts)})
                     working.append({"role": "user", "content": _verdict.directive_text})
+                    _directive_before_this_pass = True  # D-FJ-19
                     rail_redrive_count += 1
                     rail_drove_this_turn = True  # drop the stateful chain head at turn end
                     logger.info(
@@ -2591,6 +6185,16 @@ async def _stream_with_tools(
                     catalog_index=cat_index,
                     attempted=turn_attempted,
                 )
+                # D-FJ-8 — the sister case: the turn called NOTHING and a rail's next write step is
+                # still outstanding. Named no tool, so the intersection above is empty.
+                _stalled_tool = None
+                if not _narrated:
+                    _stalled_tool = _rail_write_step_stalled(
+                        rail_progress, catalog_index=cat_index, attempted=turn_attempted,
+                        intent_slugs=rail_intent_slugs,
+                    )
+                    if _stalled_tool:
+                        _narrated = [_stalled_tool]
                 if _narrated:
                     _nw_guards = {
                         "under_cap": narrated_write_nudges < NARRATED_WRITE_NUDGE_CAP,
@@ -2620,30 +6224,47 @@ async def _stream_with_tools(
                             nm for nm in _narrated
                             if discovery and nm in cat_index and nm not in active_tool_names
                         ]
-                        if _armed:
-                            from app.services.tool_surface import merge_activated_tools
-                            active_tool_names.update(_armed)
-                            if activation_state is not None:
-                                activation_state["activated_tools"] = merge_activated_tools(
-                                    activation_state["activated_tools"], _armed,
-                                    catalog=discovery_catalog, context_length=context_length,
-                                )
-                                activation_state["dirty"] = True
+                        _arm_tools(
+                            _armed, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        )
+                        # The two arms must not share one sentence: the stalled-rail arm never read
+                        # the prose, so logging "named in prose" for it would assert something
+                        # unmeasured — the same false-report shape the directive above is careful
+                        # to avoid. Caught by reading this line's own output on a live run.
                         logger.warning(
-                            "D-NARRATED-WRITE (session=%s): the turn is ending with write "
-                            "tool(s) named in prose but never called: %s — nudging once "
+                            "D-NARRATED-WRITE (session=%s): %s: %s — nudging once "
                             "(armed off-surface: %s)",
-                            session_id, _narrated, _armed or "—",
+                            session_id,
+                            ("the turn called NO tool while a rail's next write step is "
+                             "outstanding" if _stalled_tool else
+                             "the turn is ending with write tool(s) named in prose but never "
+                             "called"),
+                            _narrated, _armed or "—",
                         )
                         if trace is not None:
                             trace.add("compile", "T6", "tools",
                                       f"narrated_write:{','.join(_narrated)}", is_error=True)
                         working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
                         working.append({"role": "user", "content": (
-                            "[SYSTEM DIRECTIVE] You just described using "
-                            f"{', '.join(_narrated)}, but you did not call "
-                            + ("it" if len(_narrated) == 1 else "them")
-                            + " — nothing was written and the author will find nothing.\n"
+                            # The stalled-rail arm must NOT say "you just described using X" — it
+                            # never read the prose and does not know whether anything was claimed.
+                            # Asserting a claim the runtime did not measure would be the same
+                            # false-report defect this guard exists to stop, pointed the other way.
+                            (
+                                f"[SYSTEM DIRECTIVE] This turn called no tool at all, and "
+                                f"{_stalled_tool} is the next outstanding step of the journey you "
+                                "are on — so nothing was written and the author will find "
+                                "nothing.\n"
+                                if _stalled_tool else
+                                "[SYSTEM DIRECTIVE] You just described using "
+                                f"{', '.join(_narrated)}, but you did not call "
+                                + ("it" if len(_narrated) == 1 else "them")
+                                + " — nothing was written and the author will find nothing.\n"
+                            )
                             + (
                                 f"{', '.join(_armed)} "
                                 + ("is" if len(_armed) == 1 else "are")
@@ -2657,6 +6278,357 @@ async def _stream_with_tools(
                             "Do not re-read anything — you have already read enough. Never "
                             "report a change as done, and never tell the author to go and "
                             "check for it, unless a tool call actually returned a result."
+                        )})
+                        continue
+
+                # P2-FABRICATED-WRITE — the turn called NOTHING and is ending by telling the
+                # author a change was made. No tool is named, so the guard above is silent by
+                # construction; the store is untouched, so nothing downstream will contradict it.
+                # Measured: `plan_keep_material`, 4 of 5 runs, "I've updated the plan ... Your
+                # story foundation is now fully updated" with called_tools == [].
+                #
+                # Shares NARRATED_WRITE_NUDGE_CAP with the guard above deliberately: both are
+                # write-side, and a turn must never collect two write nudges. Runs only when that
+                # guard did not claim the slot.
+                if (not turn_attempted) and _claimed_an_effect_without_acting(
+                    "".join(turn_text_parts), attempted=turn_attempted,
+                ):
+                    _fw_guards = {
+                        "under_cap": narrated_write_nudges < NARRATED_WRITE_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_fw_guards.values()):
+                        logger.warning(
+                            "P2-FABRICATED-WRITE (session=%s): the turn called nothing and "
+                            "claimed an effect — NOT nudging, held by: %s",
+                            session_id,
+                            ", ".join(k for k, v in _fw_guards.items() if not v),
+                        )
+                    else:
+                        narrated_write_nudges += 1
+                        logger.warning(
+                            "P2-FABRICATED-WRITE (session=%s): the turn called NO tool and is "
+                            "ending with a claim that something was done — nudging once",
+                            session_id,
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      "fabricated_write:zero_calls", is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # Deliberately does NOT quote the sentence back or name a tool. The
+                            # runtime measured two things and may assert only those: that no tool
+                            # ran, and that the text reads as a completed change. Telling the
+                            # model WHICH claim was wrong would assert a reading of intent this
+                            # guard never made — the same false-report shape it exists to stop.
+                            "[SYSTEM DIRECTIVE] This turn called no tool at all, and your reply "
+                            "reads as though a change was completed. Nothing was written and the "
+                            "author will find nothing.\n"
+                            "Do ONE of these, and nothing else:\n"
+                            "(a) call the tool that actually makes the change, for real, with "
+                            "complete arguments; or\n"
+                            "(b) tell the author plainly that you did NOT make the change, and "
+                            "why.\n"
+                            "If what you changed was only your own understanding, say exactly "
+                            "that and say their saved data is untouched. Never report a change "
+                            "as done unless a tool call actually returned a result."
+                        )})
+                        continue
+
+                # P16-PROSE-CONFIRMATION — the turn HELD every argument an advertised write
+                # needs, did not call it, and ended by asking whether to proceed. Unlike the two
+                # guards above it does NOT require an empty turn: the measured instance called
+                # four tools, and that is precisely what made it equipped.
+                #
+                # Runs only when no write-side guard above claimed the slot, for the same reason
+                # they share one: a turn must never collect two directives.
+                _p16_tool = None
+                if not _directive_before_this_pass:
+                    _p16_tool = _asked_instead_of_acting(
+                        "".join(turn_text_parts),
+                        attempted=turn_attempted,
+                        succeeded=set(turn_succeeded),
+                        catalog_index=cat_index,
+                        emitters=(_tool_contract_registry() or {}).get("argument_emitters") or {},
+                        advertised=set(cat_index),
+                    )
+                if _p16_tool:
+                    _p16_guards = {
+                        "under_cap": narrated_write_nudges < NARRATED_WRITE_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_p16_guards.values()):
+                        logger.warning(
+                            "P16-PROSE-CONFIRMATION (session=%s): the turn holds what %s needs "
+                            "and asked instead — NOT nudging, held by: %s",
+                            session_id, _p16_tool,
+                            ", ".join(k for k, v in _p16_guards.items() if not v),
+                        )
+                    else:
+                        narrated_write_nudges += 1
+                        logger.warning(
+                            "P16-PROSE-CONFIRMATION (session=%s): the turn holds every argument "
+                            "%s requires, did not call it, and ended by asking — nudging once",
+                            session_id, _p16_tool,
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"prose_confirmation:{_p16_tool}", is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # It NAMES the tool, unlike the P2 directive above, and the reason
+                            # for the difference is what each guard measured. P2 infers a CLAIM
+                            # from prose and so may not say which claim. This one measured a
+                            # structural fact -- every argument this tool requires was emitted by
+                            # a tool that succeeded on this turn -- so naming it asserts only what
+                            # was measured.
+                            "[SYSTEM DIRECTIVE] You already hold every argument "
+                            f"`{_p16_tool}` requires, and you ended by asking whether to "
+                            "proceed. The author already asked for this; asking again in prose "
+                            "is not a confirmation, and it records nothing.\n"
+                            "Call it now with the arguments you are holding. If it is a "
+                            "high-impact action, calling it RAISES THE CONFIRMATION CARD -- that "
+                            "card is how this platform asks for consent, and it is the only way "
+                            "the author can actually say yes."
+                        )})
+                        continue
+
+                # DQ-T30 — the model is about to END the turn answering a question whose own
+                # words match a READ tool's declared vocabulary, having called none of them. The
+                # store is untouched, so every write-side guard above is silent by construction,
+                # and the failure is in the ANSWER: measured live, "one rule" when the store held
+                # two, then a wholly invented second rule. See _unanswered_data_question_reads.
+                #
+                # Runs only when the write guards did not claim the turn: a narrated write is the
+                # more damaging failure and owns the single directive slot when both are true.
+                _unread = _unanswered_data_question_reads(
+                    request_text,
+                    catalog_index=cat_index,
+                    attempted=turn_attempted,
+                )
+                if _unread:
+                    _dq_guards = {
+                        "under_cap": data_question_nudges < DATA_QUESTION_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_dq_guards.values()):
+                        # Same discipline as the sister guard: a guard that declines silently is
+                        # indistinguishable from one that saw nothing.
+                        logger.warning(
+                            "DQ-T30 (session=%s): %s answer(s) this request and none ran — "
+                            "NOT nudging, held by: %s",
+                            session_id, _unread,
+                            ", ".join(k for k, v in _dq_guards.items() if not v),
+                        )
+                    else:
+                        data_question_nudges += 1
+                        # ARM what we name. Measured 2026-08-14: the re-ask fired this guard
+                        # while `composition_list_canon_rules` was NOT in that turn's
+                        # advertised_tools, so option (a) was impossible and the model took (b)
+                        # after thrashing through twelve other composition tools looking for it.
+                        # Same decision the sister guard already makes, for the same reason.
+                        _dq_armed = [
+                            nm for nm in _unread
+                            if discovery and nm in cat_index and nm not in active_tool_names
+                        ]
+                        _arm_tools(
+                            _dq_armed, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        )
+                        logger.warning(
+                            "DQ-T30 (session=%s): the turn is ending with a data question "
+                            "answered from memory — %s declare(s) this request and none was "
+                            "called; nudging once (armed off-surface: %s)",
+                            session_id, _unread, _dq_armed or "—",
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"data_question:{','.join(_unread)}", is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # It asserts ONLY what was measured — these tools declare this
+                            # request, and none of them ran. It does NOT accuse the model of
+                            # having claimed anything: the runtime did not read the prose here,
+                            # and asserting an unmeasured claim is the false-report defect this
+                            # loop has already fixed three times, pointed the other way.
+                            "[SYSTEM DIRECTIVE] You are answering a question about stored data "
+                            "without having read it on this turn. "
+                            f"{', '.join(_unread)} "
+                            + ("is" if len(_unread) == 1 else "are")
+                            + " available to you right now — no tool_load needed — and "
+                            + ("declares" if len(_unread) == 1 else "declare")
+                            + " exactly this request.\n"
+                            "Anything you remember from earlier in this conversation may be "
+                            "out of date — the book can change outside this chat, and a "
+                            "journey that has finished no longer re-reads anything.\n"
+                            "Do ONE of these, and nothing else:\n"
+                            "(a) call the tool now and answer from what it returns; or\n"
+                            "(b) if you genuinely cannot, tell the author plainly that you did "
+                            "NOT re-read, and that your answer may be stale.\n"
+                            "Never state a count, a name, or a detail from this book unless a "
+                            "tool call on THIS turn returned it."
+                        )})
+                        continue
+
+                # F1 — THE RUNTIME TOLD IT TO RETRY AND IT DID NOT. Measured live 2026-09-04:
+                # book_chapter_save_draft refused "no chapters yet — create one first with
+                # book_chapter_create", the seam armed that tool and injected "then retry", the
+                # model called it, and the turn ended. An empty chapter, the prose in a chat
+                # bubble, and nothing said about it.
+                #
+                # Ranked ABOVE P6 deliberately. P6 infers from the sentence's grammar that a
+                # recorder should have run; this one has the RUNTIME'S OWN INSTRUCTION and the
+                # tool's own refusal. Evidence outranks inference, and P6's docstring says it
+                # runs last, which stays true.
+                _unretried = []
+                if not _directive_before_this_pass:
+                    _unretried = _refusal_precondition_met_but_never_retried(
+                        refusal_pending, turn_succeeded,
+                    )
+                if _unretried:
+                    _f1_guards = {
+                        "under_cap": retry_nudges < DATA_QUESTION_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_f1_guards.values()):
+                        # Held, and SAID so. A turn that runs out of passes here has still lost
+                        # the write, and a silent hold is how this defect stayed invisible.
+                        logger.warning(
+                            "F1-UNRETRIED-AFTER-PRECONDITION (session=%s): %s failed and was never "
+                            "retried (prerequisites: %s; empty = nothing was waited on) — "
+                            "NOT nudging, held by: %s",
+                            session_id, _unretried,
+                            [refusal_pending.get(n) for n in _unretried],
+                            ", ".join(k for k, v in _f1_guards.items() if not v),
+                        )
+                    else:
+                        retry_nudges += 1
+                        logger.warning(
+                            "F1-UNRETRIED-AFTER-PRECONDITION (session=%s): %s failed, no retry — "
+                            "nudging once (prerequisites: %s; empty = nothing was waited on)",
+                            session_id, _unretried,
+                            [refusal_pending.get(n) for n in _unretried],
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"unretried_after_precondition:{','.join(_unretried)}",
+                                      is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # Asserts only what was measured: this tool FAILED and was not called
+                            # again — plus, when there was one, that the thing its refusal
+                            # named has since succeeded. It does NOT assert a retry will work.
+                            "[SYSTEM DIRECTIVE] "
+                            f"{', '.join(_unretried)} FAILED earlier this turn and you did "
+                            "not call it again. "
+                            + (
+                                ", ".join(sorted(
+                                    v for k, v in refusal_pending.items()
+                                    if k in _unretried and v))
+                                + " has since succeeded, so the reason it was refused is "
+                                "gone. "
+                                if any(refusal_pending.get(n) for n in _unretried) else ""
+                            )
+                            + "\n"
+                            "The work you produced is only in this reply. Prose in a chat reply "
+                            "is not in the author's book -- they cannot accept, revise or undo "
+                            "it, and nothing records that you offered it.\n"
+                            "Do ONE of these, and nothing else:\n"
+                            "(a) call the refused tool again now, passing the work you already "
+                            "wrote -- do not rewrite it; or\n"
+                            "(b) if it still cannot succeed, say plainly what is still missing "
+                            "and that you have NOT saved anything."
+                        )})
+                        continue
+
+                # P6-DESCRIBE-NOT-RECORD — the WRITE-side twin of the guard above, and the one
+                # that guard deliberately refuses to be. Its docstring says nudging a write from
+                # a QUESTION would be this loop's own worst defect; the separation is the
+                # sentence's grammar, so this fires only on an INSTRUCTION that names a recorder
+                # while the turn called nothing and answered at length in prose.
+                #
+                # Runs last among the end-of-turn guards and only when none of them took the
+                # slot: a claimed write and a stale data answer are both more damaging than a
+                # withheld record, and a turn must never collect two directives.
+                _unrecorded = []
+                if not _directive_before_this_pass:
+                    _unrecorded = _instruction_names_a_recorder(
+                        request_text,
+                        catalog_index=cat_index,
+                        attempted=turn_attempted,
+                        reply_text="".join(turn_text_parts),
+                    )
+                if _unrecorded:
+                    _p6_guards = {
+                        "under_cap": data_question_nudges < DATA_QUESTION_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_p6_guards.values()):
+                        logger.warning(
+                            "P6-DESCRIBE-NOT-RECORD (session=%s): %s record(s) what this "
+                            "instruction asks and none ran — NOT nudging, held by: %s",
+                            session_id, _unrecorded,
+                            ", ".join(k for k, v in _p6_guards.items() if not v),
+                        )
+                    else:
+                        data_question_nudges += 1
+                        # ARM what we name, for the same reason the sibling does: naming a tool
+                        # that is not on the surface sent the model thrashing through twelve
+                        # others hunting for it (measured 2026-08-14).
+                        _p6_armed = [
+                            nm for nm in _unrecorded
+                            if discovery and nm in cat_index and nm not in active_tool_names
+                        ]
+                        _arm_tools(
+                            _p6_armed, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        )
+                        logger.warning(
+                            "P6-DESCRIBE-NOT-RECORD (session=%s): the turn wrote the artefact "
+                            "into the reply instead of recording it — %s declare(s) this "
+                            "instruction and none was called; nudging once (armed: %s)",
+                            session_id, _unrecorded, _p6_armed or "—",
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"describe_not_record:{','.join(_unrecorded)}",
+                                      is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # Asserts only what was measured: these tools declare this request,
+                            # none ran, and the reply is long. It does NOT tell the model its
+                            # prose was wrong -- three alternative rewrites may be excellent
+                            # writing, and the defect is that they went nowhere the author can
+                            # accept, edit or undo.
+                            "[SYSTEM DIRECTIVE] You answered an instruction by writing the work "
+                            "into the reply. "
+                            f"{', '.join(_unrecorded)} "
+                            + ("records" if len(_unrecorded) == 1 else "record")
+                            + " exactly what was asked for, and "
+                            + ("is" if len(_unrecorded) == 1 else "are")
+                            + " available to you right now.\n"
+                            "Prose in a chat reply is not something the author can accept, "
+                            "revise or undo -- it is not IN their book, and nothing records "
+                            "that you offered it.\n"
+                            "Do ONE of these, and nothing else:\n"
+                            "(a) call the tool now, passing the work you just wrote; or\n"
+                            "(b) if you genuinely cannot -- because the request needs something "
+                            "you cannot see, such as a selection in the editor -- say plainly "
+                            "what is missing and that you have NOT recorded anything."
                         )})
                         continue
 
@@ -2774,6 +6746,13 @@ async def _stream_with_tools(
             # `test_a_write_actually_called_never_nudges`; a false accusation right after real
             # work is worse than the silence this guard exists to break.
             turn_attempted.update(c["name"] for c in calls)
+            # F1 — A RETRY CLEARS THE DEBT. Called here, where every emitted tool is already
+            # being recorded, so a tool the model DID come back to can never reach the guard.
+            # A retry that fails a second time clears it too, deliberately: that turn carries a
+            # real error the author needs to read, and nagging on top of it would bury the error
+            # under advice about a call they can see was made.
+            for _c in calls:
+                refusal_pending.pop(_c["name"], None)
             for c in calls:
                 # Wrap-repair for CONSUMER-LOCAL meta tools (find_tools/tool_load/workflow_load/
                 # run_subagent/*_list). The federated dispatch below unwraps {"args":{…}} with each
@@ -2792,9 +6771,7 @@ async def _stream_with_tools(
                 if discovery and c["name"] == TOOL_LIST_NAME:
                     args_obj = _parse_tool_args(c["arguments"])
                     category = args_obj.get("category") or None
-                    include_deprecated = args_obj.get("include_deprecated")
-                    if not isinstance(include_deprecated, bool):
-                        include_deprecated = True
+                    include_deprecated = _tool_list_include_deprecated(args_obj)
                     _norm_cat = category or "all"
                     tool_list_total += 1
 
@@ -2805,20 +6782,78 @@ async def _stream_with_tools(
                     # here backfired (the weak model retried harder, 28→311); this makes forward
                     # progress instead. Past the per-turn total, tool_list is also de-advertised
                     # (suppress_tool_list) — tool_load stays, so a specific tool is still reachable.
-                    if listed_categories.get(_norm_cat, 0) >= TOOL_LIST_CATEGORY_CAP:
+                    # T7-D5 — the repeat key must include `include_deprecated`, because the
+                    # two values return genuinely DIFFERENT lists. Keyed on the category alone,
+                    # `tool_list(book)` followed by `tool_list(book, include_deprecated=true)`
+                    # was classified as a loop and answered with a steer asserting "its complete
+                    # tool list is above, unchanged" — false, and the request went unanswered.
+                    #
+                    # MEASURED LIVE 2026-08-13 (session 019ff9fe), asked to compare the two:
+                    # the first call returned 16 current tools, the second was refused as a
+                    # repeat, and the model built its answer from the steer's auto-loaded set
+                    # instead. It produced a table with THE TWO COLUMNS INVERTED — the
+                    # deprecated tools under "Current Active", the current ones under "Including
+                    # Deprecated" — plus an invented explanation for the discrepancy.
+                    #
+                    # Harmless before T7-D1, when both values returned the same list and
+                    # "unchanged" was true. Once the default started hiding deprecated tools the
+                    # two requests diverged and the claim became a lie.
+                    #
+                    # This does not weaken F18: the flag is a boolean, so a category affords at
+                    # most two distinct keys, and TOOL_LIST_TOTAL_CAP still bounds the turn.
+                    _list_key = (_norm_cat, include_deprecated)
+                    if listed_categories.get(_list_key, 0) >= TOOL_LIST_CATEGORY_CAP:
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
-                            budget_names_by_tokens,
+                            budget_names_by_tokens_ex,
                             merge_activated_tools,
                         )
                         _load_payload, loaded = tool_load_result(
                             discovery_catalog or [], category=_norm_cat,
                             unavailable_providers=provider_availability(
-                                knowledge_client.get_catalog_meta()),
+                                knowledge_client.get_catalog_meta(user_id)),
                         )
-                        names_to_activate = budget_names_by_tokens(
+                        # T7-D4 — the breaker must auto-load the SAME set the listing showed.
+                        #
+                        # `tool_load_result` labels legacy tools rather than dropping them,
+                        # which is right for `tool_load` (you ask for a name, you get it, with
+                        # its replacement attached). Here nobody asked: this is the runtime
+                        # picking tools on the model's behalf and then instructing it to "Call
+                        # one of them now". Recorded firing, 2026-08-13:
+                        #
+                        #   "Its tools are now LOADED and callable: book_chapter_save_draft,
+                        #    book_get, book_list_chapters, book_list_revisions, book_scene_get,
+                        #    book_steering_list, book_update_details"
+                        #
+                        # Four of those seven are deprecated. Before T7-D1 both halves showed
+                        # legacy and merely agreed; now the listing hides it and the breaker
+                        # would steer straight onto it — the runtime recommending the surface
+                        # its own listing had just withheld.
+                        #
+                        # An explicit `include_deprecated=true` is honoured: the caller asked
+                        # for the legacy surface, so the breaker keeps loading it.
+                        #
+                        # `loaded` is a list of NAMES; only the payload carries the
+                        # `deprecated` label, so the legacy set is read from there.
+                        if not include_deprecated:
+                            _legacy_loaded = {
+                                _t["name"] for _t in _load_payload.get("tools", [])
+                                if _t.get("deprecated")
+                            }
+                            loaded = [_n for _n in loaded if _n not in _legacy_loaded]
+                        names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], loaded,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                        # dropped the one tool the model needed and returned only the
+                        # survivors, so the tool left the surface and the record at the same
+                        # instant. `find_tools` is cited as the backstop, which is exactly
+                        # why it must be recorded: a backstop nobody can see fire is a claim.
+                        _budget_withheld.extend(
+                            {"tool": _n, "stage": "token_budget",
+                             "reason": "did not fit the activation token budget"}
+                            for _n in _dropped_by_budget
                         )
                         active_tool_names.update(names_to_activate)
                         if curated and activation_state is not None:
@@ -2877,14 +6912,14 @@ async def _stream_with_tools(
 
                     # First list of this category (within cap) — the complete, deterministic
                     # enumeration. Deprecated tools LABELED not dropped. No activation, no write.
-                    listed_categories[_norm_cat] = listed_categories.get(_norm_cat, 0) + 1
+                    listed_categories[_list_key] = listed_categories.get(_list_key, 0) + 1
                     payload = tool_list_result(
                         discovery_catalog or [],
                         category,
                         include_deprecated=include_deprecated,
                         exclude=set(ALWAYS_ON_CORE_NAMES),
                         unavailable_providers=provider_availability(
-                            knowledge_client.get_catalog_meta()),
+                            knowledge_client.get_catalog_meta(user_id)),
                     )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
@@ -2907,24 +6942,45 @@ async def _stream_with_tools(
                     _raw_names = args_obj.get("names")
                     _load_names = _raw_names if isinstance(_raw_names, list) else None
                     _load_category = args_obj.get("category") or None
+                    # 🔴 THE INDEX IS PASSED IN, NOT FETCHED HERE — and the first version DID
+                    # fetch it, which `test_cp0_instrument.py` correctly rejected on two counts.
+                    # It called `knowledge_client.get_tool_definitions()` inside
+                    # `_stream_with_tools`, which carries NO `arm_turn_surface()` (it is covered by
+                    # delegation from `stream_response`), so the read was a catalogue NARROWING
+                    # registered nowhere; and it wrapped the call in a bare `except Exception ->
+                    # {}`, so a catalogue OUTAGE degraded silently instead of registering — the
+                    # exact U-2A seam the gate exists to catch. `legacy_tool_index` is built at the
+                    # drop site in `stream_response`, where the pre-drop catalogue already is, so
+                    # this path makes no call at all.
                     payload, loaded = tool_load_result(
                         discovery_catalog or [],
                         name=_load_name, names=_load_names, category=_load_category,
                         unavailable_providers=provider_availability(
-                            knowledge_client.get_catalog_meta()),
+                            knowledge_client.get_catalog_meta(user_id)),
+                        legacy_index=legacy_tool_index,
                     )
                     from app.services.tool_surface import (
                         HOT_SEED_TOKEN_BUDGET,
-                        budget_names_by_tokens,
+                        budget_names_by_tokens_ex,
                     )
                     # review-impl #1 (WS-1a): tool_load returns FULL schemas — unlike find_tools
                     # (names only). A tool_load(category="all"/big) would re-inject the exact
                     # catalog bloat the discovery layer exists to prevent. Bound the RETURNED
                     # schemas (not just activation) by the same token ceiling the hot-seed uses;
                     # a single-/few-name load always fits, only a large category truncates.
-                    names_to_activate = budget_names_by_tokens(
+                    names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                         discovery_catalog or [], loaded,
                         token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                    )
+                    # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                    # dropped the one tool the model needed and returned only the
+                    # survivors, so the tool left the surface and the record at the same
+                    # instant. `find_tools` is cited as the backstop, which is exactly
+                    # why it must be recorded: a backstop nobody can see fire is a claim.
+                    _budget_withheld.extend(
+                        {"tool": _n, "stage": "token_budget",
+                         "reason": "did not fit the activation token budget"}
+                        for _n in _dropped_by_budget
                     )
                     if len(names_to_activate) < len(loaded):
                         _keep = set(names_to_activate)
@@ -3011,12 +7067,22 @@ async def _stream_with_tools(
                     if step_tools and discovery:
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
-                            budget_names_by_tokens,
+                            budget_names_by_tokens_ex,
                             merge_activated_tools,
                         )
-                        names_to_activate = budget_names_by_tokens(
+                        names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], step_tools,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                        # dropped the one tool the model needed and returned only the
+                        # survivors, so the tool left the surface and the record at the same
+                        # instant. `find_tools` is cited as the backstop, which is exactly
+                        # why it must be recorded: a backstop nobody can see fire is a claim.
+                        _budget_withheld.extend(
+                            {"tool": _n, "stage": "token_budget",
+                             "reason": "did not fit the activation token budget"}
+                            for _n in _dropped_by_budget
                         )
                         active_tool_names.update(names_to_activate)
                         # Persist the step tools REGARDLESS of curated mode. A workflow is an
@@ -3158,7 +7224,7 @@ async def _stream_with_tools(
                     payload, matched = await find_tools_result_async(
                         discovery_catalog or [], intent, limit,
                         exclude=set(ALWAYS_ON_CORE_NAMES),
-                        catalog_meta=knowledge_client.get_catalog_meta(),
+                        catalog_meta=knowledge_client.get_catalog_meta(user_id),
                         group=group,
                         session_id=session_id,
                         user_id=user_id,
@@ -3181,11 +7247,21 @@ async def _stream_with_tools(
                     if payload.get("enumerated"):
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
-                            budget_names_by_tokens,
+                            budget_names_by_tokens_ex,
                         )
-                        names_to_activate = budget_names_by_tokens(
+                        names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], matched,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                        # dropped the one tool the model needed and returned only the
+                        # survivors, so the tool left the surface and the record at the same
+                        # instant. `find_tools` is cited as the backstop, which is exactly
+                        # why it must be recorded: a backstop nobody can see fire is a claim.
+                        _budget_withheld.extend(
+                            {"tool": _n, "stage": "token_budget",
+                             "reason": "did not fit the activation token budget"}
+                            for _n in _dropped_by_budget
                         )
                     else:
                         names_to_activate = set(matched)
@@ -3328,6 +7404,10 @@ async def _stream_with_tools(
                             "tools_used": payload.get("tools_used", []),
                             "undo": {"available": False},
                         }
+                    # CP-0.3 — a subagent run IS a real execution (it dispatched tools of its own),
+                    # so it is `tool`, not `meta`. `meta` is reserved for the runtime answering out
+                    # of its own catalog without anything running.
+                    instrument.stamp_tool_call(tool_chunk, source=instrument.SOURCE_TOOL)
                     yield {"tool_call": tool_chunk}
                     continue
 
@@ -3349,6 +7429,30 @@ async def _stream_with_tools(
                     yield {"tool_call": {
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": args_obj, "ok": False, "result": None, "error": scope_err,
+                    }}
+                    continue
+
+                # ── D-ASKED-TO-STOP-WORK-THE-MODEL-PROPOSED-STARTING-IT ─────────────────
+                # Placed with the subagent-scope refusal above, and for the same reason: a call
+                # that must not happen is stopped BEFORE it runs, and comes back as a tool error
+                # the model can read and act on, not as a silent drop.
+                _halt_err = _halt_turn_refusal(
+                    c["name"], cat_index.get(c["name"]) or plain_index.get(c["name"]),
+                    request_text,
+                )
+                if _halt_err:
+                    logger.warning(
+                        "halt-turn gate: refused %s on a STOP request (session=%s) — the tool's "
+                        "own declaration does not answer a stop", c["name"], session_id,
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content({"error": _halt_err}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": _parse_tool_args(c["arguments"]), "ok": False,
+                        "result": None, "error": _halt_err,
                     }}
                     continue
 
@@ -3436,11 +7540,26 @@ async def _stream_with_tools(
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": _deny_err}),
                     })
-                    yield {"tool_call": {
+                    # 🔴 **THE SAME CONFLATION AS THE RESUME DENIAL, ONE SITE OVER.** Iteration 2
+                    # of the tool-v2 loop typed the human's "no" on the RESUME path
+                    # (`denied_by_user`); this is the human's PERMANENT no, and it was still
+                    # falling through to the chokepoint's fail-closed default — recorded `failed`
+                    # with `call_outcome_inferred`, as if the tool had broken.
+                    #
+                    # Measured 2026-08-11: 15 calls across 3 sessions, all `glossary_adopt_standards`,
+                    # every one typed as a failure. A user choosing "Never allow" is the consent
+                    # surface working exactly as designed — it is the clearest refusal in the
+                    # product — and it is the one the corpus called a defect.
+                    #
+                    # `denied_standing` keeps it separable from `denied_by_user`: a decision made
+                    # ONCE for all future turns and a decision made about THIS call are different
+                    # facts about the user, and merging them would hide which consent surface is
+                    # actually being used.
+                    yield {"tool_call": instrument.stamp_refused({
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": _parse_tool_args(c["arguments"]), "ok": False,
                         "result": None, "error": _deny_err,
-                    }}
+                    }, "denied_standing")}
                     continue
 
                 # D-TOOLCALL-GEMMA-INTERIOR-LEAK — the args STILL carry this model family's
@@ -3503,101 +7622,17 @@ async def _stream_with_tools(
                 # "does chat-service INTERCEPT and suspend here?". propose_edit/ui_*
                 # are browser-executed but route to ai-gateway and are detected from
                 # the directive in the RESULT, so they must not be intercepted here.
-                if is_frontend_tool(c["name"]):
-                    # Same gemma {"args":{…}} wrap-repair the backend dispatch does below —
-                    # a wrapped frontend-tool payload must be unwrapped BEFORE it is frozen
-                    # into the suspended run, or the resume/resolver sees the envelope instead
-                    # of the real fields. Load-bearing for the rail: its confirm gate
-                    # (glossary_confirm_action) is a frontend tool, and a wrapped confirm_token
-                    # would strand the confirm on resume. Protect ui_show_panel's real `args`
-                    # param via its schema (generic index for ui_*/propose_*, catalog for
-                    # domain confirm tools) — never a bare tool_def=None here.
-                    # Resolve the tool's canonical schema. The by-name map is the
-                    # COMPLETE frontend-tool set (Phase 0), so the two book-scoped
-                    # glossary tools are validated even when this turn didn't
-                    # advertise them (called-but-not-advertised → would otherwise
-                    # fail-open and skip the gate).
-                    _fe_def = (
-                        cat_index.get(c["name"])
-                        or plain_index.get(c["name"])
-                        or frontend_tool_def_by_name(c["name"])
-                    )
-                    _fe_args = _unwrap_wrapped_args(_parse_tool_args(c["arguments"]), _fe_def)
-                    # D-FE-TOOL-CONTEXT-IDS (2026-07-26, Mị Đế dogfood) — S02 parity for
-                    # frontend tools: they are validated BEFORE the backend dispatch's
-                    # context-id injection, so the session's known book_id never reached
-                    # them and a weak model had to transcribe it itself — it invented one
-                    # (live: "mình sẽ sử dụng một ID giả định") → guaranteed validation
-                    # failure, every call. Same injector, same conservative rules
-                    # (fill-blank + replace-malformed + studio single-book override).
-                    _inject_context_ids(
-                        _fe_args, _fe_def,
-                        book_id=(context_ids or {}).get("book_id"),
-                        chapter_id=(context_ids or {}).get("chapter_id"),
-                        project_id=(context_ids or {}).get("project_id"),
-                        studio=bool((context_ids or {}).get("studio")),
-                    )
-                    # Phase 0 (frontend-tools → MCP migration) — the MCP-native
-                    # validation seam. A frontend tool used to SUSPEND on its raw
-                    # args with no validation, so a mis-shaped call (the reported
-                    # 019f771a bug: propose_edit with propose_record_edit's args)
-                    # rendered an un-appliable card. Validate against the tool's OWN
-                    # canonical inputSchema — the same enforcement a backend MCP tool
-                    # already gets — and on a mismatch feed the model the standard
-                    # `required: missing properties` signal it knows how to repair,
-                    # instead of suspending. Never suspend an un-appliable card.
-                    _fe_err = validate_frontend_tool_args(c["name"], _fe_args, _fe_def)
-                    if _fe_err is not None:
-                        # A missing-required miss feeds the SAME cross-tool blank/
-                        # invalid-args streak breaker the backend feeds (mirrors the
-                        # reset/increment rule at the backend dispatch site below).
-                        if _MISSING_REQUIRED_ARGS_MARKER in _fe_err:
-                            blank_tool_args_streak += 1
-                        # D-FE-TOOL-LOOP — frontend tools bypassed BOTH loop guards (the
-                        # repeated-failure breaker and the blank-args cap both live on the
-                        # backend dispatch path, below this branch), so a model that kept
-                        # re-emitting the same invalid frontend call looped unbounded.
-                        # Measured live (Mị Đế dogfood, session 019f9f2e): ~205 identical
-                        # malformed glossary_propose_entity_edit calls in ONE turn while the
-                        # backend sibling tripped its breaker at 2. Feed the shared
-                        # (tool → error → count) map and short-circuit + de-advertise at the
-                        # same cap a backend tool gets.
-                        _err_sig = _fe_err[:200]
-                        _fe_fails = fail_by_tool_error.setdefault(c["name"], {})
-                        _fe_fails[_err_sig] = _fe_fails.get(_err_sig, 0) + 1
-                        if _fe_fails[_err_sig] > REPEATED_FAILURE_CAP:
-                            _fe_err = (
-                                f"'{c['name']}' has already FAILED {_fe_fails[_err_sig]} times "
-                                f"this turn with the same invalid arguments: {_err_sig} — "
-                                "retrying it keeps hitting the same wall. STOP calling it. "
-                                "Fix EXACTLY what that error says is wrong, use a DIFFERENT "
-                                "tool, or tell the user plainly what is blocking you."
-                            )
-                            failure_suppress.add(c["name"])
-                            logger.info(
-                                "repeated-failure breaker (frontend): %s failed %d× with the "
-                                "same validation error this turn — short-circuited + "
-                                "de-advertised", c["name"], _fe_fails[_err_sig],
-                            )
-                        working.append({
-                            "role": "tool", "tool_call_id": c["id"],
-                            "content": tool_result_content({"error": _fe_err}),
-                        })
-                        yield {"tool_call": {
-                            "id": c["id"], "iteration": iteration, "tool": c["name"],
-                            "args": _fe_args, "ok": False, "result": None, "error": _fe_err,
-                        }}
-                        continue
-                    blank_tool_args_streak = 0  # a valid frontend-tool call
-                    # A valid call breaks the failure loop — reset the tool's failure map
-                    # (mirrors the backend success-clears rule at the dispatch site below).
-                    fail_by_tool_error.pop(c["name"], None)
-                    suspended_call = {
-                        "id": c["id"],
-                        "name": c["name"],
-                        "args": _fe_args,
-                    }
-                    break
+                # 🔴 THE v1 INTERCEPT WAS DELETED HERE (V6, 2026-09-03) — and ONLY it.
+                #
+                # `if is_frontend_tool(c["name"]):` suspended the turn before dispatch, using a schema
+                # chat-service held locally. The three tools it guarded are ai-gateway directive tools
+                # now, so the suspend comes from the RESULT (see the gated-directive branch below) and
+                # this branch had become unreachable — `is_frontend_tool` returned False for everything.
+                #
+                # The OTHER SIX suspend producers are untouched: the Tier-A batch cap, require_approval,
+                # the DQ-T76 disambiguation picker, the DR-C2 write gate, the ext-tasks durable gate, and
+                # the propose_edit directive. `chat_suspended_runs` and POST /tool-results serve all of
+                # them and MUST survive; only one of the seven was v1.
                 args_obj = _parse_tool_args(c["arguments"])
                 # gemma arg-wrapping repair — a mid-tier model sometimes wraps the WHOLE
                 # payload in a single {"args": {...}} envelope (measured live: it sent
@@ -3611,6 +7646,13 @@ async def _stream_with_tools(
                 )
                 # Undo a 1-element-list wrapping of a scalar id arg (gemma: project_id=[uuid]).
                 _coerce_listed_scalar_ids(args_obj)
+                # T16-D1 — and the mirror case: the right id under a near-miss KEY (`id`, `ids`,
+                # `<param>s`). Measured on book_read, where 56 of 89 "missing book_id" refusals
+                # were carrying the correct UUID all along. Runs AFTER the wrapper unwrap so a
+                # `{"params": {...}}` payload is already flat by the time this looks at it.
+                args_obj = _repair_aliased_required_id(
+                    args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
+                )
                 # Undo a STRUCTURED arg sent as stringified JSON (gemma: save_draft body="[{...}]").
                 # Measured live in M0a — this is why the flagship's drafted chapter was always empty.
                 _coerce_json_string_structs(
@@ -3627,7 +7669,328 @@ async def _stream_with_tools(
                     chapter_id=(context_ids or {}).get("chapter_id"),
                     project_id=(context_ids or {}).get("project_id"),
                     studio=bool((context_ids or {}).get("studio")),
+                    id_ledger=_id_ledger,
                 )
+                # ── DQ-T55 · THE AUTHOR'S DOCUMENT IS NOT THE MODEL'S TO WRITE ──────────────
+                # Owner 2026-08-28: "REPLACE source_markdown WITH A REFERENCE THE RUNTIME
+                # RESOLVES … so the server fetches the text and the model cannot author its own
+                # source at all. The point is STRUCTURAL, not defensive: fabricated source
+                # material stops being something to detect and becomes something that cannot be
+                # expressed."
+                #
+                # HERE, and not in glossary-service, because this is the only layer that can tell
+                # the model's text from the server's. Both arrive in the same MCP payload; the
+                # service on the far side has no way to know who wrote the field. The trust
+                # boundary is this dispatch, so the enforcement is this dispatch.
+                #
+                # It also has to be here for a plainer reason: nothing on the far side can READ
+                # the author's last message. glossary-service has no book client at all (one is
+                # referenced in a test and nowhere else) and chat-service has no chapter-text
+                # read either — which is why `chapter_id`, the owner's other named reference, is
+                # NOT built. Recorded on the row rather than dropped.
+                # `request_text`, not `user_message_content` — the latter is the name this turn's
+                # message carries in `_emit_chat_turn` and it is NOT in scope inside the tool
+                # loop. Writing it here parsed cleanly and would have raised NameError on every
+                # extract call: a fix that looks shipped and is dead. Caught by checking the
+                # function's actual parameters rather than by reading the line back.
+                _resolve_authors_source(args_obj, c["name"], request_text)
+                # ── CP-3 · THE EXECUTOR SUPPLIES THE IDENTIFIER ─────────────────────────────
+                # 🔴 **POSITION IS THE WHOLE MECHANISM, AND THE FIRST PLACEMENT WAS WRONG.** This
+                # sat just before `mcp_execute_tool`, ~700 lines below — AFTER the
+                # missing-required-args interception. So the one case the plan exists to fix, a
+                # BLANK first attempt (`book_read {}`), was rejected before the plan could fill it,
+                # and the executor only ever saw the model's SECOND, already-correct call.
+                # Measured: V-METRIC round 3 read 1/10 first-attempt on the plan arm against 0/10
+                # on the control and looked like a null result. It was a placement bug.
+                # Ordering now: context-ids -> PLAN -> missing-args -> dispatch.
+                # 🔴 **THIS IS BRICK 4, AND IT IS THE LINE THAT MAKES `resolve_arguments` REACHABLE.**
+                # Until 2026-08-09 that function had ZERO production callers: the plan reached the
+                # model as a system message and the model RETYPED the identifier out of it. Retyping
+                # is the failure — `entity_id:019fafa2-…` at step 12, `"0"` at step 16.
+                #
+                # Per-parameter replacement, plan wins. For a parameter the plan owns, whatever the
+                # model typed is DISCARDED; parameters it does not own (the injected context ids
+                # above) are untouched. A merge that let the model's value win on a blank would be
+                # the fallback-to-asking this whole mechanism exists to refuse.
+                _plan_supplied: dict | None = None
+                if plan_turn is not None:
+                    from app.services.plan_exec import bound_arguments
+                    _bound = bound_arguments(plan_turn.spec, plan_turn.state, c["name"])
+                    if _bound:
+                        # 🔴 **WHAT THE MODEL SENT IS CAPTURED BEFORE IT IS OVERWRITTEN, AND IT GOES
+                        # INTO THE ROW.** Without this the recorded call shows only the final value,
+                        # so a plan-supplied argument and a model-typed one are THE SAME ROW — the
+                        # exact merge `outcome_source` and `tool_calls[].source` each exist to undo.
+                        # It also made a measurement wrong: the first call-level V-METRIC graded
+                        # `args.book_id` in both arms and read 15/15 for the plan arm, which is
+                        # TAUTOLOGICAL — the executor writes that value, so it cannot be wrong. Only
+                        # a record that separates the two populations can be graded at all.
+                        _plan_supplied = {
+                            "params": sorted(_bound),
+                            "model_sent": {k: args_obj.get(k) for k in sorted(_bound)},
+                            "overrode": sorted(
+                                k for k, v in _bound.items()
+                                if k in args_obj and args_obj[k] != v
+                            ),
+                        }
+                        logger.info(
+                            "CP-3 executor: supplying %s to %s from the plan (model sent %s)",
+                            _plan_supplied["params"], c["name"], _plan_supplied["model_sent"],
+                        )
+                        args_obj.update(_bound)
+
+                # ── TOOL-V2 LOOP #5 · ONE ID IN TWO DIFFERENT ID FIELDS ─────────────────────
+                # 🔴 **MEASURED: 135 calls over 7 tools and 19 sessions, and NOT ONE SUCCEEDED.** The largest are
+                # `glossary_get_entity` with `book_id == entity_id` (71 calls / 5 sessions) and
+                # `book_chapter_save_draft` with `book_id == chapter_id` (38 / 6). Zero successes
+                # in 135 is the falsifier for the rule itself: one legitimate call of this shape
+                # would be a counter-example, and the corpus has none.
+                #
+                # It is invisible to every check that already runs. Both values are well-formed
+                # UUIDs, so the schema passes, `looks_like_an_id` says no resolution is needed,
+                # and `_inject_context_ids` deliberately honours a valid-but-different id as a
+                # cross-book call. The call dies at another service, naming the wrong thing:
+                # `book_chapter_delete` got *"book not accessible"* for a book that was perfectly
+                # accessible — the shared id WAS the book, reused for the chapter it did not have.
+                # One session repeated that 14 times, another repeated its version 71.
+                #
+                # Placed BEFORE resolution because it is a pure argument check with no dispatch:
+                # spending a resolver read on a call that cannot succeed either way is the cost
+                # §3a is careful about. A REFUSAL, never a repair — the runtime knows both
+                # arguments cannot be right and does not know which one is wrong.
+                from app.agentruntime.toolcontract import (
+                    duplicate_identifier as _dup_check,
+                    duplicate_identifier_message as _dup_message,
+                )
+                _dupe = _dup_check(args_obj)
+                if _dupe is not None:
+                    # F2 — WHICH OF THE TWO MAY SIMPLY BE DROPPED. Measured 2026-09-04:
+                    # composition_outline_node_edit was refused twice in one turn for
+                    # parent_id == project_id while creating a Chapter Two node. `parent_id` is
+                    # OPTIONAL there and a chapter's parent IS the project root, so "look the
+                    # missing one up" named an action with no referent — the model repeated the
+                    # shape and then abandoned the chapter. The refusal stands; only the advice
+                    # changes, and only when the schema says the param is droppable.
+                    _dup_params = tool_parameters(
+                        cat_index.get(c["name"]) or plain_index.get(c["name"])) or {}
+                    _dup_required = set(_dup_params.get("required") or ())
+                    _dup_optional = tuple(
+                        pname for pname in (_dupe[0], _dupe[1]) if pname not in _dup_required)
+                    _dup_msg = _dup_message(*_dupe, optional=_dup_optional)
+                    logger.info("loop#5: refused %r — %s and %s are both %s",
+                                c["name"], _dupe[0], _dupe[1], _dupe[2])
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "duplicate_identifier", "message": _dup_msg}),
+                    })
+                    yield {"tool_call": instrument.stamp_refused({
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": _dup_msg,
+                    }, "duplicate_identifier")}
+                    continue
+
+                # ── CP-5.3 · IDENTIFIER RESOLUTION — a NAME in an id field ──────────────────
+                # 🔴 **THE MEASURED FAILURE: 338 calls across 11 sessions sent a human name into an
+                # id field** (`entity_id: "Ember Codex"`, `"Lâm Uyên"`, `"Count Dracula"`) — 99.5%
+                # of every UUID-type failure. The tool answered `entity_id must be a UUID`: loud,
+                # and not actionable.
+                #
+                # ORDER: context-ids -> PLAN -> RESOLUTION -> blank-check -> dispatch. **After the
+                # plan on purpose** — a plan-bound argument is authoritative and already proven to
+                # travel byte-exact, so re-resolving it would let a search outrank the executor.
+                # Before dispatch, because the tool is where the failure currently happens.
+                #
+                # TWO BRANCHES, NO THIRD (§3a). Exactly one match at the declared quality
+                # substitutes; zero or many REFUSE with candidates. The pilot measured ambiguity as
+                # real rather than hypothetical — `Dracula` returns four exact matches tied at 0.9,
+                # 37.5% of contested calls — so a "pick the best" arm would be a guess deciding a
+                # correctness question on more than a third of the traffic.
+                _resolution: dict | None = None
+                _resolution_refusal: str | None = None
+                try:
+                    _rslv, _bind = _ref_registry(
+                        lambda _n: declared_lane(cat_index.get(_n) or plain_index.get(_n) or {})
+                    )
+                except Exception:
+                    _rslv, _bind = {}, {}
+                if _bind:
+                    from app.agentruntime.refresolve import (
+                        Resolution as _Resolution, apply_resolutions as _apply_res,
+                        decide as _ref_decide, pending_for as _ref_pending,
+                        refusal_message as _ref_refusal,
+                    )
+                    _pending = _ref_pending(c["name"], args_obj, _bind, _rslv)
+                    _res: list = []
+                    for _p in _pending:
+                        _rt0 = _time.monotonic()
+                        try:
+                            _renv = await knowledge_client.mcp_execute_tool(
+                                user_id=user_id, session_id=session_id, project_id=project_id,
+                                book_id=(context_ids or {}).get("book_id"),
+                                tool_name=_p.resolver.tool, tool_args=_p.args,
+                                admin_token=admin_token,
+                            )
+                        except Exception:
+                            _renv = None
+                        # 🔴 **A RESOLVER DISPATCH IS A REAL EXECUTION AND IS RECORDED AS ONE.**
+                        # CP-0.3's positional gate caught this unstamped, and it was right: the
+                        # tool genuinely runs. §3a's cost claim is *"~44 extra read dispatches
+                        # replace 390 failed calls"* — a trade nobody can check if the numerator
+                        # is invisible. It is NOT appended to `working`: the model never asked for
+                        # this call and should not have to read it. `resolver_for` keeps the two
+                        # populations apart, exactly as `plan_supplied` had to.
+                        _rchunk = {
+                            "id": f"{c['id']}:resolve:{_p.param}", "iteration": iteration,
+                            "tool": _p.resolver.tool, "args": _p.args,
+                            "ok": bool(_renv and _renv.get("success")),
+                            "result": None, "error": None if _renv else "resolver dispatch failed",
+                            "resolver_for": {"tool": c["name"], "param": _p.param,
+                                             "sent": _p.name},
+                        }
+                        instrument.stamp_tool_call(
+                            _rchunk, source=instrument.SOURCE_TOOL,
+                            latency_ms=int((_time.monotonic() - _rt0) * 1000))
+                        yield {"tool_call": _rchunk}
+                        if not _renv or not _renv.get("success"):
+                            # A resolver that fails is not a licence to guess and not a silent
+                            # pass: the argument is left exactly as the model sent it and the
+                            # outcome is recorded, so the call fails the way it does today rather
+                            # than in a new way nobody can see.
+                            _res.append(_Resolution(param=_p.param, ref_type=_p.resolver.ref_type,
+                                                    sent=_p.name, outcome="resolver_failed"))
+                        else:
+                            _res.append(_ref_decide(_p.resolver, _p.param, _p.name,
+                                                    _renv.get("result") or {}))
+                    if _res:
+                        # 🔴 WHAT THE MODEL SENT IS CAPTURED BEFORE THE OVERWRITE, for the reason
+                        # `plan_supplied` had to: without it a resolved argument and a model-typed
+                        # one are THE SAME ROW and no measurement can tell them apart.
+                        _resolution = _apply_res(args_obj, _res)
+                        if any(not r.ok for r in _res):
+                            _resolution_refusal = _ref_refusal(_res)
+                        logger.info("CP-5.3 resolution on %s: %s", c["name"], _resolution)
+
+                if _resolution_refusal:
+                    # The REFUSE branch. Still loud — the contract may remove a failure's COST, never
+                    # its SIGNAL (§3) — but now actionable: it names what was sent, what happened,
+                    # and the candidates, where today the model gets `entity_id must be a UUID`.
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "unresolved_reference", "message": _resolution_refusal}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None,
+                        "error": _resolution_refusal, "resolution": _resolution,
+                    }}
+                    continue
+
+                # ── CP-6.1 · CLOSED-VOCABULARY RESOLUTION — a value outside the book's own set ──
+                # 🔴 **MEASURED: `glossary_propose_entities` fails in 51 organic sessions, and 88 of
+                # its 109 failures (81%) are `unknown kind`.** The largest remaining defect in the
+                # co-writer journey by the honest denominator.
+                #
+                # 🔴 **AND THE REMEDY IT ALREADY HAS IS PROSE THAT MEASURABLY DID NOT WORK** — the
+                # existing message explains the cause correctly and names both repair tools, and the
+                # corpus after it is still 88 calls. Third time on this board. Worse, **it names
+                # `glossary_propose_kinds`, which is `visibility: legacy`** in its own `_meta`, so
+                # the one actionable thing it says points at a deprecated tool.
+                #
+                # What this adds is not a better sentence: it is **the book's actual vocabulary**,
+                # read at dispatch, which a static JSON Schema cannot carry because the legal set
+                # differs per book. TWO BRANCHES, NO THIRD — in the set, or refused with the set
+                # named. **No fuzzy arm** (PO): `place` is never rewritten to `location`, because a
+                # wrong kind is a silent bad write into canon, which is worse than the loud failure
+                # it replaces. A normalised near-miss is SUGGESTED (`power_systems` →
+                # `power_system`) and never substituted.
+                _vocab_refusal: str | None = None
+                _vocab_record: dict | None = None
+                try:
+                    _vocabs, _vbind = _vocab_registry(
+                        lambda _n: declared_lane(cat_index.get(_n) or plain_index.get(_n) or {})
+                    )
+                except Exception:
+                    _vocabs, _vbind = {}, {}
+                if _vbind:
+                    from app.agentruntime.vocabulary import (
+                        decide as _vocab_decide, pending_for as _vocab_pending,
+                        refusal_message as _vocab_refusal_message,
+                    )
+                    _vpending = _vocab_pending(c["name"], args_obj, _vbind, _vocabs)
+                    _vdecisions: list = []
+                    for _vp in _vpending:
+                        # 🔴 **EACH ENUMERATION IS A REAL EXECUTION AND IS STAMPED AS ONE — AND
+                        # CP-0.3's POSITIONAL GATE CAUGHT THE SECOND ONE UNSTAMPED HERE, exactly as
+                        # it caught 5.3's resolver dispatch.** The first draft stamped only the
+                        # ontology read and left the standards read invisible, which is how a
+                        # mechanism's cost claim becomes uncheckable. Neither is appended to
+                        # `working`: the model never asked for either read.
+                        _venvs: dict[str, Any] = {}
+                        for _which, _vtool, _vargs in (
+                            ("source", _vp.vocabulary.source_tool, _vp.source_args),
+                            ("standards", _vp.vocabulary.standards_tool, {}),
+                        ):
+                            if not _vtool:
+                                continue
+                            _vt0 = _time.monotonic()
+                            try:
+                                _venv = await knowledge_client.mcp_execute_tool(
+                                    user_id=user_id, session_id=session_id, project_id=project_id,
+                                    book_id=(context_ids or {}).get("book_id"),
+                                    tool_name=_vtool, tool_args=_vargs, admin_token=admin_token,
+                                )
+                            except Exception:
+                                _venv = None
+                            _vchunk = {
+                                "id": f"{c['id']}:vocab:{_vp.param}:{_which}",
+                                "iteration": iteration, "tool": _vtool, "args": _vargs,
+                                "ok": bool(_venv and _venv.get("success")),
+                                "result": None,
+                                "error": None if _venv else "vocabulary source dispatch failed",
+                                "vocabulary_for": {"tool": c["name"], "param": _vp.param,
+                                                   "sent": list(_vp.sent), "role": _which},
+                            }
+                            instrument.stamp_tool_call(
+                                _vchunk, source=instrument.SOURCE_TOOL,
+                                latency_ms=int((_time.monotonic() - _vt0) * 1000))
+                            yield {"tool_call": _vchunk}
+                            _venvs[_which] = _venv
+                        _senv, _stdenv = _venvs.get("source"), _venvs.get("standards")
+                        if not _senv or not _senv.get("success"):
+                            # A source that fails is not a licence to refuse: the call proceeds
+                            # exactly as it does today and fails at the tool if the kind is wrong.
+                            # Failing CLOSED here would turn one degraded read into a blocked write.
+                            continue
+                        _vdecisions.append(_vocab_decide(
+                            _vp, _senv.get("result") or {},
+                            (_stdenv or {}).get("result") if _stdenv and _stdenv.get("success")
+                            else None))
+                    if _vdecisions:
+                        _vocab_record = {
+                            d.param: {"sent": list(d.sent), "outcome": d.outcome,
+                                      "unknown": list(d.unknown), "adoptable": list(d.adoptable)}
+                            for d in _vdecisions
+                        }
+                        if any(not d.is_ok for d in _vdecisions):
+                            _vocab_refusal = _vocab_refusal_message(_vdecisions)
+
+                if _vocab_refusal:
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "unknown_vocabulary_value", "message": _vocab_refusal}),
+                    })
+                    _vfail = {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None,
+                        "error": _vocab_refusal, "vocabulary": _vocab_record,
+                    }
+                    # 5.7's typing: the tool did not fail, the runtime refused before the wire.
+                    yield {"tool_call": instrument.stamp_refused(_vfail, "unknown_vocabulary_value")}
+                    continue
+
                 # The chat agent's arc-plan wants a SYNCHRONOUS plan (mode="rules"): a mid-tier
                 # model cannot reliably watch a background llm-plan job, so it fires the async
                 # job and leaves it unpolled (a §4 "async left unpolled" failure) and the
@@ -3762,9 +8125,18 @@ async def _stream_with_tools(
                                 "args": args_obj, "ok": False, "result": None, "error": _cap_err,
                             }}
                             continue
+                        # DQ-V4 2026-09-03 — this suspends as `batch_confirm`, NOT as
+                        # `confirm_action`. It is not a confirm the MODEL requested: it is the
+                        # PLATFORM interrupting a runaway turn, and it carries no confirm_token
+                        # because there is no server-side action to commit — Confirm simply lets
+                        # the turn continue. Reusing `confirm_action` for it meant the frontend
+                        # had to tell the two apart by "the token is empty", which is a property
+                        # of the payload standing in for an identity. Every filter that had to
+                        # exclude it (explicitTokens, confirmProposals) did so by testing the
+                        # token; they now exclude it by NAME, which is what they meant.
                         suspended_call = {
                             "id": c["id"],
-                            "name": "confirm_action",
+                            "name": "batch_confirm",
                             "args": {
                                 "confirm_token": "",
                                 "descriptor": f"{c['name']}.batch",
@@ -3899,9 +8271,129 @@ async def _stream_with_tools(
                 # (writes). Give SPECIFIC, actionable guidance naming the missing args; after the
                 # per-turn cap, tell the model to stop. The measured mid-tier failure: gemma called
                 # glossary_propose_entities with no `entities` and glossary_search with no `query`.
-                _missing_args = _missing_required_names(
-                    args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
-                )
+                # D-FJ-7 — repair `["vi"]` → `"vi"` where the schema declares a SCALAR, before the
+                # missing-arg check and before dispatch. The value the model chose was already
+                # right; only its container was wrong, and a refusal the caller does not recover
+                # from ends the journey just as dead as a wrong value would.
+                _tool_def_for_args = cat_index.get(c["name"]) or plain_index.get(c["name"])
+                _unwrapped = _unwrap_single_element_scalar_args(args_obj, _tool_def_for_args)
+                if _unwrapped:
+                    logger.info(
+                        "unwrapped single-element list arg(s) %s for %s (session=%s) — the schema "
+                        "declares them scalar", _unwrapped, c["name"], session_id,
+                    )
+                # Sibling repair: a JSON NUMBER where the schema declares string-only. Same class,
+                # same discipline — see _stringify_int_args_declared_string.
+                _deprefixed = _strip_field_name_prefix_from_ids(args_obj, _tool_def_for_args)
+                if _deprefixed:
+                    logger.info(
+                        "stripped a field-name prefix from id arg(s) %s for %s (session=%s)",
+                        _deprefixed, c["name"], session_id,
+                    )
+                _objs = _unwrap_object_items_for_string_array(args_obj, _tool_def_for_args)
+                if _objs:
+                    logger.info(
+                        "unwrapped object-item arg(s) %s for %s (session=%s) — the schema declares "
+                        "an array of strings", _objs, c["name"], session_id,
+                    )
+                _stringified = _stringify_int_args_declared_string(args_obj, _tool_def_for_args)
+                if _stringified:
+                    logger.info(
+                        "stringified integer arg(s) %s for %s (session=%s) — the schema declares "
+                        "them string-only", _stringified, c["name"], session_id,
+                    )
+                # D-FJ-11 — an id the contract says the RUNTIME owes, filled in with a fabricated
+                # value. Treated exactly like the missing case, because it IS the missing case with
+                # a placeholder written over it: the model does not have this value either way, and
+                # arguing about the format only invites a better-formatted invention.
+                _invented_ids: list[str] = []
+                if _tool_def_for_args:
+                    try:
+                        from app.agentruntime.toolcontract import resolve_contract as _rc
+                        _inv_block, _ = _rc(_tool_def_for_args, _tool_contract_registry())
+                        _invented_ids = _invented_supplier_ids(
+                            args_obj, _inv_block,
+                            ((_tool_def_for_args or {}).get("function", {})
+                             .get("parameters", {}) or {}).get("properties"),
+                            # DQ-T78 — the names the runtime actually HELD this turn. A context
+                            # id it never had is one it cannot have injected.
+                            runtime_held_context_ids=frozenset(
+                                n for n in _RUNTIME_CONTEXT_IDS
+                                if str((context_ids or {}).get(n) or "").strip()
+                            ),
+                            # DQ-T92 — what the PLATFORM published this turn. Spares a
+                            # runtime-issued value the shape arms would otherwise refuse.
+                            published_ids=_id_ledger,
+                        )
+                    except Exception:
+                        _invented_ids = []
+                    # 🔴 KEEP THE VALUE BEFORE DROPPING IT. Measured 2026-08-23 on
+                    # composition_motif_link_edit: the model resolved both endpoints to NAMES
+                    # ("Throwaway Loop Alpha Kutomere"), the whitespace arm correctly judged them
+                    # not-identifiers and dropped them, and the refusal then said the arguments
+                    # were MISSING. The model was never told WHICH VALUE it had passed, so its
+                    # follow-up `composition_motif_search` went out with blank arguments — twice —
+                    # and the turn died. It had the name and we deleted it before telling it
+                    # anything. See _name_like_dropped_ids for what is added back to the sentence.
+                    _invented_vals = {n: args_obj.get(n) for n in _invented_ids}
+                    if _invented_ids:
+                        for _nm in _invented_ids:
+                            args_obj.pop(_nm, None)
+                        # 🔴 THE OLD LINE NAMED ONE ARM FOR ALL SIX. It said "the contract declares
+                        # them context/plan-supplied" no matter which arm fired — placeholder token,
+                        # SCREAMING_SNAKE, whitespace-is-a-name, declared-uuid, or the contract arm.
+                        # Today it sent me hunting a contract misdeclaration that does not exist, on
+                        # a drop the whitespace arm made. A log line that hard-codes one explanation
+                        # for a multi-arm decision is a misattributed cause with a timestamp on it.
+                        logger.info(
+                            "dropped non-identifier value(s) %s from %s (session=%s) — not an id "
+                            "this platform issues (name, placeholder, or runtime-owed id the model "
+                            "filled in); values=%s",
+                            _invented_ids, c["name"], session_id,
+                            {k: (v if isinstance(v, str) and len(v) <= 80 else str(v)[:80])
+                             for k, v in _invented_vals.items()},
+                        )
+                # ── THE SAME SENTENCE FOR A DOCUMENT ─────────────────────────────────────
+                # D-THE-DOCUMENT-HANDED-TO-AN-EXTRACT-TOOL-IS-A-MESSAGE-ABOUT-HAVING-NO-DOCUMENT.
+                # An id the model invents and a document the model invents are the same failure
+                # one argument-kind apart, so they take the same path: drop the value, report
+                # the argument missing, and say what was actually wrong. Independent of the
+                # contract lookup above — a hollow document is wrong for every supplier, and
+                # `_tool_def_for_args` being absent must not silence it.
+                # ── AND THE SAME SENTENCE FOR THE AUTHOR'S MONEY ─────────────────────────
+                # D-THE-MODEL-FABRICATES-A-MONEY-VALUE-ON-A-SPECULATIVE-FIRST-CALL. An id the
+                # runtime owes, a document the author owns, and a budget the author decides are
+                # the same failure one argument-kind apart. `messages` carries the author's own
+                # turns, so no plumbing is added to ask what they said.
+                _money_args = invented_money_args(args_obj, messages)
+                _money_vals = {n: args_obj.get(n) for n in _money_args}
+                if _money_args:
+                    for _nm in _money_args:
+                        args_obj.pop(_nm, None)
+                    logger.info(
+                        "dropped invented spend ceiling(s) %s from %s (session=%s) — the author "
+                        "never mentioned money; values=%s",
+                        _money_args, c["name"], session_id, _money_vals,
+                    )
+                _hollow_args = _hollow_document_args(args_obj)
+                _hollow_vals = {n: args_obj.get(n) for n in _hollow_args}
+                if _hollow_args:
+                    for _nm in _hollow_args:
+                        args_obj.pop(_nm, None)
+                    logger.info(
+                        "dropped hollow document value(s) %s from %s (session=%s) — a note "
+                        "about having no content is not content; values=%s",
+                        _hollow_args, c["name"], session_id,
+                        {k: (v if isinstance(v, str) and len(v) <= 120 else str(v)[:120])
+                         for k, v in _hollow_vals.items()},
+                    )
+                _missing_args = _missing_required_names(args_obj, _tool_def_for_args)
+                if _invented_ids:
+                    _missing_args = sorted(set(_missing_args) | set(_invented_ids))
+                if _hollow_args:
+                    _missing_args = sorted(set(_missing_args) | set(_hollow_args))
+                if _money_args:
+                    _missing_args = sorted(set(_missing_args) | set(_money_args))
                 if _missing_args:
                     blank_tool_args_streak += 1
                     if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP:
@@ -3911,13 +8403,270 @@ async def _stream_with_tools(
                             "rather than retrying with empty arguments."
                         )
                     else:
-                        _ma_msg = (
-                            f"'{c['name']}' is missing required argument(s): {_missing_args}. "
-                            "These carry the actual CONTENT (not ids the system already fills) — "
-                            "e.g. a list of the items to create, or the search text. Read the "
-                            "tool's schema for their exact shape, fill them in, and call again. "
-                            "Do not call it with only ids or empty arguments."
-                        )
+                        _ma_msg = None  # built below, once the declared contract is resolved
+                    # ── DQ-T76 · HAND OVER THE ROWS, DO NOT NAME A TOOL TO GO CALL ───────────
+                    # 🔴 NAMING THE SUPPLIER IS ALREADY DONE, AND IS ALREADY MEASURED FAILING.
+                    # `argument_emitters` declares which tool supplies each required id and
+                    # covers 632 of 723 recorded failures (87%); the refusal names it to the
+                    # model. Of 605 (session, tool) pairs that failed this way, only 51 (**8%**)
+                    # ever succeeded with that tool again in the same session — and that count is
+                    # GENEROUS, crediting successes from before the failure. It is a mechanism
+                    # that FIRES and does not MATTER.
+                    #
+                    # 🔴 AND FETCHING IT AUTOMATICALLY CANNOT BE THE ANSWER EITHER. Replayed over
+                    # real recorded supplier results, exactly one candidate comes back for only
+                    # ~6% of these; **76% return MANY rows**. When the author says "delete the
+                    # map" and the account holds twelve, no amount of fetching says which one —
+                    # the information is not in the request. A "pick the best" arm would be a
+                    # guess deciding a destructive call.
+                    #
+                    # So the ambiguous case goes to the HUMAN, which is the W3C Entity
+                    # Reconciliation contract's `match: false` arm: when the service cannot
+                    # choose, a person disambiguates. The author gets the rows; the model gets
+                    # out of a loop it demonstrably does not escape.
+                    _disambig: tuple[str, str, Any] | None = None
+                    if _missing_args and _ma_msg is None:
+                        try:
+                            from app.agentruntime.refresolve import (
+                                decide_absent as _dec_abs,
+                                emitter_tool_and_field as _emit_tf,
+                            )
+                            _dis_reg = _tool_contract_registry()
+                            _dis_block = (_dis_reg.get("argument_emitters")
+                                          if isinstance(_dis_reg, dict) else None) or {}
+                            for _mp in _missing_args:
+                                # The entry may be a bare tool name (same field) or {tool, field}
+                                # — the supplier often returns the id under a different key
+                                # (composition_arc_list gives nodes[].id for `node_id`).
+                                _tf = _emit_tf(
+                                    (_dis_block.get(c["name"]) or {}).get(_mp)
+                                    if isinstance(_dis_block.get(c["name"]), dict) else None,
+                                    _mp)
+                                _sup, _sfield = _tf if _tf else (None, "")
+                                # A supplier must be a READ. Auto-dispatching one the author never
+                                # asked for is the same safety property `check_resolver` enforces
+                                # for the name branch: a non-read here would perform an
+                                # unrequested action on the way to refusing.
+                                if not _sup or declared_lane(
+                                        cat_index.get(_sup) or plain_index.get(_sup) or {}) != "read":
+                                    continue
+                                _st0 = _time.monotonic()
+                                try:
+                                    _senv = await knowledge_client.mcp_execute_tool(
+                                        user_id=user_id, session_id=session_id,
+                                        project_id=project_id,
+                                        book_id=(context_ids or {}).get("book_id"),
+                                        tool_name=_sup, tool_args={}, admin_token=admin_token,
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    _senv = None
+                                # 🔴 THE SUPPLIER GENUINELY RUNS, SO IT IS STAMPED AS A REAL
+                                # DISPATCH — the CP-0.3 rule, and its guard caught this missing.
+                                # An unstamped execution is filed as our own breaker prose, which
+                                # inverts the one distinction the field exists to make. The cost
+                                # claim for this branch is "one extra read replaces a dead-end
+                                # refusal"; nobody can check that if the numerator is invisible.
+                                # `resolver_for` keeps it out of the population of calls the MODEL
+                                # chose, and it is NOT appended to `working`: the author asked for
+                                # this, the model did not.
+                                _schunk = {
+                                    "id": f"{c['id']}:supply:{_mp}", "iteration": iteration,
+                                    "tool": _sup, "args": {},
+                                    "ok": bool(_senv and _senv.get("success")),
+                                    "result": None,
+                                    "error": None if _senv else "supplier dispatch failed",
+                                    "resolver_for": {"tool": c["name"], "param": _mp, "sent": ""},
+                                }
+                                instrument.stamp_tool_call(
+                                    _schunk, source=instrument.SOURCE_TOOL,
+                                    latency_ms=int((_time.monotonic() - _st0) * 1000))
+                                yield {"tool_call": _schunk}
+                                if not (_senv and _senv.get("success")):
+                                    continue
+                                _dres = _dec_abs(_mp, _sup, _senv.get("result"), _sfield)
+                                if _dres.outcome == "ambiguous":
+                                    _disambig = (_mp, _sup, _dres)
+                                    break
+                        except Exception:  # noqa: BLE001 — never take the turn down for a card
+                            logger.warning("DQ-T76: candidate fetch failed for %s.%s",
+                                           c["name"], _missing_args, exc_info=True)
+                            _disambig = None
+                    if _disambig is not None:
+                        _dp, _dsup, _dr = _disambig
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": c["name"],
+                            "args": {
+                                "kind": "disambiguation",
+                                "tool": c["name"],
+                                "param": _dp,
+                                "supplier": _dsup,
+                                "args": args_obj,
+                                # Capped: a picker is a list a person reads, and the 44-row
+                                # suppliers in this corpus would make it a wall. `truncated` says
+                                # so rather than silently showing a prefix as if it were all.
+                                "candidates": [
+                                    {"id": _cd.id, "name": _cd.name}
+                                    for _cd in _dr.candidates[:25]
+                                ],
+                                "truncated": len(_dr.candidates) > 25,
+                                "total": len(_dr.candidates),
+                            },
+                        }
+                        break
+                    # ── CP-5.4 · WHO OWES THIS ARGUMENT ──────────────────────────────────────
+                    # 🔴 One sentence was covering two OPPOSITE situations. Measured over 266
+                    # missing-argument failures / 87 sessions: the largest single case is
+                    # `book_read` missing `book_id` — **78 calls across 46 sessions** — and
+                    # `book_id` is a CONTEXT value the runtime fills from the ambient book and
+                    # simply does not have outside a book studio. Telling the model "you are
+                    # missing a required argument" reads as *you forgot something* when the truth
+                    # is *I owe you this and do not have it*, and the model cannot act on it.
+                    # `body`, `items` and `base_version` ARE model-supplied, and for those the
+                    # message above is already right.
+                    #
+                    # The supplier is read from the tool's DECLARED contract (5.1's
+                    # `argument_supplier` member), so this is the contract doing work rather than
+                    # a table of tool names kept here. All three arms — owed, UNDECLARED and
+                    # model-supplied — live in `_missing_args_message` so the undeclared case
+                    # cannot silently inherit the model-supplied sentence again.
+                    if _ma_msg is None:
+                        _c_block = {}
+                        try:
+                            from app.agentruntime.toolcontract import resolve_contract
+                            _c_block, _ = resolve_contract(
+                                cat_index.get(c["name"]) or plain_index.get(c["name"]) or {},
+                                _tool_contract_registry())
+                        except Exception:
+                            _c_block = {}
+                        # Bound to a local rather than repeating the lookup: an anchored
+                        # falsifier counts occurrences of that expression, and a second copy
+                        # made it stale. One lookup, one anchor.
+                        _ma_props = (
+                            (_c_def.get("function", {}).get("parameters", {}) or {})
+                            .get("properties") or {}
+                        ) if isinstance(_c_def := (
+                            cat_index.get(c["name"]) or plain_index.get(c["name"]) or {}
+                        ), dict) else {}
+                        # `working` carries THIS turn's tool results, and nothing else does —
+                        # they are appended to it live and are not persisted until the turn ends.
+                        # But a PRIOR turn's result is not in `working` either: chat_messages
+                        # holds no role='tool' rows, so rehydration returns user/assistant text
+                        # only. The recorded instance handed the id over in turn 1 and dropped it
+                        # in turn 2, so the server's own record is the half that carries it —
+                        # `tool_call_history` exists for exactly this question, "what have I
+                        # already done?", answered from the SERVER's memory, not the model's.
+                        # Only the runtime-owed args are looked up: this is a refusal path, but a
+                        # per-argument query for `body` or `items` would be pure waste.
+                        _ma_prior: dict[str, list[str]] = {}
+                        try:
+                            from app.db.tool_call_history import ids_returned_under_key
+                            for _oa in _owed_args(_c_block, _missing_args):
+                                if _vals := await ids_returned_under_key(
+                                        get_pool(), str(session_id), _oa):
+                                    _ma_prior[_oa] = _vals
+                        except Exception:  # noqa: BLE001 — a refusal's wording never takes a turn down
+                            logger.warning(
+                                "prior-turn id lookup failed for %s (session=%s)",
+                                c["name"], session_id, exc_info=True,
+                            )
+                            _ma_prior = {}
+                        _ma_msg = _missing_args_message(
+                            c["name"], _missing_args, _c_block, _ma_props,
+                            history=working, also_returned=_ma_prior)
+                    # ── THE THIRD STATE: YOU PASSED THE WRONG KIND OF THING ──────────────────
+                    # CP-5.4 separated "you forgot something" from "I owe you this". A dropped
+                    # NAME is neither: the model did supply a value and it was the wrong KIND, and
+                    # calling that "missing" is the one description guaranteed not to help. The
+                    # name is also the exact query string the recovery search needs, so handing it
+                    # back is what makes the refusal actionable rather than merely accurate.
+                    # D-THE-ID-REPAIR-SENTENCE-NAMES-A-TOOL-THAT-IS-NOT-THERE — resolve the
+                    # referent HERE, where the catalogue and the registry are both in hand, rather
+                    # than gesturing at "the tool named above" and hoping something named one.
+                    # The emitter is preferred; naming it also ARMS it a few lines below, since
+                    # that path keys off catalogue names in this very text.
+                    _nl_emitter = ""
+                    try:
+                        from app.agentruntime.toolcontract import declared_emitter as _de
+                        _nl_reg = _tool_contract_registry()
+                        _nl_emitter = next(
+                            (e for a in sorted(_invented_vals or {})
+                             if (e := _de(_nl_reg, c["name"], a))), "")
+                    except Exception:  # noqa: BLE001 — a lookup must never take the turn down
+                        _nl_emitter = ""
+                    # Does anything already in the message name a real tool? If not, the closing
+                    # instruction has nowhere to point and is dropped instead of dangling.
+                    _nl_referent = bool(_tools_named_in_refusal(
+                        _ma_msg or "", cat_index or {}, set(), exclude=c["name"]))
+                    _named = _name_like_dropped_ids(
+                        _invented_vals, emitter=_nl_emitter, referent_exists=_nl_referent)
+                    if _named:
+                        _ma_msg = (_ma_msg or "") + " " + _named
+                    # The document arm's own sentence — see `_hollow_document_note`. Appended
+                    # here for the same reason the name arm is: the generic missing-argument
+                    # text would call it forgotten, and it was not forgotten.
+                    _hollow_note = _hollow_document_note(_hollow_vals)
+                    if _hollow_note:
+                        _ma_msg = (_ma_msg or "") + " " + _hollow_note
+                    _money_note = _money_arg_note(_money_vals)
+                    if _money_note:
+                        _ma_msg = (_ma_msg or "") + " " + _money_note
+                    # ── D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE ───────────────────────────
+                    # This refusal SAYS "call world_map_list first and match it to get the id".
+                    # Until now it armed nothing: `_tools_named_in_refusal` runs on the dispatch
+                    # result far below, and this arm `continue`s before reaching it. So the largest
+                    # refusal class on the platform issued an instruction naming a tool that was
+                    # not on the turn, and the model did the only thing left — retried the same
+                    # failing call, then promised the author it would go and look.
+                    #
+                    # MEASURED over 35 live runs (7 tools, K=5): supplier ADVERTISED and not called
+                    # happened ZERO times, supplier absent and not called 27 times, agreement 35/35.
+                    # The model walks the chain exactly when it can see the supplier.
+                    # F1b — A FAILED WRITE THAT IS NEVER RETRIED LOSES THE WORK, whatever the
+                    # reason it failed. Row V, 2026-09-04: with F1 deployed, the model called
+                    # `book_chapter_create` (ok), then `book_chapter_save_draft` WITHOUT `body`,
+                    # and the turn ended — chapter created, 0 words, prose in the reply. F1 was
+                    # silent and correctly so: a missing-argument refusal names no prerequisite,
+                    # so nothing armed and `refusal_pending` stayed empty. The blind spot was one
+                    # step over. An EMPTY prerequisite means "nothing to wait for — it simply
+                    # failed", and the guard reports it unconditionally.
+                    #
+                    # WRITES ONLY. A failed READ that the model moves on from is ordinary; a
+                    # failed WRITE with prose in the reply is work the author cannot reach.
+                    #
+                    # AND NOT BROWSER-EXECUTED, which the first draft got wrong and a test
+                    # caught: `confirm_action` is Tier A, so the tier gate alone admitted it,
+                    # and the guard nudged on a rejected approval card
+                    # (`test_bad_frontend_args_rejected_and_not_suspended`). The directive
+                    # says "pass the work you already wrote" — for a confirm card there is no
+                    # such work, and a directive that misdescribes what happened is the same
+                    # defect as a log that overstates. Tier answers "does this need
+                    # approval"; it does not answer "did this hold the author's prose".
+                    if not is_browser_executed(c["name"]) and tool_tier(
+                            cat_index.get(c["name"]) or plain_index.get(c["name"])) in ("A", "W"):
+                        refusal_pending.setdefault(c["name"], "")
+                    if discovery:
+                        _ma_recovery = _tools_named_in_refusal(
+                            _ma_msg or "", cat_index, active_tool_names,
+                            exclude=c["name"])
+                        if _arm_tools(
+                            _ma_recovery, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        ):
+                            _ma_msg = (_ma_msg or "") + (
+                                "\n\n[SYSTEM] " + ", ".join(_ma_recovery) + " "
+                                + ("is" if len(_ma_recovery) == 1 else "are")
+                                + " now available to you on this turn — no tool_load needed. Call "
+                                + ("it" if len(_ma_recovery) == 1 else "them")
+                                + " to get the value, then retry. Do not repeat the call that just "
+                                "failed without changing something."
+                            )
+                            logger.info(
+                                "armed recovery tool(s) %s named in %s's missing-argument refusal "
+                                "(session=%s)", _ma_recovery, c["name"], session_id,
+                            )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": "missing_required_args", "message": _ma_msg}),
@@ -4115,32 +8864,60 @@ async def _stream_with_tools(
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": _noop_err}),
                     })
-                    yield {"tool_call": {
+                    yield {"tool_call": instrument.stamp_refused({
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": args_obj, "ok": False, "result": None, "error": _noop_err,
-                    }}
+                    }, "idempotent_noop_write")}
                     continue
                 _prior = read_call_results.get(_read_key) if _read_key is not None else None
                 if _prior is not None and _prior[1] >= REPEAT_READ_CAP:
+                    # Count the BLOCK, not the dispatch — see `repeat_block_counts`. `_prior[1]`
+                    # is frozen at the cap for every blocked call, so the attempt number has to
+                    # come from here or the message repeats a number that stopped being true.
+                    _blocks = repeat_block_counts[c["name"]] = (
+                        repeat_block_counts.get(c["name"], 0) + 1
+                    )
+                    _attempts = _prior[1] + _blocks
+                    _deadvertise = _blocks >= REPEAT_READ_DEADVERTISE_CAP
                     _repeat_err = (
                         f"You have already called '{c['name']}' with these exact arguments "
-                        f"{_prior[1] + 1} times this turn and it returned the IDENTICAL result "
+                        f"{_attempts} times this turn and it returned the IDENTICAL result "
                         "every time — that result is already above, in this conversation. "
                         "Calling it again cannot tell you anything new. STOP calling it. Read "
                         "the result you already have, and take the NEXT step."
                     )
+                    if _deadvertise:
+                        # Off the wire for the rest of the turn, so it cannot be re-emitted at
+                        # all. Said plainly, because a model that finds a tool missing without
+                        # being told tends to hunt for it instead of moving on.
+                        repeat_read_suppress.add(c["name"])
+                        _repeat_err += (
+                            f" '{c['name']}' is now disabled for the rest of this turn — the "
+                            "answer you have is the answer. Use a DIFFERENT tool, or reply to "
+                            "the user with what you already know."
+                        )
                     logger.info(
-                        "repeated-read breaker: %s returned an unchanged result %d× — short-circuited",
-                        c["name"], _prior[1],
+                        "repeated-read breaker: %s returned an unchanged result %d× — "
+                        "short-circuited (%d blocked repeat(s)%s)",
+                        c["name"], _prior[1], _blocks,
+                        "; de-advertised" if _deadvertise else "",
                     )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": _repeat_err}),
                     })
-                    yield {"tool_call": {
+                    yield {"tool_call": instrument.stamp_refused({
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": args_obj, "ok": False, "result": None, "error": _repeat_err,
-                    }}
+                        # §3 — the COST is already gone (this short-circuits before dispatch).
+                        # The SIGNAL stays: the repeat count keeps rising and the breaker keeps
+                        # escalating. What changes is that it stops being typed as a TOOL failure.
+                        # That sentence was aspirational until now — the count was frozen at the
+                        # cap and nothing escalated, so both halves are recorded here instead.
+                        "repeat_count": _attempts,
+                        "repeat_blocks": _blocks,
+                        "deadvertised": _deadvertise,
+                    }, "repeated_read")}
                     continue
 
                 # D-BLANK-TOOL-ARGS-LOOP — same cap as the find_tools breaker
@@ -4267,14 +9044,12 @@ async def _stream_with_tools(
                 # proceed: the model already decided correctly, so making it round-trip through
                 # tool_list/tool_load to be told "yes, that one" is ceremony a weak model fails.
                 if discovery and c["name"] in cat_index and c["name"] not in active_tool_names:
-                    from app.services.tool_surface import merge_activated_tools
-                    active_tool_names.add(c["name"])
-                    if activation_state is not None:
-                        activation_state["activated_tools"] = merge_activated_tools(
-                            activation_state["activated_tools"], [c["name"]],
-                            catalog=discovery_catalog, context_length=context_length,
-                        )
-                        activation_state["dirty"] = True
+                    _arm_tools(
+                        [c["name"]], active_tool_names=active_tool_names,
+                        activation_state=activation_state,
+                        discovery_catalog=discovery_catalog,
+                        context_length=context_length,
+                    )
                     logger.info(
                         "auto-loaded off-surface tool %r (session=%s) — it is in the catalog and "
                         "the model asked for it by name", c["name"], session_id,
@@ -4287,6 +9062,96 @@ async def _stream_with_tools(
                 # frontend tool, which suspends for the human gate.
                 # T4c: on an admin surface, pass the RS256 admin token so
                 # glossary_admin_* route to /mcp/admin (no X-User-Id; INV-T2).
+                # ── CP-5.10 · THE REGISTRY IS THE ONLY NAME SOURCE ───────────────────────────
+                # 🔴 **MEASURED: `glossary_propose_entity_edit` was dispatched 101 TIMES across 12
+                # SESSIONS with a 0% success rate, and it is in no catalogue.** A name the model
+                # invented, sent to the wire a hundred times. `plan_forge.plan_propose_spec` is the
+                # same shape with a namespace prefix bolted on.
+                #
+                # Everything a turn can legitimately dispatch is in one of these two indexes —
+                # `cat_index` is the federated catalogue and `plain_index` the consumer-local
+                # tools — and every other path (frontend tools, skills, workflows, the composer)
+                # has already been handled ABOVE this line. So a name absent from both cannot be
+                # executed by anything; the only question is whether we learn that here or after a
+                # round trip and a wasted model pass.
+                #
+                # Recorded as `refused`, not `failed` (5.7): the tool did not fail, it does not
+                # exist. The suggestion comes from the discovery matcher the surface already uses,
+                # so the model gets the real name rather than a dead end.
+                # 🔴 **FAIL OPEN WHEN WE DO NOT KNOW THE CATALOGUE, AND THIS IS THE OPPOSITE OF
+                # THE USUAL DIRECTION FOR A REASON.** Exactly one of these indexes is ever
+                # populated (`cat_index` on the discovery path, `plain_index` off it), so BOTH
+                # being empty means the catalogue did not load — U-2's outage. Refusing then would
+                # answer *"that is not a tool"* for every tool that exists, turning a degraded but
+                # working turn into a totally broken one, and the model would have no way to tell
+                # the two apart. An unknown name that slips through merely fails at the wire, which
+                # is what happened before this check existed.
+                _known = cat_index or plain_index
+                if _known and c["name"] not in cat_index and c["name"] not in plain_index:
+                    _near = [n for n in (list(cat_index) + list(plain_index))
+                             if n.endswith(c["name"].split(".")[-1]) or c["name"] in n][:3]
+                    _unknown_msg = (
+                        f"'{c['name']}' is not a tool. It is not in the catalogue and nothing can "
+                        f"execute it — calling it again cannot work."
+                        + (f" Did you mean {_near}?" if _near else
+                           " Call tool_list to see what exists, then use a name from that list.")
+                    )
+                    logger.info("CP-5.10: refused undispatchable name %r", c["name"])
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "unknown_tool", "message": _unknown_msg}),
+                    })
+                    yield {"tool_call": instrument.stamp_refused({
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": _unknown_msg,
+                    }, "unknown_tool")}
+                    continue
+
+                # ── CP-5.8 · THE STATE A TOOL REQUIRES, CHECKED BEFORE DISPATCH ──────────────
+                # 🔴 **MEASURED: 414 calls / 82 sessions fail on a missing or wrong scope** — the
+                # largest remaining population by the honest denominator. Every failing tool
+                # ALREADY DECLARES what it needs (`_meta.scope`: 194 book · 65 user · 33 project ·
+                # 23 none) and nothing consulted it, so the model learned the requirement from a
+                # round trip and a backend error like `no project in scope`.
+                #
+                # Gated on `project` only, deliberately. `scope: book` is the SCOPE KEY, not a
+                # hard precondition — `book_list` is `scope: book` and is how a model FINDS a
+                # book, so refusing it without one would make books unreachable. Verified before
+                # building: `kg_project_create` and `kg_project_list` are `scope: user`, so the
+                # path to create or find a project stays open under this gate.
+                _scope_meta = ((cat_index.get(c["name"]) or plain_index.get(c["name"]) or {})
+                               .get("function") or {}).get("_meta") or {}
+                if (_scope_meta.get("scope") == "project"
+                        and not args_obj.get("project_id")
+                        and not (context_ids or {}).get("project_id")
+                        and not project_id):
+                    _pre_msg = (
+                        f"'{c['name']}' works inside a knowledge PROJECT and there is none in "
+                        f"scope — it cannot run. Call kg_project_list to find one and pass its id "
+                        f"as project_id, or kg_project_create to make one. Calling this again "
+                        f"without a project cannot succeed."
+                    )
+                    logger.info("CP-5.8: refused %r — declares scope=project, none in scope",
+                                c["name"])
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "precondition_unmet", "message": _pre_msg}),
+                    })
+                    yield {"tool_call": instrument.stamp_refused({
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": _pre_msg,
+                        "precondition": "project",
+                    }, "precondition_unmet")}
+                    continue
+
+                # CP-0.3 — the ONE call in this file where a tool genuinely executes. `source='tool'`
+                # is defined by having passed through here, not by inspecting the result: that is
+                # what makes the "our prose vs a real tool" split exact rather than a text match
+                # over breaker phrasing (the earlier attempt at that produced a lower bound which
+                # then got reported as a population count).
+                _dispatch_t0 = _time.monotonic()
                 envelope = await knowledge_client.mcp_execute_tool(
                     user_id=user_id, session_id=session_id, project_id=project_id,
                     # Studio context binding — forward the turn's ambient book so book-scoped
@@ -4295,6 +9160,7 @@ async def _stream_with_tools(
                     tool_name=c["name"], tool_args=args_obj,
                     admin_token=admin_token,
                 )
+                _dispatch_ms = int((_time.monotonic() - _dispatch_t0) * 1000)
                 # ext-tasks (T1c(3)) — a capability-gated domain tool opened a durable
                 # human gate (returned a task HANDLE, surfaced by mcp_execute_tool as
                 # envelope["task"]). Suspend exactly like a frontend tool, but mark it a
@@ -4330,7 +9196,45 @@ async def _stream_with_tools(
                             "args": _pe_args,
                         }
                         break
+                # V7 / DQ-V9 — the same shape for the three KIND-C human-gate tools, which moved
+                # to ai-gateway as directive tools. Detected from the RESULT, exactly like
+                # propose_edit, so chat-service holds no schema for them and `is_frontend_tool`
+                # has nothing left to intercept.
+                #
+                # Keyed on the DIRECTIVE MARKER, not on the tool name: the name is what the FE
+                # cards render, but a name test here would re-create the chat-service-local
+                # membership list this whole slice exists to delete — and `confirm_action` is
+                # four different things in this repo, so a name is the wrong identity to trust.
+                if bool(envelope.get("success")):
+                    from app.services.task_detect import (  # noqa: PLC0415
+                        gated_directive_suspend_args,
+                    )
+                    _gd = gated_directive_suspend_args(envelope.get("result"))
+                    if _gd is not None:
+                        _gd_name, _gd_args = _gd
+                        suspended_call = {
+                            "id": c["id"],
+                            "name": _gd_name,
+                            "args": _gd_args,
+                        }
+                        break
                 ok = bool(envelope.get("success"))
+                # ── CP-3 · AND THE STEP RECORDS WHAT IT HANDED FORWARD ──────────────────────
+                # The declared `emits` paths are read out of the REAL result, so the next step's
+                # binding has something to resolve against. Appended to the in-memory STATE
+                # immediately, because a two-step plan can run both steps inside ONE turn and the
+                # second would otherwise bind against a history that had not been written yet.
+                # Persisted by `_emit_chat_turn` — STATE has one writer and it is not this loop.
+                if plan_turn is not None:
+                    from app.services.plan_exec import observe_call
+                    _ev = observe_call(plan_turn.spec, plan_turn.state, c["name"],
+                                       ok=ok, result=envelope.get("result"))
+                    if _ev is not None:
+                        plan_turn.state.append(_ev)
+                        if plan_events_out is not None:
+                            plan_events_out.append(_ev)
+                        logger.info("CP-3 executor: step %d -> %s %s", _ev.step_index, _ev.kind,
+                                    sorted(_ev.values) if _ev.values else "")
                 # P-1 step-runner — the single backend chokepoint where every rail step tool
                 # executes. Count a success only for a tool the pinned rail actually names, so
                 # the driver's "a rail step succeeded this turn" gate stays honest. (Confirm/
@@ -4351,15 +9255,12 @@ async def _stream_with_tools(
                             t for t in _rail_all_step_tools
                             if t in cat_index and t not in active_tool_names
                         ]
-                        if _rearm:
-                            from app.services.tool_surface import merge_activated_tools
-                            active_tool_names.update(_rearm)
-                            if activation_state is not None:
-                                activation_state["activated_tools"] = merge_activated_tools(
-                                    activation_state["activated_tools"], _rearm,
-                                    catalog=discovery_catalog, context_length=context_length,
-                                )
-                                activation_state["dirty"] = True
+                        if _arm_tools(
+                            _rearm, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        ):
                             logger.info(
                                 "rail advanced on %s — re-armed step tools now on the wire: %s",
                                 c["name"], ", ".join(sorted(_rearm)),
@@ -4377,6 +9278,12 @@ async def _stream_with_tools(
                 elif c["name"] in fail_by_tool_error:
                     fail_by_tool_error.pop(c["name"], None)
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
+                # D-XWIRE-RESULT — record every `*_id` this result announced, so a later call in
+                # the same turn that puts one of them in the WRONG slot is a fact rather than a
+                # guess. Successes only: an error payload's ids are the model's own bad input
+                # echoed back, and recording those would teach the ledger the mistake.
+                if ok:
+                    _id_ledger.record(tool_payload)
                 # Track C Phase 2 — count SUCCESSFUL identical reads so the repeated-read
                 # breaker above can short-circuit the next one. Only successes count: a call
                 # that FAILED has not put its answer in the context, so retrying it (with
@@ -4433,6 +9340,13 @@ async def _stream_with_tools(
                                     activation_state["dirty"] = True
                     else:
                         read_call_results.clear()
+                        # A real write means earlier reads may now be stale — which is why the
+                        # ledger above resets. The de-advertise has to lift with it, or a tool
+                        # blocked for repeating itself would stay off the wire across the very
+                        # write that made re-reading it the correct next move. Clearing one and
+                        # not the other is the same half-handled transition either way.
+                        repeat_block_counts.clear()
+                        repeat_read_suppress.clear()
                 if ok or _MISSING_REQUIRED_ARGS_MARKER not in str(envelope.get("error") or ""):
                     blank_tool_args_streak = 0
                 else:
@@ -4467,6 +9381,158 @@ async def _stream_with_tools(
                 # or apologize for a non-error. Applies to the success payload only.
                 if ok and _is_confirm_card_result(tool_payload):
                     _tool_content = (_tool_content or "") + _CONFIRM_CARD_STOP_NOTE
+                # D-FJ-4 — ARM THE TOOLS THE REFUSAL NAMED. A refusal that says "call X first" is
+                # an instruction the model cannot follow when X is off-surface, and it answers by
+                # narrating the fix and retrying the same failing call. Same decision the dispatch
+                # chokepoint makes for an off-surface tool the model DID call, one step earlier.
+                # 🔴 D-A-DOMAIN-REFUSAL-NAMES-A-TOOL-AND-ARMS-NOTHING — THIS WAS GATED ON
+                # `not ok`, AND THAT MISSED A WHOLE SHAPE OF REFUSAL.
+                # `ok` is the ENVELOPE's status: the CALL succeeded. A tool that dispatches and
+                # reports its refusal in the RESULT BODY — the `{"success": False, "error": "…
+                # call X first"}` form used throughout composition-service — arrives here with
+                # ok=True and armed nothing.
+                #
+                # MEASURED 2026-08-24, batch c-override12, K=5, from
+                # chat_messages.advertised_tools:
+                #     composition_entity_override_edit   advertised 5 of 5
+                #     composition_list_derivatives       advertised 0 of 5  <- named by its refusal
+                # The model was told "Call composition_list_derivatives and pass it THIS SAME
+                # project_id" on every run and could not see the tool on any of them; it reached
+                # for the composition reads it COULD see and every one refused.
+                #
+                # Only an EXPLICIT `success is False` counts. Most reads never set the key at
+                # all, and treating a missing `success` as failure would scan every ordinary
+                # result for tool names.
+                _refusal_text = ""
+                if not ok:
+                    _refusal_text = str(envelope.get("error") or "")
+                # 🔴 AND IF THE ENVELOPE'S `error` IS EMPTY, THE TEXT IS IN THE PAYLOAD. Measured
+                # 2026-08-24 (c-override-diag): composition_entity_override_edit refused twice
+                # with NOT_A_DERIVATIVE — the text is in chat_messages.tool_calls, so it exists —
+                # and produced NO line from the diagnostic below, which fires whenever
+                # `_refusal_text` is non-empty. The only way through is an empty `_refusal_text`,
+                # so `envelope["error"]` was not where that sentence lived. Reading only that one
+                # field is why D-FJ-4 armed nothing for this shape long before I touched it.
+                if not _refusal_text and isinstance(tool_payload, dict) and (
+                        not ok or tool_payload.get("success") is False):
+                    _refusal_text = str(tool_payload.get("error") or "")
+                if not _refusal_text and isinstance(tool_payload, dict) and (
+                        "error" in tool_payload or tool_payload.get("success") is not None):
+                    # A payload that CARRIES an error the arming path did not read. This is the
+                    # exact blind spot two diagnostic runs could not see into from outside:
+                    # composition_entity_override_edit's NOT_A_DERIVATIVE is present in
+                    # chat_messages.tool_calls and produced no line here, so the text is in the
+                    # payload under a shape this branch does not match. Log the shape, once, so
+                    # the next reader does not have to guess it either.
+                    logger.info(
+                        "%s returned an error payload the arming path did not read: ok=%s "
+                        "keys=%s success=%r",
+                        c["name"], ok, sorted(tool_payload)[:8], tool_payload.get("success"),
+                    )
+                if not ok and not _refusal_text:
+                    # A failure with no readable text anywhere. Nothing can be armed from it, and
+                    # the model gets a refusal it cannot act on either — worth seeing.
+                    logger.info(
+                        "%s failed with no readable refusal text (envelope keys=%s, payload=%s)",
+                        c["name"], sorted(envelope.keys())[:6], type(tool_payload).__name__,
+                    )
+                # 🔴 THIS PATH USED TO BE SILENT WHEN IT DID NOTHING, AND THAT COST A WHOLE CYCLE.
+                # Measured 2026-08-24 (c-override13): the arming log line never appeared, and from
+                # outside the process there was no way to tell WHICH of four things was true —
+                # the branch was not reached, the text was empty, the named tool was absent from
+                # cat_index, or it was already active. Each has a different fix. A mechanism that
+                # logs only its successes cannot be diagnosed when it stops succeeding.
+                #
+                # ── D-A-PER-OP-REFUSAL-NAMES-ARGUMENTS-AND-NO-MOVE ───────────────────────────
+                # A flat-superset op-dispatch tool declares only `op` as required, so nothing
+                # above this point ever saw a missing argument: the call dispatched and the
+                # SERVER refused with the per-op requirement. That refusal names arguments and no
+                # TOOL, so the arming below finds nothing and the turn is left with an
+                # instruction it cannot act on. Say where each one comes from — which both gives
+                # the model a move and puts the supplier's NAME into `_refusal_text`, so the
+                # existing arming picks it up instead of needing a second arming path.
+                if _refusal_text:
+                    # Bound in TWO steps rather than one expression, and not for style: the
+                    # single-expression form repeats a string that an anchored falsifier
+                    # (test_THE_DECLARATION_IS_THE_SOURCE_NOT_A_TOOL_NAME_LIST) requires to occur
+                    # EXACTLY ONCE in this file, and a two-occurrence anchor is a stale anchor.
+                    # The membrane gate catches that without running a suite — it caught this.
+                    _po_def = cat_index.get(c["name"]) or plain_index.get(c["name"]) or {}
+                    _po_props = (
+                        (_po_def.get("function", {}).get("parameters", {}) or {})
+                        .get("properties") or {}
+                    )
+                    _po_args = _args_named_in_refusal(_refusal_text, _po_props)
+                    # Only when the refusal named NO tool of its own: composition_arc_template_edit
+                    # already says "Call composition_arc_template_list to get the id", and adding a
+                    # second sentence beside a correct one is noise, not help.
+                    _po_already = any(
+                        n in _refusal_text for n in (cat_index or {}) if n != c["name"])
+                    if _po_args and not _po_already:
+                        _po_help = _where_each_argument_comes_from(
+                            c["name"], _po_args, _tool_contract_registry(), _po_props)
+                        if _po_help:
+                            _refusal_text = f"{_refusal_text} {_po_help}"
+                            _tool_content = (_tool_content or "") + "\n\n[SYSTEM] " + _po_help
+                            logger.info(
+                                "per-op refusal from %s named %s and no tool — appended: %s",
+                                c["name"], _po_args, _po_help[:160],
+                            )
+                if _refusal_text and discovery:
+                    # 🔴 DQ-T5 — MATCH AGAINST THE GATED NAMES TOO, or the unlock can never fire.
+                    # `cat_index` is built from the FILTERED catalogue, so a tool the N5a-FULL
+                    # capability floor removed is not in it and `_tools_named_in_refusal` cannot
+                    # see the name at all. Restoring its def in `_arm_tools` would be dead code
+                    # without this: the recovery list it feeds would never contain the name.
+                    # Measured shape (2026-08-13): glossary_propose_entities refuses on a fresh
+                    # book and NAMES glossary_adopt_standards, which was withheld at
+                    # stage=intent_gate in that same turn.
+                    _recovery_index = dict(cat_index or {})
+                    if unlockable_gated:
+                        _recovery_index.update(unlockable_gated)
+                    _recovery = _tools_named_in_refusal(
+                        _refusal_text, _recovery_index, active_tool_names,
+                        exclude=c["name"])
+                    if not _recovery:
+                        logger.info(
+                            "%s refused and nothing was armed: refusal=%d chars, "
+                            "cat_index=%d tool(s), active=%d, names_in_text=%s",
+                            c["name"], len(_refusal_text), len(cat_index or {}),
+                            len(active_tool_names or ()),
+                            sorted(n for n in (cat_index or {}) if n in _refusal_text)[:5],
+                        )
+                    if _recovery:
+                        _arm_tools(
+                            _recovery, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                            # DQ-T5: a REFUSAL may unlock a gated tool. Only this call site and
+                            # the missing-argument one pass it — a tool named in ordinary PROSE
+                            # still cannot open the floor, which is the over-reach N5a-FULL exists
+                            # to stop.
+                            unlockable_gated=unlockable_gated,
+                        )
+                        _tool_content = (_tool_content or "") + (
+                            "\n\n[SYSTEM] " + ", ".join(_recovery) + " "
+                            + ("is" if len(_recovery) == 1 else "are")
+                            + " now available to you on this turn — no tool_load needed. Call "
+                            + ("it" if len(_recovery) == 1 else "them")
+                            + " to clear this, then retry. Do not repeat the call that just failed "
+                            "without changing something."
+                        )
+                        logger.info(
+                            "armed recovery tool(s) %s named in %s's refusal (session=%s)",
+                            _recovery, c["name"], session_id,
+                        )
+                        # F1 — REMEMBER WHAT WE JUST TOLD IT TO DO. The message above ends
+                        # "then retry", and on 2026-09-04 a turn did the first half and stopped:
+                        # it called the named prerequisite and never came back, leaving the
+                        # author an empty chapter and their prose in a chat bubble. Only the
+                        # FIRST prerequisite is recorded — the message ranks them and a retry
+                        # clears the entry either way, so a second key would only add a way to
+                        # nag about a tool the model did come back to.
+                        refusal_pending.setdefault(c["name"], _recovery[0])
                 working.append({
                     "role": "tool", "tool_call_id": c["id"],
                     "content": _tool_content,
@@ -4477,6 +9543,18 @@ async def _stream_with_tools(
                     "result": envelope.get("result") if ok else None,
                     "error": None if ok else envelope.get("error"),
                 }
+                # CP-3 — the provenance of the ARGUMENTS, so a plan-supplied call and a
+                # model-typed one are not the same row. `overrode` is the load-bearing field: it
+                # names the parameters where the model had sent something DIFFERENT, which is the
+                # only place the plan changed an outcome rather than filling a blank.
+                if _plan_supplied is not None:
+                    tool_chunk["plan_supplied"] = _plan_supplied
+                # CP-5.3 — the same separation for a RESOLVED argument. Without it a call whose id
+                # the runtime looked up and one the model typed correctly are indistinguishable,
+                # and the member cannot be measured at all: `model_sent` keeps the NAME, which is
+                # the only evidence that resolution changed the outcome rather than filling a blank.
+                if _resolution is not None:
+                    tool_chunk["resolution"] = _resolution
                 # C-ACTIVITY (H16) — a successful Tier-A auto-write emits a visible
                 # "agent did X · Undo" activity event. The op summary + undo come
                 # from the tool RESULT's `_meta` (undo_hint is NET-NEW per provider;
@@ -4502,6 +9580,11 @@ async def _stream_with_tools(
                                 if undo else {"available": False}
                             ),
                         }
+                # CP-0.3 — latency is the DISPATCH duration, not the branch's wall time: the gap
+                # between them is our own overhead, and folding it in would flatter the tool.
+                instrument.stamp_tool_call(
+                    tool_chunk, source=instrument.SOURCE_TOOL, latency_ms=_dispatch_ms,
+                )
                 yield {"tool_call": tool_chunk}
 
             if (
@@ -4733,6 +9816,71 @@ _ORIENTATION_SCENT = (
 )
 
 
+#: D-LAZY-TAIL-UNUSED (2026-08-14) — the sentence that tells the model the surface is PARTIAL.
+#:
+#: The surfacing architecture is a small budgeted hot seed plus a lazy tail the model reaches
+#: through `tool_list`/`tool_load`. Measured across 30 live runs of five ordinary authoring
+#: requests: `tool_list` was called ONCE and `tool_load` NEVER — with both advertised on every
+#: single run. The tail was not a fallback, it was dead weight, and whatever the deterministic
+#: pre-filter put on the wire was the entire reachable catalogue for that turn.
+#:
+#: Nothing told the model otherwise. `_ORIENTATION_SCENT` names three composition reads; the rest
+#: of the note explains ids. The advertised set was presented as simply "the tools", so a model
+#: that could not find one for the request did the reasonable thing with what it had — and the
+#: reasonable thing is exactly the failure this loop keeps finding: answer from the context block
+#: (a queue of one reported as three), or use the nearest write that IS on the wire (three chapters
+#: created by a read question).
+#:
+#: So the last clause is the load-bearing one. It is not "discover more tools"; it is "do not
+#: answer a question about the user's data without having called something".
+#:
+#: 🔴 DEPLOYED, MEASURED, REFUTED — AND IT IS THE THIRD PROSE INTERVENTION TO FAIL THE SAME WAY.
+#: Same discriminating fixture (three entities, exactly ONE tagged 'ai-suggested'), K=3, deployed
+#: and md5-verified:
+#:
+#:   baseline                 -> "3 suggested entries"   tool_list 0/3
+#:   story_state scope note   -> "you don't have any"    tool_list 0/3   (reverted)
+#:   this discovery scent     -> "3 suggested entries"   tool_list 0/3
+#:
+#: The scent DID change behaviour — the model stopped answering from nothing and called a tool.
+#: It called `glossary_search`, which returns EVERY entity, and reported three. It satisfied
+#: "call something" by calling the wrong thing, because the right thing was not on the wire.
+#:
+#: That is the conclusion, and it is worth more than the sentence: PROSE DOES NOT MOVE THIS MODEL
+#: OFF THE ADVERTISED SURFACE. Three interventions, zero tool_list calls in 39 runs. Telling the
+#: model the surface is partial cannot help when every tool it can actually see is the wrong one.
+#: The lever is not the prompt, it is which tools are ON the wire — the declaration gap.
+#:
+#: Kept as a constant (with its tests) rather than deleted, because it is a clean negative result
+#: and the next person WILL propose it. It is not applied.
+_DISCOVERY_SCENT = (
+    " The tools advertised this turn are a SUBSET chosen from your words, not everything that"
+    " exists — a request phrased differently may have no matching tool on the wire even though"
+    " one exists. If nothing advertised clearly answers the request, call tool_list (a category,"
+    " or \"all\") and then tool_load, before replying. Never answer a question about the user's"
+    " own data — counts, lists, what is pending or missing — from memory or from a context block"
+    " when no tool returned it; say you are checking, and check."
+)
+
+
+#: U-2 — the outage the model can NAME. Without it the model has no tool left to ask with and every
+#: explanation it gives is invented; a verifier watched exactly that, with the model asserting a
+#: withheld tool "does not exist at all". The wording says TEMPORARY and says what to do, because
+#: "I have no tools" and "you have no tools" produce different replies.
+#:
+#: **A constant because there are three turn shapes and a verifier found two of them silent.** While
+#: this text was inline in one branch, the gate for it could only assert the string literal was
+#: present in the module source — which is satisfied by one occurrence and says nothing about the
+#: other two paths.
+CATALOGUE_UNAVAILABLE_NOTICE = (
+    "TOOL CATALOGUE UNAVAILABLE. Your tools could not be loaded for this turn — this is a "
+    "temporary outage on our side, NOT a sign that the capability is missing or that the "
+    "user's data is absent. Do not claim a tool or feature does not exist, and do not "
+    "invent a result. Say plainly that your tools are unreachable right now and that the "
+    "user can retry in a moment."
+)
+
+
 async def stream_response(
     session_id: str,
     user_message_content: str,
@@ -4783,6 +9931,11 @@ async def stream_response(
     surfaces) and appends the plan-mode system nudge; 'ask' appends its own
     nudge too (no auto-skill) — both on both system-part assembly paths."""
 
+    # CP-0.2 / U-2 — the turn's narrowing sink, armed HERE because this is the first statement of
+    # the turn and every later one can narrow. Unconditionally: `disable_tools` and `admin_context`
+    # change what is fetched, not whether a narrowing that happens is allowed to register.
+    instrument.arm_turn_surface()
+
     # ── RE-3: parse + STRIP a chat-only inline reasoning command (/no_think etc.)
     # before the message reaches the model or is persisted. The inline override is
     # the highest-precedence reasoning signal (beats the `thinking` toggle below).
@@ -4799,6 +9952,7 @@ async def stream_response(
         "SELECT system_prompt, generation_params, project_id, project_ids, composer_model_source, composer_model_ref, "
         "planner_model_ref, working_memory_seed, enabled_tools, enabled_skills, activated_tools, "
         "compact_summary, compacted_before_seq, message_count, created_at, "  # A4 (RV-M5): anchor progress + wrap
+        "pinned_legacy_tools, "  # CAT-4 Part D — legacy tools this session deliberately keeps (see drop_superseded_tools)
         "book_id "  # studio context binding — the session's bound book, so _ctx_book_id can fall back to it (X-Book-Id)
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
@@ -4821,6 +9975,45 @@ async def stream_response(
     # asyncpg.Record supports .get() since 0.27; using it lets test mocks
     # that pass a plain dict without project_id continue to work.
     project_id = session_row.get("project_id") if session_row else None
+    # ── D-MEMORY-FACT-STORED-UNSCOPED (2026-08-14) — GIVE project_id THE CHAIN ITS SIBLING HAS ──
+    #
+    # `book_id` is resolved a few lines below from editor_context -> book_context ->
+    # studio_context -> the session row. `project_id` had ONE source: the session row. Measured:
+    # 417 of 503 book-bound sessions (83%) carry a book and no project, and on every one of them
+    # each `ambient_project` tool is told the project is absent — the memory tools, the kg tools,
+    # story_search. They do not fail, they degrade silently.
+    #
+    # Live: memory_remember returned {"remembered": true, "fact_id": …, "confidence": 0.7} and the
+    # fact IS in Neo4j — with project_id NULL, one of only 4 such nodes out of 343. Unscoped means
+    # unrecallable, so the same session then said "I don't have any information about Mira Solene"
+    # about the thing it had just been asked to remember.
+    #
+    # The invariant: an id the platform can resolve from the turn's OWN context must be resolved
+    # before a tool is told it is absent. Deliberately narrow — it fires only when the turn has a
+    # book and resolves to THAT book's project, so it can never redirect across scopes (the
+    # failure mode `_inject_context_ids` refuses by leaving a valid-but-unknown UUID alone).
+    if not project_id:
+        _pid_book = (
+            (editor_context or {}).get("book_id")
+            or (book_context or {}).get("book_id")
+            or (studio_context or {}).get("book_id")
+            or (session_row.get("book_id") if session_row else None)
+        )
+        # The FE already hands us the project on a studio turn, and today that value is used ONLY
+        # to write the id into the model's prose note — the turn told the MODEL its project id and
+        # left its own envelope empty. That inconsistency is what led here.
+        project_id = (studio_context or {}).get("project_id")
+        if not project_id and _pid_book:
+            try:
+                from app.services.book_state_probe import project_for_book
+                project_id = await project_for_book(str(_pid_book))
+            except Exception:  # noqa: BLE001 — a probe failure must leave today's behaviour
+                project_id = None                # exactly as it was: None, and fail closed.
+        if project_id:
+            logger.info(
+                "turn project resolved from the book (session row had none): book=%s project=%s",
+                _pid_book, project_id,
+            )
     # A2A phase-2: optional composer model for in-turn prose delegation.
     composer_src = session_row.get("composer_model_source") if session_row else None
     composer_ref = session_row.get("composer_model_ref") if session_row else None
@@ -4981,6 +10174,11 @@ async def stream_response(
                 current_turn=int(_cur_turn or 0),
                 lore_gate=settings.t5_intent_gate_enabled and _grounding_presence.grounding_needed,
                 context_length=creds.context_length,
+                # W1's per-section split, so the safety net can tell "grounding returned lore"
+                # from "grounding returned only project instructions" — measured 2026-08-14 as
+                # total=50 / sections={instructions: 32} on every turn, with the block standing
+                # down and the turn carrying no lore at all.
+                sections=getattr(kctx, "sections", None),
             )
         except Exception:  # noqa: BLE001 — degrade to no-block, never break the turn
             logger.warning("story_state block projection skipped (error)", exc_info=True)
@@ -5082,6 +10280,44 @@ async def stream_response(
             session_id, history_limit,
         )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+    # DQ-T68 (a) — the PREVIOUS assistant turn's tool state, for the confirmation-turn
+    # look-back. One row, only what the gate reads: whether a call was left awaiting a human
+    # and which tools were put on the wire. Kept out of `messages` on purpose — that list is
+    # the model's context and must not grow for a surfacing decision.
+    # 🔴 BOUND HERE, NOT IN THE DISCOVERY BRANCH. Assigned where it is COMPUTED, it is
+    # unbound on every turn that takes the other arm, and the pass-loop call below reads it
+    # unconditionally: 5/5 runs died with NameError. A default of "" is the inert case, which
+    # is what a turn with no prior assistant state should get anyway.
+    _lookback_request_text: str = ""
+    _prev_tool_calls: list = []
+    _prev_advertised: list = []
+    try:
+        _prev = await pool.fetchrow(
+            """
+            SELECT tool_calls, advertised_tools FROM chat_messages
+            WHERE session_id = $1 AND role = 'assistant' AND is_error = false AND branch_id = 0
+            ORDER BY sequence_num DESC LIMIT 1
+            """,
+            session_id,
+        )
+        if _prev is not None:
+            # asyncpg hands a jsonb column back as a str unless a codec is registered, so
+            # both shapes are accepted; anything else degrades to empty and the gate stays shut.
+            for _col, _dest in (("tool_calls", "calls"), ("advertised_tools", "adv")):
+                _v = _prev[_col]
+                if isinstance(_v, str):
+                    try:
+                        _v = json.loads(_v)
+                    except (TypeError, ValueError):
+                        _v = []
+                if not isinstance(_v, list):
+                    _v = []
+                if _dest == "calls":
+                    _prev_tool_calls = _v
+                else:
+                    _prev_advertised = _v
+    except Exception:  # noqa: BLE001 — a surfacing hint must never break a turn
+        logger.debug("R1 look-back: prior-turn state unavailable", exc_info=True)
     if _compacted_before_seq is not None and _compact_summary:
         # Pinned (role=system) → the auto-compaction tiers can never drop it.
         messages.insert(0, summary_message(_compact_summary))
@@ -5154,7 +10390,21 @@ async def stream_response(
         try:
             from app.client.registry_workflows_client import get_workflows_client
 
-            _wf_surface = "admin" if _admin else ("editor" if _editor else ("book" if _book_scoped else "chat"))
+            # D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN. The registry's
+            # own closed set is book|editor|studio (validWorkflowSurfaces, workflows.go), and
+            # `_studio` was computed above (line ~9192) for OTHER purposes but never reached this
+            # ternary — so a Studio Compose-panel turn, which sends BOTH studio_context AND
+            # editor_context (a chapter open in the dock), fell to "editor" here, identical to
+            # the LEGACY standalone editor. Measured live: 4 of 5 studio-surface turns reported 9
+            # workflows as available when only 6 are studio-scoped — the always-on twin was not
+            # missing a filter, it was asking the registry for the WRONG bucket. `_studio` checked
+            # before `_editor` (studio always implies editor_context is also present when a
+            # chapter is open; editor alone never implies studio) restores parity with
+            # registry_list_workflows's own `surface` argument, so the two tools now agree instead
+            # of the always-on one winning the race with the wrong answer.
+            _wf_surface = ("admin" if _admin else
+                          ("studio" if _studio else
+                          ("editor" if _editor else ("book" if _book_scoped else "chat"))))
             _wfs = await get_workflows_client().get_workflows(
                 str(user_id), book_id=str(_ctx_book_id or ""), surface=_wf_surface,
                 mode=permission_mode,
@@ -5303,7 +10553,30 @@ async def stream_response(
             book_context_note += (
                 " For a tool that requires chapter_id, use the exact id above; never pass a placeholder."
             )
+        # D-PROPOSE-EDIT-ACTS-ON-EDITOR-STATE-THE-TURN-CANNOT-SEE. propose_edit's two operations
+        # (insert_at_cursor / replace_selection) presuppose editor state the turn never carried
+        # before today, so a model asked to rewrite a passage could not tell whether calling
+        # replace_selection was grounded in anything the author actually selected. `has_selection`
+        # is additive (older FEs never send it; None is silently treated as "unknown", same as
+        # today) — only stated when the FE explicitly reports it either way.
+        _has_sel = (editor_context or {}).get("has_selection")
+        if _has_sel is True:
+            _sel_text = (editor_context or {}).get("selected_text")
+            book_context_note += (
+                " The author currently has text SELECTED in the editor"
+                + (f' ("{_sel_text}")' if _sel_text else "")
+                + " — propose_edit's replace_selection targets exactly that span."
+            )
+        elif _has_sel is False:
+            book_context_note += (
+                " The author has NOTHING selected in the editor right now — propose_edit's"
+                " replace_selection has no target. Calling it anyway mints a card the author"
+                " cannot apply (Apply is refused with 'Select the text to replace, then Apply'),"
+                " a wasted round trip. Use insert_at_cursor, or ask the author to select text"
+                " first."
+            )
         book_context_note += _ORIENTATION_SCENT  # 28 AN-9 / AN-C2 — the discovery scent
+        # _DISCOVERY_SCENT is NOT applied — measured and refuted, see its definition.
 
     # ── RAID C1 (DR-C1) — per-book steering ─────────────────────────────────
     # Book-scoped turn → fetch the ENABLED steering entries from book-service,
@@ -5393,8 +10666,39 @@ async def stream_response(
     # background job — the exact pin/load drift reusing `workflow_load_result` was meant to
     # make impossible. (It also saves the duplicate fetch: the block below now reuses this.)
     _turn_catalog: list[dict] = []
-    if not disable_tools and kctx.tool_calling_enabled and not admin_context:
+    _admin_tool_defs: list[dict] | None = None
+    _catalogue_outage = False
+    if not disable_tools and kctx.tool_calling_enabled and admin_context:
+        # 🔴 U-2's OTHER SIBLING — the admin catalogue was fetched 350 lines BELOW, after the
+        # system prompt was already assembled, so an admin turn could not be told about an outage
+        # even once the record existed. That is the same reason the user catalogue was moved up to
+        # this block (see the note above), applied to the path that was left behind. An admin
+        # holding an empty surface is misled by exactly the same silence.
+        _admin_tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
+    elif not disable_tools and kctx.tool_calling_enabled:
         _turn_catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
+        # 🔴 U-2, second half. Registering the narrowing is not enough: a verifier watched the
+        # model state that a withheld tool "does not exist at all" while the row recorded it
+        # correctly — the row was honest and the screen was not. With the whole catalogue gone the
+        # model has NO tool left to ask with, not even `find_tools`, so the prompt is the only
+        # channel.
+        #
+        # 🔴 READ FROM THE RECORD, NOT FROM EMPTINESS. The first version of this line was
+        # `not _turn_catalog`, which conflates an OUTAGE with a legitimately EMPTY catalogue — a
+        # user with no permissions has zero tools and no outage. That is the exact confusion U-2
+        # exists to end, reproduced inside U-2's own fix, and three tests caught it by receiving an
+        # outage notice on a turn that simply had no tools. The fact comes from the party that knows
+        # it failed.
+        #
+        # Read OUTSIDE the branch that fetched, so it covers whichever catalogue this turn loaded.
+        # Gating it on `not admin_context` was how the admin path came to have neither half.
+    #: DQ-T5 — the defs the N5a-FULL capability floor removes, so a REFUSAL that names one can
+    #: unlock it later in the turn. Declared at FUNCTION scope on purpose: the filter that fills
+    #: it lives two blocks in, and binding it there left the name UNDEFINED whenever tools are
+    #: disabled — 56 tests caught that, all of them raising at the call site rather than here.
+    unlockable_gated: dict = {}
+    if not disable_tools and kctx.tool_calling_enabled:
+        _catalogue_outage = instrument.catalogue_outage_registered()
     _turn_async_tools = frozenset(
         n for n, td in _catalog_index(_turn_catalog).items() if tool_async(td)
     ) if _turn_catalog else frozenset()
@@ -5436,6 +10740,24 @@ async def stream_response(
         except Exception:  # noqa: BLE001 — intent pinning is never load-bearing
             logger.warning("intent-workflow pin failed — falling back to binding pins only", exc_info=True)
             _intent_slugs = []
+    # D-FJ-21 — the tools this session keeps failing at IDENTICALLY, read from the recorded
+    # call history. Cross-turn on purpose: the in-turn repeated-failure breaker and the rail's
+    # own nudge counters are BOTH rebuilt every turn, so a step failing twice a turn reset
+    # forever (plan_propose_spec, 4 identical refusals across 2 turns, neither breaker fired).
+    _rail_stuck_tools: frozenset[str] = frozenset()
+    try:
+        from app.db.tool_call_history import stuck_tools as _stuck_tools_reader
+        _rail_stuck_tools = frozenset(await _stuck_tools_reader(pool, str(session_id)))
+        if _rail_stuck_tools:
+            logger.info("stuck tools this session (identical failures): %s",
+                        sorted(_rail_stuck_tools))
+    except Exception:  # noqa: BLE001 — best-effort; "nothing is stuck" is the old behaviour
+        logger.warning("stuck-tool read failed", exc_info=True)
+    # D-FJ-22 — catalog tools the user named literally. See _tools_named_in_request.
+    _named_tools = _tools_named_in_request(user_message_content, _catalog_index(_turn_catalog))
+    if _named_tools:
+        logger.info("the request names %s — the rail will not claim this turn",
+                    sorted(_named_tools))
     _want_slugs = _binding_slugs + [s for s in _intent_slugs if s not in _binding_slugs]
     if turn_workflows and _want_slugs:
         from app.services.workflow_runner import pinned_rail_block
@@ -5567,6 +10889,30 @@ async def stream_response(
                 "already covers. Following the rail is how you avoid getting the order wrong."
             )
 
+    # ── DQ-T69 (owner 2026-08-31) — A TURN CANNOT KEEP A PROMISE MADE ABOUT LATER ──────────
+    # "(b) AN UPSTREAM SYSTEM-PROMPT INSTRUCTION, one or two sentences, A/B'd before shipping
+    # broadly. Not a reactive matcher: the population is ~0.3% and this loop's own development of
+    # the detector rejected two clauses before landing on a working count, so a matcher is real
+    # ongoing maintenance for five instances."
+    #
+    # THE DEFECT. A turn ends promising a LATER message ("I'll send the summary shortly") or
+    # asking the author to WAIT ("give me a moment"). The turn is fully synchronous: it ends when
+    # the reply ends, and no further message will ever arrive. Measured over 158 batches / 1,551
+    # runs: 5 clean instances, store unmoved, nothing queued, nothing pending.
+    #
+    # 🔴 THE WORDING IS THE WHOLE RISK, AND THE RULING SAYS SO: it "must match the row's precise
+    # characterisation — a promise of a LATER MESSAGE or a request to WAIT, discriminated by
+    # determiner — so it does not also suppress a legitimate in-turn intention like 'I'll cancel
+    # them now'." So this names the two forbidden SHAPES and explicitly blesses the in-turn one,
+    # rather than banning the future tense, which would cost the model a sentence it needs.
+    synchronous_turn_note = (
+        "THIS TURN IS SYNCHRONOUS: it ends when your reply ends, and you cannot send a follow-up "
+        "message afterwards. Never promise a LATER message and never ask the user to wait — no "
+        "'I'll send it shortly', 'give me a moment', 'stand by'. Saying what you are doing IN "
+        "this turn is fine ('I'll cancel them now'); if something cannot be finished here, say "
+        "so plainly and say what you need."
+    )
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -5596,6 +10942,8 @@ async def stream_response(
         workflow_directive_block,  # WS-5 — prefer an authored workflow rail over improvising
         pinned_rail_text,    # WS-3 (C6) — the mode's PINNED rail, already in context
         book_context_note,
+        synchronous_turn_note,  # DQ-T69 — a turn cannot keep a promise about later
+        CATALOGUE_UNAVAILABLE_NOTICE if _catalogue_outage else None,
     ]
     _system_content = build_system_message(
         use_cache=use_anthropic_cache,
@@ -5707,6 +11055,12 @@ async def stream_response(
     )
     tool_defs: list[dict] = []
     discovery_catalog: list[dict] | None = None
+    #: name -> superseded_by for the LEGACY tools `drop_superseded_tools` removes from
+    #: `discovery_catalog`. Bound HERE, at function scope beside the catalogue itself,
+    #: because the build that fills it lives inside `if discovery_eligible:` — two branches
+    #: down. Binding it there left the plain-gateway path with an UnboundLocalError on every
+    #: turn, which the story04 suite caught as 60 red.
+    legacy_tool_index: dict[str, str | None] = {}
     discovery_extra_frontend: list[dict] | None = None
     discovery_seed_names: set[str] | None = None
     if not disable_tools and kctx.tool_calling_enabled:
@@ -5718,13 +11072,17 @@ async def stream_response(
             # sessions never reach /mcp/admin. No admin token / fetch failure →
             # empty list → the turn runs tool-free. (Never the discovery path —
             # the admin catalog is small + fully advertised.)
-            tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
-            # The generic class-C confirm frontend tool, so the agent can surface
-            # the System confirm card (suspend → human Confirm → the FE POSTs to
-            # /v1/glossary/actions/admin/confirm). Only when there ARE admin tools.
-            if stream_format == "agui" and tool_defs:
-                from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
-                tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
+            # Already fetched at the top of the turn, so the outage can reach the system prompt
+            # (U-2). Re-fetching here would double the call AND leave this the only reader.
+            tool_defs = list(_admin_tool_defs or ())
+            # The System confirm card (suspend -> human Confirm -> the FE POSTs to
+            # /v1/glossary/actions/admin/confirm).
+            # V7 (2026-09-03) — NO LONGER APPENDED FROM A LOCAL DEF. ai-gateway serves
+            # `glossary_confirm_action` on `/mcp/admin` as a consumer-local directive tool
+            # (admin-handlers.ts), so it arrives in `tool_defs` with every other admin tool.
+            # This append was the LAST production use of frontend_tools.py's schemas, and the
+            # reason chat-service still held one: `/mcp/admin` is a SEPARATE federation from
+            # `/mcp`, so nothing reached it by default.
         else:
             # REG-P2-03 — pass user_id so the gateway appends this user's external-MCP
             # federation overlay (u_/b_/s_ tools) into the turn catalog.
@@ -5735,7 +11093,6 @@ async def stream_response(
             if discovery_eligible and not catalog:
                 discovery_eligible = False
             if discovery_eligible:
-                from app.services.frontend_tools import frontend_tool_defs
                 from app.services.tool_discovery import filter_intent_gated_setup_tools
                 editor = bool(editor_context)
                 book_scoped = bool(editor_context or book_context)
@@ -5746,12 +11103,89 @@ async def stream_response(
                 # prompt naming them, so filtering one out splits guidance from capability and
                 # leaves an instruction the model cannot satisfy (see the filter's docstring —
                 # this is the Mị Đế 40k-character loop).
+                # CP-0.2 — the sink is armed at the TOP of this function, not here. It was armed on
+                # this line for one round: above the intent gate, which was then believed to be the
+                # turn's first narrowing. It was not — U-2 added an earlier one (the catalogue fetch,
+                # 380-odd lines above), and a verifier measured the outage going unrecorded on a real
+                # turn. Re-arming here now would DISCARD that record, which is the failure the sixth
+                # recurrence's own comment predicted. See `instrument.arm_turn_surface`.
+                # DQ-T31 — …and the DECLARATION arm: a gated tool whose own declared synonyms
+                # answer this request is exempt, and only that tool. This is the ONLY place it
+                # can be done: R1 answerability rescues the tool into the one-off build (which
+                # is handed the UNFILTERED catalog), but the per-pass build reads
+                # `discovery_catalog` and replaces that list on the first pass — so the rescue
+                # lands in a list that is discarded. Restoring the tool BEFORE the removal is
+                # what lets R1's own promise hold for it.
                 discovery_catalog = filter_intent_gated_setup_tools(
                     catalog, injected_skill_codes, set(pinned_step_tools or ()),
+                    request_text=user_message_content,
                 )
+                # DQ-T5 — what the floor just REMOVED, kept so a refusal that names one can
+                # unlock it later in this turn (`_arm_tools`). Captured here because this is the
+                # only place both lists exist; nothing reads it unless a refusal names the tool,
+                # so an un-named gated tool stays off the wire exactly as before.
+                _kept_names = {
+                    (d.get("function") or {}).get("name") for d in discovery_catalog
+                }
+                unlockable_gated = {
+                    nm: d for d in catalog
+                    if (nm := (d.get("function") or {}).get("name")) and nm not in _kept_names
+                }
+                # ── D-SUPERSEDED-TOOL-COMPETES-WITH-ITS-REPLACEMENT ───────────────────────
+                # CAT-4 states the invariant in tool_discovery: "A legacy tool must never be
+                # discoverable: excluded from search_catalog() and from every domain hot-seed."
+                # Both of those do exclude it. THIS catalog — the one actually advertised to the
+                # model — did not, so a superseded tool sat on the wire beside its replacement.
+                #
+                # MEASURED 2026-08-14, batch 17: 5 of the 54 distinct tools advertised across the
+                # batch were legacy, and every one was the direct predecessor of a tool under
+                # test. The model then called the predecessor on 3 of 5 scenarios — it is the more
+                # specific name for the exact ask — so three unified tools scored 0/5 while
+                # nothing was actually wrong with them.
+                #
+                # CORRECTED 2026-08-25/26: this used to read "The rule is narrower than
+                # 'drop every legacy tool': only when the named replacement is present".
+                # The rule was WIDENED on 2026-08-25 — every legacy tool is dropped, with
+                # or without a replacement. The old text is preserved in
+                # drop_superseded_tools' docstring, labelled as history.
+                from app.services.tool_discovery import drop_superseded_tools
+                # D-THE-MODEL-ASKS-INSTEAD-OF-RAISING-THE-CARD-IT-HAS (DQ-T57) — this call
+                # also moves each dropped legacy tool's declared phrasing onto the live
+                # successor that replaced it. R1 answerability (and find_tools recall, and the
+                # declaration arm) read the catalog this returns, so without that transfer the
+                # words a user actually says leave the turn along with the dead tool. See
+                # drop_superseded_tools' own docstring for the measurement and for the
+                # promote-the-definition variant that was built, measured and reverted.
+                # Built BEFORE the drop, because after it the legacy defs are gone and their
+                # `superseded_by` with them. This is the only point in the turn where a
+                # deprecated name can still be resolved to its replacement, which is what lets
+                # `tool_load` refuse it by name instead of calling it non-existent.
+                legacy_tool_index = {
+                    tool_name(_t): tool_superseded_by(_t)
+                    for _t in (discovery_catalog or [])
+                    if is_legacy_tool(_t) and tool_name(_t)
+                }
+                discovery_catalog, _superseded = drop_superseded_tools(
+                    discovery_catalog, set(session_row.get("pinned_legacy_tools") or ())
+                    if session_row else set(),
+                )
+                if _superseded:
+                    # 🔴 THIS SENTENCE DESCRIBED THE PRE-2026-08-25 RULE (DQ-T2). It said
+                    # "whose replacement is on the same wire", which was the NARROW rule: drop a
+                    # legacy tool only when its named successor is present. The rule was WIDENED
+                    # on 2026-08-25 to drop EVERY legacy tool, with or without a replacement --
+                    # measured against the live catalogue, 117 legacy tools of which 31 have no
+                    # successor at all, and the gate withholds them regardless. The comment above
+                    # was corrected then; this log line was not, so the one artefact a reader
+                    # actually sees at runtime went on teaching the narrower rule.
+                    logger.info(
+                        "superseded gate: withholding %d legacy tool(s) — EVERY legacy tool is "
+                        "dropped, with or without a named replacement: %s",
+                        len(_superseded), sorted(_superseded)[:8],
+                    )
                 # GUI-nav tools deprecated 2026-07-25 — only the editor/book_scoped frontend
                 # tools (propose_edit / glossary) are advertised now.
-                discovery_extra_frontend = frontend_tool_defs(editor=editor, book_scoped=book_scoped)
+                discovery_extra_frontend = []  # V7: nothing is advertised locally any more
                 from app.services.tool_surface import discovery_seed_for_surface
                 # The union of step tools across the turn's visible workflows — the ONLY
                 # activated_tools re-advertised in auto mode (so a persisted rail survives
@@ -5813,6 +11247,9 @@ async def stream_response(
                     for p in (_rail_progress_objs or [])
                     if getattr(p, "next_step", None) is not None
                 }
+                # NOT re-armed here: the sink is armed before catalog assembly above. Setting a
+                # fresh list at this point would DISCARD the intent gate's records — which is how
+                # the previous fix managed to be a no-op even where it was armed.
                 discovery_seed_names = discovery_seed_for_surface(
                     discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                     pins=tool_pins,
@@ -5835,23 +11272,28 @@ async def stream_response(
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
                 # {seed ∪ discovered}), but a non-empty value flips use_tools True.
+                # DQ-T68 (a) — "" unless the previous assistant turn left something pending,
+                # in which case R1 may fall back to the earlier request. Computed ONCE here and
+                # threaded into _stream_with_tools, which rebuilds the surface every pass: the
+                # seed below is discarded before the wire, so the seed alone fixes nothing.
+                _lookback_request_text = prior_request_for_lookback(
+                    messages, _prev_tool_calls, _prev_advertised)
                 tool_defs = _advertise_discovery_tools(
                     _catalog_index(catalog), discovery_seed_names, discovery_extra_frontend,
                     book_bound=bool(_ctx_book_id),
+                    request_text=user_message_content,
+                    prior_request_text=_lookback_request_text,
                 )
             else:
                 # No discovery: a legacy non-agui tool-calling client (full catalog —
                 # it has no find_tools loop), or an agui surface with the gateway down.
                 tool_defs = catalog
-                if stream_format == "agui" and (editor_context or book_context or studio_context):
-                    # Gateway down but still agui: re-advertise the frontend
-                    # write-back / studio-nav tools so the surface can still
-                    # propose/confirm/navigate (mirrors the resume path's catalog-down branch).
-                    from app.services.frontend_tools import frontend_tool_defs
-                    tool_defs = tool_defs + frontend_tool_defs(
-                        editor=bool(editor_context),
-                        book_scoped=bool(editor_context or book_context),
-                    )
+                # V7 — the gateway-down agui branch is GONE, not emptied. It re-advertised the
+                # frontend write-back / studio-nav tools so a catalog-down surface could still
+                # propose/confirm/navigate. Every one of those tools DISPATCHES inside ai-gateway,
+                # so with the gateway down it advertised tools that cannot execute — and CD4 is
+                # explicit that a broken tool is worse than an absent one, because the model spends
+                # a turn calling it and often reports success anyway.
         # A2A phase-2: advertise compose_prose only when a composer model is
         # configured for this session (orchestrator → writer delegation).
         if composer_model is not None:
@@ -5875,6 +11317,7 @@ async def stream_response(
     async for line in _emit_chat_turn(
         session_id=session_id,
         user_message_content=user_message_content,
+        prior_request_text=_lookback_request_text,
         user_id=user_id,
         model_source=model_source,
         model_ref=model_ref,
@@ -5919,6 +11362,8 @@ async def stream_response(
             else MAX_TOOL_ITERATIONS
         ),
         discovery_catalog=discovery_catalog,
+        legacy_tool_index=legacy_tool_index,
+        unlockable_gated=unlockable_gated,
         discovery_extra_frontend=discovery_extra_frontend,
         discovery_seed_names=discovery_seed_names,
         curated=curated_mode,
@@ -5944,8 +11389,18 @@ async def stream_response(
         # Action-space gating — turn-start RailProgress for the pinned rails (parallel to
         # _rail_specs); the advertise chokepoint drops finished steps' tools per the gate mode.
         rail_progress=_rail_progress_objs or None,
+        rail_intent_slugs=frozenset(_intent_slugs),
+        rail_stuck_tools=_rail_stuck_tools,
+        request_text=user_message_content,
+        rail_named_tools=_named_tools,
     ):
         yield line
+
+
+#: Strong references to in-flight cancel-path writes. asyncio holds only a WEAK reference to a task
+#: created with create_task, so a write detached during cancellation can be garbage-collected
+#: mid-flight — losing exactly the turn the detach existed to save. Discarded on completion.
+_DETACHED_CANCEL_WRITES: set = set()
 
 
 async def _persist_terminal_assistant(
@@ -5962,6 +11417,18 @@ async def _persist_terminal_assistant(
     finish_reason: str,
     is_error: bool,
     error_detail: str | None,
+    # CP-0 — the instrument. Optional at the signature so no caller can fail to compile, but
+    # `outcome` is derived rather than left NULL when a caller omits it: a terminal path that
+    # records no outcome is the exact hole CP-0.4 exists to close, and defaulting to NULL would
+    # reproduce it under a new column name.
+    outcome: str | None = None,
+    advertised_tools: list[dict] | None = None,
+    withheld_tools: list[dict] | None = None,
+    # CP-0.7 — **`runtime_variant` IS NOT A PARAMETER.** It was one, defaulting to `legacy`, and no
+    # caller ever passed it: this path handles error, interrupt and abandoned-suspend, which are
+    # exactly the terminal shapes a hand-passed label misses. `current_runtime_variant` argues the
+    # asymmetry — a missing label protects the new arm from false CREDIT but not from a missing
+    # FAILURE, so the arm measures safer than it is, by construction. Derived below.
 ) -> bool:
     """DBT-CHAT-PERSIST — persist an assistant reply that ended WITHOUT a clean
     finish (an error mid-stream, a user interrupt, or an abandoned/expired
@@ -5977,41 +11444,167 @@ async def _persist_terminal_assistant(
     Skips a truly-empty turn (no content and no reasoning and no tool calls): the
     user message stands alone and a blank assistant bubble would be noise.
     """
+    # 🔴 **F-50 — HOISTED, AND THE BUG WAS THAT THEY WERE NOT.** Both were computed 90 lines below,
+    # on the far side of the early return that reads `_withheld_json`. So **every** empty terminal
+    # turn raised `UnboundLocalError` inside the orphan-stamp, was caught by the best-effort
+    # `except Exception` that exists so an error path cannot add a second failure, and recorded
+    # nothing at all — at a **100% rate**, from `497d6995f` (2026-08-06) until this line.
+    #
+    # The commit that broke it was the fix for the *previous* finding on this same statement: a
+    # verifier measured `withheld_tools` being calculated and dropped here, so `withheld_tools` was
+    # added to the UPDATE — reading a name bound two branches later. **The repair for that finding
+    # therefore never ran once.** Found by CP-2's in-process live turn against a real connection;
+    # invisible to the suite, because the exception is swallowed and no test called this function
+    # with the empty shape.
+    #
+    # They are pure functions of the parameters, so computing them before the branch is free and
+    # removes the ordering hazard rather than documenting it.
+    _advertised_json = json.dumps(advertised_tools) if advertised_tools else None
+    _withheld_json = json.dumps(withheld_tools) if withheld_tools else None
     if not content and not reasoning and not tool_calls_history:
+        # CP-0.4, KNOWN HOLE, DELIBERATELY NOT CLOSED HERE. This is a terminal path that records
+        # nothing at all — an empty turn leaves no row, so it has no outcome, and it is invisible to
+        # every query CP-0 installs. It is one of the four silent exits, and they close as ONE
+        # mechanism at CP-3 (a plan that ends anywhere but done_when names what is live and hands it
+        # to a human), not as four patches. Closing it here would mean writing a blank assistant
+        # bubble into the UI, which is a product change this checkpoint has no business making.
+        # Logged so the hole is countable in the meantime rather than merely known.
+        # ── P3 · CLOSED HERE, and the earlier deferral was a wrong assumption of mine ──────────
+        # I recorded this as unfixable-before-CP-3.6 because writing a row means a blank assistant
+        # bubble in the UI. That assumed the outcome needs an ASSISTANT row. It does not: `outcome`
+        # is a column on `chat_messages`, not a property of a role, and the USER'S row already
+        # exists for every one of these turns — it is what makes them *orphaned* rather than absent.
+        #
+        # So the turn's fate is stamped on the message that is already there. No bubble is created,
+        # no product behaviour changes, and the two paths that recorded NOTHING — a cancel before
+        # the first token, and a process death before any checkpoint — now record what happened to
+        # the user's request. That is P3's whole claim: every terminal path writes an outcome.
+        #
+        # What this does NOT do is give the turn a reply. Materialising abandoned work into
+        # something a human can resume is still CP-3.6's mechanism, and still one mechanism rather
+        # than four patches. This closes the RECORDING hole, which is CP-0's half of it.
+        _orphan_outcome = outcome or instrument.outcome_for_finish_reason(
+            finish_reason, is_error=is_error
+        )
+        # 🔴 NOT `parent_message_id`. Measured live: that id is a UUIDv4 present in NO row on this
+        # path, so the UPDATE matched nothing and 0 of 3,154 user rows ever carried an outcome —
+        # while the log confidently reported "no parent to stamp" and the parent plainly existed,
+        # 0.3s earlier in the same session. The guard reported the absence of a row it had failed
+        # to look for.
+        #
+        # Anchored on the SESSION instead, which is the identifier this path actually holds: the
+        # newest user message with no outcome yet. `ORDER BY sequence_num DESC LIMIT 1` in a
+        # subquery, so a session with several unanswered user turns stamps the one this turn was
+        # for, not all of them.
+        try:
+            async with pool.acquire() as conn:
+                _stamped = await conn.fetchval(
+                    # 🔴 `withheld_tools` TOO. The caller computes `withheld_json()` and hands it in,
+                    # and this branch wrote only the outcome — so the value was **calculated and
+                    # dropped** on exactly the turn shape a catalogue outage produces (no content,
+                    # no tool calls, because the model had nothing to work with). Measured by a
+                    # verifier: `wrote_row=False, carries_outage=False`. The orphan-stamp mechanism
+                    # exists so a turn with no assistant row still records what happened to it; a
+                    # narrowing is part of what happened to it.
+                    # 🔴 `incoming='$3::jsonb'` — F-50's SECOND layer. The default emits
+                    # `EXCLUDED.withheld_tools`, which exists only in an `ON CONFLICT DO UPDATE`;
+                    # this is a plain UPDATE, so Postgres refused every execution with
+                    # `missing FROM-clause entry for table "excluded"`. The bound parameter IS the
+                    # incoming value here.
+                    "UPDATE chat_messages SET outcome = $2, "
+                    f"       {instrument.segment_merge_sql('withheld_tools', incoming='$3::jsonb')} "
+                    "WHERE message_id = ("
+                    "  SELECT message_id FROM chat_messages "
+                    "  WHERE session_id = $1 AND role = 'user' AND outcome IS NULL "
+                    "  ORDER BY sequence_num DESC LIMIT 1) "
+                    "RETURNING message_id",
+                    session_id, _orphan_outcome, _withheld_json,
+                )
+            if _stamped is not None:
+                logger.info(
+                    "CP-0.4 orphaned turn: no assistant row, outcome '%s' stamped on user "
+                    "message %s (session %s)",
+                    _orphan_outcome, _stamped, session_id,
+                )
+                return False
+            logger.info(
+                "CP-0.4 orphaned turn: no un-outcomed user message to stamp (session %s) — the "
+                "one remaining shape, and it is countable rather than silent.",
+                session_id,
+            )
+        except Exception:  # noqa: BLE001 — best-effort; this runs on error/cancel paths
+            logger.warning(
+                "CP-0.4 orphan-stamp failed (session %s)", session_id, exc_info=True,
+            )
+        logger.info(
+            "CP-0.4 silent-exit: empty terminal turn with NO parent to stamp (session %s, msg %s, "
+            "reason=%s) — the one remaining shape, and it is countable.",
+            session_id, msg_id, finish_reason,
+        )
         return False
     parts: dict = {}
     if reasoning:
         parts["reasoning"] = reasoning
         parts["reasoning_length"] = len(reasoning)
     content_parts = json.dumps(parts) if parts else None
+    # CP-0.3 — the chokepoint. Every recorded call carries a source, a declaration identity and a
+    # runtime variant by the time it is persisted, whichever of the 30-odd mint sites produced it.
+    if tool_calls_history:
+        tool_calls_history = [
+            instrument.ensure_tool_call_instrumented(tc) for tc in tool_calls_history
+        ]
     tool_calls_json = json.dumps(tool_calls_history) if tool_calls_history else None
+    _outcome = outcome or instrument.outcome_for_finish_reason(finish_reason, is_error=is_error)
+    # `_advertised_json` / `_withheld_json` are bound at the top of the function — see F-50.
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
-                seq = await conn.fetchval(
-                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages "
-                    "WHERE session_id = $1 AND branch_id = 0",
-                    session_id,
-                )
+                # D-AN-ABORTED-TURNS-DETACHED-WRITE-RACES-THE-RETRYS-SEQUENCE — this is the
+                # DETACHED writer: an aborted turn's reply is persisted after cancel, and the
+                # client's retry races it. One lock, held to COMMIT, covers both.
+                seq = await next_sequence_num(conn, session_id)
                 row = await conn.fetchrow(
-                    """
+                    f"""
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, model_ref, parent_message_id, branch_id, tool_calls,
-                       is_error, error_detail, finish_reason)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,0,$9::jsonb,$10,$11,$12)
+                       is_error, error_detail, finish_reason,
+                       outcome, advertised_tools, withheld_tools, runtime_variant, outcome_source)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,0,$9::jsonb,$10,$11,$12,
+                            $13,$14::jsonb,$15::jsonb,$16,'path')
                     ON CONFLICT (message_id) DO UPDATE SET
                       content = EXCLUDED.content,
                       content_parts = EXCLUDED.content_parts,
                       tool_calls = EXCLUDED.tool_calls,
                       is_error = EXCLUDED.is_error,
                       error_detail = EXCLUDED.error_detail,
-                      finish_reason = EXCLUDED.finish_reason
+                      finish_reason = EXCLUDED.finish_reason,
+                      outcome = EXCLUDED.outcome,
+                      -- CP-0.4 — a terminal path SAYS SO. Nothing wrote 'path', so a swept row and
+                      -- a path-written row were distinguishable only by the sweep's own marker —
+                      -- one-directional, and 64.8% of outcomed rows read as path-written when they
+                      -- were not. The distinction only bites if BOTH sides declare themselves.
+                      outcome_source = 'path',
+                      -- CP-0.1/0.2 — this row is upserted several times per turn (a checkpoint at
+                      -- each tool boundary, then the terminal handler) AND across turns (a resume
+                      -- builds a fresh recorder for the same message_id). Those two need opposite
+                      -- things from a merge, which is why both previous versions were wrong:
+                      -- COALESCE erased the resumed turn's earlier passes, and the concatenation
+                      -- that fixed it duplicated every pass a checkpoint had already written.
+                      -- The expression is built ONE PLACE — `instrument.segment_merge_sql` — and
+                      -- interpolated at both upsert sites, because two hand-maintained copies of a
+                      -- merge rule is how the class-4 predicate and the sweep came to contradict
+                      -- each other in the same commit (F-45).
+                      {instrument.segment_merge_sql("advertised_tools")},
+                      {instrument.segment_merge_sql("withheld_tools")},
+                      runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,
                     msg_id, session_id, user_id, content, content_parts, seq,
                     model_ref, parent_message_id, tool_calls_json,
                     is_error, error_detail, finish_reason,
+                    _outcome, _advertised_json, _withheld_json,
+                    instrument.current_runtime_variant(),
                 )
                 # Only bump the session counter on a genuine INSERT (xmax=0), never
                 # when ON CONFLICT took the UPDATE branch (already counted).
@@ -6021,9 +11614,37 @@ async def _persist_terminal_assistant(
                         "last_message_at = now(), updated_at = now() WHERE session_id = $1",
                         session_id,
                     )
+        # ── D-THE-PERSISTED-PER-PASS-RECORDER-DROPS-A-PASS-ON-THE-SECOND-TURN ────────────
+        # `adv=` is the number of per-pass entries THIS WRITE carried, and `seg=` the segment it
+        # carried them under. Both are here because the row is down to one question and the store
+        # cannot answer it after the fact.
+        #
+        # WHAT IS ALREADY SETTLED: the missing pass REACHED THE RECORDER. The "agent-surface
+        # advertised" line — the gap's only witness — sits BELOW the unconditional advertised
+        # yield, and an async generator resumes past a yield only when its consumer asks for the
+        # next item, so the consumer's `record_pass` had already run. `_bounded_turn_stream` does
+        # not prefetch, and its ceiling trip loses the LOG, never the record. So the loss is on
+        # the WRITE side, and every hypothesis of the shape "the chunk never got there" is dead.
+        #
+        # WHAT THIS LINE ADDS: the third number. Today a gap gives two — what the log printed and
+        # what the column holds — and those cannot separate "a write carried too few" from "the
+        # last write that carried any ran too early". With `adv=` on every write, the sequence of
+        # writes for one msg_id reconstructs itself from the log alone.
+        #
+        # 🔴 IT IS NOT THE FIX AND THE ROW DOES NOT COUNT IT AS ONE. The cause is still unknown;
+        # this only means the next occurrence — about 1 session in 15 — arrives diagnosable
+        # instead of costing another cycle of re-derivation.
+        _adv_n = len(advertised_tools) if isinstance(advertised_tools, list) else None
+        _adv_seg = (
+            advertised_tools[0].get("segment")
+            if isinstance(advertised_tools, list) and advertised_tools
+            and isinstance(advertised_tools[0], dict) else None
+        )
         logger.info(
-            "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars)",
-            finish_reason, session_id, msg_id, len(content),
+            "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars, "
+            "outcome=%s, runtime=%s, adv=%s, seg=%s)",
+            finish_reason, session_id, msg_id, len(content), _outcome,
+            instrument.current_runtime_variant(), _adv_n, _adv_seg,
         )
         return True
     except Exception:  # noqa: BLE001 — best-effort; runs on error/cancel paths
@@ -6070,6 +11691,10 @@ async def _materialize_abandoned_suspend(pool: asyncpg.Pool, susp) -> bool:
         finish_reason="interrupted",
         is_error=False,
         error_detail=None,
+        # CP-0.4 — an ABANDONED frontend-tool suspend: the confirm card expired, or its resume was
+        # refused. The user was asked and never answered, so this is the user walking away, not a
+        # fault. Deliberately not `failed`: the turn did exactly what it should have and then waited.
+        outcome=instrument.OUTCOME_ABANDONED_BY_USER,
     )
 
 
@@ -6089,15 +11714,423 @@ async def _mark_suspend_abandoned(pool: asyncpg.Pool, susp) -> None:
         if row is None:
             await _materialize_abandoned_suspend(pool, susp)
         elif row["finish_reason"] == "awaiting_input":
+            # CP-0.4 — `outcome` moves WITH `finish_reason`. Updating one and not the other left
+            # `awaiting_input` — a SUCCESS state — on a run the same statement was declaring
+            # abandoned, so an abandoned suspend would have been counted as a turn that correctly
+            # stopped to ask. A column that disagrees with its neighbour is worse than a missing one:
+            # it answers confidently and wrongly. The user was asked and never came back, which is
+            # `abandoned_by_user`, not a failure.
             await pool.execute(
-                "UPDATE chat_messages SET finish_reason = 'interrupted' WHERE message_id = $1",
-                susp.message_id,
+                "UPDATE chat_messages SET finish_reason = 'interrupted', outcome = $2 "
+                "WHERE message_id = $1",
+                susp.message_id, instrument.OUTCOME_ABANDONED_BY_USER,
             )
         # else: already resolved — leave it.
     except Exception:  # noqa: BLE001 — best-effort recovery path
         logger.warning(
             "mark-suspend-abandoned failed for msg %s", susp.message_id, exc_info=True,
         )
+
+
+class TurnCeilingExceeded(Exception):
+    """DQ-T56(1) — the turn as a whole outran ``llm_turn_ceiling_s``.
+
+    Deliberately a plain ``Exception`` and NOT a ``CancelledError``: the turn
+    handler's cancel arm means "the client went away", records
+    ``abandoned_by_user`` and re-raises. A ceiling expiry is neither of those —
+    nobody abandoned anything, the platform gave up — so it must land in its own
+    arm and say so.
+    """
+
+    def __init__(self, elapsed_s: float, ceiling_s: float) -> None:
+        self.elapsed_s = elapsed_s
+        self.ceiling_s = ceiling_s
+        # `.1f`, not `.0f`. This string is what lands in `error_detail`, and at any ceiling
+        # under a second the rounded form reads "turn ran 0s, past its 0s ceiling" — measured
+        # in the deployed container the first time this was exercised. Production values are
+        # whole minutes and would never have shown it.
+        super().__init__(
+            f"turn ran {elapsed_s:.1f}s, past its {ceiling_s:.1f}s ceiling"
+        )
+
+
+def _humanize_seconds(seconds: float) -> str:
+    """How long the turn ran, in words an author reads once and believes.
+
+    🔴 **THE FIRST VERSION LIED, AND THE LIVE RUN IS WHAT CAUGHT IT.** It was
+    ``max(1, int(round(elapsed / 60)))`` with the word "minute(s)" after it, so a
+    turn that ran **20 seconds** told the author it had been "ended after 1
+    minute(s)". At the production ceiling of 900s it would have read "15
+    minute(s)" and been right, which is exactly why no unit test and no reading of
+    the code found it — the defect only appears below 90 seconds. Five real turns
+    against a 20s ceiling printed it five times.
+
+    The whole point of half (2) of DQ-T56 is that the row SAYS what happened. A
+    row that says it truthfully at one ceiling and falsely at another is not that.
+    """
+    seconds = max(0.0, float(seconds))
+    if seconds < 90:
+        return f"{int(round(seconds))} seconds"
+    minutes = int(round(seconds / 60.0))
+    return "1 minute" if minutes == 1 else f"{minutes} minutes"
+
+
+async def _aclose_quietly(iterator) -> None:
+    """Close a half-consumed async iterator without letting cleanup mask the
+    reason we are closing it."""
+    aclose = getattr(iterator, "aclose", None)
+    if aclose is None:
+        return
+    try:
+        await aclose()
+    except Exception:  # noqa: BLE001 — the ceiling is the story; cleanup is not
+        logger.warning("turn-ceiling: closing the stalled stream failed", exc_info=True)
+
+
+#: The internal-detail markers that make an error unfit to show an author. Extracted
+#: 2026-08-28 from the `except` handler that has always applied them, because DQ-T33's answer
+#: adds a SECOND caller and the owner's note is explicit: "this repo already has a sanitize path
+#: for prompt/reply text and the standing rule is that a new block reuses it rather than writing
+#: its own". Two copies would drift the first time a marker is added to one of them.
+_UNSAFE_ERROR_MARKERS = ("traceback", "file ", "/usr/", "password", "secret")
+
+#: What the author is told when the only thing available to say is unfit to show them.
+_GENERIC_ERROR_TEXT = "An internal error occurred. Please try again."
+
+
+def _client_safe_error(msg: str) -> str:
+    """The author-facing form of an error string, or the generic line when it leaks internals."""
+    return _GENERIC_ERROR_TEXT if any(
+        kw in msg.lower() for kw in _UNSAFE_ERROR_MARKERS
+    ) else msg
+
+
+#: Author-facing text for the failures an author can actually ACT on.
+#:
+#: 🔴 THE GATEWAY'S OWN STRINGS ARE OPERATOR PROSE. A tripped spend limit arrived as
+#: "insufficient budget: estimated $0.11920000, available daily $0.00000000 / monthly
+#: $0.00000000" — true, and useless: it names no cause the author recognises, does not
+#: say the limit is THEIR OWN setting rather than a platform cap, and points at no place
+#: to change it. It reached the FE under a hardcoded code of "STREAM_ERROR", so the
+#: client could not tell it apart from an upstream 500 either.
+_AUTHOR_FACING_ERRORS: dict[str, str] = {
+    "LLM_QUOTA_EXCEEDED": (
+        "You have reached your own daily spend limit. This is your setting, not a "
+        "platform cap — raise it under Usage → Spend guardrail, or wait for the daily "
+        "window to reset. Nothing was sent to the provider, so nothing was charged."
+    ),
+    "LLM_BYOK_KEY_CAP_EXCEEDED": (
+        "This API key has reached the spend cap set for it. Raise the key's cap, or "
+        "use a different key. Nothing was sent to the provider, so nothing was charged."
+    ),
+    "LLM_MODEL_UNPRICED": (
+        "This model has no pricing configured, so its spend cannot be tracked and the "
+        "call was refused. Set its input/output rates under Models — a model that runs "
+        "locally should be registered at 0."
+    ),
+}
+
+
+def _author_facing_error(exc: Exception) -> tuple[str, str]:
+    """(author-facing message, machine code) for one failed turn.
+
+    An unrecognised failure keeps EXACTLY the previous behaviour — the sanitized
+    exception text — so this adds a better message for the cases we understand
+    without degrading any case we do not. The real code still rides along, so the
+    FE can branch on it later without another backend change.
+    """
+    code = getattr(exc, "code", "") or "STREAM_ERROR"
+    friendly = _AUTHOR_FACING_ERRORS.get(code)
+    if friendly:
+        return friendly, code
+    return _client_safe_error(str(exc)), code
+
+
+def _last_tool_success_for_author(tool_calls_history: list[dict]) -> str | None:
+    """DQ-T75, owner 2026-08-31: what a turn that produced no text and had NOTHING FAIL read.
+
+    "(a) REPORT WHAT THE TOOL RETURNED. A turn that produced no text and had nothing fail is not
+    empty-handed -- it holds a successful tool result, and it says what it read, from the record
+    already in the turn. No new prose is invented, which is the same rule that made DQ-T33
+    answerable and the reason a generic line was declined there."
+
+    THE TWENTY THIS IS FOR. DQ-T33's fallback surfaces the last tool ERROR and reaches 74 of the
+    94 recorded blank turns. The other twenty are the worst subset, not an edge: single-call turns
+    that ran a read tool, got `ok: true`, and said nothing. The tool worked, the data came back,
+    and the author got a blank reply -- so there is no error to surface and the sibling correctly
+    returns None.
+
+    🔴 IT NAMES THE CALL, NEVER THE CONTENT. The rule both DQ-T33 and DQ-T75 turn on is
+    REPORTING, NOT INVENTING, and summarising a result payload would be inventing: this function
+    has no way to know which part of a package tree or a job record the author asked about, and a
+    wrong summary of a real result is worse than silence, because it reads as an answer. So it
+    reports the one thing the record states outright -- which tools ran and returned successfully
+    -- and leaves the author to ask for what they wanted.
+
+    Returns None when no successful call is recorded, so a turn with nothing true to say stays
+    silent, exactly as before. Absence of a result is not licence to invent one.
+    """
+    names: list[str] = []
+    for tc in tool_calls_history or []:
+        if not isinstance(tc, dict) or tc.get("ok") is not True:
+            continue
+        # A carded call is not a completed read: it is a PROPOSAL the author has still to
+        # approve, and the carded path never reaches this site anyway. Excluded so a future
+        # caller cannot pick one up.
+        if tc.get("pending"):
+            continue
+        name = tc.get("tool")
+        if isinstance(name, str) and name and name not in names:
+            names.append(name)
+    if not names:
+        return None
+    if len(names) == 1:
+        return (f"I ran {names[0]} and it returned successfully, but I did not write a reply. "
+                "Ask me again and I will report what it said.")
+    return (f"I ran {', '.join(names[:-1])} and {names[-1]}, and they returned successfully, but "
+            "I did not write a reply. Ask me again and I will report what they said.")
+
+
+def _last_tool_error_for_author(tool_calls_history: list[dict]) -> str | None:
+    """DQ-T33, owner 2026-08-28: the last TOOL error of a turn that produced no text.
+
+    🔴 THIS IS REPORTING, NOT INVENTING, and that distinction is the whole reason the owner
+    could answer it. The string returned is the tool's own message, already in the turn's
+    `tool_calls` record — this loop's standing rule is that putting words in the assistant's
+    mouth is worse than an honest stop, and a generic apology would be exactly that. The owner
+    declined a generic failure line for the same reason: a blank turn cannot be told apart from
+    a crash, a refusal or a slow turn, and these turns are hiding a specific, actionable error.
+
+    MEASURED 2026-08-28 over the live store, assistant rows with EMPTY content, no card and
+    is_error false, grouped by how the turn ended:
+
+        finish_reason='stop'  outcome=failed      67 turns   67 carry a tool error
+        finish_reason='stop'  outcome=completed   21 turns   21 carry a tool error   (pre-guard)
+        finish_reason='stop'  outcome=NULL         6 turns    6 carry a tool error
+
+    — every single turn in the target population has something true to say. The much larger
+    `abandoned_expired` / `interrupted` population (1,156) is deliberately NOT this: the author
+    walked away, and there is nobody to tell.
+
+    🔴 RE-DERIVED 2026-08-30 AND THE LAST CLAIM ABOVE IS FALSE. The population is the same 94 rows
+    — 67, 21 and 6, unchanged, because no silent turn has occurred since — but the error counts
+    are not:
+
+        outcome=failed      67 turns   58 carry a tool error    9 do NOT
+        outcome=completed   21 turns   10 carry a tool error   11 do NOT
+        outcome=NULL         6 turns    6 carry a tool error    0
+
+    Two predicates agree (`ok=false`, and `ok=false` with a non-empty error string), and they are
+    the same test this function applies. So this fallback reaches 74 of 94 and TWENTY TURNS STILL
+    REACH THE AUTHOR BLANK. Which reading was wrong is NOT established: historical rows do not
+    change, so either the 08-28 count was wrong or the column was later rewritten, and nothing on
+    hand decides it. What is checkable today is the 74.
+
+    The uncovered 20 are the WORST subset, not an edge. The most recent are single-call turns that
+    ran `composition_package_tree`, got `ok: true`, and said nothing: the tool worked, the data came
+    back, and the reply was empty — so there is no error to surface and this function correctly
+    returns None. What such a turn should say is a product decision the owner has not been asked.
+    It is DQ-T75, and the generic failure line they already declined is not it.
+
+    Returns None when no failed call is recorded, and the turn then stays silent exactly as
+    before. Absence of an error is not licence to invent one.
+    """
+    for tc in reversed(tool_calls_history or []):
+        if not isinstance(tc, dict) or tc.get("ok") is not False:
+            continue
+        err = tc.get("error")
+        if isinstance(err, str) and err.strip():
+            return _client_safe_error(err.strip())
+    return None
+
+
+#: How many calls a brief will name before it summarises the rest. A brief that lists twelve
+#: tool names is not a brief, and the author's decision does not improve past the first few.
+_BRIEF_MAX_NAMED = 3
+
+#: The call outcomes that mean THE THING DID NOT HAPPEN. Read from the record rather than
+#: re-derived: `instrument` already classifies every call into done/failed/refused/deferred, and
+#: a second implementation of that rule would be a second rule. Measured over 10 days of the live
+#: store: done 6,074 · failed 2,753 · deferred 1,117 · refused 203.
+_BRIEF_NOT_DONE = ("failed", "refused")
+
+
+def _turn_brief(tool_calls_history: list[dict]) -> str:
+    """DQ-T71, owner 2026-08-31 — ONE FACTUAL ACCOUNT OF THE TURN, composed by the server.
+
+    Owner's words: "is it a defect and we need to fix by return brief or something?" It is a
+    defect, and this is the brief. The model writes its reply from what it REMEMBERS of the turn;
+    nothing has ever put what actually happened in front of the author. So it claims work that
+    was refused, and denies work that landed:
+
+        the call REFUSED and the reply says it succeeded   26 of 307 turns that hit a refusal  8.5%
+        the call LANDED  and the reply says it failed      28 of 581 carded writes             4.8%
+
+    (Both trigger-scoped. The 1.3-1.7% this was filed with pooled them over runs that could not
+    trigger either direction.)
+
+    🔴 REPORTING, NOT INVENTING — the same rule that made DQ-T33 answerable. Every word here
+    comes from the turn's own record: the tool's name as it was called, and the tool's own error
+    text through the same `_client_safe_error` sanitiser the silent-turn fallback uses. The
+    server states no outcome it did not observe.
+
+    IT IS DELIBERATELY SILENT WHEN IT HAS NOTHING TO CORRECT. A turn where every call is `done`
+    gets no brief: there is no refusal to overstate, and a line appended to every reply in the
+    product is a voice change nobody asked for. The condition is a non-`done` call, which is
+    exactly the trigger population the 8.5% is measured over.
+    """
+    if not tool_calls_history:
+        return ""
+    not_done: list[str] = []
+    for tc in tool_calls_history:
+        if not isinstance(tc, dict):
+            continue
+        if instrument.effective_call_outcome(tc) not in _BRIEF_NOT_DONE:
+            continue
+        name = str(tc.get("tool") or "").strip() or "a tool"
+        err = tc.get("error")
+        reason = _client_safe_error(err.strip()) if isinstance(err, str) and err.strip() else ""
+        not_done.append(f"{name} — {reason}" if reason else name)
+    if not not_done:
+        return ""
+    shown = not_done[:_BRIEF_MAX_NAMED]
+    tail = len(not_done) - len(shown)
+    body = "; ".join(shown) + (f"; and {tail} more" if tail > 0 else "")
+    lead = ("One action in this turn did not run" if len(not_done) == 1
+            else f"{len(not_done)} actions in this turn did not run")
+    return f"\n\n{lead}: {body}"
+
+
+def _committed_nothing(tc: dict) -> bool:
+    """A create-or-get that FOUND the resource already there. `created: False` on a Tier-A result.
+
+    🔴 THE SECOND OVERSTATEMENT THIS FUNCTION SHIPPED, caught live the same hour as the first.
+    With the write-marker fix in, a real carded turn read
+
+        "Nothing has been saved yet; confirm the card above to apply it.
+         Already applied in this turn: kg_project_create."
+
+    and `loreweave_knowledge.knowledge_projects` was rows:1 before the turn and rows:1 after,
+    with the SAME `latest` timestamp. Nothing was created. The recorded call carries
+    `result.created = false` AND an `activity` block, so the activity marker means "a Tier-A
+    write tool ran", not "the world changed".
+
+    THE PLATFORM ALREADY KNEW. The idempotent-no-op-write breaker keys on exactly this field and
+    its comment says the same sentence in the same words — "A Tier-A tool result that reports
+    `created: False` COMMITTED NOTHING … do NOT clear the read ledger, because the world did not
+    change." The mechanism existed and this function was not asking it.
+
+    ABSENT means a real write: most write results carry no `created` field at all, and only an
+    EXPLICIT False is a no-op — the same discipline the breaker uses, and the reason it is keyed
+    on the RESULT rather than the call.
+    """
+    result = tc.get("result")
+    if not isinstance(result, dict):
+        return False
+    # 🔴 A CONFIRM CARD IS NOT A WRITE, AND THIS SENTENCE TOLD THE AUTHOR IT WAS.
+    # Measured live 2026-08-31 (c-planapply2, K=5): a plan_bootstrap_apply that returned a
+    # `confirm_token` is recorded call_outcome=done WITH an activity block whose summary
+    # reads "Did plan_bootstrap_apply" and whose undo is unavailable — so this function said
+    # "Already applied in this turn: plan_bootstrap_apply." while the store showed NO
+    # chapters, on any of the 5 runs. The model then said the chapters were created, and the
+    # server line corroborated it.
+    #
+    # THE DOCSTRING ABOVE IS TRUE AND WAS NOT ENOUGH: no *deferred* call carries an activity
+    # block, but a carded one is not stamped deferred — it is stamped DONE, because the CALL
+    # did succeed. Call-outcome and turn-outcome are different vocabularies; `done` means the
+    # call returned, never that the world changed. A token minted for a human to click is by
+    # construction a write that HAS NOT LANDED, whatever the activity strip claims.
+    _inner = result.get("result")
+    if "confirm_token" in result or (isinstance(_inner, dict) and "confirm_token" in _inner):
+        return True
+    return result.get("created") is False
+
+
+def _completed_in_this_turn(tool_calls_history: list[dict]) -> str:
+    """DQ-T73's cheap half, on the path that needs it: a turn that WROTE and then asked approval
+    for something else says "Nothing has been saved yet", which is true of the CARD and false of
+    the write that already landed. Names what did land, beside that line.
+
+    Kept separate from `_turn_brief` because the two fire on opposite conditions — this one on
+    success, that one on refusal — and folding them into one function would mean a turn with
+    neither shape still paying for both tests.
+
+    🔴 A SUCCESSFUL CALL IS NOT A WRITE, AND THE FIRST VERSION OF THIS SHIPPED SAYING IT WAS.
+    Caught live within the hour: all five carded turns of batch brief-live read
+
+        "Already completed in this turn: composition_arc_template_list."
+
+    — a LIST. Naming a read beside a confirm card tells the author something happened to their
+    book when nothing did, which is a smaller version of the defect this whole mechanism exists
+    to remove. `call_outcome == "done"` means THE CALL SUCCEEDED; it says nothing about whether
+    anything changed.
+
+    THE MARKER FOR A LANDED WRITE ALREADY EXISTS IN THE RECORD and was simply not being read: a
+    Tier-A auto-write attaches an `activity` block to its tool_call chunk (H16, the visible
+    "agent did X · Undo" strip). Measured over 20 days of the live store — 591 of 7,818 `done`
+    calls carry one, across 38 tools, and ZERO failed / refused / deferred calls do. The top of
+    that list is kg_add_nodes (111) and glossary_propose_entities (45), which are the two tools
+    in this row's own founding instance.
+
+    So the predicate is `activity`, not `done`. A Tier-W/S write is `deferred` behind its own
+    card and has not landed; a read has no activity block and is not mentioned.
+    """
+    landed = [str(tc.get("tool") or "").strip() for tc in (tool_calls_history or [])
+              if isinstance(tc, dict) and instrument.effective_call_outcome(tc) == "done"
+              and tc.get("activity") is not None and tc.get("tool")
+              and not _committed_nothing(tc)]
+    if not landed:
+        return ""
+    shown = landed[:_BRIEF_MAX_NAMED]
+    tail = len(landed) - len(shown)
+    return (" Already applied in this turn: " + ", ".join(shown)
+            + (f", and {tail} more" if tail > 0 else "") + ".")
+
+
+async def _bounded_turn_stream(stream, *, started_at: float, ceiling_s: float):
+    """DQ-T56(1) — **THE ONE CHOKEPOINT.** Yield a turn's chunks, and raise
+    `TurnCeilingExceeded` once the turn as a whole has run past `ceiling_s`.
+
+    It belongs here and nowhere else because `_emit_chat_turn` consumes the
+    provider through exactly ONE `async for` — both branches (`_stream_with_tools`
+    and `_stream_via_gateway`) funnel into it, and both the fresh turn and the
+    resume path delegate to `_emit_chat_turn`. So every provider await a turn can
+    make passes through this loop, and bounding it here bounds all of them.
+
+    🔴 **THE BOUND IS ON THE AWAIT, NOT ON THE CHUNK, AND THAT IS THE WHOLE
+    DESIGN.** The failure this closes is a provider that goes SILENT — measured
+    live as one pass advertised, then three minutes of nothing. A deadline checked
+    when a chunk arrives never runs, because no chunk arrives. So `remaining` is
+    computed before each `__anext__` and imposed ON it.
+
+    The clock starts at the turn's `stream_start`, so time the CONSUMER spends
+    between chunks is charged to the turn too — which is correct for a ceiling on
+    the turn *as a whole*, and is the difference between this and an idle cap.
+
+    `ceiling_s <= 0` passes chunks straight through, so disabling it restores the
+    previous behaviour exactly rather than approximately.
+    """
+    if not ceiling_s or ceiling_s <= 0:
+        async for item in stream:
+            yield item
+        return
+
+    iterator = stream.__aiter__()
+    while True:
+        remaining = ceiling_s - (_time.monotonic() - started_at)
+        if remaining <= 0:
+            await _aclose_quietly(iterator)
+            raise TurnCeilingExceeded(_time.monotonic() - started_at, ceiling_s)
+        try:
+            item = await asyncio.wait_for(iterator.__anext__(), remaining)
+        except StopAsyncIteration:
+            return
+        except asyncio.TimeoutError:
+            # `wait_for` has already cancelled the pending `__anext__`, which
+            # unwinds the tool loop and releases the provider connection.
+            await _aclose_quietly(iterator)
+            raise TurnCeilingExceeded(_time.monotonic() - started_at, ceiling_s) from None
+        yield item
 
 
 async def _emit_chat_turn(
@@ -6117,6 +12150,13 @@ async def _emit_chat_turn(
     messages: list[dict],
     gen_params: dict,
     tool_defs: list[dict],
+    # DQ-T68 (a) — the earlier request to fall back on when THIS turn answers nothing.
+    # Threaded from stream_response because the per-pass rebuild lives below this frame,
+    # in another function entirely: a name bound in stream_response is simply not in scope
+    # here, which is how 5/5 live runs died with NameError. "" is the inert case, and is
+    # what the RESUME caller correctly leaves it at (a resume already carries the original
+    # request, so it has nothing to look back to).
+    prior_request_text: str = "",
     use_tools: bool,
     knowledge_client,
     admin_token: str | None = None,
@@ -6128,6 +12168,16 @@ async def _emit_chat_turn(
     planner_model_ref: str | None = None,
     max_iterations: int = MAX_TOOL_ITERATIONS,
     discovery_catalog: list[dict] | None = None,
+    #: name -> superseded_by for the LEGACY tools dropped from `discovery_catalog`, so
+    #: `tool_load` can refuse a deprecated name by naming its successor. Built at the drop
+    #: site in `stream_response` (the only place the pre-drop catalogue exists) and passed
+    #: in, exactly as the catalogue itself is. Defaults to {} so a caller that does not
+    #: supply it degrades to today's `not_found` rather than raising.
+    legacy_tool_index: dict[str, str | None] | None = None,
+    #: DQ-T5 — the defs the N5a-FULL capability floor removed from `discovery_catalog`. Built
+    #: beside that filter in `stream_response` and passed in, exactly as the catalogue itself
+    #: is: a REFUSAL that names one unlocks it for the rest of the turn.
+    unlockable_gated: dict | None = None,
     discovery_extra_frontend: list[dict] | None = None,
     discovery_seed_names: set[str] | None = None,
     curated: bool = False,
@@ -6166,6 +12216,15 @@ async def _emit_chat_turn(
     # Action-space gating — turn-start RailProgress objects for the pinned rails (parallel to
     # rail_specs); forwarded to the tool loop's advertise chokepoint. None on the resume caller.
     rail_progress: list | None = None,
+    # D-FJ-17 — the rails THIS turn's user message pinned, forwarded so the stalled-write
+    # nudge cannot drag the turn onto an unrelated rail's outstanding step.
+    rail_intent_slugs: frozenset[str] = frozenset(),
+    #: D-FJ-21 / D-FJ-22 — the other two turn-ownership inputs (see _stream_with_tools).
+    rail_stuck_tools: frozenset[str] = frozenset(),
+    # R1 — this turn's request, so the advertise chokepoint can guarantee that a tool whose
+    # own declared vocabulary answers it reaches the wire. Empty ⇒ inert.
+    request_text: str = "",
+    rail_named_tools: frozenset[str] = frozenset(),
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -6182,6 +12241,30 @@ async def _emit_chat_turn(
     full_content: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_history: list[dict] = []
+    # CP-3 — bound at the TOP of the turn, not inside the branch that fills them. The branch is
+    # nested and the persistence site is not, so a turn that took any other path reached the
+    # persistence block with `_plan_turn` unbound and raised `UnboundLocalError` — caught by 11
+    # existing stream tests, which is the reason the initialisation lives up here.
+    _plan_turn = None
+    _plan_events: list = []
+    # CP-0.1/0.2 — the turn's instrument. Created here, at the top of the turn, because a recorder
+    # created lazily at the first advertise would miss a turn that was narrowed to nothing before
+    # the model ever saw a surface — which is precisely the case worth catching.
+    _advertised = instrument.AdvertisedToolsRecorder()
+    _loop_finish_reason: str | None = None  # CP-0.4 — the loop's own terminal reason
+    # CP-0.2 — arm the request-scoped sink so narrowings decided OUTSIDE this function (surface
+    # assembly, two frames up) still register. Drained into the recorder at each advertise.
+    # ADOPT, never replace: surface assembly ran before this generator's body started and its
+    # narrowings are already in the sink. Setting a fresh list here would discard exactly the
+    # records this field exists to carry.
+    _surface_sink = instrument.surface_withheld.get()
+    if _surface_sink is None:
+        _surface_sink = []
+        instrument.surface_withheld.set(_surface_sink)
+    # Bind it, so `withheld_json()` drains on EVERY terminal path rather than only on the one that
+    # happens to advertise. Three of the four live turn shapes persisted `NULL` while the sink held
+    # the row, because the drain lived behind an event a tool-free turn never emits.
+    _advertised.bind_sink(_surface_sink)
     # W1 — advertised tool-schema tokens, reported once by the tool loop's
     # first pass ({"schema_tokens": ...} chunk); folded into the contextBudget
     # frame + the persisted context_breakdown at finish.
@@ -6329,8 +12412,76 @@ async def _emit_chat_turn(
     # how to degrade on a read error (mutation fails OPEN, spend fails CLOSED).
     # Track C WS-3 — returns the standing DECISION ('allow' | 'deny' | None), so ONE
     # read answers both "may it run?" and "has the user forbidden it?".
+    # R5 — the mood of THIS request is a consent input. Computed once, from the user's own
+    # words, by a literal matcher (see request_mood); `unknown` is the default and behaves
+    # exactly as before.
+    _turn_mood = request_mood(user_message_content)
+
+    # 🔴 `unknown` MOOD LET A WEEKS-OLD WRITE GRANT APPLY TO A PLAIN QUESTION — THE MATCHER'S
+    # FAIL-OPEN DEFAULT. R5 above is right and it works when it fires: "How far along is the
+    # translation for this book?" is read `inspect` and the standing grant is set aside. But
+    # `request_mood` is a literal matcher over phrasings, and two measured questions fell through
+    # it to `unknown`, which lets the grant stand:
+    #
+    #     "Who is Mira Solene?"                          -> unknown -> grant APPLIES
+    #     "What canon rules have I declared for this book?" -> unknown -> grant APPLIES
+    #
+    # Both were measured reaching for Tier-A WRITES on 3 of 3 runs (glossary_entity_set_attributes,
+    # kg_project_create). The harness clears standing approvals, which is the only reason those
+    # surfaced as cards instead of writes; the dogfood account holds 46 of them.
+    #
+    # Widening the phrase list would fix those two sentences and leave the class — the next
+    # unrecognised question is the next incident. So the second signal is the platform's OWN
+    # DECLARATION, the same one R1 already trusts to decide the surface: if every tool whose
+    # declared vocabulary matches this request is a READ, the request's own words say it is a
+    # question, whatever the mood matcher made of the phrasing. It is not a guess and there is no
+    # list here to rot.
+    #
+    # Narrow by construction: EMPTY matches nothing (chitchat is unchanged), and a single matched
+    # WRITE stands the whole thing down — "Add a chapter called X" matches the CREATE tools and
+    # keeps its grant exactly as before.
+    _cat_by_name = _catalog_index(list(discovery_catalog or []))
+    _turn_answerable = answerable_tools(user_message_content, list(discovery_catalog or []))
+    _turn_reads_only = bool(_turn_answerable) and all(
+        n in _cat_by_name and tool_tier(_cat_by_name[n]) == "R" for n in _turn_answerable
+    )
+
     async def _decision_check(tool_name: str, kind: str = "mutation") -> str | None:
-        return await get_tool_decision(pool, user_id, tool_name, kind)
+        """The standing decision, moderated by what this turn actually asked for.
+
+        🔴 MEASURED 5/5, 2026-08-13: asked "Show me the outline I've planned for this book",
+        the turn called composition_outline_node_edit (Tier A) and CREATED three chapters.
+        The store went from 7 outline nodes to 10. No card was shown, because a standing
+        "always allow" from 2026-07-30 — granted two weeks earlier while the author was
+        genuinely building — still applied.
+
+        A consent granted while asking a tool to WRITE is not consent for a turn that asked
+        to LOOK. On an unambiguous inspect turn the standing mutation grant is set aside and
+        the Tier-A gate does its job: the call is not blocked, it is ASKED. A deny is never
+        set aside — a standing refusal must hold in every mood.
+        """
+        _decision = await get_tool_decision(pool, user_id, tool_name, kind)
+        if _decision != "allow":
+            # A DENY is never set aside — a standing refusal must hold in every mood.
+            return _decision
+        _mood_ok = standing_grant_applies(_turn_mood, kind=kind)
+        # The declaration arm covers what the phrasing matcher missed, and only for MUTATION:
+        # `spend` already fails closed, and widening a second axis on this evidence would be
+        # asserting more than was measured.
+        _reads_only_block = kind == "mutation" and _turn_reads_only
+        if _mood_ok and not _reads_only_block:
+            return _decision
+        # WARNING, not info: setting aside a consent the author explicitly granted is a
+        # security-relevant event, and its absence from the log is what made this fix
+        # unverifiable for a whole measurement cycle — INFO was not being emitted, so "no line"
+        # meant nothing. An operator must be able to see WHY a card appeared for a tool they
+        # had allowed.
+        logger.warning(
+            "standing %s grant for %s set aside — this turn asked to LOOK, not to change "
+            "(mood=%s, answerable-are-all-reads=%s: %s) — the Tier-A gate will raise a card",
+            kind, tool_name, _turn_mood, _turn_reads_only, sorted(_turn_answerable) or "—",
+        )
+        return None
 
     # P4 REG-P4-03 — resolve the user's declarative hooks once per turn (degrade-safe
     # []). pre_turn inject_text hooks are folded into the system prompt now (steering
@@ -6451,7 +12602,32 @@ async def _emit_chat_turn(
                     logger.warning("stateful chain decision skipped — stateless", exc_info=True)
                     _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
 
+            # ── CP-3 · THE REQUEST PATH · resume half ──────────────────────────────────────
+            # 🔴 **ARM-GATED, AND THE OFF BRANCH TOUCHES NOTHING.** The legacy arm is CP-2's
+            # control group (§7), and CP-1.9 established that a control moved by a change nobody
+            # decided invalidates the comparison before it starts. With the flag off, `messages` is
+            # the same object it was.
+            #
+            # S3-M4: a second message during a live plan ROUTES INTO IT. The plan is prepended as a
+            # system message so the identifiers it carries are in front of the model BEFORE it
+            # chooses a call — which is the whole claim: the conversation evicts them, the plan does
+            # not.
+            if settings.agentruntime_arm:
+                from app.services.plan_turn import live_plan_for_turn, plan_message
+                _plan_turn = await live_plan_for_turn(pool, session_id)
+                if _plan_turn is not None:
+                    messages = [plan_message(_plan_turn), *messages]
+                    logger.info(
+                        "CP-3 request path: session %s routed into live plan %s (%d step(s), "
+                        "%d event(s), resume=%s)",
+                        session_id, _plan_turn.plan_id, len(_plan_turn.spec.steps),
+                        len(_plan_turn.state.events), _plan_turn.is_resume,
+                    )
+
             chunk_stream = _stream_with_tools(
+                prior_request_text=prior_request_text,
+                plan_turn=_plan_turn,
+                plan_events_out=_plan_events,
                 model_source=model_source,
                 model_ref=model_ref,
                 user_id=user_id,
@@ -6479,6 +12655,11 @@ async def _emit_chat_turn(
                     "project_id": str(project_id) if project_id else None,
                 },
                 discovery_catalog=discovery_catalog,
+                legacy_tool_index=legacy_tool_index,
+                # DQ-T5 — the defs the capability floor removed, so a REFUSAL that names one
+                # can unlock it for the rest of this turn. `unlockable_gated` is defined
+                # beside the filter above and is {} when discovery is off.
+                unlockable_gated=unlockable_gated,
                 discovery_extra_frontend=discovery_extra_frontend,
                 discovery_seed_names=discovery_seed_names,
                 curated=curated,
@@ -6507,6 +12688,10 @@ async def _emit_chat_turn(
                 rail_in_flight=rail_in_flight,
                 rail_user_abandoned=user_abandoned_rail(user_message_content),
                 rail_progress=rail_progress,
+                rail_intent_slugs=rail_intent_slugs,
+                rail_stuck_tools=rail_stuck_tools,
+                request_text=request_text,
+                rail_named_tools=rail_named_tools,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -6517,7 +12702,15 @@ async def _emit_chat_turn(
                 gen_params=gen_params,
             )
 
-        async for chunk_data in chunk_stream:
+        # DQ-T56(1) — the whole-turn ceiling wraps the ONE place a turn awaits the
+        # provider. `stream_start` is the turn's own clock, set before the first
+        # emitted line, so the bound covers every pass of the tool loop and not
+        # just the pass that happens to be running.
+        async for chunk_data in _bounded_turn_stream(
+            chunk_stream,
+            started_at=stream_start,
+            ceiling_s=settings.llm_turn_ceiling_s,
+        ):
             # ARCH-1 C6: a suspend chunk — a frontend tool is awaiting client
             # execution. Capture it, stop consuming, and handle below.
             if chunk_data.get("suspend") is not None:
@@ -6557,8 +12750,51 @@ async def _emit_chat_turn(
                         reasoning="".join(full_reasoning),
                         tool_calls_history=tool_calls_history or None,
                         finish_reason="streaming", is_error=False, error_detail=None,
+                        # CP-0.4 — a mid-turn checkpoint records `crashed` PESSIMISTICALLY. If the
+                        # process dies now, this is what the row keeps, and that is the correct
+                        # reading: nothing else will ever run to correct it. The clean finish and
+                        # every terminal handler overwrite it. The failure mode this avoids is the
+                        # opposite default — a checkpoint that writes 'completed' optimistically and
+                        # leaves a dead turn looking successful, which is the one shape of wrongness
+                        # nobody ever investigates.
+                        outcome=instrument.OUTCOME_CRASHED,
+                        advertised_tools=_advertised.advertised_json(),
+                        withheld_tools=_advertised.withheld_json(),
                     )
                 continue
+            # CP-0.1/0.2 — one entry per model pass, appended. This chunk carries no user-visible
+            # payload and emits no SSE line: it exists so the record of what the model was holding
+            # survives the turn, which is the one thing no column answers today.
+            _adv_ev = chunk_data.get("advertised")
+            if _adv_ev is not None:
+                _advertised.record_pass(
+                    _adv_ev.get("names") or [],
+                    tool_choice=_adv_ev.get("tool_choice"),
+                )
+                # Drain the request-scoped sink HERE so assembly-time narrowings are stamped with
+                # the pass they belong to. `withheld_json()` drains again on every terminal path —
+                # this call is for the pass number, not for the delivery, because a turn that never
+                # advertises never reaches this line and is exactly the turn a catalogue outage
+                # produces. See `AdvertisedToolsRecorder.absorb`.
+                _advertised.absorb(_surface_sink)
+                # 🔴 ONE DISPATCH, NOT TWO. This branch handled `pass` and the legacy `"*"` and
+                # **not `catalogue`** — a second dispatch over the same enum, drifting from the
+                # first the moment a scope was added. Latent only because no catalogue row travels
+                # this channel today, which is exactly what "latent" meant about the P0 as well.
+                # Routed through the recorder's own `absorb`, so there is one place that knows the
+                # enum.
+                _legacy = [
+                    {**_w, "scope": instrument.SCOPE_PASS} if _w.get("tool") == "*" else _w
+                    for _w in (_adv_ev.get("withheld") or [])
+                ]
+                _advertised.absorb(_legacy)
+                continue
+            # CP-0.4 / F-17 — the loop REPORTS its terminal reason and this consumer was dropping
+            # it on the floor. I had recorded "the signal does not exist here"; one grep showed it
+            # arrives on every content chunk and no code reads it. Captured now so the outcome is
+            # DERIVED from what the loop said, instead of a constant asserting success.
+            if chunk_data.get("finish_reason"):
+                _loop_finish_reason = chunk_data["finish_reason"]
             # W1 — tool-schema token measurement from the loop's first pass.
             schema_tokens = chunk_data.get("schema_tokens")
             if schema_tokens is not None:
@@ -6650,6 +12886,21 @@ async def _emit_chat_turn(
                 pinned_step_tools=pinned_step_tools,
                 # P-1 — carry the rail's book so the resume can keep driving past the confirm.
                 book_id=(context_ids or {}).get("book_id"),
+                # TOOL DEEP-DIVE (2026-08-13) — and carry whether this was a STUDIO turn. The
+                # book alone is not the same fact: a plain book-surface turn also has a book,
+                # and the single-book override must not fire there.
+                studio=bool((context_ids or {}).get("studio")),
+                # TOOL DEEP-DIVE (2026-08-24) — and carry the OTHER TWO context ids, closing
+                # the hole the note above opened by fixing only `studio`. `_crosswired_ids`
+                # identifies a mis-wired id by exact match against the turn's OTHER ids, so
+                # with chapter_id absent on the resume it has nothing to match: a chapter id
+                # sent as `book_id` sails through and the book-scope check refuses it.
+                # Measured (c-gbuild5): every run resumed through an approval card and on 4 of 4
+                # failing calls the book_id EQUALLED that run's chapter_id — the author was told
+                # "I'm having a technical issue accessing the book's database" and the writes
+                # they asked for did not happen, on a book that was fine.
+                chapter_id=(context_ids or {}).get("chapter_id"),
+                project_id=(context_ids or {}).get("project_id"),
             )
             # DBT-CHAT-PERSIST — persist the reply produced UP TO the suspend as a
             # visible message NOW (prose so far + the completed tools + the pending
@@ -6659,19 +12910,55 @@ async def _emit_chat_turn(
             # 'stop' reply. finish_reason='awaiting_input' shows NO failure badge
             # (the card itself is the affordance); if the run is later abandoned the
             # resume-expired path flips it to 'interrupted'.
-            _pending_record = {
+            # 🔴 **CP-5.5 — THE TURN ALREADY GOT THIS RIGHT AND THE CALL INSIDE IT DID NOT.**
+            # Twelve lines below, `outcome=OUTCOME_AWAITING_INPUT` carries the note *"asking the
+            # user is a SUCCESS state (§0.5), not a stall … counting it as a failure would score
+            # the correct behaviour as the defect."* This record — the very call that did the
+            # asking — was written `ok: False` with no message, so the lesson held at the turn
+            # level and was inverted one field away.
+            #
+            # Measured: **all 41 of the "failures with no message" §1 files under the error
+            # contract are these**, not one of them a tier-R read, and 38 sit in turns the human
+            # never returned to. `stamp_deferred` makes the call say what the turn already says.
+            _pending_record = instrument.stamp_deferred({
                 "tool": pending.get("name"),
+                # `ok` is retained UNCHANGED: the FE and the resume driver read it, and this row
+                # is about adding the typed fact beside it, not about breaking every consumer to
+                # deliver it. `call_outcome` is what a measurement reads from here on.
                 "ok": False,
                 "pending": True,
                 "runId": run_id,
                 "toolCallId": pending.get("id"),
                 "args": pending.get("args"),
-            }
+            })
             # ext-tasks (T1c(3.e)) — carry the durable-task info so a reload renders
             # the confirm card (title/preview from inputRequests). None for a normal
             # frontend-tool suspend (omitted below), so this is dormant there.
             if pending.get("task") is not None:
                 _pending_record["task"] = pending["task"]
+            # ── DQ-T54 (owner, 2026-08-28) · THE TURN SAYS WHAT THE PLATFORM KNOWS ──────────
+            # Fires on SUSPENSION, which is the owner's own build note — "not on the presence of
+            # a card, or a turn whose card was approved in-flight gets told nothing was saved
+            # when it was". This branch runs at the moment the turn suspends, so the statement
+            # is true by construction: the pending call has not executed.
+            #
+            # Appended BEFORE the persist so a reload shows the same text the live stream did —
+            # the two must not disagree — and emitted below before `close_message()` so it lands
+            # inside the assistant message the author is reading rather than after its END frame.
+            # DQ-T71 (owner, 2026-08-31) — THE BRIEF RIDES THE LINE THAT IS ALREADY HERE.
+            # "Nothing has been saved yet" is true of the CARD and false of any write this turn
+            # already landed, which is the 4.8%-of-carded-writes direction: the reply denies a
+            # write its own tool result confirms. Naming what completed, beside the line about
+            # what has not, makes the sentence the author reads a complete account instead of
+            # half of one. The refusal half rides the same append for the same reason.
+            _suspend_text = (
+                _NOTHING_SAVED_YET_LINE
+                + _completed_in_this_turn(tool_calls_history)
+                + _turn_brief(tool_calls_history)
+            )
+            full_content.append(_suspend_text)
+            for _line in emitter.text_delta(_suspend_text):
+                yield _line
             await _persist_terminal_assistant(
                 pool,
                 msg_id=msg_id, session_id=session_id, user_id=user_id,
@@ -6680,6 +12967,12 @@ async def _emit_chat_turn(
                 reasoning="".join(full_reasoning),
                 tool_calls_history=[*tool_calls_history, _pending_record],
                 finish_reason="awaiting_input", is_error=False, error_detail=None,
+                # CP-0.4 — asking the user is a SUCCESS state (§0.5), not a stall. A model that
+                # stops to ask when it does not know is doing the thing we want; counting it as a
+                # failure would score the correct behaviour as the defect.
+                outcome=instrument.OUTCOME_AWAITING_INPUT,
+                advertised_tools=_advertised.advertised_json(),
+                withheld_tools=_advertised.withheld_json(),
             )
             # close any open assistant/reasoning message first
             for line in emitter.close_message():
@@ -6707,6 +13000,63 @@ async def _emit_chat_turn(
                 yield line
             return
 
+        # ── DQ-T33 (owner, 2026-08-28) · A BLANK REPLY BECOMES THE TOOL'S OWN LAST WORDS ──
+        # "YES — surface the last TOOL error to the author when a turn ends with no
+        # user-visible text, SANITISED so an internal trace is never pasted at an author."
+        #
+        # Placed HERE, above `close_message()`, because the fallback has to be part of the
+        # assistant message the author is reading — emitted after the close it would arrive
+        # outside the frame the FE renders, which is a silent turn with extra steps.
+        #
+        # SCOPE, and it is narrow on purpose: this site is only ever reached by a turn with NO
+        # confirm card (the awaiting_input branch above `return`s), so a carded turn cannot pick
+        # up a stray error line beside its card. The 150 measured "wrote, then asked for
+        # approval" turns are NOT this — what they need is the CARD naming the completed write,
+        # which is a different and still-undecided remedy (see
+        # D-A-TURN-THAT-EXHAUSTS-ITS-PASSES-WRITES-AND-SAYS-NOTHING).
+        #
+        # `_silent_turn` is captured BEFORE the fallback is appended. The turn still failed —
+        # the model produced nothing of its own — and the outcome must keep saying so, or this
+        # change would quietly convert 67 recorded failures into completions and destroy the
+        # very count D-SILENT-TURN-NO-CARD-NO-PROSE exists to keep.
+        _silent_turn = not "".join(full_content).strip()
+        if _silent_turn:
+            _tool_last_word = _last_tool_error_for_author(tool_calls_history)
+            if not _tool_last_word:
+                # DQ-T75 — nothing FAILED, so there is no error to surface. The turn is still not
+                # empty-handed: it holds a successful result, and the owner's ruling is that it
+                # says what it read. Second in order deliberately, so an error always wins: a
+                # turn that both failed a call and succeeded at another must report the failure.
+                _tool_last_word = _last_tool_success_for_author(tool_calls_history)
+            if _tool_last_word:
+                full_content.append(_tool_last_word)
+                for _line in emitter.text_delta(_tool_last_word):
+                    yield _line
+                logger.info(
+                    "silent turn: surfacing the last tool error to the author (session=%s): %r",
+                    session_id, _tool_last_word[:120],
+                )
+
+        # ── DQ-T71 (owner, 2026-08-31) · THE TURN BRIEF ────────────────────────────────────
+        # The non-carded finish. This is where the LARGER direction lives — the call refused and
+        # the reply says it succeeded, 8.5% of the turns that hit a refusal, against 4.8% for the
+        # inverse on the carded path. No card is involved, so neither the suspend line nor the
+        # Tier-W/S steer reaches it; the model has simply written a reply that its own tool
+        # results contradict, and the only remaining lever is what the author reads.
+        #
+        # Placed beside the DQ-T33 fallback and for the same reason — above `close_message()`, so
+        # it lands INSIDE the assistant message rather than after its END frame. The two do not
+        # collide: that one fires on a turn with no text at all and returns the tool's error as
+        # the whole reply; this one fires on a turn that DID speak and whose record disagrees
+        # with it. A silent turn carrying one failed call gets the fallback and then a brief
+        # naming the same call, which is repetitive but never wrong, and the silent population is
+        # the one already known to be the worst-informed.
+        _brief = _turn_brief(tool_calls_history)
+        if _brief:
+            full_content.append(_brief)
+            for _line in emitter.text_delta(_brief):
+                yield _line
+
         # ARCH-1 C3: token stream is done — close the open assistant/reasoning
         # message so its END frames the content, before the run-level
         # persisted/finish events (no-op in legacy mode).
@@ -6716,6 +13066,84 @@ async def _emit_chat_turn(
         response_time_ms = (_time.monotonic() - stream_start) * 1000
         final_text = "".join(full_content)
         final_reasoning = "".join(full_reasoning)
+
+        # ── D-SILENT-TURN-NO-CARD-NO-PROSE ────────────────────────────────────────────────
+        # A turn that produces no user-visible text is not a completed turn.
+        #
+        # MEASURED 2026-08-14 over 347 recorded runs: 21 turns across 8 tools ended with NO
+        # prose, NO confirm card and no approval — composition_arc_get 5, glossary_curation_list
+        # 3, plan_compile 3, jobs_get 3, translation_job_status 3, settings_model_delete 2,
+        # jobs_list 1, memory_recall_entity 1. Every one was stored outcome='completed',
+        # is_error=false, finish_reason='stop', so every count that reads outcomes saw a success
+        # while the author saw an empty reply. The commonest trigger is a tool returning an
+        # argument-repair message ("... is missing required argument(s) ... do NOT guess a
+        # value"): the model reads it, declines to guess — correctly — and then says nothing.
+        #
+        # THE CONTROL, which is why this is scoped to `full_content` and not to "no tool
+        # result": 113 of those 347 turns had no prose, but 92 SUSPENDED ON A CONFIRM CARD,
+        # where the card IS the output and prose is legitimately absent. Those never reach this
+        # site — the awaiting_input handler persists them — so this guard cannot see them, and
+        # scoping it here rather than at a shared helper is what keeps the two apart.
+        #
+        # is_error is the seam the row model already has for this: `outcome_for_finish_reason`
+        # takes it, so the outcome becomes `failed` while `finish_reason` keeps reporting
+        # whatever the loop actually reported. That preserves F-19 — the two still derive from
+        # one signal and the row does not contradict itself — while making the turn countable.
+        # What this does NOT do is invent a reply; putting words in the assistant's mouth here
+        # would be this loop's own "prose is not the lever" mistake in service code.
+        # NOT recomputed from `final_text`: that now includes the surfaced tool error, so a
+        # recomputation here would read every rescued turn as a completion. The flag was taken
+        # above, before the fallback was appended, and it is the honest one.
+        if _silent_turn:
+            logger.warning(
+                "silent turn: session=%s produced NO user-visible text with no confirm card "
+                "after %d tool call(s) (last: %s) — recording outcome=failed, because a turn the "
+                "author experiences as the product doing nothing is not a completion",
+                session_id, len(tool_calls_history),
+                tool_calls_history[-1].get("name") if tool_calls_history else None,
+            )
+
+        # ── CP-3 · THE REQUEST PATH · create half ──────────────────────────────────────────
+        # A fenced ```plan block in the reply creates the session's plan, or revises it as a new
+        # VERSION when one is live. Arm-gated, and outside the persist transaction below: adopting a
+        # plan must never be able to lose the assistant message that proposed it.
+        #
+        # 🔴 **A REJECTION IS LOGGED WITH ITS LOCUS, NEVER SWALLOWED.** The worst outcome available
+        # here is a model that believes it has a plan while the service has none — every later turn
+        # then binds against a plan that does not exist, and the failure surfaces at a step nobody
+        # can trace back to the parse.
+        # CP-3 — persist what the executor observed, BEFORE any adoption can supersede the plan
+        # those events belong to. A `step_emitted` written against a superseded plan is a fact
+        # filed under the wrong version, which is the shape §0.11 splits SPEC and STATE to prevent.
+        if _plan_turn is not None and _plan_events:
+            try:
+                from app.db import plans as _plan_db
+                async with pool.acquire() as _pc:
+                    for _ev in _plan_events:
+                        await _plan_db.append_event(_pc, UUID(_plan_turn.plan_id), _ev)
+                logger.info("CP-3 executor: persisted %d plan event(s) for %s",
+                            len(_plan_events), _plan_turn.plan_id)
+            except Exception:  # noqa: BLE001 — a plan must never cost the user their reply
+                logger.warning("CP-3 plan event persistence failed", exc_info=True)
+
+        _plan_adoption = None
+        if settings.agentruntime_arm:
+            from app.services.plan_turn import adopt_plan_from_reply
+            try:
+                _plan_adoption = await adopt_plan_from_reply(pool, session_id, final_text)
+            except Exception:  # noqa: BLE001 — a plan must never cost the user their reply
+                logger.warning("CP-3 plan adoption failed", exc_info=True)
+            else:
+                if _plan_adoption.rejected_with:
+                    logger.warning(
+                        "CP-3 request path: session %s proposed a plan that was REJECTED — %s",
+                        session_id, _plan_adoption.rejected_with,
+                    )
+                elif _plan_adoption.adopted:
+                    logger.info(
+                        "CP-3 request path: session %s adopted plan %s v%d",
+                        session_id, _plan_adoption.plan_id, _plan_adoption.version,
+                    )
 
         # ── Persist assistant message ───────────────────────────────────────
         # K13.2: wrap the three INSERTs + outbox event in one transaction
@@ -6732,11 +13160,10 @@ async def _emit_chat_turn(
                 # a global MAX would jump the assistant PAST branched-away seqs
                 # (and past a W3 compact boundary) while user messages stay low
                 # — the review-impl H1 asymmetric-visibility bug.
-                seq = await conn.fetchval(
-                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages "
-                    "WHERE session_id = $1 AND branch_id = 0",
-                    session_id,
-                )
+                # D-AN-ABORTED-TURNS-DETACHED-WRITE-RACES-THE-RETRYS-SEQUENCE — this is the
+                # DETACHED writer: an aborted turn's reply is persisted after cancel, and the
+                # client's retry races it. One lock, held to COMMIT, covers both.
+                seq = await next_sequence_num(conn, session_id)
                 input_tok = getattr(last_usage, "prompt_tokens", None) if last_usage else None
                 output_tok = getattr(last_usage, "completion_tokens", None) if last_usage else None
 
@@ -6751,8 +13178,15 @@ async def _emit_chat_turn(
                 content_parts = json.dumps(parts) if parts else None
                 # K21-B: tool-call history for UI replay — NULL when the
                 # turn made no tool calls.
+                # CP-0.3 — the clean-finish chokepoint, the sibling of the one in
+                # _persist_terminal_assistant. Both INSERT sites pass through it, so there is no
+                # route from a mint site to the tool_calls column that skips the source stamp.
                 tool_calls_json = (
-                    json.dumps(tool_calls_history) if tool_calls_history else None
+                    json.dumps([
+                        instrument.ensure_tool_call_instrumented(_tc)
+                        for _tc in tool_calls_history
+                    ])
+                    if tool_calls_history else None
                 )
 
                 # ── W1: finalize the per-turn context frame payload ─────────
@@ -6904,12 +13338,14 @@ async def _emit_chat_turn(
                 # us whether this was a genuine INSERT so message_count is bumped
                 # exactly once (a checkpoint already counted it).
                 _ins_row = await conn.fetchrow(
-                    """
+                    f"""
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
-                       context_breakdown, response_id, exclude_from_memory, local_date, finish_reason)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, 'stop')
+                       context_breakdown, response_id, exclude_from_memory, local_date, finish_reason,
+                       outcome, advertised_tools, withheld_tools, runtime_variant, outcome_source)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, $20,
+                            $16,$17::jsonb,$18::jsonb,$19,'path')
                     ON CONFLICT (message_id) DO UPDATE SET
                       content = EXCLUDED.content,
                       content_parts = EXCLUDED.content_parts,
@@ -6921,15 +13357,59 @@ async def _emit_chat_turn(
                       response_id = EXCLUDED.response_id,
                       exclude_from_memory = EXCLUDED.exclude_from_memory,
                       local_date = EXCLUDED.local_date,
-                      finish_reason = 'stop',
+                      finish_reason = EXCLUDED.finish_reason,
                       is_error = false,
-                      error_detail = NULL
+                      error_detail = NULL,
+                      -- CP-0.4 — the clean finish is the ONE path that may assert completion, and it
+                      -- overwrites whatever a mid-turn checkpoint left here (a 'crashed' derived from
+                      -- 'streaming'). The reverse never happens: a checkpoint COALESCEs instead.
+                      outcome = EXCLUDED.outcome,
+                      outcome_source = 'path',
+                      -- F-48 — segment-scoped replace, from `instrument.segment_merge_sql`. The
+                      -- terminal handler re-sends the recorder's FULL list, and every mid-turn
+                      -- checkpoint sent it too; unconditional concatenation therefore stored each
+                      -- pass once per write. Measured on the real recorder: a 3-pass turn with 2
+                      -- checkpoints stored 7 entries numbered [1,2,1,2,1,2,3]. Replacing only this
+                      -- writer's own segment makes the write idempotent while still preserving a
+                      -- RESUME's separate segment, which is what the concatenation was protecting.
+                      {instrument.segment_merge_sql("advertised_tools")},
+                      {instrument.segment_merge_sql("withheld_tools")},
+                      runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                     json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
                     _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
+                    # F-17 — DERIVED from the loop's own terminal reason, no longer a constant.
+                    #
+                    # This bound `completed` unconditionally while the repeated-failure breaker's
+                    # exit reaches the same INSERT, so a turn cut short by the breaker recorded a
+                    # success. I had written that fixing it needed a signal the consumer did not
+                    # carry — that was wrong, and checking cost one grep: the loop emits
+                    # `finish_reason` on every content chunk and nothing read it.
+                    #
+                    # HONEST LIMIT, because deriving is not the same as distinguishing: this now
+                    # reflects whatever the loop reports, and if the breaker exit reports `stop`
+                    # like any other completion, the recorded outcome is unchanged. What is fixed is
+                    # that the value is no longer ASSERTED — a distinct terminal reason now flows
+                    # through instead of being overwritten. Whether the breaker produces one is a
+                    # live question for a verifier, not something to settle by reading the code I
+                    # just wrote.
+                    instrument.outcome_for_finish_reason(
+                        _loop_finish_reason or "stop", is_error=_silent_turn),
+                    json.dumps(_advertised.advertised_json()) if _advertised.advertised_json() else None,
+                    json.dumps(_advertised.withheld_json()) if _advertised.withheld_json() else None,
+                    # CP-0.7 — DERIVED, never the constant. This is the CLEAN-FINISH path: the
+                    # largest population by far, and while it wrote a literal the column could not
+                    # record an agentruntime turn at all. Measured 2026-08-09: 5,975 rows, every one
+                    # `legacy`, on a column whose whole premise is that the arms are separable.
+                    instrument.current_runtime_variant(),
+                    # F-19 — `finish_reason` and `outcome` now derive from THE SAME signal. Pinning
+                    # 'stop' here while the outcome varied made the row contradict itself, which is
+                    # worse than either value alone being wrong: a reader cannot tell which half to
+                    # believe. This is the verifier's satisfiable gate, applied.
+                    _loop_finish_reason or "stop",
                 )
                 _did_insert = bool(_ins_row and _ins_row["inserted"])
                 if _exclude_mem and parent_message_id:
@@ -7062,7 +13542,18 @@ async def _emit_chat_turn(
         # cancelled; await-only (no yield) is safe inside GeneratorExit cleanup.
         if not _persisted:
             try:
-                await asyncio.shield(
+                # CP-0.4 — DETACH, then shield. `await asyncio.shield(coro)` is not enough here and
+                # measured as failing on EVERY cancel: this handler is already unwinding a
+                # CancelledError, so the next `await` re-raises it immediately — frequently before
+                # the wrapped coroutine has been scheduled at all. The write was abandoned and the
+                # except branch below logged "interrupt-persist failed", which is why every cancel
+                # produced that line while the only surviving row came from a later fallback.
+                #
+                # Creating the task FIRST schedules it independently of this task's fate, and the
+                # strong reference keeps it from being garbage-collected mid-flight (a bare
+                # create_task result is weakly held by the loop). Then shield the await, so being
+                # cancelled again costs us the acknowledgement, never the write.
+                _cancel_write = asyncio.create_task(
                     _persist_terminal_assistant(
                         pool,
                         msg_id=msg_id, session_id=session_id, user_id=user_id,
@@ -7071,7 +13562,28 @@ async def _emit_chat_turn(
                         reasoning="".join(full_reasoning),
                         tool_calls_history=tool_calls_history,
                         finish_reason="interrupted", is_error=False, error_detail=None,
+                        # CP-0.4 — `finish_reason` stays 'interrupted' (the FE badge and every
+                        # existing reader depend on it; nothing is deleted). `outcome` is where the
+                        # truth goes: CancelledError/GeneratorExit here means the user stopped the
+                        # turn or the client went away, which is NOT a failure. Fusing the two is
+                        # what made the run's own `interrupted` baseline uninterpretable — a metric
+                        # containing both "the user changed their mind" and "we lost the turn"
+                        # cannot move in a direction that means anything.
+                        outcome=instrument.OUTCOME_ABANDONED_BY_USER,
+                        advertised_tools=_advertised.advertised_json(),
+                        withheld_tools=_advertised.withheld_json(),
                     )
+                )
+                _DETACHED_CANCEL_WRITES.add(_cancel_write)
+                _cancel_write.add_done_callback(_DETACHED_CANCEL_WRITES.discard)
+                await asyncio.shield(_cancel_write)
+            except asyncio.CancelledError:
+                # Expected, and NOT a failure: we were cancelled again while waiting for the
+                # acknowledgement. The detached task owns the write and is still running. Logging
+                # this as a failure is what made every cancel look broken when most were not.
+                logger.info(
+                    "interrupt-persist detached for session %s (write continues after cancel)",
+                    session_id,
                 )
             except BaseException:  # noqa: BLE001 — cleanup must never mask the cancel
                 logger.warning(
@@ -7079,12 +13591,76 @@ async def _emit_chat_turn(
                 )
         raise
 
+    except TurnCeilingExceeded as ceiling_exc:
+        # ── DQ-T56(2) · A VISIBLE END ────────────────────────────────────────────────────────
+        # This arm exists so the ceiling does NOT fall through to the generic error handler
+        # below. That handler persists `content="".join(full_content)` — which on the failure
+        # this closes is the EMPTY STRING, because a turn that hung before its first token
+        # produced nothing. `_persist_terminal_assistant` skips a truly-empty turn and stamps
+        # the outcome onto the USER's row instead, and the author is left with their own
+        # message standing alone and the turn's fate in a column only the database can read.
+        # That is exactly the outcome the owner decided against.
+        #
+        # 🔴 THE OBJECTION THE CODE RECORDED IS HONOURED, NOT OVERRULED. The empty-turn skip
+        # says a blank assistant bubble "would be noise" and that writing one is a product
+        # change that checkpoint had no business making. Both remain true: what goes in is not
+        # a blank bubble, it is a row that SAYS the turn did not complete and why. The change
+        # is made deliberately, by decision, and only on this path.
+        logger.warning(
+            "turn-ceiling: session %s ran %.0fs past a %.0fs ceiling (%d tool calls so far)",
+            session_id, ceiling_exc.elapsed_s, ceiling_exc.ceiling_s, len(tool_calls_history),
+        )
+        _ceiling_note = (
+            f"This turn did not complete. The model stopped responding, so it was ended after "
+            f"{_humanize_seconds(ceiling_exc.elapsed_s)} rather than left running with nothing "
+            "to show. Your message is still here — send it again to retry."
+        )
+        if tool_calls_history:
+            # Never claim nothing happened. By the time the ceiling fires, tools may already
+            # have run and written, and a message implying otherwise would be a lie the author
+            # acts on.
+            _ceiling_note += (
+                " Any tool calls already made in this turn ran, and their effects stand."
+            )
+        _partial = "".join(full_content)
+        _ceiling_content = f"{_partial}\n\n{_ceiling_note}" if _partial else _ceiling_note
+        if not _persisted:
+            await _persist_terminal_assistant(
+                pool,
+                msg_id=msg_id, session_id=session_id, user_id=user_id,
+                parent_message_id=parent_message_id, model_ref=model_ref,
+                content=_ceiling_content,
+                reasoning="".join(full_reasoning),
+                tool_calls_history=tool_calls_history,
+                # `error` + is_error is the shape the FE already badges "incomplete"; inventing
+                # a new finish_reason here would change how every existing reader renders this
+                # row to say something `error_detail` and the content already say.
+                finish_reason="error", is_error=True,
+                error_detail=str(ceiling_exc),
+                # Reusing `failed` rather than minting a 7th outcome: the turn DID fail, and
+                # `failed` is not the kind of fusion `interrupted` was — nothing about a
+                # ceiling expiry is a success or a user choice. A new enum value would mean a
+                # forward-only migration against the column's CHECK constraint plus every
+                # reader of a closed vocabulary, to record what `error_detail` states exactly.
+                outcome=instrument.OUTCOME_FAILED,
+                advertised_tools=_advertised.advertised_json(),
+                withheld_tools=_advertised.withheld_json(),
+            )
+        # Close any open assistant/reasoning message, then deliver the note as CONTENT rather
+        # than only as an error frame: an error frame is a banner the FE may render and drop,
+        # while the persisted row above is what a reload shows. Both now say the same thing.
+        for line in emitter.text_delta(
+            _ceiling_note if not _partial else f"\n\n{_ceiling_note}"
+        ):
+            yield line
+        for line in emitter.close_message():
+            yield line
+        for line in emitter.error(str(ceiling_exc)):
+            yield line
+
     except Exception as exc:
         logger.exception("Stream error for session %s", session_id)
-        # Sanitize error message — don't leak internal details
-        safe_msg = str(exc)
-        if any(kw in safe_msg.lower() for kw in ("traceback", "file ", "/usr/", "password", "secret")):
-            safe_msg = "An internal error occurred. Please try again."
+        safe_msg, _err_code = _author_facing_error(exc)
         # DBT-CHAT-PERSIST — persist whatever the model already streamed before
         # the throw so the turn is not lost on reload; is_error marks it and the
         # FE badges it "incomplete". (Covers the reported case: a mid-turn BE
@@ -7098,8 +13674,11 @@ async def _emit_chat_turn(
                 reasoning="".join(full_reasoning),
                 tool_calls_history=tool_calls_history,
                 finish_reason="error", is_error=True, error_detail=safe_msg,
+                outcome=instrument.OUTCOME_FAILED,
+                advertised_tools=_advertised.advertised_json(),
+                withheld_tools=_advertised.withheld_json(),
             )
-        for line in emitter.error(safe_msg):
+        for line in emitter.error(safe_msg, _err_code):
             yield line
 
     # ── Post-turn best-effort side-effects (auto-title + billing) ────────────
@@ -7208,8 +13787,11 @@ async def resume_stream_response(
     rehydrated conversation, re-derives tool defs, and streams the 2nd LLM pass
     via the shared _emit_chat_turn. Yields an AG-UI RUN_ERROR if the suspended
     run is missing/expired."""
-    from app.services.frontend_tools import frontend_tool_defs
     from app.db.suspended_runs import load_suspended_run_any
+
+    # CP-0.2 / U-2 — the resumed turn's narrowing sink, armed before its first decision. A resume
+    # re-derives its whole surface from scratch (WS-3), so it narrows as much as a fresh turn does.
+    instrument.arm_turn_surface()
 
     susp = await load_suspended_run(pool, run_id, user_id)
     if susp is None or susp.pending_tool_call.get("id") != tool_call_id:
@@ -7238,19 +13820,64 @@ async def resume_stream_response(
     # Append the frontend tool's result (the human's apply decision) so the
     # agent can acknowledge it in the 2nd pass.
     working = list(susp.working)
+
+    # 🔴 A RESUME IS NOT AUTOMATICALLY CARRYING THE ORIGINAL REQUEST, AND ASSUMING SO
+    # LEFT THIS PATH BROKEN. The resume site passes `susp.user_message_content` on the
+    # reasoning that a suspended run remembers what it was suspended on — true, but when the
+    # SUSPENDED TURN IS ITSELF THE CONFIRMATION, that text is the bare affirmative. Measured
+    # 2026-08-31: after the FE posted tool-results the turn continues through HERE, and every
+    # pass logged "0 promised, 0 on the wire" where the original request would have promised
+    # 5. A look-back applied only at the first entry point covers pass 1 and loses the tool
+    # for the rest of the turn.
+    _lookback_request_text: str = ""
+    try:
+        _rprev = await pool.fetchrow(
+            """
+            SELECT tool_calls, advertised_tools FROM chat_messages
+            WHERE session_id = $1 AND role = 'assistant' AND is_error = false AND branch_id = 0
+            ORDER BY sequence_num DESC LIMIT 1
+            """,
+            session_id,
+        )
+        if _rprev is not None:
+            _rvals = []
+            for _col in ("tool_calls", "advertised_tools"):
+                _v = _rprev[_col]
+                if isinstance(_v, str):
+                    try:
+                        _v = json.loads(_v)
+                    except (TypeError, ValueError):
+                        _v = []
+                _rvals.append(_v if isinstance(_v, list) else [])
+            _lookback_request_text = prior_request_for_lookback(
+                working, _rvals[0], _rvals[1])
+    except Exception:  # noqa: BLE001 — a surfacing hint must never break a resume
+        logger.debug("R1 look-back (resume): prior-turn state unavailable", exc_info=True)
     # RAID C2 (DR-C2 §4) — a `tool_approval` suspend resumes with
     # approved_once | approved_always | denied; its tool result is the REAL
     # server execution (or the denial), computed below once knowledge_client +
     # project_id are in scope — NOT the generic outcome echo.
     _approval_args = susp.pending_tool_call.get("args")
+    # DQ-T76 — a disambiguation pick resumes through the APPROVAL machinery on purpose.
+    # The author chose a row; the tool then has to run with every guard the approved path
+    # already carries — the saved-book repair, the listed-scalar-id unwrap, and the standing
+    # deny re-check that stops a stale card executing a tool blocked since it was raised.
+    # Rebuilding any of that beside it would be a second, weaker execution site.
+    is_disambiguation = (
+        isinstance(_approval_args, dict)
+        and _approval_args.get("kind") == "disambiguation"
+    )
     is_approval = (
         isinstance(_approval_args, dict)
         and _approval_args.get("kind") == "tool_approval"
-    )
+    ) or is_disambiguation
     # ext-tasks (T1c(3.c)) — a durable-gate suspend (step b marked pending["task"]).
     # Like an approval, its tool result is the REAL execution (call the domain's
     # provide-input tool below once knowledge_client is in scope), NOT the outcome echo.
     is_task = (not is_approval) and bool(susp.pending_tool_call.get("task"))
+    #: The resolution row for a plain frontend suspension — see the block below. `None` on the
+    #: approval and task paths, which record their REAL execution instead.
+    _fe_resolved_chunk: dict | None = None
     if not is_approval and not is_task:
         if result is not None:
             # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
@@ -7265,6 +13892,31 @@ async def resume_stream_response(
             "tool_call_id": tool_call_id,
             "content": tool_result_content(result_payload),
         })
+        # ── TOOL-V2 LOOP #3 · THE OTHER HALF OF CP-5.5 ───────────────────────────────────
+        # 🔴 The human's decision arrived HERE and, until now, went only into `working` — prose
+        # for the model to read, and nothing a measurement can see. The suspension's own row
+        # stays `deferred` forever, so "the user applied the edit" and "the user walked away"
+        # are the same row.
+        #
+        # Measured on `glossary_propose_entity_edit`: proven end to end on a throwaway book —
+        # glossary_search → glossary_get_entity → propose with a real entity_id, attr_value_id
+        # and base_version → apply-edit 200 → the description changes in the database — and it
+        # reads **0 successes in 101 calls**, because a frontend tool suspends and `ok:true` is
+        # written only where a dispatch returns. Any queue ranking tools by success puts working
+        # tools at the top of its broken list. This loop's own queue did exactly that.
+        _fe_resolved_chunk = instrument.stamp_tool_call(
+            instrument.resolve_deferred({
+                "id": f"{tool_call_id}:resolved", "iteration": 0,
+                "tool": str(susp.pending_tool_call.get("name") or ""),
+                "args": susp.pending_tool_call.get("args") or {},
+                # `ok` mirrors the typed outcome for the readers that predate C-14. It is the
+                # derived field here, not the authority — that inversion is the whole row.
+                "ok": outcome in ("applied_saved", "applied", "action_done", "accept",
+                                  "confirmed") or (outcome is None and result is not None),
+                "result": None, "error": None,
+            }, outcome, had_result=result is not None),
+            source=instrument.SOURCE_TOOL,
+        )
 
     # Re-derive session gen_params + tool defs for the 2nd pass.
     session_row = await pool.fetchrow(
@@ -7332,6 +13984,7 @@ async def resume_stream_response(
     # acknowledges the REAL outcome. The provide-input tool is domain-unique
     # (<prefix>_task_provide_input, gateway-routable — see the routing fix), derived from
     # the gate tool's provider prefix. Accept outcomes confirm; anything else declines.
+    _task_chunk: dict | None = None
     if is_task:
         _task = susp.pending_tool_call.get("task") or {}
         _gate = str(susp.pending_tool_call.get("name") or "")
@@ -7339,13 +13992,25 @@ async def resume_stream_response(
         _accepted = outcome in (
             "applied_saved", "action_done", "accept", "applied", "approved_once", "confirmed",
         )
+        # CP-0.3 — the THIRD real dispatch, and until now the only one recording NOTHING: it fed
+        # `working` and never produced a tool_calls entry, so a durable human-gated task resolving
+        # left no trace in the turn's history at all. Not merely unclassified — absent.
+        _task_t0 = _time.monotonic()
         _tenv = await knowledge_client.mcp_execute_tool(
             user_id=user_id, session_id=session_id, project_id=project_id,
             tool_name=_provide_tool,
             tool_args={"task_id": _task.get("taskId"), "accepted": _accepted},
             admin_token=admin_token,
         )
+        _task_ms = int((_time.monotonic() - _task_t0) * 1000)
         _tres = _tenv.get("result") if _tenv.get("success") else {"error": _tenv.get("error")}
+        _task_chunk = instrument.stamp_tool_call({
+            "id": tool_call_id, "iteration": 0, "tool": _provide_tool,
+            "args": {"task_id": _task.get("taskId"), "accepted": _accepted},
+            "ok": bool(_tenv.get("success")),
+            "result": _tenv.get("result") if _tenv.get("success") else None,
+            "error": None if _tenv.get("success") else _tenv.get("error"),
+        }, source=instrument.SOURCE_TOOL, latency_ms=_task_ms)
         working.append({
             "role": "tool", "tool_call_id": tool_call_id,
             "content": tool_result_content(_tres if _tres is not None else {}),
@@ -7358,7 +14023,25 @@ async def resume_stream_response(
     #                     self-corrects (no execution).
     # The executed call is surfaced via pre_tool_chunks (tool_call + activity
     # events + persisted history) — C-ACTIVITY parity, undo unchanged.
-    pre_tool_chunks: list[dict] | None = None
+    # CP-0.3 — carry the ext-task dispatch into the recorded history. `pre_tool_chunks` is the
+    # existing channel for "a tool ran before the loop re-entered"; the task path simply never used
+    # it, which is why its execution was invisible rather than mislabelled.
+    pre_tool_chunks: list[dict] | None = [
+        _c for _c in (_fe_resolved_chunk, _task_chunk) if _c is not None
+    ] or None
+    # Bound HERE, at function scope, and populated only in the approval branch. It is READ by
+    # the seed derivation far below, which runs on resume paths that never took that branch —
+    # declaring it where it is populated would NameError on every confirm-only resume. (Same
+    # class as the tool_calls_history slip caught earlier this session: a diagnostic that breaks
+    # only on the turn it exists to serve.)
+    # 🔴 THE TEXT IS CAPTURED HERE AND RESOLVED LATER, AND THE ORDER IS THE WHOLE POINT. My
+    # first version resolved names at the dispatch site — which runs BEFORE `catalog` is fetched
+    # (L~11332), so the `and catalog` guard was false every time and the collection silently did
+    # nothing. Measured: three suspended runs of composition_entity_override_edit, zero
+    # carry-forward log lines. Resolution now happens beside the seed, where the catalogue
+    # exists.
+    _resume_refusal: str = ""
+    _resume_refused_tool: str = ""
     if is_approval:
         _appr = _approval_args if isinstance(_approval_args, dict) else {}
         _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")
@@ -7366,7 +14049,31 @@ async def resume_stream_response(
         # Same scalar-id list-unwrap the main dispatch does — the frozen consent args can carry
         # gemma's project_id=[uuid] (measured: connect-people 400'd "you sent a list").
         _coerce_listed_scalar_ids(_tool_args)
-        _decision = outcome if outcome in ("approved_once", "approved_always", "denied", "denied_always") else "denied"
+        if is_disambiguation:
+            # The outcome IS the chosen id. Anything else — a cancelled card, a stale
+            # payload, a value that is not an id — is a refusal, never a guess: picking on
+            # the author's behalf is the exact move this card exists to avoid.
+            # Validation lives in `refresolve.accept_pick` — pure, and therefore testable
+            # as the security property it is, rather than as prose inside this generator.
+            from app.agentruntime.refresolve import accept_pick as _accept_pick
+            _dparam = str(_approval_args.get("param") or "")
+            # 🔴 THE PICK RIDES `applied_text`, NOT `outcome`. FrontendToolOutcome is a CLOSED
+            # union of literals; widening it to carry a UUID would turn every consumer's
+            # exhaustive check into a string comparison that can no longer tell a missing case
+            # from a value. The outcome stays an enum ('disambiguated'), and the id travels in
+            # the text channel the resume endpoint already carries.
+            _picked = (
+                _accept_pick(_dparam, applied_text, _approval_args.get("candidates"))
+                if outcome == "disambiguated" else None
+            )
+            if _picked is not None:
+                _tool_args = {**_tool_args, _dparam: _picked}
+                _decision = "approved_once"
+            else:
+                logger.info("DQ-T76: disambiguation resume rejected (param=%r)", _dparam)
+                _decision = "denied"
+        else:
+            _decision = outcome if outcome in ("approved_once", "approved_always", "denied", "denied_always") else "denied"
 
         # Track C WS-3 — the resume path is the ONE execution site that does not run
         # through the in-loop gate, so it must re-check the standing decision itself. A
@@ -7437,6 +14144,26 @@ async def resume_stream_response(
                         _tool_name, _k, exc_info=True,
                     )
         if _decision in ("approved_once", "approved_always"):
+            # CP-0.3 — the SECOND real dispatch in this service. Missing it filed a genuine,
+            # user-approved Tier-A WRITE as `breaker`, i.e. as our own refusal prose — inverting the
+            # one distinction the field exists to make, and doing it on the highest-consequence
+            # calls in the product (the ones that change data after a human said yes).
+            # 🔴 TOOL DEEP-DIVE (2026-08-13) — THE APPROVED CALL BYPASSED EVERY ARGUMENT
+            # REPAIR. This is the second real dispatch in the service, and it handed the model's
+            # RAW saved args straight to the executor: no context-id fill, no malformed-UUID
+            # substitution, no studio single-book override. So the highest-consequence calls in
+            # the product — the ones a human just said yes to — were the ONLY ones running
+            # unrepaired.
+            #
+            # MEASURED LIVE 2026-08-12, book 019ff497: the model called plan_bootstrap_propose
+            # with a correct run_id and book_id=019ff497-e068-… (the book's KNOWLEDGE PROJECT
+            # id). The streaming pass logged the override — "differs from the studio's book …
+            # overriding" — the call suspended on its Tier-A card, the author approved it, and
+            # composition-service was then asked for /internal/books/019ff497-e068-…/access.
+            # The repair happened, was never persisted, and the approved write failed as "not
+            # found or not accessible" on a book the author owns and had open.
+            _repair_saved_book_id(_tool_args, book_id=susp.book_id, studio=bool(susp.studio))
+            _resume_t0 = _time.monotonic()
             envelope = await knowledge_client.mcp_execute_tool(
                 user_id=user_id, session_id=session_id,
                 project_id=str(project_id) if project_id else None,
@@ -7446,8 +14173,32 @@ async def resume_stream_response(
                 tool_name=_tool_name, tool_args=_tool_args,
                 admin_token=admin_token,
             )
+            _resume_ms = int((_time.monotonic() - _resume_t0) * 1000)
             _ok = bool(envelope.get("success"))
             _tool_payload = envelope.get("result") if _ok else {"error": envelope.get("error")}
+            # 🔴 THE RESUME PATH HAD NONE OF THE MAIN LOOP'S GUARDS, AND THIS IS THE SECOND ONE
+            # IT COST. (The first: R1 answerability was inert on every resumed turn because
+            # _emit_chat_turn was called without request_text.) A Tier-A tool SUSPENDS for
+            # approval and executes HERE, not in the main loop — so its refusal never reached
+            # the D-FJ-4 arming, and the tool it names stayed off the wire.
+            #
+            # MEASURED 2026-08-24 (c-override12, K=5). composition_entity_override_edit refused
+            # with NOT_A_DERIVATIVE naming composition_list_derivatives, and
+            # chat_messages.withheld_tools shows that tool withheld 5 of 5 for BOTH
+            # domain_not_selected and hot_seed. Every tool that DID reach the main loop's arming
+            # diagnostic is Tier R.
+            #
+            # Collected here and unioned into the seed below, because a resume RE-DERIVES ITS
+            # SURFACE FROM SCRATCH (WS-3) — arming the live set would be discarded moments later.
+            _resume_refusal = ""
+            if not _ok:
+                _resume_refusal = str(envelope.get("error") or "")
+            if not _resume_refusal and isinstance(_tool_payload, dict) and (
+                    not _ok or _tool_payload.get("success") is False):
+                _resume_refusal = str(_tool_payload.get("error") or "")
+            if _resume_refusal:
+                # Resolved below, beside the seed — the catalogue does not exist yet here.
+                _resume_refused_tool = _tool_name
             working.append({
                 "role": "tool", "tool_call_id": tool_call_id,
                 "content": tool_result_content(_tool_payload),
@@ -7476,19 +14227,50 @@ async def resume_stream_response(
                         if _undo else {"available": False}
                     ),
                 }
+            instrument.stamp_tool_call(
+                _chunk, source=instrument.SOURCE_TOOL, latency_ms=_resume_ms,
+            )
             pre_tool_chunks = [_chunk]
         else:
             working.append({
                 "role": "tool", "tool_call_id": tool_call_id,
                 "content": tool_result_content({"error": "denied by user"}),
             })
-            pre_tool_chunks = [{
-                "id": tool_call_id, "iteration": 0, "tool": _tool_name,
-                "args": _tool_args, "ok": False,
-                "result": None, "error": "denied by user",
-            }]
+            # Explicitly `breaker`, not left to inference: a user denial is OUR refusal, and this is
+            # the branch where the two are one line apart. Stating it removes the only place where a
+            # reader could mistake the classifier's default for a decision.
+            #
+            # ── TOOL-V2 LOOP #2 · AND THE OUTCOME MUST BE STATED HERE TOO ────────────────────
+            # 🔴 **MEASURED: 21 calls across 17 sessions and 4 tools are a human saying no, and
+            # every one of them is recorded as a tool FAILURE.** `source` was stamped here; the
+            # typed outcome was not, so `ensure_tool_call_instrumented` fell through to its
+            # fail-closed default (`ok is not True` ⇒ `failed`, `error_class` ⇒ unclassifiable)
+            # and flagged it `call_outcome_inferred`. The row then says the tool broke.
+            #
+            # It did not break. It never ran. `kg_propose_edge` reads 0 successes in 17 calls and
+            # **14 of those 17, across 12 of its 14 sessions, are this branch** — a Tier-A tool
+            # that has literally never been permitted to dispatch. Its "0% success rate" was
+            # measuring the approval card, not the tool.
+            #
+            # This is the SAME conflation for the third time: a suspension recorded `ok:false`
+            # (5.5), 52.4% of failures being our own breaker prose (`stamp_refused`), and now a
+            # denial. The vocabulary already had the word — `refused` is defined as "a call the
+            # RUNTIME declined to make", and the line above already argues a user denial is ours.
+            # `refusal_kind` keeps it separable from the breaker refusals, so "the human said no"
+            # and "we short-circuited a repeat" can never merge into one number.
+            pre_tool_chunks = [instrument.stamp_tool_call(
+                instrument.stamp_refused({
+                    "id": tool_call_id, "iteration": 0, "tool": _tool_name,
+                    "args": _tool_args, "ok": False,
+                    "result": None, "error": "denied by user",
+                }, "denied_by_user"),
+                source=instrument.SOURCE_BREAKER,
+            )]
 
     resume_discovery_catalog: list[dict] | None = None
+    #: DQ-T5 — the resumed turn keeps the same unlock: a refusal on the pass that acts on
+    #: an approval must be able to name a gated tool too, or the unlock dies at the card.
+    resume_unlockable_gated: dict = {}
     resume_extra_frontend: list[dict] | None = None
     resume_seed_names: set[str] | None = None
     tool_defs: list[dict] = []
@@ -7499,9 +14281,12 @@ async def resume_stream_response(
         # tools, never discovery, never compose_prose. (The admin re-presents
         # X-Admin-Token on the tool-results request.)
         tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
-        if stream_format == "agui" and tool_defs:
-            from app.services.frontend_tools import GLOSSARY_CONFIRM_ACTION_TOOL
-            tool_defs = tool_defs + [GLOSSARY_CONFIRM_ACTION_TOOL]
+        # V7 (2026-09-03) — NO LONGER APPENDED FROM A LOCAL DEF. ai-gateway serves
+        # `glossary_confirm_action` on `/mcp/admin` as a consumer-local directive tool
+        # (admin-handlers.ts), so it arrives in `tool_defs` with every other admin tool.
+        # This append was the LAST production use of frontend_tools.py's schemas, and the
+        # reason chat-service still held one: `/mcp/admin` is a SEPARATE federation from
+        # `/mcp`, so nothing reached it by default.
         use_tools = bool(tool_defs)
     else:
         catalog: list[dict] = []
@@ -7532,20 +14317,50 @@ async def resume_stream_response(
             # precisely because a resume re-derives its surface from scratch (WS-3); dropping
             # the exemption here would strand a rail at its FIRST confirm gate — the same
             # failure WS-3 was written to fix, re-entered through the capability floor.
+            # CP-0.2 — armed at the top of this function, not here: the catalogue fetch 26 lines
+            # above is a narrowing too, and re-arming here would discard whatever it registered.
+            # DQ-T31 — the declaration arm survives the suspend, for the SAME reason
+            # `pinned_step_tools` does. A resume re-derives its surface from scratch, so
+            # without this a tool the author's own words named would be present on the pass
+            # that raised the confirm card and GONE on the pass that acts on the approval —
+            # the resumed turn reading an instruction it can no longer satisfy, which is the
+            # failure WS-3 was written to fix. `user_message_content` is the original request,
+            # carried on the suspend record precisely so a resume can re-derive from it.
             resume_discovery_catalog = filter_intent_gated_setup_tools(
                 catalog, resume_injected_skills, set(susp.pinned_step_tools or ()),
+                request_text=susp.user_message_content,
             )
+            _resume_kept = {(d.get("function") or {}).get("name") for d in resume_discovery_catalog}
+            resume_unlockable_gated = {
+                nm: d for d in catalog
+                if (nm := (d.get("function") or {}).get("name")) and nm not in _resume_kept
+            }
             # The generic frontend tools (core) + the glossary write-back tools, both
             # available on resume; _stream_with_tools advertises {core} ∪ {discovered}
             # ∪ extra_frontend per pass.
-            resume_extra_frontend = (
-                frontend_tool_defs(editor=False, book_scoped=False)
-                + frontend_tool_defs(editor=True, book_scoped=True)
-            )
+            # V7 — the resume superset is empty: every tool it used to carry is federated and
+            # is re-advertised from the catalogue like any other.
+            resume_extra_frontend = []
             # Resume uses editor superset for frontend tools; discovery seed respects
             # session curated pins when enabled_tools is non-empty (story 04 S2).
             # Resume superset includes the studio hot domains — a suspend raised on the
             # studio compose surface must resume with its composition family still hot.
+            # NOT re-armed here: the sink was armed before catalog assembly above, and setting a
+            # fresh list would DISCARD the intent gate's records — which is how the previous fix
+            # managed to be a no-op even where it was armed.
+            # Resolve the resumed tool's refusal HERE, where `catalog` exists. See the capture
+            # site above the dispatch for why it cannot be done there.
+            _resume_refusal_named: set[str] = set()
+            if _resume_refusal and catalog:
+                _resume_refusal_named = set(_tools_named_in_refusal(
+                    _resume_refusal, _catalog_index(catalog), set(),
+                    exclude=_resume_refused_tool))
+                if _resume_refusal_named:
+                    logger.info(
+                        "resumed %s refused and named %s — carrying them into the re-derived "
+                        "surface so the instruction can be followed",
+                        _resume_refused_tool, ", ".join(sorted(_resume_refusal_named)),
+                    )
             resume_seed_names = discovery_seed_for_surface(
                 resume_discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                 pins=tool_pins,
@@ -7563,19 +14378,26 @@ async def resume_stream_response(
                 pinned_step_tools=susp.pinned_step_tools,
                 # D-SKILL-NAMED-TOOLS-RIDE — same guarantee on the resume pass.
                 injected_skill_codes=resume_injected_skills,
+                # …and the same guarantee for the RUNTIME's own instruction: a refusal from the
+                # tool this resume just executed must not name a tool the re-derived surface
+                # then withholds. See the collection site above the dispatch.
+                refusal_named_tools=_resume_refusal_named,
             )
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend,
                 book_bound=bool(susp.book_id),
+                # A resume is still answering the ORIGINAL request — the suspended run
+                # carries it. Dropping it here would make the post-approval pass the one
+                # surface in the system that cannot answer the question it was suspended on.
+                request_text=susp.user_message_content,
+                prior_request_text=_lookback_request_text,
             )
         elif stream_format == "agui":
             # No catalog (gateway down) → no discovery, but still re-advertise the
             # frontend write-back tools so the suspended run resumes through the tool
             # path (seed_usage summed) rather than the no-tools gateway path.
-            tool_defs = (
-                frontend_tool_defs(editor=False, book_scoped=False)
-                + frontend_tool_defs(editor=True, book_scoped=True)
-            )
+            # V7 — see above: nothing local left to seed a resumed turn with.
+            tool_defs = []
         if composer_model is not None:
             from app.services.composer import compose_prose_defs
             tool_defs = tool_defs + compose_prose_defs()
@@ -7597,9 +14419,21 @@ async def resume_stream_response(
             pool, user_id, susp.book_id, susp.permission_mode, session_id, knowledge_client,
         )
 
+    # 🔴 U-2's THIRD PATH, and it had NEITHER half. A resume re-derives its whole surface from
+    # scratch (WS-3), so it hits the same catalogue fetch and the same outage — and the notice
+    # existed only on the fresh-turn prompt. The resumed model would then explain a missing
+    # capability with nothing to explain it from, which is the founding defect on a different turn
+    # shape. The rehydrated conversation has no tail_blocks to hang this on, so it is appended as
+    # its own system message.
+    if instrument.catalogue_outage_registered():
+        working = list(working) + [
+            {"role": "system", "content": CATALOGUE_UNAVAILABLE_NOTICE},
+        ]
+
     async for line in _emit_chat_turn(
         session_id=session_id,
         user_message_content=susp.user_message_content,
+        prior_request_text=_lookback_request_text,
         user_id=user_id,
         model_source=susp.model_source,
         model_ref=susp.model_ref,
@@ -7631,6 +14465,7 @@ async def resume_stream_response(
             else MAX_TOOL_ITERATIONS
         ),
         discovery_catalog=resume_discovery_catalog,
+        unlockable_gated=resume_unlockable_gated,
         discovery_extra_frontend=resume_extra_frontend,
         discovery_seed_names=resume_seed_names,
         curated=tool_pins.curated_mode,
@@ -7646,7 +14481,29 @@ async def resume_stream_response(
         is_resume=True,  # P3 review H1 — resume runs stateless over the full saved context
         # P-1 step-runner — keep driving the rail on the resumed turn. context_ids carries the
         # rail's book (also lets arg-injection fill book_id on the resumed writes).
-        context_ids={"book_id": susp.book_id} if susp.book_id else None,
+        #
+        # 🔴 …AND THE `studio` FLAG, WHICH THIS DICT USED TO DROP. `_inject_context_ids` reads
+        # `context_ids["studio"]` to decide whether a valid-but-DIFFERENT book_id is a
+        # hallucination to override or a legitimate cross-book call to honor. Rebuilt with
+        # book_id alone, it defaulted to False, so the single-book override was dead on every
+        # resumed turn — measured 2026-08-12: after an approval the model called
+        # composition_package_tree and plan_propose_spec with the book's knowledge-project id
+        # and no override fired, while the same wrong id HAD been overridden one pass earlier.
+        context_ids=(
+            {
+                "book_id": susp.book_id,
+                "studio": bool(susp.studio),
+                # …AND THE OTHER TWO IDS, 2026-08-24. This dict has now lost a field THREE
+                # times — `studio` (fixed 2026-08-12), then chapter_id and project_id — each
+                # time because it is rebuilt BY HAND from a suspension row rather than carried.
+                # Absent chapter_id is not a missing nicety: it is what let a chapter id go out
+                # as `book_id` on every resumed turn, which the book-scope check then refuses.
+                "chapter_id": susp.chapter_id,
+                "project_id": susp.project_id,
+            }
+            if susp.book_id
+            else None
+        ),
         rail_specs=_r_rail_specs or None,
         rail_grant_ok=_r_rail_grant,
         rail_turn_start_counts=_r_rail_counts,
@@ -7662,7 +14519,23 @@ async def resume_stream_response(
         rail_progress=_r_rail_progress or None,
         # NB: the rail_user_abandoned flag is computed INSIDE _emit_chat_turn from its
         # user_message_content (= susp.user_message_content, passed above) before it calls
-        # _stream_with_tools — the resume path needs no extra arg here.
+        # _stream_with_tools — the resume path needs no extra arg for THAT one.
+        #
+        # 🔴 R1 IS A DIFFERENT ARGUMENT, AND OMITTING IT MADE THE GUARANTEE INERT ON EVERY
+        # RESUMED TURN. `_emit_chat_turn(request_text="")` is the documented off switch ("Empty
+        # ⇒ inert"), and the per-pass advertise chokepoint is reached only through here — so
+        # from the approval onward, no tool could be rescued onto the wire by its own declared
+        # vocabulary. The one-off `_advertise_discovery_tools` call above passes the same text
+        # and says why: "A resume is still answering the ORIGINAL request." That was true for
+        # its first tool_defs and false for every pass after it.
+        #
+        # MEASURED 2026-08-23, K=5: asked to "Back up ... cite where it says ...",
+        # glossary_create_evidence (which DECLARES both "back up" and "cite where") was
+        # advertised on every pass before the card and on none after it, 5 runs of 5 — the
+        # resume re-seeds with studio=True and the composition family took its slot at an
+        # unchanged 41-tool budget. Displacement by domain selection is precisely what R1
+        # overrules; it just never saw the request.
+        request_text=susp.user_message_content,
     ):
         yield line
 

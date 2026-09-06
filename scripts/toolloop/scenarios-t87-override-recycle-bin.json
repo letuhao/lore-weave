@@ -1,0 +1,99 @@
+{
+ "_note": "CAN THE AUTHOR SEE A DELETED ENTITY OVERRIDE BEFORE ASKING FOR IT BACK? D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE, owner ruling DQ-T87 (a): build the discovery path.\n\nTHE DEFECT. composition_entity_override_edit ships op=restore taking an `override_id`, and until this cycle NOTHING in the catalogue listed a deleted override — so the only way to hold that id was to have written it down BEFORE deleting. This was the LAST live restore family with no discovery path; the other nine now have one.\n\n🔴 THE FIXTURE IS THE HARD PART AND ITS SHAPE IS BORROWED FROM A MEASURED FAILURE. An override exists ONLY on a DERIVATIVE Work, which is a DIFFERENT Work with its own project_id — scenarios-c-override.json records 5/5 runs answering NOT_A_DERIVATIVE before its seed grew the derive step. So the seed derives a Work, redeems the derive token (composition's confirm convention is a QUERY parameter, not knowledge's JSON body), adds an override to it and DELETES it. The turn then has something real to find.\n\n🔴 WHAT WOULD MAKE A GREEN RUN MEANINGLESS: a seed that silently created no override. `seed_assert` fails the run rather than letting it measure an empty recycle bin — the failure mode this loop has recorded repeatedly.",
+ "scenarios": [
+  {
+   "id": "t87-what-deleted-entity-overrides-can-i-bring-back",
+   "tool_under_test": "composition_entity_override_edit",
+   "expect_tool": "composition_entity_override_edit",
+   "intent": "read",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "I deleted an entity override by mistake. Show me the deleted entity overrides on this work so I can pick which one to bring back.",
+   "prompt_source": "meta.synonyms['deleted entity overrides'], verbatim, plus the recycle-bin framing the sibling scene_link scenario proved reaches a discovery tool. The phrasing was cleared through the SHIPPED matcher over the live 316-tool catalogue BEFORE the synonyms were written: 0/3 recycle-bin prompts -> 2/3, each a SINGLETON, and eight neighbouring requests byte-identical.",
+   "needs_target": false,
+   "approve": "approved_once",
+   "seed": [
+    {
+     "rest": {
+      "domain": "glossary",
+      "method": "POST",
+      "path": "/v1/glossary/books/{book_id}/adopt",
+      "json": {
+       "genres": [
+        "universal"
+       ],
+       "kinds": [
+        "character"
+       ]
+      }
+     },
+     "why": "The book must hold the `character` kind before an entity of that kind can be proposed. Same first step as every other override scenario."
+    },
+    {
+     "tool": "glossary_propose_entities",
+     "args": {
+      "book_id": "{book_id}",
+      "items": [
+       {
+        "kind": "character",
+        "name": "Aldric Vane"
+       }
+      ]
+     },
+     "why": "The override's TARGET. Its id is read below as `results.0.entity_id` — the shape this tool returns, and the one the step-ref walker's own docstring names."
+    },
+    {
+     "tool": "composition_create_derivative",
+     "args": {
+      "project_id": "{project_id}",
+      "name": "What-if: the cartographer"
+     },
+     "why": "🔴 OVERRIDES EXIST ONLY ON A DERIVATIVE. This tool PROPOSES it and mints a confirm token; the next step redeems it. Without the redemption the seed reports success and creates nothing."
+    },
+    {
+     "rest": {
+      "domain": "composition",
+      "method": "POST",
+      "path": "/v1/composition/actions/confirm?token={step:2:confirm_token}"
+     },
+     "why": "Redeem the derive token. Composition's confirm convention is a QUERY parameter (?token=), NOT knowledge's JSON body — this loop has two conventions and the wrong one 404s. Answers {'outcome': 'action_accepted', 'derivative': {'project_id': ...}}."
+    },
+    {
+     "rest": {
+      "domain": "composition",
+      "method": "POST",
+      "path": "/v1/composition/works/{step:3:derivative.project_id}/entity-overrides",
+      "json": {
+       "target_entity_id": "{step:1:results.0.entity_id}",
+       "overridden_fields": {
+        "occupation": "cartographer"
+       }
+      }
+     },
+     "why": "The override the turn must find. Created through REST rather than the MCP tool because the response carries the row's id, which the delete below needs."
+    },
+    {
+     "rest": {
+      "domain": "composition",
+      "method": "DELETE",
+      "path": "/v1/composition/works/{step:3:derivative.project_id}/entity-overrides/{step:4:id}"
+     },
+     "why": "🔴 THE SOFT DELETE THIS WHOLE ROW IS ABOUT. After it the override is invisible to every read the platform shipped, and its id is unobtainable — which is the condition the measured turn has to break."
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM entity_override eo JOIN composition_work w ON w.id = eo.work_id WHERE w.book_id = '{book_id}' AND eo.is_archived",
+     "expect": "1",
+     "why": "🔴 AN EMPTY RECYCLE BIN CANNOT REFUTE ANYTHING. If the seed created no ARCHIVED override the turn would have nothing to find, 'no deleted overrides' would be the correct answer, and the run would measure the fixture rather than the tool. Asserted on is_archived specifically, not on the row existing — a LIVE override would satisfy a bare count(*) and prove nothing. SCOPED TO THIS RUN'S BOOK through composition_work: the table is shared across every fixture this batch creates, so a global count would pass on somebody else's leftovers."
+    }
+   ],
+   "falsifier": "REFUTED IF: composition_entity_override_edit is on the wire and the model does NOT call it (the discovery path exists and cannot be reached by this phrasing — the exact way the sibling scene_link half failed its first live run, 0/5 on the wire); OR it is called WITHOUT include_archived=true, which returns the live overrides and reports the deleted one as absent; OR the reply tells the author it needs an id, which is the answer the defect produced before this fix and is quoted verbatim on the row.\n\nNOT REFUTED BY: the model failing to then CALL op=restore. This row is about DISCOVERY — whether the id can be SEEN. Restoring it is composition_entity_override_edit's own op and a different question, filed as D-THE-MODEL-ASKS-INSTEAD-OF-RAISING-THE-CARD-IT-HAS.\n\nSTORE CHECK: entity_override rows must not change — this is a READ turn and a write would be its own defect.",
+   "defects": [
+    "D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE"
+   ]
+  }
+ ]
+}

@@ -146,7 +146,7 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 **Enforcement:**
 - **(a) Import discipline** — feature code imports only the `dp::primitives::*` module; direct DB/cache client imports rejected by clippy (R-3).
 - **(b) Rule compliance** — every feature design review checks the rulebook (DP-R1..DP-R8) and rejects violations.
-- **(c) Redundancy check** — a feature repo that is only a trivial wrapper around a DP primitive (e.g., `fn get_player(id) -> Player { dp::read_projection(...) }` with no added semantics) is a smell and should be refactored; the DP primitive should be called directly.
+- **(c) Redundancy check** — a feature repo that is only a trivial wrapper around a DP primitive (e.g., `fn get_player(id) -> Player { dp::read_projection_reality(...) }` with no added semantics) is a smell and should be refactored; the DP primitive should be called directly. *(AMENDED 2026-08-07, REC-101b — was the pre-Phase-4 `read_projection`.)*
 
 **Consequence:**
 
@@ -243,7 +243,7 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 **Why:** The user's clarified game model requires "everyone in a channel sees the same story in the same order" — a total order per channel is the simplest mechanism that encodes this invariant. Without total order, two members of the same cell could see events shuffled differently, breaking the "shared story" guarantee that makes the channel meaningful as a social context.
 
 **Enforcement:**
-- **(a) DB level** — `event_log` table extended with composite UNIQUE constraint `(reality_id, channel_id, channel_event_id)`. Duplicate or non-monotonic insert rejected by Postgres.
+- **(a) DB level** — `events` table extended with composite UNIQUE constraint `(reality_id, channel_id, channel_event_id)`. Duplicate or non-monotonic insert rejected by Postgres.
 - **(b) Single-writer level** — [DP-A16](#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) ensures only one node allocates `channel_event_id` for a given channel at any time, making monotonic allocation trivial.
 - **(c) Subscriber level** — durable subscribe ([Q16](99_open_questions.md), to be designed) carries `from_channel_event_id` resume token; subscriber catches up gaps before delivering live events.
 
@@ -269,7 +269,7 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 **Enforcement:**
 - **(a)** CP holds writer assignment per channel in its [channel-tree cache](12_channel_primitives.md#dp-ch3--cp-channel-tree-cache--delta-stream); SDK queries CP at session bind + on writer-change push events.
 - **(b)** SDK detects "is this node the writer?" before each channel-scoped write. If yes, write directly. If no, SDK transparently RPCs to the writer node via a `route_channel_write` gRPC method.
-- **(c) Direct write attempt on a non-writer node bypassing the SDK** fails at the DB layer because the writer's epoch token is required to insert into `event_log`. Non-SDK paths cannot forge an epoch.
+- **(c) Direct write attempt on a non-writer node bypassing the SDK** fails at the DB layer because the writer's epoch token is required to insert into `events`. Non-SDK paths cannot forge an epoch.
 - **(d)** Writer reassignment goes through CP's existing health-probe + channel-tree-delta-stream infrastructure ([DP-Ch3](12_channel_primitives.md#dp-ch3--cp-channel-tree-cache--delta-stream)). Failover budget: ≤35 s (30 s detection per [DP-F2](07_failure_and_recovery.md#dp-f2--game-node-death--session-handoff) + 5 s reassignment + push-out delta).
 
 **Consequence:**
@@ -297,14 +297,14 @@ No new tiers, no "between T1 and T2", no per-feature special cases. See [03_tier
 DP is **agnostic to turn semantics** — what a "turn" means (D&D round, narrative scene, conversation back-and-forth, real-time tick) is feature-defined via the opaque `turn_data: serde_json::Value` payload. DP only guarantees the numbering invariant.
 
 **Enforcement:**
-- **(a)** Channel writer maintains in-memory `last_turn_number` per channel, persisted on every commit (in the `channel_writer_state` table extended with `last_turn_number BIGINT NOT NULL DEFAULT 0`). Recovery on writer takeover seeds via `SELECT MAX(turn_number) FROM event_log WHERE channel_id = $1`.
+- **(a)** Channel writer maintains in-memory `last_turn_number` per channel, persisted on every commit (in the `channel_writer_state` table extended with `last_turn_number BIGINT NOT NULL DEFAULT 0`). Recovery on writer takeover seeds via `SELECT MAX(turn_number) FROM events WHERE channel_id = $1`.
 - **(b)** Writer increments `last_turn_number` only when handling an `advance_turn` SDK call; rejects manual / out-of-band increments.
 - **(c)** Every other channel-event commit reads `last_turn_number` (no increment) and tags the event with that value before insertion.
 - **(d)** `advance_turn` is capability-gated — JWT must include `can_advance_turn` for the target channel level, else `DpError::CapabilityDenied`.
 
 **Consequence:**
 - **Channels that never call `advance_turn`** keep all their events at `turn_number = 0`. Tavern / town / country channels typically do not use turn semantics; cell channels (player conversations, combat scenes) typically do. Both work without special config.
-- **"Events in turn N" is a queryable concept** — `SELECT * FROM event_log WHERE channel_id = $1 AND turn_number = $2 ORDER BY channel_event_id`. Used by UI for turn replay, by features for "what happened in this round".
+- **"Events in turn N" is a queryable concept** — `SELECT * FROM events WHERE channel_id = $1 AND turn_number = $2 ORDER BY channel_event_id`. Used by UI for turn replay, by features for "what happened in this round".
 - **Bubble-up aggregator ([Q27](99_open_questions.md))** can use turn boundaries as natural aggregation windows — accumulate descendant events between turns, decide on bubble-up at turn advance.
 - **Pause ([Q19](99_open_questions.md))** is orthogonal — pause stops ALL events including turn advances; resume continues from current turn_number without resetting.
 - **Total stored cost:** one `BIGINT` per event log row (~8 bytes). Negligible.

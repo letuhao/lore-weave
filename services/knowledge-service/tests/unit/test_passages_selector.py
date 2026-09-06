@@ -19,7 +19,7 @@ from app.context.selectors.passages import (
     L3Passage,
     select_l3_passages,
 )
-from app.db.neo4j_repos.passages import Passage, PassageSearchHit
+from app.db.graph_repos.passages import Passage, PassageSearchHit
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from loreweave_llm.models import Job
 
@@ -75,6 +75,32 @@ def _hit(
         raw_score=raw_score,
         vector=vector,
     )
+
+
+def _port_hit(text: str, raw_score: float, *, vector=None, **kwargs):
+    """The same passage as `_hit`, as the PORT hit the selector now takes (T24b-b).
+
+    Built by running `_hit`'s `PassageSearchHit` through the REAL Neo4j adapter's mapping
+    rather than re-typing the attribute dict here: a hand-written dict would agree with the
+    adapter on the day it was written and silently diverge after, which is precisely the
+    drift `test_the_two_real_backends_agree_on_a_passage_hits_attribute_KEYS` exists for.
+    """
+    from app.ports.vector_store import VectorHit
+    h = _hit(text, raw_score, vector=vector, **kwargs)
+    return VectorHit(
+        record_id=str(h.passage.id), score=h.raw_score, scope="passage", vector=h.vector,
+        attributes={
+            "text": h.passage.text, "source_type": h.passage.source_type,
+            "source_id": h.passage.source_id, "chunk_index": h.passage.chunk_index,
+            "is_hub": h.passage.is_hub, "chapter_index": h.passage.chapter_index,
+            "canon": getattr(h.passage, "canon", True),
+            "source_lang": getattr(h.passage, "source_lang", "unknown"),
+            "block_index": getattr(h.passage, "block_index", None),
+            "project_id": getattr(h.passage, "project_id", None),
+            "created_at": getattr(h.passage, "created_at", None),
+        },
+    )
+
 
 
 def _embed_result(dim: int = 1024) -> EmbeddingResult:
@@ -165,7 +191,7 @@ async def test_returns_empty_on_embedding_error(monkeypatch):
 
     find_hits = AsyncMock(return_value=[])
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector", find_hits,
+        "app.adapters.neo4j_vector_store.find_passages_by_vector", find_hits,
     )
 
     result = await select_l3_passages(
@@ -185,7 +211,7 @@ async def test_returns_empty_when_search_yields_nothing(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=[]),
     )
 
@@ -211,7 +237,7 @@ async def test_returns_scored_l3_passages(monkeypatch):
     ]
     find_hits = AsyncMock(return_value=hits)
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector", find_hits,
+        "app.adapters.neo4j_vector_store.find_passages_by_vector", find_hits,
     )
 
     result = await select_l3_passages(
@@ -241,7 +267,7 @@ async def test_hub_penalty_drops_hub_passages_for_specific_entity(monkeypatch):
         _hit("Arthur is knighted.", 0.80, is_hub=False),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
 
@@ -270,7 +296,7 @@ async def test_historical_intent_inverts_recency_preference(monkeypatch):
         _hit("Early chapter content.", 0.80, chapter_index=1),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
 
@@ -299,7 +325,7 @@ async def test_recency_auto_anchors_to_newest_passage(monkeypatch):
         _hit("Oldest.", 0.80, chapter_index=1),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
 
@@ -328,7 +354,7 @@ async def test_mmr_drops_near_duplicate_passages(monkeypatch):
         _hit("Merlin casts a protection spell.", 0.85, pid="c"),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
 
@@ -360,7 +386,7 @@ async def test_pool_size_intent_aware(monkeypatch):
         return []
 
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector", capture,
+        "app.adapters.neo4j_vector_store.find_passages_by_vector", capture,
     )
 
     for intent in (Intent.SPECIFIC_ENTITY, Intent.GENERAL):
@@ -394,7 +420,7 @@ async def test_mmr_uses_cosine_when_vectors_present(monkeypatch):
         _hit("iota kappa lambda mu", 0.85, pid="b", vector=vec_b),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
 
@@ -425,7 +451,7 @@ async def test_mmr_falls_back_to_jaccard_when_vectors_missing(monkeypatch):
         _hit("Merlin casts a protection spell.", 0.85, pid="c", vector=None),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
 
@@ -454,7 +480,7 @@ async def test_mmr_handles_mixed_vector_presence(monkeypatch):
         _hit("second passage text", 0.85, pid="b", vector=None),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
 
@@ -474,15 +500,15 @@ async def test_mmr_stops_at_top_n_not_full_pool(monkeypatch):
     """Review-impl catch: MMR must early-exit at top_n."""
     from app.context.selectors.passages import _mmr_rerank
 
+    # T24b-b — PORT hits, not `PassageSearchHit`. This fixture fed the old model to a
+    # function that now takes `VectorHit` and PASSED, because every hit here carries a
+    # vector and the cosine branch never touches `attributes`. Biting the cosine branch out
+    # exposed it as `AttributeError: 'PassageSearchHit' object has no attribute 'attributes'`
+    # — i.e. one hit with no vector would have raised in production shape.
     hits = [
-        (
-            0.9 - i * 0.01,
-            PassageSearchHit(
-                passage=_passage(f"passage {i}", pid=f"p{i}"),
-                raw_score=0.9 - i * 0.01,
-                vector=[float((i >> j) & 1) for j in range(8)],
-            ),
-        )
+        (0.9 - i * 0.01,
+         _port_hit(f"passage {i}", 0.9 - i * 0.01,
+                   vector=[float((i >> j) & 1) for j in range(8)], pid=f"p{i}"))
         for i in range(40)
     ]
 
@@ -512,7 +538,7 @@ def test_working_scope_boost_math_linear_falloff():
     # recency_weight=0 so ONLY the boost term is exercised.
     def score(ci: int, wc: int | None, boost: float, window: int = 2) -> float:
         return _apply_post_filters(
-            _hit("t", 0.70, chapter_index=ci), hub_penalty=1.0,
+            _port_hit("t", 0.70, chapter_index=ci), hub_penalty=1.0,
             recency_weight=0.0, current_chapter=None,
             working_chapter=wc, working_boost=boost, working_window=window,
         )
@@ -533,7 +559,7 @@ def test_working_scope_boost_no_chapter_index_is_inert():
     """A passage with chapter_index=None is never boosted (can't measure dist)."""
     from app.context.selectors.passages import _apply_post_filters
     s = _apply_post_filters(
-        _hit("t", 0.70, chapter_index=None), hub_penalty=1.0,
+        _port_hit("t", 0.70, chapter_index=None), hub_penalty=1.0,
         recency_weight=0.0, current_chapter=None,
         working_chapter=10, working_boost=0.30, working_window=2,
     )
@@ -551,7 +577,7 @@ async def test_working_scope_boost_promotes_open_chapter_passage(monkeypatch):
         _hit("What I'm editing now.", 0.70, pid="near", chapter_index=10),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
     result = await select_l3_passages(
@@ -579,7 +605,7 @@ async def test_working_scope_boost_does_not_override_strong_relevance(monkeypatc
         _hit("Weakly-relevant open chapter.", 0.65, pid="near", chapter_index=10),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
     result = await select_l3_passages(
@@ -606,7 +632,7 @@ async def test_working_scope_boost_disabled_is_byte_identical(monkeypatch):
         _hit("Open chapter.", 0.70, pid="near", chapter_index=10),
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
     result = await select_l3_passages(
@@ -810,7 +836,7 @@ async def test_select_l3_skips_rerank_when_model_unset(monkeypatch):
     client.embed = AsyncMock(return_value=_embed_result())
     hits = [_hit("a", 0.9), _hit("b", 0.8)]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
     fake_llm = FakeLLMClient()
@@ -835,7 +861,7 @@ async def test_select_l3_skips_rerank_when_only_one_passage(monkeypatch):
     client.embed = AsyncMock(return_value=_embed_result())
     hits = [_hit("only one", 0.9)]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
     fake_llm = FakeLLMClient()
@@ -856,10 +882,87 @@ async def test_select_l3_skips_rerank_when_only_one_passage(monkeypatch):
 def test_embedding_model_to_dim_covers_supported_models():
     """Every mapped dim must be supported by passages.SUPPORTED_PASSAGE_DIMS
     OR the selector must be wise enough to skip unknown dims."""
-    from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+    from app.db.graph_repos.passages import SUPPORTED_PASSAGE_DIMS
     for model, dim in EMBEDDING_MODEL_TO_DIM.items():
         _ = model  # silence unused
     assert any(
         dim in SUPPORTED_PASSAGE_DIMS
         for dim in EMBEDDING_MODEL_TO_DIM.values()
     )
+
+
+# ── T24b-b: MMR's redundancy term must be EMBEDDING cosine, not word overlap ──
+
+
+@pytest.mark.asyncio
+async def test_the_selector_asks_for_VECTORS_and_MMR_uses_them_not_word_overlap(monkeypatch):
+    """🔴 **Setting `include_vectors=False` at the call site reds NOTHING without this rule.**
+    Measured during the T24b-b migration: every other selector test passes on a pool with no
+    vectors, because MMR falls back to word-Jaccard and still returns a plausible ordering.
+    A selector that silently stopped doing semantic diversity on the main context path would
+    have shipped green.
+
+    So the two metrics are made to DISAGREE and the ordering is the discriminator:
+
+        A  rel .9  "alpha beta gamma"        vec [1,0,…]
+        B  rel .8  "alpha beta gamma delta"  vec [0,1,…]   3/4 of A's words, ORTHOGONAL vector
+        C  rel .7  "zeta eta theta iota"     vec [1,0,…]   no shared words, IDENTICAL vector
+
+    A is picked first (top relevance). Then, with λ=0.7:
+
+        cosine  (correct)   B: .7×.8 − .3×0   = .560   C: .7×.7 − .3×1 = .190  →  A, B, C
+        jaccard (fallback)  B: .7×.8 − .3×.75 = .335   C: .7×.7 − .3×0 = .490  →  A, C, B
+
+    The fake repo honours `include_vectors` exactly as the real one does — vectors only when
+    asked — so the assertion is about the CALL SITE, not about the fixture being generous.
+    """
+    dim = 1024
+    client = MagicMock()
+    client.embed = AsyncMock(return_value=_embed_result(dim))
+
+    def _v(axis: int) -> list[float]:
+        v = [0.0] * dim
+        v[axis] = 1.0
+        return v
+
+    pool = [
+        _hit("alpha beta gamma", 0.9, vector=_v(0), pid="p-a"),
+        _hit("alpha beta gamma delta", 0.8, vector=_v(1), pid="p-b"),
+        _hit("zeta eta theta iota", 0.7, vector=_v(0), pid="p-c"),
+    ]
+    asked: dict[str, object] = {}
+
+    async def _repo(session, **kw):
+        # Faithful to `find_passages_by_vector`: the stored vector rides along ONLY when the
+        # caller asked for it. A fixture that always returned vectors would make this rule
+        # green no matter what the call site does — the exact vacuity it is written against.
+        asked.update(kw)
+        if kw.get("include_vectors"):
+            return pool
+        return [
+            PassageSearchHit(passage=h.passage, raw_score=h.raw_score, vector=None)
+            for h in pool
+        ]
+
+    monkeypatch.setattr("app.adapters.neo4j_vector_store.find_passages_by_vector", _repo)
+
+    out = await select_l3_passages(
+        MagicMock(), client,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        message="q",
+        intent=_intent(),
+        embedding_model="bge-m3", embedding_dim=dim,
+        user_uuid=USER_UUID,
+        llm_client=FakeLLMClient(),
+        rerank_model=None,
+    )
+
+    assert asked.get("include_vectors") is True, (
+        "the selector did not ask the store for vectors — MMR silently degrades to "
+        "word-Jaccard on the main context path, with no error anywhere")
+    order = [p.text.split()[0] for p in out]
+    assert order == ["alpha", "alpha", "zeta"], (
+        "MMR ranked by WORD OVERLAP, not embedding cosine: the orthogonal-but-similarly-"
+        "worded passage was penalised as redundant and the semantically duplicate one was "
+        f"promoted. got {order}; cosine gives ['alpha', 'alpha', 'zeta']")
+    assert out[1].text.endswith("delta"), "the second pick is not the orthogonal passage"

@@ -28,9 +28,23 @@ func TestCompWriteErr_Mapping(t *testing.T) {
 			t.Errorf("compWriteErr(%d) = %v, want substring %q", c.status, err, c.want)
 		}
 	}
-	// 404 maps to the shared uniform not-accessible sentinel (no owner oracle).
-	if !errors.Is(compWriteErr(http.StatusNotFound, "x"), errBookNotAccessible) {
-		t.Errorf("compWriteErr(404) must be errBookNotAccessible (uniform, no oracle)")
+	// TOOLV2 LOOP #138 — 404 used to map to errBookNotAccessible on a "no owner oracle" rationale.
+	// Measured live: book_structure_part_archive with an absent part_id, on a book the caller had
+	// been writing all session, answered "book not accessible". Every caller of compWriteErr runs
+	// AFTER the book's EDIT grant has passed, so the book is accessible by definition and there is
+	// no oracle left to protect — composition's 404 is about the part or chapter it was given.
+	// This is the seventh site of that false-noun class in this service.
+	if !errors.Is(compWriteErr(http.StatusNotFound, "x"), errStructureTargetNotInBook) {
+		t.Errorf("compWriteErr(404) must name the structure TARGET, not the book")
+	}
+	if errors.Is(compWriteErr(http.StatusNotFound, "x"), errBookNotAccessible) {
+		t.Errorf("compWriteErr(404) blames the book again")
+	}
+	// The mapper cannot tell a part from a chapter, so it must say so rather than pick one and be
+	// wrong half the time — and it still has to name a satisfier the caller can act on.
+	if msg := errStructureTargetNotInBook.Error(); !strings.Contains(msg, "part or chapter") ||
+		!strings.Contains(msg, "book_structure_read") {
+		t.Errorf("the structure error must admit the ambiguity and name its satisfier: %q", msg)
 	}
 }
 

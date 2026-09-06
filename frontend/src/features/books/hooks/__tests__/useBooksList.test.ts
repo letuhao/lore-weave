@@ -56,14 +56,38 @@ describe('useBooksList', () => {
     expect(result.current.total).toBe(1);
   });
 
-  it('filters by title search (case-insensitive)', async () => {
+  // The title search is the SERVER's. It was a client-side `includes()` over the
+  // rows one un-paginated call happened to return — and that call sent no limit,
+  // so it was the endpoint's default of 20 while the page displayed the true
+  // total. A user with 83 books was shown 83 and searched 20; the book at rank 32
+  // could not be found by name, which was recorded for six days as a Vietnamese
+  // diacritic bug. It was never about encoding.
+  //
+  // So this asserts the REQUEST, not a filtered array: a search that never leaves
+  // the browser is precisely the defect, and an assertion on `filteredBooks`
+  // cannot tell the two apart.
+  it('sends the title search to the SERVER as ?q, debounced', async () => {
     apiMocks.listBooks.mockResolvedValue({
       items: [book({ book_id: 'b1', title: 'Fengshen Yanyi' }), book({ book_id: 'b2', title: 'Journey West' })],
       total: 2,
     });
     const result = await mountHook();
+    apiMocks.listBooks.mockClear();
+    apiMocks.listBooks.mockResolvedValue({
+      items: [book({ book_id: 'b2', title: 'Journey West' })],
+      total: 1,
+    });
+
     act(() => result.current.setSearch('journey'));
-    expect(result.current.filteredBooks.map((b) => b.book_id)).toEqual(['b2']);
+    // Debounced: a keystroke must not become a request.
+    expect(apiMocks.listBooks).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(apiMocks.listBooks).toHaveBeenCalledWith('tok', { q: 'journey' }));
+    await waitFor(() =>
+      expect(result.current.filteredBooks.map((b) => b.book_id)).toEqual(['b2']),
+    );
+    // `total` must describe what was searched, not the whole library.
+    expect(result.current.total).toBe(1);
   });
 
   it('filters by language', async () => {

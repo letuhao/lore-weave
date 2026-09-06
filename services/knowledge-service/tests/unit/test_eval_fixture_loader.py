@@ -40,7 +40,12 @@ async def test_loader_upserts_one_passage_per_entity(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     upsert = AsyncMock()
-    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
+    store = MagicMock()
+    store.upsert = upsert
+    monkeypatch.setattr(
+        "app.adapters.vector_store_provider.get_vector_store",
+        AsyncMock(return_value=store),
+    )
 
     count = await load_golden_set_as_passages(
         MagicMock(), client, _golden(3),
@@ -52,7 +57,15 @@ async def test_loader_upserts_one_passage_per_entity(monkeypatch):
     assert count == 3
     assert upsert.await_count == 3
     # First call's kwargs — the rest follow the same shape.
-    kwargs = upsert.await_args_list[0].kwargs
+    # T17 A11 — one positional RECORD now, not a kwargs bag. That is the port's whole
+    # argument for a typed union: an `upsert(id, embedding, dim, model)` intersection would
+    # have silently dropped `canon`, `source_lang` and the rest, and the adapter would need
+    # them back as kwargs on day one.
+    rec = upsert.await_args_list[0].args[0]
+    kwargs = {f: getattr(rec, f) for f in
+              ("source_type", "source_id", "text", "is_hub", "chapter_index",
+               "embedding_model", "embedding_dim", "chunk_index", "user_id", "project_id")}
+    assert rec.scope == "passage"
     assert kwargs["source_type"] == BENCHMARK_SOURCE_TYPE
     assert kwargs["source_id"] == "ent-001"
     # Review-impl HIGH fix: indexed text must carry the name so
@@ -73,7 +86,12 @@ async def test_loader_indexed_text_includes_name_and_summary(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     upsert = AsyncMock()
-    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
+    store = MagicMock()
+    store.upsert = upsert
+    monkeypatch.setattr(
+        "app.adapters.vector_store_provider.get_vector_store",
+        AsyncMock(return_value=store),
+    )
 
     one_entity = GoldenSet(
         entities=(
@@ -89,7 +107,7 @@ async def test_loader_indexed_text_includes_name_and_summary(monkeypatch):
         embedding_model="bge-m3", embedding_dim=1024,
     )
 
-    text = upsert.await_args.kwargs["text"]
+    text = upsert.await_args.args[0].text          # the record, not a kwargs bag (A11)
     assert "Kaelen Voss" in text
     assert "Exiled swordmaster of the northern duchy." in text
     # The same text got sent to the embedder — not some transformed
@@ -119,7 +137,12 @@ async def test_loader_skips_entity_on_embedding_error(monkeypatch):
         _embed_result(),  # ent-003 ok
     ])
     upsert = AsyncMock()
-    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
+    store = MagicMock()
+    store.upsert = upsert
+    monkeypatch.setattr(
+        "app.adapters.vector_store_provider.get_vector_store",
+        AsyncMock(return_value=store),
+    )
 
     count = await load_golden_set_as_passages(
         MagicMock(), client, _golden(3),
@@ -129,7 +152,7 @@ async def test_loader_skips_entity_on_embedding_error(monkeypatch):
     )
 
     assert count == 2  # 2 out of 3 succeeded
-    upserted_ids = {c.kwargs["source_id"] for c in upsert.await_args_list}
+    upserted_ids = {c.args[0].source_id for c in upsert.await_args_list}   # A11
     assert upserted_ids == {"ent-001", "ent-003"}
 
 
@@ -141,7 +164,12 @@ async def test_loader_skips_entity_with_no_indexable_text(monkeypatch):
     client = MagicMock()
     client.embed = AsyncMock(return_value=_embed_result())
     upsert = AsyncMock()
-    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
+    store = MagicMock()
+    store.upsert = upsert
+    monkeypatch.setattr(
+        "app.adapters.vector_store_provider.get_vector_store",
+        AsyncMock(return_value=store),
+    )
 
     golden = GoldenSet(
         entities=(
@@ -171,7 +199,12 @@ async def test_loader_skips_entity_on_empty_embeddings_response(monkeypatch):
         embeddings=[], dimension=1024, model="bge-m3",
     ))
     upsert = AsyncMock()
-    monkeypatch.setattr("app.benchmark.fixture_loader.upsert_passage", upsert)
+    store = MagicMock()
+    store.upsert = upsert
+    monkeypatch.setattr(
+        "app.adapters.vector_store_provider.get_vector_store",
+        AsyncMock(return_value=store),
+    )
 
     count = await load_golden_set_as_passages(
         MagicMock(), client, _golden(2),

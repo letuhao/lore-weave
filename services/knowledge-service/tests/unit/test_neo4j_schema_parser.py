@@ -68,7 +68,9 @@ def test_k11_3_load_schema_statements_includes_vector_indexes():
         assert f"entity_embeddings_{dim}" in joined, (
             f"missing entity vector index for dim {dim}"
         )
-    assert "event_embeddings_1024" in joined
+    # T25 ④ — deleted. Nothing writes `(:Event).embedding_1024` and nothing reads it;
+    # asserting its ABSENCE is what stops it being restored by habit.
+    assert "event_embeddings_1024" not in joined
 
 
 def test_k11_3_load_schema_statements_includes_unique_constraints():

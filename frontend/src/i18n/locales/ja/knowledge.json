@@ -521,14 +521,14 @@
       "discoveredHint": "新しいエンティティは「発見済み」として作成されます。用語集に紐付けることで「正規」ステータスになります。"
     },
     "kind": {
-      "unknown": "不明な種類",
-      "person": "人物",
-      "artifact": "アーティファクト",
       "character": "キャラクター",
       "location": "場所",
       "organization": "組織",
       "concept": "概念",
       "item": "アイテム",
+      "unknown": "不明な種類",
+      "person": "人物",
+      "artifact": "アーティファクト",
       "event_ref": "イベント参照",
       "preference": "嗜好",
       "event": "イベント",
@@ -713,7 +713,6 @@
         "general": "一般"
       },
       "bookId": "ブック ID (任意)",
-      "bookIdPlaceholder": "uuid",
       "description": "説明 (任意)",
       "instructions": "指示 (任意)",
       "instructionsPlaceholder": "文体、声、制約などのメモ — このプロジェクトのすべてのチャットに挿入されます。",
@@ -733,6 +732,7 @@
         "errorProviderFlake": "埋め込みプロバイダーが実行中に失敗しました。再試行してください。",
         "errorGeneric": "ベンチマーク失敗: {{message}}"
       },
+      "bookIdPlaceholder": "uuid",
       "benchmarkNoRun": "⋯ ベンチマーク未実施 — 抽出機能を有効にするには、ゴールデンセット・ベンチマークを実行してください。",
       "bookIdLocked": "この書籍（ロック済み）",
       "canonCapture": "チャットから新しい固有名詞を自動キャプチャ",
@@ -1218,9 +1218,12 @@
   },
   "relations": {
     "edit": {
+      "description": "この関係の述語を修正するか、誤りとしてマークして削除します。",
+      "invalidateHint": "この関係が抽出されるべきではなかった場合は、誤りとしてマークして削除してください。",
+      "invalidateConfirm": "この関係を誤りとしてマークし、削除しますか？",
+      "failed": "修正を保存できませんでした: {{error}}",
       "cta": "リレーションを修正",
       "title": "リレーションを修正",
-      "description": "この関係の述語を修正するか、誤りとしてマークして削除します。",
       "field": {
         "predicate": "述語"
       },
@@ -1229,11 +1232,8 @@
       "cancel": "キャンセル",
       "correctSuccess": "リレーションを修正しました。",
       "invalidateSuccess": "関係を削除しました。",
-      "invalidateHint": "この関係が抽出されるべきではなかった場合は、誤りとしてマークして削除してください。",
-      "invalidateConfirm": "この関係を誤りとしてマークし、削除しますか？",
       "markWrong": "誤りとマーク",
-      "invalidating": "削除中…",
-      "failed": "修正を保存できませんでした: {{error}}"
+      "invalidating": "削除中…"
     },
     "create": {
       "title": "エンティティをリンク",
@@ -1263,30 +1263,30 @@
       "save": "イベントを追加"
     },
     "edit": {
+      "description": "このイベントのタイトル、概要、またはタイミングを調整します。",
+      "dateIsoPlaceholder": "YYYY または YYYY-MM-DD",
+      "conflict": "別のデバイスがこのイベントを更新しました。最新の状態を確認して、もう一度やり直してください。",
+      "failed": "イベントを更新できませんでした: {{error}}",
+      "invalidDate": "日付は YYYY、YYYY-MM、または YYYY-MM-DD の形式で入力してください。",
       "cta": "編集",
       "title": "イベントを編集",
-      "description": "このイベントのタイトル、概要、またはタイミングを調整します。",
       "field": {
         "title": "タイトル",
         "summary": "概要",
         "timeCue": "タイムキュー",
         "dateIso": "日付 (ISO)"
       },
-      "dateIsoPlaceholder": "YYYY または YYYY-MM-DD",
       "save": "保存",
       "saving": "保存中…",
       "cancel": "キャンセル",
-      "success": "イベントを更新しました。",
-      "conflict": "別のデバイスがこのイベントを更新しました。最新の状態を確認して、もう一度やり直してください。",
-      "failed": "イベントを更新できませんでした: {{error}}",
-      "invalidDate": "日付は YYYY、YYYY-MM、または YYYY-MM-DD の形式で入力してください。"
+      "success": "イベントを更新しました。"
     },
     "archive": {
-      "cta": "削除",
       "confirm": "このイベントを削除（非表示に）しますか？",
+      "failed": "イベントを削除できませんでした: {{error}}",
+      "cta": "削除",
       "archiving": "削除中…",
-      "success": "イベントを削除しました。",
-      "failed": "イベントを削除できませんでした: {{error}}"
+      "success": "イベントを削除しました。"
     }
   },
   "mining": {

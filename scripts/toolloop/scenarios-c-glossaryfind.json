@@ -1,0 +1,65 @@
+{
+  "_note": "D-GLOSSARY-READS-RETURN-ok-true-result-null-ON-A-SEEDED-BOOK through the real chat path. The entity is SEEDED, so the turn arrives at a book whose glossary holds it — the case where search returned nothing for the entity's own name.",
+  "scenarios": [
+    {
+      "id": "glossary-search-finds-a-seeded-entity",
+      "tool_under_test": "glossary_search",
+      "expect_tool": "glossary_search",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Do I have an entry for Aldric Vane? Look up the character in the glossary.",
+      "prompt_source": "glossary_search's OWN declared synonyms, verbatim: 'do i have an entry for' + 'look up a character'.",
+      "needs_target": false,
+      "approve": null,
+      "approve_why": "READ intent, Tier-R tool under test. Approving a write on a turn that only asked to look would make the harness the thing that wrote.",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {"genres": ["universal"], "kinds": ["character"]}
+          },
+          "why": "The book must adopt the `character` kind before an entity of that kind can exist — without it propose_entities has no kind to attach and the fixture fails one step earlier than the thing under test."
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [{"kind": "character", "name": "Aldric Vane", "attributes": {"occupation": "cartographer"}}]
+          },
+          "why": "🔴 SEEDED, NOT WRITTEN BY THE TURN. The defect is that an entity the platform ACCEPTED could not be found by name afterwards, so the turn must arrive holding nothing — a turn that created the entity itself would already know it exists."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND alive",
+          "expect": "1",
+          "why": "The entity must EXIST before the turn or an empty answer would be correct and this scenario would measure nothing. Exactly one, so 'do I have an entry for Aldric Vane' has an unambiguous right answer."
+        },
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT (count(*) = 1)::text FROM glossary_entities WHERE book_id='{book_id}' AND alive AND cached_name IS NOT NULL",
+          "expect": "true",
+          "why": "🔴 THE COLUMN IS THE DEFECT. glossary_search matches on cached_name; it was NULL for every entity created this way, because the deployed recalculate_entity_snapshot did not maintain it. Asserting it here means a REGRESSION of the migration fails the fixture rather than quietly producing a 'search found nothing' result that looks like a model problem."
+        }
+      ],
+      "falsifier": "REFUTED IF: glossary_search returns no entity for the exact seeded name, OR the model reports that no entry exists / that it is not in the glossary — the false-absence relay this defect produces, OR the reply names the character WITHOUT glossary_search having returned it. Store check: a read turn must leave the entity count at 1 and create nothing.",
+      "ship_audit": {
+        "gate": "N/A — Tier R, no confirm card.",
+        "absent_case": "a query for a name the book does not hold must return no entity — that emptiness is TRUE and is not what this measures.",
+        "idempotency": "N/A — a read.",
+        "tenancy": "book-scoped; the search binds book_id."
+      },
+      "defects": [],
+      "_problem": "D-GLOSSARY-READS-RETURN-ok-true-result-null-ON-A-SEEDED-BOOK",
+      "answer_expect": {
+        "all_of": ["Aldric"],
+        "why": "Weak on purpose — the name IS in the prompt, so the text bar alone cannot prove the read worked. The real assertion is the tool trace: glossary_search must have RETURNED the entity, which the falsifier's third clause carries."
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "scenarios": [
+    {
+      "id": "glossary-propose-batch-NAMED-OUTRIGHT",
+      "tool_under_test": "glossary_propose_batch",
+      "expect_tool": "glossary_propose_batch",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Use the glossary_propose_batch tool to set up several kinds and attributes at once for this book's ontology — I want to do it in one batch, not one at a time.",
+      "prompt_source": "CONTROL A, the pattern this repo already uses (scenarios-c-gbuild-control.json): 'the tool named OUTRIGHT. If the model still does not call it, the problem is not selection at all: something is preventing the call, and every selection experiment run so far was measuring the wrong thing.' The row's verbatim request with the tool NAME prefixed; ontology seeded and the card approved, so neither of today's refuted explanations can confound it.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          },
+          "why": "🔴 THE ROW'S ORIGINAL QUESTION, WHICH NONE OF TODAY'S THREE CONTROLS TOUCHED: WHY does the model reach for a sibling at all? The request contains glossary_propose_batch's OWN declared synonym verbatim -- meta.synonyms includes 'several kinds and attributes at once' -- and the tool is advertised on 32 of 32 passes, and it is still never called.\n\nNAMING THE TOOL OUTRIGHT SEPARATES THE TWO POSSIBILITIES, and either answer is worth the arm:\n  CALLED  -> it is a SELECTION failure. The tool is reachable and the model simply does not\n             pick it from its description, so the remedy space is ranking/description --\n             and DQ-T72's options (a)/(b) are aimed at the right thing after all.\n  STILL 0/K -> selection was never the issue. Something PREVENTS the call, and this row's\n             entire history -- every sibling experiment, every surfacing count -- has been\n             measuring the wrong thing. That would be the most consequential finding on the\n             row and would retire options (a) and (b) as well.\n\nOntology seeded and card approved so that neither the precondition nor the card-termination explanation (both refuted today) can confound the result."
+        }
+      ],
+      "falsifier": "REFUTED IF: glossary_propose_batch is called on >=1 of K runs when named outright, having been called 0/5 on EIGHT unseeded/seeded batches. 🔴 Read chat_messages.withheld_tools for stage='intent_gate' first: if >0 the tool was WITHHELD and this arm measures the gate, not selection. Every prior arm showed ADVERTISED 5/5 WITHHELD 0/5.",
+      "ship_audit": {
+        "gate": "not under test in this arm — the question is whether the tool is REACHED at all.",
+        "empty_case": "not under test in this arm.",
+        "tenancy": "throwaway fixture book per run, torn down."
+      },
+      "defects": []
+    }
+  ]
+}

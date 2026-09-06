@@ -10,7 +10,7 @@ import pytest
 from app.benchmark.core import GoldenSet
 from app.benchmark.fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
 from app.clients.embedding_client import EmbeddingResult
-from app.db.neo4j_repos.passages import find_passages_by_vector
+from app.db.graph_repos.passages import find_passages_by_vector
 
 
 DIM = 1024
@@ -29,7 +29,7 @@ def _vec(seed: float, *, dim: int = DIM) -> list[float]:
 
 
 @pytest.mark.asyncio
-async def test_loader_writes_tagged_passages_to_neo4j(neo4j_driver):
+async def test_loader_writes_tagged_passages_to_neo4j(neo4j_driver, passage_vector_index):
     user_id = f"u-test-{uuid.uuid4().hex[:8]}"
     project_id = "p-test"
     client = MagicMock()

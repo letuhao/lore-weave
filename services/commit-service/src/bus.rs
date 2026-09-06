@@ -21,7 +21,10 @@ pub struct BusConfig {
     pub stream: String,
     pub group: String,
     pub consumer: String,
-    /// XREADGROUP BLOCK milliseconds (0 = don't block).
+    /// XREADGROUP BLOCK milliseconds. **`0` = don't block** — and that is true
+    /// because [`BusConfig::read_options`] omits the argument, NOT because the
+    /// server reads `BLOCK 0` that way (it reads it as *wait forever*). This
+    /// sentence was here, and false, for the whole life of `DFO-7`.
     pub block_ms: usize,
     pub batch: usize,
     /// Delivery attempts before dead-lettering (EVT-L6).
@@ -33,6 +36,37 @@ pub struct BusConfig {
 impl BusConfig {
     pub fn dead_stream(&self) -> String {
         format!("{}:dead", self.stream)
+    }
+
+    /// The exact `XREADGROUP` options [`ProposalBus::fetch`] issues.
+    ///
+    /// Extracted so a check can read the SAME construction the production call
+    /// uses. A test that rebuilt these options itself would be a second copy of
+    /// the decision, and the day the two disagreed the check would be watching
+    /// the copy with no defect — which is precisely how `DFO-7` survived.
+    ///
+    /// # `block_ms: 0` OMITS the argument — it does not pass `BLOCK 0`
+    ///
+    /// `DFO-7`. In the stream protocol **`BLOCK 0` means wait indefinitely**;
+    /// the way to not block is to leave the argument off. This built it
+    /// unconditionally, so the one call site that asked for *"never block"* —
+    /// the binding-signal rail, under a comment saying exactly that — asked for
+    /// *"block forever"* instead, and `spine --drain-once` hung on the first
+    /// statement of its first iteration.
+    ///
+    /// Two doc comments described the intended behaviour correctly and neither
+    /// was ever executed against a server. So the branch lives HERE, at the one
+    /// place the value becomes a command, rather than as a rule each call site
+    /// is trusted to remember.
+    pub fn read_options(&self) -> StreamReadOptions {
+        let opts = StreamReadOptions::default()
+            .group(&self.group, &self.consumer)
+            .count(self.batch);
+        if self.block_ms == 0 {
+            opts
+        } else {
+            opts.block(self.block_ms)
+        }
     }
 }
 
@@ -97,10 +131,7 @@ impl ProposalBus {
 
     /// Pull fresh entries for this consumer (`>` cursor).
     pub async fn fetch(&mut self) -> anyhow::Result<Vec<BusMessage>> {
-        let opts = StreamReadOptions::default()
-            .group(&self.cfg.group, &self.cfg.consumer)
-            .count(self.cfg.batch)
-            .block(self.cfg.block_ms);
+        let opts = self.cfg.read_options();
         let reply: StreamReadReply = self
             .conn
             .xread_options(&[&self.cfg.stream], &[">"], &opts)
@@ -200,4 +231,82 @@ fn extract_delivery_count(v: &redis::Value) -> Option<usize> {
         return Some(*n as usize);
     }
     None
+}
+
+#[cfg(test)]
+mod read_options_tests {
+    use super::BusConfig;
+    use redis::ToRedisArgs;
+
+    fn cfg(block_ms: usize) -> BusConfig {
+        BusConfig {
+            stream: "s".into(),
+            group: "g".into(),
+            consumer: "c".into(),
+            block_ms,
+            batch: 8,
+            max_attempts: 5,
+            reclaim_min_idle_ms: 30_000,
+        }
+    }
+
+    /// The args `fetch` will actually put on the wire, read off the SAME
+    /// builder rather than re-derived here.
+    fn args(block_ms: usize) -> Vec<String> {
+        cfg(block_ms)
+            .read_options()
+            .to_redis_args()
+            .into_iter()
+            .map(|a| String::from_utf8_lossy(&a).into_owned())
+            .collect()
+    }
+
+    fn block_value(a: &[String]) -> Option<String> {
+        a.iter().position(|x| x == "BLOCK").map(|i| a[i + 1].clone())
+    }
+
+    /// `DFO-7`. **`BLOCK 0` is Redis for *wait forever*, not for *do not
+    /// wait*** — and two doc comments in this repo said the opposite while the
+    /// binding-signal rail passed exactly `0`. `drain_and_reconcile` is the
+    /// first statement of the spine's loop and reads a stream that is empty
+    /// almost always, so `spine --drain-once` blocked on iteration one, before
+    /// it ever saw a proposal, and never reached its `break`.
+    ///
+    /// Measured against a live server, on an empty group, the argument being
+    /// the only difference: `BLOCK 0` → killed at 5s (`rc=124`); the same read
+    /// with no `BLOCK` at all → returned, `rc=0`.
+    ///
+    /// The way to not block is to OMIT the argument. So `0` omits it.
+    #[test]
+    fn block_ms_zero_does_not_put_block_on_the_wire() {
+        let a = args(0);
+        assert!(
+            block_value(&a).is_none(),
+            "block_ms 0 must emit no BLOCK argument at all — `BLOCK 0` blocks \
+             FOREVER, which is the DFO-7 hang. Got: {a:?}"
+        );
+    }
+
+    /// The other direction, and it is not decoration: a fix that simply stopped
+    /// emitting `BLOCK` would satisfy the arm above and silently turn the
+    /// proposal rail into a hot spin at 100% CPU.
+    #[test]
+    fn a_real_timeout_is_still_sent() {
+        assert_eq!(block_value(&args(250)).as_deref(), Some("250"));
+        assert_eq!(block_value(&args(2_000)).as_deref(), Some("2000"));
+    }
+
+    /// And the rest of the command is unchanged by either decision.
+    #[test]
+    fn the_group_and_count_survive_both_ways() {
+        for ms in [0, 250] {
+            let a = args(ms);
+            assert!(a.contains(&"GROUP".to_string()), "{a:?}");
+            assert!(a.contains(&"g".to_string()) && a.contains(&"c".to_string()), "{a:?}");
+            assert_eq!(
+                a.iter().position(|x| x == "COUNT").map(|i| a[i + 1].clone()),
+                Some("8".to_string())
+            );
+        }
+    }
 }

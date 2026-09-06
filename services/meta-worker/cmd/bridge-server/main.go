@@ -24,6 +24,7 @@ import (
 
 	"github.com/loreweave/foundation/contracts/meta"
 	"github.com/loreweave/foundation/sdks/go/metapg"
+	"github.com/loreweave/foundation/sdks/go/piikms"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/bridge"
 )
 
@@ -77,7 +78,14 @@ func run() error {
 		QueryBuilder: meta.PostgresQueryBuilder{}, Clock: sysClock{}, UUIDGen: randUUID{},
 	}
 	bsrv, err := bridge.New(
-		bridge.MetaRegistrar{Cfg: cfg, Caller: bridge.WorldServiceActorID},
+		bridge.MetaRegistrar{Cfg: cfg, Caller: bridge.WorldServiceActorID, Pool: pool,
+			// ReadAudit is NOT optional in production, and it was missing here.
+			// `liveBinding` writes the `actor_binding_cross_user` row only
+			// `if m.ReadAudit != nil`, and no construction ever set it — measured
+			// 2026-08-21 on the live dev stack: meta_read_audit held ZERO rows
+			// after grants, revokes and previews that all took the cross-user read.
+			// The discipline existed at every layer above and produced nothing.
+			ReadAudit: bridge.PgReadAuditor{W: piikms.NewPgReadAuditWriter(pool)}},
 		bridge.PgAuditSink{Pool: pool, Callee: "meta-worker"},
 		token, "world-service",
 	)

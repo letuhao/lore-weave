@@ -1,7 +1,31 @@
 # ACT_001 — Actor Foundation
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 > **⚠ L3 STRENGTHENING REQUIRED 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md)
-> `SPG-A10` / `SPG-F5`, rows `SPG-R6` + `SPG-R7`:**
+> `SPG-A10` / `SPG-F5`, rows `SPG-R6` + `SPG-R7` (the latter retired 2026-07-30 as a mis-diagnosis; `SPG-R6` is what landed):**
 > **This doc has the right seam and the wrong shape for it.** The 3-layer model's insight is correct and
 > is reused unchanged: **L3 Control source is DYNAMIC**, not a property of actor kind — and
 > [`AGT-A3`](../../11_agent_decision_standard.md) already makes drivers *"assigned per actor/tier and

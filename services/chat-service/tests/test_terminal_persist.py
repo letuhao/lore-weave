@@ -34,6 +34,13 @@ class _FakeConn:
         self.executed: list[tuple] = []
         self.inserted_row: dict | None = None
 
+    def is_in_transaction(self) -> bool:
+        # asyncpg connections expose this, and next_sequence_num REFUSES without it:
+        # pg_advisory_xact_lock is released at transaction end, so on an autocommit
+        # connection it would protect nothing. The fake says True because every caller
+        # under test runs inside `async with conn.transaction()` below.
+        return True
+
     def transaction(self):
         conn = self
 

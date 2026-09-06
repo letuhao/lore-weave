@@ -1,7 +1,7 @@
 """M4d-1 — Unit tests for the internal timeline endpoint.
 
 POST /internal/knowledge/timeline — the translation memo's read path. The DB
-layer (pg knowledge_projects lookup + neo4j list_events_filtered) is mocked so
+layer (pg knowledge_projects lookup + the GraphStore browse) is mocked so
 these run hermetically; the real query is covered by the live-smoke.
 """
 
@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.routers import internal_timeline as mod
-from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+from app.db.graph_repos.events import EVENT_ORDER_CHAPTER_STRIDE
 
 _TOKEN = "default_test_token"  # conftest INTERNAL_SERVICE_TOKEN default
 _BOOK = str(uuid4())
@@ -60,9 +60,14 @@ class _FakeNeo4jSession:
 
 def _patch_db(monkeypatch, *, project_row, events=None, total=0):
     monkeypatch.setattr(mod, "get_knowledge_pool", lambda: _FakePool(project_row))
-    monkeypatch.setattr(mod, "neo4j_session", lambda: _FakeNeo4jSession())
+    monkeypatch.setattr(mod, "graph_session", lambda: _FakeNeo4jSession())
+    # T17 A4 — the router now browses through the PORT (`events_page`), so the mock goes on
+    # the store the provider hands back, not on a module-level repo function. Patching the
+    # old name would still pass by patching NOTHING the router calls: the test would be
+    # asserting about a function the code no longer reaches.
     list_mock = AsyncMock(return_value=(events or [], total))
-    monkeypatch.setattr(mod, "list_events_filtered", list_mock)
+    store = SimpleNamespace(events_page=list_mock)
+    monkeypatch.setattr(mod, "get_graph_store", lambda _session: store)
     return list_mock
 
 
@@ -134,8 +139,8 @@ def test_maps_events_and_applies_reading_window(monkeypatch):
     # before_order = chapter_index × stride (events strictly before this chapter);
     # window: after_order = (chapter_index − 8) × stride.
     kwargs = list_mock.await_args.kwargs
-    assert kwargs["before_order"] == 10 * EVENT_ORDER_CHAPTER_STRIDE
-    assert kwargs["after_order"] == (10 - 8) * EVENT_ORDER_CHAPTER_STRIDE
+    assert kwargs["before"] == 10 * EVENT_ORDER_CHAPTER_STRIDE
+    assert kwargs["after"] == (10 - 8) * EVENT_ORDER_CHAPTER_STRIDE
 
 
 def test_no_window_floor_within_first_chapters(monkeypatch):
@@ -144,8 +149,8 @@ def test_no_window_floor_within_first_chapters(monkeypatch):
     list_mock = _patch_db(monkeypatch, project_row=row, events=[], total=0)
     _post(_client(), {"book_id": _BOOK, "chapter_order": 4})
     kwargs = list_mock.await_args.kwargs
-    assert kwargs["after_order"] is None
-    assert kwargs["before_order"] == 4 * EVENT_ORDER_CHAPTER_STRIDE
+    assert kwargs["after"] is None
+    assert kwargs["before"] == 4 * EVENT_ORDER_CHAPTER_STRIDE
 
 
 def test_negative_chapter_index_rejected():

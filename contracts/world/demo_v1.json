@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "parent": null,
+    "level_name": "thien-gioi",
+    "kind": "world",
+    "pos_x": 500,
+    "pos_y": 500,
+    "place": null,
+    "scale": null
+  },
+  {
+    "id": 2,
+    "parent": 1,
+    "level_name": "van-lang",
+    "kind": "region",
+    "pos_x": 420,
+    "pos_y": 610,
+    "place": null,
+    "scale": null
+  },
+  {
+    "id": 3,
+    "parent": 2,
+    "level_name": "co-loa",
+    "kind": "locale",
+    "pos_x": 500,
+    "pos_y": 500,
+    "place": null,
+    "scale": null
+  },
+  {
+    "id": 4,
+    "parent": 3,
+    "level_name": "yen-vu-lau",
+    "kind": "domain",
+    "pos_x": 480,
+    "pos_y": 520,
+    "place": {
+      "place_type": "tavern",
+      "canon_ref": { "kind": "BookChapter", "path": "ch1" },
+      "name_vi": "Yen Vu Lau",
+      "name_en": "Misty Rain Pavilion"
+    },
+    "scale": null
+  },
+  {
+    "id": 5,
+    "parent": 3,
+    "level_name": "cho-dong",
+    "kind": "domain",
+    "pos_x": 560,
+    "pos_y": 470,
+    "place": {
+      "place_type": "marketplace",
+      "canon_ref": { "kind": "BookChapter", "path": "ch1" },
+      "name_vi": "Cho Dong",
+      "name_en": "East Market"
+    },
+    "scale": null
+  }
+]

@@ -38,7 +38,12 @@ export type AiPrefs = {
 /** Partial deep-merge patch; a null leaf clears (inherits), absent is untouched. */
 export type AiPrefsPatch = Partial<Pick<AiPrefs, 'behavior' | 'grounding' | 'voice' | 'context'>>;
 
-export type ModelRole = 'chat' | 'composer' | 'planner' | 'embedding' | 'rerank' | 'critic';
+export type ModelRole =
+  | 'chat' | 'composer' | 'planner' | 'embedding' | 'rerank' | 'critic'
+  // QC-5 C33 — the model that audits a critic verdict. Book-tier only (the account
+  // panel lists neither this nor `critic`), and NOT called `verifier`: campaigns owns
+  // a different role by that name.
+  | 'critic_verifier';
 
 /** A deploy-tier capability ceiling (D-WS4C-EFFECTIVE-VALUE). `deploy_allows` is the
  *  process-global kill-switch; a consumer computes `effective = deploy_allows && knob`

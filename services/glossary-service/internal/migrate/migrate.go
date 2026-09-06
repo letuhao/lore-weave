@@ -1208,9 +1208,15 @@ BEGIN
   END IF;
 
   -- ── NEW: read name + aliases from EAV for the read-cache ────────────────
+  -- 🔴 book_attributes, NOT system_kind_attributes. Measured 2026-08-26 against the live store:
+  -- 7,048 of 7,575 alive entities resolve their name through BOOK attributes and ZERO through
+  -- system ones, so this lookup could never match and would write NULL - the very failure this
+  -- block exists to prevent. Harmless in chain order (0028 installs the correct body after this
+  -- one), and corrected anyway because that is exactly how the running database ended up with a
+  -- body that does not maintain the column: something re-installed an older definition.
   SELECT av.original_value INTO v_cached_name
   FROM entity_attribute_values av
-  JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
+  JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
   WHERE av.entity_id = p_entity_id
     AND ad.code IN ('name','term')
   ORDER BY
@@ -1218,9 +1224,12 @@ BEGIN
     ad.sort_order
   LIMIT 1;
 
+  -- book_attributes here too, for the same measured reason as the name lookup above: an
+  -- aliases value also lives under a BOOK attribute def, so the system-tier join matches
+  -- nothing and cached_aliases (and therefore search_vector) silently loses every alias.
   SELECT av.original_value INTO v_aliases_raw
   FROM entity_attribute_values av
-  JOIN system_kind_attributes ad ON ad.attr_def_id = av.attr_def_id
+  JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
   WHERE av.entity_id = p_entity_id AND ad.code = 'aliases'
   LIMIT 1;
 
@@ -2485,6 +2494,63 @@ $$;
 // system-tier version it supersedes). Idempotent.
 func UpGlossaryCutoverG4Cache(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "glossary-cutover-g4-cache", glossaryCutoverG4CacheSQL)
+}
+
+// UpGlossaryRecalcRestore RE-INSTALLS the same body UpGlossaryCutoverG4Cache installs, and
+// exists because the running database had lost it.
+//
+// 🔴 MEASURED 2026-08-26, D-GLOSSARY-READS-RETURN-ok-true-result-null-ON-A-SEEDED-BOOK.
+// glossary_search matches on `e.cached_name` and `search_vector`; both columns are maintained
+// ONLY by recalculate_entity_snapshot. Read out of the live database with pg_get_functiondef,
+// the deployed body was 3,465 chars / 103 lines with ZERO occurrences of either column — chain
+// step 0004_snapshot's version — even though 0026 and 0028 were both recorded applied on
+// 2026-06-20. So an entity was created, listed by name in the curation inbox, and returned by
+// `recent_for_orientation`, while the search built to find it returned nothing for its exact
+// name. Measured across the store: 549 of 7,575 alive entities carry a NULL cached_name, and
+// only 133 of those are drafts.
+//
+// WHY A NEW STEP AND NOT AN EDIT TO 0028: ApplyOnce records a step by NAME, so DDL added to an
+// already-applied step is a silent no-op on every existing database — this repo's own rule, and
+// exactly how a fix that exists in the source ends up absent from the server.
+//
+// IT REUSES glossaryCutoverG4CacheSQL RATHER THAN COPYING IT. A second copy of a 140-line
+// function body is a second thing to drift, and the whole defect here is two versions of one
+// function disagreeing about which table holds the name.
+//
+// WHAT RE-INSTALLED THE OLD BODY IS NOT ESTABLISHED. The ledger cannot explain it (each step
+// runs once and all four are recorded), so the overwrite came from outside the chain. This step
+// makes the correct body win on the next boot; it does not stop whatever undid it, and that is
+// recorded on the ledger row rather than guessed at here.
+func UpGlossaryRecalcRestore(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "glossary-recalc-restore", glossaryCutoverG4CacheSQL)
+}
+
+// backfillNullCachedNameSQL repairs the rows created while the wrong body was deployed.
+//
+// Bounded to entities that HAVE a name to recover — a row with no name attribute value would
+// be recalculated to the same NULL, so including it would be churn that reports as repair. The
+// function is idempotent, so re-running this step's successor costs nothing.
+const backfillNullCachedNameSQL = `
+SELECT recalculate_entity_snapshot(e.entity_id)
+FROM glossary_entities e
+WHERE e.alive
+  AND e.deleted_at IS NULL
+  AND e.cached_name IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM entity_attribute_values av
+    JOIN book_attributes ba ON ba.attr_id = av.attr_def_id
+    WHERE av.entity_id = e.entity_id
+      AND ba.code IN ('name', 'term')
+      AND COALESCE(av.original_value, '') <> ''
+  )
+`
+
+// BackfillNullCachedName re-derives cached_name / cached_aliases / search_vector for every
+// entity left unsearchable by the wrong function body. MUST run AFTER UpGlossaryRecalcRestore,
+// or it would call the broken body and repair nothing while reporting success.
+func BackfillNullCachedName(ctx context.Context, pool *pgxpool.Pool) error {
+	return execGuarded(ctx, pool, "backfill-null-cached-name", backfillNullCachedNameSQL)
 }
 
 // glossaryDropLegacyG4SQL is the G4e IRREVERSIBLE drop of the retired genre·kind·

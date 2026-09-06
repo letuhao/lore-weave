@@ -23,6 +23,18 @@ const BOOKS = {
   total: 2,
 };
 
+// The mock APPLIES ?q, because the title filter now lives on the server. A mock
+// that returns the same rows whatever it is asked cannot tell a picker that
+// searched from one that did not — and the picker previously filtered in the
+// browser over a list the endpoint had already truncated to 100 (it asks for
+// 200; parseLimitOffset clamps). At 83 books that is invisible; at 101 the
+// picker starts omitting books silently.
+function respondToQuery(...a: unknown[]) {
+  const q = String((a[1] as { q?: string } | undefined)?.q ?? '').toLowerCase();
+  const items = q ? BOOKS.items.filter((b) => b.title.toLowerCase().includes(q)) : BOOKS.items;
+  return Promise.resolve({ items, total: items.length });
+}
+
 describe('BookPicker (C4)', () => {
   beforeEach(() => listBooksMock.mockReset());
 
@@ -62,14 +74,47 @@ describe('BookPicker (C4)', () => {
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
-  it('filters out non-matching titles', async () => {
-    listBooksMock.mockResolvedValue(BOOKS);
+  it('sends the title filter to the SERVER as ?q, and renders what comes back', async () => {
+    listBooksMock.mockImplementation(respondToQuery);
     render(<BookPicker value={null} onChange={vi.fn()} />);
     await waitFor(() => expect(listBooksMock).toHaveBeenCalled());
     fireEvent.focus(screen.getByRole('combobox'));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'winds' } });
-    // wait for the debounced filter to drop the non-match (both render pre-debounce)
+
+    // The REQUEST is the assertion that matters: a filter that never leaves the
+    // browser is the defect, and a rendered list alone cannot distinguish them.
+    await waitFor(() =>
+      expect(listBooksMock).toHaveBeenCalledWith(
+        'tok-test',
+        expect.objectContaining({ q: 'winds' }),
+      ),
+    );
     await waitFor(() => expect(screen.queryByText('The Silk Road Chronicles')).toBeNull());
     expect(screen.getByText('Winds of the Eastern Sea')).toBeInTheDocument();
+  });
+
+  it("keeps the selected book's title after a search that excludes it", async () => {
+    // The label used to be re-derived from the loaded page. Once the page is a
+    // search result the chosen book is usually absent from it, so deriving would
+    // blank the picker's own label the moment you typed.
+    listBooksMock.mockImplementation(respondToQuery);
+    const { rerender } = render(<BookPicker value={null} onChange={vi.fn()} />);
+    await waitFor(() => expect(listBooksMock).toHaveBeenCalled());
+    rerender(<BookPicker value="b-bbbb" onChange={vi.fn()} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('book-picker-selected')).toHaveTextContent(
+        'The Silk Road Chronicles',
+      ),
+    );
+  });
+
+  it('says how many matches it is NOT showing', async () => {
+    // A picker that quietly lists 100 of 140 is indistinguishable from one whose
+    // user has 100 books. The count has to be on screen.
+    listBooksMock.mockResolvedValue({ items: BOOKS.items, total: 140 });
+    render(<BookPicker value={null} onChange={vi.fn()} />);
+    await waitFor(() => expect(listBooksMock).toHaveBeenCalled());
+    fireEvent.focus(screen.getByRole('combobox'));
+    expect(await screen.findByTestId('book-picker-truncated')).toHaveTextContent('138 more');
   });
 });

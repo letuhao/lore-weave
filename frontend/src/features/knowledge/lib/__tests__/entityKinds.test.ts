@@ -34,7 +34,7 @@ describe('AUTHORABLE_ENTITY_KINDS', () => {
   it('equals the server-side AUTHORABLE_KINDS gate (cross-language lock)', () => {
     const pyPath = resolve(
       HERE,
-      '../../../../../../services/knowledge-service/app/db/neo4j_repos/entities.py',
+      '../../../../../../services/knowledge-service/app/db/graph_repos/entities.py',
     );
     const src = readFileSync(pyPath, 'utf8');
     // The vocabulary moved into the `AuthorableKind` Literal, from which AUTHORABLE_KINDS is now

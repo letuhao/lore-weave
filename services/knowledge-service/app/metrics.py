@@ -34,6 +34,10 @@ __all__ = [
     "summary_regen_tokens_total",
     "reconcile_sweep_total",
     "quarantine_sweep_total",
+    "glossary_mirror_missing",
+    "glossary_mirror_projects_diverged",
+    "glossary_mirror_repaired_total",
+    "glossary_mirror_sweep_total",
     "tool_calls_total",
     "tool_call_duration_seconds",
     "tool_call_result_size_bytes",
@@ -47,6 +51,10 @@ __all__ = [
     "knowledge_extraction_filter_reload_total",
     "knowledge_extraction_status_effect_total",
     "correction_emit_failure_total",
+    "vector_dual_write_total",
+    "vector_shadow_read_extra_total",
+    "vector_shadow_read_overlap",
+    "vector_shadow_read_total",
 ]
 
 registry = CollectorRegistry()
@@ -497,6 +505,47 @@ for _outcome in ("completed", "lock_skipped", "errored"):
     quarantine_sweep_total.labels(outcome=_outcome)
 
 
+# ── glossary→KG mirror drift (D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER) ─
+# The projection is at-least-once with no reconciliation: entities lost while a
+# handler was broken stayed lost, and NOTHING reported it. Live-measured on the
+# acceptance book: 17 of 43 absent, found by hand during an unrelated dig.
+#
+# ⚠️ DELIBERATELY UNLABELLED BY PROJECT. The obvious design is a per-project
+# gauge, and the dev database alone holds 451 projects — that is 451 series for
+# a number that is zero almost everywhere. These aggregate; the per-project
+# detail goes to the structured log, and the drift probe endpoint answers for
+# one project on demand.
+glossary_mirror_missing = Gauge(
+    "knowledge_glossary_mirror_missing",
+    "Entities the glossary says exist and the KG does not hold, summed across "
+    "every project the last sweep walked. MUST trend to zero: a sustained "
+    "non-zero value means the projection is losing events.",
+    registry=registry,
+)
+glossary_mirror_projects_diverged = Gauge(
+    "knowledge_glossary_mirror_projects_diverged",
+    "Projects with at least one missing entity at the last sweep. Separates "
+    "'one book is badly broken' from 'every book lost one event'.",
+    registry=registry,
+)
+glossary_mirror_repaired_total = Counter(
+    "knowledge_glossary_mirror_repaired_total",
+    "Mirror events re-emitted by the sweep. A HEALTHY system converges to zero "
+    "repairs; sustained repair volume means something upstream keeps losing "
+    "events and the reconciler is only masking it.",
+    registry=registry,
+)
+glossary_mirror_sweep_total = Counter(
+    "knowledge_glossary_mirror_sweep_total",
+    "Mirror-drift sweep outcomes. `errored` fires once per sweep that had ≥1 "
+    "per-project error, not once per project.",
+    ["outcome"],
+    registry=registry,
+)
+for _outcome in ("completed", "lock_skipped", "errored"):
+    glossary_mirror_sweep_total.labels(outcome=_outcome)
+
+
 # ── K21 — LLM memory tool calls ──────────────────────────────────────
 # One counter per tool call, labelled by tool + outcome:
 #   ok          — handler returned a result
@@ -666,3 +715,86 @@ for _role in ("subject", "object"):
         knowledge_extraction_writer_autocreate_total.labels(
             role=_role, outcome=_out,
         )
+
+
+# ── T24 · the vector dual-write and its shadow read ──────────────────────────
+#
+# These two carry the CUTOVER GATE. T25 drops the Neo4j vector indexes, and the
+# only thing standing between that and silent data loss is evidence that every
+# write reached the secondary. A swallowed secondary failure is invisible by
+# construction — the request succeeded — so the count IS the evidence, and
+# `outcome="secondary_failed"` must read zero before the cutover, not "low".
+vector_dual_write_total = Counter(
+    "knowledge_vector_dual_write_total",
+    "Vector upserts through the dual-write store, by outcome. "
+    "`secondary_failed` is swallowed at request time and MUST be zero before "
+    "the T25 cutover — a non-zero series means the target is missing rows.",
+    ["scope", "outcome"],
+    registry=registry,
+)
+for _scope in ("passage", "entity"):
+    for _outcome in ("both", "primary_only", "secondary_failed", "primary_failed"):
+        vector_dual_write_total.labels(scope=_scope, outcome=_outcome)
+
+# The counter above is PRE-SEEDED — every (scope, outcome) series exists at 0.0 from the
+# moment this module imports, whether or not a dual-write store is ever built. That makes
+# "family present" WORTHLESS as an arming signal, and on 2026-08-21 it cost a real
+# misdiagnosis: `soak-armed-gate` read the family's ABSENCE as "KNOWLEDGE_VECTOR_DB_URL is
+# unset" when the variable had been set for nine days and the running IMAGE was simply too
+# old to carry the metric. An unarmed service on current code reports every series at 0.0,
+# indistinguishable from an armed one nothing has written to yet.
+#
+# So arming gets its OWN signal, set from CONFIGURATION at startup (see main.py's lifespan)
+# rather than at construction: the dual-write store is built lazily on first write, so a
+# construction-time signal would read 0 on a correctly-armed service that has merely not
+# been exercised — which is exactly the ARMED_IDLE state the soak must be able to name.
+vector_dual_write_armed = Gauge(
+    "knowledge_vector_dual_write_armed",
+    "1 when KNOWLEDGE_VECTOR_DB_URL is configured so vector writes reach the secondary; "
+    "0 when it is not. The dual-write COUNTER cannot carry this — it is pre-seeded and "
+    "reads 0.0 on armed and unarmed services alike.",
+    registry=registry,
+)
+vector_dual_write_armed.set(0)
+
+vector_shadow_read_total = Counter(
+    "knowledge_vector_shadow_read_total",
+    "Shadow reads against the secondary vector store, by outcome. "
+    "`skipped_sampling` is expected; `failed` means the comparison produced no "
+    "measurement, which is NOT the same as agreement and must not be read as it.",
+    ["outcome"],
+    registry=registry,
+)
+for _outcome in ("compared", "failed", "skipped_sampling"):
+    vector_shadow_read_total.labels(outcome=_outcome)
+
+# Overlap, not "recall": neither backend is ground truth here. The exact
+# ground-truth comparison is the benchmark's job (app/benchmark/
+# vector_backend_bench.py); this is the production-traffic signal that the two
+# answer alike, bucketed so a distribution is visible rather than a mean that
+# an outlier can hide in.
+vector_shadow_read_overlap = Histogram(
+    "knowledge_vector_shadow_read_overlap",
+    "Fraction of the primary's top-k that the secondary also returned",
+    buckets=(0.0, 0.5, 0.8, 0.9, 0.95, 0.99, 1.0),
+    registry=registry,
+)
+
+# 🔴 OVERLAP IS ASYMMETRIC, AND THE CUTOVER TRAVELS IN THE BLIND DIRECTION.
+#
+# `overlap = |P ∩ S| / |P|` reads **1.0** whenever the shadow returns a SUPERSET of the
+# primary. For a migration that is exactly backwards: after the flip the shadow's answers
+# become the served ones, so rows it returns that the primary does not are the rows a reader
+# starts seeing — and the one number gating the cutover cannot see them.
+#
+# Found by QC-3's `/review-impl` (2026-08-14). Counted rather than folded into the histogram:
+# a second ratio would be averaged with the first by anyone reading a dashboard, and these
+# two measure opposite failures. Non-zero here means the stores disagree in the direction the
+# cutover is about to make authoritative.
+vector_shadow_read_extra_total = Counter(
+    "knowledge_vector_shadow_read_extra_total",
+    "Shadow reads where the SECONDARY returned at least one record the primary did not. "
+    "Invisible to `overlap`, which is 1.0 for any superset — and after the cutover these "
+    "are the rows that become the answer.",
+    registry=registry,
+)

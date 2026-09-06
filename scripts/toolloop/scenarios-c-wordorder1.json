@@ -1,0 +1,27 @@
+{
+ "_note": "D-ANSWERABILITY-MISSES-WORD-ORDER — the live proof, on the row's own prompt verbatim. Its measured miss is closed by the dash normalisation shipped for D-THE-NORMALISER-DROPS-ARTICLES-BUT-NOT-HYPHENS, not by a matcher relaxation and not by the widened declarations (a falsifier reverting those left the tool answerable, which is what located the real cause).",
+ "scenarios": [
+  {
+   "id": "jobs-get",
+   "tool_under_test": "jobs_get",
+   "expect_tool": "jobs_get",
+   "intent": "read",
+   "tier": "R",
+   "scope": "user",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Show me the full detail of my most recent job — status, cost, and whether anything failed.",
+   "prompt_source": "_meta.synonyms['job detail'] + ['job status'].",
+   "needs_target": false,
+   "editor_context": false,
+   "approve": null,
+   "seed": [],
+   "falsifier": "REFUTED IF jobs_get surfaces 0/N — the em dash still separates 'job' from 'status' and the declared synonym cannot reach the sentence. PASSES IF it surfaces and is CALLED.\n\n🔴 THE PROMPT IS THE ROW'S OWN, UNCHANGED, AND THE EM DASH IS THE POINT. D-ANSWERABILITY-MISSES-WORD-ORDER filed this as words 'separated and reordered'; they are adjacent and in order, and the dash is what the normaliser treated as a letter. Rewording it to a comma would prove nothing.",
+   "ship_audit": {
+    "empty_case": "OWED — an account with no jobs must say so, not invent one.",
+    "absent_case": "OWED — a job_id that does not exist must return 'not found or not accessible', and that string must not distinguish another user's job from a nonexistent one.",
+    "tenancy": "OWED — user-scoped; another account's job_id must be refused."
+   },
+   "defects": []
+  }
+ ]
+}

@@ -1,0 +1,95 @@
+{
+  "_note": "CONTROL for a hypothesis that would otherwise be a plausible story.\n\nMEASURED: settings_model_set_active and registry_set_skill_enabled were both called 5/5 with their required BOOLEAN missing, hit the arg-repair loop, and failed. settings_model_set_favorite declares the SAME shape — a required bare boolean with no default — and was PROVEN. The difference is not the tool: it is that 'mark as a favourite' needs TRUE while 'deactivate' and 'turn off' need FALSE.\n\nSo the hypothesis is: THE MODEL OMITS A REQUIRED BOOLEAN WHEN THE CORRECT VALUE IS FALSE. One tool, one fixture, one variable — the two arms differ only in which value the sentence implies. If the false arm also omits it, the cause is named and general. If it does not, the hypothesis is dead and the two failures need another explanation.",
+  "scenarios": [
+    {
+      "id": "bool-true",
+      "tool_under_test": "settings_model_set_favorite",
+      "expect_tool": "settings_model_set_favorite",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my registered AI models.",
+      "follow_ups": [
+        "Mark the model called LOOP-THROWAWAY-model-{run_word} as a favourite."
+      ],
+      "prompt_source": "Turn 1 is settings_list_models' own purpose; the MEASURED turn is settings_model_set_favorite's synonyms ['mark model as favorite'] + ['favorite'], verbatim. Two turns because user_model_id is REQUIRED and settings_list_models is its only supplier.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "settings_model_register",
+          "args": {
+            "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+            "provider_model_name": "loop-throwaway-probe",
+            "alias": "LOOP-THROWAWAY-model-{run_word}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. The account already has registered models (settings_list_models returns real rows — the loop's own model_ref is one of them), so turn 1 has something to list and the id is the model's to obtain, not mine to type."
+        }
+      ],
+      "falsifier": "REFUTED IF: a model is favourited with NO confirm card (Tier A), OR the model reaches for `settings_model_set_active` instead — the two tools have IDENTICAL shapes (user_model_id + a boolean) and adjacent synonyms, and deactivating a model HIDES IT FROM EVERY PICKER rather than pinning it, which is the opposite of what was asked and far more disruptive — OR it invents a user_model_id rather than reusing one from turn 1. CONTROL: `value` is a boolean, so a model that sends value=false while saying it favourited the model has un-favourited it.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a user_model_id that does not exist must be refused.",
+        "idempotency": "OWED — favouriting an already-favourite model must be a clear no-op.",
+        "tenancy": "OWED — scope=USER: another account's model must not be favouritable."
+      },
+      "defects": [],
+      "_rerun_of": "batch35",
+      "_control_why": "The TRUE arm. This is the wording that was already PROVEN, restated to name the run's own model so both arms differ in ONE thing: whether the required boolean must be true or false."
+    },
+    {
+      "id": "bool-false",
+      "tool_under_test": "settings_model_set_favorite",
+      "expect_tool": "settings_model_set_favorite",
+      "intent": "write",
+      "tier": "A",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my registered AI models.",
+      "follow_ups": [
+        "Unfavourite the model called LOOP-THROWAWAY-model-{run_word}."
+      ],
+      "prompt_source": "Turn 1 is settings_list_models' own purpose; the MEASURED turn is settings_model_set_favorite's synonyms ['mark model as favorite'] + ['favorite'], verbatim. Two turns because user_model_id is REQUIRED and settings_list_models is its only supplier.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "settings_model_register",
+          "args": {
+            "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+            "provider_model_name": "loop-throwaway-probe",
+            "alias": "LOOP-THROWAWAY-model-{run_word}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "The fixture exists. The account already has registered models (settings_list_models returns real rows — the loop's own model_ref is one of them), so turn 1 has something to list and the id is the model's to obtain, not mine to type."
+        }
+      ],
+      "falsifier": "REFUTED IF: a model is favourited with NO confirm card (Tier A), OR the model reaches for `settings_model_set_active` instead — the two tools have IDENTICAL shapes (user_model_id + a boolean) and adjacent synonyms, and deactivating a model HIDES IT FROM EVERY PICKER rather than pinning it, which is the opposite of what was asked and far more disruptive — OR it invents a user_model_id rather than reusing one from turn 1. CONTROL: `value` is a boolean, so a model that sends value=false while saying it favourited the model has un-favourited it.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a user_model_id that does not exist must be refused.",
+        "idempotency": "OWED — favouriting an already-favourite model must be a clear no-op.",
+        "tenancy": "OWED — scope=USER: another account's model must not be favouritable."
+      },
+      "defects": [],
+      "_rerun_of": "batch35",
+      "_control_why": "The FALSE arm — the same tool, the same required boolean, and the only change is that the correct value is now false."
+    }
+  ]
+}

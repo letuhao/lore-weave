@@ -17,17 +17,36 @@ passed in). Pure `build_messages` / `parse_edges` are the test surface.
 from __future__ import annotations
 
 import json
+import re
 import logging
 from typing import Any
+
+from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
+
 from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
+# The two ordered edge kinds of the world partial order (plan T33 / D0.1-D8), plus the
+# refusal. `causes` is a claim about WHY; `precedes` is a claim only about ORDER. They are
+# different strengths of assertion and collapsing them loses the distinction a canon check
+# needs — "B happened after A" is cheap and usually safe, "A caused B" is expensive and often
+# wrong.
+REL_CAUSES = "causes"
+REL_PRECEDES = "precedes"
+REL_UNKNOWN = "unknown"
+_ORDERED_KINDS = (REL_CAUSES, REL_PRECEDES)
+
 _SYSTEM_PROMPT = (
-    "You are a narrative-causality analyst. Given story EVENTS in reading order, you identify "
-    "DIRECT causal links: which earlier event directly CAUSES or ENABLES a later one. Only "
-    "forward links (the cause must appear before the effect). Reply with STRICT JSON only: a "
-    "list of [cause_id, effect_id] pairs. No prose, no code fence."
+    "You are a narrative-order analyst. Given story EVENTS in reading order, you label the "
+    "relation between an earlier and a later event as exactly one of: "
+    "causes (the earlier event DIRECTLY brings about or enables the later one); "
+    "precedes (the later event clearly happens after, but you cannot show causation); "
+    "unknown (you cannot tell, or the events are unrelated). "
+    "Only forward links (the earlier event must appear first). PREFER 'unknown' over guessing: "
+    "a wrong order is worse than an absent one. Reply with STRICT JSON only: a list of "
+    "[earlier_label, later_label, relation] triples, using the E-labels exactly as given. "
+    "No prose, no code fence."
 )
 
 _WINDOW = 12          # events per LLM call
@@ -35,16 +54,44 @@ _STRIDE = 6           # overlap so a cross-boundary cause→effect isn't missed
 _MAX_WINDOWS = 40     # hard cap on LLM calls per request (cost backstop)
 
 
+def event_tokens(window: list[dict[str, Any]]) -> dict[str, str]:
+    """PURE — `{"E1": <event id>, …}` for one window, in reading order.
+
+    The handle the model is asked to answer with. See `build_messages` for why it
+    is not the raw id.
+    """
+    return {f"E{i + 1}": e["id"] for i, e in enumerate(window)}
+
+
 def build_messages(window: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """PURE — chat messages for one window of ORDERED events (``[{id,title,summary?}]``)."""
+    """PURE — chat messages for one window of ORDERED events (``[{id,title,summary?}]``).
+
+    Events are labelled `E1..En`, NOT by their raw id, and the listing carries no
+    separate line number.
+
+    MEASURED, and this is why the corpus bite kept returning zero. The listing used
+    to read ``1. id=<32-hex> | title`` — a line NUMBER beside a long opaque id — and
+    the model answered with the number:
+
+        [[1, 2, unknown], [2, 3, precedes], [3, 6, causes], …]
+
+    `parse_edges` then correctly dropped every triple, because `1` is not an event
+    id in the window. The inference had worked; the handles did not survive the round
+    trip, and the failure looked identical to "the model found nothing".
+
+    One label per event, matching what the answer is asked to contain, removes the
+    ambiguity — there is no second number on the line to answer with.
+    """
     lines = []
     for i, e in enumerate(window):
         summ = (e.get("summary") or "").strip()
-        lines.append(f"{i + 1}. id={e['id']} | {e.get('title', '')}"
-                     + (f" — {summ}" if summ else ""))
+        lines.append(f"E{i + 1} | {e.get('title', '')}" + (f" — {summ}" if summ else ""))
     user = ("EVENTS in reading order:\n" + "\n".join(lines)
-            + "\n\nReturn JSON [[cause_id, effect_id], …] for the DIRECT causal links "
-              "(cause must appear before effect).")
+            + "\n\nReturn JSON [[earlier_label, later_label, relation], ...] using the "
+              "E-labels exactly as written above (e.g. \"E1\"), with relation "
+              "one of causes | precedes | unknown. Omit a pair entirely, or label it "
+              "'unknown', when you are not confident - an absent edge is safe, a "
+              "wrong one is not.")
     return [{"role": "system", "content": _SYSTEM_PROMPT}, {"role": "user", "content": user}]
 
 
@@ -59,36 +106,137 @@ def _loads_lenient(content: str) -> Any:
     try:
         return json.loads(s)
     except (json.JSONDecodeError, ValueError):
-        i, j = s.find("["), s.rfind("]")
-        if 0 <= i < j:
-            try:
-                return json.loads(s[i:j + 1])
-            except (json.JSONDecodeError, ValueError):
-                return None
+        pass
+    i, j = s.find("["), s.rfind("]")
+    if 0 <= i < j:
+        s = s[i:j + 1]
+        try:
+            return json.loads(s)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    # Last attempt: BARE IDENTIFIERS. The prompt asks for strict JSON, and a model may
+    # answer `[[E1, E2, causes], ...]` — correct content, unquoted tokens, invalid JSON.
+    #
+    # MEASURED on lw-iso 2026-08-30 (the T33 planted arm). That run reported
+    # `edges_written: 0` over 7 events on a corpus where causation was PLANTED and written
+    # explicitly. The detector had not failed: `llm_jobs` held finish_reason=stop and
+    #     [[E1, E2, unknown], [E2, E3, causes], [E2, E4, causes], ...]
+    # which this loader rejected, so two real causal edges were dropped in silence. A zero
+    # here cannot be told apart from "there is no causation in this text" — and that zero
+    # is the exact signature of T33's own stop condition, so a parse bug would have been
+    # read as a finding about the world.
+    #
+    # This CANNOT invent an edge. Every id must still be in `window_ids` and every relation
+    # must still be `causes`/`precedes`, so a token that is not a real E-label becomes a
+    # DROPPED triple rather than a fabricated one. It only recovers answers actually given.
+    quoted = re.sub(
+        r"\b(?!true|false|null)([A-Za-z_][A-Za-z0-9_]*)\b",
+        lambda m: chr(34) + m.group(1) + chr(34), s)
+    try:
+        return json.loads(quoted)
+    except (json.JSONDecodeError, ValueError):
         return None
 
 
 def parse_edges(
     content: str, *, order_index: dict[str, int], window_ids: set[str],
-) -> list[tuple[str, str]]:
-    """PURE — parse ``[[cause_id, effect_id], …]``, keeping ONLY pairs where both ids are in
-    the window AND the cause is strictly EARLIER than the effect in the global reading order
-    (drops self-loops, backward links, and ids the model invented). Tolerates a
-    ``{"edges":[…]}`` / ``{"pairs":[…]}`` wrapper or a bare list."""
+    token_map: dict[str, str] | None = None,
+) -> list[tuple[str, str, str]]:
+    """PURE — parse ``[[earlier_id, later_id, relation], …]`` into ``(a, b, relation)``.
+
+    Keeps ONLY triples where both ids are in the window, ``a`` is strictly EARLIER than ``b``
+    in the global reading order, and the relation is one of ``causes`` / ``precedes``. Drops
+    self-loops, backward links, ids the model invented, and — deliberately — every pair the
+    model labelled ``unknown``.
+
+    ``unknown`` IS A FIRST-CLASS ANSWER (plan T33). It is not a parse failure and not a
+    fallback to ``precedes``: for a canon check **a wrong order is worse than an absent one**,
+    and the sibling relation proposer was measured at only 3-of-8 defensible. Silently
+    upgrading "I cannot tell" into an edge is how an uncalibrated inference becomes world state.
+
+    Back-compat: a 2-element pair (the pre-T33 shape) reads as ``precedes`` — the WEAKER of the
+    two claims. An older cached response must not be promoted into a causal assertion it never
+    made.
+
+    ``token_map`` (``{"E1": <event id>, …}``, from `event_tokens`) resolves the E-labels the
+    prompt asks for back to real ids. A value that is ALREADY an event id passes through
+    unchanged, so a cached pre-token response still parses — the map is a resolution step, not
+    a required encoding.
+
+    Tolerates a ``{"edges":[…]}`` / ``{"pairs":[…]}`` wrapper or a bare list."""
     obj = _loads_lenient(content)
     if isinstance(obj, dict):
         obj = obj.get("edges") or obj.get("pairs") or []
     if not isinstance(obj, list):
         return []
-    out: list[tuple[str, str]] = []
+    out: list[tuple[str, str, str]] = []
     for pair in obj:
-        if not (isinstance(pair, (list, tuple)) and len(pair) == 2):
+        if not isinstance(pair, (list, tuple)):
             continue
-        a, b = pair
-        if (a in window_ids and b in window_ids and a != b
+        if len(pair) == 2:
+            a, b, rel = pair[0], pair[1], REL_PRECEDES
+        elif len(pair) == 3:
+            a, b, rel = pair
+            rel = str(rel or "").strip().lower()
+        else:
+            continue
+        # 'unknown', a typo, or a kind we do not model — all three mean "no edge".
+        if rel not in _ORDERED_KINDS:
+            continue
+        # Resolve the prompt's E-labels to real ids. An id passes through unchanged.
+        if token_map:
+            a = token_map.get(a, a) if isinstance(a, str) else a
+            b = token_map.get(b, b) if isinstance(b, str) else b
+        if (isinstance(a, str) and isinstance(b, str)
+                and a in window_ids and b in window_ids and a != b
                 and order_index.get(a, -1) < order_index.get(b, -1)):
-            out.append((a, b))
+            out.append((a, b, rel))
     return out
+
+
+def drop_cycles(
+    edges: list[tuple[str, str, str]],
+) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
+    """PURE — return ``(acyclic, refused)``, refusing any edge that would close a cycle.
+
+    Mirrors the ``motif_link`` cycle guard (``composition-service/app/db/migrate.py``), which
+    walks the existing edges of the SAME kind and refuses an insert whose target can already
+    reach its source. Per-kind for the same reason: ``causes`` and ``precedes`` are different
+    assertions, and a cycle in one is not a cycle in the other.
+
+    ── WHY THIS EXISTS WHEN THE ORDER FILTER ALREADY MAKES CYCLES IMPOSSIBLE ────────────────
+    Today every edge runs strictly forward in reading order, so the graph is a DAG by
+    construction and this refuses nothing. That is exactly why it is written now and tested
+    against a hand-built cycle: acyclicity is currently a property of ONE filter in ONE
+    function, and D0.1 makes world order a partial order that will eventually accept edges NOT
+    derived from reading order (curated ``HAPPENS_BEFORE``, cross-chapter anchors). The day
+    that filter is relaxed the guarantee disappears **silently** — a cyclic world order answers
+    "did A happen before B" with yes in both directions, and nothing errors.
+    """
+    kept: list[tuple[str, str, str]] = []
+    refused: list[tuple[str, str, str]] = []
+    reach: dict[str, dict[str, set[str]]] = {}
+    for a, b, rel in edges:
+        adj = reach.setdefault(rel, {})
+        # Can b already reach a? Then a -> b closes a loop.
+        seen: set[str] = set()
+        stack = [b]
+        closes = False
+        while stack:
+            node = stack.pop()
+            if node == a:
+                closes = True
+                break
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(adj.get(node, ()))
+        if closes:
+            refused.append((a, b, rel))
+            continue
+        adj.setdefault(a, set()).add(b)
+        kept.append((a, b, rel))
+    return kept, refused
 
 
 def _job_content(job: Any) -> str:
@@ -99,17 +247,58 @@ def _job_content(job: Any) -> str:
     return ""
 
 
+def reconcile_relations(
+    edges: list[tuple[str, str, str]],
+) -> tuple[list[tuple[str, str, str]], list[tuple[str, str]]]:
+    """One ordered pair, ONE relation. Returns (kept, pairs that disagreed).
+
+    🔴 **MEASURED 2026-08-30 (T33g), on a real corpus.** The extractor ran over 122 events of
+    the acceptance corpus and wrote 134 edges across **124** distinct ordered pairs — so **10
+    pairs carried BOTH `CAUSES` and `PRECEDES`**. The prompt asks the model for *"exactly one
+    of"*, and it obeys; the duplication is structural, not a model error:
+
+        `_WINDOW` is 12 and `_STRIDE` is 6, so consecutive windows OVERLAP by half. A pair in
+        the overlap is judged TWICE, in two different contexts, and the two judgements need
+        not agree. `edges` is a set of (a, b, relation) TRIPLES, so both survive dedup — the
+        set is deduping the wrong key.
+
+    The result is a graph asserting *"A causes B"* and *"A merely precedes B"* about the same
+    pair. That is exactly the collapse this module's docstring exists to prevent, reached from
+    the other direction: *"they are different strengths of assertion and collapsing them loses
+    the distinction a canon check needs."*
+
+    **A disagreement resolves to the WEAKER claim**, which is this module's own stated rule
+    rather than a new one: *"PREFER 'unknown' over guessing: a wrong order is worse than an
+    absent one."* Two windows that cannot agree on WHY have not established why; what they do
+    agree on is the order. So `causes` + `precedes` keeps `precedes`, and the pair is returned
+    so the caller can log how often the windows disagreed.
+    """
+    seen: dict[tuple[str, str], str] = {}
+    disagreed: list[tuple[str, str]] = []
+    for a, b, rel in edges:
+        prior = seen.get((a, b))
+        if prior is None:
+            seen[(a, b)] = rel
+        elif prior != rel:
+            disagreed.append((a, b))
+            seen[(a, b)] = REL_PRECEDES        # the weaker of the two, always
+    return sorted((a, b, rel) for (a, b), rel in seen.items()), sorted(set(disagreed))
+
+
 async def infer_causal_edges(
     llm: Any, *, user_id: str, model_source: str, model_ref: str,
     events: list[dict[str, Any]],
-) -> list[tuple[str, str]]:
-    """Infer `(cause_id, effect_id)` edges over the ORDERED ``events`` (already filtered +
+) -> list[tuple[str, str, str]]:
+    """Infer `(a, b, relation)` edges over the ORDERED ``events`` (already filtered +
     event-order-sorted by the caller). Slides a window with overlap, ≤ ``_MAX_WINDOWS`` LLM
-    calls. ADVISORY: NEVER raises; dedupes. Returns sorted unique pairs."""
+    calls. ADVISORY: NEVER raises; dedupes. Returns sorted unique triples, cycle-free.
+
+    ``relation`` is ``causes`` or ``precedes`` (plan T33 / D0.1). Pairs the model could not
+    label are dropped rather than downgraded — see ``parse_edges``."""
     if len(events) < 2:
         return []
     order_index = {e["id"]: i for i, e in enumerate(events)}
-    edges: set[tuple[str, str]] = set()
+    edges: set[tuple[str, str, str]] = set()
     windows = 0
     for start in range(0, len(events), _STRIDE):
         if windows >= _MAX_WINDOWS:
@@ -126,7 +315,27 @@ async def infer_causal_edges(
                 model_ref=model_ref,
                 input={"messages": build_messages(window_ev),
                        "temperature": 0.0,
-                        "max_tokens": max_tokens_for("causal_edges", target=len(window_ev))},
+                        "max_tokens": max_tokens_for("causal_edges", target=len(window_ev)),
+                       # D-T33-CORPUS-BITE-REASONING-MODEL — turn hidden thinking OFF.
+                       #
+                       # The corpus bite for this extractor returned `edges_written: 0` over
+                       # 27 events, and the cause was not the parse path: the configured chat
+                       # model is a REASONING model that spent its whole budget on
+                       # `reasoning_content`. Read from `llm_jobs` at the time:
+                       #   job 1  finish_reason=stop    output=1182  reasoning=1176  content="[]"
+                       #   job 2  finish_reason=length  output=4950  reasoning=4947  content=""
+                       # The traces were coherent and on-task — the model understood the
+                       # prompt and ran out of budget before answering.
+                       #
+                       # `max_tokens_for("causal_edges", ...)` sizes the ANSWER, not a
+                       # reasoning preamble, and this call wants strict JSON, so a preamble is
+                       # pure waste here. The deferral framed the fix as a provider-config
+                       # decision; it is not — this is a PER-REQUEST knob the SDK documents as
+                       # the cross-provider way to disable hidden thinking, and using it
+                       # manages no model lifecycle.
+                       **reasoning_fields(ReasoningDirective(
+                           effort="none", passthrough=False, source="non_reasoning")),
+                       },
                 job_meta={"extractor": "causal_edges"},
             )
         except Exception as exc:
@@ -135,7 +344,23 @@ async def infer_causal_edges(
         if (why := unusable(job, "causal_edges")):
             continue
         edges.update(parse_edges(
-            _job_content(job), order_index=order_index, window_ids=window_ids))
+            _job_content(job), order_index=order_index, window_ids=window_ids,
+            token_map=event_tokens(window_ev)))
         if start + _WINDOW >= len(events):
             break
-    return sorted(edges)
+    # Sort BEFORE the cycle guard so the refusal is deterministic: which edge of a cycle gets
+    # dropped must not depend on set iteration order, or two runs over the same corpus would
+    # disagree about world order and neither would be reproducible.
+    # One ordered pair may only carry ONE relation. The windows overlap by half, so a pair
+    # in the overlap is judged twice and the two judgements need not agree — measured at 10
+    # of 124 pairs on the acceptance corpus (T33g). Reconciled BEFORE the cycle guard, so the
+    # guard sees the graph that will actually be written.
+    reconciled, disagreed = reconcile_relations(sorted(edges))
+    if disagreed:
+        logger.info("causal-edges: %d pair(s) judged differently by overlapping windows; "
+                    "kept the weaker `precedes` for each", len(disagreed))
+    kept, refused = drop_cycles(reconciled)
+    if refused:
+        logger.warning("causal-edges: refused %d edge(s) that would close a cycle: %s",
+                       len(refused), refused[:5])
+    return kept

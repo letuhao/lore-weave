@@ -22,9 +22,25 @@ def _clear_overrides():
     app.dependency_overrides.clear()
 
 
-def _fake_pool(row):
+def _fake_pool(row, *, active_job=None):
+    """A pool that answers PER QUERY, not one row for every question.
+
+    The single-`return_value` version this replaces handed the same row to every
+    `fetchrow`, so when the endpoint grew its second query — the L3 active-extraction
+    guard — the project row came back as the answer to "is a job running?" and every
+    test 409'd. A fake that cannot tell two questions apart will agree with whatever
+    the caller asks next.
+
+    `active_job` is the job row the guard sees; None means the project is idle.
+    """
     pool = MagicMock()
-    pool.fetchrow = AsyncMock(return_value=row)
+
+    async def _fetchrow(query, *args):
+        if "extraction_jobs" in query:
+            return active_job
+        return row
+
+    pool.fetchrow = AsyncMock(side_effect=_fetchrow)
     return pool
 
 
@@ -57,7 +73,7 @@ def test_backfill_orders_runs_and_returns_stats(monkeypatch):
         yield MagicMock()
 
     monkeypatch.setattr(
-        "app.routers.internal_backfill.neo4j_session", fake_session,
+        "app.routers.internal_backfill.graph_session", fake_session,
     )
     monkeypatch.setattr(
         "app.routers.internal_backfill.get_book_client", lambda: MagicMock(),
@@ -108,8 +124,8 @@ def test_backfill_passages_ingests_published_chapters(monkeypatch):
     async def fake_session():
         yield MagicMock()
 
-    # neo4j_session + ingest live in the shared helper module now.
-    monkeypatch.setattr("app.extraction.passage_backfill.neo4j_session", fake_session)
+    # graph_session + ingest live in the shared helper module now.
+    monkeypatch.setattr("app.extraction.passage_backfill.graph_session", fake_session)
 
     bc = MagicMock()
     bc.list_chapters = AsyncMock(return_value=[
@@ -174,3 +190,88 @@ def test_backfill_orders_track1_noop_when_no_neo4j(monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json()["skipped"] == "neo4j_unavailable"
+
+
+# ── L3 — the backfill must not renumber under a live extraction ──────────────
+#
+# `event_order` has exactly two writers: `pass2_writer` (under an extraction job) and
+# `run_orders_backfill` (this endpoint). Two extractions cannot race —
+# `idx_extraction_jobs_one_active_per_project` is a UNIQUE partial index and the second
+# INSERT 409s. This endpoint was outside that invariant altogether.
+#
+# And the two writers DISAGREE about the numbering: the backfill assigns `base + idx` over
+# sorted event ids (dense from 0), the writer continues from the band's current maximum. Run
+# together they produce two numberings of one chapter and the reading axis is whatever
+# interleaving won — which is not a crash, it is a stable sort quietly falling back to row
+# order.
+
+
+def test_backfill_orders_409_while_an_extraction_job_is_active(monkeypatch):
+    job_id = uuid4()
+    monkeypatch.setattr(
+        "app.routers.internal_backfill.get_knowledge_pool",
+        lambda: _fake_pool({"user_id": uuid4()}, active_job={"job_id": job_id}),
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post(
+        f"/internal/projects/{uuid4()}/backfill-orders",
+        headers=_INTERNAL_TOKEN_HEADER,
+    )
+    assert resp.status_code == 409, resp.text
+    # The message must NAME the job. "conflict" alone sends an operator looking for a
+    # lock that has no handle.
+    assert str(job_id) in resp.text
+
+
+def test_backfill_orders_asks_about_exactly_the_indexed_statuses(monkeypatch):
+    """The guard and the partial index must cover the SAME statuses.
+
+    If the guard asked about only 'running', a job sitting in 'pending' would hold the
+    index (so no second extraction could start) while the backfill sailed past — the guard
+    would be strictly weaker than the invariant it is copying, and look identical.
+    """
+    seen: list[tuple] = []
+
+    def _pool():
+        pool = MagicMock()
+
+        async def _fetchrow(query, *args):
+            seen.append((query, args))
+            if "extraction_jobs" in query:
+                return None
+            return {"user_id": uuid4()}
+
+        pool.fetchrow = AsyncMock(side_effect=_fetchrow)
+        return pool
+
+    monkeypatch.setattr("app.routers.internal_backfill.get_knowledge_pool", _pool)
+    monkeypatch.setattr("app.routers.internal_backfill.settings",
+                        SimpleNamespace(neo4j_uri=None))
+    client = TestClient(app, raise_server_exceptions=False)
+    client.post(f"/internal/projects/{uuid4()}/backfill-orders",
+                headers=_INTERNAL_TOKEN_HEADER)
+
+    job_queries = [(q, a) for q, a in seen if "extraction_jobs" in q]
+    assert job_queries, "the endpoint never asked whether a job was active"
+    _q, args = job_queries[0]
+    assert sorted(args[1]) == ["paused", "pending", "running"], (
+        f"guard covers {args[1]}, the partial index covers pending/running/paused"
+    )
+
+
+def test_a_missing_project_is_404_not_409(monkeypatch):
+    """Order matters: a caller naming a project that does not exist should hear that,
+    not a conflict about a job it could not have started."""
+    pool = MagicMock()
+
+    async def _fetchrow(query, *args):
+        if "extraction_jobs" in query:
+            return {"job_id": uuid4()}      # a job "exists" — must NOT be reached
+        return None                          # ...because the project does not
+
+    pool.fetchrow = AsyncMock(side_effect=_fetchrow)
+    monkeypatch.setattr("app.routers.internal_backfill.get_knowledge_pool", lambda: pool)
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post(f"/internal/projects/{uuid4()}/backfill-orders",
+                       headers=_INTERNAL_TOKEN_HEADER)
+    assert resp.status_code == 404, resp.text

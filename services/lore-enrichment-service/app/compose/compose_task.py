@@ -569,6 +569,16 @@ async def compute_intent_resolve(
         kal_base_url=settings.knowledge_gateway_url,  # X2: cast via KAL roster (INV-KAL)
     )
     try:
+        # UNTIMED BY DESIGN (plan T53). This drains the KAL `roster` — every entity that ever
+        # existed in the book, with no story position — and that is the correct read here: the
+        # user typed a free-text intent and we are resolving WHICH entity they meant. An entity
+        # introduced in chapter 50 is a perfectly valid enrichment target while the reader sits
+        # at chapter 10, so filtering the candidate set by a story position would make the
+        # resolver fail to find things the user can plainly see in their own glossary.
+        #
+        # Contrast the canon bible (composition's `_canon_cast_at`), which moved onto
+        # `state@as_of` in T7: that one asserts what is TRUE at a position, and being untimed
+        # made it describe the end of the book. This one only asks what EXISTS.
         ents = await client.list_entities(book_id=UUID(book_id), limit=200)
     except (GlossaryServiceError, Exception):  # noqa: BLE001 — best-effort hint
         ents = []

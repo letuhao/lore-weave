@@ -232,6 +232,35 @@ class SaveEditedTranslationRequest(BaseModel):
     translated_body: Optional[str] = None
     translated_body_json: Optional[list] = None
     translated_body_format: str = "text"
+    @model_validator(mode="after")
+    def _body_must_not_be_empty(self):
+        """The docstring above has always said "one of translated_body /
+        translated_body_json must be present". Nothing enforced it.
+
+        MEASURED 2026-08-22 (tool deep-dive, batch 36) against the live service:
+
+            translated_body=""     -> {"success": true, "version_num": 2}
+            translated_body="   "  -> {"success": true, "version_num": 3}
+
+        This is the path a human editor's saved translation takes
+        (``authored_by='human'``). An empty save is not a no-op: it mints a real
+        version that sits in the chapter's version list looking like a human edit,
+        and ``translation_set_active_version`` can later publish it to readers. The
+        tool does not auto-activate, which is why this was latent rather than an
+        incident.
+
+        Enforced on the MODEL rather than in the route, so the REST handler and the
+        MCP tool — which both build this request — get it from one place.
+        """
+        text = (self.translated_body or "").strip()
+        blocks = self.translated_body_json or []
+        if not text and not blocks:
+            raise ValueError(
+                "translated_body (or translated_body_json) must not be empty — "
+                "saving an empty human edit would create a version that looks like "
+                "a translation and contains nothing"
+            )
+        return self
 
 
 class PatchTranslationBlockRequest(BaseModel):

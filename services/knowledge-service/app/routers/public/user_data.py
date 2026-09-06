@@ -31,6 +31,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.db.graph import graph_session
+from app.adapters.graph_store_provider import get_graph_store
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.user_data import UserDataRepo
@@ -54,6 +56,13 @@ router = APIRouter(
 class DeleteCounts(BaseModel):
     summaries: int
     projects: int
+    # The receipt is the point of this endpoint being a 200 rather than a 204, so it
+    # must not stop at the tables. A deleted project owns a Neo4j partition — its
+    # entities, aliases, relations and facts — and counting only rows would report an
+    # erasure as complete while the names were still there. Optional so an older client
+    # reading `deleted.summaries/projects` is unaffected, and None means the purge did
+    # not run rather than "nothing to purge".
+    graph_nodes: int | None = None
 
 
 class DeleteResponse(BaseModel):
@@ -143,13 +152,50 @@ async def delete_user_data(
     is why this isn't a 204.
     """
     counts = await repo.delete_all_for_user(user_id)
+    project_ids = counts.pop("project_ids", [])
+
+    # Erasure does not end at Postgres. Every deleted project owns a Neo4j partition —
+    # entities, aliases, relations, facts — and the single-project delete route already
+    # purges its own (`D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN`). Without the same purge
+    # here, "delete my data" left the user's entity graph standing while the audit line
+    # said it was destroyed; the live probe that found this read a character's name, kind
+    # and confidence out of a project that no longer existed.
+    #
+    # Same posture as that route: AFTER the authoritative commit, best-effort, and a
+    # Neo4j fault must not fail an erasure whose rows are already gone. The difference is
+    # that the failure is REPORTED rather than only logged — `graph_nodes=None` in the
+    # receipt is the user-visible "the tables are gone, the graph may not be".
+    graph_nodes: int | None = None
+    if project_ids:
+        try:
+            purged = 0
+            async with graph_session() as session:
+                # THE PORT, NOT THE REPO. `purge_project` exists on both, and reaching for the
+                # repo here was how this module became the 54th direct binder of `graph_repos`
+                # against a ceiling of 53 — measured across the merge, one over, and it was
+                # this line. Binding to the repo means this router breaks when the engine
+                # changes even though it contains no Cypher, which is what the port is for.
+                store = get_graph_store(session)
+                for pid in project_ids:
+                    purged += (await store.purge_project(project_id=pid))["nodes_deleted"]
+            graph_nodes = purged
+        except Exception:  # noqa: BLE001 — best-effort; the Postgres delete is authoritative
+            logger.warning(
+                "gdpr.erasure neo4j purge failed for user_id=%s over %d project(s) — "
+                "graph orphaned, re-sweep owed",
+                user_id, len(project_ids), exc_info=True,
+            )
+    else:
+        graph_nodes = 0  # nothing was deleted, so nothing was orphaned
+
     # GDPR audit trail — erasure is the higher-risk counterpart to
     # export and must be logged with the counts so a later audit can
     # reconstruct what was destroyed for this user.
     logger.info(
-        "gdpr.erasure user_id=%s projects=%d summaries=%d",
+        "gdpr.erasure user_id=%s projects=%d summaries=%d graph_nodes=%s",
         user_id,
         counts["projects"],
         counts["summaries"],
+        "purge-failed" if graph_nodes is None else graph_nodes,
     )
-    return DeleteResponse(deleted=DeleteCounts(**counts))
+    return DeleteResponse(deleted=DeleteCounts(**counts, graph_nodes=graph_nodes))

@@ -1,0 +1,152 @@
+{
+  "_note": "Batch 8, derived in RUNBOOK order. glossary_plan is one of the five INTENT-GATED setup tools and its own declared phrase contains the word 'ontology' — DQ-T31 measured that this is what opens the gate, so the prompt uses the tool's vocabulary and the gate state is checked as a control rather than assumed either way.",
+  "scenarios": [
+    {
+      "id": "glossary-plan",
+      "tool_under_test": "glossary_plan",
+      "expect_tool": "glossary_plan",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Plan my ontology for this book — how should I structure the world so the categories fit a seafaring gothic story?",
+      "prompt_source": "_meta.synonyms['plan my ontology'] + ['how should i structure my world']. Uses the tool's own vocabulary, which per DQ-T31 is also what opens the intent gate.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: it applies ontology changes with no confirm card (it PLANS, it must not write), OR the plan it returns names no kinds at all for a goal that describes a genre. CONTROL FIRST: read chat_messages.withheld_tools for stage='intent_gate'. A non-zero count means this run measures the DQ-T3 stamp, not the tool — DQ-T31 recorded that the gate turns on vocabulary, so this must be read rather than assumed.",
+      "ship_audit": {
+        "gate": "OWED — it is a planner; a plan that writes is the defect.",
+        "empty_case": "OWED — a goal it cannot plan for must say so, not return an empty plan.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-map-create",
+      "tool_under_test": "world_map_create",
+      "expect_tool": "world_map_create",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Make a new map called Saltmarsh in my Ashfall world.",
+      "prompt_source": "_meta.synonyms['create map'] + ['new map'].",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "LOOP-THROWAWAY-ashfall8",
+            "description": "batch 8 map fixture"
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool reports a map created while world_maps gains no row, OR it is called with an invented world_id — the nil-UUID case is now refused at the arg chokepoint (deabb4e47), so a DIFFERENT fabricated-but-valid UUID appearing here is a NEW instance of that class and must be recorded, not waved through. CONTROL: the model must find the world_id itself via world_list; a turn that never lists is a discovery failure, not a failure of this tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a world_id that does not exist must be refused.",
+        "tenancy": "OWED — another account's world must be refused."
+      },
+      "defects": []
+    },
+    {
+      "id": "book-steering-list",
+      "tool_under_test": "book_steering_list",
+      "expect_tool": "book_steering_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What writing rules do I have set for this book?",
+      "prompt_source": "_meta.synonyms['writing rules'] + ['rules'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_steering_set",
+          "args": {
+            "book_id": "{book_id}",
+            "name": "no-adverbs",
+            "body": "Never use adverbs ending in -ly in narration.",
+            "enabled": true
+          }
+        },
+        {
+          "tool": "book_steering_set",
+          "args": {
+            "book_id": "{book_id}",
+            "name": "tide-continuity",
+            "body": "The Obsidian Trench is only crossable at low tide; never write it otherwise.",
+            "enabled": true
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM book_steering WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO rules, because the measured failure mode for this shape is a COUNT — DQ-T30's original evidence was a re-ask answering 'one rule' over two. With one rule seeded, a stale answer and a correct one are the same sentence."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "adverb",
+          "tide"
+        ],
+        "why": "Both seeded rules must appear. Naming one is the under-count this fixture exists to expose; naming a rule that is not there is fabrication."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports a rule count that is not 2, OR it paraphrases a rule that was never stored.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with no rules must say so rather than describe the platform defaults as if the author had set them.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "settings-list-models",
+      "tool_under_test": "settings_list_models",
+      "expect_tool": "settings_list_models",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Which models do I have registered?",
+      "prompt_source": "_meta.synonyms['registered models'] + ['my models']. Deliberately the REGISTRY question — batch 4 recorded that settings_provider_inventory's LIVE-inventory question is answered from this tool, so the two are kept apart on purpose.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply presents the registry as the provider's LIVE inventory — that conflation is D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY, and seeing it from THIS side (the registry tool over-claiming) would be the same defect pointed the other way.",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no registered models must say so.",
+        "tenancy": "OWED — user-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-propose-fact",
+      "tool_under_test": "kg_propose_fact",
+      "expect_tool": "kg_propose_fact",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Note a story fact for this book: the Pale Regent's envoy arrived at the Keep during the last low tide.",
+      "prompt_source": "_meta.synonyms['note a story fact'] + ['record a fact'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the fact is written to the graph rather than parked in the review inbox — the tool's own description says it is a DRAFT awaiting confirmation and does NOT write. THE COUNT CANNOT SETTLE THIS ALONE: read the inbox row, not the Fact total. CONTROL: kg_propose_fact and memory_remember are near-twins in prose ('remember this happened' vs 'remember that'); if memory_remember is called instead, that is a DECLARATION overlap finding, not a failure of this tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and its whole contract is 'proposes, never writes'.",
+        "absent_case": "OWED — an invalid fact_type must be refused with the enum, not defaulted.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

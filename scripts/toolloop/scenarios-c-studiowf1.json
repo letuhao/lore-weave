@@ -1,0 +1,31 @@
+{
+  "_note": "D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN. The always-on twin, workflow_list, is scoped by _wf_surface -- but that derivation never produced 'studio' before today, so a real Studio Compose-panel turn (studio_context + editor_context both present) fell to 'editor' and workflow_list over-reported (measured live: 9 of 12, only 6 are studio-scoped). Fixed by checking _studio before _editor. This scenario is the first to set studio_context at all -- fe_runner never simulated the Studio surface before this row.",
+  "scenarios": [
+    {
+      "id": "workflow-list-on-a-real-studio-turn",
+      "tool_under_test": "workflow_list",
+      "expect_tool": "workflow_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What workflows are available to me?",
+      "prompt_source": "The row's OWN original instance -- the unfiltered ask that made workflow_list win the race against registry_list_workflows 5/5 in the row's first measurement. Unchanged; only studio_context is new, simulating the Compose panel this prompt would actually be sent from.",
+      "needs_target": false,
+      "editor_context": true,
+      "studio_context": {},
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF the turn reports 9 (or any count other than 6) workflows as available -- the pre-fix number, meaning _wf_surface still resolved to 'editor' rather than 'studio'. PASSES IF the reply's workflow count matches the STUDIO surface's true set (6, per registry_list_workflows' own surface=studio call, re-verified live rather than assumed from the row's prior number). The measurement is the CONTENT of workflow_list's own tool result (surfaces this batch can read directly), not the model's prose summary of it.",
+      "ship_audit": {
+        "empty_case": "n/a — System defaults are always visible.",
+        "tenancy": "OWED — scope=USER.",
+        "surface_filter": "the whole point of this arm: the ALWAYS-ON tool must now agree with the FEDERATED tool's own surface=studio answer."
+      },
+      "defects": ["D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN"],
+      "answer_expect": {
+        "why": "None. The measurement is workflow_list's own tool result, not the reply text."
+      }
+    }
+  ]
+}

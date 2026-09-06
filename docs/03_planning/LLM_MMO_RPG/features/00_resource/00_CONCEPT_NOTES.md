@@ -1,5 +1,12 @@
 # RES_001 Resource Foundation — Concept Notes
 
+> **⚠ `VitalKind` THROUGHOUT THIS FILE IS SUPERSEDED — 2026-08-02, `D-3` / `D-10`.** Every mention of
+> `Vital(VitalKind)`, `VitalKind: HP / Stamina`, and `Q3d`'s *"V1 active: Hp, Stamina"* described a
+> **closed engine enum**. A vital is now a **declared quantity of kind `Pool`**: `hp` is one pool a
+> reality may declare, not a variant the binary knows, and an actor may have none of them. See
+> [`2026-08-02-actor-data-structure.md`](../../../../specs/2026-08-02-actor-hub/analysis/2026-08-02-actor-data-structure.md) §3 and
+> `RES_001` §4.1. The V1 pair `Hp`/`Stamina` survives only as a **preset's content**.
+
 > **Status:** CONCEPT 2026-04-26 — awaiting user Q1-Q7 answers before promotion to RES_001 DRAFT.
 >
 > **Purpose:** Capture the brainstorm + gap analysis + open questions for the Resource Foundation feature. This is NOT a design doc; it is the seed material for the eventual `RES_001_resource_foundation.md` design.

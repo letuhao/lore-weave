@@ -112,12 +112,66 @@ async def test_handle_invalid_entity_id_falls_back_to_coarse():
 
 
 @pytest.mark.asyncio
-async def test_handle_ignores_other_event_types():
+async def test_handle_ignores_unrelated_event_types():
+    """An event this consumer has no business acting on stays a no-op.
+
+    `glossary.entity_created` is the deliberate example: a brand-new entity cannot appear in
+    any ALREADY-TRANSLATED chapter, so flagging on it would mark every translation in the book
+    stale every time an author adds a term — turning the flag into noise nobody reads.
+    """
     pool = AsyncMock()
     handled = await handle_glossary_event(
-        pool, "glossary.entity_deleted", {"book_id": BOOK_ID})
+        pool, "glossary.entity_created", {"book_id": BOOK_ID})
     assert handled is False
     pool.execute.assert_not_awaited()
+
+
+# ── the entity LIFECYCLE events (plan QC-4) ───────────────────────────────────
+#
+# ⚠️ This block REPLACES a test that asserted `glossary.entity_deleted` is IGNORED. That test
+# was not describing a decision, it was pinning a defect: QC-4's live smoke deleted a real
+# entity through the real route and found the translation flag untouched, while the same row
+# still flipped on `entity_updated`. The consumer was alive; the event type was unhandled, and
+# a green test said that was on purpose.
+
+@pytest.mark.parametrize("event_type", [
+    "glossary.entity_deleted",
+    "glossary.entity_restored",
+    "glossary.entity_purged",
+    "glossary.entity_status_changed",
+])
+@pytest.mark.asyncio
+async def test_lifecycle_events_flag_translations_stale(event_type):
+    """Consumers that READ the glossary see a delete for free (`deleted_at IS NULL`).
+
+    A finished translation is stored TEXT that already contains the term — nothing re-reads
+    the glossary on its behalf. The flag is the only mechanism that reaches output already
+    produced, so an unhandled lifecycle event leaves a chapter rendering a name the glossary
+    no longer has, with nothing reporting it.
+    """
+    pool = AsyncMock()
+    handled = await handle_glossary_event(
+        pool, event_type, {"book_id": BOOK_ID, "glossary_entity_id": ENTITY_ID})
+    assert handled is True, f"{event_type} did not flag anything stale"
+    assert pool.execute.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_events_keep_the_precision_path():
+    """The lifecycle payloads are thin by design (T27) — no `target_language`, but they DO
+    carry `glossary_entity_id`. That must land on the M6b targeted query, not the coarse
+    book-level fallback: flagging every translation in a book because one entity was deleted
+    is the behaviour M6b exists to remove.
+    """
+    pool = AsyncMock()
+    await handle_glossary_event(
+        pool, "glossary.entity_deleted",
+        {"book_id": BOOK_ID, "glossary_entity_id": ENTITY_ID})
+    sql = " ".join(str(c.args[0]) for c in pool.execute.await_args_list)
+    assert "chapter_translation_glossary_usage" in sql, (
+        "a lifecycle event fell back to coarse book-level flagging despite carrying an "
+        "entity anchor — every translation in the book would be marked stale"
+    )
 
 
 @pytest.mark.asyncio

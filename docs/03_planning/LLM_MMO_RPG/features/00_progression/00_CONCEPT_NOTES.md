@@ -1058,7 +1058,8 @@ on Strike action(attacker, defender, instrument):
   
   let final_damage = llm_proposed_damage.clamp(min_dmg, max_dmg);   // Q7e silent clamp
   
-  emit VitalDelta { actor_ref: defender, kind: VitalKind::Hp, delta: -final_damage };  // RES_001
+  // `kind` is a DECLARED quantity ordinal (D-3, 2026-08-02); `VitalKind::Hp` was a closed engine enum
+  emit VitalDelta { actor_ref: defender, kind: vital_ordinal, delta: -final_damage };  // RES_001
   
   for hook in formula.post_damage_hooks where final_damage >= hook.damage_threshold:
     emit ApplyStatus { actor_ref: defender, flag: hook.apply_status, magnitude: hook.magnitude };  // PL_006

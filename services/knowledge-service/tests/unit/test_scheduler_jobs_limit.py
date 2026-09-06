@@ -40,8 +40,11 @@ async def test_reconciler_threads_limit_into_cypher(monkeypatch):
         captured_limits.append(kwargs.get("limit"))
         return result
 
+    # The query moved to the maintenance repo (plan T17); the job keeps the per-run
+    # orchestration. Patching the job module would now patch nothing — this test asserts
+    # the limit reaches STORAGE, so the seam belongs where storage is.
     monkeypatch.setattr(
-        "app.jobs.reconcile_evidence_count.run_write", fake_run_write,
+        "app.db.graph_repos.maintenance.run_write", fake_run_write,
     )
 
     await reconcile_evidence_count(
@@ -64,7 +67,7 @@ async def test_reconciler_none_limit_forwards_as_none(monkeypatch):
         return result
 
     monkeypatch.setattr(
-        "app.jobs.reconcile_evidence_count.run_write", fake_run_write,
+        "app.db.graph_repos.maintenance.run_write", fake_run_write,
     )
 
     await reconcile_evidence_count(MagicMock(), user_id="u-1")

@@ -205,8 +205,8 @@ mod tests {
         assert!(w.rows.is_empty(), "row must not be cached on writer fail");
     }
 
-    /// Atomicity contract — simulates a TX with two intents (event append
-    /// + outbox write). If the outbox write fails, the caller MUST roll
+    /// Atomicity contract — simulates a TX with two intents (event append +
+    /// outbox write). If the outbox write fails, the caller MUST roll
     /// back and the simulated event row MUST be discarded. This test is
     /// the unit-level mirror of the integration test in
     /// `tests/integration/outbox_atomicity_test.rs` (which runs against a

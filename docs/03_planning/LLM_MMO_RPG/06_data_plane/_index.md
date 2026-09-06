@@ -55,9 +55,38 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 21. [18_causality_and_routing.md](18_causality_and_routing.md) — **DP-Ch38..Ch42** `CausalityToken` opaque newtype attached to acks + `wait_for` parameter on read primitives + projection-apply checkpoint table + session-writer transparent routing extending DP-Ch14 pattern + error taxonomy + gateway contract (resolves Q21 + Q22)
 22. [19_privacy_redaction_policies.md](19_privacy_redaction_policies.md) — **DP-Ch43..Ch45** `RedactionPolicy` enum (Transparent / SkipPrivate / AnonymizeRefs / Custom) + `RedactionFilter` trait + application semantics in aggregator runtime loop + telemetry counters + per-channel visibility no-inheritance rule (resolves Q32)
 23. [20_operational_residuals.md](20_operational_residuals.md) — **DP-Ch46..Ch50** ops handoff: histogram bucket layouts (Q23) + telemetry cardinality control (Q24) + capability signing key rotation policy with V3 monthly + revocation broadcast (Q25) + subscription fan-out batching (Q29) + per-channel-level retention (Q33). Recommended defaults locked + configurable overrides documented.
-24. [21_llm_turn_slot.md](21_llm_turn_slot.md) — **DP-Ch51..Ch53** LLM turn slot primitive: claim/release/get_turn_slot SDK + auto-timeout scheduler with TurnSlotTimedOut canonical event + 3 feature-level patterns (Strict / Concurrent / Cancellable) for LLM turn coordination. (Resolves Q20 Phần B; Phần A quantitative rescale stays V1-data-deferred.)
+24. [21_llm_turn_slot.md](21_llm_turn_slot.md) — **DP-Ch51..Ch53** LLM turn slot primitive: claim/release/get_turn_slot SDK + auto-timeout scheduler with TurnSlotTimedOut canonical event + 3 feature-level patterns (Strict / Concurrent / Cancellable) for LLM turn coordination. (Resolves Q20 Part B; Part A quantitative rescale stays V1-data-deferred.)
 
-**🎉🎉 Phase 4 design phase is COMPLETE — every actionable design question resolved.** Q20 Phần A (quantitative DP-S\* rescale) is purely a measurement question requiring V1 prototype data. **06_data_plane is locked baseline for feature design (DF4/DF5/DF7) and SDK implementation (Phase 2b dp/dp-derive/dp-clippy crates).**
+**🎉🎉 Phase 4 design phase is COMPLETE — every actionable design question resolved.** Q20 Part A (quantitative DP-S\* rescale) is purely a measurement question requiring V1 prototype data. **06_data_plane is locked baseline for feature design (DF4/DF5/DF7) and SDK implementation (Phase 2b dp/dp-derive/dp-clippy crates).**
+
+> ## ⚠ 2026-08-07 — READ THIS BEFORE ASSUMING ANY OF IT IS BUILT (`REC-100`)
+>
+> **The three crates named one line above — `dp`, `dp-derive`, `dp-clippy` — DO NOT EXIST.**
+> `crates/dp-kernel` is **not** them. It was created 2026-05-29 by `21855a371 feat(raid-c8): L2
+> schema infra` — the RAID track's event-contract plumbing (event store, outbox, snapshot,
+> projection runner, upcaster, channel writer) — five weeks *after* this folder locked, and this
+> folder never names it. It is `02_storage` in Rust, and it is good code doing a different job.
+>
+> **The prefix has already misled one audit.** `12_module_coverage_audit.md` line 154 marks the data
+> platform *"very deep — `crates/dp-kernel` (32 modules)"*, and docs `13`/`14`/`16` inherited that.
+> Measured 2026-08-07: **the entire DP-K primitive vocabulary** — `t1_read` · `t2_write` ·
+> `t3_write` · `read_projection_*` · `query_scoped_*` · `subscribe_*` · `DpClient` ·
+> `CausalityToken` · `cache_key!` — **appears once in the whole tree.** Of the 18 named `DP-Ch`
+> primitives in `13`–`21`, **16 have zero occurrences**. Every `DP-C*` control-plane mechanism is
+> zero. Every Redis keyspace this folder defines (`dp:events` · `dp:inval` · `dp:channel_changes` ·
+> `dp:writer_audit`) is zero.
+>
+> Two more names grep green and are **not** this folder's: `CircuitOpen` / `RateLimited` come from
+> `crates/breaker-core`, not from `DpError`; `deploy_cohort` is
+> `reality_registry.deploy_cohort INT CHECK (0..99)`, a canary bucket from `SR05`, not `DP-F10`'s CP
+> manifest (`last_successful_drill` is zero).
+>
+> **What IS built against this folder:** `DP-Ch11`/`DP-Ch13`'s per-channel ordering and epoch fence
+> (`contracts/migrations/per_reality/0014` + `0015`) — with a spec correction of their own, see
+> `REC-99b`. Nothing else.
+>
+> Full trace: `FLOW-1`..`FLOW-26` in
+> [`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`](../../../plans/2026-08-06-game-tier-build-RUN-STATE.md) §6h.
 
 **Bridging doc for feature designers (post-Phase-4, 2026-04-25):**
 
@@ -95,7 +124,7 @@ User clarified on 2026-04-25 that the game uses a **hierarchical channel** model
 | 20 | [20_operational_residuals.md](20_operational_residuals.md) | LOCKED | DP-Ch46..Ch50 | 2026-04-25 |
 | 21 | [21_llm_turn_slot.md](21_llm_turn_slot.md) | LOCKED | DP-Ch51..Ch53 | 2026-04-25 |
 | 22 | [22_feature_design_quickstart.md](22_feature_design_quickstart.md) | LOCKED (bridging doc) | — (no axiom/primitive IDs) | 2026-04-25 |
-| 99 | [99_open_questions.md](99_open_questions.md) | OPEN — **Phase 4 design COMPLETE** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (19 resolved + Q20 Phần B done; only Q20 Phần A V1-data-deferred — purely a measurement question) + **OOS-1, OOS-2** out-of-scope pointers (NPC↔SessionContext mapping, cross-service aggregate type sharing) | 2026-04-25 |
+| 99 | [99_open_questions.md](99_open_questions.md) | OPEN — **Phase 4 design COMPLETE** | Phase 1-3 residuals (Q2/Q3/Q7/Q10/Q11/Q13) + **Phase 4 Q15..Q34** (19 resolved + Q20 Part B done; only Q20 Part A V1-data-deferred — purely a measurement question) + **OOS-1, OOS-2** out-of-scope pointers (NPC↔SessionContext mapping, cross-service aggregate type sharing) | 2026-04-25 |
 
 ---
 
@@ -136,7 +165,7 @@ This folder reads from and constrains:
 |---|---|
 | [02_storage/](../02_storage/) | Becomes implementation detail behind DP SDK. Existing R*/S*/C*/SR* design still authoritative for the durable tier; DP owns the access contract above it. |
 | [03_multiverse/](../03_multiverse/) | Canon layering (L1–L4) is orthogonal to tier taxonomy; DP respects reality boundaries in cache keying. |
-| [04_player_character/](../04_player_character/) | PC aggregates live in DP-T2/T3; PC DF items register through DP contract when implemented. |
+| [_superseded/04_player_character/](../_superseded/04_player_character/) | PC aggregates live in DP-T2/T3; PC DF items register through DP contract when implemented. |
 | [05_llm_safety/](../05_llm_safety/) | World Oracle / command dispatch produces events that flow through DP write path. |
 | [features/00_tilemap/](../features/00_tilemap/) | **V1+30d consumer (annotation added 2026-05-14 closure-pass-extension).** TMP_001..TMP_008b registers 2 new T2 aggregates: `tilemap_view` (T2/Channel scope; non-cell channels only — TMP-A1) + `tilemap_template` (T2/Reality scope). Standard DP-K1..K12 access surface only — **no new DP-K\* primitives, no new DP-Ch\* primitives, no new DP axioms.** Consumes DP-Ch24 turn-boundary subscribe to track `map_layout` deltas (TMP_001 §7 MAP_001 position reconciliation). Consumes DP-Ch16..Ch20 durable subscribe for cross-zone L4 narration cache invalidation (TMP_008b §8 cache key derivation). T2 cache footprint per Ch is bounded by zone count × tile count; refer to TMP_001 §10 for sizing model. |
 | [catalog/](../catalog/) | Every feature in the catalog picks one tier (DP-T0..T3) when it graduates to detailed design. |

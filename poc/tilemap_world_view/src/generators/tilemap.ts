@@ -1,4 +1,4 @@
-import type { ChannelTier, TileMapSkeleton, TileMapView } from '../data/types';
+import type { MapKind, TileMapSkeleton, TileMapView } from '../data/types';
 import { generateTerrain } from './terrain';
 import { placeRoads } from './roads';
 
@@ -22,7 +22,7 @@ export function composeTileMap(
   skeleton: TileMapSkeleton,
   seed: number,
   channelId: string,
-  tier: ChannelTier,
+  tier: MapKind,
 ): TileMapView {
   // L2.a — generate terrain by zone biome distribution + value-noise
   const terrainInitial = generateTerrain(skeleton, seed);

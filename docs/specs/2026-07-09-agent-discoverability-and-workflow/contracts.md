@@ -39,10 +39,30 @@ A policy-allowed tool **must** appear (kills the 3-registry drift). Deterministi
 
 ```
 tool_list(category?: <C1 enum>, include_deprecated?: bool = true)
-  → { category, count, tools: [ { name, description, tier: "R"|"A"|"W"|"S",
+  → { category, count, tools: [ { name, short_description, tier: "R"|"A"|"W"|"S",
                                   deprecated?: bool, superseded_by?: string } ],
       reason?: "gated: requires <entitlement>" | "no tools" }   # C6-style, for an empty/gated category
 ```
+
+**`tool_list` IS AN INDEX.** It carries `short_description` — enough for the model to know what a
+tool *does* and decide whether to load it — never the tool's full description. That is the whole
+point of the two tiers: the listing is browsed, the load is read. Corrected 2026-09-01 by the
+owner, whose original design this was: *"my original design a tool_list is a indexing with short
+description ... it is a index not a full tool's description."*
+
+🔴 **This paragraph exists because the contract had lost it, and the loss was expensive.** The
+earlier wording named the field `description` in BOTH tiers, so the only difference between
+`tool_list` and `tool_load` was `inputSchema` — and an implementation that copied the full
+description into the listing was *correct against the spec as written*. Measured 2026-09-01:
+`tool_list` returned 192 tools at a mean 303 chars of prose each, **81.2% of a 71,686-byte
+payload**, and was **21.4% of every tool-result byte on the platform** — the single largest
+producer. A listing tier that costs what the load tier costs buys nothing.
+
+`short_description` is the description's **first sentence, capped at 140 characters** (median 107
+across the catalogue, so most survive whole). It is DERIVED, not a new authoring field: a second
+hand-written field is a second thing to drift, and the first sentence is already written as a
+summary by convention. `tool_list` takes `category` and `"all"` and needs no paging — a category
+is the unit a caller browses.
 - omitted `category` or `"all"` → the whole visible catalog, grouped by category.
 - deprecated (legacy) tools appear **labeled** (`deprecated:true` + `superseded_by`), never silently
   dropped (OQ5). `include_deprecated:false` filters them.

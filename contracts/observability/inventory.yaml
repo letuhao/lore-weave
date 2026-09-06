@@ -65,10 +65,10 @@ metrics:
     layer: L1
     shipped_cycle: 5
     labels: [step, outcome, shard_host]
-    description: 'provisioner 11-step outcomes (done/skipped) per shard'
+    description: 'provisioner 12-step outcomes (done/skipped) per shard'
     owner: world-platform
     source: services/world-service
-    cardinality_notes: 'step is from PROVISION_STEPS const (11 values); outcome ∈ {done, skipped}; shard_host is bounded by physical shard count'
+    cardinality_notes: 'step is from PROVISION_STEPS const (12 values; 11 until A2 added seed_world_structure); outcome ∈ {done, skipped}; shard_host is bounded by physical shard count'
 
   - name: lw_deprovisioner_steps_total
     kind: counter

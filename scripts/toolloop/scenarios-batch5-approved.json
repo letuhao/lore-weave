@@ -1,0 +1,52 @@
+{
+  "_note": "plan_compile re-run with the spec WAIT in the fixture and the confirm card approved.",
+  "scenarios": [
+    {
+      "id": "plan-compile-v2-approved",
+      "tool_under_test": "plan_compile",
+      "expect_tool": "plan_compile",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Compile the plan I already proposed for this book into a planning package.",
+      "prompt_source": "_meta.synonyms['compile plan'] + ['planning package'], grounded on the seeded spec so 'the plan I already proposed' refers to something that exists.",
+      "needs_target": false,
+      "approve": true,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "source_markdown": "# The Ember Codex\n\n## Arc 1 — The Hollow Keep\n- Chapter 1: Aldric reaches the Hollow Keep and is given the Codex.\n- Chapter 2: Mira Solene warns him the Codex is read by more than one reader.\n- Chapter 3: The Pale Regent's envoy arrives at the gate."
+          }
+        },
+        {
+          "wait": {
+            "db": "loreweave_composition",
+            "query": "SELECT count(*)::text FROM plan_artifact pa JOIN plan_run pr ON pr.id=pa.run_id WHERE pr.book_id='{book_id}' AND pa.kind='spec'",
+            "expect": "1",
+            "timeout": 900,
+            "poll": 3,
+            "why": "plan_compile requires a SPEC artifact, which plan_propose_spec produces on a job. Without this wait the seed asserts only that the run exists — true immediately — and the tool then fails 'no spec to compile' 3/3, which reads as a tool defect and is a fixture that was not ready."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_artifact pa JOIN plan_run pr ON pr.id=pa.run_id WHERE pr.book_id='{book_id}' AND pa.kind='spec'",
+          "expect": "1",
+          "why": "THE PRECONDITION IS THE SPEC, NOT THE RUN. The first version asserted a plan_run existed and passed while plan_compile failed 3/3 with 'no spec to compile'. An assertion that cannot fail in the way the scenario fails is not an assertion."
+        }
+      ],
+      "falsifier": "REFUTED IF: plan_compile is not called on any run (the withdrawn v1 outcome), OR it is called with a run_id/arc_id the operator supplied rather than one the model read from the store, OR it reports a compiled package while plan_artifact gained no row. CONTROL: the seed creates the run, so a turn that cannot find it is a DISCOVERY failure (the model must reach composition_package_tree for runs.recent[].id) and not a failure of plan_compile itself — record which.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with no proposed spec must refuse clearly, naming what is missing, not compile an empty package.",
+        "gate": "OWED — Tier A: the confirm/approval path must be exercised, not assumed.",
+        "tenancy": "OWED — book-scoped; another account's book must be refused."
+      },
+      "defects": []
+    }
+  ]
+}

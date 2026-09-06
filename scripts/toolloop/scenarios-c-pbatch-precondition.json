@@ -1,0 +1,38 @@
+{
+  "scenarios": [
+    {
+      "id": "glossary-propose-batch-ontology-seeded",
+      "tool_under_test": "glossary_propose_batch",
+      "expect_tool": "glossary_propose_batch",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set up several kinds and attributes at once for this book's ontology — I want to do it in one batch, not one at a time.",
+      "prompt_source": "VERBATIM from scenarios-batch6.json `glossary-propose-batch`, the decisive case of D-SURFACING-IS-NECESSARY-BUT-NOT-SUFFICIENT-THE-MODEL-PICKS-THE-SIBLING. The prompt is UNCHANGED on purpose: the only difference from the six batches that measured 0/5 is the SEED below. Changing the wording as well would make the arm uninterpretable.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": ["universal"],
+              "kinds": ["character"]
+            }
+          },
+          "why": "🔴 THE CONTROL THAT REFUTES MY OWN ROW. The row says the model 'picks the sibling' — glossary_adopt_standards wins over the advertised, answerable glossary_propose_batch on 5 of 5 runs. THE COMPETING EXPLANATION IS THAT IT IS NOT A CONTEST AT ALL: the fixture book has `seed: []`, so it has NO ONTOLOGY, and there is nothing to add kinds and attributes TO. Adopting a standard set first is then not a rival choice, it is the precondition, and the model is right.\n\nTHIS IS NOT A NEW HYPOTHESIS — IT IS A FINDING THIS REPO ALREADY MADE AND I DID NOT APPLY TO THIS ROW. scenarios-c-gbuild-control.json records, for composition_build_cast_and_graph, the IDENTICAL chain (glossary_list_system_standards -> glossary_adopt_standards -> glossary_task_provide_input, 5/5, batch c-r1-recheck) and says in as many words: 'I filed that as a SIBLING-WINS failure; it is a PRECONDITION — a glossary cannot be built onto a book with no kinds, and adopting first is the correct move.' The same seed took kg_triage_schema_write from blocked to proven.\n\nWHAT THIS ARM DECIDES. If glossary_propose_batch is now CALLED, the row's diagnosis is refuted: surfacing was never the issue and no sibling won anything — the turn was spending itself on a missing precondition, and the row must be WITHDRAWN with that recorded. If it is STILL 0/K with an ontology present, the precondition explanation is dead, the sibling-wins diagnosis survives its strongest challenge, and the row is on much firmer ground than it has ever been.\n\nEITHER OUTCOME MOVES THE ROW. That is why this is worth a run rather than another argument."
+        }
+      ],
+      "falsifier": "REFUTED IF: glossary_propose_batch is called on >=1 of K runs with the ontology seeded, having been called 0/5 on six separate unseeded batches (c-r1-recheck-0901, t90-arm-b, t90-arm-b2, t90-arm-e, t90-control, t90-control2). 🔴 CONTROL FIRST, BEFORE ANY CONCLUSION: this is one of the five INTENT-GATED setup tools. Read chat_messages.withheld_tools for stage='intent_gate'. If the count is >0 the tool was WITHHELD and this arm measures the gate, not the precondition — a different finding, recorded as such. The six unseeded batches all showed ADVERTISED 5/5 WITHHELD 0/5, so the gate is expected open; if that changes, the comparison is void.",
+      "ship_audit": {
+        "gate": "not under test in this arm — the question is whether the tool is REACHED at all.",
+        "empty_case": "not under test in this arm.",
+        "tenancy": "throwaway fixture book per run, torn down."
+      },
+      "defects": []
+    }
+  ]
+}

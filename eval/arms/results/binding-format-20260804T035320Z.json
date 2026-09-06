@@ -1,0 +1,220 @@
+{
+  "ran_at": "2026-08-04T03:53:20.476709+00:00",
+  "model": "gemma-4-26b-a4b-it-uncensored-apex-quality",
+  "temperature": 0.2,
+  "trials": 3,
+  "chapter_id": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+  "results": {
+    "prose": {
+      "exact": 3,
+      "n": 3,
+      "invented": 0,
+      "sent_decoy": 0,
+      "no_call": 0,
+      "trials": [
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        }
+      ]
+    },
+    "labelled": {
+      "exact": 3,
+      "n": 3,
+      "invented": 0,
+      "sent_decoy": 0,
+      "no_call": 0,
+      "trials": [
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        }
+      ]
+    },
+    "binding": {
+      "exact": 3,
+      "n": 3,
+      "invented": 0,
+      "sent_decoy": 0,
+      "no_call": 0,
+      "trials": [
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        }
+      ]
+    },
+    "json": {
+      "exact": 3,
+      "n": 3,
+      "invented": 0,
+      "sent_decoy": 0,
+      "no_call": 0,
+      "trials": [
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        }
+      ]
+    },
+    "decoy_control": {
+      "exact": 3,
+      "n": 3,
+      "invented": 0,
+      "sent_decoy": 0,
+      "no_call": 0,
+      "trials": [
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        },
+        {
+          "called": [
+            "book_chapter_save_draft"
+          ],
+          "chapter_id_sent": "0198f3c1-77aa-7b41-9c2e-5d3ab0f41e62",
+          "exact": true,
+          "sent_decoy": false,
+          "invented": false,
+          "no_call": false,
+          "text": ""
+        }
+      ]
+    }
+  },
+  "_bound": "n=3 per arm. A perfect arm bounds its failure rate at <= 1-0.05**(1/3) — state that bound, never a better one. This measurement may REJECT a format; it cannot admit one."
+}

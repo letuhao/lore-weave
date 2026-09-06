@@ -1,0 +1,45 @@
+{
+  "_note": "DQ-T59, the owner's owed measurement: 'whether a refusal needs a mechanism rather than wording is a measurement, and it is owed before this is called done'. The wording already exists — `_stamp_no_schemas` has stamped every tool_list payload since 2026-08-23, added FOR this defect and never measured. This arm exercises it.",
+  "scenarios": [
+    {
+      "id": "a-contract-question-asked-AFTER-a-tool_list-read",
+      "tool_under_test": "tool_load",
+      "expect_tool": "tool_load",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+      "prompt_source": "DQ-T59's owed measurement. The parent scenario cannot answer it: measured in batch c-toolload3, 5 of 5 runs went straight to tool_load and called tool_list ZERO times, so the `schemas: NOT INCLUDED` stamp — the wording whose sufficiency is the question — never fired. This prompt FORCES the description-only read first, which is the only state in which the defect can occur and the only state in which the wording can be tested.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the reply lists arguments composition_arc_apply does not declare — in particular `book_id`, which appears only in the NEIGHBOURING composition_arc_edit description carried by the tool_list dump. A run that reads tool_list and then answers CORRECTLY (from tool_load, or by declining to answer from descriptions) is the wording WORKING. A run that never calls tool_list measures nothing and must be reported as such, not counted as a pass.",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). NOT APPLICABLE by design: it loads TOOL SCHEMAS, which are identical for every caller and contain no user data. Recorded as such rather than as a pass.",
+        "gate": "Tier R, gateway-local."
+      },
+      "needs_prompt": true,
+      "editor_context": false,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "the absent case must actually be absent"
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "arc_template_id",
+          "project_id"
+        ],
+        "none_of": [
+          "book_id"
+        ],
+        "why": "composition_arc_apply's input_schema is {project_id, arc_template_id, roster_bindings, replace, idempotency_key} - read from the live tool_load payload. There is NO book_id in it.\n\n🔴 THE FIRST VERSION OF THIS EXPECTATION WAS THEATRE and is replaced. It asked only for 'arc_template_id', which ALL FIVE runs satisfied - including the three that were WRONG. Those three answered 'arc_template_id + book_id' after reading tool_list, which carries no input_schema at all; the string they saw came from a DIFFERENT tool's description (composition_arc_edit: 'op=create mints a saga/arc (needs book_id; optional ... arc_template_id ...)'). An expectation that passes on an answer assembled from the wrong tool is not checking the thing this problem is about.\n\nSo: project_id must appear (only the contract supplies it) and book_id must NOT (only the neighbouring read suggests it)."
+      },
+      "rebuilt_why": "🔴 THE OLD SCENARIO DID NOT TEST THIS PROBLEM'S INVARIANT, and its result was being read as though it did. It asked 'What exactly do you need from me to add a new character to my story bible? Check the real requirements.' Measured 5/5 (c10-run / c-r1-recheck): the model called glossary_list_system_standards - a 'plausible neighbouring read' in the invariant's own words - and ANSWERED CORRECTLY from it, naming the character kind's real requirements (attribute_count 13, name + description). It was right to: what a CHARACTER needs is the ontology's business, not a tool schema's. tool_load loads a TOOL's schema, so the question never had tool_load as its answer and 'called 0/5' measured the prompt.\n\nThis version asks what the invariant says: what does a named TOOL require. composition_arc_apply's real required set is ['project_id', 'arc_template_id'], read from the live catalogue - so a model that guesses from the name, or describes the tool's purpose instead of reading it, is visibly wrong."
+    }
+  ]
+}

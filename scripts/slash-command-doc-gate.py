@@ -89,7 +89,31 @@ def main() -> int:
         return 1
     mentioned = {m.group(1) for m in _MENTION.finditer(section)}
 
-    for name in sorted(on_disk - mentioned):
+    RETIRED: set[str] = set()
+    for line in section.split("\n"):
+        # Only the names INSIDE the bold marker are retired. A line-wide scan is
+        # wrong, and was measured wrong: the real notice reads
+        #   **Retired …: `/loom`, `/raid`, `/warp`, `/amaw`.** `/review-impl` is the
+        #   only runner left…
+        # so scanning the whole line retires the one command that is still live.
+        # Harmless while RETIRED only excused orphaned prose; the moment it also had
+        # to say what counts as DOCUMENTED, the survivor was reported undocumented.
+        m = re.match(r"\s*(\*\*Retired\b.*?\*\*)", line)
+        if m:
+            RETIRED.update(re.findall(r"`/([a-z][a-z0-9-]*)`", m.group(1)))
+
+    #: Vendor built-ins the guide legitimately discusses. They are commands, they are
+    #: real, and they will never be files in `.claude/commands` — `/goal` appears in the
+    #: run-discipline section and the `/goal-prompt` row cannot describe itself without
+    #: naming what it emits. Same class as the `aif*` carve-out below, and enumerated for
+    #: the same reason: nothing in a name distinguishes a vendor built-in from a runner
+    #: this repo owes a file. Kept SMALL so that adding one is a decision, not a habit.
+    BUILTINS = {"goal", "compact", "clear", "help", "config"}
+
+    # A name that appears ONLY in a `**Retired…`** line is not documented, it is
+    # contradicted: the file is still on disk while the prose says it is gone. Those
+    # names are computed below, so this check is deferred until after them.
+    for name in sorted(on_disk - (mentioned - RETIRED)):
         result.blocker(
             id=f"undocumented-{name}",
             summary=(f"/{name} exists in .claude/commands but {GUIDE.name} never mentions it — "
@@ -104,11 +128,7 @@ def main() -> int:
     # named ON THAT LINE. Deliberately narrow: matching the whole paragraph would let
     # a live-but-undocumented runner hide next to a retirement note, which is the
     # blanket suppression this gate exists to avoid being.
-    RETIRED: set[str] = set()
-    for line in section.split("\n"):
-        if re.match(r"\s*\*\*Retired\b", line):
-            RETIRED.update(re.findall(r"`/([a-z][a-z0-9-]*)`", line))
-    for name in sorted(mentioned - on_disk - RETIRED):
+    for name in sorted(mentioned - on_disk - RETIRED - BUILTINS):
         if name.startswith("aif"):
             continue
         result.blocker(
@@ -129,5 +149,83 @@ def main() -> int:
     return result.exit_code()
 
 
+def self_test() -> int:
+    """Prove this gate can go RED — and that it does not cry wolf.
+
+    `gate-teeth-gate` refuses a gate with no proof, and it is right to: this one
+    ships three deliberate REFUSALS (a missing section, an empty command dir, a
+    narrow retirement exemption) and every one of them is a path that, if it
+    inverted, would turn the gate into a reassuring pass over nothing.
+    """
+    import tempfile
+
+    fails: list[str] = []
+    arms = {"red": 0, "clean": 0}
+
+    def run(commands: list[str], guide_body: str) -> int:
+        """Drive main() against a synthetic tree. Returns its exit code."""
+        global COMMANDS_DIR, GUIDE
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            cdir = root / ".claude" / "commands"
+            cdir.mkdir(parents=True)
+            for c in commands:
+                (cdir / f"{c}.md").write_text(f"# /{c}\n", encoding="utf-8")
+            guide = root / "AGENTS.md"
+            guide.write_text(guide_body, encoding="utf-8")
+            saved = (COMMANDS_DIR, GUIDE)
+            COMMANDS_DIR, GUIDE = cdir, guide
+            try:
+                import contextlib
+                import io
+                with contextlib.redirect_stdout(io.StringIO()):
+                    return main()
+            finally:
+                COMMANDS_DIR, GUIDE = saved
+
+    def want(label: str, rc: int, expect_red: bool) -> None:
+        arms["red" if expect_red else "clean"] += 1
+        if (rc != 0) != expect_red:
+            fails.append(f"{label}: rc={rc}, expected {'non-zero' if expect_red else '0'}")
+
+    SEC = "## Slash commands\n\n| Command | When |\n|---|---|\n"
+
+    want("a documented command passes",
+         run(["review-impl"], SEC + "| `/review-impl` | review |\n"), False)
+    want("a command on disk that the guide never names REDS",
+         run(["review-impl", "ghost"], SEC + "| `/review-impl` | review |\n"), True)
+    want("a guide naming a command that does not exist REDS",
+         run(["review-impl"], SEC + "| `/review-impl` | review |\n| `/gone` | ? |\n"), True)
+    want("...unless a **Retired** line names it",
+         run(["review-impl"],
+             SEC + "| `/review-impl` | review |\n\n**Retired 2026-08-03: `/gone`.**\n"), False)
+    want("prose AFTER the bold marker on a retirement line is not retired",
+         run(["review-impl"],
+             SEC + "| `/review-impl` | review |\n\n"
+                   "**Retired: `/gone`.** `/review-impl` is the only runner left.\n"), False)
+    want("a retirement line does NOT excuse a command that still EXISTS undocumented",
+         run(["review-impl", "ghost"],
+             SEC + "| `/review-impl` | review |\n\n**Retired: `/ghost`.**\n"), True)
+    want("a `/aif-*` skill is not a file here and is not an orphan",
+         run(["review-impl"], SEC + "| `/review-impl` | r |\n| `/aif-plan` | vendored |\n"), False)
+    # The three refusals. Each one is a path where a wrong answer is SILENCE.
+    want("no 'Slash commands' section is a FAILURE, not an empty scan",
+         run(["review-impl"], "# Guide\n\nNo registry here.\n"), True)
+    want("an empty commands dir is a FAILURE, not a vacuous pass",
+         run([], SEC), True)
+    want("an HTTP route in the section is not read as a command",
+         run(["review-impl"], SEC + "| `/review-impl` | hits `/v1/worlds` |\n"), False)
+
+    for f in fails:
+        print(f"FAIL: {f}", file=sys.stderr)
+    if fails:
+        return 1
+    print(f"slash-command-doc-gate: SELFTEST PASS — {arms['red']} arm(s) go RED "
+          f"(undocumented command, orphaned mention, a retirement line that does not cover a live "
+          f"runner, a missing registry section, an empty command dir) and {arms['clean']} stay "
+          f"clean (documented command, retired mention, vendored /aif-*, an HTTP route)")
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(self_test() if "--self-test" in sys.argv else main())

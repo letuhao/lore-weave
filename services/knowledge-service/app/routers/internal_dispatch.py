@@ -31,7 +31,7 @@ from app.deps import (
 )
 from app.clients.embedding_client import EmbeddingError, probe_embedding_dimension
 from app.config import settings as app_settings
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.middleware.internal_auth import require_internal_token
 from app.routers.public.extraction import (
     StartJobRequest,
@@ -198,8 +198,8 @@ async def set_campaign_models(
         if new_model != (project.embedding_model or ""):
             # D-EMB-MODEL-REF-04 — passage existence, not `extraction_status`: that
             # column cannot tell a graph DELETE apart from a graph-preserving
-            # `POST /extraction/disable`. See app/db/neo4j_repos/graph_state.py.
-            from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+            # `POST /extraction/disable`. See app/db/graph_repos/graph_state.py.
+            from app.db.graph_repos.graph_state import project_has_embedded_passages
 
             has_graph = await project_has_embedded_passages(payload.user_id, project_id)
             if has_graph and not payload.confirm_embedding_change:

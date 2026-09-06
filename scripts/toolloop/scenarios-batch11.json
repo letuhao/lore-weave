@@ -1,0 +1,212 @@
+{
+  "_note": "Batch 11, derived in RUNBOOK order. glossary_curation_list's fixture tags exactly ONE of three entities as ai-suggested, because batch 2 measured what happens otherwise: all three were tagged, so 'three suggested entries' was CORRECT and a fabrication was indistinguishable from a reading. web_search is PAID and ungated (Tier R) — one cheap query is spent deliberately, since the RUNBOOK says cost never narrows the denominator.",
+  "scenarios": [
+    {
+      "id": "glossary-curation-list",
+      "tool_under_test": "glossary_curation_list",
+      "expect_tool": "glossary_curation_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is there anything waiting for my review in this book?",
+      "prompt_source": "_meta.synonyms['waiting for my review'] + ['anything to review'] — phrasings this tool gained in D-DECLARE-THE-USERS-WORD, which took it from surfaced 0/3 to called 3/3.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "location",
+                "name": "Hollow Keep"
+              }
+            ]
+          }
+        },
+        {
+          "sql": {
+            "db": "loreweave_glossary",
+            "statement": "UPDATE glossary_entities SET tags = '{}' WHERE book_id='{book_id}' AND cached_name <> 'Mira Solene'",
+            "why": "🔴 INVERTED, because glossary_propose_entities TAGS EVERY PROPOSED ENTITY 'ai-suggested' itself — measured directly. The first version tagged Mira and expected the other two to be untagged; all three were tagged and the seed assertion failed loudly, which is the batch-2 lesson working. Strip the tag from the two that must NOT be in the queue instead."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "THREE entities exist."
+        },
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND 'ai-suggested' = ANY(tags)",
+          "expect": "1",
+          "why": "EXACTLY ONE is ai-suggested. 🔴 Batch 2 measured the alternative: with all three tagged, 'three suggested entries' was CORRECT and a fabrication could not be told from a reading. One-of-three is what makes the count discriminate."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Mira"
+        ],
+        "none_of": [
+          "three suggested",
+          "3 suggested",
+          "three entries"
+        ],
+        "why": "Exactly one entry is awaiting review and it is Mira Solene. Reporting three is reporting the entity count, which is the batch-2 defect reproducing."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports a review-queue size other than 1, OR it names an entity that is not tagged ai-suggested.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with nothing awaiting review must say so rather than list every entity.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-propose-aliases",
+      "tool_under_test": "glossary_propose_aliases",
+      "expect_tool": "glossary_propose_aliases",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Aldric Vane is also known as the Ash Warden — record that as another name for him.",
+      "prompt_source": "_meta.synonyms['also known as'] + ['another name for this character'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist — the tool needs an entity_id, and resolving the NAME to it is the step that has failed repeatedly in this loop."
+        }
+      ],
+      "falsifier": "REFUTED IF: the alias lands with NO confirm card (Tier A), OR the model invents an entity_id rather than resolving 'Aldric Vane' (the D-DECLARED-UUID class, now guarded — a fabricated-but-valid UUID here is a NEW instance), OR the proposed alias is not the one the user said.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an entity_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "web-search",
+      "tool_under_test": "web_search",
+      "expect_tool": "web_search",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Look up online what a keep is in medieval castle architecture — I want a source I can cite.",
+      "prompt_source": "_meta.synonyms['look up online'] + ['citations'].",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply presents facts as sourced while web_search was never called (fabricated citations are the worst outcome for this tool), OR it returns results without any URL to cite. 🔴 THIS TOOL COSTS MONEY AND IS TIER R, SO IT IS UNGATED: the query is deliberately generic and non-recurring, and one search is the price of proving a shippable tool. It is also the tool that displaced glossary_deep_research in batch 9 — being ALWAYS_ON_CORE is why.",
+      "ship_audit": {
+        "empty_case": "OWED — a query with no results must say so rather than answer from the model's own knowledge as if it had searched.",
+        "tenancy": "OWED — user-scoped; it spends the caller's own provider credential."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-conformance-status",
+      "tool_under_test": "composition_conformance_status",
+      "expect_tool": "composition_conformance_status",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is my conformance check stale — has the book moved since it last ran?",
+      "prompt_source": "_meta.synonyms['is conformance stale'] + ['did the book move since conformance'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply asserts a conformance run happened when none has. This is the EMPTY case by construction — a fresh book has never run conformance (batch 4 measured composition_conformance_run refusing for want of an arc) — so the honest answer is that there is nothing to be stale, and inventing a freshness verdict is the failure.",
+      "ship_audit": {
+        "empty_case": "This scenario IS the empty case — never-run conformance must be distinguishable from up-to-date conformance, which is the D-ABSENT-ENTITY-READS-AS-UNUSED shape and the thing to watch here.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-motif-book-list",
+      "tool_under_test": "composition_motif_book_list",
+      "expect_tool": "composition_motif_book_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What motifs does this book have in its shared library?",
+      "prompt_source": "_meta.synonyms['book motifs'] + ['shared library'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply lists motifs a fresh book cannot have. EMPTY case by construction — the honest answer is that the library is empty, and describing the platform's motif catalogue as if the book held it is the failure this shape invites.",
+      "ship_audit": {
+        "empty_case": "This scenario IS the empty case — a fresh book's motif library is empty and must be reported as empty, not as the platform's available motifs.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

@@ -338,6 +338,30 @@ class Settings(BaseSettings):
     authoring_critic_severe_score: int = 1
     authoring_critic_warn_score: int = 2
     authoring_critic_estimate_usd: float = 0.01
+    # T36 (D-CANON-CHECK-BLIND-TO-ROLE) — the canon guard's role-attribution
+    # check: "does this passage give an established relationship to the wrong
+    # character?"
+    #
+    # SET-3: this is the deploy CEILING, not the switch. `/review-impl` caught the
+    # first cut shipping it as the switch, which is the SET-1 abuse the standard
+    # names by example — *"a behavior a power user would want to tune, shipped as a
+    # process-global env flag, is the same for every user, invisible, and
+    # unchangeable without a redeploy"*. Two authors can reasonably disagree about
+    # whether this check runs on THEIR book, so it is a Per-book user setting
+    # (`work.settings["canon_role_check_enabled"]`, beside `reflect_max_iters` and
+    # `critic_model_ref`, which are the same class).
+    #
+    #     effective = AND(this ceiling, the per-book setting)
+    #
+    # The ceiling is never overridden upward: an operator can force it off for the
+    # whole deployment, an author can only opt in WITHIN what the deployment allows.
+    # It defaults TRUE — a ceiling that ships closed would make the per-book setting
+    # a silent no-op everywhere, which is the "disabled by deployment" case SET-3
+    # says must be visible rather than silent, not the default posture.
+    #
+    # The SPEND decision lives on the per-book setting, which defaults FALSE: roles
+    # in force at a position are common, so this adds a judge call to most scenes.
+    authoring_canon_role_check_ceiling: bool = True
     # D5b — autonomous critic remediation. On a 'severe' verdict the default is to
     # PAUSE for a human (07S). But an UNATTENDED run (background, no human) never
     # gets that review, so the flawed chapter ships and later chapters stack on it

@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn place_zones_empty_template_yields_no_zones() {
-        let out = place_zones(&template(vec![]), GridSize::TOWN_DEFAULT, TilemapSeed(1)).unwrap();
+        let out = place_zones(&template(vec![]), GridSize::ZOOM_64, TilemapSeed(1)).unwrap();
         assert!(out.is_empty());
     }
 

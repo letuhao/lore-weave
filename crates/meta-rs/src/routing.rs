@@ -107,6 +107,25 @@ impl RealityRouting {
     }
 }
 
+/// One row of `DP-C4`'s tier policy registry (`040_tier_policy`).
+///
+/// Four fields, not seven: `registered_at`, `last_migration_at` and `notes` are
+/// operator/audit columns the RPC does not carry — `TierPolicyEntry` in
+/// `dp_control_plane.proto` has exactly these four, and a struct carrying more
+/// than the wire does invites a caller to depend on something the wire drops.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TierPolicyRow {
+    pub aggregate_type: String,
+    /// `T0`..`T3`, as stored. NOT parsed into a tier enum here: `meta-rs` is
+    /// the meta-database crate and `dp`'s tier taxonomy is `dp`'s — depending
+    /// on it to validate a string would point the arrow the wrong way (the
+    /// same reasoning that keeps `dp` out of this crate's dependency list).
+    /// The CHECK constraint on the column is what closes the set.
+    pub declared_tier: String,
+    pub schema_version: u32,
+    pub feature_owner: String,
+}
+
 /// `Connection` abstracts the backend so callers can swap pgx, sqlx, or a
 /// mock implementation without changing trait implementors of `MetaRead`.
 ///
@@ -118,6 +137,23 @@ pub trait Connection: Send + Sync {
         &self,
         reality_id: Uuid,
     ) -> Result<Option<RealityRouting>, MetaError>;
+
+    /// `DP-C4` — the tier policy registry. `None` asks for the whole snapshot;
+    /// `Some(t)` for one aggregate type.
+    ///
+    /// # Required, not defaulted, and that is the point
+    ///
+    /// A default returning an empty `Vec` would compile every existing
+    /// implementor untouched — and would turn `GetTierPolicy` from an honest
+    /// `UNIMPLEMENTED` into a snapshot that says *no aggregate type exists*.
+    /// `DP-C4`'s registration flow makes that answer load-bearing: a service
+    /// whose aggregate is absent from the snapshot fails at `DpClient::connect`.
+    /// So an empty default would not be a stub, it would be a lie that breaks
+    /// deploys — the silent-wrong-answer shape `DF1a` spent a day on.
+    fn fetch_tier_policy(
+        &self,
+        aggregate_type: Option<&str>,
+    ) -> Result<Vec<TierPolicyRow>, MetaError>;
 }
 
 /// `MetaRead` is the public hot-path read surface.
@@ -132,6 +168,13 @@ pub trait MetaRead {
         &self,
         reality_id: Uuid,
     ) -> Result<Option<RealityRouting>, MetaError>;
+
+    /// `DP-C4` — the tier policy registry; see [`Connection::fetch_tier_policy`]
+    /// for why this is required rather than defaulted.
+    fn get_tier_policy(
+        &self,
+        aggregate_type: Option<&str>,
+    ) -> Result<Vec<TierPolicyRow>, MetaError>;
 }
 
 /// `DefaultMetaRead` adapts a `Connection` into the public `MetaRead` trait
@@ -155,6 +198,13 @@ impl<C: Connection> MetaRead for DefaultMetaRead<C> {
     ) -> Result<Option<RealityRouting>, MetaError> {
         self.conn.fetch_reality_routing(reality_id)
     }
+
+    fn get_tier_policy(
+        &self,
+        aggregate_type: Option<&str>,
+    ) -> Result<Vec<TierPolicyRow>, MetaError> {
+        self.conn.fetch_tier_policy(aggregate_type)
+    }
 }
 
 #[cfg(test)]
@@ -170,6 +220,14 @@ mod tests {
     }
 
     impl Connection for MockConn {
+        fn fetch_tier_policy(
+            &self,
+            _aggregate_type: Option<&str>,
+        ) -> Result<Vec<TierPolicyRow>, MetaError> {
+            // This mock's subject is routing; it is not a tier-policy double.
+            Ok(Vec::new())
+        }
+
         fn fetch_reality_routing(
             &self,
             reality_id: Uuid,

@@ -1,0 +1,48 @@
+{
+  "_note": "PROBE FIXTURE: a knowledge project for kg_ontology_propose's idempotency case — 'adopting the same template twice must not duplicate the ontology'.",
+  "scenarios": [
+    {
+      "id": "kg-ontology-propose-projected",
+      "tool_under_test": "kg_ontology_propose",
+      "expect_tool": "kg_ontology_propose",
+      "intent": "write",
+      "tier": "W",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What graph ontology templates can I adopt for this project?",
+      "follow_ups": [
+        "Adopt the Fantasy ontology template for this project."
+      ],
+      "prompt_source": "Turn 1 is kg_list_templates' synonym ('what templates can i adopt'); the MEASURED turn is kg_ontology_propose's synonym ['adopt a graph template'], verbatim, naming the template the author wants. Two turns because op=adopt_template needs a source_schema_id and kg_list_templates is its only supplier — the tool's own description says so.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "kg_project_create",
+          "args": {
+            "name": "LOOP-IDEM-ontology-{run_word}",
+            "book_id": "{book_id}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "kg_ontology_propose refused 'no project in scope' with an EMPTY seed: the fixture's {project_id} is the COMPOSITION project and this tool needs a KNOWLEDGE one. The project is created in the SEED rather than as a pre-call, because idempotency_probe documents that a pre-call is READ ONLY — 'a probe can never quietly acquire its target by writing one' — and seeds are where writes belong."
+        }
+      ],
+      "falsifier": "REFUTED IF: the ontology changes with NO confirm card (Tier W, and the tool's own description calls it High-impact), OR the model invents a source_schema_id rather than reading one out of turn 1's list — the templates are real rows with stable schema_ids, so a fabricated one is visible — OR it picks the `drama` template when the author said Fantasy. The op must be `adopt_template`; `schema_edit` would be refused on the precondition, which is a correct refusal and therefore NOT evidence about this scenario.",
+      "ship_audit": {
+        "gate": "OWED — Tier W and high-impact.",
+        "empty_case": "OWED — op=adopt_template with no source_schema_id must be refused (probed: it is).",
+        "absent_case": "OWED — a source_schema_id that does not exist must be refused.",
+        "idempotency": "OWED — adopting the same template twice must not duplicate the ontology.",
+        "tenancy": "OWED — project-scoped, and batch 32 could NOT establish this: the cross-tenant probe died in validation before the ownership check ran."
+      },
+      "defects": [],
+      "_rerun_of": "batch33"
+    }
+  ]
+}

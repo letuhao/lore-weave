@@ -53,6 +53,9 @@ EXPECTED_TOOLS = {
     "translation_patch_block", "translation_update_settings",
     "translation_start_job", "translation_retranslate_dirty",
     "translation_job_control", "translation_start_extraction",
+    # DQ-V7 (2026-09-03) — translation adopted the durable ext-tasks gate, and its drive tool
+    # comes with it. A gate a client cannot drive is a card that can never be completed.
+    "translation_task_provide_input",
 }
 
 # Per-tool expected tier (C-TOOL §4 S-TRANSL). job_control is declared W (its
@@ -64,6 +67,10 @@ EXPECTED_TIER = {
     "translation_patch_block": "A", "translation_update_settings": "A",
     "translation_start_job": "W", "translation_retranslate_dirty": "W",
     "translation_job_control": "W", "translation_start_extraction": "W",
+    # "A", not "R": accepting a gate RUNS the gated action. The kit declares it so because a
+    # missing tier defaults to R and every *_task_provide_input then passed the ask-mode
+    # read-only filter — a read-only turn could drive a pending gate to completion.
+    "translation_task_provide_input": "A",
 }
 
 
@@ -139,7 +146,14 @@ async def test_every_tool_carries_tier_and_book_scope(mcp_base_url):
         assert meta.get("tier") == EXPECTED_TIER[tool.name], (
             f"{tool.name}: tier {meta.get('tier')!r} != {EXPECTED_TIER[tool.name]!r}"
         )
-        assert meta.get("scope") == "book", f"{tool.name}: expected scope book"
+        # Every translation tool is book-scoped EXCEPT the durable gate's drive tool, which is
+        # user-scoped on purpose (DQ-V7, 2026-09-03): a pending gate is owned by the PROPOSING
+        # user and the kit's wire-level owner check enforces exactly that, so `user` is the
+        # honest scope. composition asserts the same pair — book- OR user-scoped — for the same
+        # reason. Naming the exception rather than loosening the rule to "any scope".
+        _expect_scope = "user" if tool.name.endswith("_task_provide_input") else "book"
+        assert meta.get("scope") == _expect_scope, (
+            f"{tool.name}: scope {meta.get('scope')!r} != {_expect_scope!r}")
         syns = meta.get("synonyms")
         assert isinstance(syns, list) and syns, f"{tool.name}: missing synonyms"
 

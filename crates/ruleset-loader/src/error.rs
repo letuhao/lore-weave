@@ -7,7 +7,7 @@
 //! because a variant whose message lives in another file is a variant whose
 //! message drifts.
 
-use ruleset_core::{Floor, ProgressionInvalid, QuantityError, ResourceError};
+use ruleset_core::{Floor, LimitError, ProgressionInvalid, QuantityError, ResourceError};
 
 use crate::patch_progression::ProgressionPatchError;
 use crate::progression_store::ProgressionStoreError;
@@ -35,6 +35,17 @@ pub enum LoadError {
     /// the field happens to be absent from `RulesetPatch`, which is `NV-4`
     /// waiting to happen. Named and tested instead.
     ForbiddenField { layer: Layer, field: &'static str, reason: &'static str },
+    /// `M2` — a `[[verbs]]` row this layer could not declare.
+    ///
+    /// Carries a rendered message rather than a typed source, and that is the
+    /// one place in this enum where it is right: the refusals span two crates
+    /// (`VerbPatchError` here, `VerbError` in `ruleset-core`) and every one of
+    /// them must name the VERB, not just the field. A reality with a dozen verbs
+    /// and a message naming only the key sends an author looking.
+    ///
+    /// It is what `CMD-10`'s V4 refusal arrives as: a row carrying a field that
+    /// IS a judgement rather than an operand of one.
+    Verb { layer: Layer, message: String },
     /// The document's root is not a table. TOML has no other root shape, so
     /// this is unreachable today — it exists so that the forbidden-key scan
     /// FAILS rather than silently skipping if that ever stops being true.
@@ -45,6 +56,15 @@ pub enum LoadError {
     /// Q2 — a declared POOL is malformed: it names a quantity no layer
     /// declared, repeats one, or gives bounds no actor could satisfy (QTY-A4).
     Resource { layer: Layer, source: ResourceError },
+    /// `LIM-1` — the reality's `[limits]` block refused a row, or asked for a
+    /// ceiling this build cannot hold.
+    ///
+    /// **A separate variant rather than a `Quantity`/`Resource`/`Verb` refusal,
+    /// and the split is the point of `LIM-1` rather than tidiness.** Those three
+    /// say a ROW is wrong. This one says the row is fine and the WORLD is full —
+    /// a sentence the engine had no way to say before, because the only ceiling
+    /// that existed was its own.
+    Limit { layer: Layer, source: LimitError },
     /// **S1b — the layer-floor arm (RLS-A16), and its FIRST real subject.**
     ///
     /// 16a gives every Ruleset field a *lowest permissible layer*. Until `Q1`
@@ -90,10 +110,16 @@ impl core::fmt::Display for LoadError {
             Self::ForbiddenField { layer, field, reason } => {
                 write!(f, "layer `{}` declares `{field}`: {reason}", layer.name())
             }
+            Self::Verb { layer, message } => {
+                write!(f, "layer `{}`: {message}", layer.name())
+            }
             Self::Quantity { layer, source } => {
                 write!(f, "layer `{}`: {source}", layer.name())
             }
             Self::Resource { layer, source } => {
+                write!(f, "layer `{}`: {source}", layer.name())
+            }
+            Self::Limit { layer, source } => {
                 write!(f, "layer `{}`: {source}", layer.name())
             }
             Self::BelowFloor { layer, field, floor } => write!(

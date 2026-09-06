@@ -10,7 +10,7 @@
 This file specifies the **mechanism** behind DP-A17:
 
 - DP-Ch21 — `TurnBoundary` event shape and the `advance_turn` SDK primitive.
-- DP-Ch22 — `turn_number` column on `event_log`, `last_turn_number` on `channel_writer_state`, and the writer's allocation algorithm.
+- DP-Ch22 — `turn_number` column on `events`, `last_turn_number` on `channel_writer_state`, and the writer's allocation algorithm.
 - DP-Ch23 — capability gating: which JWT claim authorizes a service to advance a channel's turn.
 - DP-Ch24 — composition with the rest of Phase 4 (pause / bubble-up / move-session).
 
@@ -84,7 +84,7 @@ When the call reaches the channel's writer node (transparently routed per [DP-Ch
 2. Begin DB transaction on per-reality Postgres.
 3. Read channel_writer_state.last_turn_number (or 0 if not present) → call this prev.
 4. Allocate next channel_event_id (per DP-Ch11).
-5. Insert into event_log:
+5. Insert into events:
      reality_id, channel_id, channel_event_id (new), writer_epoch,
      turn_number = prev + 1, event_type = "turn_boundary",
      payload = serialize(TurnBoundary { turn_number: prev + 1, turn_data }),
@@ -112,16 +112,16 @@ After `advance_turn` commits, every subsequent channel event committed by the wr
 
 ## DP-Ch22 — Schema extensions and writer allocation
 
-### `event_log` extension
+### `events` extension
 
 Building on the channel-event extension in [DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism), one more column is added:
 
 ```sql
-ALTER TABLE event_log
+ALTER TABLE events
     ADD COLUMN turn_number BIGINT NOT NULL DEFAULT 0;
 
-CREATE INDEX event_log_turn_number_idx
-    ON event_log(reality_id, channel_id, turn_number)
+CREATE INDEX events_turn_number_idx
+    ON events(reality_id, channel_id, turn_number)
     WHERE channel_id IS NOT NULL;
 ```
 
@@ -160,7 +160,7 @@ async fn on_takeover(channel_id: ChannelId) -> ChannelWriterState {
     let row = db.query_one(
         "SELECT MAX(channel_event_id) AS max_eid,
                 MAX(turn_number) AS max_turn
-         FROM event_log
+         FROM events
          WHERE reality_id = $1 AND channel_id = $2",
         &[reality_id, channel_id],
     ).await?;
@@ -180,7 +180,7 @@ async fn handle_advance_turn(state: &mut ChannelWriterState, ...) -> TurnAck {
     let new_turn = state.last_turn_number + 1;
     db.execute(
         "BEGIN;
-         INSERT INTO event_log (..., turn_number, ...) VALUES (..., $new_turn, ...);
+         INSERT INTO events (..., turn_number, ...) VALUES (..., $new_turn, ...);
          UPDATE channel_writer_state SET last_turn_number = $new_turn WHERE channel_id = $cid;
          COMMIT;"
     ).await?;
@@ -193,7 +193,7 @@ async fn handle_advance_turn(state: &mut ChannelWriterState, ...) -> TurnAck {
 async fn handle_channel_event_write(state: &mut ChannelWriterState, ...) -> _Ack {
     let new_event_id = state.last_event_id + 1;
     db.execute(
-        "INSERT INTO event_log (..., turn_number, ...) VALUES (..., $current_turn, ...)",
+        "INSERT INTO events (..., turn_number, ...) VALUES (..., $current_turn, ...)",
         &[..., state.last_turn_number /* current, NOT incremented */, ...],
     ).await?;
     state.last_event_id = new_event_id;
@@ -212,15 +212,35 @@ On writer death and reassignment ([DP-Ch12](13_channel_ordering_and_writer.md#dp
 
 A subtle case: writer N1 commits TurnBoundary with `turn_number=5`, then dies before updating `channel_writer_state.last_turn_number` (UPDATE was inside the same tx as INSERT, but if the tx itself was interrupted between INSERT and UPDATE, both rolled back). New writer N2 queries `MAX(turn_number)`, gets 4, allocates 5 next — same number, but for a different event. **No conflict** because UNIQUE on `(channel_id, channel_event_id)` ensures the events are distinct rows; they happen to share a turn number, which is conceptually correct ("the same turn 5"). Subscribers see two TurnBoundary events with `turn_number=5`; this is a recovery anomaly, but no invariant is violated.
 
-To avoid this surprise, the schema can add a stronger constraint:
+To avoid this surprise, the schema can add a stronger constraint.
+
+> **⚠ AMENDED 2026-08-07 (REC-99c) — the constraint originally written here CANNOT BE CREATED, for
+> the same reason `DP-Ch11`'s could not.** It was a **partial UNIQUE index on `events`**, and `events`
+> is `PARTITION BY RANGE (recorded_at)`: a unique index on a partitioned table must contain the
+> partition key, and Postgres does **not** support partial unique indexes on partitioned tables at
+> all. Doubly impossible, and undetected — `DP-Ch11`'s twin was caught in 2026-07-27 by an
+> implementer trying to run it, while this one survived because `advance_turn` was never built, so
+> nothing ever executed the DDL. **A spec defect is found by execution or not at all.**
+>
+> **Conformant form**, mirroring the shipped `channel_event_index` pattern (`REC-99b`): put the
+> uniqueness on a **non-partitioned side table**, written in the same transaction as the event.
 
 ```sql
-CREATE UNIQUE INDEX event_log_unique_turn_per_channel
-    ON event_log(reality_id, channel_id, turn_number)
-    WHERE event_type = 'turn_boundary';
+-- Non-partitioned, so a real UNIQUE is available. One row per (reality, channel, turn).
+CREATE TABLE channel_turn_index (
+    reality_id   UUID   NOT NULL,
+    channel_id   BIGINT NOT NULL,
+    turn_number  BIGINT NOT NULL,
+    event_id     UUID   NOT NULL,          -- the TurnBoundary event that opened this turn
+    PRIMARY KEY (reality_id, channel_id, turn_number)
+);
 ```
 
-This makes the second TurnBoundary insert fail with a UNIQUE violation — N2's allocator detects, retries with `turn_number=6`. Acceptable cost: one DB constraint check per advance.
+This makes the second TurnBoundary insert fail with a PK violation — N2's allocator detects, retries with `turn_number=6`. Acceptable cost: one extra row and one constraint check per advance.
+
+**This table is OPTIONAL and currently unbuilt**, exactly as the original text framed the constraint:
+the anomaly it prevents (*two TurnBoundary events sharing a turn number after a failover*) violates no
+invariant. It is written here so that whoever builds `advance_turn` gets a statement that runs.
 
 ---
 
@@ -319,7 +339,7 @@ The first call to `advance_turn` increments from 0 to 1; the TurnBoundary event 
 | ID | What it locks |
 |---|---|
 | DP-Ch21 | `TurnBoundary` event shape + `advance_turn(ctx, channel, turn_data, causal_refs)` SDK primitive; transparent routing to writer; uniform stream delivery; non-blocking on subscribers |
-| DP-Ch22 | `event_log.turn_number BIGINT` column + `channel_writer_state.last_turn_number` extension; writer allocation algorithm with `MAX(turn_number)` reseed on takeover; optional UNIQUE index to prevent failover-race duplicate turn numbers |
+| DP-Ch22 | `events.turn_number BIGINT` column + `channel_writer_state.last_turn_number` extension; writer allocation algorithm with `MAX(turn_number)` reseed on takeover; optional UNIQUE index to prevent failover-race duplicate turn numbers |
 | DP-Ch23 | JWT claim `can_advance_turn: Vec<level_name>` gates the primitive; SDK enforcement; concrete assignments at service-deploy time (not DP-locked) |
 | DP-Ch24 | Composition: pause rejects advance; bubble-up observes turn boundaries as inputs; move-session doesn't affect counters; dissolution preserves; reality-scoped events don't get turn_number; turn 0 is "never advanced" sentinel |
 
@@ -331,7 +351,7 @@ The first call to `advance_turn` increments from 0 to 1; the TurnBoundary event 
 - [DP-A15](02_invariants.md#dp-a15--per-channel-total-event-ordering-phase-4-2026-04-25) — `channel_event_id` ordering that turn boundaries occupy positions in
 - [DP-A16](02_invariants.md#dp-a16--channel-writer-node-binding-phase-4-2026-04-25) — single-writer guarantees gapless turn allocation
 - [DP-K9](04d_capability_and_lifecycle.md#dp-k9--capability-tokens) — capability JWT shape that DP-Ch23 extends
-- [DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism) — `event_log` schema this file extends
+- [DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism) — `events` schema this file extends
 - [DP-Ch13](13_channel_ordering_and_writer.md#dp-ch13--writer-handoff--epoch-fencing-protocol) — `channel_writer_state` table this file extends
 - [DP-Ch16](14_durable_subscribe.md#dp-ch16--durableeventstream-api) — `ChannelEvent` trait + durable subscribe that delivers TurnBoundary events
 - [DP-Ch15](13_channel_ordering_and_writer.md#dp-ch15--causal-references-for-bubble-up-preview-full-design--q27) — `causal_refs` carried by TurnBoundary

@@ -11,8 +11,16 @@
 use crate::canon::{Canon, CanonError, CanonReader};
 use crate::slots::StatSlot;
 
-use super::{CeilingBinding, RegenType, ResourceDecl, ResourceError, ZeroBehaviour,
+use super::{CeilingBinding, EngineRole, RegenType, ResourceDecl, ResourceError, ZeroBehaviour,
             MAX_DECLARED_RESOURCES};
+
+/// The first schema version whose rows carry [`ResourceDecl::role`].
+///
+/// Named rather than written as a literal `6` in three places, because
+/// `QTY-A11`'s round-trip (`encode_at(v, decode(b)) == b`) holds only while the
+/// encoder and the decoder agree on this number — and two literals that must
+/// stay equal are two literals that can stop being equal.
+const ROLE_SINCE: u32 = 6;
 
 /// The declared pools of one reality, in the hashed bytes.
 ///
@@ -37,6 +45,7 @@ const TAIL: ResourceDecl = ResourceDecl {
     regen_rate: 0,
     regen_type: RegenType::None,
     zero_behaviour: ZeroBehaviour::Clamp,
+    role: EngineRole::None,
 };
 
 impl ResourceTable {
@@ -63,6 +72,21 @@ impl ResourceTable {
         self.rows().iter().find(|r| r.quantity == ordinal)
     }
 
+    /// **The pool an engine law reads** — `Q2`'s exit criterion, as a lookup.
+    ///
+    /// `None` when this reality bound no pool to the role, and the CALLER
+    /// refuses: a law with no number must say so at boot, where an operator can
+    /// read it, rather than pick a default and run a reality whose fights never
+    /// end. [`declare`](Self::declare) guarantees at most one, so this cannot
+    /// silently prefer a row.
+    ///
+    /// `EngineRole::None` is not exclusive and this deliberately returns the
+    /// first such row rather than refusing: nothing asks for it, and a lookup
+    /// that panics on an argument no caller passes is a check that cannot fail.
+    pub fn by_role(&self, role: EngineRole) -> Option<&ResourceDecl> {
+        self.rows().iter().find(|r| r.role == role)
+    }
+
     /// Declare a pool. `declared_quantities` is the reality's `n` from
     /// [`crate::quantity::QuantityTable`], which is what makes
     /// [`ResourceError::UnknownQuantity`] checkable at all.
@@ -79,6 +103,19 @@ impl ResourceTable {
         }
         if self.for_quantity(row.quantity).is_some() {
             return Err(ResourceError::Duplicate { ordinal: row.quantity });
+        }
+        // An exclusive role names ONE pool. Checked here rather than at
+        // resolve, because `declare` is the single door every layer's rows come
+        // through — a check on the resolved table would be one a Forge override
+        // could route around.
+        if row.role.is_exclusive()
+            && let Some(first) = self.by_role(row.role)
+        {
+            return Err(ResourceError::RoleClaimedTwice {
+                role: row.role,
+                first: first.quantity,
+                second: row.quantity,
+            });
         }
         if self.n as usize >= MAX_DECLARED_RESOURCES {
             return Err(ResourceError::TooMany {
@@ -120,7 +157,15 @@ impl ResourceTable {
         Ok(())
     }
 
-    pub(crate) fn canon(&self, c: &mut Canon) {
+    /// Encode at a SPECIFIC schema version — `QTY-A11`'s round-trip lives here.
+    ///
+    /// The version parameter exists because [`ResourceDecl::role`] arrived at
+    /// v6: a v5 artifact's rows have no role byte, so re-encoding a decoded v5
+    /// ruleset must not write one, or `RulesetStore::get` re-digests it and
+    /// rejects the store's own artifact. That is the failure the codec's module
+    /// doc calls *"self-defeating"*, and it is why this takes a version rather
+    /// than always writing the current shape.
+    pub(crate) fn canon_at(&self, c: &mut Canon, version: u32) {
         c.seq_len(self.len());
         for r in self.rows() {
             c.u32(r.quantity as u32);
@@ -143,10 +188,13 @@ impl ResourceTable {
             c.i32(r.regen_rate);
             c.u8(r.regen_type as u8);
             c.u8(r.zero_behaviour as u8);
+            if version >= ROLE_SINCE {
+                c.u8(r.role as u8);
+            }
         }
     }
 
-    pub(crate) fn decode(r: &mut CanonReader<'_>) -> Result<Self, CanonError> {
+    pub(crate) fn decode_at(r: &mut CanonReader<'_>, version: u32) -> Result<Self, CanonError> {
         let n = r.u32()? as usize;
         if n > MAX_DECLARED_RESOURCES {
             // Refuse rather than truncate, for the reason `QuantityTable`
@@ -205,6 +253,39 @@ impl ResourceTable {
                     return Err(CanonError::UnknownSchemaVersion { found: other as u32, known: 1 })
                 }
             };
+            // v1..v5 predate the role binding. `None` states that rather than
+            // guessing it — the same call every other version gate in this codec
+            // makes. An UNKNOWN ordinal is refused, not defaulted: reading role
+            // 9 as `None` would unbind an engine law from its number and show up
+            // only as a law that appears never to run.
+            let role = if version >= ROLE_SINCE {
+                let raw = r.u8()?;
+                EngineRole::ALL.into_iter().find(|x| *x as u8 == raw).ok_or(
+                    CanonError::LengthMismatch {
+                        field: "resources: engine role ordinal",
+                        expected: EngineRole::ALL.len(),
+                        found: raw as usize,
+                    },
+                )?
+            } else {
+                EngineRole::None
+            };
+            // Exclusivity re-checked on the way IN, on the same argument the
+            // ascending-ordinal check above makes: an artifact carrying two
+            // vitals was not written by `declare`, and accepting it would hand
+            // a law two numbers with no basis to choose. Decode does not route
+            // through `declare` (it must preserve stored order exactly), so
+            // without this line the refusal would be reachable only from the
+            // authoring side.
+            if role.is_exclusive()
+                && let Some(first) = out.rows().iter().find(|x| x.role == role)
+            {
+                return Err(CanonError::LengthMismatch {
+                    field: "resources: an engine role names ONE pool",
+                    expected: first.quantity as usize,
+                    found: quantity as usize,
+                });
+            }
             out.rows[out.n as usize] = ResourceDecl {
                 quantity,
                 min,
@@ -213,6 +294,7 @@ impl ResourceTable {
                 regen_rate,
                 regen_type,
                 zero_behaviour,
+                role,
             };
             out.n += 1;
         }

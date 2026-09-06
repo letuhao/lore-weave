@@ -8,6 +8,29 @@ generated_by: scripts/chunk_doc.py
 
 ## 12AB. WebSocket Token Security — S12 Resolution (2026-04-24)
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #6).** This entire layer stack is written against `api-gateway-bff` as the WS edge (“Gateway redeems ticket”, `WSGateway`) — per PRR-20 the sanctioned WS edge is **`game-server`** (Colyseus), a second public entry point inheriting the same edge controls, and the per-session authorization unit is now the channel/island. The mechanisms themselves (ticket handshake, per-message authz, origin allowlist, rate limits, close-code audit) carry over but must be re-sited onto game-server. Current design: PRR-20 + [`13_simulation_loop.md`](../13_simulation_loop.md). Status markers below predate the island/commit-service model.
 
 **Origin:** Security Review S12 — WebSocket surface has distinct threat model from REST + S11 service-to-service auth. Long-lived connections, browser WS API constraints (no custom headers), per-message re-auth absent, state-change propagation to live connections not designed. Without this layer, WS is the easiest way to regress S2 capability + S3 privacy + S8 erasure + S10 state semantics.

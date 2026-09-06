@@ -22,6 +22,24 @@ export function useWorlds() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['worlds'] }),
   });
 
+  // P3 — delete. 🔴 D-S07's GUARD LIVES HERE, not only in the dialog's disabled prop.
+  // `books.world_id` is ON DELETE SET NULL, so the REST route SILENTLY ORPHANS member books;
+  // the MCP tool refuses while a world still holds any, and a UI that skipped that check would
+  // re-open the exact footgun the tool was hardened against. A `disabled` button is a hint, not
+  // a guarantee — the mutation itself refuses.
+  const deleteMutation = useMutation({
+    mutationFn: async (world: World): Promise<void> => {
+      if (world.book_count > 0) {
+        throw new Error(
+          `"${world.name}" still holds ${world.book_count} book(s). Move them out first — ` +
+          'deleting the world would detach them rather than delete them.',
+        );
+      }
+      return worldsApi.deleteWorld(accessToken!, world.world_id);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['worlds'] }),
+  });
+
   return {
     items: query.data?.items ?? [],
     total: query.data?.total ?? 0,
@@ -30,5 +48,7 @@ export function useWorlds() {
     error: query.error as Error | null,
     createWorld: createMutation.mutateAsync,
     isCreating: createMutation.isPending,
+    deleteWorld: deleteMutation.mutateAsync,
+    isDeleting: deleteMutation.isPending,
   };
 }

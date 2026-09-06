@@ -28,8 +28,7 @@ if [[ ! -f "$RULES_REGISTRY" ]]; then
     exit 2
 fi
 
-EXIT=0
-
+run_lint() {
 python3 - "$ALERTS_DIR" "$RULES_REGISTRY" "$REPO_ROOT" <<'PYEOF'
 import os
 import re
@@ -47,25 +46,14 @@ PRE_SLI_GRANDFATHER = {
     "LWMetaPostgresSyncReplicaLag",
     "LWMetaPostgresAsyncReplicaLag",
     "LWMetaWriteAuditInsertStopped",
-    "LWMetaPatroniNoLeader",
-    "LWMetaArchiveStale",
-    "LWMetaProvisionerEffectFailed",
-    "LWMetaMigrationOrchestratorBlocked",
-    "LWMetaPgbouncerPoolSaturation",
     "LWMetaWALArchiveStalled",
     "lw_migration_persistent_failure",
     "lw_migration_canary_aborted",
-    "LWPerRealityShardDown",
-    "LWPerRealityReplicationLag",
-    "LWPerRealityConnsExhausted",
     "LWRealityDBSizeWarning",
     "LWRealityDBSizeCritical",
     "LWRealityDBConnectionsWarning",
     "LWRealityDBUnreachable",
     "LWRealityDBHighRollbackRate",
-    "LWProjectionRunnerLag",
-    "LWProjectionRunnerHeartbeatStale",
-    "LWProjectionRebuildBacklog",
     "LWProjectionDriftWarning",
     "LWProjectionDriftCritical",
     "LWProjectionLagWarning",
@@ -73,15 +61,20 @@ PRE_SLI_GRANDFATHER = {
     "LWProjectionStaleVerification",
     "LWProjectionMonthlyDriftDetected",
     "LWWsConnectionSaturation",
-    "LWWsClockSkewExceeds",
-    "LWWsRefreshFailureRate",
-    "LWWsReplayDetected",
     "LWWsHandshakeFailureSpike",
     "LWWsTicketReplayAttack",
     "LWWsOriginMismatchSpike",
     "LWWsFingerprintMismatchSpike",
     "LWWsAuthzRejectionSpike",
 }
+
+
+# Overridable so `--selftest` can drive the shrink arm with a set it controls.
+# Without this, every synthetic probe trips the arm on all 24 real names — an
+# arm reding for the right reason in the wrong case, which certifies nothing.
+_gf = os.environ.get("LW_GF_OVERRIDE")
+if _gf is not None:
+    PRE_SLI_GRANDFATHER = {s for s in _gf.split(",") if s}
 
 
 def parse_registry(path):
@@ -215,14 +208,98 @@ for alertname, fpath, labels, annots in prom_alerts:
     if "sli_ref" not in labels and alertname not in PRE_SLI_GRANDFATHER:
         problems.append(f"{alertname} ({fpath}): missing 'sli_ref' label (SR1 §12AD.7); not in PRE_SLI_GRANDFATHER")
 
+# SHRINK ARM (`GT-F5`). Every grandfather row is an EXEMPTION, and an
+# exemption with no expiry is permanent by default. Measured 2026-08-12:
+# 14 of 38 rows named alerts that no longer exist anywhere on disk — 36% of
+# the list exempting nothing, while looking like deliberate coverage. Worse,
+# a dead row silently re-grandfathers the alert if the name ever comes back.
+live_names = {a for a, _f, _l, _an in prom_alerts}
+for name in sorted(PRE_SLI_GRANDFATHER - live_names):
+    problems.append(
+        f"PRE_SLI_GRANDFATHER names {name!r}, which is not an alert in "
+        f"{alerts_dir} — the exemption applies to nothing; delete the row")
+
+# REACH FLOOR. `os.walk` on a missing or renamed alerts directory yields
+# nothing: `checked` stays 0, `problems` stays empty, and this prints
+# "0 alerts validated" and exits 0 — a clean run over no subject.
+if checked < 1 and not problems:
+    print(f"[alert-rule-validator] FAIL — walked ZERO alert rules under {alerts_dir}. "
+          "A scan that reaches nothing validates nothing, and reports it as success.",
+          file=sys.stderr)
+    sys.exit(2)
+
 if problems:
     print(f"[alert-rule-validator] {len(problems)} problems in {checked} alerts:", file=sys.stderr)
     for p in problems:
         print(f"  - {p}", file=sys.stderr)
     sys.exit(1)
 
-print(f"[alert-rule-validator] {checked} alerts validated; {len(registry)} registry rows")
+print(f"[alert-rule-validator] {checked} alerts validated; {len(registry)} registry rows; "
+      f"{len(PRE_SLI_GRANDFATHER)} grandfathered, all live")
 PYEOF
-EXIT=$?
+}
 
-exit "$EXIT"
+_probe() {  # $1 = alert yaml text ("" = no alerts dir), $2 = registry text
+  local d rc=0
+  d="$(mktemp -d)"; mkdir -p "$d/alerts"
+  [[ -n "$1" ]] && printf '%s' "$1" > "$d/alerts/a.yaml"
+  printf '%s' "$2" > "$d/rules.yaml"
+  ( ALERTS_DIR="$d/alerts" RULES_REGISTRY="$d/rules.yaml" REPO_ROOT="$d" LW_GF_OVERRIDE="${3-}" run_lint ) >/dev/null 2>&1 || rc=$?
+  rm -rf "$d"
+  printf '%s' "$rc"
+}
+
+selftest() {
+  local rc
+  local reg=$'rules:
+  - alert: LWProbeAlert
+    severity: page
+'
+  local ok=$'groups:
+- name: g
+  rules:
+  - alert: LWProbeAlert
+    labels:
+      severity: page
+      action: page
+      sli_ref: sli.probe
+    annotations:
+      runbook: docs/x.md
+'
+
+  rc=$(_probe "$ok" "$reg")
+  [[ "$rc" == "0" ]] || { echo "[alert-rule-validator] SELFTEST FAIL - a fully-conformant alert did not pass (rc=$rc, cry-wolf)"; exit 2; }
+
+  rc=$(_probe "${ok/LWProbeAlert/LWGhostAlert}" "$reg")
+  [[ "$rc" == "1" ]] || { echo "[alert-rule-validator] SELFTEST FAIL - an alert absent from the registry did not fail (rc=$rc, vacuous)"; exit 2; }
+
+  rc=$(_probe "${ok/      severity: page
+/}" "$reg")
+  [[ "$rc" == "1" ]] || { echo "[alert-rule-validator] SELFTEST FAIL - a missing severity label did not fail (rc=$rc)"; exit 2; }
+
+  rc=$(_probe "${ok/      sli_ref: sli.probe
+/}" "$reg")
+  [[ "$rc" == "1" ]] || { echo "[alert-rule-validator] SELFTEST FAIL - a missing sli_ref did not fail (rc=$rc)"; exit 2; }
+
+  # THE REACH FLOOR: no alerts dir at all validated nothing and exited 0.
+  rc=$(_probe "" "$reg")
+  [[ "$rc" == "2" ]] || { echo "[alert-rule-validator] SELFTEST FAIL - ZERO alerts walked did not trip the reach floor (rc=$rc)"; exit 2; }
+
+  # THE SHRINK ARM: a grandfather row naming an alert that does not exist.
+  rc=$(_probe "$ok" "$reg" "LWLongGoneAlert")
+  [[ "$rc" == "1" ]] || { echo "[alert-rule-validator] SELFTEST FAIL - a DEAD grandfather row was not reported (rc=$rc)"; exit 2; }
+
+  rc=$(_probe "$ok" "$reg" "LWProbeAlert")
+  [[ "$rc" == "0" ]] || { echo "[alert-rule-validator] SELFTEST FAIL - a LIVE grandfather row was reported dead (rc=$rc, cry-wolf)"; exit 2; }
+
+  echo "[alert-rule-validator] SELFTEST PASS - a conformant alert passes; an unregistered one,"
+  echo "  a missing severity label and a missing sli_ref each fail; and a walk that reaches zero"
+  echo "  alert rules is refused rather than reported as 0-validated success"
+}
+
+case "${1:-}" in
+  --selftest) selftest ;;
+  --lint)     run_lint ;;
+  "")         selftest; run_lint ;;
+  *)          echo "usage: $0 [--selftest | --lint]"; exit 2 ;;
+esac

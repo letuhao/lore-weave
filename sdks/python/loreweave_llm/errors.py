@@ -32,6 +32,17 @@ class LLMQuotaExceeded(LLMError):
     code = "LLM_QUOTA_EXCEEDED"
 
 
+class LLMModelUnpriced(LLMError):
+    """The model exists but has no rate for the requested dimension.
+
+    402, like LLMQuotaExceeded, and it used to SHARE that code -- but the two are
+    opposite problems with opposite fixes: a spend cap is raised or waited out, an
+    unpriced model needs its pricing set. Keep them apart in any author-facing text.
+    """
+
+    code = "LLM_MODEL_UNPRICED"
+
+
 class LLMModelNotFound(LLMError):
     code = "LLM_MODEL_NOT_FOUND"
 
@@ -287,6 +298,7 @@ _CODE_TO_EXC: dict[str, type[LLMError]] = {
     "LLM_AUTH_FAILED": LLMAuthFailed,
     "LLM_INVALID_REQUEST": LLMInvalidRequest,
     "LLM_QUOTA_EXCEEDED": LLMQuotaExceeded,
+    "LLM_MODEL_UNPRICED": LLMModelUnpriced,
     "LLM_MODEL_NOT_FOUND": LLMModelNotFound,
     "LLM_RATE_LIMITED": LLMRateLimited,
     "LLM_UPSTREAM_ERROR": LLMUpstreamError,

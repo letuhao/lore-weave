@@ -38,7 +38,14 @@ use meta_rs::audit::{AuditClock, AuditUuidGen};
 use meta_rs::metawrite::{
     meta_write, Actor, ActorType, MetaWriteConfig, MetaWriteIntent, MetaWriteOp, ValueMap,
 };
-use meta_rs::sqlx_pg::{bind_ruleset_intent, PgConnectionWriter, PgOutboxAppender, PgQueryBuilder};
+use dp::ControlPlane;
+use meta_rs::control_plane::MetaControlPlane;
+use meta_rs::routing::DefaultMetaRead;
+use meta_rs::session_store::{capability_digest, CapabilityStore, IssuedCapability};
+use meta_rs::sqlx_pg::{
+    bind_ruleset_intent, PgCapabilityStore, PgConnectionReader, PgConnectionWriter,
+    PgOutboxAppender, PgQueryBuilder,
+};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -626,4 +633,389 @@ async fn an_event_with_no_declared_topic_lands_with_a_null_xreality_topic() {
     .await
     .expect("the outbox row exists");
     assert_eq!(topic, None);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `5B` — the CAPABILITY STORE against a real server.
+//
+// `control_plane.rs`'s unit tests drive an in-memory store, which proves the
+// decision logic and nothing about the SQL. Three things here can only be
+// settled by Postgres, and each one is a plausible way to ship a broken store
+// with green unit coverage:
+//
+//   1. `capability_hash` is BYTEA arriving as JSON. Every other column this
+//      adapter writes is a uuid, an int or text. If the hex-escape form is
+//      wrong, the digest lands mangled and EVERY lookup misses — a capability
+//      store that issues and then never recognises.
+//   2. `expires_at` / `revoked_at` are TIMESTAMPTZ arriving as RFC-3339 text,
+//      and coming back as `chrono::DateTime`. A round trip that loses the
+//      offset moves every expiry by the server's timezone.
+//   3. The CAS on `revoked_at IS NULL` has to render as `IS NULL` rather than
+//      `= NULL`. As equality it is never true, so revoke and refresh would
+//      report "nothing to do" forever — silently, and identically to the
+//      correct answer for an already-revoked row.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Build a store bound to this pool, with the same actor the rest of the file
+/// uses.
+fn capability_store(pool: &PgPool) -> PgCapabilityStore {
+    PgCapabilityStore::new(pool.clone(), allowlist(), actor()).expect("capability store")
+}
+
+/// A distinct issuance, so concurrent runs never collide on the digest UNIQUE.
+fn issuance(secret: &str, expires_at_ms: u64) -> IssuedCapability {
+    IssuedCapability {
+        session_id: Uuid::new_v4(),
+        reality_id: Uuid::new_v4(),
+        node_id: "pg-live-node".into(),
+        service_identity: "meta-rs-pg-live-test".into(),
+        capability_hash: capability_digest(secret),
+        // A fixed, obviously-synthetic instant rather than `now()`: the
+        // assertions below compare exact millisecond values, and a wall-clock
+        // reading would make the round-trip test compare a number against
+        // itself-plus-drift.
+        issued_at_ms: 1_700_000_000_000,
+        expires_at_ms,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_capability_round_trips_through_a_real_session_registry() {
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let pool = pool(&dsn).await;
+    let store = capability_store(&pool);
+
+    let secret = format!("live-secret-{}", Uuid::new_v4());
+    let issued = issuance(&secret, 1_700_000_900_000);
+    store.record(&issued).expect("record must reach the server");
+
+    // The lookup that proves the BYTEA round trip. A mangled digest fails here
+    // and nowhere else.
+    let found = store
+        .lookup(&capability_digest(&secret))
+        .expect("lookup")
+        .expect("the capability just recorded must be found by its digest");
+
+    assert_eq!(found.session_id, issued.session_id);
+    assert_eq!(found.reality_id, issued.reality_id);
+    assert_eq!(found.node_id, "pg-live-node");
+    assert_eq!(found.service_identity, "meta-rs-pg-live-test");
+    assert_eq!(
+        found.expires_at_ms, issued.expires_at_ms,
+        "TIMESTAMPTZ must round-trip to the same instant — a lost offset shows up here"
+    );
+    assert_eq!(found.revoked_at_ms, None);
+    assert!(found.is_live(issued.expires_at_ms - 1));
+    assert!(!found.is_live(issued.expires_at_ms));
+
+    // A digest that was never issued must not match anything, on a table that
+    // now definitely has rows in it.
+    assert!(
+        store
+            .lookup(&capability_digest("a-secret-nobody-minted"))
+            .expect("lookup")
+            .is_none(),
+        "an unissued digest must not resolve"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_session_is_routable_by_id_without_presenting_its_capability() {
+    // `5C`'s `GetSessionNode` (DP-C1) asks a ROUTING question — "where is
+    // session S pinned" — from a node that does not hold S's capability. This
+    // is the second SQL query in the store, on a different key, and it exists
+    // so answering a routing question never requires passing a credential
+    // around.
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let pool = pool(&dsn).await;
+    let store = capability_store(&pool);
+
+    let secret = format!("live-secret-{}", Uuid::new_v4());
+    let issued = issuance(&secret, 1_700_000_900_000);
+    store.record(&issued).expect("record");
+
+    let found = store
+        .find_by_session(issued.session_id)
+        .expect("find_by_session")
+        .expect("the session just recorded must be findable by its id");
+    assert_eq!(found.node_id, "pg-live-node");
+    assert_eq!(found.session_id, issued.session_id);
+    assert_eq!(found.expires_at_ms, issued.expires_at_ms);
+
+    // An unknown session is absent, not an error — and the two must not be
+    // confused, because `GetSessionNode` reports absence as `assigned = false`.
+    assert!(store.find_by_session(Uuid::new_v4()).expect("absent").is_none());
+
+    // AND IT ANSWERS FOR A DEAD SESSION TOO. Routing and authorization are
+    // different questions: a node handling a late message needs to know where
+    // the session lived even after the grant died, and returning None would
+    // make a stale route indistinguishable from a session that never existed.
+    store
+        .revoke(issued.session_id, 1_700_001_000_000, "routing-after-revocation")
+        .expect("revoke");
+    let after = store
+        .find_by_session(issued.session_id)
+        .expect("find")
+        .expect("a revoked session is still routable");
+    assert_eq!(after.node_id, "pg-live-node");
+    assert_eq!(after.revoked_at_ms, Some(1_700_001_000_000));
+    assert!(!after.is_live(1_700_000_800_000), "…while being plainly dead");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_audit_row_lands_in_the_same_transaction_as_the_capability() {
+    // I8's whole requirement, and the reason this store goes through
+    // `meta_write` instead of a hand-rolled INSERT. `crates/meta-rs/` is on
+    // `meta-write-discipline-lint.sh`'s exclusion list, so nothing but this
+    // test would notice the port being bypassed.
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let pool = pool(&dsn).await;
+    let store = capability_store(&pool);
+
+    let secret = format!("live-secret-{}", Uuid::new_v4());
+    let issued = issuance(&secret, 1_700_000_900_000);
+    store.record(&issued).expect("record");
+
+    // `row_pk`, not `pk` — the column name the live server insisted on, and
+    // exactly the kind of thing a string-asserting unit test agrees with you
+    // about.
+    let audited: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM meta_write_audit \
+         WHERE table_name = 'session_registry' AND row_pk::text LIKE $1",
+    )
+    .bind(format!("%{}%", issued.session_id))
+    .fetch_one(&pool)
+    .await
+    .expect("audit query");
+
+    assert_eq!(
+        audited, 1,
+        "the capability write must have produced exactly one audit row for its session"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn revoke_and_refresh_cas_against_a_real_server() {
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let pool = pool(&dsn).await;
+    let store = capability_store(&pool);
+
+    let secret = format!("live-secret-{}", Uuid::new_v4());
+    let issued = issuance(&secret, 1_700_000_900_000);
+    store.record(&issued).expect("record");
+
+    // REFRESH — the CAS holds the expiry that was read.
+    assert!(
+        store
+            .extend(issued.session_id, issued.expires_at_ms, 1_700_001_800_000)
+            .expect("extend"),
+        "a refresh holding the current expiry must apply"
+    );
+    assert!(
+        !store
+            .extend(issued.session_id, issued.expires_at_ms, 1_700_002_700_000)
+            .expect("stale extend"),
+        "a refresh holding the OLD expiry must not apply — this is the lost-update guard"
+    );
+    let after = store
+        .lookup(&capability_digest(&secret))
+        .expect("lookup")
+        .expect("row");
+    assert_eq!(
+        after.expires_at_ms, 1_700_001_800_000,
+        "the stale refresh must not have overwritten the successful one"
+    );
+
+    // REVOKE — and the `revoked_at IS NULL` guard rendering correctly is the
+    // only reason the second call answers `false`.
+    assert!(
+        store
+            .revoke(issued.session_id, 1_700_001_000_000, "pg-live drill")
+            .expect("revoke"),
+        "an unrevoked capability must revoke"
+    );
+    assert!(
+        !store
+            .revoke(issued.session_id, 1_700_001_500_000, "again")
+            .expect("second revoke"),
+        "a second revocation must report false rather than overwrite the first timestamp"
+    );
+
+    let revoked = store
+        .lookup(&capability_digest(&secret))
+        .expect("lookup")
+        .expect("row");
+    assert_eq!(
+        revoked.revoked_at_ms,
+        Some(1_700_001_000_000),
+        "the FIRST revocation's instant is the fact an incident review wants"
+    );
+    assert!(
+        !revoked.is_live(1_700_001_100_000),
+        "a revoked capability is dead before its expiry"
+    );
+
+    // …and a revoked row does not refresh, which is what stops revocation from
+    // being a suggestion.
+    assert!(
+        !store
+            .extend(issued.session_id, 1_700_001_800_000, 1_700_009_000_000)
+            .expect("extend revoked"),
+        "a revoked capability must not be resurrected by a refresh"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_control_plane_end_to_end_against_a_real_store() {
+    // Bind through the real `MetaControlPlane` onto the real store, then
+    // validate and revoke. This is the DoD's LIVE RUN axis for 5B: no double
+    // anywhere in the path except the registry read, which needs a reality row
+    // this throwaway database does have.
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let pool = pool(&dsn).await;
+
+    // Seed a bindable reality. This database is throwaway (the DSN guard
+    // refuses anything else), and the row is scoped to a fresh uuid.
+    let reality = Uuid::new_v4();
+    // Every NOT NULL column that has no default. The capacity trio is not
+    // optional — the live server refused the row without it — and a seed that
+    // omits a required column is a fixture that drifts out of the schema the
+    // day another NOT NULL is added.
+    sqlx::query(
+        "INSERT INTO reality_registry \
+         (reality_id, db_host, db_name, status, locale, \
+          session_max_pcs, session_max_npcs, session_max_total, deploy_cohort) \
+         VALUES ($1, 'pg-shard-0.internal', 'lw_reality_pg_live', 'active', 'en', 8, 24, 32, 0)",
+    )
+    .bind(reality)
+    .execute(&pool)
+    .await
+    .expect("seed reality");
+
+    let reader = PgConnectionReader::new(pool.clone()).expect("reader");
+    let plane = MetaControlPlane::new(DefaultMetaRead::new(reader), capability_store(&pool));
+
+    let req = dp::BindRequest {
+        reality,
+        node: "pg-live-node".into(),
+        service: dp::ServiceIdentity::new("meta-rs-pg-live-test").expect("valid"),
+    };
+    let bound = plane.verify_bind(&req).expect("bind against the live registry and store");
+
+    let now = now_ms();
+    let record = plane
+        .validate_capability(&bound.capability_secret, now)
+        .expect("the capability just issued must validate against the real table");
+    assert_eq!(record.session_id, bound.session);
+    assert_eq!(record.reality_id, reality);
+    assert_eq!(record.service_identity, "meta-rs-pg-live-test");
+
+    // Revocation, end to end: the same secret stops validating.
+    assert!(plane.revoke_session(bound.session, "pg-live drill").expect("revoke"));
+    let err = plane
+        .validate_capability(&bound.capability_secret, now)
+        .expect_err("a revoked capability must not validate");
+    assert_eq!(err.variant_name(), "CapabilityExpired", "got {err}");
+
+    println!(
+        "LIVE 5B: bound session {} for reality {}, validated, revoked, re-validation refused",
+        bound.session, reality
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn revoking_a_session_stops_its_refresh_against_a_real_store() {
+    // THE REVOCATION WINDOW, end to end and with no double in the path.
+    //
+    // Before `refresh_if_due` existed, revocation was immediate at the control
+    // plane and invisible to a writer already running: `check_live` compares the
+    // holder's own copy of an expiry against the holder's own clock. This is the
+    // test that the loop actually closes — and it closes through the real
+    // `session_registry`, so it also proves the CAS on `revoked_at` is what
+    // refuses.
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let pool = pool(&dsn).await;
+
+    let reality = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO reality_registry \
+         (reality_id, db_host, db_name, status, locale, \
+          session_max_pcs, session_max_npcs, session_max_total, deploy_cohort) \
+         VALUES ($1, 'pg-shard-0.internal', 'lw_reality_pg_live', 'active', 'en', 8, 24, 32, 0)",
+    )
+    .bind(reality)
+    .execute(&pool)
+    .await
+    .expect("seed reality");
+
+    let reader = PgConnectionReader::new(pool.clone()).expect("reader");
+    let plane = MetaControlPlane::new(DefaultMetaRead::new(reader), capability_store(&pool));
+
+    let ctx = dp::SessionContext::bind(
+        &plane,
+        dp::BindRequest {
+            reality,
+            node: "pg-live-node".into(),
+            service: dp::ServiceIdentity::new("meta-rs-pg-live-test").expect("valid"),
+        },
+        now_ms(),
+    )
+    .expect("bind");
+
+    // Not yet due: the default TTL is 5 minutes and the lead is 60s, so a
+    // freshly bound session has four minutes before it asks anything.
+    assert!(
+        ctx.refresh_if_due(&plane, now_ms()).expect("not due").is_none(),
+        "a fresh capability must not refresh — that would be a request amplifier"
+    );
+
+    // Due, and it succeeds while the grant is live. `now` is pushed past the
+    // lead rather than sleeping four minutes.
+    let due_at = ctx.expires_at_ms() - dp::REFRESH_LEAD_MS;
+    let refreshed = ctx
+        .refresh_if_due(&plane, due_at)
+        .expect("refresh")
+        .expect("due");
+    assert!(
+        refreshed.expires_at_ms() > ctx.expires_at_ms(),
+        "a refresh must move the expiry forward"
+    );
+
+    // NOW REVOKE, and the same call refuses.
+    assert!(plane.revoke_session(ctx.session_id().as_uuid(), "pg-live revocation drill").expect("revoke"));
+    let err = refreshed
+        .refresh_if_due(&plane, refreshed.expires_at_ms() - dp::REFRESH_LEAD_MS)
+        .expect_err("a revoked session must not refresh");
+    assert_eq!(err.variant_name(), "CapabilityExpired", "got {err}");
+
+    println!(
+        "LIVE: session {} refreshed while live, refused after revocation",
+        ctx.session_id()
+    );
+}
+
+/// Unix-epoch milliseconds — the timebase `dp::Millis` specifies.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before the unix epoch")
+        .as_millis() as u64
 }

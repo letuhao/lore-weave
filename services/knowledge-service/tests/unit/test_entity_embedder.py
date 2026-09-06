@@ -19,6 +19,8 @@ from uuid import uuid4
 
 import pytest
 
+from tests.unit._vector_seam import patch_vector_seam
+
 from app.clients.embedding_client import EmbeddingError, EmbeddingResult
 from app.extraction.entity_embedder import (
     build_embed_text,
@@ -76,8 +78,8 @@ def test_build_embed_text_composes_name_aliases_desc():
 
 
 @pytest.mark.asyncio
-@patch(f"{_PATCH}.set_entity_embedding", new_callable=AsyncMock)
 @patch(f"{_PATCH}.find_entities_needing_embedding", new_callable=AsyncMock)
+@patch_vector_seam(_PATCH)
 async def test_happy_path_embeds_each_candidate(mock_find, mock_set):
     mock_find.return_value = [_entity("e1", "Kai", "g1", 2), _entity("e2", "Mira", "g2", 1)]
     mock_set.return_value = True
@@ -104,8 +106,8 @@ async def test_happy_path_embeds_each_candidate(mock_find, mock_set):
 
 
 @pytest.mark.asyncio
-@patch(f"{_PATCH}.set_entity_embedding", new_callable=AsyncMock)
 @patch(f"{_PATCH}.find_entities_needing_embedding", new_callable=AsyncMock)
+@patch_vector_seam(_PATCH)
 async def test_glossary_degrades_to_kg_local_text(mock_find, mock_set):
     mock_find.return_value = [_entity("e1", "Kai", "g1", 1)]
     mock_set.return_value = True
@@ -123,8 +125,8 @@ async def test_glossary_degrades_to_kg_local_text(mock_find, mock_set):
 
 
 @pytest.mark.asyncio
-@patch(f"{_PATCH}.set_entity_embedding", new_callable=AsyncMock)
 @patch(f"{_PATCH}.find_entities_needing_embedding", new_callable=AsyncMock)
+@patch_vector_seam(_PATCH)
 async def test_embed_failure_writes_nothing(mock_find, mock_set):
     mock_find.return_value = [_entity("e1", "Kai", "g1", 1)]
     ec, gc = _clients(embed_raise=EmbeddingError("provider down"), gloss_rows=[_gloss("g1", "Kai", "d")])
@@ -141,8 +143,8 @@ async def test_embed_failure_writes_nothing(mock_find, mock_set):
 
 
 @pytest.mark.asyncio
-@patch(f"{_PATCH}.set_entity_embedding", new_callable=AsyncMock)
 @patch(f"{_PATCH}.find_entities_needing_embedding", new_callable=AsyncMock)
+@patch_vector_seam(_PATCH)
 async def test_no_candidates_no_calls(mock_find, mock_set):
     mock_find.return_value = []
     ec, gc = _clients(embed_return=_embed_result(0))
@@ -160,8 +162,8 @@ async def test_no_candidates_no_calls(mock_find, mock_set):
 
 
 @pytest.mark.asyncio
-@patch(f"{_PATCH}.set_entity_embedding", new_callable=AsyncMock)
 @patch(f"{_PATCH}.find_entities_needing_embedding", new_callable=AsyncMock)
+@patch_vector_seam(_PATCH)
 async def test_dim_mismatch_vector_skipped(mock_find, mock_set):
     mock_find.return_value = [_entity("e1", "Kai", "g1", 1)]
     mock_set.return_value = True

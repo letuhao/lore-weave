@@ -33,11 +33,13 @@ direct unit tests; the K1 migrations test indirectly verifies it.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from neo4j import AsyncDriver, AsyncGraphDatabase, AsyncSession
 
 from app.config import settings
+from app.db.graph_backend import configured_backend
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,6 @@ __all__ = [
     "close_neo4j_driver",
     "get_neo4j_driver",
     "init_neo4j_driver",
-    "neo4j_session",
 ]
 
 
@@ -147,16 +148,11 @@ def get_neo4j_driver() -> AsyncDriver:
     return _driver
 
 
-def neo4j_session(**kwargs: Any) -> AsyncSession:
-    """Open a new async session against the configured driver.
-    Thin wrapper around `driver.session(...)` — exists so call
-    sites can write `async with neo4j_session() as s:` without
-    importing both the driver and the get-driver helper.
-
-    Repo code must wrap the session's `run(...)` in K11.4's
-    `run_read` / `run_write` helpers, NOT call it directly.
-    """
-    return get_neo4j_driver().session(**kwargs)
+# `graph_session` MOVED to `app/db/graph.py` on 2026-09-04 (plan row R1). It dispatched
+# between engines from a module named for ONE of them, and 81 call sites across 55 files
+# read the abstraction from a path naming the thing it abstracts. What stays here is what
+# this file is correctly named for: Neo4j's driver lifecycle. No re-export shim — a shim
+# keeps the misleading import path working, which is the whole thing being fixed.
 
 
 async def close_neo4j_driver() -> None:

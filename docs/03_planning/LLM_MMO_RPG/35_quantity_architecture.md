@@ -1,5 +1,29 @@
 # 35 — Quantity architecture: the four layers, and what is allowed to grow
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 > **Status:** DESIGN 2026-07-28, **revised the same day after an adversarial red-team round**.
 > Governs **which quantities exist**, who may add one, and what it costs.
 > Axioms `QTY-A1..A14`, decisions `QTY-D1..D15`, open `QTY-Q5..Q11` (`Q1..Q4` closed — §13.1).
@@ -76,6 +100,15 @@ progression system.
 
 ### 1.1 And the growth path out of it is currently a spine break
 
+> **⚠ ANNOTATED 2026-08-02 — the sites are real; the COST is now zero.** Two things changed after this
+> table was written. **(a)** `Q0a` shipped on 2026-07-29 — the version-dispatched codec, `upcast v1→v2`
+> and the epoch switch — which is precisely the *"there is no migration story"* this table's last row
+> reports as missing. **(b)** No production reality exists, as §12 states in its own words: *"zero
+> production realities exist, so the clock is under our control."* Every row below describes damage to
+> artifacts that have not been written. Keep the table as the record of what the migration machinery is
+> **for**; do not quote it as a reason not to move a vocabulary. See `D-10` /
+> [`2026-08-02-actor-data-structure.md`](../../specs/2026-08-02-actor-hub/analysis/2026-08-02-actor-data-structure.md) §7.1.
+
 Moving `SLOT_COUNT` today costs ~13 sites across 6 source files — and worse:
 
 | Site | What happens |
@@ -150,6 +183,12 @@ Concretely: `evaluate_outcome` does not read `hp`. It reads the quantity bound t
 tests it against role `Vital`'s zero-behaviour. But `resolve_attack` reads slot `StrikePower`
 **directly**, because that slot is closed and the ruleset has nothing else to put there.
 
+> **⚠ THIS REVIEW NOTE'S PREMISE LAPSED 2026-08-02 (`D-10`).** It rests on *"an author cannot rebind a
+> closed derived slot"* — and under `D-10` there is no closed derived slot: the slot vocabulary is
+> declared. The note is kept because its *reasoning shape* is still the right test (a role with no
+> consumer is indirection), but its conclusion must be re-derived against a declared slot set, not
+> quoted. See [`2026-08-02-actor-data-structure.md`](../../specs/2026-08-02-actor-hub/analysis/2026-08-02-actor-data-structure.md) §7.1.
+>
 > **Review note (self-review, same session).** The first draft of this section gave roles to
 > `StrikePower`/`Armor`/`Speed`/`MoveRange` as well. That was **indirection with no consumer** — an
 > author cannot rebind a closed derived slot to anything, so the role added a layer and bought
@@ -300,6 +339,16 @@ so "the cost pool" was already contradicted by the shipped design's shape.
 > `crates/ruleset-loader/src/validate.rs` is where it would go. Rejected because a validator is a
 > runtime refusal while a role is a type-level total function, and doc 16's discipline prefers
 > structural over procedural. It is a close call and it is recorded so it is not re-litigated blind.
+
+> **⚠ THE "one role" ARGUMENT NEEDS RE-DERIVING — 2026-08-02 (`D-10`, `D-14`).** The paragraph below
+> rests on *"every other law input is an L1 derived slot the law names directly."* Under `D-10` the slot
+> vocabulary is declared, so there is no closed name for a law to reach for; and under `D-14` the combat
+> laws that do the reaching are being rewritten. `Vital`'s own justification — **cardinality**, that
+> `evaluate_outcome` needs exactly one answer and a declared flag is satisfiable zero times — survives
+> untouched and is the part worth keeping. The count *"one, not six"* does not: it was derived from the
+> shape of laws that are being replaced. **Re-derive it with the combat redesign, do not quote it.**
+> A second gap `D-4` exposed: this cardinality argument was made at **reality** scope, and an actor with
+> no pool bound to `Vital` leaves the role with no answer **for that actor** — a case it never considered.
 
 **One role, not six.** Every other law input is an L1 derived slot the law names directly
 (`resolve_attack` reads `StrikePower`, `Armor`, `Accuracy`, `Dodge`, `CritChance`, `CritMult`;
@@ -470,13 +519,13 @@ have four homes already:
 | **The author's WHEN seam** | `TrainingRuleDecl.source` — `Action{interaction_kind, target_match, instrument_match}` + `Time{DailyBoundary}` | `PROG-9` ✅ V1 |
 
 So PRD-F2 is a statement that the **author-declarable vocabulary is narrow**, not that the substrate is
-missing — and widening it already has an owner: [**WSA-R18**](31_world_simulation_architecture.md),
+missing — and widening it already has an owner: [**WSA-R18**](31_world_simulation_architecture.md) (retired 2026-07-30 -> [`XST-R9`](27_extensibility_stress_test.md), the same work under one id),
 *"a closed `TriggerPoint` set with a depth budget, **generalising the ONE seam that exists**
 (`TrainingRuleDecl.source`) rather than adding a second dialect"*.
 
 > **QTY-D10 — this document does NOT design triggers, effects or generators, and no slice of §12 may.**
 > A trigger vocabulary bolted next to `TrainingRuleDecl.source` is the `combat.rs` failure mode
-> ([32 §146](32_locus_as_actor.md)). Nouns here; verbs at WSA-R18. The two tracks meet only at the
+> ([32 §146](32_locus_as_actor.md)). Nouns here; verbs at WSA-R18 (retired 2026-07-30 -> [`XST-R9`](27_extensibility_stress_test.md), the same work under one id). The two tracks meet only at the
 > declared-quantity ordinal, which is the correct and only seam.
 
 ---
@@ -892,7 +941,7 @@ ground that it is the **cheapest** slice (one branch in `canon.rs`, one version 
 `ruleset.rs`) and it converts every later slice from a break into an epoch switch.
 
 **What is NOT in this build order, deliberately:** triggers, effects and generators. See §5.5 —
-`WSA-R18` owns the verb track, and a second dialect here would be the `combat.rs` failure mode.
+`WSA-R18` (retired 2026-07-30 -> [`XST-R9`](27_extensibility_stress_test.md), the same work under one id) owns the verb track, and a second dialect here would be the `combat.rs` failure mode.
 
 ---
 

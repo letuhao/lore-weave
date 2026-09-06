@@ -1,0 +1,88 @@
+{
+  "scenarios": [
+    {
+      "id": "softsweep-book-get",
+      "tool_under_test": "book_get",
+      "expect_tool": "book_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the details of this book — title, blurb, whatever is set on it.",
+      "prompt_source": "meta.synonyms ['book detail', 'show book']. book_id is required and is a CONTEXT id the runtime injects, so the request needs no id from the model.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF book_get is not ADVERTISED on 5/5 — the tool declares 'book detail'/'show book' and the request is that, so a miss is a surfacing defect rather than a model choice. CALLED is reported but is a weaker claim: a sibling read (book_read, book_list) answering the same words is a legitimate alternative, not a failure of this tool. CONTROL: book_id is context-injected, so a refusal naming a missing book_id would mean the runtime did not inject it — a different finding entirely.",
+      "ship_audit": {
+        "gate": "not owed — Tier R, no write.",
+        "empty_case": "OWED — a book with no blurb must read as empty, not as an error.",
+        "tenancy": "book-scoped throwaway fixture, torn down."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-book-list-chapters",
+      "tool_under_test": "book_list_chapters",
+      "expect_tool": "book_list_chapters",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What chapters does this book have? Give me the table of contents.",
+      "prompt_source": "meta.synonyms ['chapters', 'table of contents', 'toc'] — the request uses two of them verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF book_list_chapters is not ADVERTISED on 5/5. 🔴 THE KNOWN RIVAL, named in advance so the result is not read as a surprise: book_list ALSO declares 'list chapters' and 'table of contents', so both tools answer this request by their own declarations and either being called is legitimate. What would be a defect is NEITHER being advertised.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — a book with no chapters must list empty, not error.",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-book-get-chapter",
+      "tool_under_test": "book_get_chapter",
+      "expect_tool": "book_get_chapter",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Open chapter one and show me its text.",
+      "prompt_source": "meta.synonyms ['open chapter', 'read chapter text', 'chapter detail'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF book_get_chapter is not ADVERTISED on 5/5. It requires chapter_id as well as book_id — both context ids the runtime injects when the turn carries editor context. 🔴 IF THE TURN CARRIES NO CHAPTER CONTEXT the model must first find the chapter, so a run that calls book_list_chapters then this tool is the CORRECT sequence and not a miss. A refusal naming a missing chapter_id is the finding to look for.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — a chapter with no draft must read as empty.",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
+    },
+    {
+      "id": "softsweep-composition-motif-get",
+      "tool_under_test": "composition_motif_get",
+      "expect_tool": "composition_motif_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the motif detail — its roles and its beats.",
+      "prompt_source": "meta.synonyms ['motif detail', 'motif roles', 'motif beats'] — three of them, verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF composition_motif_get is not ADVERTISED on 5/5. 🔴 IT REQUIRES motif_id, which is NOT a context id and has ONE observed supplier — so a run that calls a motif LIST first and then this tool is the correct sequence, and a run that fabricates a motif_id is the fabricated-id class, not a surfacing defect. Both outcomes are informative; report which.",
+      "ship_audit": {
+        "gate": "not owed — Tier R.",
+        "empty_case": "OWED — an unknown motif_id must refuse, not return an empty motif.",
+        "tenancy": "book-scoped throwaway fixture."
+      },
+      "defects": []
+    }
+  ]
+}

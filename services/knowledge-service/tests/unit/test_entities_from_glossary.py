@@ -33,7 +33,7 @@ class _AsyncCM:
 
 def _build(monkeypatch, *, book):
     owner = uuid4()
-    monkeypatch.setattr("app.routers.public.entities.neo4j_session", lambda: _AsyncCM())
+    monkeypatch.setattr("app.routers.public.entities.graph_session", lambda: _AsyncCM())
 
     seen: dict = {}
 

@@ -25,7 +25,7 @@ pub use biome::{
     Alignment, BiomeId, BiomeLevel, BiomeObjectType, BiomePriority, BiomeSelection,
     BiomeSelectionRule, BiomeSelectionRules, BiomeSet,
 };
-pub use channel::{ChannelId, ChannelTier};
+pub use channel::{ChannelId, MapKind};
 pub use biome_theme::{BiomeMixEntry, BiomeThemeDef, BiomeThemeError};
 pub use decoration::DecorationDensity;
 pub use object::{TilemapObjectKind, TilemapObjectPlacement, V2Defaults};

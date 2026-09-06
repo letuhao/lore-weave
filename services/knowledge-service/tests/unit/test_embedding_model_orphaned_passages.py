@@ -53,8 +53,8 @@ class TestGraphDeletePassageScope:
 
         cm, _ = _mock_neo4j()
         purge = AsyncMock(return_value=7)
-        with patch("app.routers.public.extraction.neo4j_session", return_value=cm), \
-             patch("app.db.neo4j_repos.passages.delete_all_passages_for_project", purge):
+        with patch("app.routers.public.extraction.graph_session", return_value=cm), \
+             patch("app.db.graph_repos.passages.delete_all_passages_for_project", purge):
             total = await _delete_project_graph(_USER, _PROJECT, include_passages=True)
 
         purge.assert_awaited_once()
@@ -76,8 +76,8 @@ class TestGraphDeletePassageScope:
 
         cm, _ = _mock_neo4j()
         purge = AsyncMock(return_value=7)
-        with patch("app.routers.public.extraction.neo4j_session", return_value=cm), \
-             patch("app.db.neo4j_repos.passages.delete_all_passages_for_project", purge):
+        with patch("app.routers.public.extraction.graph_session", return_value=cm), \
+             patch("app.db.graph_repos.passages.delete_all_passages_for_project", purge):
             total = await _delete_project_graph(_USER, _PROJECT)
 
         purge.assert_not_awaited()
@@ -85,10 +85,14 @@ class TestGraphDeletePassageScope:
 
     def test_passage_is_not_in_the_label_list(self):
         # Pins the shape the fix relies on: :Passage is purged through the flag, NOT by
-        # being added to _GRAPH_LABELS (which would make the plain delete destructive).
-        from app.routers.public.extraction import _GRAPH_LABELS
+        # being added to the label list (which would make the plain delete destructive).
+        # The list moved to the maintenance repo with its query (plan T17); the GUARD
+        # follows it, because what it protects — a delete/rebuild silently destroying
+        # chat- and glossary-sourced chunks extraction cannot rebuild — is unchanged by
+        # the move, and was proven live on 2026-07-23.
+        from app.db.graph_repos.maintenance import PROJECT_GRAPH_LABELS
 
-        assert "Passage" not in _GRAPH_LABELS
+        assert "Passage" not in PROJECT_GRAPH_LABELS
 
 
 # ── B. the guard must ask Neo4j, not extraction_status ────────────────────────
@@ -111,7 +115,7 @@ class TestPassageExistenceProbe:
 
     @pytest.mark.asyncio
     async def test_no_neo4j_configured_means_nothing_to_orphan(self):
-        from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+        from app.db.graph_repos.graph_state import project_has_embedded_passages
 
         with patch("app.config.settings.neo4j_uri", ""):
             assert await project_has_embedded_passages(_USER, _PROJECT) is False
@@ -120,31 +124,31 @@ class TestPassageExistenceProbe:
     async def test_an_unreachable_neo4j_FAILS_CLOSED(self):
         """The asymmetry that decides the default: a wrong "no vectors" silently destroys
         a project's retrieval; a wrong "has vectors" only routes to the confirm path."""
-        from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+        from app.db.graph_repos.graph_state import project_has_embedded_passages
 
         with patch("app.config.settings.neo4j_uri", "bolt://x"), \
-             patch("app.db.neo4j.neo4j_session", side_effect=RuntimeError("down")):
+             patch("app.db.graph.graph_session", side_effect=RuntimeError("down")):
             assert await project_has_embedded_passages(_USER, _PROJECT) is True
 
     @pytest.mark.asyncio
     async def test_reports_true_when_a_passage_exists(self):
-        from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+        from app.db.graph_repos.graph_state import project_has_embedded_passages
 
         cm, _ = _mock_neo4j()
         with patch("app.config.settings.neo4j_uri", "bolt://x"), \
-             patch("app.db.neo4j.neo4j_session", return_value=cm), \
-             patch("app.db.neo4j_repos.passages.project_has_passages",
+             patch("app.db.graph.graph_session", return_value=cm), \
+             patch("app.db.graph_repos.passages.project_has_passages",
                    AsyncMock(return_value=True)):
             assert await project_has_embedded_passages(_USER, _PROJECT) is True
 
     @pytest.mark.asyncio
     async def test_reports_false_when_the_project_is_empty(self):
-        from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+        from app.db.graph_repos.graph_state import project_has_embedded_passages
 
         cm, _ = _mock_neo4j()
         with patch("app.config.settings.neo4j_uri", "bolt://x"), \
-             patch("app.db.neo4j.neo4j_session", return_value=cm), \
-             patch("app.db.neo4j_repos.passages.project_has_passages",
+             patch("app.db.graph.graph_session", return_value=cm), \
+             patch("app.db.graph_repos.passages.project_has_passages",
                    AsyncMock(return_value=False)):
             assert await project_has_embedded_passages(_USER, _PROJECT) is False
 
@@ -170,7 +174,7 @@ class TestToolGuardUsesPassagesNotStatus:
         args = KgProjectSetEmbeddingModelArgs(embedding_model="new-model")
         with patch("app.tools.graph_schema_tools._resolve_project_owner_and_level",
                    AsyncMock(return_value=(_USER, 4))), \
-             patch("app.db.neo4j_repos.graph_state.project_has_embedded_passages",
+             patch("app.db.graph_repos.graph_state.project_has_embedded_passages",
                    AsyncMock(return_value=has_passages)), \
              patch("app.clients.embedding_client.probe_embedding_dimension",
                    AsyncMock(return_value=1024)):

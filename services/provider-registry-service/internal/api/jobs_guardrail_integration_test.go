@@ -76,6 +76,28 @@ func guardrailServer(t *testing.T, stub *billingStub) (*Server, *pgxpool.Pool) {
 
 // seedPricedModel inserts a provider_credentials + user_models pair with the
 // given pricing JSONB, and returns the owner + user_model_id.
+// makeEndpointBillable rewrites the seeded credential's endpoint to a CLOUD one.
+//
+// 🔴 THE FIXTURE'S PLACEHOLDER ACQUIRED A MEANING. `seedPricedModel` seeds
+// `http://127.0.0.1:1` — chosen as a dead address so a dispatch fails fast — and
+// `billing.DecodePricing` later gave loopback a meaning of its own:
+// `IsLocalEndpoint(url) -> FreePricing()`, an EXPLICITLY-zero price table. So every model
+// the helper seeds became a FREE LOCAL model, `embeddingCost` never returned ErrUnpriced,
+// and the unpriced-guardrail tests saw 202/200 instead of 402. The guard was right the
+// whole time; the fixture had changed meaning underneath it.
+//
+// Only the tests that assert on PRICING call this. The rest keep the loopback address
+// because they need a dispatch that fails immediately — an unroutable public IP would hang
+// until timeout instead.
+func makeEndpointBillable(t *testing.T, pool *pgxpool.Pool, owner uuid.UUID) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `
+UPDATE provider_credentials SET endpoint_base_url = 'https://api.openai.com/v1'
+ WHERE owner_user_id = $1`, owner); err != nil {
+		t.Fatalf("make endpoint billable: %v", err)
+	}
+}
+
 func seedPricedModel(t *testing.T, pool *pgxpool.Pool, pricingJSON string) (uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
@@ -168,6 +190,7 @@ func TestDoSubmitJob_UnpricedModel_402(t *testing.T) {
 	stub := newBillingStub(t, reserveReply{http.StatusOK, map[string]any{"reservation_id": uuid.New()}})
 	srv, pool := guardrailServer(t, stub)
 	owner, modelID := seedPricedModel(t, pool, `{}`) // empty pricing → unpriced
+	makeEndpointBillable(t, pool, owner)             // ...and NOT a free local endpoint
 
 	rr := submitJob(t, srv, owner, map[string]any{
 		"operation": "embedding", "model_source": "user_model",
@@ -177,8 +200,12 @@ func TestDoSubmitJob_UnpricedModel_402(t *testing.T) {
 	if rr.Code != http.StatusPaymentRequired {
 		t.Fatalf("expected 402, got %d (%s)", rr.Code, rr.Body.String())
 	}
-	if c := errorCode(t, rr); c != "LLM_QUOTA_EXCEEDED" {
-		t.Fatalf("expected LLM_QUOTA_EXCEEDED, got %q", c)
+	// LLM_MODEL_UNPRICED, not LLM_QUOTA_EXCEEDED. jobs_handler.go split these deliberately:
+	// both are 402 but they are OPPOSITE problems — "you have spent your budget" vs "this
+	// model has no price table" — and one shared code made the author-facing message wrong
+	// for one of them every time.
+	if c := errorCode(t, rr); c != "LLM_MODEL_UNPRICED" {
+		t.Fatalf("expected LLM_MODEL_UNPRICED, got %q", c)
 	}
 	if stub.reserveCalls != 0 {
 		t.Fatal("reserve must not be called for an unpriced model")
@@ -269,6 +296,11 @@ func TestDoSubmitJob_MaxTokensCap_RetriesAndSurfacesCap(t *testing.T) {
 	)
 	srv, pool := guardrailServer(t, stub)
 	owner, modelID := seedPricedModel(t, pool, pricedTextModel)
+	// The cap is computed FROM the price table, so the model must actually be billable.
+	// On the seeded loopback endpoint `DecodePricing` returns FreePricing() — every rate
+	// explicitly 0 — and there is no cap that makes a $0 estimate fit a budget, so the
+	// handler surfaced the first reserve's 402 instead of retrying.
+	makeEndpointBillable(t, pool, owner)
 
 	rr := submitJob(t, srv, owner, map[string]any{
 		"operation": "chat", "model_source": "user_model",

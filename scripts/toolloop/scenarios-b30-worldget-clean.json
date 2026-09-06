@@ -1,0 +1,58 @@
+{
+  "_note": "world_get's clean arm — batch 30's re-run lost 1 of 5 to a provider STREAM_ERROR, and a transport failure is never a model result. Same scenario byte-for-byte; the precedent for a single-scenario clean arm is batch19-motif-edit-clean and batch20-link-list-clean.",
+  "scenarios": [
+    {
+      "id": "world-get",
+      "tool_under_test": "world_get",
+      "expect_tool": "world_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my worlds.",
+      "follow_ups": [
+        "Show me the world called Emberfall Reach {run_word}."
+      ],
+      "prompt_source": "Turn 1 is world_list's own synonym ('my worlds'). The MEASURED turn 2 is world_get's synonyms ['show world'] + ['world detail'], verbatim, plus the world's exact name — the same sentence batch 29 measured, now asked of a model that has just seen the id.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "Emberfall Reach {run_word}",
+            "description": "A drowned coast of ash and low tides."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM worlds WHERE name LIKE '%{run_word}%'",
+          "expect": "1",
+          "why": "ONE world by this run's nonce. world_list orders created_at DESC and carries a paging envelope with total + is_complete (the OUT-5 fix), so the world seeded seconds ago is on page ONE — the supplier can answer, which is what makes turn 2's failure or success attributable to the model rather than to paging."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Emberfall Reach"
+        ],
+        "none_of": [
+          "could not find",
+          "couldn't find",
+          "no such world",
+          "don't have a record"
+        ],
+        "why": "The world exists, the author named it, and turn 1 put its id in the conversation. The none_of needles are the FALSE ABSENCE batch 29 measured — 'I don't have a record of a world named Emberfall Reach', followed in one run by an offer to build it, which would have duplicated the author's world."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the measured turn reports the world absent when turn 1 listed it — that is the false absence, now with the id demonstrably in context, which would make it a much worse finding than batch 29's — OR the model invents a world_id rather than reusing the one it was just shown. 🔴 THE CONTROL THAT MATTERS: if turn 1 does not actually call world_list, this scenario proves nothing about turn 2 and must be re-run, not read as 0/5. prior_turns records what turn 1 called.",
+      "ship_audit": {
+        "absent_case": "EXERCISED by direct probe (batch 29) — an unknown world_id is refused 'world not found — check the world_id (call world_list for valid ids)'.",
+        "empty_case": "EXERCISED by direct probe (batch 29) — a world with no books and no maps still returns as a real world with book_count 0.",
+        "tenancy": "EXERCISED by direct probe (batch 29) — another owner's world is refused with the SAME wording as one that exists nowhere, so it is no existence oracle."
+      },
+      "defects": []
+    }
+  ]
+}

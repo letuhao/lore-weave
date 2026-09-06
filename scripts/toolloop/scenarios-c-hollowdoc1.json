@@ -1,0 +1,73 @@
+{
+ "_note": "D-THE-DOCUMENT-HANDED-TO-AN-EXTRACT-TOOL-IS-A-MESSAGE-ABOUT-HAVING-NO-DOCUMENT. Two arms. The ORGANIC arm reproduces the measured population — an empty book, a request to capture, and no document to capture from — and is honest about being probabilistic: 9 of 94 such calls went hollow, so a K=5 arm may not fire, and a non-reproduction is RECORDED rather than retried until it agrees. The DETERMINISTIC arm makes the guard's trigger reachable without waiting on the model, by the same route the placeholder-UUID cycle used: the AUTHOR supplies the value, which is a real path (a person pasting text from somewhere else).",
+ "scenarios": [
+  {
+   "id": "hollow-doc-organic-empty-book",
+   "tool_under_test": "glossary_extract_entities_from_doc",
+   "expect_tool": "glossary_extract_entities_from_doc",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Turn my notes into glossary entries — I haven't actually written any of them down yet, so just go from what you know about my story.",
+   "prompt_source": "The MEASURED population: an empty book, an author asking for capture, and no document to capture from. That is the state all 9 source_markdown instances came from — the model has nothing, says so, and puts the saying-so in the payload slot.\n\n🔴 THE WORDING CARRIES THE TOOL'S DECLARED SYNONYM ('turn my notes into glossary entries') ON PURPOSE. The first draft said 'capture the cast of my story into the glossary', which reaches the tool by DISCOVERY but not by answerability — and the measured-turn gate refuses that, correctly: a scenario whose own turn cannot name its tool is measuring the surface, not the tool. The empty premise is preserved; only the naming changed.",
+   "needs_target": false,
+   "approve": null,
+   "editor_context": false,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "0",
+     "why": "The ABSENT case must actually be absent, and this is also the store bar: nothing may be captured from a document that does not exist. 🔴 IT IS ALSO THE CONTAMINATION CONTROL for this whole area — the glossary is written BY the tool under test, so a non-zero start would let the tool's own earlier output look like the author's world."
+    }
+   ],
+   "falsifier": "REFUTED IF: glossary_extract_entities_from_doc runs on a source_markdown the model composed and the turn proceeds as if it were the author's, OR entities appear for this book. PASSES IF the guard drops the argument and the model asks the author for their text. NON-REPRODUCTION IS A VALID OUTCOME and is recorded: the hollow shape was 9 of 94 such calls, so K=5 may simply not hit it, and the deterministic arm exists for that reason.",
+   "answer_expect": {
+    "why": "Deliberately none. What is under test is the GUARD on the wire — read from the tool calls and the service log — not the wording of the reply."
+   },
+   "ship_audit": {
+    "gate": "NOT OWED — Tier R, the tool writes nothing.",
+    "absent_case": "THIS IS the absent case: an empty book and no document.",
+    "idempotency": "N/A — a read.",
+    "tenancy": "OWED — book-scoped, and the fixture is a throwaway."
+   },
+   "defects": []
+  },
+  {
+   "id": "hollow-doc-supplied-by-the-author",
+   "tool_under_test": "glossary_extract_entities_from_doc",
+   "expect_tool": "glossary_extract_entities_from_doc",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Turn my notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+   "prompt_source": "🔴 THE DETERMINISTIC EXERCISE, and the string is the MEASURED instance verbatim from chat_messages.tool_calls, not an invented one. The author supplies it and asks for it to be relayed exactly, which is a real path — a person pasting text from a document — and it does not wait on the model to produce the shape by itself. Same route the degenerate-UUID arm was proven by after 10 runs failed to reproduce the model's own fabrication.",
+   "needs_target": false,
+   "approve": null,
+   "editor_context": false,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "0",
+     "why": "Nothing may be extracted from a note about having nothing. The store must not move."
+    }
+   ],
+   "falsifier": "REFUTED IF: the call reaches the tool WITH source_markdown still attached, OR any glossary entity is created for this book, OR the refusal calls the argument merely 'missing' without saying a note about having no content is not a document. PASSES IF source_markdown is GONE from the dispatched call and the model is told to ask the author for their text.",
+   "answer_expect": {
+    "why": "None — the guard's behaviour on the wire is the measurement. The reply is read for whether it asks the author, but no wording is required of it."
+   },
+   "ship_audit": {
+    "gate": "NOT OWED — Tier R.",
+    "absent_case": "OWED — a document that is not a document must be refused.",
+    "idempotency": "N/A — a read.",
+    "tenancy": "OWED — book-scoped throwaway."
+   },
+   "defects": []
+  }
+ ]
+}

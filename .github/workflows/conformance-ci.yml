@@ -154,8 +154,23 @@ jobs:
         with:
           go-version: "1.25"
       - name: install benchstat
+        # 🔴 PINNED, because `@latest` broke this job the day upstream raised its floor:
+        #
+        #   go: golang.org/x/perf/cmd/benchstat@latest: golang.org/x/perf@v0.0.0-20260825160852
+        #   requires go >= 1.26.0 (running go 1.25.14; GOTOOLCHAIN=local)
+        #
+        # Nothing in this repo changed. `@latest` is a moving target and this job deliberately
+        # pins `go-version: "1.25"` with `GOTOOLCHAIN: local` for reproducible numbers — the
+        # two cannot both float. The tool is a statistics formatter for `go test -bench`
+        # output; its CLI has been stable for years, and the gate's own `--bite` leg proves it
+        # still discriminates.
+        #
+        # This pseudo-version declares `go 1.18`, so it installs under any Go this repo uses.
+        # Verified with `GOTOOLCHAIN=local go install` on go1.25.1. Raising it means bumping
+        # `go-version` here first, which is a decision about the benchmark numbers rather than
+        # a dependency bump.
         run: |
-          go install golang.org/x/perf/cmd/benchstat@latest
+          go install golang.org/x/perf/cmd/benchstat@v0.0.0-20240604174448-3b48cf0e0164
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: gate non-vacuity (--bite must fire)
         run: bash scripts/perf/bench-gate.sh --bite
@@ -543,6 +558,27 @@ jobs:
     # freeze-set + provisioner_live safe_ident + capacity_glue lock-key.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    # Postgres added 2026-08-31 by the skipped-test audit. `world-gen`'s
+    # `shape::postgres_cache::round_trip_against_real_postgres` is `#[ignore]`d with the
+    # reason "requires TEST_DATABASE_URL; not run by default CI" — and BOTH halves of that
+    # were true forever: no workflow set the variable, and no workflow passed `--ignored`,
+    # so the only test that exercises the dispatch cache against a real engine had never
+    # run anywhere. An `#[ignore]` is invisible in a cargo summary line, so nothing said so.
+    # The test self-applies its schema (`init_schema()`), so an EMPTY database is enough.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: loreweave
+          POSTGRES_PASSWORD: loreweave_dev
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loreweave -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -555,6 +591,19 @@ jobs:
           # Two filter substrings must go AFTER `--` (libtest ORs them); passing
           # them as bare cargo args makes the 2nd an "unexpected argument".
           cargo test -p world-service --lib -- capacity_glue:: provisioner_live::
+      # The throwaway carries the `_test` marker the repo requires of any database a test
+      # is allowed to write to.
+      - name: world-gen dispatch-cache round-trip against a real Postgres
+        env:
+          PGPASSWORD: loreweave_dev
+          TEST_DATABASE_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_worldgen_test?sslmode=disable
+        run: |
+          set -euo pipefail
+          psql -h localhost -p 5432 -U loreweave -d postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE loreweave_worldgen_test;"
+          # `--ignored` is the whole point: without it cargo reports "ok" having run zero
+          # of these, which is what it did for the life of the test.
+          cargo test -p world-gen --lib shape::postgres_cache -- --ignored --nocapture
 
   scale-nightly:
     name: S12 scale sweep (nightly — live, real multi-shard rig)

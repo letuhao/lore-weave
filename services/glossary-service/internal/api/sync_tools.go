@@ -29,7 +29,11 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"book adopted from System or your user-tier standards, whether the source has since changed " +
 			"(an update is available) or been retired. Read this before proposing a sync. Returns each " +
 			"row's current (mine) vs upstream (theirs) values so you can recommend per-row choices.",
-		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"are there ontology updates", "is my story bible out of date", "what standard updates are available"}),
 	}, s.toolBookSyncAvailable)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -38,20 +42,27 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"book row from its source; keep_mine = keep the book's value but stop prompting). High-impact: it " +
 			"does NOT apply; it returns a confirm_token + a preview, which a human reviews (and may flip any " +
 			"row) before confirming via glossary_confirm_action. Pass items from glossary_book_sync_available: " +
-			"each {entity, id, choice}. id is the BOOK row id from the available list.",
+			"each {entity, id, choice}. id is the BOOK row id from the available list. " +
+			"CALLING THIS IS HOW YOU ASK: the card carries the question with every row attached and editable. " +
+			"If the author already asked for the updates, do not ask again in prose first — that raises no card, " +
+			"mints no token, and spends a turn on permission they gave.",
 		InputSchema: closedSetSchemaFor[syncApplyToolIn](map[string][]any{
 			"items[].entity": enumLevels,
 			"items[].choice": {"take_theirs", "keep_mine"},
 		}),
 		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"apply the standard updates", "take the upstream changes", "sync my ontology"}),
 	}, s.toolBookSyncApply)
 }
 
 // ── sync_available (R) ────────────────────────────────────────────────────────
 
 type syncAvailableToolIn struct {
-	BookID string `json:"book_id,omitempty" jsonschema:"the book to diff against its standards (UUID)"`
+	BookID string `json:"book_id" jsonschema:"the book to diff against its standards (UUID)"`
 }
 
 func (s *Server) toolBookSyncAvailable(ctx context.Context, _ *mcp.CallToolRequest, in syncAvailableToolIn) (*mcp.CallToolResult, syncAvailableResp, error) {
@@ -87,7 +98,7 @@ type syncApplyItemToolIn struct {
 }
 
 type syncApplyToolIn struct {
-	BookID string                `json:"book_id,omitempty" jsonschema:"the book to sync (UUID)"`
+	BookID string                `json:"book_id" jsonschema:"the book to sync (UUID)"`
 	Items  []syncApplyItemToolIn `json:"items" jsonschema:"the per-row choices to apply"`
 }
 
@@ -122,6 +133,42 @@ func (s *Server) toolBookSyncApply(ctx context.Context, req *mcp.CallToolRequest
 			keepN++
 		}
 		items = append(items, syncApplyItemReq{Entity: entity, ID: strings.TrimSpace(it.ID), Choice: choice})
+	}
+	// 🔴 MINT-TIME VALIDATION STOPPED AT THE SHAPE OF AN ID. Measured 2026-08-24 over MCP, each
+	// of these MINTED A CARD: an item id that exists nowhere, a book with ZERO available updates,
+	// and book A's sync row applied against book B. Every row on this card decides whether the
+	// author's own value is overwritten, so a card for rows that are not available updates asks
+	// them to approve a change that cannot happen — approve-then-fail on a Tier-W write.
+	//
+	// The set to check against is the one the READER returns, computed here by the same three
+	// functions glossary_book_sync_available runs. One membership test covers all three cases: an
+	// unknown id, another book's id, and an id that is already up to date are all simply absent
+	// from this book's available set. Same principle as the entity/choice/UUID checks above,
+	// extended from the shape of an id to whether it names something to apply.
+	//
+	// A query failure FAILS THE PROPOSAL rather than skipping the check: this is the same pool
+	// and the same service, so a failure here is a database failure, not a degraded dependency to
+	// route around. (Contrast the liveness lookup below, which is best-effort because it only
+	// decorates a card that is already valid.)
+	avail := map[string]bool{}
+	for _, fn := range []func(context.Context, uuid.UUID, uuid.UUID) ([]syncUpdateItem, error){
+		s.syncGenresAvailable, s.syncKindsAvailable, s.syncAttributesAvailable,
+	} {
+		got, aerr := fn(ctx, bookID, userID)
+		if aerr != nil {
+			return nil, confirmCardOut{}, errors.New("could not read this book's available updates to validate the proposal")
+		}
+		for _, av := range got {
+			avail[av.ID] = true
+		}
+	}
+	for _, it := range items {
+		if !avail[it.ID] {
+			return nil, confirmCardOut{}, fmt.Errorf(
+				"%s %s is not an available update for this book — read "+
+					"glossary_book_sync_available first and use the ids it returns",
+				it.Entity, it.ID)
+		}
 	}
 	rows := []previewRow{
 		{Label: "rows to update from source", Value: fmt.Sprint(takeN), Note: "take_theirs"},

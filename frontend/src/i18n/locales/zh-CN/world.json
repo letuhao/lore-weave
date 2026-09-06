@@ -9,7 +9,15 @@
     "description": "创建你的第一个世界来开始编写设定——无需章节。"
   },
   "card": {
-    "books": "{{count}} 本书籍"
+    "books": "{{count}} 本书籍",
+    "delete": "删除世界",
+    "delete_blocked": "请先将 {{count}} 本书移出该世界",
+    "delete_title": "删除这个世界？",
+    "delete_description": "删除“{{name}}”无法撤销，其设定、地图和时间线也会一并消失。",
+    "delete_hint": "含有书籍的世界无法删除，请先移出。",
+    "delete_cancel": "取消",
+    "delete_confirm": "永久删除",
+    "delete_done": "世界已删除"
   },
   "create": {
     "cta": "新建世界",

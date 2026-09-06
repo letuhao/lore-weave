@@ -1,0 +1,318 @@
+# The engine's AUTHORABLE SURFACE — the exact set a reality's author may declare.
+#
+# This answers `G-S5a` of the BOOK -> REALITY pipeline index: "the engine's
+# supported surface is not enumerated for authors; `engine_default.toml` declares
+# it in engine terms, and there is no derived statement of what an author may
+# say."
+#
+# WHY A CONTRACT FILE AND NOT A DOCUMENT
+# --------------------------------------
+# `RLS-D2` already made this call one level down: "engine_default is an ARTIFACT,
+# not prose", because every feature document stating its own defaults made
+# "omit the field -> the default applies" unverifiable. An enumeration of
+# authorable keys has the same failure mode and a worse blast radius: it is a
+# list that must contain every member of a set the compiler knows and the
+# document does not. That is exactly what `closed-set-gate` exists to prevent --
+# "Rust forces you to HANDLE every variant but cannot force an ARRAY to CONTAIN
+# every variant, so the list drifts silently."
+#
+# So this file is checked from two directions by two different methods:
+#
+#   scripts/authorable-surface-gate.py    SOURCE. Every field of every patch
+#                                         type appears here, and every key here
+#                                         is a real field. Reds in both
+#                                         directions.
+#   crates/ruleset-loader/tests/authorable_surface.rs
+#                                         BEHAVIOUR. The REAL loader accepts
+#                                         every key listed here, and refuses one
+#                                         that is not.
+#
+# Neither alone is enough: the source check would pass on a key the loader
+# rejects for another reason, and the behavioural check cannot notice a field
+# nobody enumerated.
+#
+# WHAT THIS FILE IS NOT
+# ---------------------
+# It does not decide what SHOULD be authorable. It states what IS, so that the
+# manifest builder `S4`/`S8` need has an input that cannot quietly go stale.
+# Widening the surface is a design decision with a digest consequence (`RLS-A13`:
+# two realities whose rules differ are two different rulesets).
+#
+# TWO KINDS OF AUTHORING, and conflating them would be the worst error here.
+# The `Ruleset` struct draws the line in its own doc comments: `combat` and
+# `stats` are "engine vocabulary with author-set VALUES" -- the engine knows
+# every key and the author picks numbers. `quantities` is "the first thing in
+# this struct an AUTHOR names" -- author-set IDENTITY, where the engine has never
+# heard of `qi` and assigns it an ordinal (`QTY-A5`). Every section below
+# declares which it is.
+
+version: 1
+
+# The authored file is one LAYER of the `RLS-A3` priority stack. Every section
+# is optional (`#[serde(default)]`): a layer writes only what it changes, and a
+# fold of no layers is exactly `Ruleset::engine_default()`.
+#
+# Unknown keys are REFUSED, not ignored (`deny_unknown_fields`), at every level.
+# `patch.rs` states the reason: "a misspelled key in a rules file is the single
+# most likely authoring error, and the default serde behaviour -- ignore it --
+# means the author's edit silently does nothing."
+root_type: RulesetPatch
+root_source: crates/ruleset-loader/src/patch.rs
+unknown_keys: refused
+
+# ── WHAT AN AUTHOR MAY NOT SAY, and why they are TOLD ────────────────────────
+#
+# A third category, and the one an inventory of keys would miss. These are not
+# unknown fields — they are very well known and simply not the author's, so they
+# are refused BY NAME on a permissive first parse, before deserialization.
+#
+# `deny_unknown_fields` alone would answer "unknown field", which is wrong twice:
+# the field is not unknown, and the author is not told why they may never set it.
+# `forbidden.rs` states the non-vacuity reason for doing it by name instead —
+# refusing on ABSENCE would be "a guard defeated by the very edit it exists to
+# catch" (`NV-4`), because adding the field for any other purpose would silently
+# admit it.
+refused:
+  source: crates/ruleset-core/src/classification/forbidden.rs
+  const: FORBIDDEN_KEYS
+  scope: the top level of a layer document
+  keys:
+    - key: progression
+      why: >-
+        pinned by DIGEST, and the digest is COMPUTED from the table's bytes
+        rather than authored; a layer writing one would be naming bytes it did
+        not produce (RLS-A4 Forbidden).
+    - key: schema_version
+      why: >-
+        identifies the ENCODING — which codec reads these bytes — not the rules.
+        An author choosing it chooses how their own file is interpreted.
+    - key: law_version
+      why: >-
+        the engine's claim about which LAWS produced this ruleset (QTY-D13), and
+        it is inside the hashed bytes — so an author who could set it could ship
+        an artifact claiming laws it was never built with, and the claim would
+        travel with the digest.
+
+refused_in_verb_rows:
+  source: crates/ruleset-core/src/classification/forbidden.rs
+  const: FORBIDDEN_VERB_KEYS
+  scope: every "[[verbs]]" row
+  why: >-
+    `CMD-10` V4 — every authored field must enter the engine as an OPERAND, a
+    value the engine's own fixed rule then judges. These three would BE the
+    judgement. Refused per row and named with the verb, because an author with a
+    dozen verbs is otherwise left looking.
+  keys:
+    - key: submitter_class
+      why: >-
+        who may submit a verb is the AUTHORISATION RULE's verdict, not a value
+        the rule judges. A declared verb is submittable by any actor-driver.
+    - key: may_submit_engine_verbs
+      why: the same verdict in its plainest form.
+    - key: pays_spend
+      why: >-
+        redirecting WHOM conservation applies to is the conservation rule, not
+        an operand to it.
+
+sections:
+
+  - key: combat
+    toml: "[combat]"
+    rust_type: CombatPatch
+    source: crates/ruleset-loader/src/patch.rs
+    authoring: values
+    # RLS-A16/A17/A4, from `classify!(CombatRules)`. EVERY row of that table
+    # carries this class; a field that did not would be a different promise to
+    # an author, so the gate checks all 15 rather than trusting the summary.
+    classification: {floor: Preset, mutability: Tunable, strategy: Replace, classify_over: CombatRules}
+    note: >-
+      Engine vocabulary, author-set numbers. `_pm` is per-mille (1000 = 1.0);
+      the unit is engine SHAPE and is not configurable, the values are. The
+      per-mille divisor, the non-crit multiplicative identity and every
+      `max(1, ...)` floor are deliberately NOT here: they are the law's
+      structure (`IMP-D1`), and a configurable floor of 1 is a configurable
+      stalemate.
+    fields:
+      - {key: hit_base_pm,            type: i64, unit: per_mille, engine_default: 500}
+      - {key: hit_floor_pm,           type: i64, unit: per_mille, engine_default: 50}
+      - {key: hit_ceiling_pm,         type: i64, unit: per_mille, engine_default: 950}
+      - {key: roll_band_lo_pm,        type: i64, unit: per_mille, engine_default: 850}
+      - {key: roll_band_hi_pm,        type: i64, unit: per_mille, engine_default: 1150}
+      - {key: elem_mult_pm,           type: i64, unit: per_mille, engine_default: 1000}
+      - {key: resist_pm,              type: i64, unit: per_mille, engine_default: 0}
+      - {key: defend_divisor,         type: i64, unit: ratio,     engine_default: 2}
+      - {key: max_hit,                type: i64, unit: points,    engine_default: 1000000000}
+      - {key: ko_duration_rounds,     type: u8,  unit: rounds,    engine_default: 5}
+      - {key: av_base,                type: i64, unit: av,        engine_default: 10000}
+      - {key: av_slowed_pm,           type: i64, unit: per_mille, engine_default: 1200}
+      - {key: av_hasted_pm,           type: i64, unit: per_mille, engine_default: 800}
+      - {key: av_stunned_pm,          type: i64, unit: per_mille, engine_default: 2000}
+      - {key: av_initiator_first_pm,  type: i64, unit: per_mille, engine_default: 750}
+
+  - key: stats
+    toml: "[stats]"
+    rust_type: StatPatch
+    source: crates/ruleset-loader/src/patch.rs
+    authoring: values
+    classification: {floor: Preset, mutability: Tunable, strategy: Replace, classify_over: StatRules}
+    note: >-
+      `DF7-A6`: every slot has an engine default, so a reality that declares
+      nothing at all still yields a valid block. "Playable with zero
+      declaration" is a hard requirement. The two array fields are dense
+      per-slot declarations in `StatSlot` ordinal order — MaxHp, MaxStamina,
+      StrikePower, Armor, Accuracy(pm), Dodge(pm), CritChance(pm), CritMult(pm),
+      Speed, MoveRange.
+    fields:
+      - {key: slot_defaults,        type: "[i32; SLOT_COUNT]", unit: per_slot, engine_default: [100, 100, 10, 0, 250, 50, 50, 1500, 100, 5]}
+      - {key: move_base,            type: i32, unit: tiles,     engine_default: 3}
+      - {key: move_speed_per_tile,  type: i32, unit: speed,     engine_default: 50}
+      - {key: move_max,             type: i32, unit: tiles,     engine_default: 10}
+      - {key: melee_archetype,      type: "[i32; SLOT_COUNT]", unit: per_slot, engine_default: [100, 100, 12, 2, 450, 100, 50, 1500, 100, 5]}
+
+  - key: quantities
+    toml: "quantities = [\"qi\", \"mana\"]"
+    rust_type: "Vec<String>"
+    source: crates/ruleset-loader/src/patch.rs
+    authoring: identities
+    scalar_list: true
+    note: >-
+      `Q1` / `QTY-A5`. The author NAMES things the engine has never heard of;
+      the engine assigns each an ordinal and hashes the assignment, which is
+      what makes the ordinal stable across edits instead of a function of file
+      order. Ordinals are assigned, never authored — a TOML file containing one
+      would bake an engine-assigned number into content a different layer stack
+      would renumber. The engine declares none, so this section is purely author
+      surface. Folded as a union across layers (`RLS-A4 UnionByIdOverride`).
+    engine_default: []
+
+  - key: resources
+    toml: "[[resources]]"
+    rust_type: ResourcePatch
+    source: crates/ruleset-loader/src/patch_resource.rs
+    authoring: identities
+    list_of_tables: true
+    note: >-
+      `Q2` / `QTY-A4` — which declared identities are POOLS. Separate from
+      `quantities` because most declared quantities are not pools. Every
+      closed-set string is validated at load and refused with its legal values;
+      a free string that fell through to a default is the shape the
+      Frontend-Tool Contract forbids. The engine declares none.
+    engine_default: []
+    fields:
+      - {key: quantity,        type: String,       required: true,  note: "a declared quantity by NAME, from this layer or a lower one"}
+      - {key: min,             type: i32,          required: false, default: 0}
+      - {key: base,            type: i32,          required: false, default: 0}
+      - {key: ceiling_slot,    type: "Option<String>", required: false, closed_set_of: StatSlot, note: "snake_case slot name; exactly one of ceiling_slot / ceiling_fixed"}
+      - {key: ceiling_fixed,   type: "Option<i32>",    required: false}
+      - {key: regen_rate,      type: i32,          required: false, default: 0}
+      - {key: regen_type,      type: "Option<String>", required: false, closed_set: [none, flat, per_mille], default: none}
+      - {key: zero_behaviour,  type: "Option<String>", required: false, closed_set: [clamp, block_costs], default: clamp, note: "deliberately no value meaning 'zero defeats the actor' — defeat is a law reading hp"}
+      - {key: role,            type: "Option<String>", required: false, closed_set: [none, vital, initiative, action_budget], default: none, note: "which engine law reads this pool; the author picks which of THEIR quantities fills each engine role and never invents a role"}
+
+  - key: verbs
+    toml: "[[verbs]]"
+    rust_type: VerbPatch
+    source: crates/ruleset-loader/src/patch_verb.rs
+    authoring: identities
+    list_of_tables: true
+    note: >-
+      `M2` / `CMD-1` — the declared actions and their ordinals, inside the
+      hashed bytes because two realities whose verbs differ are two different
+      sets of rules. EVERY field is an OPERAND (`CMD-10` V4) — a value the
+      engine's own fixed rule judges — never a judgement. Ordinals are assigned
+      in declaration order across the merged stack and never reused. The engine
+      declares none: a verb in the engine default would enter every reality in
+      existence and `QTY-A10(c)` forbids removing it.
+    engine_default: []
+    fields:
+      - {key: name,              type: String,        required: true,  note: "a lookup key on the submission path; the engine branches on nothing here (CMD-6)"}
+      - {key: cue,               type: u16,           required: false, default: 0, note: "CMD-4 — that something must be SHOWN, as an ordinal; what it renders as is presentation's"}
+      - {key: target,            type: "Option<String>", required: false, closed_set: [actor, other], default: actor}
+      - {key: effect_quantity,   type: String,        required: true,  note: "by NAME, never an ordinal"}
+      - {key: effect_amount,     type: i32,           required: true,  note: "signed"}
+      - {key: spend_quantity,    type: "Option<String>", required: false, pair_with: spend_amount}
+      - {key: spend_amount,      type: "Option<i32>",    required: false, pair_with: spend_quantity}
+      - {key: requires_quantity, type: "Option<String>", required: false, pair_with: requires_at_least}
+      - {key: requires_at_least, type: "Option<i32>",    required: false, pair_with: requires_quantity, note: "D-29 — a declared THRESHOLD, never a predicate grammar"}
+
+  - key: progression_kinds
+    toml: "[[progression_kinds]]"
+    rust_type: ProgressionKindPatch
+    source: crates/ruleset-loader/src/patch_progression.rs
+    authoring: identities
+    list_of_tables: true
+    resolves_differently: true
+    note: >-
+      `PGN-R2b`. STRUCTURALLY UNLIKE EVERY OTHER SECTION and an author must be
+      told so: every other field folds into a `Ruleset` in memory, but a
+      progression kind folds into a TABLE that has to be STORED before the
+      `Ruleset` can carry its digest. `resolve` REFUSES a layer that declares
+      these; only `resolve_and_pin`, which has a store, accepts one. Listing it
+      beside `[combat]` without that distinction would tell an author it works
+      where it does not. Decimals are normalized to milli-units at load
+      (`RLS-A7`) because floats in a replayed engine are a determinism liability
+      (`DF7-A4`). Names and descriptions are LABELS — routed to a sidecar, never
+      hashed (`PGN-A18`), so fixing a translation cannot strand a running
+      reality.
+    engine_default: []
+    fields:
+      - {key: name,          type: String,        required: true,  hashed: false, note: "display name; label sidecar"}
+      - {key: description,   type: "Option<String>", required: false, hashed: false}
+      - {key: quantity,      type: String,        required: true,  note: "the declared quantity this kind IS, by NAME"}
+      - {key: type,          type: String,        required: true,  closed_set: [attribute, skill, stage], rust_field: kind_type, note: "the ONLY renamed key in the surface — `#[serde(rename = \"type\")]`, because `type` is a Rust keyword"}
+      - {key: body_or_soul,  type: String,        required: false, closed_set: [body, soul, both], default: body}
+      - {key: curve,         type: String,        required: true,  closed_set: [linear, log, stage]}
+      - {key: rate,          type: "Option<f64>", required: false}
+      - {key: base_rate,     type: "Option<f64>", required: false}
+      - {key: difficulty,    type: "Option<f64>", required: false}
+      - {key: cap,           type: String,        required: true,  closed_set: [soft_cap, hard_cap, tier_based, unbounded]}
+      - {key: cap_value,     type: "Option<u64>", required: false}
+      - {key: tiers,         type: "Vec<TierPatch>", required: false, nested: tier}
+      - {key: initial_value, type: u64,           required: false, default: 0}
+      - {key: initial_tier,  type: "Option<u8>",  required: false}
+      - {key: derives_from,  type: "Option<String>", required: false, note: "PROG_001 §4.5: Skill <- Attribute, training-rate only"}
+      - {key: derive_factor, type: "Option<f64>", required: false}
+
+  - key: limits
+    toml: "[limits]"
+    rust_type: LimitsPatch
+    source: crates/ruleset-loader/src/patch_limits.rs
+    authoring: values
+    constrains_other_sections: true
+    note: >-
+      `LIM-1` — how big this world declares itself to be. The one block that
+      constrains the OTHER blocks rather than contributing to them, which is why
+      it is applied FIRST. Absent means the build's own ceilings apply, which is
+      what every manifest did before this block existed. There is deliberately
+      no `cues` key (a cue space is derived from the verb limit — one cue per
+      verb row, so an independent key would be a number to keep in step with
+      another number) and no `plugins` key (a plugin is a compiled-in engine
+      feature, so a manifest declaring a plugin ceiling would be declaring a
+      limit on the binary it runs against).
+    fields:
+      - {key: quantities, type: "Option<u16>", required: false}
+      - {key: resources,  type: "Option<u16>", required: false}
+      - {key: verbs,      type: "Option<u16>", required: false}
+
+# Nested tables referenced by a section field.
+nested:
+
+  - key: tier
+    toml: "[[progression_kinds.tiers]]"
+    rust_type: TierPatch
+    source: crates/ruleset-loader/src/patch_progression.rs
+    note: >-
+      `PROG_001` §5.6's worked example is 24 tiers in one kind. Tier names are
+      localized content and live OUTSIDE the digest (`PGN-A18`) — fixing a
+      translation must not strand a running reality. `name` is required rather
+      than optional because a nameless tier renders to a player as `tier_9`, and
+      an optional field is one every author forgets exactly once.
+    fields:
+      - {key: name,         type: String, required: true,  hashed: false}
+      - {key: tier_max,     type: u64,    required: true}
+      - {key: curve,        type: String, required: false, closed_set: [linear, log], default: linear}
+      - {key: rate,         type: "Option<f64>", required: false, note: "linear: gain per train unit, as a decimal"}
+      - {key: base_rate,    type: "Option<f64>", required: false}
+      - {key: difficulty,   type: "Option<f64>", required: false}
+      - {key: breakthrough, type: String, required: false, closed_set: [at_max, author_only], default: at_max}
+      - {key: carry_over,   type: u64,    required: false, default: 0}

@@ -15,7 +15,7 @@ use tilemap_service::types::template::{
     TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec,
 };
 use tilemap_service::types::zone::{PassageKind, ZoneId, ZoneRole};
-use tilemap_service::types::{ChannelId, ChannelTier, GridSize, TerrainKind, TilemapView};
+use tilemap_service::types::{ChannelId, MapKind, GridSize, TerrainKind, TilemapView};
 
 /// Fixture matching the chunk-A V2 baseline (3 zones), parameterized by
 /// per-zone biome_theme and template-level background_biome. With all
@@ -85,7 +85,7 @@ fn run(template: &TilemapTemplate) -> TilemapView {
     place_tilemap_with_registry(
         template,
         ChannelId("ch_q2b".to_string()),
-        ChannelTier::Town,
+        MapKind::Locale,
         GridSize { width: 48, height: 48 },
         TilemapSeed(1),
         &registry,
@@ -477,7 +477,7 @@ fn placer_runs_clean_at_country_tier() {
     let view = place_tilemap_with_registry(
         &template,
         ChannelId("ch_q2b_country".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         GridSize { width: 192, height: 192 },
         TilemapSeed(7),
         &registry,

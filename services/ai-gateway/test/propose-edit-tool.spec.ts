@@ -15,7 +15,7 @@ import {
 //     (propose_edit called with propose_record_edit's args) is rejected here.
 
 const CONTRACT = JSON.parse(
-  readFileSync(join(__dirname, '../../../contracts/frontend-tools.contract.json'), 'utf-8'),
+  readFileSync(join(__dirname, '../../../contracts/browser-tools.contract.json'), 'utf-8'),
 ) as Record<string, { args: Record<string, { type?: string; enum?: string[] }>; required?: string[] }>;
 
 describe('propose-edit-tool drift vs the contract', () => {

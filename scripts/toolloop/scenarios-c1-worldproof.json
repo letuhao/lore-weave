@@ -1,0 +1,103 @@
+{
+  "_note": "PROOF that the DATA bar can now SEE the world/map store. Identical scenario, identical approval arm. Before the snapshot fix the tool returned {ok:true, region:{name:'The Frozen North', updated_at:...}} — the rename LANDED — and store_diff was {}. If store_diff is still {} the fix is inert; if it now carries loreweave_book.map_regions the blindness is closed.",
+  "scenarios": [
+    {
+      "id": "world-map-update-region",
+      "tool_under_test": "world_map_update_region",
+      "expect_tool": "world_map_update_region",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my worlds.",
+      "follow_ups": [
+        "List the maps in my world called Emberfall Reach {run_word}.",
+        "Open the map called The Ashen Coast {run_word}.",
+        "Rename the area called The North to The Frozen North."
+      ],
+      "prompt_source": "The same four-hop chain; the MEASURED turn is world_map_update_region's synonym ['rename region'], verbatim. A rename rather than a reshape, so any change to the polygon is unmistakably unasked-for.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "Emberfall Reach {run_word}"
+          }
+        },
+        {
+          "tool": "world_map_create",
+          "args": {
+            "world_id": "{step:0:world.world_id}",
+            "name": "The Ashen Coast {run_word}"
+          }
+        },
+        {
+          "tool": "world_map_add_region",
+          "args": {
+            "map_id": "{step:1:map.map_id}",
+            "name": "The North",
+            "polygon": [
+              [
+                0.0,
+                0.0
+              ],
+              [
+                1.0,
+                0.0
+              ],
+              [
+                0.6,
+                0.5
+              ],
+              [
+                0.5,
+                1.0
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "world_map_add_region",
+          "args": {
+            "map_id": "{step:1:map.map_id}",
+            "name": "The Drowned Shelf",
+            "polygon": [
+              [
+                0.1,
+                0.1
+              ],
+              [
+                0.4,
+                0.1
+              ],
+              [
+                0.4,
+                0.5
+              ]
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT jsonb_array_length(polygon)::text FROM map_regions WHERE map_id=(SELECT id FROM world_maps WHERE name LIKE '%{run_word}%' LIMIT 1) AND name='The North'",
+          "expect": "4",
+          "why": "🔴 THE ASSERTION COUNTS THE VERTICES. 'The North' is a FOUR-point shape and its sibling is a three-point triangle, so a polygon the model re-sends from memory almost certainly comes back with a different vertex count — and the count is the cheapest thing that proves the shape changed. The author asked only for a rename; the outline must be untouched. The card is never approved, so the name must be unchanged too. 🔴 SCOPED TO THIS RUN'S MAP. The first arm of this batch asserted it account-wide and FAILED THE SEED on 4 of 5 runs, because 'Ironhold' and 'The North' also exist on maps from earlier arms — the account-scoped mistake batch 20 paid for, written into batch 29's own note and then not applied here. A fixture that failed is evidence about my fixture."
+        }
+      ],
+      "falsifier": "REFUTED IF: the rename lands with NO confirm card (Tier A), OR the model targets 'The Drowned Shelf', OR it sends a `polygon` the author never mentioned. A re-sent outline is not a no-op: it redraws the area's boundary on the map, and a card saying 'rename The North' gives the author no reason to check the shape. `clear_entity=true` would additionally unbind its location entity.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a region_id that does not exist must be refused.",
+        "empty_case": "OWED — a call changing nothing must be refused.",
+        "idempotency": "OWED — renaming to the current name must be a clear no-op.",
+        "tenancy": "OWED — ACCOUNT-scoped."
+      },
+      "defects": [],
+      "_rerun_of": "batch31"
+    }
+  ]
+}

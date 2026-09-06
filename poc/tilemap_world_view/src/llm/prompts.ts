@@ -42,7 +42,7 @@ CRITICAL CONSTRAINTS:
 6. Allowed CellKind: capital, fortress, temple, tavern, port, cell, cave
 7. Allowed MapObjectKind: Treasure, MonsterLair, Landmark, Decoration, Mine, Portal, Ruin
 8. Allowed RoadKind: Highway, Path, Trade
-9. Allowed ChannelTier: Continent, Country, District, Town, Cell
+9. Allowed MapKind: Continent, Country, District, Town, Cell
 10. All channel_id MUST start with "cell:" prefix and be snake_case
 11. All object_id MUST start with "landmark:" prefix and be snake_case
 12. display_name in Vietnamese with diacritics (xianxia/wuxia genre flavor by default; respect user's genre)
@@ -64,9 +64,9 @@ interface TileMapSkeleton {
   }>;
   cell_anchors: Array<{
     channel_id: string;                         // "cell:<snake_case>"
-    tier: 'Continent' | 'Country' | 'District' | 'Town' | 'Cell';
+    tier: 'region' | 'region' | 'region' | 'locale' | 'domain';
     position: { x: number; y: number };
-    kind: 'capital' | 'fortress' | 'temple' | 'tavern' | 'port' | 'cell' | 'cave';
+    kind: 'capital' | 'fortress' | 'temple' | 'tavern' | 'port' | 'domain' | 'cave';
     display_name: string;                       // Vietnamese
   }>;
   landmark_anchors: Array<{

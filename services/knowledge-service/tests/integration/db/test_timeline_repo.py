@@ -21,7 +21,7 @@ import uuid
 
 import pytest
 
-from app.db.neo4j_repos.events import (
+from app.db.graph_repos.events import (
     list_events_filtered,
     merge_event,
 )

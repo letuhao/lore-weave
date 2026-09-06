@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	events "github.com/loreweave/foundation/contracts/events/generated"
 	"log/slog"
 	"time"
 
@@ -42,13 +43,24 @@ import (
 
 // entityUpdatedEvent is the canonical event type string published on the
 // glossary stream. Stable wire contract consumed by knowledge-service.
-const entityUpdatedEvent = "glossary.entity_updated"
+// ⚠️ THE WIRE NAMES COME FROM THE CONTRACT NOW (T30 / OD-1, 2026-08-12).
+//
+// These were string literals, and `D-GLOSSARY-EVENTS-NO-SOT` recorded what that cost: this
+// block was the authoritative list, hand-mirrored by five consumers across four services,
+// with nothing relating the copies. Renaming one here left the others compiling and silently
+// not matching — no compile error, no failing test, the handler simply stopped running.
+//
+// They are now aliases of the generated constants in `contracts/events`, which are emitted
+// from `_registry.yaml`. The local names are kept because the call sites read better with
+// them and the diff stays honest; what is DELETED is the second source of truth. A rename in
+// the registry is now a compile error here.
+const entityUpdatedEvent = events.EventGlossaryEntityUpdated
 
 // entityMergedEvent (mui #1c) is emitted when a glossary entity is merged into
 // a winner. knowledge-service's consumer runs its existing repo merge_entities
 // (rewire KG edges) + entity_alias_map (anti-resurrection). aggregate_id is the
 // winner (the surviving canon).
-const entityMergedEvent = "glossary.entity_merged"
+const entityMergedEvent = events.EventGlossaryEntityMerged
 
 type entityMergedPayload struct {
 	BookID         string `json:"book_id,omitempty"`
@@ -186,7 +198,7 @@ type wikiCorrectedPayload struct {
 	BookID                string `json:"book_id,omitempty"`
 	ArticleID             string `json:"article_id"`
 	EntityID              string `json:"entity_id"`
-	UserID                string `json:"user_id"` // the owner who edited (learning's correction owner)
+	UserID                string `json:"user_id"`                 // the owner who edited (learning's correction owner)
 	PriorGenerationStatus string `json:"prior_generation_status"` // generated | needs_review | blocked
 	EmittedAt             string `json:"emitted_at"`
 }
@@ -382,6 +394,39 @@ func buildTranslationEventPayload(
 // consumer's glossary_sync MERGE is keyed on glossary_entity_id, so an
 // early empty-name event is still idempotently corrected by the later
 // PATCH-driven event.
+//
+// mirrorTruthPredicate names EXACTLY the rows this service will emit a
+// `glossary.entity_updated` for — the producer's own done-predicate, extracted so it can
+// have a second reader.
+//
+// D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER needs to ask "which entities SHOULD the KG hold?",
+// and the only correct answer is "the ones this service emits for". The nearest existing
+// enumeration, `/internal/books/{id}/entity-ids`, filters `e.alive` — a STORY flag (a
+// narratively dead character is still a graph node, and emits like any other). Reconciling
+// against it would report a dead-but-correctly-mirrored entity as an orphan forever.
+// `reconcile-by-truth` has cost this repo a bug before by asking a narrower proxy than the
+// producer's own predicate; this constant is what stops it happening a third time.
+//
+// ⚠️ Both readers below MUST be built from this fragment — `mirror_truth_handler.go`'s
+// TestMirrorTruthSharesTheProducerPredicate reds if either stops using it.
+const mirrorTruthPredicate = `e.deleted_at IS NULL`
+
+// entityEventFieldsSQL is the emit-side read: the snapshot the outbox payload carries.
+// Package-level (not inline) so the drift test can see that it and the mirror-truth
+// enumeration agree on which rows exist at all.
+const entityEventFieldsSQL = `
+		SELECT e.cached_name, e.cached_aliases, e.short_description, k.code
+		FROM glossary_entities e
+		JOIN book_kinds k ON k.book_kind_id = e.kind_id
+		WHERE e.entity_id = $1 AND ` + mirrorTruthPredicate
+
+// D-OUTBOX-PAYLOAD-TRASH: the WHERE clause carried no lifecycle filter, so a
+// trashed entity still yielded a payload — and editing a trashed entity
+// re-published `glossary.entity_updated`, which made knowledge-service re-embed
+// and re-anchor it. The deletion was silently reversed in the consumer's index.
+// ok=false is the "do not emit" signal every caller already honours (the three
+// best-effort emitters below return early on it); the transactional path is
+// guarded in emitEntityUpdatedTx, which discards ok by design.
 func loadEntityEventFields(
 	ctx context.Context, q pgxQuerier, entityID uuid.UUID,
 ) (name, kind string, aliases []string, shortDesc string, ok bool) {
@@ -391,13 +436,8 @@ func loadEntityEventFields(
 		shortDescDB *string
 		kindCode    string
 	)
-	err := q.QueryRow(ctx, `
-		SELECT e.cached_name, e.cached_aliases, e.short_description, k.code
-		FROM glossary_entities e
-		JOIN book_kinds k ON k.book_kind_id = e.kind_id
-		WHERE e.entity_id = $1`,
-		entityID,
-	).Scan(&cachedName, &cachedAlias, &shortDescDB, &kindCode)
+	err := q.QueryRow(ctx, entityEventFieldsSQL, entityID).
+		Scan(&cachedName, &cachedAlias, &shortDescDB, &kindCode)
 	if err != nil {
 		return "", "", nil, "", false
 	}
@@ -428,18 +468,8 @@ func insertEntityOutboxEvent(
 	entityID uuid.UUID,
 	payload entityEventPayload,
 ) error {
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("outbox marshal: %w", err)
-	}
-	if err := exec(ctx, `
-		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
-		VALUES ('glossary', $1, $2, $3)`,
-		entityID, entityUpdatedEvent, payloadJSON,
-	); err != nil {
-		return fmt.Errorf("outbox insert: %w", err)
-	}
-	return nil
+	return insertOutboxEventTx(ctx, exec, entityID, entityUpdatedEvent, payload,
+		"op", payload.Op, "actor_type", payload.ActorType)
 }
 
 // emitEntityUpdatedTx emits within an open transaction (atomic with the
@@ -450,6 +480,31 @@ func insertEntityOutboxEvent(
 func emitEntityUpdatedTx(
 	ctx context.Context, tx pgx.Tx, entityID uuid.UUID, payload entityEventPayload,
 ) error {
+	// D-OUTBOX-PAYLOAD-TRASH — the transactional twin of the loadEntityEventFields
+	// filter. Every caller here reads the AFTER snapshot with `_` for ok (the entity
+	// is expected to exist, so the value was discarded), which means the lifecycle
+	// filter alone would emit an EMPTY payload for a trashed entity rather than no
+	// payload at all. Read liveness inside the SAME tx as the write and skip instead.
+	// Restore is unaffected: it clears deleted_at in its own tx before any emit.
+	var live bool
+	err := tx.QueryRow(ctx,
+		`SELECT deleted_at IS NULL FROM glossary_entities WHERE entity_id = $1`,
+		entityID).Scan(&live)
+	if isNoRows(err) {
+		slog.Warn("emitEntityUpdatedTx: entity absent — skipping emission",
+			"entity_id", entityID.String())
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("outbox liveness: %w", err)
+	}
+	if !live {
+		// WARN, not silence: a mutation landing on a trashed entity is worth seeing.
+		// The emission is what must not happen; the write itself is the caller's call.
+		slog.Warn("emitEntityUpdatedTx: entity is deleted — skipping emission",
+			"entity_id", entityID.String())
+		return nil
+	}
 	return insertEntityOutboxEvent(ctx, func(ctx context.Context, sql string, args ...any) error {
 		_, e := tx.Exec(ctx, sql, args...)
 		return e
@@ -472,7 +527,7 @@ func emitEntityUpdatedTx(
 func (s *Server) emitEntityUpdated(ctx context.Context, entityID uuid.UUID, op string) {
 	name, kind, aliases, shortDesc, ok := loadEntityEventFields(ctx, s.pool, entityID)
 	if !ok {
-		slog.Warn("emitEntityUpdated: entity fields unavailable (non-fatal)",
+		slog.Warn("emitEntityUpdated: entity absent or deleted — skipping emission (non-fatal)",
 			"entity_id", entityID.String())
 		return
 	}
@@ -510,7 +565,7 @@ func (s *Server) emitTranslationChanged(
 ) {
 	name, kind, aliases, shortDesc, ok := loadEntityEventFields(ctx, s.pool, entityID)
 	if !ok {
-		slog.Warn("emitTranslationChanged: entity fields unavailable (non-fatal)",
+		slog.Warn("emitTranslationChanged: entity absent or deleted — skipping emission (non-fatal)",
 			"entity_id", entityID.String())
 		return
 	}
@@ -527,7 +582,7 @@ func (s *Server) emitTranslationChanged(
 	}
 }
 
-const nameConfirmedEvent = "glossary.name_confirmed"
+const nameConfirmedEvent = events.EventGlossaryNameConfirmed
 
 // nameConfirmedPayload is carried by glossary.name_confirmed (M7c-3 — the human
 // name-confirm flywheel). A USER set a name translation to confidence='verified'
@@ -574,7 +629,7 @@ func (s *Server) emitNameConfirmed(
 ) {
 	name, kind, _, _, ok := loadEntityEventFields(ctx, s.pool, entityID)
 	if !ok {
-		slog.Warn("emitNameConfirmed: entity fields unavailable (non-fatal)",
+		slog.Warn("emitNameConfirmed: entity absent or deleted — skipping emission (non-fatal)",
 			"entity_id", entityID.String())
 		return
 	}

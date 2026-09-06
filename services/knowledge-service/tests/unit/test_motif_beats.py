@@ -256,7 +256,7 @@ def test_real_event_model_carries_mined_motif_code_through_producer():
     """Guard against a field/property rename: the REAL knowledge Event model (not a
     SimpleNamespace fake) must expose `mined_motif_code` and the producer must read it for the
     generic axes — the round-trip the live smoke proved, locked as a unit test."""
-    from app.db.neo4j_repos.events import Event
+    from app.db.graph_repos.events import Event
     ev = Event(id="e1", user_id="u1", title="Lin slaps the heir",
                canonical_title="Lin slaps the heir", chapter_id="ch-1",
                mined_motif_code="cultivation.face_slap")
@@ -312,12 +312,18 @@ def _patch_deriver(monkeypatch, *, project_rows, events_by_project):
     """project_rows: list of asyncpg-style row dicts (project_id, book_id).
     events_by_project: dict[str(project_id)] -> list[event]."""
     monkeypatch.setattr(deriver_mod, "get_knowledge_pool", lambda: _FakePool(project_rows))
-    monkeypatch.setattr(deriver_mod, "neo4j_session", lambda: _FakeNeo4jSession())
+    monkeypatch.setattr(deriver_mod, "graph_session", lambda: _FakeNeo4jSession())
 
-    async def _list(session, *, user_id, project_id, limit):
-        return list(events_by_project.get(project_id, []))
+    # T17 — the deriver reaches the graph through the PORT now, so the double is the
+    # port's method. Patching `list_events_in_order` would leave these green against a
+    # call the deriver no longer makes.
+    class _Store:
+        async def events_in_window(self, *, user_id, project_id, axis="narrative",
+                                   after=None, before=None, include_archived=False,
+                                   limit=200):
+            return list(events_by_project.get(project_id, []))
 
-    monkeypatch.setattr(deriver_mod, "list_events_in_order", AsyncMock(side_effect=_list))
+    monkeypatch.setattr(deriver_mod, "get_graph_store", lambda session: _Store())
 
 
 @pytest.mark.asyncio

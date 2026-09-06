@@ -35,17 +35,17 @@ func TestCheckOutcome_IsValid(t *testing.T) {
 
 func TestInMemEmitter_RecordsAllMethods(t *testing.T) {
 	e := NewInMemEmitter()
-	e.SetProjectionLagSeconds("r-1", "pc_projection", 12.5)
-	e.SetProjectionDriftCount("r-1", "pc_projection", 3)
-	e.ObserveCheckDuration("daily", "pc_projection", 1.2)
+	e.SetProjectionLagSeconds("r-1", "canon_projection", 12.5)
+	e.SetProjectionDriftCount("r-1", "canon_projection", 3)
+	e.ObserveCheckDuration("daily", "canon_projection", 1.2)
 	e.IncCheckRun("daily", OutcomeOK)
 	e.IncCheckRun("daily", OutcomeError)
 	e.IncCheckRun("daily", OutcomeOK)
 
-	if e.Lag["r-1|pc_projection"] != 12.5 {
+	if e.Lag["r-1|canon_projection"] != 12.5 {
 		t.Errorf("lag not recorded; got map=%v", e.Lag)
 	}
-	if e.Drift["r-1|pc_projection"] != 3 {
+	if e.Drift["r-1|canon_projection"] != 3 {
 		t.Errorf("drift not recorded; got map=%v", e.Drift)
 	}
 	if len(e.Durations) != 1 || e.Durations[0].Seconds != 1.2 {
@@ -58,9 +58,9 @@ func TestInMemEmitter_RecordsAllMethods(t *testing.T) {
 
 func TestPromEmitter_RegistersAndGathersAllFamilies(t *testing.T) {
 	e := NewPromEmitter()
-	e.SetProjectionDriftCount("r-1", "pc_projection", 3)
-	e.SetProjectionLagSeconds("r-1", "pc_projection", 12.5)
-	e.ObserveCheckDuration("daily", "pc_projection", 1.2)
+	e.SetProjectionDriftCount("r-1", "canon_projection", 3)
+	e.SetProjectionLagSeconds("r-1", "canon_projection", 12.5)
+	e.ObserveCheckDuration("daily", "canon_projection", 1.2)
 	e.IncCheckRun("daily", OutcomeOK)
 	e.IncCheckRun("daily", OutcomeError)
 
@@ -84,8 +84,8 @@ func TestPromEmitter_RegistersAndGathersAllFamilies(t *testing.T) {
 
 func TestPromEmitter_DriftGaugeValueAndRunsCounter(t *testing.T) {
 	e := NewPromEmitter()
-	e.SetProjectionDriftCount("r-9", "npc_projection", 7)
-	if v := testutil.ToFloat64(e.drift.WithLabelValues("r-9", "npc_projection")); v != 7 {
+	e.SetProjectionDriftCount("r-9", "canon_projection", 7)
+	if v := testutil.ToFloat64(e.drift.WithLabelValues("r-9", "canon_projection")); v != 7 {
 		t.Errorf("drift gauge = %v, want 7", v)
 	}
 	// Counter accumulates per (mode, outcome).
@@ -109,7 +109,7 @@ func TestPromEmitter_PushTransmitsFamilies(t *testing.T) {
 	defer srv.Close()
 
 	e := NewPromEmitter()
-	e.SetProjectionDriftCount("r-1", "pc_projection", 5)
+	e.SetProjectionDriftCount("r-1", "canon_projection", 5)
 	if err := e.Push(srv.URL); err != nil {
 		t.Fatalf("push: %v", err)
 	}

@@ -88,7 +88,16 @@ On reality `frozen → active` transition, the CP signals game service to pre-po
 Hotset membership:
 - Derived from metrics aggregated over the reality's last 24h of active time before freezing
 - Stored by CP as `reality_hotset(reality_id, aggregate_type, priority)`
-- V1/V2 uses a static default hotset (player + session + region aggregates); learning is V3
+- V1/V2 uses a static default hotset; learning is V3.
+  **⚠ AMENDED 2026-08-07 (REC-101, applying GDA-D13) — the V1 default was
+  *"player + session + region aggregates"*, and `GDA-F8` measured that NONE OF THOSE THREE EXISTS**
+  in the feature layer's 52-row ownership matrix. The pre-warm, as previously locked, warmed nothing.
+  The V1/V2 default is now the **W1 first-frame set** — `actor_core` · `entity_binding` · `place` ·
+  `cell_scene_layout` · `tilemap_view` · `vital_pool` · `actor_status` · `actor_progression` —
+  because *what the first frame needs* is exactly what a pre-warm exists to have ready, and it stops
+  B3 (reality warm) and B5 (session join) guessing separately at the same set.
+  This was one of the four LOCKED-file changes filed 2026-07-26 as *"decision-complete,
+  application-gated"*; it went eleven days unapplied.
 
 Pre-warm happens in parallel with first-session bind, not blocking the first player's connection.
 

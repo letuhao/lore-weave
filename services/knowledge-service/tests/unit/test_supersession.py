@@ -7,7 +7,7 @@ a re-affirmation or from coarse (subjectless / predicate-less) facts.
 
 from __future__ import annotations
 
-from app.db.neo4j_repos.facts import Fact, group_supersessions
+from app.db.graph_repos.facts import Fact, group_supersessions
 
 
 def _fact(*, subject, predicate, obj, event_date, content=None):

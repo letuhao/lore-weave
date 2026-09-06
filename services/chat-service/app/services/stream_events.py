@@ -139,10 +139,35 @@ def _match_case(repl: str, orig: str) -> str:
     return repl
 
 
+def _rewrites_part_of_a_hyphenated_name(text: str, start: int, end: int) -> bool:
+    """True when a match is only PART of a hyphenated token — i.e. rewriting it would invent a
+    name rather than translate a word.
+
+    Measured 2026-08-25: the §4 rules are word-boundary regexes and `-` is a word boundary, so
+    `glossary-bootstrap` became "story bible-bootstrap" and `entity-triage` became
+    "element-triage" in 5 of 5 replies. Neither name exists — the user cannot use them and
+    workflow_load cannot resolve them. Half-translating a name produces a broken identifier,
+    where translating a WHOLE one is a deliberate relabel: the `vision-to-book` rule matches its
+    entire token, so both its neighbours are prose and it is untouched by this guard.
+
+    Deliberate trade-off, stated: a hyphenated compound in ordinary prose ("entity-level") now
+    keeps its jargon word instead of being rewritten. That leaks a word the guard would rather
+    hide, which is the direction this errs in — and it is much the lesser harm than confidently
+    handing the reader an identifier that does not exist."""
+    return text[start - 1:start] == "-" or text[end:end + 1] == "-"
+
+
 def scrub_jargon(text: str) -> str:
-    """Rewrite unambiguous §4 system-jargon to plain novelist words. Idempotent, case-aware."""
+    """Rewrite unambiguous §4 system-jargon to plain novelist words. Idempotent, case-aware.
+
+    A match that is only part of a hyphenated NAME is left alone — see
+    `_rewrites_part_of_a_hyphenated_name`."""
     for pat, repl in _JARGON_SUBS:
-        text = pat.sub(lambda m: _match_case(repl, m.group(0)), text)
+        def _one(m: re.Match[str]) -> str:
+            if _rewrites_part_of_a_hyphenated_name(m.string, m.start(), m.end()):
+                return m.group(0)
+            return _match_case(repl, m.group(0))
+        text = pat.sub(_one, text)
     return text
 
 
@@ -218,8 +243,14 @@ class StreamEmitter(Protocol):
         {runId, toolCallId, toolName} so the FE knows what to execute/resume)."""
         ...
 
-    def error(self, safe_msg: str) -> list[str]:
-        """Turn failed — the already-sanitized error message."""
+    def error(self, safe_msg: str, code: str = "STREAM_ERROR") -> list[str]:
+        """Turn failed — the already-sanitized message, plus the MACHINE code.
+
+        `code` used to be hardcoded "STREAM_ERROR" at the AG-UI emit site, so every
+        failure — a spend cap, an unpriced model, an upstream 500 — reached the FE
+        indistinguishable, and the FE could only show raw backend prose. It is a
+        parameter so the client can render the one case it can actually act on.
+        """
         ...
 
     def done(self) -> list[str]:
@@ -291,7 +322,8 @@ class LegacyEmitter:
         # agui-only).
         return [_sse({"type": "finish-message", **payload})]
 
-    def error(self, safe_msg: str) -> list[str]:
+    def error(self, safe_msg: str, code: str = "STREAM_ERROR") -> list[str]:
+        # Legacy has no code channel; the message already carries the author-facing text.
         return [_sse({"type": "error", "errorText": safe_msg})]
 
     def done(self) -> list[str]:
@@ -578,7 +610,7 @@ class AgUiEmitter:
         lines.append(_sse({"type": "RUN_FINISHED", "result": result}))
         return lines
 
-    def error(self, safe_msg: str) -> list[str]:
+    def error(self, safe_msg: str, code: str = "STREAM_ERROR") -> list[str]:
         # RUN_ERROR is a hard terminator — AG-UI consumers discard partial
         # message state, so we do NOT emit a (misleading) END for the open
         # message; just reset so a later done() is a clean no-op.
@@ -587,7 +619,9 @@ class AgUiEmitter:
         return [_sse({
             "type": "RUN_ERROR",
             "message": safe_msg,
-            "code": "STREAM_ERROR",
+            # Was the literal "STREAM_ERROR" for every failure. The FE's RunErrorEvent
+            # has always had a `code` field; nothing ever put a real value in it.
+            "code": code,
         })]
 
     def done(self) -> list[str]:

@@ -11,6 +11,8 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -307,6 +309,7 @@ func streamViaResponses(ctx context.Context, client *http.Client, base, secret, 
 	if realOpenAICloud(base) && !openaiIsReasoningModel(modelName) {
 		delete(body, "reasoning")
 	}
+	dumpEveryResponsesBody(body)
 	resp, err := openResponsesStream(ctx, client, strings.TrimRight(base, "/"), secret, body)
 	if err != nil {
 		if isChainNotFound(err) {
@@ -320,5 +323,30 @@ func streamViaResponses(ctx context.Context, client *http.Client, base, secret, 
 		return err
 	}
 	defer resp.Body.Close()
-	return streamResponsesSSE(ctx, resp.Body, emit)
+
+	// 🔴 THE REQUEST THAT FAILED, DESCRIBED — the one thing sixteen refuted hypotheses never
+	// had. Every earlier theory on D-UPSTREAM-ERROR-WITH-NO-MESSAGE was tested against a
+	// RECONSTRUCTION of this call, and every reconstruction succeeded where the real one dies.
+	// A shape, not the body: the body is the author's manuscript. Emitted only on failure, so
+	// a healthy turn pays nothing.
+	failed := false
+	err = streamResponsesSSE(ctx, resp.Body, func(c StreamChunk) error {
+		if c.Kind == StreamChunkError {
+			failed = true
+		}
+		return emit(c)
+	})
+	if failed || err != nil {
+		slog.Warn("responses stream failed — outbound request shape",
+			"model", modelName, "shape", describeResponsesBody(body).String(),
+			"err", fmt.Sprint(err))
+		// OPT-IN, off by default: the TOOLS array verbatim. Tool schemas are platform
+		// metadata and carry no author prose, but they are ~100KB, so this is gated behind
+		// an env var and exists for one purpose — replaying the exact failing request
+		// offline. Twenty hypotheses on D-UPSTREAM-ERROR-WITH-NO-MESSAGE were tested against
+		// reconstructions, and 9 of the 65 tools in the failing turn are consumer-local, so
+		// no probe built from the federated catalogue can even send them.
+		dumpFailedResponsesBody(body)
+	}
+	return err
 }

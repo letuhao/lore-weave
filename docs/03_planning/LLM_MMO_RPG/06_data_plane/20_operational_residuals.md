@@ -250,13 +250,13 @@ Existing per-reality cleanup batch (per [02_storage R1](../02_storage/R01_event_
 
 ```sql
 -- Nightly batch query per reality:
-DELETE FROM event_log
+DELETE FROM events
 WHERE reality_id = $1
   AND channel_id IS NOT NULL
   AND committed_at < (
       now() - (
           COALESCE(
-              (SELECT (metadata->>'retention_days')::int FROM channels WHERE id = event_log.channel_id),
+              (SELECT (metadata->>'retention_days')::int FROM channels WHERE id = events.channel_id),
               CASE
                   WHEN ch.level_name = 'cell' THEN 30
                   ELSE 365

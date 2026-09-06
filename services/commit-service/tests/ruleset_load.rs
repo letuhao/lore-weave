@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use commit_service::{CombatDomain, CombatState, Ruleset};
+use commit_service::{CombatDomain, CombatState, RealityRules, Ruleset};
 use ruleset_loader::{parse_layer, resolve, Layer, LoadError};
 use sim_core::{
     RulesetEpoch,Island, IslandId, SeenWindow};
@@ -19,7 +19,20 @@ use sim_core::{
 fn a_loaded_file_changes_both_the_pin_and_the_play() {
     // A grittier reality: the ceiling on a single hit is 250, not 1e9.
     let src = "[combat]\nmax_hit = 250\nko_duration_rounds = 2\n";
-    let rules = Arc::new(resolve(&[parse_layer(Layer::Reality, src).unwrap()]).unwrap());
+    // The PRESET is in the stack because an island's rules must bind every
+    // engine role (`M1`); a reality declaring no pools has laws with no numbers
+    // and `RealityRules::resolve` refuses it. The reality layer on top is what
+    // this test is about.
+    let rules = Arc::new(
+        RealityRules::resolve(
+            resolve(&[
+                parse_layer(Layer::Preset, ruleset_loader::PROVING_GROUND_TOML).unwrap(),
+                parse_layer(Layer::Reality, src).unwrap(),
+            ])
+            .unwrap(),
+        )
+        .unwrap(),
+    );
 
     let isle: Island<CombatDomain> = Island::new(
         IslandId(1),
@@ -40,10 +53,10 @@ fn a_loaded_file_changes_both_the_pin_and_the_play() {
     );
 
     // …and the numbers actually reached the laws, not just the digest.
-    assert_eq!(rules.combat.max_hit, 250);
-    assert_eq!(rules.combat.ko_duration_rounds, 2);
+    assert_eq!(rules.rules().combat.max_hit, 250);
+    assert_eq!(rules.rules().combat.ko_duration_rounds, 2);
     assert_eq!(
-        rules.combat.hit_base_pm,
+        rules.rules().combat.hit_base_pm,
         Ruleset::engine_default().combat.hit_base_pm,
         "an unstated field inherits from the layer below"
     );

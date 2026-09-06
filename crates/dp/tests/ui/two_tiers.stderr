@@ -1,0 +1,26 @@
+error[E0201]: duplicate definitions with name `Tier`:
+  --> tests/ui/two_tiers.rs:16:5
+   |
+13 |     type Tier = T2;
+   |     --------------- previous definition here
+...
+16 |     type Tier = T3;
+   |     ^^^^^^^^^^^^^^^ duplicate definition
+   |
+  ::: src/aggregate.rs
+   |
+   |     type Tier: Tier;
+   |     --------------- item in trait
+
+error[E0201]: duplicate definitions with name `Scope`:
+  --> tests/ui/two_tiers.rs:29:5
+   |
+28 |     type Scope = RealityScope;
+   |     -------------------------- previous definition here
+29 |     type Scope = ChannelScope;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ duplicate definition
+   |
+  ::: src/aggregate.rs
+   |
+   |     type Scope: Scope;
+   |     ----------------- item in trait

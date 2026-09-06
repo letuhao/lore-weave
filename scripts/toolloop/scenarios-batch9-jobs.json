@@ -1,0 +1,66 @@
+{
+  "_note": "jobs_list re-run after the page-framing fix; its batch-7 conclusion was withdrawn.",
+  "scenarios": [
+    {
+      "id": "jobs-list-v2",
+      "tool_under_test": "jobs_list",
+      "expect_tool": "jobs_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What background jobs do I have running right now?",
+      "prompt_source": "_meta.synonyms['background jobs'] + ['running jobs'].",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "translation",
+            "method": "POST",
+            "path": "/v1/translation/books/{book_id}/jobs",
+            "json": {
+              "chapter_ids": [
+                "{chapter_id}"
+              ],
+              "target_language": "vi"
+            }
+          }
+        },
+        {
+          "wait": {
+            "db": "loreweave_translation",
+            "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}'",
+            "expect": "1",
+            "timeout": 120,
+            "poll": 2,
+            "why": "One KNOWN job must exist, so 'you have jobs running' is checkable against something rather than against whatever the account happened to hold."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "Exactly one job for THIS fixture. jobs_list is account-scoped so it will show others too; the seeded one is the row whose presence in the answer is attributable."
+        }
+      ],
+      "falsifier": "RE-RUN AFTER D-PAGE-READ-AS-A-TOTAL. REFUTED IF the reply states the item count as the number of jobs. EXPECTED: it either reports no total, says more exist, or calls jobs_summary for the real counts. CONTROL: jobs_list now returns page.has_more=true and a guidance line naming jobs_summary — verified at the boundary before this run.",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no jobs must say so plainly.",
+        "tenancy": "OWED — user-scoped; another account's jobs must never appear."
+      },
+      "defects": [],
+      "answer_expect": {
+        "none_of": [
+          "10 background jobs",
+          "10 jobs running",
+          "you have 10"
+        ],
+        "why": "The measured failure was reporting the PAGE SIZE as the total: 'You currently have 10 background jobs running' while jobs_summary reports 31 active. Any answer that states 10 as the count is the defect reproducing."
+      }
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "_note": "RESTORING THE TWO-TURN ARM. `composition-arc-apply-named` has 12 recorded runs and no definition in the repo — one of five orphans. Its measured turn is a bare affirmative ('Yes, go ahead and do it.') following an apply request, which is exactly the shape D-R1-IS-KEYED-ON-THIS-TURN-SO-A-CONFIRMATION-TURN-LOSES-THE-TOOL is about.\n\nWHY IT IS WORTH RESTORING RATHER THAN LEAVING RECORDED. That row says of this very scenario: 'NOT PROVEN for arc_apply — that run predates the R1 instrumentation, so its wire log does not exist and I will not claim it retroactively.' The instrumentation exists now. Running it today produces the wire log that could not be had in August, which is the difference between a re-attribution the row declined to claim and one it can.\n\nBOTH TURNS ARE VERBATIM from docs/eval/toolloop/*/c-arcapply-raw.json — turn 1 from the recorded `prior_turns[0].prompt`, turn 2 from `prompt`. The seed is COPIED UNCHANGED from composition-arc-apply-named-single-turn in scenarios-c-arcapply.json, which is a live, defined scenario whose own note records why the seed is the whole fix: without a named template that exists, the prompt is unanswerable and the model is right to refuse.\n\nNOT A DQ-T50 SPLIT. The single-turn arm tests whether the tool is reachable when the request names it outright; this arm tests whether it survives a CONFIRMATION turn. Different turn shapes, not named-vs-selection, so neither declares `_sibling_arm`.",
+  "scenarios": [
+    {
+      "id": "composition-arc-apply-named",
+      "tool_under_test": "composition_arc_apply",
+      "expect_tool": "composition_arc_apply",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Apply arc template — use my library arc template 'The {run_word} Ascent' on this book.",
+      "follow_ups": [
+        "Yes, go ahead and do it."
+      ],
+      "prompt_source": "Turn 1 is the single-turn arm's prompt (identical wording, so the two arms differ ONLY in the follow-up). Turn 2 is verbatim from the recorded prior_turns/prompt pair in c-arcapply-raw.json. The runner measures the LAST turn, so the bare affirmative is what is under test.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_arc_template_create",
+          "args": {
+            "code": "loop-arc-{run_id}",
+            "name": "The {run_word} Ascent",
+            "summary": "A three-chapter ascent: the closed-door breakthrough, its cost, and the reckoning.",
+            "chapter_span": 3,
+            "threads": [
+              {
+                "key": "ascent",
+                "label": "The Ascent"
+              }
+            ],
+            "layout": [
+              {
+                "motif_code": "cultivation.closed_door_breakthrough",
+                "thread": "ascent",
+                "span_start": 1,
+                "span_end": 3,
+                "ord": 0
+              }
+            ],
+            "visibility": "private"
+          },
+          "why": "🔴 THE SEED IS THE WHOLE FIX. p4-confirm blocked this tool as 'an unanswerable prompt, and the model is right': the prompt said 'use ONE OF my library arc templates', named no target, and seeded nothing — while the SYSTEM arc-template library is empty and the account's 31 active templates are mostly test debris, so no template could be the obvious answer. The model replied 'which one?', which is correct; guessing on a WRITE is worse than asking. A pre-registered re-run adding 'Yes, go ahead and do it.' stayed 0/5, because a bare affirmative cannot answer a which-one question.\n\nSo the scenario seeds its OWN template and NAMES it. composition_arc_template_list is then a real supplier of the arc_template_id, exactly as the falsifier requires.\n\nlayout[].motif_code must be a REAL motif: 'cultivation.closed_door_breakthrough' is one of the 84 active system motifs, read from the store rather than invented.\n\n🔴 ACCOUNT-SCOPED, DELIBERATELY NONCED. An arc template lives in the caller's library, not in the book. {run_id} in the code and {run_word} in the name keep repeats from colliding — batch 20 lost 4 of 5 runs to a fixed account-scoped code.\n\nCLEANUP, MEASURED RATHER THAN ASSUMED. This note first claimed the rows persist because the book teardown cannot see them. That is wrong on the normal path: after seven runs the store held zero loop-arc-% rows, so the per-run teardown does remove them. It IS right for --keep-fixtures, and `provision.py --sweep` does NOT cover arc templates — it swept the book and the world and left the template behind. So after a --keep-fixtures run, clean up by hand:\n    DELETE FROM arc_template WHERE owner_user_id='<harness>' AND code LIKE 'loop-arc-%';"
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
+          "expect": "0",
+          "why": "ZERO arcs before, so an applied template is attributable."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM arc_template WHERE code='loop-arc-{run_id}'",
+          "expect": "1",
+          "why": "The template this run's prompt NAMES must exist, or the run measures the same unanswerable question p4-confirm already measured. Keyed on the run's own nonce, so it cannot pass on one of the 31 pre-existing account templates."
+        }
+      ],
+      "falsifier": "REFUTED IF: the confirmation turn reaches composition_arc_apply and applies the template — that would mean a bare affirmative does NOT lose the tool, and the re-attribution this scenario exists to test is wrong.\n\n🔴 THE POINT IS THE WIRE LOG, NOT THE OUTCOME. The row's open question is whether the tool was ABSENT from the surface on the confirmation turn (a SURFACE property) or present and not chosen (a MODEL property). Either result is informative; what was missing in August was the record that distinguishes them. A 0/5 with the tool ON the wire refutes the re-attribution; a 0/5 with it absent supports it.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "empty_case": "OWED.",
+        "idempotency": "OWED.",
+        "tenancy": "OWED."
+      },
+      "defects": []
+    }
+  ]
+}

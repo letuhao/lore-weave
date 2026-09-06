@@ -37,6 +37,10 @@ use ruleset_loader::activate_reality_epoch;
 use sim_core::RulesetEpoch;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
+use commit_service::RealityRules;
+
+mod support;
+use support::verified_reality;
 
 mod epoch_live_common;
 use epoch_live_common::{
@@ -70,12 +74,13 @@ async fn the_activation_event_carries_the_unadvanced_turn_number() {
     let d1 = put_quantities(&boot.store, &["qi"]);
     boot.bindings.create(&reality.to_string(), &d1).expect("epoch 1");
     let (rules, _) = boot.load(&reality.to_string()).expect("load");
-    let mut isle = island(Arc::new(rules), RulesetEpoch(1), channel);
+    let mut isle = island(Arc::new(RealityRules::resolve(rules).expect("the reality binds every engine role")), RulesetEpoch(1), channel);
 
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
-    let lease = acquire_writer_lease(&pool, reality, ChannelId(channel)).await.expect("lease");
+    seed_channel(&pool, reality, channel).await;
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
 
@@ -85,7 +90,7 @@ async fn the_activation_event_carries_the_unadvanced_turn_number() {
 
     // 41 turns already played on this channel. The switch must not advance it,
     // and must not drop it either.
-    reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 41)
+    reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 41)
         .await
         .expect("reconcile");
 
@@ -127,20 +132,21 @@ async fn an_activated_epoch_reaches_the_channel_log() {
     boot.bindings.create(&reality.to_string(), &d1).expect("epoch 1");
     let (rules, binding) = boot.load(&reality.to_string()).expect("load");
     assert_eq!(binding.epoch, 1);
-    let mut isle = island(Arc::new(rules), RulesetEpoch(1), channel);
+    let mut isle = island(Arc::new(RealityRules::resolve(rules).expect("the reality binds every engine role")), RulesetEpoch(1), channel);
     let epoch1_digest = isle.digest.to_hex();
 
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
-    let lease = acquire_writer_lease(&pool, reality, ChannelId(channel)).await.expect("lease");
+    seed_channel(&pool, reality, channel).await;
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
 
     // Nothing has moved yet. This must be a NO-OP, not a refusal: an island
     // already at the bound epoch attempted nothing, so nothing was rejected.
     assert_eq!(
-        reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 0)
+        reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 0)
             .await
             .expect("reconcile"),
         EpochOutcome::AlreadyCurrent
@@ -156,7 +162,7 @@ async fn an_activated_epoch_reaches_the_channel_log() {
     // No Redis entry was delivered to this island. It switches anyway, because
     // the decision is a read of the TABLE — which is the property that makes a
     // missed signal survivable.
-    let outcome = reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 0)
+    let outcome = reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 0)
         .await
         .expect("reconcile");
     let EpochOutcome::Activated { from, to, .. } = outcome else {
@@ -230,12 +236,13 @@ async fn reconciling_again_appends_nothing() {
     let d1 = put_quantities(&boot.store, &["qi"]);
     boot.bindings.create(&reality.to_string(), &d1).expect("epoch 1");
     let (rules, _) = boot.load(&reality.to_string()).expect("load");
-    let mut isle = island(Arc::new(rules), RulesetEpoch(1), channel);
+    let mut isle = island(Arc::new(RealityRules::resolve(rules).expect("the reality binds every engine role")), RulesetEpoch(1), channel);
 
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
-    let lease = acquire_writer_lease(&pool, reality, ChannelId(channel)).await.expect("lease");
+    seed_channel(&pool, reality, channel).await;
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
 
@@ -244,7 +251,7 @@ async fn reconciling_again_appends_nothing() {
         .expect("switch");
 
     for _ in 0..5 {
-        reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 0)
+        reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 0)
             .await
             .expect("reconcile");
     }
@@ -274,12 +281,13 @@ async fn a_missed_epoch_is_not_replayed() {
     let d1 = put_quantities(&boot.store, &["qi"]);
     boot.bindings.create(&reality.to_string(), &d1).expect("epoch 1");
     let (rules, _) = boot.load(&reality.to_string()).expect("load");
-    let mut isle = island(Arc::new(rules), RulesetEpoch(1), channel);
+    let mut isle = island(Arc::new(RealityRules::resolve(rules).expect("the reality binds every engine role")), RulesetEpoch(1), channel);
 
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
-    let lease = acquire_writer_lease(&pool, reality, ChannelId(channel)).await.expect("lease");
+    seed_channel(&pool, reality, channel).await;
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
 
@@ -290,7 +298,7 @@ async fn a_missed_epoch_is_not_replayed() {
     activate_reality_epoch(boot.bindings.as_ref(), &boot.store, &reality.to_string(), &d3, "s3")
         .expect("switch 3");
 
-    let outcome = reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 0)
+    let outcome = reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 0)
         .await
         .expect("reconcile");
     assert_eq!(
@@ -310,4 +318,26 @@ async fn a_missed_epoch_is_not_replayed() {
     assert_eq!(rows.len(), 1, "one catch-up is one event, not one per skipped epoch");
     assert_eq!(rows[0].1["from_epoch"], 1);
     assert_eq!(rows[0].1["to_epoch"], 3);
+}
+
+/// Seed the `channels` row a writer lease now REQUIRES.
+///
+/// 🔴 `0027_channel_writer_state_fk` enforces `channel_writer_state -> channels` on every
+/// NEW write (it is `NOT VALID`, so history is left unscanned). Its own header calls the
+/// pre-existing orphans "the DEFECT the key exists to prevent": a lease taken on a channel
+/// that does not exist. These tests were writing exactly that row.
+///
+/// `ON CONFLICT (reality_id, id)`, never a bare `ON CONFLICT DO NOTHING` - `channels_root_single`
+/// is UNIQUE (reality_id) WHERE parent IS NULL, so a bare clause would swallow a SECOND root in
+/// the same reality and turn the seed into a silent no-op.
+async fn seed_channel(pool: &sqlx::PgPool, reality: Uuid, channel: i64) {
+    sqlx::query(
+        "INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) \
+         VALUES ($1, $2, NULL, 'reality', 0, 'active') ON CONFLICT (reality_id, id) DO NOTHING",
+    )
+    .bind(reality)
+    .bind(channel)
+    .execute(pool)
+    .await
+    .expect("seed channel");
 }

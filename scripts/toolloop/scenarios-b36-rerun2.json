@@ -1,0 +1,125 @@
+{
+  "_note": "Third arm for the three translation tools with no ledger row. translation_update_settings lost 5/5 then 4/5 to transport errors; translation_job_control was called 1/5 then surfaced 0/5; translation_patch_block surfaced 0/5 with 1 transport error. All three need a clean sample rather than a conclusion from a dirty one.\n\n🔴 A NOTE ON THE SEEDS, because they cost the service. The set_active_version seed inserted TWO versions in ONE statement, so both rows got the SAME created_at (now() is per-statement). translation-service's startup migration renumbers version_num by ROW_NUMBER() OVER (PARTITION BY chapter, lang ORDER BY created_at) and then relies on a unique index — with a tie the renumber can try to swap two rows and collide, which took the service into a restart loop until the orphaned seed rows were removed. That scenario is not in this arm; if it returns, its two versions must be inserted in separate statements.",
+  "scenarios": [
+    {
+      "id": "translation-update-settings",
+      "tool_under_test": "translation_update_settings",
+      "expect_tool": "translation_update_settings",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set the target language for this book's translation to Vietnamese.",
+      "prompt_source": "meta.synonyms['set target language'] + ['translation settings'], verbatim, plus the language so the CONTENT is the author's.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM book_translation_settings WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "The throwaway book has NO translation settings row, so anything written is attributable to this turn and the card is never approved — it must still be 0 afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: settings are written with NO confirm card (Tier A), OR the model sends a `model_source`/`model_ref` the author never mentioned — the tool writes exactly three fields and the author named one, so filling the other two silently picks the translation model — OR it sends a target_language outside the declared enum. CONTROL WORTH READING: the description says it does NOT set prompts and that there is no prompt argument, so a reply offering to set a translation prompt is describing a capability this tool does not have.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "empty_case": "OWED — a call with no field to change must be refused.",
+        "absent_case": "OWED — a book_id that does not exist must be refused.",
+        "idempotency": "OWED — setting the language it already has must be a clear no-op.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "translation-job-control",
+      "tool_under_test": "translation_job_control",
+      "expect_tool": "translation_job_control",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What is the status of the translation job for this book?",
+      "follow_ups": [
+        "Cancel that job."
+      ],
+      "prompt_source": "Turn 1 is translation_job_status' own purpose; the MEASURED turn is translation_job_control's synonyms ['cancel job'] + ['stop translation'], verbatim. Two turns because job_id is REQUIRED and job_status/list is its supplier.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'pending', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+            "why": "A PENDING translation job for the throwaway book. Seeded in SQL because the only tool that creates one is translation_start_job, which SPENDS — and a cost-bearing card is never approved. status='pending' rather than a terminal state so that CANCEL is a meaningful action rather than a no-op."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}' AND status='pending'",
+          "expect": "1",
+          "why": "EXACTLY ONE pending job — the SELECT that proves the SQL seed did what it claims. The card is never approved, so it must still be 'pending' afterwards; a status of 'cancelled' would mean the cancel landed without approval."
+        }
+      ],
+      "falsifier": "REFUTED IF: the job is cancelled with NO confirm card (Tier W), OR the action chosen is `resume` or `retry` — both RE-SPEND money by the tool's own description and neither is what the author asked for — OR the model invents a job_id rather than reading one from turn 1. CONTROL: cancel and pause 'apply immediately' while resume/retry return a cost estimate + confirm token, so the two halves of this enum have DIFFERENT gates and a model that treats them alike is wrong about its own tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier W.",
+        "absent_case": "OWED — a job_id that does not exist must be refused.",
+        "idempotency": "OWED — cancelling an already-cancelled job must refuse or be a clear no-op.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "translation-patch-block",
+      "tool_under_test": "translation_patch_block",
+      "expect_tool": "translation_patch_block",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List the Vietnamese translation versions for this chapter.",
+      "follow_ups": [
+        "Fix the second paragraph — it should read: Aldric Vane bước xuống bậc đá đen."
+      ],
+      "prompt_source": "Turn 1 is translation_list_versions' own purpose; the MEASURED turn is translation_patch_block's synonyms ['fix block'] + ['correct one translated paragraph'], verbatim, with the corrected text supplied by the author.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'completed', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+            "why": "The parent job for the base version."
+          }
+        },
+        {
+          "sql": {
+            "db": "loreweave_translation",
+            "statement": "INSERT INTO chapter_translations (job_id, chapter_id, book_id, owner_user_id, status, target_language, source_language, version_num, translated_body_format, authored_by, translated_body_json) SELECT job_id, '{chapter_id}', '{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'completed', 'vi', 'en', 1, 'json', 'llm', '[{\"type\":\"paragraph\",\"text\":\"Thủy triều rút vào buổi sáng.\"},{\"type\":\"paragraph\",\"text\":\"Aldric Vane đi xuống cầu thang.\"}]'::jsonb FROM translation_jobs WHERE book_id='{book_id}' ORDER BY created_at DESC LIMIT 1",
+            "why": "🔴 translated_body_format='json' WITH TWO BLOCKS, because this tool works on 'block/JSON format only' by its own description. A text-format version would make the tool legitimately refuse and the scenario would measure my fixture rather than the tool. Two blocks so 'the second paragraph' picks one and leaves the other visible."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT jsonb_array_length(translated_body_json)::text FROM chapter_translations WHERE book_id='{book_id}' AND translated_body_format='json'",
+          "expect": "2",
+          "why": "TWO blocks in the base version — the assertion counts the BLOCKS, not the row, because block_index is what the tool takes and a one-block body would make any index correct by accident."
+        }
+      ],
+      "falsifier": "REFUTED IF: the patch lands with NO confirm card (Tier A), OR the model patches block_index 0 when the author said the SECOND paragraph — an off-by-one here silently rewrites the wrong line of a published translation — OR it rewrites the block with prose it authored rather than the sentence the author gave. NOTE the side effect its description declares: 'The first patch creates the human version from the base version and makes it active', so a single correction PUBLISHES a new human version, and a reply that presents it as a small local edit is understating what the card does.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and the first patch makes a new human version ACTIVE.",
+        "absent_case": "OWED — a base_version_id that does not exist, or a block_index past the end, must be refused.",
+        "idempotency": "OWED — patching the same block to the same text twice must not create two human versions.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

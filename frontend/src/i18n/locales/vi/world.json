@@ -9,7 +9,15 @@
     "description": "Tạo thế giới đầu tiên để bắt đầu soạn tri thức — không cần chương nào."
   },
   "card": {
-    "books": "{{count}} sách"
+    "books": "{{count}} sách",
+    "delete": "Xoá thế giới",
+    "delete_blocked": "Hãy chuyển {{count}} sách ra khỏi thế giới này trước",
+    "delete_title": "Xoá thế giới này?",
+    "delete_description": "Xoá \"{{name}}\" không thể hoàn tác. Tri thức, bản đồ và dòng thời gian sẽ mất theo.",
+    "delete_hint": "Không thể xoá thế giới còn sách — hãy chuyển chúng ra trước.",
+    "delete_cancel": "Huỷ",
+    "delete_confirm": "Xoá vĩnh viễn",
+    "delete_done": "Đã xoá thế giới"
   },
   "create": {
     "cta": "Thế giới mới",

@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -208,6 +210,14 @@ func (s *Server) internalGetCanonical(w http.ResponseWriter, r *http.Request) {
 	if !s.entityInBook(w, r, entityID, bookID) {
 		return
 	}
+	// The requested story position. Absent or unparseable => 0 => the head snapshot, which is
+	// exactly the pre-T48ah behaviour for every caller that never asks.
+	var asOfReq int64
+	if raw := strings.TrimSpace(r.URL.Query().Get("as_of")); raw != "" {
+		if v, err := strconv.ParseInt(raw, 10, 64); err == nil && v > 0 {
+			asOfReq = v
+		}
+	}
 	// The newest head snapshot at the current fold algo, IF no fact with a newer coverage_xid
 	// landed since it was built (else it's stale → rebuild-on-read = degrade now, re-fold later).
 	var content string
@@ -226,8 +236,20 @@ func (s *Server) internalGetCanonical(w http.ResponseWriter, r *http.Request) {
 		    WHERE ef.entity_id = cs.entity_id AND ef.invalidated_at IS NULL
 		      AND ef.coverage_xid > cs.fact_coverage_xid
 		  )
+		  -- T48ah -- HONOUR the requested story position. This handler used to read only the
+		  -- two path ids and take ORDER BY as_of_ordinal DESC LIMIT 1: the NEWEST snapshot,
+		  -- whatever the caller asked for. The KAL forwards as_of and its own comment promises
+		  -- that a position below the fold head projects from facts -- so a reader held at
+		  -- chapter 1 was served the chapter-3 fold, and the response advertised
+		  -- as_of_ordinal 3 as though it had answered. Measured live through the KAL and again
+		  -- straight off :28211, so the gateway was never the cause.
+		  --
+		  -- build_context_brief in translation-service requests exactly this AS OF a chapter
+		  -- (X5/6B, spoiler-free) -- the same consumer T48ad's neighbourhood leak fed.
+		  -- 0 means no position asked, and keeps the pre-T48ah head behaviour exactly.
+		  AND ($2 = 0 OR cs.as_of_ordinal <= $2)
 		ORDER BY cs.as_of_ordinal DESC, cs.built_at DESC
-		LIMIT 1`, entityID).Scan(&content, &asOf, &status)
+		LIMIT 1`, entityID, asOfReq).Scan(&content, &asOf, &status)
 	if err == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"entity_id": entityID.String(), "content": content,

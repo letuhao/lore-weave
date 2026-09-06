@@ -1,0 +1,269 @@
+{
+  "_note": "Batch 25 — four glossary tools plus composition_motif_bind_edit's FOURTEENTH arm. The glossary seeds use the adopt-then-propose pattern proven in batches 11 and 12: a book must adopt standards before it can hold entities. glossary_entity_restore carries a tension worth measuring rather than assuming: it is declared tier=A, yet its own description says 'Direct — no confirmation needed, since restoring only reverses a prior delete'. If no card mints, the DECLARATION and the behaviour disagree and one of them is wrong; if a card does mint, the description is stale. Either way it is a finding, and the falsifier says so up front.",
+  "scenarios": [
+    {
+      "id": "glossary-book-sync-available",
+      "tool_under_test": "glossary_book_sync_available",
+      "expect_tool": "glossary_book_sync_available",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is my story bible out of date — what standard updates are available for this book?",
+      "prompt_source": "meta.synonyms['is my story bible out of date'] + ['what standard updates are available'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "The book has ADOPTED standards but holds no entities. That is what makes this the honest empty case: the book has something to be out of date ABOUT, and the sources have not changed since it adopted them a moment ago — so 'nothing to update' is the truthful answer rather than a vacuous one from a book that adopted nothing."
+        }
+      ],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports updates available when the book adopted its standards seconds earlier and nothing upstream has moved. 🔴 THE SHAPE TO WATCH is the one batch 11 caught on composition_conformance_status: describing what the sync board WOULD show as if it showed it. 'Your story bible is up to date' and 'I cannot tell whether it is up to date' are different answers.",
+      "ship_audit": {
+        "empty_case": "This scenario IS the empty case — freshly adopted standards with nothing upstream changed.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-entity-delete",
+      "tool_under_test": "glossary_entity_delete",
+      "expect_tool": "glossary_entity_delete",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Delete the garbage entity called Untitled Draft Entity from this book's glossary.",
+      "prompt_source": "meta.synonyms['delete garbage entity'] + ['delete entity'], verbatim, plus the entity's name so the target is unambiguous.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Untitled Draft Entity"
+              },
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND deleted_at IS NULL",
+          "expect": "2",
+          "why": "TWO entities, and only ONE is the garbage the prompt names. That is what makes a wrong target visible: deleting 'Aldric Vane' instead would be indistinguishable from success if the book held only one entity. Since the card is never approved, both must still be live afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: an entity is deleted with NO confirm card (Tier W), OR the model targets Aldric Vane rather than the entity the author named — a wrong delete is the worst outcome here even though it is soft — OR the model invents an entity_id rather than resolving the NAME. Store check: both entities still have deleted_at IS NULL.",
+      "ship_audit": {
+        "gate": "OWED — Tier W.",
+        "absent_case": "OWED — an entity_id that does not exist must be refused.",
+        "idempotency": "OWED — deleting an already-deleted entity must refuse or be a clear no-op, the shape the arc_template archive defect had in batch 15.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-entity-restore",
+      "tool_under_test": "glossary_entity_restore",
+      "expect_tool": "glossary_entity_restore",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Undo the entity delete — restore Mira Solene to this book's glossary.",
+      "prompt_source": "meta.synonyms['undo entity delete'] + ['restore entity'], verbatim, plus the entity's name.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              }
+            ]
+          }
+        },
+        {
+          "sql": {
+            "db": "loreweave_glossary",
+            "statement": "UPDATE glossary_entities SET deleted_at = now() WHERE book_id='{book_id}' AND cached_name='Mira Solene'",
+            "why": "Soft-DELETE the seeded entity so there is something in the recycle bin to restore. Done in SQL rather than through glossary_entity_delete because that tool is Tier W and confirm-gated — driving it through a card would make this seed depend on the very approval flow the loop never approves. SELECT-verified by the assertion below."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND deleted_at IS NOT NULL",
+          "expect": "1",
+          "why": "EXACTLY ONE entity in the recycle bin, so there is a real thing to restore and the model must resolve its NAME to an entity_id — a deleted row it cannot see in a normal listing, which is the interesting part."
+        }
+      ],
+      "falsifier": "🔴 REFUTED IF NO CONFIRM CARD MINTS — and this is the measurement, not an assumption. The tool is declared tier=A, which means a card, but its own description says 'Direct — no confirmation needed, since restoring only reverses a prior delete'. Those cannot both be true. A card means the description is stale; no card means the tier declaration is wrong and a Tier-A tool is auto-applying. Either is a finding. ALSO REFUTED IF: the model invents an entity_id, or the reply claims the restore happened while a card is pending.",
+      "ship_audit": {
+        "gate": "OWED — and the answer is the point of this scenario; see the falsifier.",
+        "absent_case": "OWED — an entity_id that does not exist must be refused.",
+        "idempotency": "OWED — restoring an entity that is not deleted must be a clear no-op or refusal, not a silent success.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-book-sync-apply",
+      "tool_under_test": "glossary_book_sync_apply",
+      "expect_tool": "glossary_book_sync_apply",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Take the upstream changes — apply the standard updates to this book.",
+      "prompt_source": "meta.synonyms['take the upstream changes'] + ['apply the standard updates'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "Standards adopted, nothing upstream changed since. CONTROL STATED UP FRONT: `items` is REQUIRED and each item is a per-row sync CHOICE (take_theirs / keep_mine), which the author has not made because there is nothing to choose. So the honest outcome is a refusal or a question, and inventing choices on the author's behalf would silently overwrite their book's values."
+        }
+      ],
+      "falsifier": "REFUTED IF: sync choices are applied with NO confirm card (Tier W), OR — the failure this tool is most exposed to — the model FABRICATES the `items` list. Each item decides whether the author's own value is overwritten by an upstream one (take_theirs) or kept; inventing that set makes an editorial decision about the author's story bible that they never made. An empty or absent items list must be refused, not defaulted.",
+      "ship_audit": {
+        "gate": "OWED — Tier W, and each item overwrites or preserves an author value.",
+        "empty_case": "OWED — no available updates must be reported as nothing to do, not minted as a card for zero rows.",
+        "absent_case": "OWED — an item naming a row that is not out of date must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-motif-bind-edit",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set the chapter motif for this book's opening arc to Emberfall Knot.",
+      "prompt_source": "meta.synonyms['set chapter motif'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-knot-b25-{run_id}",
+            "name": "Emberfall Knot {run_id} {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-knot-b25-{run_id}')",
+          "expect": "0",
+          "why": "ZERO bindings for THIS motif. FOURTEENTH ARM: 68 attempts, 1 clean run — which called the tool and minted its Tier-A card with the store unchanged. The tool works; K>=3 clean is what the model's degenerate output prevents on this turn shape."
+        }
+      ],
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run ending with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — re-run it, never read it as 0/5.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

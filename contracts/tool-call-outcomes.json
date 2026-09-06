@@ -1,0 +1,1608 @@
+{
+ "_derived_by": "scripts/toolloop/call_outcome.py",
+ "_what": "per-tool call outcomes from chat_messages.tool_calls; done=ok:true, deferred=held at a confirm card, failed=ok:false",
+ "tools": {
+  "book_chapter_bulk_create": {
+   "done": 2,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 7
+  },
+  "book_chapter_create": {
+   "done": 193,
+   "deferred": 6,
+   "failed": 9,
+   "calls": 208
+  },
+  "book_chapter_delete": {
+   "done": 0,
+   "deferred": 4,
+   "failed": 16,
+   "calls": 20
+  },
+  "book_chapter_publish": {
+   "done": 4,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 4
+  },
+  "book_chapter_restore_revision": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "book_chapter_save_draft": {
+   "done": 121,
+   "deferred": 75,
+   "failed": 199,
+   "calls": 395
+  },
+  "book_chapter_set_kg_exclude": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "book_chapter_unpublish": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "book_chapter_update_meta": {
+   "done": 3,
+   "deferred": 5,
+   "failed": 1,
+   "calls": 9
+  },
+  "book_create": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 2
+  },
+  "book_get": {
+   "done": 68,
+   "deferred": 0,
+   "failed": 510,
+   "calls": 578
+  },
+  "book_get_chapter": {
+   "done": 16,
+   "deferred": 0,
+   "failed": 55,
+   "calls": 71
+  },
+  "book_index_chapter": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "book_list": {
+   "done": 809,
+   "deferred": 0,
+   "failed": 39,
+   "calls": 848
+  },
+  "book_list_chapters": {
+   "done": 61,
+   "deferred": 0,
+   "failed": 111,
+   "calls": 172
+  },
+  "book_list_revisions": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 6,
+   "calls": 6
+  },
+  "book_read": {
+   "done": 447,
+   "deferred": 0,
+   "failed": 208,
+   "calls": 655
+  },
+  "book_scene_list": {
+   "done": 11,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 11
+  },
+  "book_search": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 5
+  },
+  "book_set_cover": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 2,
+   "calls": 2
+  },
+  "book_steering_delete": {
+   "done": 0,
+   "deferred": 10,
+   "failed": 0,
+   "calls": 10
+  },
+  "book_steering_list": {
+   "done": 34,
+   "deferred": 0,
+   "failed": 19,
+   "calls": 53
+  },
+  "book_steering_set": {
+   "done": 0,
+   "deferred": 10,
+   "failed": 0,
+   "calls": 10
+  },
+  "book_structure_edit": {
+   "done": 0,
+   "deferred": 10,
+   "failed": 0,
+   "calls": 10
+  },
+  "book_structure_read": {
+   "done": 21,
+   "deferred": 0,
+   "failed": 52,
+   "calls": 73
+  },
+  "book_task_provide_input": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "book_update_details": {
+   "done": 33,
+   "deferred": 0,
+   "failed": 37,
+   "calls": 70
+  },
+  "book_update_meta": {
+   "done": 4,
+   "deferred": 0,
+   "failed": 2,
+   "calls": 6
+  },
+  "catalog_get_book": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 79,
+   "calls": 79
+  },
+  "catalog_list_public_books": {
+   "done": 49,
+   "deferred": 0,
+   "failed": 2,
+   "calls": 51
+  },
+  "chat_search_sessions": {
+   "done": 36,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 36
+  },
+  "compose_prose": {
+   "done": 4,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 4
+  },
+  "composition_arc_apply": {
+   "done": 22,
+   "deferred": 9,
+   "failed": 13,
+   "calls": 44
+  },
+  "composition_arc_create": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "composition_arc_edit": {
+   "done": 0,
+   "deferred": 15,
+   "failed": 0,
+   "calls": 15
+  },
+  "composition_arc_extract_template": {
+   "done": 0,
+   "deferred": 3,
+   "failed": 0,
+   "calls": 3
+  },
+  "composition_arc_get": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 93,
+   "calls": 98
+  },
+  "composition_arc_import_analyze": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 1
+  },
+  "composition_arc_list": {
+   "done": 20,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 21
+  },
+  "composition_arc_suggest": {
+   "done": 46,
+   "deferred": 0,
+   "failed": 51,
+   "calls": 97
+  },
+  "composition_arc_template_archive": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 68,
+   "calls": 68
+  },
+  "composition_arc_template_drift": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 3,
+   "calls": 8
+  },
+  "composition_arc_template_edit": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 103,
+   "calls": 104
+  },
+  "composition_arc_template_get": {
+   "done": 11,
+   "deferred": 0,
+   "failed": 36,
+   "calls": 47
+  },
+  "composition_arc_template_list": {
+   "done": 70,
+   "deferred": 0,
+   "failed": 4,
+   "calls": 74
+  },
+  "composition_authoring_run_create": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 4,
+   "calls": 6
+  },
+  "composition_authoring_run_get": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 5,
+   "calls": 5
+  },
+  "composition_authoring_run_list": {
+   "done": 14,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 15
+  },
+  "composition_authoring_run_manage": {
+   "done": 0,
+   "deferred": 3,
+   "failed": 49,
+   "calls": 52
+  },
+  "composition_authoring_run_pause": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "composition_authoring_run_review": {
+   "done": 0,
+   "deferred": 31,
+   "failed": 21,
+   "calls": 52
+  },
+  "composition_authoring_run_start": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 10,
+   "calls": 10
+  },
+  "composition_build_cast_and_graph": {
+   "done": 110,
+   "deferred": 38,
+   "failed": 48,
+   "calls": 196
+  },
+  "composition_canon_rule_delete": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "composition_canon_rule_edit": {
+   "done": 26,
+   "deferred": 10,
+   "failed": 3,
+   "calls": 39
+  },
+  "composition_conformance_run": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 40,
+   "calls": 40
+  },
+  "composition_conformance_status": {
+   "done": 9,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 9
+  },
+  "composition_create_derivative": {
+   "done": 0,
+   "deferred": 10,
+   "failed": 0,
+   "calls": 10
+  },
+  "composition_create_work": {
+   "done": 5,
+   "deferred": 12,
+   "failed": 5,
+   "calls": 22
+  },
+  "composition_decompile_arcs": {
+   "done": 15,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 15
+  },
+  "composition_derivative_edit": {
+   "done": 0,
+   "deferred": 2,
+   "failed": 10,
+   "calls": 12
+  },
+  "composition_diagnostics": {
+   "done": 123,
+   "deferred": 0,
+   "failed": 23,
+   "calls": 146
+  },
+  "composition_entity_override_add": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 2
+  },
+  "composition_entity_override_edit": {
+   "done": 10,
+   "deferred": 14,
+   "failed": 87,
+   "calls": 111
+  },
+  "composition_error_block_edit": {
+   "done": 1,
+   "deferred": 15,
+   "failed": 0,
+   "calls": 16
+  },
+  "composition_find_references": {
+   "done": 11,
+   "deferred": 0,
+   "failed": 60,
+   "calls": 71
+  },
+  "composition_generate": {
+   "done": 0,
+   "deferred": 13,
+   "failed": 62,
+   "calls": 75
+  },
+  "composition_get_derivative_context": {
+   "done": 44,
+   "deferred": 0,
+   "failed": 12,
+   "calls": 56
+  },
+  "composition_get_generation_job": {
+   "done": 13,
+   "deferred": 0,
+   "failed": 22,
+   "calls": 35
+  },
+  "composition_get_mine_job": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 28,
+   "calls": 30
+  },
+  "composition_get_outline_node": {
+   "done": 7,
+   "deferred": 0,
+   "failed": 30,
+   "calls": 37
+  },
+  "composition_get_prose": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "composition_get_work": {
+   "done": 37,
+   "deferred": 0,
+   "failed": 121,
+   "calls": 158
+  },
+  "composition_library_translate": {
+   "done": 5,
+   "deferred": 12,
+   "failed": 3,
+   "calls": 20
+  },
+  "composition_list_canon_rules": {
+   "done": 117,
+   "deferred": 0,
+   "failed": 58,
+   "calls": 175
+  },
+  "composition_list_derivatives": {
+   "done": 39,
+   "deferred": 0,
+   "failed": 147,
+   "calls": 186
+  },
+  "composition_list_outline": {
+   "done": 210,
+   "deferred": 0,
+   "failed": 134,
+   "calls": 344
+  },
+  "composition_motif_adopt": {
+   "done": 24,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 24
+  },
+  "composition_motif_bind_edit": {
+   "done": 0,
+   "deferred": 7,
+   "failed": 20,
+   "calls": 27
+  },
+  "composition_motif_book_list": {
+   "done": 3,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 4
+  },
+  "composition_motif_edit": {
+   "done": 0,
+   "deferred": 18,
+   "failed": 0,
+   "calls": 18
+  },
+  "composition_motif_get": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 3,
+   "calls": 5
+  },
+  "composition_motif_link_edit": {
+   "done": 41,
+   "deferred": 87,
+   "failed": 132,
+   "calls": 260
+  },
+  "composition_motif_link_list": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 5
+  },
+  "composition_motif_mine": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 5
+  },
+  "composition_motif_search": {
+   "done": 620,
+   "deferred": 0,
+   "failed": 6,
+   "calls": 626
+  },
+  "composition_motif_suggest_for_chapter": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 10,
+   "calls": 10
+  },
+  "composition_outline_node_create": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 1
+  },
+  "composition_outline_node_edit": {
+   "done": 18,
+   "deferred": 8,
+   "failed": 29,
+   "calls": 55
+  },
+  "composition_outline_node_update": {
+   "done": 6,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 6
+  },
+  "composition_package_tree": {
+   "done": 744,
+   "deferred": 0,
+   "failed": 56,
+   "calls": 800
+  },
+  "composition_reference_list": {
+   "done": 10,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 10
+  },
+  "composition_reference_update": {
+   "done": 0,
+   "deferred": 16,
+   "failed": 35,
+   "calls": 51
+  },
+  "composition_scene_link_edit": {
+   "done": 0,
+   "deferred": 6,
+   "failed": 0,
+   "calls": 6
+  },
+  "composition_structure_template_edit": {
+   "done": 14,
+   "deferred": 11,
+   "failed": 1,
+   "calls": 26
+  },
+  "composition_switch_active_work": {
+   "done": 0,
+   "deferred": 14,
+   "failed": 0,
+   "calls": 14
+  },
+  "composition_task_provide_input": {
+   "done": 19,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 19
+  },
+  "confirm_action": {
+   "done": 4,
+   "deferred": 10,
+   "failed": 1,
+   "calls": 15
+  },
+  "conversation_search": {
+   "done": 24,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 24
+  },
+  "echo_test": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 1
+  },
+  "find_tools": {
+   "done": 363,
+   "deferred": 0,
+   "failed": 157,
+   "calls": 520
+  },
+  "glossary_adopt_standards": {
+   "done": 47,
+   "deferred": 80,
+   "failed": 50,
+   "calls": 177
+  },
+  "glossary_book_create": {
+   "done": 12,
+   "deferred": 0,
+   "failed": 11,
+   "calls": 23
+  },
+  "glossary_book_delete": {
+   "done": 3,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 3
+  },
+  "glossary_book_ontology_read": {
+   "done": 598,
+   "deferred": 0,
+   "failed": 79,
+   "calls": 677
+  },
+  "glossary_book_patch": {
+   "done": 17,
+   "deferred": 1,
+   "failed": 26,
+   "calls": 44
+  },
+  "glossary_book_set_active_genres": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "glossary_book_set_kind_genres": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "glossary_book_sync_apply": {
+   "done": 0,
+   "deferred": 6,
+   "failed": 3,
+   "calls": 9
+  },
+  "glossary_book_sync_available": {
+   "done": 100,
+   "deferred": 0,
+   "failed": 5,
+   "calls": 105
+  },
+  "glossary_confirm_action": {
+   "done": 1,
+   "deferred": 3,
+   "failed": 5,
+   "calls": 9
+  },
+  "glossary_create_chapter_link": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "glossary_create_evidence": {
+   "done": 4,
+   "deferred": 17,
+   "failed": 5,
+   "calls": 26
+  },
+  "glossary_curation_list": {
+   "done": 90,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 90
+  },
+  "glossary_deep_research": {
+   "done": 1,
+   "deferred": 10,
+   "failed": 3,
+   "calls": 14
+  },
+  "glossary_entity_delete": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "glossary_entity_get_genres": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 5
+  },
+  "glossary_entity_rename": {
+   "done": 1,
+   "deferred": 3,
+   "failed": 10,
+   "calls": 14
+  },
+  "glossary_entity_restore": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 27,
+   "calls": 32
+  },
+  "glossary_entity_set_attributes": {
+   "done": 35,
+   "deferred": 38,
+   "failed": 24,
+   "calls": 97
+  },
+  "glossary_extract_entities_from_doc": {
+   "done": 124,
+   "deferred": 28,
+   "failed": 6,
+   "calls": 158
+  },
+  "glossary_get_entity": {
+   "done": 155,
+   "deferred": 0,
+   "failed": 207,
+   "calls": 362
+  },
+  "glossary_get_entity_evidence": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 2
+  },
+  "glossary_list_ai_suggestions": {
+   "done": 90,
+   "deferred": 0,
+   "failed": 3,
+   "calls": 93
+  },
+  "glossary_list_chapter_links": {
+   "done": 3,
+   "deferred": 0,
+   "failed": 264,
+   "calls": 267
+  },
+  "glossary_list_entity_revisions": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 27,
+   "calls": 29
+  },
+  "glossary_list_kinds": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "glossary_list_merge_candidates": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 2
+  },
+  "glossary_list_system_standards": {
+   "done": 373,
+   "deferred": 0,
+   "failed": 13,
+   "calls": 386
+  },
+  "glossary_list_unknown_entities": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "glossary_ontology_delete": {
+   "done": 10,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 10
+  },
+  "glossary_ontology_upsert": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 3
+  },
+  "glossary_plan": {
+   "done": 3,
+   "deferred": 8,
+   "failed": 5,
+   "calls": 16
+  },
+  "glossary_propose_aliases": {
+   "done": 2,
+   "deferred": 3,
+   "failed": 0,
+   "calls": 5
+  },
+  "glossary_propose_batch": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 12,
+   "calls": 17
+  },
+  "glossary_propose_curation": {
+   "done": 0,
+   "deferred": 43,
+   "failed": 29,
+   "calls": 72
+  },
+  "glossary_propose_entities": {
+   "done": 253,
+   "deferred": 40,
+   "failed": 154,
+   "calls": 447
+  },
+  "glossary_propose_entity_edit": {
+   "done": 5,
+   "deferred": 18,
+   "failed": 170,
+   "calls": 193
+  },
+  "glossary_propose_kinds": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 6
+  },
+  "glossary_propose_merge": {
+   "done": 27,
+   "deferred": 0,
+   "failed": 4,
+   "calls": 31
+  },
+  "glossary_propose_new_attribute": {
+   "done": 7,
+   "deferred": 0,
+   "failed": 7,
+   "calls": 14
+  },
+  "glossary_propose_new_entity": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 2,
+   "calls": 7
+  },
+  "glossary_propose_new_kind": {
+   "done": 32,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 32
+  },
+  "glossary_propose_reassign_kind": {
+   "done": 1,
+   "deferred": 1,
+   "failed": 0,
+   "calls": 2
+  },
+  "glossary_propose_restore_revision": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "glossary_propose_status_change": {
+   "done": 39,
+   "deferred": 5,
+   "failed": 4,
+   "calls": 48
+  },
+  "glossary_propose_translation": {
+   "done": 1,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 6
+  },
+  "glossary_search": {
+   "done": 530,
+   "deferred": 0,
+   "failed": 99,
+   "calls": 629
+  },
+  "glossary_set_genres": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "glossary_task_provide_input": {
+   "done": 138,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 138
+  },
+  "glossary_web_search": {
+   "done": 20,
+   "deferred": 0,
+   "failed": 103,
+   "calls": 123
+  },
+  "jobs_cancel": {
+   "done": 0,
+   "deferred": 39,
+   "failed": 34,
+   "calls": 73
+  },
+  "jobs_get": {
+   "done": 160,
+   "deferred": 1,
+   "failed": 126,
+   "calls": 287
+  },
+  "jobs_list": {
+   "done": 461,
+   "deferred": 0,
+   "failed": 208,
+   "calls": 669
+  },
+  "jobs_pause": {
+   "done": 0,
+   "deferred": 13,
+   "failed": 2,
+   "calls": 15
+  },
+  "jobs_summary": {
+   "done": 120,
+   "deferred": 0,
+   "failed": 9,
+   "calls": 129
+  },
+  "kg_add_nodes": {
+   "done": 111,
+   "deferred": 134,
+   "failed": 28,
+   "calls": 273
+  },
+  "kg_adopt_template": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 2,
+   "calls": 3
+  },
+  "kg_build": {
+   "done": 3,
+   "deferred": 0,
+   "failed": 57,
+   "calls": 60
+  },
+  "kg_build_graph": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 13,
+   "calls": 13
+  },
+  "kg_entity_edge_timeline": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 5,
+   "calls": 5
+  },
+  "kg_graph_query": {
+   "done": 69,
+   "deferred": 0,
+   "failed": 4,
+   "calls": 73
+  },
+  "kg_list_templates": {
+   "done": 59,
+   "deferred": 0,
+   "failed": 51,
+   "calls": 110
+  },
+  "kg_ontology_propose": {
+   "done": 6,
+   "deferred": 0,
+   "failed": 32,
+   "calls": 38
+  },
+  "kg_project_create": {
+   "done": 288,
+   "deferred": 151,
+   "failed": 274,
+   "calls": 713
+  },
+  "kg_project_entities_to_nodes": {
+   "done": 272,
+   "deferred": 0,
+   "failed": 24,
+   "calls": 296
+  },
+  "kg_project_list": {
+   "done": 202,
+   "deferred": 0,
+   "failed": 11,
+   "calls": 213
+  },
+  "kg_project_set_embedding_model": {
+   "done": 2,
+   "deferred": 39,
+   "failed": 1,
+   "calls": 42
+  },
+  "kg_propose_edge": {
+   "done": 18,
+   "deferred": 24,
+   "failed": 30,
+   "calls": 72
+  },
+  "kg_propose_fact": {
+   "done": 1,
+   "deferred": 7,
+   "failed": 4,
+   "calls": 12
+  },
+  "kg_run_benchmark": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "kg_schema_read": {
+   "done": 67,
+   "deferred": 0,
+   "failed": 23,
+   "calls": 90
+  },
+  "kg_sync_available": {
+   "done": 6,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 6
+  },
+  "kg_triage_list": {
+   "done": 123,
+   "deferred": 0,
+   "failed": 6,
+   "calls": 129
+  },
+  "kg_triage_place_edge": {
+   "done": 10,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 10
+  },
+  "kg_triage_resolve": {
+   "done": 5,
+   "deferred": 5,
+   "failed": 2,
+   "calls": 12
+  },
+  "kg_triage_schema_write": {
+   "done": 30,
+   "deferred": 0,
+   "failed": 36,
+   "calls": 66
+  },
+  "kg_view_edit": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "kg_view_read": {
+   "done": 3,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 4
+  },
+  "load_skill": {
+   "done": 66,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 66
+  },
+  "lore_enrichment_auto_enrich": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 10,
+   "calls": 10
+  },
+  "lore_timeline": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "memory_forget": {
+   "done": 0,
+   "deferred": 53,
+   "failed": 12,
+   "calls": 65
+  },
+  "memory_recall_entity": {
+   "done": 68,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 69
+  },
+  "memory_remember": {
+   "done": 6,
+   "deferred": 14,
+   "failed": 17,
+   "calls": 37
+  },
+  "memory_search": {
+   "done": 120,
+   "deferred": 0,
+   "failed": 14,
+   "calls": 134
+  },
+  "memory_timeline": {
+   "done": 18,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 18
+  },
+  "plan_apply_revision": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "plan_bootstrap_apply": {
+   "done": 19,
+   "deferred": 0,
+   "failed": 19,
+   "calls": 38
+  },
+  "plan_bootstrap_propose": {
+   "done": 69,
+   "deferred": 0,
+   "failed": 27,
+   "calls": 96
+  },
+  "plan_compile": {
+   "done": 3,
+   "deferred": 18,
+   "failed": 40,
+   "calls": 61
+  },
+  "plan_find_missing_material": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 5,
+   "calls": 10
+  },
+  "plan_forge.plan_propose_spec": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 1
+  },
+  "plan_get_missing_material": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 6,
+   "calls": 7
+  },
+  "plan_handoff_autofix": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 4,
+   "calls": 9
+  },
+  "plan_interpret_feedback": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "plan_keep_material": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 10,
+   "calls": 10
+  },
+  "plan_link": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "plan_pass_status": {
+   "done": 52,
+   "deferred": 0,
+   "failed": 6,
+   "calls": 58
+  },
+  "plan_propose_spec": {
+   "done": 161,
+   "deferred": 6,
+   "failed": 13,
+   "calls": 180
+  },
+  "plan_review_checkpoint": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "plan_run_pass": {
+   "done": 1,
+   "deferred": 7,
+   "failed": 2,
+   "calls": 10
+  },
+  "plan_self_check": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 6
+  },
+  "plan_validate": {
+   "done": 36,
+   "deferred": 0,
+   "failed": 23,
+   "calls": 59
+  },
+  "propose_edit": {
+   "done": 1,
+   "deferred": 12,
+   "failed": 1,
+   "calls": 14
+  },
+  "registry_get_skill": {
+   "done": 4,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 4
+  },
+  "registry_get_workflow": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 5,
+   "calls": 5
+  },
+  "registry_list_skills": {
+   "done": 40,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 40
+  },
+  "registry_list_workflows": {
+   "done": 52,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 52
+  },
+  "registry_propose_skill": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "registry_propose_workflow": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 2,
+   "calls": 7
+  },
+  "registry_set_skill_enabled": {
+   "done": 0,
+   "deferred": 10,
+   "failed": 10,
+   "calls": 20
+  },
+  "registry_update_skill": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "registry_update_workflow": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "run_subagent": {
+   "done": 41,
+   "deferred": 0,
+   "failed": 23,
+   "calls": 64
+  },
+  "settings_get_defaults": {
+   "done": 6,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 6
+  },
+  "settings_get_profile": {
+   "done": 5,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 5
+  },
+  "settings_list_models": {
+   "done": 230,
+   "deferred": 0,
+   "failed": 27,
+   "calls": 257
+  },
+  "settings_list_providers": {
+   "done": 11,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 11
+  },
+  "settings_model_delete": {
+   "done": 4,
+   "deferred": 0,
+   "failed": 3,
+   "calls": 7
+  },
+  "settings_model_register": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "settings_model_set_active": {
+   "done": 0,
+   "deferred": 4,
+   "failed": 12,
+   "calls": 16
+  },
+  "settings_model_set_default": {
+   "done": 1,
+   "deferred": 3,
+   "failed": 0,
+   "calls": 4
+  },
+  "settings_model_set_favorite": {
+   "done": 0,
+   "deferred": 19,
+   "failed": 8,
+   "calls": 27
+  },
+  "settings_model_update": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "settings_provider_inventory": {
+   "done": 10,
+   "deferred": 0,
+   "failed": 22,
+   "calls": 32
+  },
+  "settings_update_profile": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "story_search": {
+   "done": 25,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 25
+  },
+  "tool_list": {
+   "done": 838,
+   "deferred": 0,
+   "failed": 1180,
+   "calls": 2018
+  },
+  "tool_load": {
+   "done": 202,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 202
+  },
+  "translation_coverage": {
+   "done": 110,
+   "deferred": 0,
+   "failed": 26,
+   "calls": 136
+  },
+  "translation_job_control": {
+   "done": 2,
+   "deferred": 0,
+   "failed": 35,
+   "calls": 37
+  },
+  "translation_job_status": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 77,
+   "calls": 78
+  },
+  "translation_list_versions": {
+   "done": 59,
+   "deferred": 0,
+   "failed": 2,
+   "calls": 61
+  },
+  "translation_patch_block": {
+   "done": 8,
+   "deferred": 12,
+   "failed": 12,
+   "calls": 32
+  },
+  "translation_retranslate_dirty": {
+   "done": 93,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 93
+  },
+  "translation_save_edited_version": {
+   "done": 0,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 5
+  },
+  "translation_segment_status": {
+   "done": 3,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 4
+  },
+  "translation_set_active_version": {
+   "done": 5,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 10
+  },
+  "translation_start_extraction": {
+   "done": 9,
+   "deferred": 0,
+   "failed": 10,
+   "calls": 19
+  },
+  "translation_start_job": {
+   "done": 104,
+   "deferred": 0,
+   "failed": 10,
+   "calls": 114
+  },
+  "translation_update_settings": {
+   "done": 4,
+   "deferred": 9,
+   "failed": 3,
+   "calls": 16
+  },
+  "u_a2bbc662_ask_question": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 1
+  },
+  "u_a2bbc662_read_wiki_contents": {
+   "done": 0,
+   "deferred": 0,
+   "failed": 1,
+   "calls": 1
+  },
+  "u_a2bbc662_read_wiki_structure": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 3,
+   "calls": 4
+  },
+  "ui_navigate": {
+   "done": 4,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 4
+  },
+  "ui_open_studio_panel": {
+   "done": 1,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 1
+  },
+  "web_search": {
+   "done": 3,
+   "deferred": 6,
+   "failed": 0,
+   "calls": 9
+  },
+  "workflow_list": {
+   "done": 84,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 84
+  },
+  "workflow_load": {
+   "done": 65,
+   "deferred": 0,
+   "failed": 0,
+   "calls": 65
+  },
+  "world_create": {
+   "done": 0,
+   "deferred": 10,
+   "failed": 0,
+   "calls": 10
+  },
+  "world_delete": {
+   "done": 0,
+   "deferred": 21,
+   "failed": 71,
+   "calls": 92
+  },
+  "world_get": {
+   "done": 25,
+   "deferred": 0,
+   "failed": 72,
+   "calls": 97
+  },
+  "world_list": {
+   "done": 501,
+   "deferred": 0,
+   "failed": 24,
+   "calls": 525
+  },
+  "world_map_add_marker": {
+   "done": 9,
+   "deferred": 8,
+   "failed": 53,
+   "calls": 70
+  },
+  "world_map_add_region": {
+   "done": 9,
+   "deferred": 5,
+   "failed": 0,
+   "calls": 14
+  },
+  "world_map_create": {
+   "done": 8,
+   "deferred": 7,
+   "failed": 118,
+   "calls": 133
+  },
+  "world_map_delete": {
+   "done": 0,
+   "deferred": 2,
+   "failed": 134,
+   "calls": 136
+  },
+  "world_map_get": {
+   "done": 122,
+   "deferred": 0,
+   "failed": 107,
+   "calls": 229
+  },
+  "world_map_list": {
+   "done": 138,
+   "deferred": 0,
+   "failed": 450,
+   "calls": 588
+  },
+  "world_map_remove_marker": {
+   "done": 0,
+   "deferred": 10,
+   "failed": 0,
+   "calls": 10
+  },
+  "world_map_remove_region": {
+   "done": 0,
+   "deferred": 14,
+   "failed": 0,
+   "calls": 14
+  },
+  "world_map_update": {
+   "done": 0,
+   "deferred": 10,
+   "failed": 0,
+   "calls": 10
+  },
+  "world_map_update_marker": {
+   "done": 5,
+   "deferred": 14,
+   "failed": 0,
+   "calls": 19
+  },
+  "world_map_update_region": {
+   "done": 8,
+   "deferred": 14,
+   "failed": 0,
+   "calls": 22
+  },
+  "world_move_book": {
+   "done": 0,
+   "deferred": 10,
+   "failed": 0,
+   "calls": 10
+  },
+  "world_update": {
+   "done": 0,
+   "deferred": 9,
+   "failed": 0,
+   "calls": 9
+  }
+ }
+}

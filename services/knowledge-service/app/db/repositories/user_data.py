@@ -48,8 +48,18 @@ class UserDataRepo:
         leaves the bigger DELETE for last where its row count is the
         natural last word in the receipt.
 
-        Returns: {"summaries": int, "projects": int} — counts of rows
-        actually deleted, suitable for the route's 200 response body.
+        Returns: {"summaries": int, "projects": int, "project_ids":
+        list[str]} — counts of rows actually deleted (suitable for the
+        route's 200 response body) plus the ids that were removed.
+
+        The ids are RETURNING-ed rather than counted because erasure does
+        not end at Postgres: every deleted project owns a Neo4j partition
+        (entities, aliases, relations, facts) keyed by `project_id`, and
+        once these rows are gone there is no way left to enumerate what
+        to purge. The single-project delete route already purges its
+        graph (`D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN`); this path is
+        the same obligation in bulk, and it is the GDPR one — so the
+        caller needs the ids, not just a number.
         """
         async with self._pool.acquire() as conn:
             async with conn.transaction():
@@ -57,8 +67,9 @@ class UserDataRepo:
                     "DELETE FROM knowledge_summaries WHERE user_id = $1",
                     user_id,
                 )
-                p_status = await conn.execute(
-                    "DELETE FROM knowledge_projects WHERE user_id = $1",
+                p_rows = await conn.fetch(
+                    "DELETE FROM knowledge_projects WHERE user_id = $1 "
+                    "RETURNING project_id",
                     user_id,
                 )
 
@@ -69,5 +80,8 @@ class UserDataRepo:
 
         return {
             "summaries": _rows_changed(s_status),
-            "projects": _rows_changed(p_status),
+            # The row count IS the delete count here — RETURNING yields one
+            # row per deleted row — so this stays derived, never typed.
+            "projects": len(p_rows),
+            "project_ids": [str(r["project_id"]) for r in p_rows],
         }

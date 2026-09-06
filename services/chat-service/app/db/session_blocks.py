@@ -106,6 +106,42 @@ async def refresh_block(
     return int(row["version"])
 
 
+#: The grounding sections that actually carry STORY. Everything else a build can return —
+#: `instructions` being the one that matters here — is guidance ABOUT the project, not lore FROM
+#: it. See `_carries_lore`.
+_LORE_SECTIONS = frozenset({
+    "glossary_entities", "entities", "facts", "passages", "summaries", "events", "timeline",
+})
+
+
+def _carries_lore(sections: dict[str, int] | None, full_context: str) -> bool:
+    """Does this turn's live grounding actually contain LORE?
+
+    🔴 "NON-EMPTY" IS NOT "CARRIES THE LORE", AND THE SAFETY NET KEYED ON THE WRONG ONE.
+    Measured live 2026-08-14 on every turn of three batches: `story_state` contributed ZERO
+    tokens while the live grounding reported `total: 50` whose ONLY section was
+    `instructions: 32`. So `full_context` was non-empty, the projection stood down as designed —
+    and the turn ended up with NEITHER live lore NOR the cached bible.
+
+    That is the whole failure. The block exists as a safety net so "a follow-up never loses the
+    entities the rewrite needs", and a grounding response carrying nothing but project
+    instructions satisfies the emptiness test while providing exactly none of them. Measured
+    consequence in the same batch: asked "What do we know about Mira Solene?" on a book that held
+    her, the reply was "I don't have any information about Mira Solene".
+
+    The `sections` split (W1) is the honest signal and it has been on the wire all along. Falling
+    back to the old string test when `sections` is absent keeps an older knowledge-service build
+    behaving exactly as before rather than suddenly projecting on every turn.
+
+    The multi_project concern the original docstring names is preserved by construction: if the
+    live build DID return lore, some lore section is non-zero, this returns True, and the block
+    stands down — so the projection can never duplicate live lore.
+    """
+    if sections:
+        return any(int(v or 0) > 0 for k, v in sections.items() if k in _LORE_SECTIONS)
+    return bool((full_context or "").strip())
+
+
 async def project_story_state(
     pool: asyncpg.Pool,
     *,
@@ -117,6 +153,7 @@ async def project_story_state(
     lore_gate: bool = False,
     scene_change: bool = False,
     context_length: int | None = None,
+    sections: dict[str, int] | None = None,
 ) -> str:
     """T4 (D4/D5) — maintain the cached `story_state` block and return the text to
     project this turn (``""`` when nothing should be injected).
@@ -128,8 +165,10 @@ async def project_story_state(
         everything in `context`). Refresh only when `should_refresh` fires (no cache yet ·
         the source hash changed · an explicit lore-gate / scene change · `cadence` turns
         elapsed), so an unchanged bible doesn't churn the row every turn.
-      * **Project (D4 safety net):** return the CACHED block **only when the live FULL
-        grounding (`full_context`) is empty** — knowledge-service degraded (`context=""`),
+      * **Project (D4 safety net):** return the CACHED block **only when the live grounding
+        carries no LORE** (see `_carries_lore` — amended 2026-08-14; it used to key on
+        `full_context` being EMPTY, which a build returning nothing but project `instructions`
+        satisfies, leaving the turn with neither live lore nor the bible) — knowledge-service degraded (`context=""`),
         or a future T5-gated mode that returns nothing. Keying on `full_context` (not
         `stable_context`) is deliberate: `multi_project` mode has an empty `stable_context`
         yet a full live `context`, so keying on the prefix would false-fire and DUPLICATE
@@ -183,9 +222,10 @@ async def project_story_state(
                 refreshed_turn=current_turn,
                 source_hash=new_hash,
             )
-    # Project the last-good bible ONLY when there is no live grounding this turn
-    # (degraded / gated-empty). Any live grounding is already in the prompt → no dup.
-    if not (full_context or "").strip() and cached and cached.value.strip():
+    # Project the last-good bible ONLY when this turn's live grounding carries no LORE
+    # (degraded, gated-empty, or — the case that was missing — a build that returned nothing but
+    # project `instructions`). Live lore is already in the prompt, so no dup: see `_carries_lore`.
+    if not _carries_lore(sections, full_context) and cached and cached.value.strip():
         return render_story_state_block(cached.value)
     return ""
 

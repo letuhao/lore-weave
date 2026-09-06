@@ -1,0 +1,213 @@
+{
+  "_note": "Batch 30 — the same world/map family as batch 29, run MULTI-TURN so the model obtains every id ITSELF.\n\nWHY THIS IS A DIFFERENT EXPERIMENT AND NOT A RE-RUN. Batch 29 concluded world_delete and world_map_delete `blocked` and left world_get, world_map_list and world_map_get unconcluded, all on one cause (DQ-T36): the family is UUID-only, the only suppliers are world_list -> world_id and world_map_list -> map_id, and across 100 single-turn runs the model never walked that chain once. Declaring the supplier on every argument was shipped and MEASURED and REFUTED — it changed the model's words ('I'll list your worlds now to find it') and not its behaviour: it states the plan and ends the turn.\n\nSo the single-turn question is answered, and answered negatively. The question these five tools have NEVER been asked is the one that matters for shipping them: GIVEN an id the model obtained legitimately, does the tool work through the chat path? That is what fe_runner's `follow_ups` exists for — its own comment says 'SOME DEFECTS ONLY EXIST ON TURN 2+, AND A ONE-TURN HARNESS IS BLIND TO THEM BY CONSTRUCTION', and THE LAST TURN IS THE MEASURED ONE.\n\n🔴 THE BAR IS NOT RELAXED. Every setup turn is a plain author utterance — 'list my worlds', 'show me the maps in X' — and I type NO tool argument anywhere. The ids reach the model only because the model called the supplier and read the result. If it will not walk the chain even when each hop is asked for in its own turn, that is a far stronger DQ-T36 than batch 29 could produce; if it will, these tools are shippable and the defect is precisely scoped to 'the model does not chain WITHIN one turn'.\n\nworld_map_remove_marker and world_map_remove_region are the deepest chain on the platform: world_list -> world_map_list -> world_map_get -> marker_id/region_id, four hops. They are Tier A, and their cards are never approved.",
+  "scenarios": [
+    {
+      "id": "world-get",
+      "tool_under_test": "world_get",
+      "expect_tool": "world_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my worlds.",
+      "follow_ups": [
+        "Show me the world called Emberfall Reach {run_word}."
+      ],
+      "prompt_source": "Turn 1 is world_list's own synonym ('my worlds'). The MEASURED turn 2 is world_get's synonyms ['show world'] + ['world detail'], verbatim, plus the world's exact name — the same sentence batch 29 measured, now asked of a model that has just seen the id.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {"tool": "world_create", "args": {"name": "Emberfall Reach {run_word}", "description": "A drowned coast of ash and low tides."}}
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM worlds WHERE name LIKE '%{run_word}%'",
+          "expect": "1",
+          "why": "ONE world by this run's nonce. world_list orders created_at DESC and carries a paging envelope with total + is_complete (the OUT-5 fix), so the world seeded seconds ago is on page ONE — the supplier can answer, which is what makes turn 2's failure or success attributable to the model rather than to paging."
+        }
+      ],
+      "answer_expect": {
+        "all_of": ["Emberfall Reach"],
+        "none_of": ["could not find", "couldn't find", "no such world", "don't have a record"],
+        "why": "The world exists, the author named it, and turn 1 put its id in the conversation. The none_of needles are the FALSE ABSENCE batch 29 measured — 'I don't have a record of a world named Emberfall Reach', followed in one run by an offer to build it, which would have duplicated the author's world."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the measured turn reports the world absent when turn 1 listed it — that is the false absence, now with the id demonstrably in context, which would make it a much worse finding than batch 29's — OR the model invents a world_id rather than reusing the one it was just shown. 🔴 THE CONTROL THAT MATTERS: if turn 1 does not actually call world_list, this scenario proves nothing about turn 2 and must be re-run, not read as 0/5. prior_turns records what turn 1 called.",
+      "ship_audit": {
+        "absent_case": "EXERCISED by direct probe (batch 29) — an unknown world_id is refused 'world not found — check the world_id (call world_list for valid ids)'.",
+        "empty_case": "EXERCISED by direct probe (batch 29) — a world with no books and no maps still returns as a real world with book_count 0.",
+        "tenancy": "EXERCISED by direct probe (batch 29) — another owner's world is refused with the SAME wording as one that exists nowhere, so it is no existence oracle."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-map-list",
+      "tool_under_test": "world_map_list",
+      "expect_tool": "world_map_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my worlds.",
+      "follow_ups": [
+        "List the maps in my world called Emberfall Reach {run_word}."
+      ],
+      "prompt_source": "Turn 1 is world_list's synonym; the MEASURED turn is world_map_list's ['list maps'] + ['world maps'], verbatim.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {"tool": "world_create", "args": {"name": "Emberfall Reach {run_word}"}},
+        {"tool": "world_map_create", "args": {"world_id": "{step:0:world.world_id}", "name": "The Ashen Coast {run_word}"}},
+        {"tool": "world_map_create", "args": {"world_id": "{step:0:world.world_id}", "name": "The Obsidian Trench {run_word}"}}
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM world_maps WHERE name LIKE '%{run_word}%'",
+          "expect": "2",
+          "why": "TWO maps, so 'listed the maps' is distinguishable from 'named the only thing it could see'. Scoped by the {run_word} nonce rather than a headcount, because the account holds 74 maps and a total would drift."
+        }
+      ],
+      "answer_expect": {
+        "all_of": ["Ashen Coast"],
+        "none_of": ["no maps", "doesn't have any maps", "couldn't find", "could not find"],
+        "why": "Both maps exist and turn 1 supplied the world_id. 'No maps' over a world holding two is the false-absence shape — and this tool was FIXED this loop to stop answering that for a world the caller does not own, so a false absence here would be a different route to the same sentence."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports no maps for a world holding two, OR it names a map from a DIFFERENT world (the nonce makes that visible), OR the model invents a world_id rather than reusing the listed one.",
+      "ship_audit": {
+        "empty_case": "EXERCISED by direct probe (batch 29) — the caller's OWN world with no maps answers {\"maps\": []}.",
+        "absent_case": "EXERCISED by direct probe (batch 29) — an unknown world_id is refused 'world not found — check the world_id (call world_list for valid ids)'.",
+        "tenancy": "🔴 EXERCISED, AND IT FOUND THE DEFECT FIXED THIS LOOP — another owner's world returned {\"maps\": []} instead of refusing. Owner-scoped SQL meant nothing leaked; the defect was that an empty list is the same sentence as 'your world has no maps yet'. Now refused, falsifier proven RED, re-probed live: 0 leaks."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-map-get",
+      "tool_under_test": "world_map_get",
+      "expect_tool": "world_map_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my worlds.",
+      "follow_ups": [
+        "List the maps in my world called Emberfall Reach {run_word}.",
+        "Open the map called The Ashen Coast {run_word} and show me what is on it."
+      ],
+      "prompt_source": "Three turns walking the chain the platform actually requires: world_list -> world_map_list -> world_map_get. The MEASURED turn is world_map_get's synonyms ['open map'] + ['map detail'], verbatim.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {"tool": "world_create", "args": {"name": "Emberfall Reach {run_word}"}},
+        {"tool": "world_map_create", "args": {"world_id": "{step:0:world.world_id}", "name": "The Ashen Coast {run_word}"}},
+        {"tool": "world_map_add_marker", "args": {"map_id": "{step:1:map.map_id}", "label": "Ironhold", "x": 0.25, "y": 0.4, "marker_type": "city"}},
+        {"tool": "world_map_add_marker", "args": {"map_id": "{step:1:map.map_id}", "label": "The Drowned Stair", "x": 0.7, "y": 0.62, "marker_type": "landmark"}}
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM map_markers WHERE map_id=(SELECT id FROM world_maps WHERE name LIKE '%{run_word}%' LIMIT 1)",
+          "expect": "2",
+          "why": "TWO markers. The tool promises 'all its markers + regions', so a reply naming one, or none, is content dropped that is demonstrably there — and with two named pins a partial answer is visible in a way one pin would hide."
+        }
+      ],
+      "answer_expect": {
+        "all_of": ["Ironhold"],
+        "none_of": ["no markers", "empty map", "couldn't find", "could not find"],
+        "why": "Ironhold is a seeded marker on the map the previous turn listed. Its absence from a reply that claims to have opened the map means the markers were fetched and not reported, or the map was never opened."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes the map as empty when it carries two markers, OR the model invents a map_id. CONTROL: the map has NO base image (image_ref was never passed), so a reply reporting image dimensions or describing terrain is fabricating — the honest answer names the pins and says the base image is not attached. 🔴 A STREAM_ERROR IS NOT A RESULT: batch 29's final arm lost 5/5 of this tool's runs to 'upstream sent \"error\" with no error message'. If that recurs, re-run; never read it as a model failure.",
+      "ship_audit": {
+        "empty_case": "EXERCISED by direct probe (batch 29) — a map with no pins answers markers:[] and regions:[] alongside a real map row, so 'empty map' and 'no such map' stay different answers.",
+        "absent_case": "EXERCISED by direct probe (batch 29) — refused 'map not found — check the map_id (call world_map_list for valid ids)'.",
+        "tenancy": "EXERCISED by direct probe (batch 29) — another owner's map is refused with the same wording."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-map-remove-marker",
+      "tool_under_test": "world_map_remove_marker",
+      "expect_tool": "world_map_remove_marker",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my worlds.",
+      "follow_ups": [
+        "List the maps in my world called Emberfall Reach {run_word}.",
+        "Open the map called The Ashen Coast {run_word}.",
+        "Remove the pin called Ironhold from that map."
+      ],
+      "prompt_source": "FOUR turns — the deepest supplier chain on the platform: world_list -> world_map_list -> world_map_get -> marker_id. The MEASURED turn is world_map_remove_marker's synonyms ['remove pin'] + ['delete marker'], verbatim, plus the pin's own label.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {"tool": "world_create", "args": {"name": "Emberfall Reach {run_word}"}},
+        {"tool": "world_map_create", "args": {"world_id": "{step:0:world.world_id}", "name": "The Ashen Coast {run_word}"}},
+        {"tool": "world_map_add_marker", "args": {"map_id": "{step:1:map.map_id}", "label": "Ironhold", "x": 0.25, "y": 0.4, "marker_type": "city"}},
+        {"tool": "world_map_add_marker", "args": {"map_id": "{step:1:map.map_id}", "label": "The Drowned Stair", "x": 0.7, "y": 0.62, "marker_type": "landmark"}}
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM map_markers WHERE map_id=(SELECT id FROM world_maps WHERE name LIKE '%{run_word}%' LIMIT 1)",
+          "expect": "2",
+          "why": "TWO markers and only ONE named in the measured turn, so removing the wrong pin is visible. The card is never approved, so BOTH must still be there afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: a marker is removed with NO confirm card (Tier A), OR the model targets 'The Drowned Stair' rather than the pin the author named, OR it invents a marker_id rather than reading one out of the previous turn's map. NOTE the tool's own promise, which is the thing worth checking: the result's undo_hint 'carries the removed marker's full state (label, x, y, and its entity_id / marker_type when set), so replay that to restore it' — a removal whose undo_hint drops x/y or marker_type is an undo that silently moves or reclassifies the pin, which is the derived-key data-loss shape this repo has paid for before.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a marker_id that does not exist must be refused.",
+        "idempotency": "OWED — removing an already-removed marker must refuse or be a clear no-op, not report a second success.",
+        "tenancy": "OWED — ACCOUNT-scoped: another owner's marker must not be removable."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-map-remove-region",
+      "tool_under_test": "world_map_remove_region",
+      "expect_tool": "world_map_remove_region",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List my worlds.",
+      "follow_ups": [
+        "List the maps in my world called Emberfall Reach {run_word}.",
+        "Open the map called The Ashen Coast {run_word}.",
+        "Remove the area called The North from that map."
+      ],
+      "prompt_source": "The same four-hop chain; the MEASURED turn is world_map_remove_region's synonyms ['remove region'] + ['delete area'], verbatim, plus the region's own name.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {"tool": "world_create", "args": {"name": "Emberfall Reach {run_word}"}},
+        {"tool": "world_map_create", "args": {"world_id": "{step:0:world.world_id}", "name": "The Ashen Coast {run_word}"}},
+        {"tool": "world_map_add_region", "args": {"map_id": "{step:1:map.map_id}", "name": "The North", "polygon": [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]]}},
+        {"tool": "world_map_add_region", "args": {"map_id": "{step:1:map.map_id}", "name": "The Drowned Shelf", "polygon": [[0.1, 0.1], [0.4, 0.1], [0.4, 0.5], [0.1, 0.5]]}}
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM map_regions WHERE map_id=(SELECT id FROM world_maps WHERE name LIKE '%{run_word}%' LIMIT 1)",
+          "expect": "2",
+          "why": "TWO regions and only ONE named, so a wrong target is visible. They have DIFFERENT vertex counts — a 3-point triangle and a 4-point rectangle — which makes the undo_hint's polygon check meaningful: a hint that rounds, truncates or reorders vertices restores a different shape."
+        }
+      ],
+      "falsifier": "REFUTED IF: a region is removed with NO confirm card (Tier A), OR the model targets 'The Drowned Shelf' rather than the area the author named, OR it invents a region_id. The tool promises its undo_hint 'carries the removed region's full state (name, polygon, and its entity_id when set)' — so an undo_hint whose polygon has fewer vertices than the region had, or reordered ones, restores a DIFFERENT area under the same name, and the author has no way to see it happened.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a region_id that does not exist must be refused.",
+        "idempotency": "OWED — removing an already-removed region must refuse or be a clear no-op.",
+        "tenancy": "OWED — ACCOUNT-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

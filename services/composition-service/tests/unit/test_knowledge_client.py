@@ -12,6 +12,10 @@ from app.clients.knowledge_client import KnowledgeClient
 
 BOOK = uuid.uuid4()
 BASE = "http://knowledge-service:8092"
+#: The KAL base. T55/h moved the two federated reads (§8.6) onto it; everything else on this
+#: client still talks to the owning service, so the tests keep both and assert WHICH one a
+#: call lands on — a single base would have let a read slip back to the direct route unnoticed.
+KAL = "http://knowledge-gateway:3000"
 URL = f"{BASE}/v1/knowledge/projects"
 
 
@@ -20,7 +24,7 @@ USER = uuid.uuid4()
 
 
 async def _client() -> KnowledgeClient:
-    return KnowledgeClient(BASE, "intok")
+    return KnowledgeClient(BASE, "intok", kal_url=KAL)
 
 
 @respx.mock
@@ -296,8 +300,9 @@ async def test_lenses_degrade_to_empty_on_failure():
 @respx.mock
 async def test_fact_for_check_uses_internal_token_and_glossary_ids():
     """A2-S3 — fact_for_check POSTs glossary cast ids with the internal token."""
+    # T55/h — the KAL, not the owning service.
     route = respx.post(
-        f"{BASE}/internal/projects/{PROJECT}/fact-for-check"
+        f"{KAL}/v1/kal/projects/{PROJECT}/fact-for-check"
     ).mock(return_value=httpx.Response(200, json={
         "at_order": 5000000,
         "entities": [{"entity_id": "e1", "glossary_entity_id": "g1", "status": "gone"}],
@@ -320,7 +325,7 @@ async def test_fact_for_check_uses_internal_token_and_glossary_ids():
 
 @respx.mock
 async def test_fact_for_check_degrades_to_none():
-    respx.post(f"{BASE}/internal/projects/{PROJECT}/fact-for-check").mock(
+    respx.post(f"{KAL}/v1/kal/projects/{PROJECT}/fact-for-check").mock(
         return_value=httpx.Response(503))
     c = await _client()
     try:
@@ -442,5 +447,48 @@ async def test_create_project_empty_bearer_returns_none():
     c = await _client()
     try:
         assert await c.create_project(BOOK, "My Book", "") is None
+    finally:
+        await c.aclose()
+
+
+@respx.mock
+async def test_glossary_semantic_goes_through_the_KAL_with_scope_from_the_REQUEST():
+    """T55/h (§8.6) — the federated read, and the shape that makes it safe.
+
+    `user_id` and `project_id` are NOT in the body any more: the KAL controller takes the
+    project from the PATH it scoped and the user from the request identity. Asserting their
+    ABSENCE is the half that would otherwise rot back in — a body that still carried them
+    would keep working right up until someone trusted it.
+    """
+    route = respx.post(
+        f"{KAL}/v1/kal/projects/{PROJECT}/glossary-semantic"
+    ).mock(return_value=httpx.Response(200, json={"items": [{"entity_id": "e1"}]}))
+    c = await _client()
+    try:
+        out = await c.glossary_semantic(USER, project_id=PROJECT, query="the pact")
+    finally:
+        await c.aclose()
+    assert out == [{"entity_id": "e1"}]
+    req = route.calls.last.request
+    assert req.headers["X-Internal-Token"] == "intok"
+    assert req.headers["X-User-Id"] == str(USER)      # service mode carries the identity
+    import json as _json
+    body = _json.loads(req.content)
+    assert body == {"query": "the pact", "max_entities": 20, "max_tokens": 1000}
+    assert "user_id" not in body and "project_id" not in body
+
+
+@respx.mock
+async def test_the_federated_reads_DEGRADE_when_the_gateway_is_unset():
+    """Fails toward NO CONTEXT, never toward the direct route.
+
+    A silent fallback to `{knowledge}/internal/...` would re-open the INV-KAL hole §8.6
+    closed, and would read as robustness while doing it.
+    """
+    c = KnowledgeClient(BASE, "intok", kal_url="")
+    try:
+        assert await c.glossary_semantic(USER, project_id=PROJECT, query="x") == []
+        assert await c.fact_for_check(
+            project_id=PROJECT, at_order=1, glossary_entity_ids=["g1"]) is None
     finally:
         await c.aclose()

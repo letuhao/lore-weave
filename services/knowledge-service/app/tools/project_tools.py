@@ -192,7 +192,7 @@ async def _handle_kg_project_set_embedding_model(
     confirm-gated REST operation and this Tier-A tool refuses it by name.
     """
     from app.db.models import ProjectUpdate
-    from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+    from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
     from app.tools.executor import ToolExecutionError
     from app.tools.graph_schema_tools import _resolve_project_owner_and_level
 
@@ -217,14 +217,18 @@ async def _handle_kg_project_set_embedding_model(
             "embedding_model": current.embedding_model,
             "embedding_dimension": current.embedding_dimension,
             "changed": False,
-            "note": "already configured — next call kg_run_benchmark, then kg_build_graph",
+            # Mirrors the changed=True note below. #247 corrected that one and MISSED this
+            # branch, so re-running the tool answered with the retired sequencing.
+            "note": "already configured — kg_build_graph is unblocked for this project. "
+                    "kg_run_benchmark is OPTIONAL — a cheap retrieval-quality rating for "
+                    "this embedding model, not a precondition for the build",
         }
 
     # D-EMB-MODEL-REF-04 — ask Neo4j, not `extraction_status`. The status column says
     # 'disabled' both after a graph DELETE (vectors gone) and after
     # `POST /extraction/disable` (vectors explicitly PRESERVED), so it cannot answer
-    # "would this change orphan anything". See app/db/neo4j_repos/graph_state.py.
-    from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+    # "would this change orphan anything". See app/db/graph_repos/graph_state.py.
+    from app.db.graph_repos.graph_state import project_has_embedded_passages
 
     if current.embedding_model and await project_has_embedded_passages(
         owner, ctx.project_id
@@ -264,7 +268,9 @@ async def _handle_kg_project_set_embedding_model(
         "embedding_model": updated.embedding_model,
         "embedding_dimension": updated.embedding_dimension,
         "changed": True,
-        "note": "next call kg_run_benchmark (required, cheap), then kg_build_graph",
+        "note": "kg_build_graph is now unblocked for this project. kg_run_benchmark is "
+                "OPTIONAL — a cheap retrieval-quality rating for this embedding model, not "
+                "a precondition for the build",
     }
 
 

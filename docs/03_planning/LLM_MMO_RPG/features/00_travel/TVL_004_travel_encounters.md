@@ -1,5 +1,28 @@
 # TVL_004 — Travel Encounters
 
+> **⚠ AMENDED 2026-08-22 — `progress_fraction: f32` → `progress_permille: u16`
+> ([`SPG-R12`](../../36_map_architecture.md)'s second finding).**
+>
+> **This is a REPLAY DIVERGENCE, not a precision preference.** [`WDS-A7`](../../37_world_data_storage.md)
+> already ruled f32 determinism **unproven cross-platform**, and `SDF-R2` removed exactly this from
+> `SpaceNode.Transform` on the same day — x87 80-bit versus SSE 64-bit intermediates, FMA contraction, and
+> **transcendentals differing between AMD and Intel** (Battlezone 2 shipped that bug).
+>
+> **The float was doing the two things a float may never do in this engine, and §2 makes both explicit:**
+>
+> | use | where | why it is fatal |
+> |---|---|---|
+> | **hashed into an identity** | `EncounterId` is *"blake3-derived from `(journey_id, encounter_seed, trigger_progress…)`"* | one bit of difference across machines yields a **different `EncounterId`** — that is identity divergence, not drift |
+> | **compared for ordering** | *"a `Scheduled:TravelTick` whose advancement CROSSES a scheduled point"* | the crossing test decides whether an encounter fires at all |
+>
+> `SDF-A4` prohibits both by name. **Permille, not basis points or a rational:** `MAP_001` already uses a
+> `0..1000` parent-relative frame, so the repo has one convention for *"a position along something"* and
+> this now shares it. `u16` holds it exactly, comparison is integer, and the hash input is bit-identical
+> on every platform.
+>
+> **The interval stays STRICTLY interior** — `(0, 1000)`, so an encounter still never fires at origin or
+> destination. Nothing else in the schedule, the pause semantics or the tick generator changes.
+
 > **Conversational name:** "Travel Encounters" (CTE). V1+30d+ feature that generates encounters *during* a journey — a bandit ambush on a remote Trail, a merchant caravan on a Road, a storm on a MountainPass, a herb cache beside a River. Reads the locked V1+30d substrate (GEO_001 biome, GEO_004 ROUTE_001 `route.kind`, GEO_002 POL_001 province) and attaches mechanical encounter events to TVL_001's `actor_travel_state`. An encounter pauses the journey; the actor picks a per-kind approach; chat-service LLM narrates the scene and proposes an outcome; the engine clamps the outcome to author-declared bounds; the journey resumes. Encounter schedule is pre-rolled deterministically at `Travel:Initiate` (replay-stable). Encounter participants are abstract and ephemeral (no persistent EF_001 entities). PC + Tracked NPC parity inherited from TVL_001. Composite journeys are encounter-agnostic — a paused segment pauses the TVL_002 composite with no composite-side change.
 >
 > **Category:** TVL — Travel Mechanics (V1+30d+ feature; fourth TVL feature; the encounter layer TVL_001 deferred as TVL-D1 and TVL_002 declared composite-agnostic as CTV-D1)
@@ -31,8 +54,8 @@ TVL_004 introduces no new travel physics. The journey, ticks, clocks, provisions
 |---|---|---|
 | **Travel encounter** | `travel_encounter` aggregate (T2/Reality, sparse per-(journey_id, encounter_id)) — NEW V1+30d+ | One row per encounter that fired. Sparse — only journeys that actually hit a pre-rolled encounter point get rows. Closed (`Resolved`/`Skipped`) once handled; the row is retained for audit. |
 | **EncounterId** | `pub struct EncounterId(pub(crate) Ulid)` opaque newtype | Module-private constructor; blake3-derived from `(journey_id, encounter_seed, trigger_progress_fraction)` for replay-determinism. |
-| **Encounter schedule** | A list of `(progress_fraction, encounter_seed)` points, computed once at `Travel:Initiate` and pinned onto a NEW additive `actor_travel_state.encounter_schedule` field | Pinned at initiate (HIGH-2 fix /review-impl) — the schedule depends on `world_geometry` biome + `route.kind`, both mutable via `GeographyDelta`, so re-deriving it each tick would break determinism on a mid-journey geography edit. Stored, it is immune to later edits and copies bit-exactly at snapshot fork (CTE-Q1). |
-| **Encounter trigger** | A `Scheduled:TravelTick` whose advancement crosses a scheduled `progress_fraction` point | The TVL_001 tick generator, extended per the CTE closure pass (§10), checks each tick: did `progress_fraction` cross a scheduled point? If yes → emit the encounter (EVT-T3) and pause the journey. |
+| **Encounter schedule** | A list of `(progress_permille, encounter_seed)` points, computed once at `Travel:Initiate` and pinned onto a NEW additive `actor_travel_state.encounter_schedule` field | Pinned at initiate (HIGH-2 fix /review-impl) — the schedule depends on `world_geometry` biome + `route.kind`, both mutable via `GeographyDelta`, so re-deriving it each tick would break determinism on a mid-journey geography edit. Stored, it is immune to later edits and copies bit-exactly at snapshot fork (CTE-Q1). |
+| **Encounter trigger** | A `Scheduled:TravelTick` whose advancement crosses a scheduled `progress_permille` point | The TVL_001 tick generator, extended per the CTE closure pass (§10), checks each tick: did `progress_fraction` cross a scheduled point? If yes → emit the encounter (EVT-T3) and pause the journey. |
 | **Journey pause** | Signalled by an *unresolved* `travel_encounter` row (status ∈ {Pending, Resolving}) | While such a row exists for a journey, the TVL_001 `Scheduled:TravelTick` generator SKIPS `progress_fraction` advancement for that journey (CTE closure-pass behavior — no change to TVL_001's `TravelStatus` enum). The journey is not `Canceled` and not `Arrived` — just frozen until the encounter resolves. |
 | **EncounterKind** | Closed enum 4 V1+30d+ — Combat / Social / Hazard / Discovery | `Combat` hostile (bandit, beast) · `Social` non-hostile (merchant, traveler, pilgrim) · `Hazard` environmental (storm, rockslide, flood) · `Discovery` beneficial (ruin, herb cache, abandoned supplies). |
 | **EncounterApproach** | Closed enum — the actor's chosen way to handle it; valid subset per `EncounterKind` | `Confront` / `Avoid` / `Parley` / `Investigate`. Each `EncounterKind` exposes a 2–3 approach subset (§4.3); `travel_encounter.available_approaches` lists the valid set; `Encounter:Resolve` must pick from it. |
@@ -79,7 +102,8 @@ pub struct TravelEncounter {
     pub actor_id: ActorId,                          // the traveling actor (denormalized from the journey for query)
     pub kind: EncounterKind,                        // Combat | Social | Hazard | Discovery
     pub status: EncounterStatus,                    // Pending | Resolving | Resolved | Skipped
-    pub trigger_progress_fraction: f32,             // the journey progress_fraction at which this fired (∈ (0.0, 1.0))
+    // SPG-R12 second finding, APPLIED 2026-08-22. Was `f32`.
+    pub trigger_progress_permille: u16,             // ∈ (0, 1000) strictly interior
     pub biome: BiomeKind,                           // GEO_001 — biome at the trigger cell (encounter-table key, snapshot)
     pub route_kind: RouteKind,                      // ROUTE_001 — kind of the route being traversed (encounter-table key, snapshot)
     pub province_danger_band: ProvinceDangerBand,   // POL_001-derived danger band at the trigger cell (Safe | Contested | Lawless)
@@ -124,7 +148,7 @@ pub enum ProvinceDangerBand {                       // closed enum 3 V1+30d+ —
 
 - One unresolved `travel_encounter` per journey — ≤1 row with `status ∈ {Pending, Resolving}` per `journey_id` (CTE-V2). The deterministic schedule never places two encounter points so close that a second fires before the first resolves; the journey is paused until resolution.
 - `journey_id` MUST reference an `actor_travel_state` row with `status == Active` (CTE-V1). An encounter cannot fire on an `Arrived`/`Canceled` journey.
-- `trigger_progress_fraction ∈ (0.0, 1.0)` — strictly interior; encounters never fire exactly at origin (0.0) or destination (1.0).
+- `trigger_progress_permille ∈ (0, 1000)` — strictly interior; encounters never fire exactly at origin (0) or destination (1000).
 - `kind` is drawn from the encounter table for `(biome, route_kind)` weighted by `province_danger_band`; `available_approaches` is the fixed per-kind subset (§4.3).
 - `chosen_approach` is `Some(..)` exactly when `status ∈ {Resolving, Resolved}`; `Encounter:Resolve` sets it and it must be ∈ `available_approaches` (CTE-V3).
 - `outcome` is `Some(..)` exactly when `status == Resolved`; every field is engine-clamped to the encounter-table entry's `OutcomeBounds` before the EVT-T3 apply.
@@ -139,7 +163,7 @@ pub enum ProvinceDangerBand {                       // closed enum 3 V1+30d+ —
 pub encounter_schedule: Vec<EncounterPoint>,        // the pre-rolled encounter schedule, pinned at Travel:Initiate; empty Vec = no encounters / pre-bump rows
 
 pub struct EncounterPoint {
-    pub progress_fraction: f32,                     // ∈ (0.0, 1.0) — where along the journey this encounter fires
+    pub progress_permille: u16,                     // ∈ (0, 1000) — where along the journey this fires
     pub encounter_seed: u64,                        // seeds the kind roll + LLM prompt + outcome roll for the encounter at this point
 }
 ```
@@ -198,7 +222,7 @@ At Travel:Initiate the encounter schedule is computed ONCE and PINNED onto the j
   seed = blake3(journey_id || route_id);  rng = Rng::from_seed(seed);
   walk a Poisson process over the route's expected duration whose rate = the encounter table's
     danger_base_rate for the route's (biome, route_kind);
-  each event → an EncounterPoint { progress_fraction ∈ (0.0, 1.0), encounter_seed = rng.next_u64() }.
+  each event → an EncounterPoint { progress_permille ∈ (0, 1000), encounter_seed = rng.next_u64() }.
   V1+30d+ cap: ≤4 points per journey (CTE-V8 — bounds work + avoids encounter fatigue).
   The result is STORED in actor_travel_state.encounter_schedule (§3.2). It is NOT re-derived each
   tick: the schedule depends on world_geometry biome + route.kind, both mutable via GeographyDelta

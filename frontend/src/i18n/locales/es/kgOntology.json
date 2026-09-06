@@ -101,7 +101,6 @@
     "addEdgeType": "Añadir tipo de arista",
     "code": "Código",
     "label": "Etiqueta",
-    "temporalField": "temporal (valid_from + provenance)",
     "cardinality": "Cardinalidad",
     "addButton": "Añadir tipo de arista",
     "addSectionTitle": "Añadir al esquema",
@@ -132,7 +131,8 @@
     "emptyTitle": "Este esquema está vacío",
     "emptyHelp": "Comienza añadiendo un tipo de nodo (un personaje, un lugar, una organización…), luego conéctalos con un tipo de arista.",
     "deleteConfirmTitle": "¿Eliminar este componente?",
-    "deleteConfirmBody": "«{{code}}» es referenciado por {{count}} elemento(s) del grafo. Eliminarlo lo marcará como obsoleto; los datos seguirán siendo consultables. ¿Eliminar de todos modos?"
+    "deleteConfirmBody": "«{{code}}» es referenciado por {{count}} elemento(s) del grafo. Eliminarlo lo marcará como obsoleto; los datos seguirán siendo consultables. ¿Eliminar de todos modos?",
+    "temporalField": "temporal (valid_from + provenance)"
   },
   "canvas": {
     "list": "Lista",

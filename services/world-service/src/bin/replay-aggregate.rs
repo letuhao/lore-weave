@@ -13,7 +13,7 @@
 //!     --reality-id <uuid>
 //!     --projection <table>                  (an L3.A projection table)
 //!     --aggregate <type>:<id>               (repeatable — 1 for single-aggregate
-//!                                            tables, 2 for npc_session_memory)
+//!                                            tables, 2 for a cross-aggregate one)
 //!     --boundary-event-id <uuid>            (replay events ≤ this one, global order)
 //!     --pk '<json {col: value, …}>'         (the sampled row's primary key)
 //! ```
@@ -335,7 +335,7 @@ mod tests {
             "--reality-id",
             "00000000-0000-0000-0000-000000000001",
             "--projection",
-            "pc_inventory_projection",
+            "session_participants",
             "--boundary-event-id",
             "00000000-0000-0000-0000-0000000000aa",
         ])
@@ -355,7 +355,7 @@ mod tests {
         // sorted: item_code, pc_id — and values track the columns.
         assert_eq!(inv.pk_columns, vec!["item_code", "pc_id"]);
         assert_eq!(inv.pk_values, vec!["sword", "pc-1"]);
-        assert_eq!(inv.projection, "pc_inventory_projection");
+        assert_eq!(inv.projection, "session_participants");
     }
 
     #[test]
@@ -405,7 +405,7 @@ mod tests {
             "--reality-id",
             "not-a-uuid",
             "--projection",
-            "pc_projection",
+            "region_projection",
             "--boundary-event-id",
             "00000000-0000-0000-0000-0000000000aa",
             "--aggregate",
@@ -415,7 +415,7 @@ mod tests {
         ]);
         assert!(Invocation::parse(&args, "u".into()).is_err());
         // also bad boundary
-        args[4] = "pc_projection".into();
+        args[4] = "region_projection".into();
         args[2] = "00000000-0000-0000-0000-000000000001".into();
         args[6] = "nope".into();
         assert!(Invocation::parse(&args, "u".into()).is_err());

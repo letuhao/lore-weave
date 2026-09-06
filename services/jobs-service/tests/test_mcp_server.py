@@ -224,8 +224,15 @@ class _FakeStore:
         # Faithfully honor `limit` like the real keyset SQL does (K36 budget test
         # depends on it; existing tests seed ≤2 owned rows so [:limit] is a no-op there).
         limit = kw.get("limit")
+        # 🔴 THE STUB TRUNCATED BUT NEVER SAID THERE WAS MORE, so no test could reach the
+        # has-more branch and D-PAGE-READ-AS-A-TOTAL was unreachable in this suite. The real
+        # keyset query returns a cursor exactly when it cut the result short; model that, or the
+        # stub quietly guarantees every page looks like a complete listing.
         if isinstance(limit, int) and limit >= 0:
+            truncated = len(mine) > limit
             mine = mine[:limit]
+            if truncated:
+                return mine, "stub-cursor"
         return mine, None
 
     async def count_summary(self, conn, owner_user_id):
@@ -300,12 +307,59 @@ async def _patched(store_obj):
         yield srv, _ctx
 
 
+async def test_a_PAGE_says_it_is_a_page(monkeypatch):
+    """D-PAGE-READ-AS-A-TOTAL, asserted BEHAVIOURALLY rather than by reading the source.
+
+    🔴 THE FIRST VERSION OF THIS CHECK WAS VACUOUS TWICE OVER. The source-text tests beside it
+    stayed GREEN under an injected `if False:` — text cannot tell "present" from "reachable" —
+    and the shape test's page assertions never ran, because its fixture has two jobs and
+    therefore no next_cursor. A check whose fixture cannot produce the condition proves nothing.
+
+    So this one FORCES the page: limit=1 over a two-job seed, which is the smallest fixture that
+    can paginate.
+    """
+    from uuid import UUID
+
+    async with _patched(_seed()) as (srv, _ctx):
+        res = await srv.jobs_list(_ctx(UUID(TEST_USER)), limit=1)
+    assert res["next_cursor"], "limit=1 over two jobs must paginate, or this test is vacuous"
+    assert res["returned"] == 1
+    assert res["page"] == {"returned": 1, "has_more": True}
+    # The sentence the live failure needs contradicted: it answered "10 background jobs running"
+    # off a 10-item page while 31 were active.
+    assert "NOT the total" in res["guidance"]
+    assert "Do not report this number as how many jobs there are" in res["guidance"]
+    assert "jobs_summary" in res["guidance"]
+
+
+async def test_the_LAST_page_is_not_labelled_partial():
+    """The inverse defect: telling a caller a COMPLETE listing might have more would under-report
+    a true total. With no next_cursor there must be no page block at all."""
+    from uuid import UUID
+
+    async with _patched(_seed()) as (srv, _ctx):
+        res = await srv.jobs_list(_ctx(UUID(TEST_USER)))
+    if not res["next_cursor"]:
+        assert "page" not in res and "guidance" not in res
+        assert res["returned"] == len(res["items"])
+
+
 async def test_jobs_list_shape_and_owner_scope():
     from uuid import UUID
 
     async with _patched(_seed()) as (srv, _ctx):
         res = await srv.jobs_list(_ctx(UUID(TEST_USER)))
-    assert set(res) == {"items", "next_cursor", "detail"}
+    # AMENDED 2026-08-14 (D-PAGE-READ-AS-A-TOTAL). The shape gained `returned` on every response
+    # and a `page`/`guidance` pair when there IS a next page, because a payload that carried the
+    # page signal and no statement of it let a live turn report 10 items as "10 jobs running"
+    # against 31 actually active. The key set is still PINNED — this is a contract test and
+    # loosening it to a subset check would be the wrong repair.
+    _base = {"items", "next_cursor", "detail", "returned"}
+    assert set(res) == (_base | {"page", "guidance"} if res.get("next_cursor") else _base)
+    assert res["returned"] == len(res["items"])
+    if res.get("next_cursor"):
+        assert res["page"]["has_more"] is True
+        assert "NOT the total" in res["guidance"]
     # K24/K36 (2026-07-24) — the versioned-default migration (spec §6b) is now COMPLETE:
     # the federated `jobs_list` defaults to `summary`, honoring OUT-2 ("default to the
     # smaller shape"). `detail=full` remains an explicit opt-in (proven below), so a caller

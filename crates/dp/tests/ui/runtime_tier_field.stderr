@@ -1,0 +1,16 @@
+error[E0277]: the trait bound `TierLevel: Tier` is not satisfied
+  --> tests/ui/runtime_tier_field.rs:19:17
+   |
+19 |     type Tier = TierLevel;
+   |                 ^^^^^^^^^ the trait `Tier` is not implemented for `TierLevel`
+   |
+   = help: the following other types implement trait `Tier`:
+             dp::T0
+             dp::T1
+             dp::T2
+             dp::T3
+note: required by a bound in `dp::DpAggregate::Tier`
+  --> src/aggregate.rs
+   |
+   |     type Tier: Tier;
+   |                ^^^^ required by this bound in `DpAggregate::Tier`

@@ -96,14 +96,15 @@ impl ModifierSource {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModifierOp {
-    Flat(i32),
-    /// Per-mille percentage. DF7-A5 — percent modifiers SUM into one factor
-    /// rather than chaining multiplicatively, which makes the result
-    /// order-independent and kills exponential buff stacking.
-    Percent(i32),
-}
+/// How a contribution combines.
+///
+/// **Re-exported, not defined here (2026-08-02).** The definition moved down to
+/// `ruleset-core` when the actor hub needed the same op set for its contribution
+/// rows: the hub sits beneath the features and combat is a feature, so a
+/// hub -> `game-rules` dependency would become a cycle the day combat becomes a
+/// plugin. `game_rules::stats::ModifierOp` still names the same type and no law
+/// changed — see `ruleset-core/src/modifier.rs` for the full reasoning.
+pub use ruleset_core::ModifierOp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatModifier {

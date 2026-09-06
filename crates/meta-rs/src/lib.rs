@@ -41,13 +41,22 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, rust_2018_idioms)]
 
+/// `E1` — the OWNER-SCOPED read of `actor_control_binding`, and the only
+/// sanctioned one in Rust. It is here rather than in the two services that
+/// need it because `meta-sensitive-read-bypass-lint.sh` excuses callers BY
+/// NAME, and a list that grows by one per caller stops being a gate.
+pub mod actor_binding;
 pub mod allowlist;
 pub mod audit;
 pub mod cache;
+pub mod control_plane;
 pub mod errors;
 pub mod metawrite;
 pub mod routing;
 pub mod sensitive_paths;
+/// `5B` / `DP-C8` — the capability store: what the control plane issued, so it
+/// can be validated, refreshed and revoked rather than merely minted.
+pub mod session_store;
 /// Q1 B2b — the concrete sqlx/Postgres adapter. Feature-gated so a caller that
 /// does not want sqlx does not get it.
 #[cfg(feature = "sqlx-pg")]

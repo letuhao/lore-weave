@@ -77,6 +77,17 @@ export const kalApi = {
     );
   },
 
+  /**
+   * The untimed catalogue: every entity that ever existed in the book, no story position.
+   *
+   * Reviewed under plan T53 and left as-is because it has **zero call sites** in `frontend/src`
+   * today — it is client surface mirroring the KAL contract, not a live read, so the
+   * "reads the end of the book" defect T7 fixed in composition does not currently reach a
+   * user through here. A surface that needs the cast AT a chapter must call
+   * `GET /v1/kal/books/{id}/state?as_of=N` instead; that method is deliberately NOT added
+   * here until something calls it (T51 owns the frontend migration) — an unused wrapper is
+   * how a contract silently drifts from the surface it claims to mirror.
+   */
   roster(bookId: string, token: string, opts?: { cursor?: string; limit?: number }) {
     return apiJson<RosterResponse>(
       `${BASE}/${bookId}/roster${qs({ cursor: opts?.cursor, limit: opts?.limit })}`,

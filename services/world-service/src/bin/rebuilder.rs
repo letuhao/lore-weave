@@ -190,6 +190,26 @@ fn run() -> Result<i32, String> {
         stats.updates_applied
     );
 
+    // A COUNT IS NOT A REASON.
+    //
+    // This printed `failed=N` and nothing else, while `outcomes` held every
+    // failure's error string the whole time — so the exit code said "an
+    // aggregate failed" and the operator's next move was to guess. Diagnosing
+    // one such failure cost three eliminated hypotheses (a shared database, a
+    // missing pgvector library, a dirty schema) before anyone could see that
+    // the reason had been in memory at the moment of the print.
+    //
+    // `eprintln!` beside the JSON on stdout, deliberately: the Go invoker
+    // parses stdout and must keep seeing exactly `RebuildStats`.
+    for o in &outcomes {
+        if let rebuilder::AggregateStatus::Failed { error, retries } = &o.status {
+            eprintln!(
+                "[rebuilder] FAILED {}/{} after {retries} retry(ies): {error}",
+                o.agg.aggregate_type, o.agg.aggregate_id
+            );
+        }
+    }
+
     // Fail-loud: any dead-lettered aggregate ⇒ exit non-zero so the caller
     // keeps the reality FROZEN and an operator inspects the dead letter.
     Ok(if stats.aggregates_failed == 0 { 0 } else { 1 })

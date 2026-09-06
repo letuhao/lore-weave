@@ -52,7 +52,7 @@ func (f *fakeInvoker) Rebuild(_ context.Context, _ uuid.UUID, _ string) (Rebuild
 func validRebuildReq() RebuildProjectionRequest {
 	return RebuildProjectionRequest{
 		RealityID:      uuid.New(),
-		ProjectionName: "pc_projection",
+		ProjectionName: "canon_projection",
 		Actor:          uuid.NewString(),
 		Reason:         "post-corruption rebuild after INC-77",
 		Confirm:        true,

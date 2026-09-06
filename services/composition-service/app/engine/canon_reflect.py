@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
+from app.config import settings
 from app.engine.critic_policy import resolve_critic_refs
 from app.engine.canon_check import (
     CanonViolation,
@@ -40,7 +41,7 @@ from app.engine.plan_conflict import (
 from loreweave_llm import ReasoningDirective
 
 from app.engine.cowrite import build_revise_messages, revise_draft
-from app.engine.name_grounding import audit_names
+from app.engine.name_grounding import audit_names, known_names_from_cast
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,24 @@ async def run_canon_reflect(
     # NOT_APPLICABLE (nothing to check), which are different things and were indistinguishable
     # on the envelope until this flag existed.
     plan_supported: bool = True,
+    # T36 / SET-3 — the PER-BOOK half of the role check, read from
+    # `composition_work.settings["canon_role_check_enabled"]` by the caller (which owns the
+    # Work row; `profile` is a parsed BookProfile and deliberately does NOT carry raw
+    # settings, so reading it off `profile` would be a silent no-op — SET-4's exact
+    # prohibition). ANDed with the deploy ceiling below.
+    role_check_enabled: bool = False,
+    # 🔴 D-NAME-GROUNDING-USES-PROMPT-PROXY-IN-PRODUCTION. Without this the live call was
+    # `audit_names(draft, packed_prompt, …)` with `known_names` never passed, so production ran
+    # in `prompt_proxy` mode — comparing the draft against THE DRAFTER'S OWN INPUT. The module's
+    # docstring names that for what it is: "a check whose input and whose expectation come from
+    # the same place verifies nothing". Measured on the same draft: with the authored cast the
+    # invented name is caught; through the live path it reported `unanchored: []`.
+    #
+    # Rows in either cast shape (`name`/`aliases` or `cached_name`/`cached_aliases`). Absent or
+    # empty ⇒ the audit falls back to the proxy and SAYS so via `truth_source`, which is the
+    # degrade story: a glossary outage must not turn the check into a false-accusation machine,
+    # and it must not look like a verification either.
+    authored_cast: list[dict[str, Any]] | None = None,
     draft: str, packed_prompt: str, profile: Any,
     drafter_source: str, drafter_ref: str,
     judge_source: str | None, judge_ref: str | None,
@@ -207,10 +226,13 @@ async def run_canon_reflect(
     # reading position — only the draft and what the model was shown — so there is no path on
     # which it cannot run, and the case it catches (an invented character) is *most* likely
     # exactly where the old code checked least.
-    audit = audit_names(draft, packed_prompt, getattr(profile, "source_language", None))
+    known_names = known_names_from_cast(authored_cast)
+    audit = audit_names(draft, packed_prompt, getattr(profile, "source_language", None),
+                        known_names=known_names)
     name_fields = dict(
         unanchored_names=audit.unanchored, name_near_misses=audit.near_misses,
         name_check_method=audit.method,
+        name_truth_source=audit.truth_source,
     )
 
     def _name_check(a) -> CheckStatus:
@@ -288,7 +310,23 @@ async def run_canon_reflect(
     distinct = resolve_critic_refs(judge_source, judge_ref, drafter_ref).distinct
     source_language = getattr(profile, "source_language", "auto")
 
+    # The role axis reports COULD-NOT-VERIFY through this, because every failure path in
+    # `judge_role_attribution` returns `[]` — the same value a clean check returns. Set by the
+    # callback below and folded onto the result after the reflect loop; `nonlocal` rather than
+    # a return value so the existing `check_fn` contract (and its callers) are untouched.
+    role_degraded: str | None = None
+
     async def check_fn(text: str) -> list[CanonViolation]:
+        nonlocal role_degraded
+
+        def _role_degraded(reason: str) -> None:
+            nonlocal role_degraded
+            # First reason wins across reflect iterations: the interesting event is that the
+            # check stopped being trustworthy, and a later iteration overwriting it with a
+            # different failure would hide when that started.
+            if role_degraded is None:
+                role_degraded = reason
+
         return await check_canon(
             text, snapshot,
             judge=llm if distinct else None, user_id=str(user_id),
@@ -296,6 +334,13 @@ async def run_canon_reflect(
             model_ref=str(judge_ref) if distinct else "",
             source_language=source_language, trace_id=trace_id,
             cancel_check=cancel_check,
+            # T36 / SET-3 — effective = AND(deploy ceiling, per-book setting).
+            # The ceiling answers "is this available at all here?"; the Work's own
+            # setting answers "does this author want it?". A ceiling that is off
+            # can never be overridden upward by a book.
+            role_check=(settings.authoring_canon_role_check_ceiling
+                        and role_check_enabled),
+            on_role_degraded=_role_degraded,
         )
 
     revise_out_tokens = 0
@@ -328,10 +373,12 @@ async def run_canon_reflect(
     # The name audit ran on the FINAL text, which a revise pass may have rewritten — re-run it
     # so the report describes the draft the author receives, not the one before repair.
     final_audit = audit_names(result.text, packed_prompt,
-                              getattr(profile, "source_language", None))
+                              getattr(profile, "source_language", None),
+                              known_names=known_names)
     result.unanchored_names = final_audit.unanchored
     result.name_near_misses = final_audit.near_misses
     result.name_check_method = final_audit.method
+    result.name_truth_source = final_audit.truth_source
     # S1 — per-check first; `coverage` is its CHECKED subset. `canon_cast` is DEGRADED (not
     # merely absent from coverage) when the knowledge snapshot could not be read: the guard is
     # fine, its input was not, and those are different things to whoever reads the report.
@@ -363,6 +410,11 @@ async def run_canon_reflect(
         plan_supported=plan_supported, trace_id=trace_id, cancel_check=cancel_check,
     )
     result.unlinked_gone_refs = plan_unlinked
+    # The role axis: only reportable when the check was actually asked for. `None` when it was
+    # off (nothing was owed), the failure reason when the judge was called and could not
+    # answer, and "checked" when it did.
+    if settings.authoring_canon_role_check_ceiling and role_check_enabled:
+        result.role_check_status = role_degraded or "checked"
     result.checks = {
         "canon_cast": check_over(
             len(result.cast_liveness) - len(unresolved), degraded=degraded),

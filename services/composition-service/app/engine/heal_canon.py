@@ -42,6 +42,60 @@ def convention_for(genre_tags: Sequence[str] | None, source_language: str = "aut
     return ""
 
 
+# The CHARACTER-kind attribute codes the canon bible renders, in the shape `render_canon`
+# reads. Same codes `cast_attributes` persists (engine/cast_plan.py) — the bible and the
+# writer agree by construction rather than by a comment.
+_CANON_ATTRS = ("role", "personality", "relationships", "description")
+
+
+def cast_from_state(entities: Sequence[Mapping]) -> list[dict[str, str]]:
+    """Flatten a KAL ``state@as_of`` response into the cast shape ``render_canon`` reads.
+
+    This is the adapter that makes the bible TEMPORAL. `roster` could only ever supply
+    `{entity_id, name}` — the KAL projects it to id+name by contract — so every canon bible
+    rendered from a roster was a bare list of names, and `render_canon`'s role/description/
+    relationships branches were dead code for authored books. `state@as_of` carries facts, so
+    the bible now says what each character WAS at the chapter being written: their rank then,
+    their allegiance then, alive or dead then.
+
+    An entity with no name fact at that position is dropped — it did not exist yet (or had no
+    name yet), and a nameless bible line grounds nothing. Facts arrive one-per-attribute
+    already (the read applies `DISTINCT ON`), so no precedence rule is needed here; a
+    duplicate would mean a substrate bug, and last-wins keeps it deterministic rather than
+    order-dependent on a dict rebuild.
+    """
+    out: list[dict[str, str]] = []
+    for ent in entities:
+        if not isinstance(ent, Mapping):
+            continue
+        facts = ent.get("facts")
+        if not isinstance(facts, Sequence) or isinstance(facts, (str, bytes)):
+            continue
+        row: dict[str, str] = {}
+        for f in facts:
+            if not isinstance(f, Mapping):
+                continue
+            attr, value = str(f.get("attr") or ""), f.get("value")
+            if not attr or value is None:
+                continue
+            if attr == "name" or attr in _CANON_ATTRS:
+                row[attr] = str(value)
+        # ⚠️ A nameless row is KEPT here since QC-5 C41, and the entity_id is what makes that
+        # useful. This used to `continue`, on the reasoning that an entity with no `name` fact
+        # "did not exist yet (or had no name yet)". Measured on the acceptance book, that is
+        # false: **13 of 21 entities carry a `name` fact and 8 do not**, and the 8 are the
+        # PEOPLE — `state@as_of` simply does not project a name, while `roster` does by
+        # contract. Dropping here threw the characters away before anyone could look them up,
+        # and the block headed "CHARACTER CANON" ended up listing events and objects only.
+        #
+        # The "no nameless bible line" property is unchanged: `render_canon` still skips a row
+        # whose name is blank. What moved is WHERE the decision happens — after the caller has
+        # had its chance to fill the name, not before.
+        row["entity_id"] = str(ent.get("entity_id") or "")
+        out.append(row)
+    return out
+
+
 def render_canon(cast: Sequence[Mapping], *, convention: str = "") -> str:
     """Build a self-heal STORY BIBLE from the designed cast (the same attributes persisted
     to the glossary: `name` + `role`/`personality`/`relationships`/`description`) plus an

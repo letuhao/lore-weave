@@ -119,3 +119,70 @@ func livenessWarnings(steps []workflowStepIn) []string {
 	}
 	return out
 }
+
+// ── EXISTENCE, which is a different question from liveness ────────────────────────────────
+//
+// 🔴 DQ-T37 (owner 2026-08-31): "validate that a proposed workflow step's tool name refers to a
+// tool that exists". Measured on 5 live cards: of 10 proposed steps, 3 named `chapter_compose`,
+// which is not among the federated tools. A direct probe confirmed it at the boundary — a step
+// with tool='totally_not_a_real_tool' was accepted and proposed. Three of five proposals would
+// have created a recipe that cannot run, saved under a name the author will trust later.
+//
+// 🔴 THE LIVENESS MANIFEST CANNOT ANSWER THIS, and reaching for it is the obvious wrong move.
+// It carries 223 tools; the live catalogue carries 316; 94 REAL tools are in the catalogue and
+// absent from the manifest. Rejecting on "absent from liveness" would block steps naming any of
+// those 94. Hence a separate contract that is a UNION of both sources: absence from BOTH is the
+// signal, and that is exactly what a hallucinated name looks like.
+//
+// The registry deliberately does NOT call ai-gateway for this — see probe.go on the
+// agent-registry→ai-gateway dependency cycle. A generated contract file both sides read is the
+// pattern this file already uses, drift-locked by a test.
+
+//go:embed tool-names.json
+var toolNamesJSON []byte
+
+type toolNamesContract struct {
+	Count int      `json:"count"`
+	Tools []string `json:"tools"`
+}
+
+var knownToolNames = loadToolNames()
+
+func loadToolNames() map[string]bool {
+	var c toolNamesContract
+	if err := json.Unmarshal(toolNamesJSON, &c); err != nil || len(c.Tools) == 0 {
+		// Degrade-safe, the same way loadLiveness is: an unreadable contract must not brick
+		// workflow authoring by rejecting every step. The gate goes INERT and says so.
+		slog.Error("tool-names contract unreadable — the unknown-tool gate is INERT", "err", err)
+		return map[string]bool{}
+	}
+	out := make(map[string]bool, len(c.Tools))
+	for _, n := range c.Tools {
+		out[n] = true
+	}
+	return out
+}
+
+// toolUnknown reports whether the platform has never heard of this tool name.
+//
+// 🔴 THE UNION IS TAKEN HERE, AT CHECK TIME, not only when the contract is generated. A name
+// present in the LIVENESS manifest is known even if the names snapshot has not caught up: the
+// two files are refreshed by different jobs, and a tool that has been probed but not yet
+// re-snapshotted is real. Computing it here also means a test (or an operator) that swaps the
+// liveness manifest gets a consistent answer instead of one baked in at build time — which is
+// how this check first broke TestValidateWorkflowRejectsAProvenBrokenTool: its fixture tools
+// are absent from the real snapshot, so an unknown-first gate rejected them for the wrong
+// reason and hid the known-broken refusal behind a "does not exist".
+//
+// Returns false when the contract is empty (inert) — an unreadable snapshot must not reject
+// real work.
+func toolUnknown(tool string) bool {
+	if len(knownToolNames) == 0 {
+		return false
+	}
+	if knownToolNames[tool] {
+		return false
+	}
+	_, inLiveness := liveness.Tools[tool]
+	return !inLiveness
+}

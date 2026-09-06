@@ -1,0 +1,10 @@
+{
+ "_what": "Scenarios that forbid a phrase in the model's answer and do not say why that phrase is a FALSE CLAIM about their own fixture. Shrink-only. 47 of 51 negative gates already carry a `why`; these four are in older duplicate scenario files and their reasons are NOT invented here — a justification written by someone who did not choose the phrase is not a justification.",
+ "count": 4,
+ "scenarios": [
+  "scenarios-batch2.json::composition-outline-node-edit",
+  "scenarios-batch2.json::glossary-list-system-standards",
+  "scenarios-batch3.json::composition-list-outline",
+  "scenarios-batch4.json::memory-recall-entity"
+ ]
+}

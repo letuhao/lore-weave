@@ -1,0 +1,39 @@
+{
+ "_note": "D-FIXTURE-NAME-IS-THE-MOST-PLAUSIBLE-LOOKING-ID — the neighbouring population, not the row's own instance. The placeholder arm of _invented_supplier_ids was exempting CONTEXT ids (book_id/chapter_id/project_id) and so could not see 155 measured values like `current_book_id_placeholder` (144 of them). The exemption's own reason is that the RUNTIME injects context ids and they may not be UUIDs — which cannot apply to a value carrying the word `placeholder`. This arm proves the widened guard on the wire. THE ROW'S OWN INSTANCE — a LOOP-THROWAWAY fixture NAME — is deliberately NOT covered and is asserted uncovered in the owning suite.",
+ "scenarios": [
+  {
+   "id": "author-pastes-a-placeholder-book-id",
+   "tool_under_test": "book_update_details",
+   "expect_tool": "book_update_details",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Update the book details for book YOUR_BOOK_ID_HERE — set the description to 'The Ember Codex'.",
+   "prompt_source": "🔴 THE AUTHOR SUPPLIES THE PLACEHOLDER, which makes the trigger DETERMINISTIC instead of waiting for the model to emit one — the same route the degenerate-UUID arm was proven by after 10 runs failed to reproduce the model's own fabrication. It is also a real path: a person pasting a line out of a template or a doc. `YOUR_BOOK_ID_HERE` is one of the measured values, and the wording carries book_update_details' declared vocabulary so the measured turn can reach its own tool.",
+   "needs_target": false,
+   "approve": "approved_once",
+   "editor_context": false,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_book",
+     "query": "SELECT count(*)::text FROM books WHERE id='{book_id}' AND coalesce(description,'') <> 'The Ember Codex'",
+     "expect": "1",
+     "why": "The fixture's description is NOT yet the value this turn would set, so the store bar is not vacuous. 🔴 THE FIRST VERSION NAMED `subtitle`, WHICH IS NOT A COLUMN — and the harness refused to run rather than spending five runs on an assertion that cannot execute. Columns are id, owner_user_id, title, description, summary, … and no subtitle."
+    }
+   ],
+   "falsifier": "REFUTED IF `book_id` still carries `YOUR_BOOK_ID_HERE` when the call reaches the tool — the guard did not fire. PASSES IF the argument is GONE and the refusal tells the model the value is not an identifier this platform issues. A run where the model silently substitutes the ambient book id instead is a THIRD outcome and must be read as neither: the guard is about what it does with the value it was given.",
+   "answer_expect": {
+    "why": "None. The guard's behaviour on the wire is the measurement, read from the recorded tool calls and the service log."
+   },
+   "ship_audit": {
+    "gate": "OWED — Tier A, it writes book metadata.",
+    "absent_case": "OWED — a book id that does not exist must be refused.",
+    "idempotency": "OWED — the same update twice must not duplicate anything.",
+    "tenancy": "OWED — book-scoped, and the fixture is a throwaway."
+   },
+   "defects": []
+  }
+ ]
+}

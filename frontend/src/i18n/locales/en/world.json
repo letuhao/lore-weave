@@ -9,7 +9,15 @@
     "description": "Create your first world to start authoring lore — no chapters needed."
   },
   "card": {
-    "books": "{{count}} books"
+    "books": "{{count}} books",
+    "delete": "Delete world",
+    "delete_blocked": "Move its {{count}} book(s) out of this world first",
+    "delete_title": "Delete this world?",
+    "delete_description": "Deleting \"{{name}}\" cannot be undone. Its lore, maps and timeline go with it.",
+    "delete_hint": "A world with books cannot be deleted — move them out first.",
+    "delete_cancel": "Cancel",
+    "delete_confirm": "Delete permanently",
+    "delete_done": "World deleted"
   },
   "create": {
     "cta": "New world",

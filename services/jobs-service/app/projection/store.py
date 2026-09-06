@@ -24,7 +24,19 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from loreweave_jobs import TERMINAL as _TERMINAL_SET
 from loreweave_jobs import JobEvent
+
+# 🔴 THE FOUR SQL COPIES — DQ-T86 (c), owner ruling 2026-08-31. The upsert below encoded the
+# terminal vocabulary FOUR more times as literal ('completed','failed','cancelled') lists, and
+# these were the dangerous copies: the WHERE clause is what decides whether an incoming event
+# may overwrite the row. Add a member to JobStatus and a job in the new terminal state reads as
+# NON-terminal here, so a later non-terminal event REGRESSES a finished job — silently, and in
+# the store rather than in a view.
+#
+# Rendered from the SDK set, then substituted below rather than via an f-string: the SQL
+# contains `'{}'::jsonb`, which an f-string would try to interpolate.
+_TERMINAL_SQL = "(" + ",".join(f"'{s.value}'" for s in sorted(_TERMINAL_SET, key=lambda x: x.value)) + ")"
 
 # Monotonic upsert. The ON CONFLICT WHERE clause encodes the ordering rules above
 # so an out-of-order / replayed event can never regress the row.
@@ -65,16 +77,21 @@ ON CONFLICT (service, job_id) DO UPDATE SET
 WHERE
   -- terminal incoming: always apply, UNLESS it is an OLDER terminal landing on a
   -- newer terminal (don't let a stale cancelled clobber a later completed).
-  ( EXCLUDED.status IN ('completed','failed','cancelled')
-    AND NOT ( job_projection.status IN ('completed','failed','cancelled')
+  ( EXCLUDED.status IN {_TERMINAL_SQL}
+    AND NOT ( job_projection.status IN {_TERMINAL_SQL}
               AND EXCLUDED.job_updated_at < job_projection.job_updated_at ) )
   OR
   -- non-terminal incoming: only over a non-terminal current row, and only forward
   -- in time (>= so an equal-stamp replay of the same status is a harmless no-op write).
-  ( EXCLUDED.status NOT IN ('completed','failed','cancelled')
-    AND job_projection.status NOT IN ('completed','failed','cancelled')
+  ( EXCLUDED.status NOT IN {_TERMINAL_SQL}
+    AND job_projection.status NOT IN {_TERMINAL_SQL}
     AND EXCLUDED.job_updated_at >= job_projection.job_updated_at )
 """
+# Substituted, not interpolated — see the note on _TERMINAL_SQL above. Asserted rather than
+# assumed: a silent no-op replace would leave the sentinel in the SQL and fail at execution
+# time, on a write path, which is the worst place to find out.
+assert "{_TERMINAL_SQL}" in _UPSERT, "the terminal-set sentinel is missing from _UPSERT"
+_UPSERT = _UPSERT.replace("{_TERMINAL_SQL}", _TERMINAL_SQL)
 
 
 def _jsonb(value: Any) -> Optional[str]:
@@ -176,7 +193,13 @@ _COLS = (
 # Status buckets for the P4 GUI's two lists (Active = live/unpaginated, History =
 # offset-paginated). Literal constants — safe to inline into SQL (no user input).
 _ACTIVE_STATUSES = ("pending", "running", "paused", "cancelling")
-_TERMINAL_STATUSES = ("completed", "failed", "cancelled")
+# 🔴 DERIVED, NOT RETYPED. This read `("completed", "failed", "cancelled")` — a second copy of
+# a set whose own definition in `loreweave_jobs.contract` is annotated "The single source of
+# truth (no parallel set to drift)". Found 2026-08-31 while sizing what a new terminal status
+# would cost: adding one member to `JobStatus` would have left this tuple, and five more like
+# it elsewhere, silently believing the old vocabulary. Fixed here because this file is the one
+# that decides what the projection calls LIVE.
+_TERMINAL_STATUSES = tuple(sorted(s.value for s in _TERMINAL_SET))
 _ACTIVE_IN = ", ".join(f"'{s}'" for s in _ACTIVE_STATUSES)
 _TERMINAL_IN = ", ".join(f"'{s}'" for s in _TERMINAL_STATUSES)
 
@@ -433,3 +456,67 @@ async def get_job(conn: Any, owner_user_id: str, service: str, job_id: str) -> O
         service, job_id, owner_user_id,
     )
     return _row_to_dict(row) if row else None
+
+
+async def list_non_terminal_ids(conn: Any, service: str, *, older_than_s: int) -> list[str]:
+    """Job ids this projection still calls LIVE for `service`, untouched for `older_than_s`.
+
+    🔴 THE QUESTION THE BACKSTOP COULD NEVER ASK. `ReconcileSweeper` fetches
+    `GET /internal/{svc}/jobs?since=` and upserts what comes back — it is additive and keyed on
+    CHANGE, so a row that stopped changing (or whose owning row was deleted) never appears in
+    another window. Measured 2026-08-31: 28 rows sat at running/pending/paused for up to 74
+    days, and `jobs_list` advertised `cancel` on every one of them. All 22 composition rows had
+    NO owning row at all.
+
+    `older_than_s` is a GRACE, not a guess: a job that legitimately started seconds ago must
+    never be asked about and marked gone because its own creation event is still in flight. It
+    is the one knob here and it fails toward doing nothing.
+    """
+    rows = await conn.fetch(
+        f"SELECT job_id::text FROM job_projection "
+        f"WHERE service = $1 AND status NOT IN ({_TERMINAL_IN}) "
+        f"AND job_updated_at < now() - make_interval(secs => $2::double precision) "
+        f"ORDER BY job_updated_at",
+        service, float(older_than_s),
+    )
+    return [r["job_id"] for r in rows]
+
+
+#: What the projection says about a job whose owning service no longer has it.
+#: `detail_status` is the contract's own home for a service-native sub-state (M2), so the
+#: REASON is carried there rather than smuggled into `status`.
+from app.contract import OWNER_LOST_DETAIL  # noqa: E402 — one home, see contract.py
+OWNER_LOST_ERROR = {
+    "code": "JOBS_OWNER_LOST",
+    "message": ("The service that owned this job no longer has it. It cannot be resumed or "
+                "cancelled, and its final outcome is not recoverable."),
+}
+
+
+async def mark_owner_lost(conn: Any, service: str, job_id: str) -> bool:
+    """Mark a live-looking projection row DEAD because its owner does not have it any more.
+
+    Owner ruling 2026-08-31 (DQ-T65): "a non-terminal row whose owner no longer has it is
+    DEAD, and is marked so." Returns True if a row actually moved.
+
+    🔴 `failed` IS A COMPROMISE AND THE ROW SAYS SO IN `error`. The job may well have
+    COMPLETED before its row was removed — this loop measured that most such rows are its own
+    torn-down fixtures — so `failed` asserts more than is known. A distinct terminal status
+    would be truer, and it is not free: `JobStatus` is a closed enum read across 40 files and
+    at least six places carry their own hard-coded `("completed", "failed", "cancelled")`,
+    including the one twenty lines above this. That is a cross-cutting change with its own
+    decision, and the honest interim is a terminal status plus a message that does not
+    pretend: "its final outcome is not recoverable."
+
+    GUARDED ON NON-TERMINAL. A row that has since reached a real terminal state — the live
+    stream beat this pass — must not be overwritten by it, so the UPDATE re-checks the status
+    it is replacing instead of trusting the read that selected it.
+    """
+    row = await conn.fetchrow(
+        f"UPDATE job_projection SET status = 'failed', detail_status = $3, error = $4::jsonb, "
+        f"job_updated_at = now() "
+        f"WHERE service = $1 AND job_id = $2::uuid AND status NOT IN ({_TERMINAL_IN}) "
+        f"RETURNING job_id",
+        service, job_id, OWNER_LOST_DETAIL, _jsonb(OWNER_LOST_ERROR),
+    )
+    return row is not None

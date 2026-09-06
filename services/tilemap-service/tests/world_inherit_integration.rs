@@ -13,7 +13,7 @@ use tilemap_service::engine::place_tilemap;
 use tilemap_service::seed::TilemapSeed;
 use tilemap_service::types::template::{TilemapTemplate, TilemapTemplateId, ZoneSpec};
 use tilemap_service::types::zone::{ZoneId, ZoneRole};
-use tilemap_service::types::{ChannelId, ChannelTier, GridSize, TerrainKind};
+use tilemap_service::types::{ChannelId, MapKind, GridSize, TerrainKind};
 use tilemap_service::world_inherit::{
     BiomeBridge, MockFileWorldSource, RegionPath, WorldBiome, WorldSource, WorldZoneSnapshot,
 };
@@ -164,7 +164,7 @@ fn world_zone_some_actually_changes_pipeline_output() {
     let view_none = place_tilemap(
         &template_none,
         ChannelId("ch_delta_test".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         GridSize { width: 48, height: 48 },
         TilemapSeed(0xDE17A),
     )
@@ -172,7 +172,7 @@ fn world_zone_some_actually_changes_pipeline_output() {
     let view_ice = place_tilemap(
         &template_ice,
         ChannelId("ch_delta_test".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         GridSize { width: 48, height: 48 },
         TilemapSeed(0xDE17A),
     )
@@ -203,7 +203,7 @@ fn ac_wi_6_place_tilemap_runs_end_to_end_with_world_zone_inherited() {
     let view = place_tilemap(
         &template,
         ChannelId("ch_world_inherit_test".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         GridSize { width: 48, height: 48 },
         TilemapSeed(0xCAFE),
     )
@@ -214,7 +214,7 @@ fn ac_wi_6_place_tilemap_runs_end_to_end_with_world_zone_inherited() {
     let view_b = place_tilemap(
         &template,
         ChannelId("ch_world_inherit_test".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         GridSize { width: 48, height: 48 },
         TilemapSeed(0xCAFE),
     )

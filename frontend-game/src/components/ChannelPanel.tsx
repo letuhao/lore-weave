@@ -19,7 +19,7 @@ export function ChannelPanel({ url, jwt }: { url: string; jwt: string }) {
   const [joined, setJoined] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { roster, turnNumber, log, pending, selfEntityId } = useChannelStore();
+  const { roster, turnNumber, log, pending, selfEntityId, place } = useChannelStore();
 
   const join = async () => {
     try {
@@ -50,6 +50,14 @@ export function ChannelPanel({ url, jwt }: { url: string; jwt: string }) {
     <div className="flex flex-col gap-3 p-4">
       <header className="text-sm opacity-70">
         turn {turnNumber} · you are entity {selfEntityId ?? '—'}
+        {/* `A4` — WHERE you are. Rendered only when the frame carries it: an
+            actor that has never been sited is nowhere, and inventing a
+            location would be the same confused claim as inventing a `self`.
+            The place NAME when the node is a Domain, the level name otherwise
+            -- `PF_001` gives only a Domain a place. */}
+        {place && (
+          <span data-testid="frame-place"> · at {place.place_name ?? place.level_name}</span>
+        )}
         {/* The in-flight marker is a real UI state: acting twice while a turn
             is resolving is how a player double-spends a turn slot. */}
         {pending && <span className="ml-2 animate-pulse">· resolving…</span>}

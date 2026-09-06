@@ -98,6 +98,7 @@ class TriageGroup:
         "count",
         "status",
         "sample_payload",
+        "sample_triage_id",
         "suggested_actions",
     )
 
@@ -109,6 +110,7 @@ class TriageGroup:
         count: int,
         status: TriageStatus,
         sample_payload: dict[str, Any],
+        sample_triage_id: str | None = None,
         suggested_actions: list[str],
     ) -> None:
         self.signature = signature
@@ -116,6 +118,10 @@ class TriageGroup:
         self.count = count
         self.status = status
         self.sample_payload = sample_payload
+        # The id OF THE SAMPLE — same item the payload came from, so an agent can act on the
+        # thing it just read. kg_triage_place_edge requires a triage_id and names this listing
+        # as the source; without it the tool was unreachable from the agent surface.
+        self.sample_triage_id = sample_triage_id
         self.suggested_actions = suggested_actions
 
 
@@ -189,7 +195,8 @@ class TriageRepo:
                 SELECT signature,
                        (array_agg(item_type ORDER BY created_at DESC))[1] AS item_type,
                        count(*) AS count,
-                       (array_agg(payload ORDER BY created_at DESC))[1] AS sample_payload
+                       (array_agg(payload ORDER BY created_at DESC))[1] AS sample_payload,
+                       (array_agg(triage_id ORDER BY created_at DESC))[1] AS sample_triage_id
                 FROM kg_triage_items
                 WHERE user_id = $1 AND project_id = $2 AND status = $3{type_clause}
                 GROUP BY signature
@@ -210,6 +217,7 @@ class TriageRepo:
                     count=r["count"],
                     status=status,
                     sample_payload=_as_jsonb(r["sample_payload"]),
+                    sample_triage_id=str(r["sample_triage_id"]) if r["sample_triage_id"] else None,
                     suggested_actions=SUGGESTED_ACTIONS.get(it, []),
                 )
             )

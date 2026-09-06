@@ -27,6 +27,12 @@ class Settings(BaseSettings):
 
     # K4b — glossary-service HTTP client for Mode 2 fallback selector.
     glossary_service_url: str = "http://glossary-service:8088"
+
+    # T38 B8 — the KAL base URL. Entity knowledge is read through the KAL (INV-KAL), not
+    # glossary /internal. NON-EMPTY default deliberately: an unset var here would raise
+    # mid-request on a URL built from it, and translation-service's ""-default taught the
+    # other failure mode — a client that treats unset as "feature off" and returns nothing.
+    knowledge_gateway_url: str = "http://knowledge-gateway:3000"
     # 0.5s was survivable only while a glossary read failure degraded SILENTLY to
     # "this book has no entities". It does not any more: the extraction anchor pre-load
     # now fails CLOSED (AnchorPreloadUnavailable -> retryable 503) precisely because
@@ -259,6 +265,30 @@ class Settings(BaseSettings):
     # keeps working without Neo4j running. Set to e.g.
     # bolt://neo4j:7687 to enable. When set, the lifespan hook
     # fail-fasts on unreachable Neo4j (per the K11.2 spec).
+    # D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER — the scheduled mirror sweep always
+    # DETECTS; this decides whether it also closes what it finds by re-emitting through
+    # glossary-service's outbox.
+    #
+    # Default FALSE, and not because repair is risky (it is idempotent and writes no
+    # graph): an always-on repairer MASKS the breakage that caused the drift. A handler
+    # dropping every third event would look exactly like a healthy system with a diligent
+    # janitor. With it on, `knowledge_glossary_mirror_repaired_total` is the alarm —
+    # a healthy system converges to zero repairs per sweep — so turning it on is a
+    # deployment decision made with that metric watched, not a default.
+    # ⚠️ `knowledge_`-prefixed ON PURPOSE. There is no `env_prefix` on this Settings
+    # class, so the field name IS the env var name — `mirror_auto_repair` would be
+    # `MIRROR_AUTO_REPAIR`, which says nothing about which of the stack's ~40 services
+    # it belongs to. Same reasoning as `knowledge_vector_db_url`. (Caught live: the
+    # scheduler's docstring documented `KNOWLEDGE_MIRROR_AUTO_REPAIR` while the field
+    # was unprefixed, so the switch it named did not exist.)
+    knowledge_mirror_auto_repair: bool = False
+    # Schedule knobs. A background sweeper nobody can force is one nobody ever watches
+    # run: the default first sweep is 35 minutes after boot, which is longer than anyone
+    # will sit and wait, so the honest way to verify it in-process is to shorten it.
+    # 0 means "sweep immediately at startup".
+    knowledge_mirror_sweep_startup_delay_s: int = 35 * 60
+    knowledge_mirror_sweep_interval_s: int = 6 * 60 * 60
+
     neo4j_uri: str = ""
     neo4j_user: str = "neo4j"
     neo4j_password: str = "loreweave_dev_neo4j"
@@ -309,6 +339,56 @@ class Settings(BaseSettings):
     coref_judge_model: str = ""
     coref_judge_user: str = ""
     coref_judge_model_source: str = "platform_model"
+
+    # T26 — whether the KG can honour a story-time `as_of`. This flag used to live in the
+    # GATEWAY's environment (`KG_TEMPORAL_ENABLED`), which meant a gateway could advertise
+    # `ordinal_valid_time` for a knowledge-service whose KG had not been migrated — two
+    # processes disagreeing about a boolean, and the disagreement leaks spoilers. It belongs
+    # to the service that owns the substrate. Same env-var name, so a deployment that
+    # already sets it keeps working; it is now read HERE.
+    kg_temporal_enabled: bool = True
+
+    # T25a — the vector-store migration seam. UNSET (the default) means Neo4j alone and
+    # byte-identical behaviour: no second database, no dual write, no new failure mode.
+    # Setting it turns on dual-write to the pgvector store (T22's image), which is the
+    # prerequisite for the T25 cutover — until writes land there,
+    # `vector_dual_write_total{outcome="secondary_failed"}` reads zero because nothing
+    # reaches it, which is indistinguishable from zero because nothing failed.
+    knowledge_vector_db_url: str = ""
+
+    #: T54 — the Postgres holding the AGE graph. Empty means "not configured", and with
+    #: `KNOWLEDGE_GRAPH_BACKEND=age` that is a startup-time refusal rather than a silent
+    #: fallback to Neo4j: an engine swap that quietly did not happen is the defect T54 exists
+    #: to fix (T42/T43 closed green while `age` raised `NotImplementedError`).
+    #:
+    #: Points at the SAME instance as `knowledge_vector_db_url` by design — `knowledge-pg`
+    #: runs `loreweave/postgres-knowledge:18`, which T42b built to carry BOTH `age` and
+    #: `vector` (measured on the running container: age 1.7.0, vector 0.8.6).
+    knowledge_age_db_url: str = ""
+    # Fraction of searches that also query the secondary and report OVERLAP with the
+    # primary (not recall — neither backend is ground truth). 0.0 = off. Sampled because
+    # the comparison is inline: a fire-and-forget task would measure a load the request
+    # never saw.
+    knowledge_vector_shadow_read_rate: float = 0.0
+
+    # T25 — THE CUTOVER SWITCH. Which backend ANSWERS a vector read.
+    #
+    # TIER: deploy ceiling (rule 4), and deliberately not the other two. A per-book setting
+    # would make two books' search results incomparable and the shadow-overlap metric
+    # meaningless — it averages over whichever backend each request happened to pick. A run
+    # param would let one request cut over and the next one back. This is one migration
+    # state for one deployment, so it is one env var.
+    #
+    # "neo4j" (default) is the pre-cutover world and is byte-identical to it. "postgres"
+    # makes pgvector the primary and Neo4j the SHADOW — the reverse comparison, which is
+    # exactly the safety net you want in the days after a cutover: the old store keeps
+    # answering alongside, and `vector_shadow_read_overlap` says whether the new one agrees.
+    #
+    # WRITES STILL GO TO BOTH either way. Dropping the Neo4j indexes is a separate, later
+    # act with its own evidence (T25 ③); flipping reads and deleting the fallback in one
+    # step would leave no way back that does not involve a re-embed.
+    knowledge_vector_read_primary: str = "neo4j"
+
 
 
 settings = Settings()

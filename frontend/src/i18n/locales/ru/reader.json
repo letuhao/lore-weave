@@ -43,8 +43,8 @@
         "desc": "Теплый оттенок бумаги"
       },
       "oled": {
-        "name": "OLED",
-        "desc": "Настоящий черный для OLED-экранов"
+        "desc": "Настоящий черный для OLED-экранов",
+        "name": "OLED"
       },
       "parchment": {
         "name": "Пергамент",
@@ -69,9 +69,9 @@
   "tts": {
     "source": {
       "attached": "Прикреплено",
-      "ai": "AI TTS",
       "browser": "Браузер",
-      "inline": "Аудио"
+      "inline": "Аудио",
+      "ai": "AI TTS"
     },
     "prev_block": "Предыдущий блок (Shift+Влево)",
     "play": "Воспроизвести (Space)",
@@ -105,10 +105,10 @@
   "audio": {
     "source": {
       "attached": "Прикреплено",
-      "ai": "AI TTS",
       "browser": "Браузер",
       "inline": "Аудиоблок",
-      "none": "Нет"
+      "none": "Нет",
+      "ai": "AI TTS"
     },
     "coverage": "Охват аудио",
     "summary": "{{speakable}} доступных блоков · {{missing}} через браузерный TTS",

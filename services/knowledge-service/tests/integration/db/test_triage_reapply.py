@@ -16,8 +16,8 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import merge_entity
-from app.db.neo4j_repos.relations import create_relation, get_relation, relation_id
+from app.db.graph_repos.entities import merge_entity
+from app.db.graph_repos.relations import create_relation, get_relation, relation_id
 from app.db.ontology_models import TriageItem
 from app.ontology.triage_apply import Neo4jReapplyWriter, apply_resolved
 

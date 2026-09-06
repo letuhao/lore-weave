@@ -154,7 +154,7 @@ func (s *Server) restoreEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	found, err := s.restoreEntityCore(r.Context(), bookID, entityID)
+	found, err := s.restoreEntityCore(r.Context(), bookID, entityID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "restore failed")
 		return
@@ -171,18 +171,42 @@ func (s *Server) restoreEntity(w http.ResponseWriter, r *http.Request) {
 // AND the glossary_entity_restore Tier-A tool (entity_delete_tools.go) —
 // found=false means the entity isn't in the trash (already live, purged, or
 // nonexistent) — an idempotent no-op at the caller's discretion.
-func (s *Server) restoreEntityCore(ctx context.Context, bookID, entityID uuid.UUID) (found bool, err error) {
-	tag, err := s.pool.Exec(ctx,
+// T27: emits `glossary.entity_restored`. This is the half that mattered most — a restore
+// that announced nothing left the entity ARCHIVED downstream forever while the glossary
+// showed it live, and no retry converged that, because the corrective event did not exist.
+func (s *Server) restoreEntityCore(
+	ctx context.Context, bookID, entityID, actorID uuid.UUID,
+) (found bool, err error) {
+	return s.lifecycleEntityCore(ctx, bookID, entityID, actorID,
 		`UPDATE glossary_entities
 		 SET deleted_at = NULL, updated_at = now()
 		 WHERE entity_id = $1 AND book_id = $2
 		   AND deleted_at IS NOT NULL
 		   AND permanently_deleted_at IS NULL`,
-		entityID, bookID)
-	if err != nil {
-		return false, err
-	}
-	return tag.RowsAffected() > 0, nil
+		entityRestoredEvent)
+}
+
+// purgeEntityCore flags an entity for permanent deletion, and emits
+// `glossary.entity_purged`.
+//
+// Extracted from the handler by T27 so purge has the same shape as its siblings. It was the
+// only one of the four with no *Core at all, which is part of why it was overlooked: the
+// contract "a lifecycle mutation carries an event" cannot be enforced on code that is not
+// expressed as a lifecycle mutation.
+//
+// `purged` is a separate event from `deleted` because it is a separate fact: soft-delete is
+// reversible and maps to archive, purge is not and maps to a cascading delete. One event
+// type for both would make the consumer infer which from a payload field.
+func (s *Server) purgeEntityCore(
+	ctx context.Context, bookID, entityID, actorID uuid.UUID,
+) (found bool, err error) {
+	return s.lifecycleEntityCore(ctx, bookID, entityID, actorID,
+		`UPDATE glossary_entities
+		 SET permanently_deleted_at = now()
+		 WHERE entity_id = $1 AND book_id = $2
+		   AND deleted_at IS NOT NULL
+		   AND permanently_deleted_at IS NULL`,
+		entityPurgedEvent)
 }
 
 // ── DELETE /v1/glossary/books/{book_id}/recycle-bin/{entity_id} ───────────────
@@ -207,19 +231,12 @@ func (s *Server) purgeEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE glossary_entities
-		 SET permanently_deleted_at = now()
-		 WHERE entity_id = $1 AND book_id = $2
-		   AND deleted_at IS NOT NULL
-		   AND permanently_deleted_at IS NULL`,
-		entityID, bookID)
+	found, err := s.purgeEntityCore(r.Context(), bookID, entityID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "purge failed")
 		return
 	}
-	if tag.RowsAffected() == 0 {
+	if !found {
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not in trash")
 		return
 	}

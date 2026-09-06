@@ -66,7 +66,7 @@ See [OPEN_DECISIONS.md](../decisions/_index.md) entries A3-D1..D4, A5-D1..D4, A6
 - [01_OPEN_PROBLEMS.md §A3/A5/A6](../01_problems/A_llm_reasoning.md) — problem statements
 - [02_STORAGE_ARCHITECTURE.md §7 R7-L1 single-writer session, §12H R8 NPC memory aggregate split](../02_storage/00_overview_and_schema.md)
 - [03_MULTIVERSE_MODEL.md §3 Four-layer canon, §9.7 Canonization safeguards](../03_multiverse/01_four_layer_canon.md) — canon layers + M3
-- [04_PLAYER_CHARACTER_DESIGN.md](../04_player_character/_index.md) — PC identity, session scope
+- [04_PLAYER_CHARACTER_DESIGN.md](../_superseded/04_player_character/_index.md) — PC identity, session scope
 - [OPEN_DECISIONS.md](../decisions/_index.md) — A3-D1..D4, A5-D1..D4, A6-D1..D5 locked
 - Generative Agents paper (arXiv:2304.03442) — memory stream + retrieval patterns
 - MemGPT (arXiv:2310.08560) — hierarchical memory context management

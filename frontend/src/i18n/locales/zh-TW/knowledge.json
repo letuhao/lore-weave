@@ -521,14 +521,14 @@
       "discoveredHint": "新實體初始狀態為「已發現」。透過與術語表建立關聯即可獲得「標準」狀態。"
     },
     "kind": {
-      "unknown": "未知類型",
-      "person": "人物",
-      "artifact": "器物",
       "character": "角色",
       "location": "地點",
       "organization": "組織",
       "concept": "概念",
       "item": "物品",
+      "unknown": "未知類型",
+      "person": "人物",
+      "artifact": "器物",
       "event_ref": "事件引用",
       "preference": "偏好",
       "event": "事件",
@@ -713,7 +713,6 @@
         "general": "一般"
       },
       "bookId": "書籍 ID (選填)",
-      "bookIdPlaceholder": "uuid",
       "description": "描述 (選填)",
       "instructions": "指示 (選填)",
       "instructionsPlaceholder": "風格筆記、語氣、限制條件 — 會插入到此專案的每次對話中。",
@@ -733,6 +732,7 @@
         "errorProviderFlake": "嵌入服務提供者在執行期間失敗。請重試。",
         "errorGeneric": "基準測試失敗: {{message}}"
       },
+      "bookIdPlaceholder": "uuid",
       "benchmarkNoRun": "⋯ 尚未進行基準測試 — 請執行黃金集 (golden-set) 基準測試以啟用擷取功能。",
       "bookIdLocked": "此書籍（已鎖定）",
       "canonCapture": "從對話中自動擷取新名稱",
@@ -1218,9 +1218,12 @@
   },
   "relations": {
     "edit": {
+      "description": "修正此關係的謂詞，或將其標記為錯誤以將其移除。",
+      "invalidateHint": "若此關係不應被擷取，請將其標記為錯誤以將其移除。",
+      "invalidateConfirm": "要將此關係標記為錯誤並移除嗎？",
+      "failed": "無法儲存修正內容：{{error}}",
       "cta": "修正關係",
       "title": "修正關係",
-      "description": "修正此關係的謂詞，或將其標記為錯誤以將其移除。",
       "field": {
         "predicate": "謂詞"
       },
@@ -1229,11 +1232,8 @@
       "cancel": "取消",
       "correctSuccess": "關係已修正。",
       "invalidateSuccess": "關係已移除。",
-      "invalidateHint": "若此關係不應被擷取，請將其標記為錯誤以將其移除。",
-      "invalidateConfirm": "要將此關係標記為錯誤並移除嗎？",
       "markWrong": "標記錯誤",
-      "invalidating": "正在移除…",
-      "failed": "無法儲存修正內容：{{error}}"
+      "invalidating": "正在移除…"
     },
     "create": {
       "title": "連結實體",
@@ -1263,30 +1263,30 @@
       "save": "新增事件"
     },
     "edit": {
+      "description": "調整此事件的標題、摘要或時間。",
+      "dateIsoPlaceholder": "YYYY 或 YYYY-MM-DD",
+      "conflict": "另一台裝置已更新此事件。請檢查最新版本後再試一次。",
+      "failed": "無法更新事件：{{error}}",
+      "invalidDate": "日期格式必須為 YYYY、YYYY-MM 或 YYYY-MM-DD。",
       "cta": "編輯",
       "title": "編輯事件",
-      "description": "調整此事件的標題、摘要或時間。",
       "field": {
         "title": "標題",
         "summary": "摘要",
         "timeCue": "時間提示",
         "dateIso": "日期 (ISO)"
       },
-      "dateIsoPlaceholder": "YYYY 或 YYYY-MM-DD",
       "save": "儲存",
       "saving": "正在儲存…",
       "cancel": "取消",
-      "success": "活動已更新。",
-      "conflict": "另一台裝置已更新此事件。請檢查最新版本後再試一次。",
-      "failed": "無法更新事件：{{error}}",
-      "invalidDate": "日期格式必須為 YYYY、YYYY-MM 或 YYYY-MM-DD。"
+      "success": "活動已更新。"
     },
     "archive": {
-      "cta": "刪除",
       "confirm": "要刪除（隱藏）此事件嗎？",
+      "failed": "無法刪除事件：{{error}}",
+      "cta": "刪除",
       "archiving": "正在刪除…",
-      "success": "活動已刪除。",
-      "failed": "無法刪除事件：{{error}}"
+      "success": "活動已刪除。"
     }
   },
   "mining": {

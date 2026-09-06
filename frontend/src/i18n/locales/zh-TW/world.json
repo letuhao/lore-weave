@@ -9,7 +9,15 @@
     "description": "建立你的第一個世界，開始撰寫設定 — 不需要任何章節。"
   },
   "card": {
-    "books": "{{count}} 本書"
+    "books": "{{count}} 本書",
+    "delete": "刪除世界",
+    "delete_blocked": "請先將 {{count}} 本書移出這個世界",
+    "delete_title": "刪除這個世界？",
+    "delete_description": "刪除「{{name}}」無法復原，其設定、地圖與時間線也會一併消失。",
+    "delete_hint": "含有書籍的世界無法刪除，請先移出。",
+    "delete_cancel": "取消",
+    "delete_confirm": "永久刪除",
+    "delete_done": "世界已刪除"
   },
   "create": {
     "cta": "新世界",

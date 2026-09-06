@@ -11,7 +11,17 @@
 #                           dispatches by `name`)
 #   params:                 list of {name, type, required, description}
 #   impact_class:           tier-1-destructive | tier-2-griefing | tier-3-informational
-#   dry_run_required:       bool — true forces --dry-run before --confirm allowed
+#   dry_run_required:       bool — requires the operator to pass EITHER --dry-run
+#                           OR --confirm (i.e. no flagless invocation).
+#                           ⚠ It does NOT force a dry run to happen BEFORE a
+#                           --confirm, which is what this line claimed until
+#                           2026-08-08. `dry_run.EnforceGate` is an OR
+#                           (`if !dryRun && !confirm { refuse }`) and nothing
+#                           anywhere records that a dry run occurred, so the
+#                           ordering it described is unenforceable as written.
+#                           Verified live: `--confirm` alone on a command with
+#                           dry_run_required:true proceeds straight to execution.
+#                           Tracked as W3-DRYRUN-MISNOMER.
 #   double_approval_required: bool — Tier-1 destructive must be true
 #   audit:                  always true; admin_action_audit row written by framework
 #   carry_forward_cycle:    cycle number where the underlying implementation shipped
@@ -21,6 +31,136 @@
 
 domain: reality
 commands:
+  # W3 (2026-08-08) — the command that CREATES a reality. Until this shipped,
+  # every other command in this file required a reality that already existed and
+  # nothing in the platform could produce one: the only caller of the Rust
+  # provisioner was a drill with hardcoded rig credentials and a fabricated
+  # capacity snapshot.
+  #
+  # tier-2-griefing (admin:write), NOT tier-1: it destroys nothing. What it does
+  # do is consume a finite shard slot that every other reality shares — which is
+  # what the griefing tier names, and the class `reality capacity-override`
+  # already carries for acting on the same resource.
+  #
+  # dry_run_required is a per-COMMAND field (dispatcher reads c.DryRunRequired,
+  # not the tier policy), so a tier-2 command may set it. It makes a FLAGLESS
+  # invocation refuse — the operator must choose --dry-run or --confirm — but it
+  # does NOT force a preview before the real run (see the schema note above; the
+  # first version of this comment claimed it did). The dry run is genuinely
+  # worth having, reads LIVE capacity and writes nothing, per R13 §12L.5 — but
+  # nothing compels an operator to look at it first.
+  #
+  # reality_id is caller-supplied, matching provisioner.rs:54 ("caller-generated
+  # to keep the audit chain coherent"): the uuid lands in the admin_action_audit
+  # params hash BEFORE the worker runs, so a provision that dies half-way is
+  # still traceable to the action that ordered it. Generate with `uuidgen`.
+  - name: reality provision
+    version: "1.0.0"
+    summary: "Create a reality: capacity-routed placement, per-reality DB, migrations, registry row."
+    handler: realityProvision
+    params:
+      - {name: reality_id,    type: uuid,   required: true,  description: "Caller-generated reality UUID (audit chain)"}
+      - {name: reason,        type: string, required: true,  description: "Audit explanation (>= 10 chars)"}
+      - {name: locale,        type: string, required: false, description: "BCP-47 locale, default en"}
+      - {name: deploy_cohort, type: int,    required: false, description: "Canary cohort 0..99, default 0"}
+      - {name: owner_user_id, type: uuid,   required: false, description: "Owning user; omit for a platform-owned reality"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "W3"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  # ── SEALED-BINDING — who drives which actor (migrations 034 + 041) ─────────
+  #
+  # `actor_control_binding` got a writer on 2026-08-14 and NO CALLER: the
+  # grant/revoke routes on world-service are `require_internal`-gated, so
+  # nothing an operator can run reached them. A surface with no invoker is the
+  # orphan shape feature #2 existed to fix, one tier up — `035` deleted a whole
+  # table for it.
+  #
+  # DOMAIN: reality, not a new `actor` domain. The binding is scoped by reality
+  # (the PK and the partial unique index both lead with `reality_id`), the
+  # commands act on one reality's bindings, and an eleventh registry file would
+  # move `rl_admin_registries`, a figure `actor-hub-figures-gate` governs, for a
+  # noun that is not a domain of its own.
+  #
+  # All three run ONE Rust worker (`world-service` bin `actor-control`), which
+  # contributes no control logic: the reality bind and the actor-exists
+  # precondition live in `actor_control_flow`, shared with the HTTP routes, so
+  # an operator and a service run the same rules rather than two sets that
+  # drift.
+  #
+  # THE TIERS DIFFER, and the asymmetry is the point.
+  #
+  # create-actor and grant are tier-2-griefing: they destroy nothing. A grant's
+  # worst case is consuming the one live driver slot an actor has — the same
+  # "finite resource every other user shares" reasoning `reality provision`
+  # carries. It cannot take a character from someone, because it REFUSES an
+  # actor another user already drives (a conflict, never an idempotent success).
+  #
+  # A REVOKE is tier-1-destructive. It takes a character away from a human. The
+  # actor survives and the binding becomes history rather than a deletion, so
+  # nothing is unrecoverable — but "unrecoverable" is not the tier's test.
+  # Taking away a player's ability to act is exactly the harm tier 1 names, and
+  # reaching for the softer tier because the ROW is recoverable would be grading
+  # the data instead of the person.
+  #
+  # expected_user_ref_id is the CAS, and it is why revoke is safe to offer at
+  # all: an operator acting on a stale character list revokes whoever took over
+  # a second ago unless they name who they meant. Optional in the API, and
+  # STRONGLY recommended here — the summary says so, because the registry is
+  # what an operator reads in `admin --help`.
+  #
+  # The revoke's `double_approval_required: true` was NOT chosen — the framework
+  # refused the file without it (`registry.go`: tier-1 implies dry-run AND
+  # double approval, both). The first draft said `false`, and the right response
+  # to that refusal was to accept the second half of the tier rather than
+  # downgrade the tier to escape it: if taking a character from a human is
+  # tier-1 harm, then two-person control is what tier-1 means. It is also the
+  # right operational shape — this is the OPERATOR OVERRIDE path. A player
+  # releasing their own character is a different, user-facing route that does
+  # not exist yet and would not come through admin-cli.
+  - name: reality create-actor
+    version: "1.0.0"
+    summary: "Mint an actor in a reality's registry — the precondition for grant-control. The registry allocates the entity id; pass entity_id only to adopt one the island already has."
+    handler: realityCreateActor
+    params:
+      - {name: reality_id, type: uuid,   required: true,  description: "The reality whose registry gains the actor"}
+      - {name: reason,     type: string, required: true,  description: "Audit explanation (>= 10 chars)"}
+      - {name: entity_id,  type: int,    required: false, description: "ADOPT an island entity that already exists (e.g. the spine's 1..3). Omit to allocate — the normal path."}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "SEALED-BINDING"
+
+  - name: reality grant-control
+    version: "1.0.0"
+    summary: "Give a user control of an actor in a reality. Refuses an actor someone else already drives; refuses a frozen or archived reality."
+    handler: realityGrantControl
+    params:
+      - {name: reality_id,  type: uuid,   required: true, description: "The reality the binding is scoped to"}
+      - {name: user_ref_id, type: uuid,   required: true, description: "WHO drives — opaque; carries no PII"}
+      - {name: actor_id,    type: uuid,   required: true, description: "The actor, from the per-reality registry (0022_actors)"}
+      - {name: reason,      type: string, required: true, description: "Audit explanation (>= 10 chars)"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "SEALED-BINDING"
+
+  - name: reality revoke-control
+    version: "1.0.0"
+    summary: "End a user's control of an actor. TAKES A CHARACTER AWAY — pass expected_user_ref_id unless you mean whoever holds it right now."
+    handler: realityRevokeControl
+    params:
+      - {name: reality_id,           type: uuid,   required: true,  description: "The reality the binding is scoped to"}
+      - {name: actor_id,             type: uuid,   required: true,  description: "The actor whose live binding ends"}
+      - {name: expected_user_ref_id, type: uuid,   required: false, description: "CAS: revoke ONLY while this user holds it. Omit and you revoke whoever does — including someone who took over since you last looked."}
+      - {name: reason,               type: string, required: true,  description: "Audit explanation (>= 10 chars)"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "SEALED-BINDING"
+
   - name: reality force-close
     version: "1.0.0"
     summary: "Force-close a reality (writer rejection 503) — operator escape hatch."

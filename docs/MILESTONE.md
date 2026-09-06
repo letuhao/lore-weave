@@ -3,7 +3,7 @@
 > **Single Source of Truth** for project progress.
 > CLAUDE.md and README.md derive from here — update this file first.
 >
-> Last updated: 2026-05-24 (session 67)
+> Last updated: 2026-08-08 — game-tier build index added (§ Phase 6+)
 
 ---
 
@@ -99,7 +99,65 @@
 | Phase 3 — QA Extraction (grounded Q&A) | P3 | After RAG quality baseline validated |
 | Phase 4 — Continuation & Canon Safety | P4 | Canon-aware AI drafting |
 | Phase 5 — Hardening & Scale | P5 | Multi-tenancy, SRE, cloud readiness |
-| Phase 6+ — Living Worlds | P6+ | LLM MMO RPG; design track locked, gated on novel platform maturity |
+| Phase 6+ — Living Worlds | P6+ | **IN BUILD** — see the build index below. The old note ("design track locked, gated on novel platform maturity") was true until ~2026-06 and is no longer: the engine is ~60k lines. |
+
+---
+
+## Phase 6+ — Living Worlds: the BOOK → REALITY build index
+
+> **Added 2026-08-08. This table is the build index for the game tier** — what state each part is
+> in and what blocks what. It is deliberately an INDEX, not a design: detail lives in the track
+> docs, and the live working state is
+> [`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`](plans/2026-08-06-game-tier-build-RUN-STATE.md).
+>
+> The chain: **`book → lore bible → pre-manifest stub → manifest → reality`**
+> Full stage-by-stage measurement:
+> [`docs/specs/2026-08-08-book-to-reality-pipeline-index.md`](specs/2026-08-08-book-to-reality-pipeline-index.md)
+
+**The shape of it: the two ends are built and the middle is not.**
+
+| # | stage | track | state | note |
+|---|---|---|---|---|
+| S1 | Book — source text | LoreWeave | ✅ built | `loreweave_book` 584 MB / 394 books |
+| S2 | Glossary / KG — authored lore SSOT | LoreWeave | ✅ built | `loreweave_glossary` 1847 MB, largest DB in the stack |
+| S3 | **Lore bible** — the authored game concept | [BOOK_TO_GAME](03_planning/BOOK_TO_GAME/_index.md) | 🟡 design only | 17 docs, **zero code** |
+| S4 | **Pre-manifest stub** — unstructured concept → structured input | — | 🔴 **undefined** | not a named artifact anywhere in the repo |
+| S5 | Manifest / ruleset — what the engine ingests | [LLM_MMO_RPG](03_planning/LLM_MMO_RPG/00_VISION.md) | 🟢 substantially built | `ruleset-core` 5.2k + `ruleset-loader` 3.9k lines; `load_reality()`; shipped `engine_default.toml`. **`G-S5a` discharged 2026-08-11** — the authorable surface is now stated and machine-checked: [`contracts/ruleset/authorable-surface.v1.yaml`](../contracts/ruleset/authorable-surface.v1.yaml), 8 patch types / 72 keys / 6 refusals / 20 classified rows, checked against the source AND against the real loader ([run-state](plans/2026-08-14-authorable-surface-RUN-STATE.md)) |
+| S6 | Engine — deterministic runtime | LLM_MMO_RPG | 🟢 substantially built | `dp-kernel` 15.1k · `world-gen` 30.8k · `sim-core` 2.5k · `actor-hub` 2.0k |
+| S7 | **Reality data** — the per-reality database | LLM_MMO_RPG | 🟢 **CREATED BY AN HTTP REQUEST 2026-08-11** | First provisioned 2026-08-08 (registry row `active`, DB on `pg-shard-0.internal`, 12 tables, 15 in the migration ledger, `channels` live and `REC-106` holding). **The "still a drill" caveat is now discharged**: `world-service` serves `POST /internal/v1/realities` and a real process created `lw_reality_58663ea66315` over a socket — 201, then `pg_database` confirming it. Idempotent on re-entry (`already_provisioned` / `resumed`, both proven live). Internal-only per `I1`; the gateway route is the next build. [run-state](plans/2026-08-13-world-service-server-RUN-STATE.md) · [contract](../contracts/api/world/provisioning.v1.yaml) |
+| S8 | Reality request — the user-facing function | — | 🅿 parked — **but no longer by its own gates** | [spec](specs/2026-08-08-user-created-realities.md); a CREATE DATABASE feature, needs layered security. **All three stated wake-up conditions are now met** (`G-S5a` ✅ · `G-S7b` ✅ · `G-S8b` ✅, 2026-08-11), so what parks it is the PO's build-order call — *"you cannot give a user a manifest builder if you do not know what the game engine can support"* — plus `S3`/`S4` still being undesigned. **A product decision now, not an engineering blocker.** See the ⚠ note in [the pipeline index](specs/2026-08-08-book-to-reality-pipeline-index.md) §5 |
+
+**Build order (PO, 2026-08-08): engine first.** You cannot give a user a manifest builder without
+knowing what the engine supports — every field a builder offers is a promise the engine must keep
+(`AUTHOR-1`, `LIM-1`). `engine_default.toml` is the engine's own declaration of that surface.
+
+**Open gaps — re-measured 2026-08-12, and FIVE OF SEVEN WERE FALSE.** Each was one command away, and
+each had been discharged days earlier by a track that updated its own board and not this file. The
+S7 row directly above was updated on 2026-08-11 while this paragraph beneath it was not.
+
+| gap | claim as written | measured 2026-08-12 | command |
+|---|---|---|---|
+| `G-S3` | lore bible has no schema/producer | **STILL TRUE** — 17 design docs, zero code | `ls docs/03_planning/BOOK_TO_GAME/` |
+| `G-S4` | pre-manifest stub undefined | **STILL TRUE** — not a named artifact anywhere | repo-wide grep |
+| `G-S5a` | the engine's authorable surface is not enumerated for authors | ❌ **FALSE** — `contracts/ruleset/authorable-surface.v1.yaml`, 72 keys / 8 patch types, gated | `ls contracts/ruleset/authorable-surface.v1.yaml` |
+| `G-S7a` | zero realities have ever existed | ❌ **FALSE** — **10** | `SELECT count(*) FROM reality_registry` |
+| `G-S7b` | the meta database does not exist; `migrations/meta/` has no manifest or gate | ❌ **FALSE** — **29 tables, 39 migrations**, and `scripts/migration-manifest-gate.py` exists | `SELECT count(*) FROM pg_tables …`; `ls scripts/migration-manifest-gate.py` |
+| `G-S8a` | `reality_registry` has no owner | ❌ **FALSE** — `owner_user_id` exists, live both tiers (`W6`) | `information_schema.columns` |
+| `G-S8b` | `loreweave` is the sole Postgres login role and is superuser | ❌ **FALSE** — **3** login roles; `loreweave_provisioner` is `CREATEDB`-only (`W7`) | `SELECT count(*) FROM pg_roles WHERE rolcanlogin` |
+
+> **This paragraph is why `CR-PROSE-CLAIMS` is carried open.** Every false entry is a *sentence*, so
+> the figures gate shipped in `e66eb7d9d` cannot see any of them — it measures numbers in a
+> marker-delimited window, and these are prose in a bullet list. Five stale claims in the file
+> CLAUDE.md calls the progress SSOT and instructs every session to read **before assuming a track is
+> dormant** — which is precisely the decision they would corrupt. See
+> [`2026-08-12-spec-status-as-schema.md`](specs/2026-08-12-spec-status-as-schema.md) §2.5: this is
+> now the largest single cluster of measured instances, and it is *not* in a spec status line.
+
+**So the real remaining gaps are `G-S3` and `G-S4`** — the two ends are built, and what is missing is
+the middle: the authored concept has no schema, and the artifact between it and the manifest has no
+definition.
+
+---
 
 ## Deferred (tracked)
 

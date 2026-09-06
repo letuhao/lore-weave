@@ -1,0 +1,42 @@
+{
+  "_note": "memory_timeline's clean arm. Batch 34 had it called 5/5 with the CORRECT answer on 3 of 5 ('There are currently no narrative events recorded in the timeline for this book') and an EMPTY reply on the other 2 — D-SILENT-TURN-NO-CARD-NO-PROSE, the open defect, not a wrong answer. Same scenario byte-for-byte.",
+  "scenarios": [
+    {
+      "id": "memory-timeline",
+      "tool_under_test": "memory_timeline",
+      "expect_tool": "memory_timeline",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What happened first in this book — show me the timeline of events.",
+      "prompt_source": "meta.synonyms['what happened first'] + ['timeline of events'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE project_id='{project_id}'",
+          "expect": "1",
+          "why": "A fresh project with NO extracted events — the book has one seeded chapter and has never been indexed. So the honest answer is that there is no timeline yet, and this is the empty case in its most tempting form: the model HAS the chapter text in context and could narrate a chronology from it without the tool returning anything."
+        }
+      ],
+      "answer_expect": {
+        "none_of": [
+          "first,",
+          "then,",
+          "after that"
+        ],
+        "why": "There are no stored events. A narrated sequence would be the model retelling the chapter it can see rather than reporting what the timeline tool returned — the D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE shape, on a read."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply presents a CHRONOLOGY when no events are stored. 🔴 THE TEMPTATION IS THE POINT: the fixture's chapter is in the model's context, so it can produce a plausible 'what happened first' without the tool answering at all. Reporting that nothing has been extracted yet is the correct outcome, and saying the book must be indexed first is better still.",
+      "ship_audit": {
+        "empty_case": "This scenario IS the empty case — a project with no extracted events.",
+        "absent_case": "OWED — a project_id that does not exist must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

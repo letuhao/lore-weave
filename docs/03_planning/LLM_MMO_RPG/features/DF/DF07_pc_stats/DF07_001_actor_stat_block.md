@@ -1,7 +1,8 @@
 # DF07_001 — Actor Stat Block (derived-stat layer)
 
 > **Conversational name:** "Stat Block" (DF7). The **derived** layer between author-declared progression
-> and the engine: a **closed set of 10 engine stat slots** plus the deterministic law that resolves
+> and the engine: a **declared slot vocabulary** (`D-10`, 2026-08-02 — was a closed set of 10 engine
+> slots) plus the deterministic law that resolves
 > PROG_001 progression values + equipment + PL_006 status into them. DF7 owns **no aggregate** and **no
 > SSOT** — a stat block is a pure function of state that already exists.
 >
@@ -107,9 +108,31 @@ It is also the missing home for two orphan bindings: `VitalProfile.max_value` (R
 
 ### Axioms
 
-- **DF7-A1 (Closed slot set).** The engine consumes a **fixed, closed** `StatSlot` enum. Authors declare
-  *how their kinds project into slots*, never new slots. Extending the set is an engine release, registered
-  in `_boundaries/01_feature_ownership_matrix.md` — the same discipline as PL_006's `StatusFlag`.
+- **DF7-A1 (Closed resolution, declared vocabulary).** The engine closes the **mechanism** of stat
+  resolution — that layers are totally ordered, that per-mille factors sum rather than chain, that a
+  block is dense and ordinal-indexed, that exactly one `floor` happens at emit. The **slot vocabulary is
+  declared by the manifest**, with ordinals assigned by the engine and pinned inside the hashed bytes,
+  exactly as [QTY-A5](../../../35_quantity_architecture.md) already does for L2 quantities.
+
+  > **⚠ REVERSED 2026-08-02 — `D-10` / [`2026-08-02-actor-data-structure.md`](../../../../../specs/2026-08-02-actor-hub/analysis/2026-08-02-actor-data-structure.md) §7.1.** A1 previously read
+  > *"the engine consumes a **fixed, closed** `StatSlot` enum; authors declare how their kinds project
+  > into slots, never new slots"*, and the 2026-07-28 amendment below upheld it against
+  > [`WSA-R02`](../../../31_world_simulation_architecture.md). **The PO reversed it: a closed set belongs
+  > in the manifest, not in our source — the engine is an environment in the sense an OS or a DB is one,
+  > and a hardcoded noun is a manifest that cannot grow.**
+  >
+  > The amendment below is kept rather than deleted, because **each of its three reasons has since
+  > lapsed, and that is worth being able to read**:
+  >
+  > | its reason | status 2026-08-02 |
+  > |---|---|
+  > | *"the laws read 9 of 10 slots **by name**, so opening the set buys one dead slot"* | **Dissolved.** Those laws are being rewritten (`D-14`); a property of code being discarded cannot fix the shape of its replacement. |
+  > | *"moving `SLOT_COUNT` makes every stored `.canon` undecodable … reds the golden digest with no legal repin"* | **Cost is currently zero.** No production reality exists — [35 §12](../../../35_quantity_architecture.md) states it: *"zero production realities exist, so the clock is under our control."* |
+  > | *"`upcaster.rs` versions **event** schemas, not **rules** — there is no migration story"* | **Shipped 2026-07-29 as `Q0a`**: the version-dispatched codec, `upcast v1→v2`, and the epoch switch. The blocker was cleared and the question was never re-opened. |
+  >
+  > What does **not** change: `QTY-A10(c)` still forbids removing or reusing a declared ordinal, and a
+  > vocabulary change is still an epoch switch rather than a silent edit. Opening the set moves *who
+  > declares the names*; it does not loosen what happens to artifacts already written.
 
   > **AMENDED 2026-07-28 — [QTY-D6](../../../35_quantity_architecture.md). A1 is UPHELD, and its scope
   > is now stated.** [WSA-R02](../../../31_world_simulation_architecture.md) previously proposed making
@@ -153,8 +176,44 @@ It is also the missing home for two orphan bindings: `VitalProfile.max_value` (R
   > first DRAFT ran `Lex clamp → slot clamp` with the rationale "so an author clamp cannot escape a world
   > rule" — which is exactly backwards: a slot clamp whose `min` exceeds the Lex ceiling *raises the value
   > back through it*. Whichever clamp runs last wins, so the world rule runs last.
-- **DF7-A4 (Integer determinism).** All resolution runs in **i64 milli-units**; exactly one `floor` at slot
-  emit. No `f32` anywhere in the stat path. Same inputs → byte-identical block on any machine (TDIL-A9).
+- **DF7-A4 (Byte-stable arithmetic).** A value that enters a digest or a replayed comparison must have
+  **exactly one byte representation per value**. Stat resolution runs in **i64 milli-units** with exactly
+  one `floor` at slot emit, and gets that property for free: these numbers are integers on a fixed scale,
+  so `NaN`, `-0.0` and rounding order do not arise. Same inputs → byte-identical block on any machine
+  (TDIL-A9).
+
+  > **⚠ REVISED 2026-08-02 — this axiom previously read *"Integer determinism … no float anywhere in the
+  > stat path"*, and justified itself with the claim that floating point does not reproduce across
+  > targets. That claim is false, and this repo's own code disproves it.** IEEE 754 basic operations
+  > (`+ - * /`, `sqrt`) are correctly rounded and reproduce bit-for-bit on any conforming target; Rust
+  > enables neither fast-math nor FMA contraction, and x86-64 and ARM64 both mandate SSE2/NEON, so there
+  > are no 80-bit x87 intermediates to worry about. Meanwhile `crates/world-gen` uses `f64` across **41
+  > files**, and `civ_bundle_hash_is_deterministic_per_seed` (`civ_adapter.rs:1985`) **hashes output
+  > derived from it** and asserts the hash is stable. Float and a stable digest already coexist here.
+  >
+  > **The performance argument does not rescue the old wording either.** On x86-64/ARM64 scalar `f64`
+  > add and multiply have latency comparable to `i64`, and **integer division is typically slower than
+  > float division** — while the milli-unit design divides by 1000 constantly. Fixed-point is the right
+  > choice for stat resolution because of **what these numbers are** (integers on a fixed scale), not
+  > because it is faster and not because float is unreproducible.
+  >
+  > **What IS forbidden in the replayed path** — the three things that genuinely do not reproduce:
+  >
+  > 1. **transcendental libm functions** (`sin`, `cos`, `exp`, `ln`, `powf`) — IEEE 754 does not require
+  >    correct rounding for these and implementations differ across platforms. This is what
+  >    [`MAP_001 §5`](../../00_map/MAP_001_map_foundation.md) withdrew `f32` trig for, and that
+  >    withdrawal stands unchanged;
+  > 2. **order-dependent reductions** — a sum folded in a different order gives a different result. This
+  >    bites when *we* parallelise, not from the compiler, which will not reorder float reductions
+  >    without fast-math;
+  > 3. **unnormalised `NaN` / `-0.0` reaching hashed bytes** — `NaN` has many bit patterns and is never
+  >    equal to itself, while `0.0 == -0.0` with differing bits. Canonicalise before hashing, or exclude.
+  >
+  > **Choose the representation by what the number IS**, not by fear of float: integers on a fixed scale
+  > ⇒ fixed-point; continuous fields over a wide dynamic range ⇒ float. A lint for the three hazards is
+  > deliberately **not** built yet — the replayed path contains no float today, so the check would have
+  > no subject, which is the `NV-2` vacuity this repo has already shipped once. Its trigger is the first
+  > float to enter a replayed path.
 - **DF7-A5 (Additive percent).** Percent modifiers **sum** into one factor: `(base+flat) × (1000+Σpct)/1000`.
   They are never chained multiplicatively — this kills exponential buff stacking.
   > **⚠ RATIONALE CORRECTED 2026-07-30 (`WSA-R03` / [REC-88](../../../19_reconciliation_register.md)).**
@@ -377,7 +436,7 @@ pub struct StatSlotDecl {
 ```
 
 `StatTerm.weight` is declared as a decimal in the manifest and **stored/evaluated as milli** (`1.5` →
-`1500`) — authors write readable numbers; the engine never sees a float (DF7-A4).
+`1500`) — authors write readable numbers; the resolved value is a fixed-scale integer (DF7-A4).
 
 ### §5.2 `stat_tuning`
 
@@ -395,7 +454,8 @@ Validated by DF7-V1 at Stage 0; violations reject `stat.tuning_invalid` **before
 
 ```rust
 pub struct StatModifier {
-    pub slot: StatSlot,                  // closed engine enum (§3) — NOT a free-form stat string
+    pub slot: StatSlot,                  // a DECLARED slot ordinal (§3, D-10) — not a free-form
+                                         // string either: a machine key with an assigned ordinal
     pub op: ModifierOp,
     pub value: i32,                      // signed
     pub source: ModifierSource,          // who contributed — sets the layer + iteration order
@@ -687,7 +747,7 @@ applied in this commit; 6–9 are declared and land when each feature is next op
 
 | Reject rule | Stage | User-facing message (I18nBundle `default`) | When |
 |---|---|---|---|
-| `stat.slot_unknown` | 0 schema | (schema-level) | manifest declares a slot outside the closed enum |
+| `stat.slot_unknown` | 0 schema | (schema-level) | a term names a slot **this reality did not declare** (inverted 2026-08-02, `D-10` — it previously fired when a manifest declared a slot outside the engine's closed enum, which is now the normal case) |
 | `stat.duplicate_slot_decl` | 0 schema | (schema-level) | two `StatSlotDecl` for one slot |
 | `stat.term_kind_unknown` | 0 schema | "Stat formula references an unknown progression kind" | `StatTerm.kind_id` ∉ `progression_kinds` |
 | `stat.clamp_invalid` | 0 schema | (schema-level) | `clamp.min > clamp.max`, or `MaxHp.clamp.min < 1` |
@@ -725,7 +785,8 @@ hostiles → COMB_001 Q6 vague tier only (DF7-A10).
 1. **Default reality plays** — manifest with no `progression_kinds` and no `stat_slots`: two actors fight, blows land ~70%, damage ≈ 10, nobody divides by zero.
 2. **Wuxia projection** — §6.1 example yields `strike_power` 24 with a blade / 20 bare-handed.
 3. **Tu tiên projection** — `qi_cultivation × 1.5` reproduces the PROG_001 §9.5 magnitude without engine changes.
-4. **Determinism** — same inputs resolve byte-identical on two machines; no float in the path (DF7-A4).
+4. **Determinism** — same inputs resolve byte-identical on two machines; every value on the path has one
+   byte representation (DF7-A4, revised 2026-08-02).
 5. **Order independence** — applying two +10% and one +50 flat modifier in any input order yields one value (DF7-A5).
 6. **Layer order** — a percent buff applies after flats; a Lex clamp beats an author clamp (§4 steps 4–6).
 7. **Status mechanics** — `Drunk` m=3 lowers `Accuracy` by 60‰ and the resulting hit chance by exactly 0.06.

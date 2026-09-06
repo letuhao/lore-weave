@@ -1,4 +1,28 @@
 # 19 — Reconciliation Register
+
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 <!-- design-lint: ok prefix ML — `ML-1..ML-7` are the Multilingual / Anti-Language-Bias rules, owned by docs/standards/multilingual.md on the PLATFORM track. Cited here, not redefined; registering `ML` in this track's id catalog would claim another track's namespace. -->
 
 > **Status:** OPEN — created 2026-07-26. **This is a work register, not a design doc.**
@@ -848,3 +872,183 @@ with nothing able to look. The check now parses enums out of the corpus's own ` 
 
 Net: **4 count claims corrected across 3 files, 2 of them defects no human had reported**, and the class
 now has a check instead of a habit.
+
+---
+
+# §16 — The data-plane audit, 2026-08-07 (`REC-99`..`REC-102`)
+
+> **Origin.** The PO asked why the sessions kept hitting dead ends, and named the suspicion
+> precisely: *what was finished in May looks like the kernel, not the foundation — no data tiering,
+> no SDK.* Tracing the chain end to end confirmed it and produced 26 findings, recorded as
+> `FLOW-1`..`FLOW-26` in [`2026-08-06-game-tier-build-RUN-STATE.md`](../../plans/2026-08-06-game-tier-build-RUN-STATE.md) §6h.
+>
+> These four rows are the part that changes LOCKED files. Everything else in that audit is either a
+> BUILD item (the missing SDK, the missing `channels` table, the missing control plane) or already
+> recorded there. **No new registry** — `GDA-D12`'s rule. These are reconciliations, so they live here.
+
+## REC-99 — the event-log schema family: a table that does not exist, and two DDL statements that cannot run
+
+**Class B — factually forced.** Not a re-decision: the documents state things that are false about
+this repo, and an implementer copying them gets an error, not a different design.
+
+### (a) `event_log` is not the table's name
+
+`event_log` appears **41 times across 8 of the 25 locked files** (`02` · `13` · `14` · `15` · `17` ·
+`18` · `20` · `99`), always in identifier position — `ALTER TABLE`, `SELECT ... FROM`, `DELETE FROM`,
+`<table>.<column>`. **The shipped per-reality table is `events`**
+(`contracts/migrations/per_reality/0002_events_table.up.sql`). `event_log` exists nowhere in the game
+tier's code or SQL.
+
+The sharp end is `DP-Ch18`'s catch-up query, given as copyable SQL and correct in shape — `0014` even
+built `events_channel_order_idx` on exactly that predicate — against a relation that has never
+existed.
+
+**Applied:** identifier-position `event_log` → `events` in all 8 files, each carrying a dated
+amendment note. Prose that says *"the event log"* as a concept is untouched.
+
+### (b) `DP-Ch11`'s UNIQUE constraint cannot be created — and the build already knew
+
+`0014_channel_ordering.up.sql`'s header, shipped 2026-07-27:
+
+> *"SPEC CORRECTION ... `DP-Ch11` asks for `UNIQUE (reality_id, channel_id, channel_event_id)` on
+> the event log — **IMPOSSIBLE** here: `events` is `PARTITION BY RANGE (recorded_at)`, and PG requires
+> the partition key inside any parent unique constraint."*
+
+The migration shipped the correct substitute: a **non-partitioned `channel_event_index`** carrying the
+spec's exact PK, written in the same transaction, plus a `channel_writer_state` CAS that is **both**
+the `channel_event_id` allocator **and** the `DP-A16` epoch fence.
+
+**This correction was never filed.** The header labels it *"REC-80 candidate"* — and `REC-80` is
+already taken (the `GEO_001` world-vs-continent row, applied 2026-07-30). The register's highest id
+was `REC-98`. So a correct correction to a LOCKED axiom lived for eleven days as a SQL comment.
+
+### (c) `DP-Ch22` has the identical defect, and nobody found it
+
+`15_turn_boundary.md` DP-Ch22 offers a *"stronger constraint"* — a **partial UNIQUE index** on the
+same table. **Doubly impossible on the shipped schema:** a unique index on a partitioned table must
+include the partition key, and Postgres does not support *partial* unique indexes on partitioned
+tables at all. Same root cause as (b), one file over, and the build never reached it because
+`advance_turn` was never implemented — so nothing forced the DDL to be run.
+
+⇒ **The lesson is (b) and (c) together.** One instance was caught by trying to execute it. The other
+survived because its feature is unbuilt. **A spec defect is found by execution or not at all**, and
+the sixteen unbuilt Phase-4 primitives (`FLOW-22`) carry an unknown number of the same class.
+
+**Applied:** both DDL blocks corrected in place, each stating the partition constraint and pointing at
+the shipped substitute.
+
+## REC-100 — three collisions between the DP vocabulary and the platform's
+
+**Class B for the note, Class C for the rename.** `06_data_plane` was written without an
+AUDIT-EXISTING pass against `02_storage` and the meta registry, which were already built and already
+used three of its words.
+
+| the DP corpus means | what the platform already had | consequence |
+|---|---|---|
+| **`dp` / `dp-derive` / `dp-clippy`** — the SDK crates, named in `_index.md` line 60 and `04d` | **`crates/dp-kernel`**, created 2026-05-29 by `21855a371 feat(raid-c8): L2 schema infra` — the RAID track's event-contract plumbing, five weeks after the DP lock | `12_module_coverage_audit.md` line 154 marked the data platform *"very deep — `crates/dp-kernel` (32 modules)"*. **The document whose job is to say what is covered was fooled by a prefix**, and `13`/`14`/`16` inherited it |
+| **`CircuitOpen` · `RateLimited`** — `DpError` variants (`DP-K3`) | **`crates/breaker-core`**, *"mirrors Go `ErrCircuitOpen`"* | both grep green (13 and 26 files) and **neither is a `DpError`**; `DpError` itself is 1 file |
+| **`deploy_cohort`** — a CP-side manifest carrying `last_successful_drill`, the CI gate on every DP release (`DP-F10`) | **`reality_registry.deploy_cohort INT CHECK (0..99)`** — a canary bucket, `SR05 §12AH.4` | the column exists, so the gate reads as implementable; `last_successful_drill` is **0** |
+
+⇒ **Every collision reads as coverage to a grep.** And the framing worth keeping: the August specs
+that wrote three documents for this tier without citing `06_data_plane` were repeating what
+`06_data_plane` did to `02_storage`. Phase 0 question 1, one layer up.
+
+**Applied (B):** a disambiguation note in `_index.md` stating that `crates/dp-kernel` is **not** this
+folder's SDK, and that the three crates it names are unbuilt.
+**Queued (C):** whether `dp-kernel` should eventually be renamed. It has 15 041 lines and legitimate
+consumers; the cheap fix is that `crates/dp` arrives with a name that says what it is.
+
+## REC-101 — housekeeping inside the locked files
+
+**Class B.** Three small corrections, each measured, none re-deciding anything.
+
+| # | what | where |
+|---|---|---|
+| **(a)** | `BroadcastScope::Region(RegionId)` — `region` is dead vocabulary. `GDA-F8` measured it (the 52-row ownership matrix has `place` / `actor_core`) and `GDA-D13` fixed the one instance it went looking for, the `DP-X3` hotset. **This is the only other occurrence in the entire locked corpus**, it is in a **primitive's type signature** rather than a default value, and it is on the T1 position-broadcast path | `04c:51` |
+| **(b)** | the pre-Phase-4 primitive names. `04b` and `DP-K12` define `read_projection_reality` / `read_projection_channel` / `query_scoped_reality` / `query_scoped_channel`; four sites still say bare `read_projection` / `query_scoped` — including **`DP-K8`'s worked example and `DP-K11`'s lint skeleton**, which are the two things an implementer lifts verbatim | `01:96` · `02:149` · `04c:147` · `04d:297` |
+| **(c)** | `Q20`'s two sub-parts are named in Vietnamese, and not as prose — it is a **stable identifier**, used as a section heading and a status-table row key, cited across three files. An id that cannot be grepped in the language of the corpus is not an id; and `doc-language-gate` blocked a commit of this very audit for quoting it faithfully. (The gate is a staged-diff scan, so pre-existing files are default-uncovered — correct for what it does, and the reason this survived) | `_index` · `21` · `99`, 12 occurrences |
+
+**Also applied here (Class A — already decided, never applied):** `DP-X3`'s V1 static hotset
+*"player + session + region aggregates"* → the **W1 first-frame set**, per `GDA-D13`. `GDA-F8`
+measured that none of the three named aggregates exists, so **the pre-warm, as locked, warms
+nothing.** This is one of the four LOCKED-file changes §15 filed as *"decision-complete,
+application-gated"* and §12b recorded as *"none applied"*.
+
+## REC-102 — three genuinely locked decisions — ✅ **APPROVED BY THE PO 2026-08-07, ALL THREE APPLIED**
+
+**Class C.** Each of these changes a decision, not a fact. Filed as a queue, approved the same
+session, and applied — spec **and** code, in one commit, so neither side can be the stale one.
+
+### (a) `ChannelId` is three types in three artifacts
+
+| artifact | type |
+|---|---|
+| LOCKED `DP-Ch1` | `pub struct ChannelId(pub(crate) Uuid)` — *"module-private constructor — cannot be forged by feature code"* |
+| built `crates/dp-kernel/src/channel.rs:31` | `pub struct ChannelId(pub i64)` |
+| wire `contracts/game-wire/common.schema.json` | `Uint64String` |
+
+Two of three agree on 64-bit and the build's width is defensible — `DP-Ch11`'s allocator is a counter,
+which is what a `BIGINT` is for. **What is not defensible is `pub`.** `DP-Ch1` calls the newtype a
+parallel shape to `RealityId`, and `DP-A12`'s entire claim for `RealityId` is that it *"gates
+cross-reality leakage at the type level"* by being unforgeable. Any caller can write `ChannelId(7)`.
+
+**Recommendation:** adopt `i64` in the spec and restore `pub(crate)`. That is one amendment and one
+one-line code change, and it closes a **third** instance of the shape `SEALED-SUBJECT` named — a
+value whose supplier is also its judge.
+
+### (b) `REC-65`'s `DpError` drift is still open and now blocks a build slice
+
+`DP-K3` is LOCKED at **21 variants**; five documents mint satellites (`CausalRef*` x4,
+`ResumeTokenExpired`, `AggregatorStuck`, `ChannelAlreadyDissolved` duplicating
+`ChannelAlreadyInState`, `OwnershipTransferAlreadyActive`). Filed 2026-07-26, never adjudicated.
+
+**Why it is urgent now and was not before:** the tier-typed write surface returns `DpError`. Typing it
+against an enum already drifting across five documents bakes the drift into the SDK's first line.
+
+### (c) Degraded mode: the DP says REJECT, the island model says BUFFER
+
+`DP-F4`/`DP-F5`, LOCKED, consistency-over-availability: *"T3 write ... **Fails** with
+`DpError::CircuitOpen`"* and *"Partitioned SDKs: **stop accepting T3 writes**"*.
+
+`02_storage/SR06`'s correction banner, citing `13`/`15`: *"...and 'per-reality DB down → writes
+rejected' is **inverted**: the island should **buffer and dilate ticks** while the sink is down, **not
+reject gameplay**."*
+
+Both are defensible; only one is buildable. **This is not the seam `GDA-F11` found** — that one is
+about *when the ack fires* on a healthy path. This is about **whether the game stops when a store is
+down**, and `17`'s flow set never traverses it: `B1`-`B5` are boot, `R1`-`R8` are the healthy path,
+`L2` is crash recovery *after* the fact. **Degraded-mode-while-running has no flow**, which is exactly
+the condition under which two layers disagree and nothing notices.
+
+
+---
+
+### REC-102 close-out — what each approval actually cost
+
+| # | applied where | note |
+|---|---|---|
+| **(a)** `ChannelId` | `12_channel_primitives.md` DP-Ch1 **+** `crates/dp-kernel/src/channel.rs` | spec adopts **`i64`** (two of three artifacts said 64-bit, and DP-Ch11's allocator is a *counter* — a Uuid cannot be incremented); code's field becomes **`pub(crate)`**. `new_verified` is deliberately NOT added — an unused constructor for a model nothing produces is the orphan shape `orphan-model-gate` refuses. Instead `ChannelId::unverified(i64)`, named and greppable: **22 call sites, 18 of them tests, 3 operator CLIs, and exactly ONE load-bearing** (`commit-service/src/manager.rs`, where the channel arrives from the wire — `SEALED-SUBJECT` verbatim, now visible). `cargo check -p dp-kernel -p commit-service --all-targets` green |
+| **(b)** `DpError` | `04a` DP-K3 | closes `REC-65` on a **full census** rather than its original list. **21 → 23**: adopt `ResumeTokenExpired` + `AggregatorStuck`; strike `ChannelAlreadyDissolved` (duplicate of `ChannelAlreadyInState`); **re-home the four `CausalRef*`** — `EVT-A6` itself says they are *"rejected at validator-pipeline time"*, and the validator pipeline is `commit-service`'s admission, not the SDK, so the drift is an **attribution**, not a variant; and `OwnershipTransferAlreadyActive` **is not a satellite at all** — the source never writes it as `DpError::`, so `REC-65` miscounted its own list |
+| **(c)** degraded mode | `07` DP-F5 | **partition, not a winner.** T0/T1/T2 **buffer and dilate** (SR06 is right: the island must not stop because a *sink* is unreachable); **T3 still rejects** (DP-T3 *is* invalidate-before-ack — a buffered T3 acks a promise not kept). This is `GDA-F11`'s resolution applied one failure-mode over: *the island stays authoritative for state, and the tier decides whether the write may proceed without its store* |
+
+**One near-miss worth recording** (`BDR-25`): the mechanical rewrite of `ChannelId(` →
+`ChannelId::unverified(` hit **`services/tilemap-service`, which has its OWN unrelated
+`pub struct ChannelId(pub String)`** — a **fourth** name collision, found by `cargo` refusing
+`pub struct ChannelId::unverified(pub String);`. Reverted in full. A regex over a type name is a
+regex over a *word*, and this tier has now produced four different things sharing one word.
+
+## 17. `REC-103` / `REC-104` — slice 1b's Phase 0, found before any migration existed
+
+Both are in `06_data_plane/12_channel_primitives.md` `DP-Ch2`, and both were found by asking Phase 0's
+questions with commands rather than from memory, at the start of slice 1b.
+
+| id | what | status |
+|---|---|---|
+| `REC-103` | **`channels.id` declared `UUID`; `REC-102a` had already ruled it `i64`.** Not a new decision — the amendment `REC-102a` implied and did not reach. It was applied to `DP-Ch1`'s newtype and to `crates/dp-kernel` in the same commit, and not to the schema thirty lines below, so the one artifact a migration would be written from still said the thing the decision had ruled false. | ✅ **APPLIED** — executing a PO-approved decision, not taking one. |
+| `REC-104` | **`CONSTRAINT channels_root_single UNIQUE (id)` could not fail.** `id` is the primary key. The constraint's NAME states `DP-Ch1`'s real invariant — a strict tree has exactly one root — and **nothing enforced it**; `channels_no_orphan` is adjacent and weaker, permitting any number of roots. Replaced with a partial unique index on `parent IS NULL`, the only shape Postgres offers for *"at most one row satisfying a predicate"*. | ✅ **APPLIED**, and flagged: this is a genuine choice (make it real vs delete it) and the register records that I took the first reading. If the intent was *no* root constraint, say so and it comes out — the vacuous version must not return either way. |
+| `REC-105` | **`channels` carries `reality_id`; `DP-Ch2` did not.** Every other per-reality migration keys on `(reality_id, …)`, and `channel_writer_state` is `PRIMARY KEY (reality_id, channel_id)` — so a foreign key to a single-column `channels(id)` is **not expressible**, and following the spec literally would have shipped the table while leaving `FLOW-19`'s dangling lease exactly as it was. Derived from the shipped tables, not chosen. | ⚠ **APPLIED, and it is the one JUDGEMENT in 1b rather than a correction.** Nothing has run against a real database — only a throwaway — so it is cheap to reverse. If one-DB-per-reality is the intent and `reality_id` is redundant, say so and it comes out. |
+
+**`REC-104` is `NV-1` inside a LOCKED design document**, predating this run entirely.
+`docs/standards/non-vacuity.md` was written about the code tier; the same defect had been sitting in
+the design corpus, unexamined, because nothing points the standard at prose. Worth noticing as a gap
+in the standard's reach rather than as one bad constraint.

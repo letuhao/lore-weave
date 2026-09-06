@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/loreweave/foundation/contracts/adminjwt v0.0.0
+	github.com/loreweave/foundation/contracts/events v0.0.0-00010101000000-000000000000
 	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/grantclient v0.1.0
 	github.com/loreweave/loreweave_extraction v0.0.0
@@ -23,6 +24,8 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 )
+
+replace github.com/loreweave/foundation/contracts/events => ../../contracts/events
 
 replace github.com/loreweave/foundation/contracts/adminjwt => ../../contracts/adminjwt
 
@@ -71,7 +74,7 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
-	google.golang.org/grpc v1.81.1 // indirect
+	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 

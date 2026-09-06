@@ -28,8 +28,8 @@ import (
 // uq_entity_dedup stays valid (it indexes the column regardless of generated-ness).
 //
 // Idempotent: the DROP is guarded on attgenerated so a re-run (or a fresh DB whose
-// column is already plain) no-ops. A DEFAULT '' is set so a freshly-inserted entity
-// row (created before its name EAV lands) carries '' — excluded by the partial
+// column is already plain) no-ops. A DEFAULT ” is set so a freshly-inserted entity
+// row (created before its name EAV lands) carries ” — excluded by the partial
 // index — until refreshEntityDedupKey fills it.
 func UpStDedupAppMaintained(ctx context.Context, pool *pgxpool.Pool) error {
 	return execGuarded(ctx, pool, "st-dedup-app-maintained", `

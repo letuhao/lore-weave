@@ -1122,7 +1122,7 @@ PA = Perfection_Addiction · HA = Humanity_Anchor · CD = Corruption_Debt</texta
   <code>plan_handoff_autofix</code>), and this spec changes none of them. Two consequences the builder must not miss:
   <b>(a)</b> registering <code>plan-passes</code> means <b>two</b> edits in <code>frontend_tools.py</code> — the <code>panel_id</code> <b>enum</b>
   <i>and</i> the tool's <b>description prose</b>, which is the model's only hint the panel exists — then <b>regenerate</b>
-  <code>contracts/frontend-tools.contract.json</code>, never hand-edit it (57→58 == 58 == 58).
+  <code>contracts/browser-tools.contract.json</code>, never hand-edit it (57→58 == 58 == 58).
   <b>(b)</b> there is <b>no <code>plan_*</code> effect handler today</b>, so without <code>planEffects.ts</code> (X-4) the agent runs a pass and
   <b>the Rail sits stale</b> — mirror <code>bookEffects.ts</code> including <code>unwrapToolResult</code>, or it stays green in unit tests and never fires live.
   And after BE-3 the human can read an artifact body while the <b>agent still cannot</b> (no <code>plan_get_artifact</code> tool) — a real GG-2 inversion,

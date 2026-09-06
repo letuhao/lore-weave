@@ -140,12 +140,38 @@ async def apply_triage_schema_write(
     after = await schemas.active_project_schema(project_id)
     new_version = after.schema_version if after else None
 
-    # Stamp the new version onto the (already-resolved) triage items of this
-    # signature — the resolve route set it to None; E3 backfills the real version.
-    # owner == the project owner the schema is scoped under (scope_id). Best-effort
-    # write-through: a stamp failure must not unwind the applied schema change.
+    # Close out the triage items of this signature.
+    #
+    # Two callers reach this effect and they arrive in DIFFERENT states. The REST resolve
+    # route applies the mutation itself and marks the batch resolved in the same request,
+    # leaving schema_version=None for E3 to backfill — which is all this block used to do.
+    # The MCP path (kg_triage_schema_write) only MINTS a token and never touches the items,
+    # so on confirm they are still PENDING and `stamp_schema_version` (which filters
+    # `status = 'resolved'`) matched nothing. Measured: the ontology gained the new edge type
+    # at schema_version 6 while the item that prompted it stayed pending with a null
+    # resolution and `stamped: 0` — the agent would be re-offered the same triage entry
+    # forever, and could re-add a type that already exists.
+    #
+    # So: resolve whatever is still pending FIRST (a no-op for the REST path, whose rows are
+    # already resolved — resolve_signature only touches PENDING), then backfill the version
+    # onto the resolved set. Both remain best-effort: a bookkeeping failure must not unwind
+    # an applied schema change.
+    resolved = 0
     affected = 0
     if new_version is not None and owner is not None:
+        try:
+            resolved = await triage.resolve_signature(
+                user_id=owner,
+                project_id=project_id,
+                signature=params.signature,
+                action=params.action,
+                params={},
+                resolved_by=str(owner),
+                new_status="resolved",
+                schema_version=new_version,
+            )
+        except Exception:  # noqa: BLE001 — bookkeeping, never unwinds the schema change
+            resolved = 0
         try:
             affected = await triage.stamp_schema_version(
                 user_id=owner,
@@ -162,6 +188,11 @@ async def apply_triage_schema_write(
         "action": params.action,
         "schema_version": new_version,
         "stamped": affected,
+        # How many items this confirm actually closed. On the REST path it is 0 because the
+        # route already resolved them; on the MCP path it is the batch that was waiting. A
+        # caller seeing resolved=0 AND stamped=0 now knows the queue was untouched, which
+        # `stamped: 0` alone could not distinguish from "already tidy".
+        "resolved": resolved,
     }
 
 

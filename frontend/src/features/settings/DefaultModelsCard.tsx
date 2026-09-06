@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { AddModelCta } from '@/components/shared/AddModelCta';
 import { ModelPicker } from '@/components/model-picker';
-import { defaultModelsApi, RERANK_CAPABILITY, PLANNER_CAPABILITY, CHAT_CAPABILITY } from './api';
+import { defaultModelsApi, RERANK_CAPABILITY, PLANNER_CAPABILITY, CHAT_CAPABILITY, COMPOSER_CAPABILITY } from './api';
 
 /**
  * Per-user DEFAULT model per capability (rerank/embedding). Restores the
@@ -153,6 +153,24 @@ export function DefaultModelsCard() {
             })}
             value={defaults[PLANNER_CAPABILITY] ?? null}
             onChange={(id) => void save(PLANNER_CAPABILITY, id)}
+            disabled={saving}
+          />
+        </div>
+        {/* Composer default (DQ-T89 (b), owner ruling 2026-09-02): the model that WRITES PROSE.
+            Same shape as planner — a role, so it lists chat models and saves under 'composer'.
+            Without it, composition_generate had only the per-BOOK setting to fall back on, and
+            0 of 664 books carried one: the tool refused on ~98% of them and the turn wrote
+            prose through a plain draft-save instead. */}
+        <div className="mt-4">
+          <DefaultModelRow
+            capability={COMPOSER_CAPABILITY}
+            listCapability={CHAT_CAPABILITY}
+            label={t('defaultModels.composer', { defaultValue: 'Default composer' })}
+            hint={t('defaultModels.composerHint', {
+              defaultValue: 'The model that writes your prose when a book has no model of its own. Set deliberately — generation is the most expensive thing here, and nothing will spend through your chat model on your behalf.',
+            })}
+            value={defaults[COMPOSER_CAPABILITY] ?? null}
+            onChange={(id) => void save(COMPOSER_CAPABILITY, id)}
             disabled={saving}
           />
         </div>

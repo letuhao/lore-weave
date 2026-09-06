@@ -684,6 +684,11 @@
       "title": "Workflow-Vorschläge",
       "desc": "Überprüfen Sie die vom Agenten vorgeschlagenen Workflows",
       "guideBody": "Hier werden die Workflow-Rezepte aufgelistet, die der Agent basierend auf mehrstufigen Sequenzen vorgeschlagen hat, die er bei Ihnen wiederkehrend festgestellt hat. Öffnen Sie diesen Bereich, um einen Vorschlag anzunehmen – wodurch der Workflow erstellt wird und ausführbar ist – oder ihn abzulehnen. Hier wird ein vom Agenten vorgeschlagener Workflow tatsächlich realisiert."
+    },
+    "world-setup": {
+      "title": "Weltenaufbau",
+      "desc": "Erstelle deine Besetzung, deine Welt und deren Beziehungen aus einer Beschreibung",
+      "guideBody": "Verwandle eine Beschreibung deiner Geschichte in echtes, nachverfolgbares Lore: Es plant, was erstellt werden muss, du genehmigst oder kürzt die Liste, und dann wird jeder Charakter, jede Fraktion und jeder Begriff einzeln ausgearbeitet (wichtige Elemente erhalten ein ausführliches Tiefenprofil) und zur Überprüfung abgelegt. Schließlich wird ermittelt, wie sie alle miteinander verbunden sind, und du wirst gebeten, diese Beziehungen zu bestätigen, bevor sie gespeichert werden."
     }
   },
   "sceneRail": {

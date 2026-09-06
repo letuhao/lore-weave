@@ -13,7 +13,8 @@ The control plane (CP) owns exactly these concerns. Anything not listed is expli
 |---|---|
 | **Tier policy registry** | Authoritative record of which aggregate types exist, which tiers each supports, and which services have capability to read/write each at each tier. |
 | **Schema coordination** | Gate schema changes: version numbers, compatibility windows, rolling-deploy sequencing, projection rebuild triggers. |
-| **Capability issuance** | Sign JWTs (DP-K9) issued on `bind_session`, `verify_reality`, and `refresh_capability` RPCs. |
+| **Capability issuance** | Sign JWTs (DP-K9) issued on `bind_session`, `verify_reality`, and `refresh_capability` RPCs. **AMENDED 2026-08-09 (`5B`) — what ships is an opaque bearer validated by lookup against `session_registry`; see the amendment block on DP-C8.** |
+| **Session registry** | One row per issued capability: session, reality, node, calling service, and the SHA-256 of the bearer secret. Referenced by DP-C1, DP-C8 and DP-Ch32 since before it was declared; the schema landed with migration `039` in slice `5B`. |
 | **Invalidation broadcast orchestration** | Accept invalidation events from T3-write paths; fan them out via Redis pub/sub (not directly by CP — CP publishes once, Redis does fan-out). |
 | **Cold-start coordination** | When a reality transitions frozen → active, CP warms the tier policy cache, signals subscribed services to prepare, and logs the transition. |
 | **Session stickiness routing table** | NPC-to-node binding (DP-A11) and session-to-node lookup. Low-QPS, cache-friendly. |
@@ -46,7 +47,8 @@ The control plane (CP) owns exactly these concerns. Anything not listed is expli
 - `reality_registry` table
 - `npc_binding` table
 - `schema_version` table
-- `capability_signing_keys` table (rotated quarterly)
+- `session_registry` table (added by the `5B` amendment on DP-C8 — the capability store; it was referenced by three sections of this spec and never listed here)
+- `capability_signing_keys` table (rotated quarterly) — **NOT BUILT**; superseded for now by the `5B` amendment on DP-C8
 - `deploy_cohort` table (for schema migration sequencing)
 
 **Failover latency:** ≤60 seconds (active dies → etcd detects → passive promotes → warm caches → serve). During this window, data plane runs in degraded mode (DP-C9).
@@ -108,6 +110,25 @@ service DpControlPlane {
   rpc Health (Empty) returns (HealthReport);
 }
 ```
+
+> **IMPLEMENTATION NOTE (2026-08-09, slice `5C`).** The **non-channel** half of
+> this surface — six groups, fourteen RPCs — is implemented in
+> `crates/dp-control-plane`, generated from `contracts/proto/dp_control_plane.proto`
+> so the server and client cannot drift. The four CHANNEL groups (twelve RPCs)
+> are slice `5D`, which is what first produces a `ChannelId`.
+>
+> **Six of the fourteen are served: `VerifyReality`, `BindSession`,
+> `RefreshCapability`, `ResolveReality`, `GetSessionNode`, `Health`.** The other
+> eight return `UNIMPLEMENTED` naming the state that is missing — `tier_policy`,
+> `tier_capability`, `npc_binding` and `schema_version` have no migration in this
+> repo, measured rather than assumed. The list is asserted against the running
+> server, so it cannot rot in either direction.
+>
+> **`I1` does not apply to this surface** and that was checked rather than
+> assumed: `I1` governs public traffic and is enforced by security groups
+> exposing only `api-gateway-bff` and `game-server`. This is service-to-service
+> inside the cluster. **`I11` applies** — the ACL rows are `control-plane-rpcs` in
+> `contracts/service_acl/matrix.yaml`.
 
 **Transport:** gRPC over mTLS between CP and game services. Service-to-service auth uses mTLS certs issued via the existing service-to-service auth infrastructure ([02_storage/S11](../02_storage/S11_service_to_service_auth.md)).
 
@@ -221,6 +242,56 @@ Resolves [Q6](99_open_questions.md) at the protocol level.
 ---
 
 ## DP-C8 — Capability issuance + rotation
+
+> ### AMENDMENT (2026-08-09, slice `5B`) — the shipped capability is an OPAQUE BEARER validated by LOOKUP, not a signed JWT
+>
+> **Status: IMPLEMENTED and DIVERGENT.** Everything in `DP-C8` below describes
+> signed JWTs, a `capability_signing_keys` table and quarterly rotation. That is
+> **not** what `crates/meta-rs`'s `MetaControlPlane` issues today, and this block
+> exists so the difference is on the record rather than discovered by the next
+> reader of the code.
+>
+> **What ships.** `bind_session` mints an opaque 122-bit CSPRNG secret, stores
+> **SHA-256 of it** in `session_registry` (migration `039`) together with the
+> session, the reality, the node and the calling service, and returns the secret
+> once. Validation hashes what is presented and looks the digest up.
+> `RefreshCapability` is a compare-and-swap on the row's expiry — the secret does
+> not travel a second time. Revocation sets `revoked_at`.
+>
+> **Why.** Nothing validates a capability offline today: every holder can reach
+> the control plane, so a signature buys nothing and costs a key-rotation
+> subsystem with no readers. Shipping `capability_signing_keys` now would be a
+> table nothing writes to.
+>
+> **What it costs, stated rather than discovered.** Validation is a round trip to
+> the CP, per validation. Signing is the only thing that removes that round trip,
+> and this amendment is reversed when a capability holder and its validator are
+> different processes **and** the round trip is measured to hurt. Remoteness
+> alone does not reverse it — `5C` makes the CP remote, and a trigger that fires
+> on a fact already scheduled is a countdown, not a trigger.
+>
+> **What it BUYS, which the spec's model does not.** `DP-C8`'s own revocation
+> section reaches immediate broad revocation only by rotating the signing key,
+> invalidating every other capability in the system as collateral. A
+> lookup-validated bearer is revoked by one `UPDATE` affecting one session.
+>
+> **Two further deviations inside this one, both deliberate:**
+>
+> * `DP-C8` says immediate revocation *removes the session's row*. A timestamp is
+>   kept instead, because a `DELETE` destroys the record of the revocation along
+>   with the session. Validation treats a revoked row exactly as it treats an
+>   absent one, so the specified behaviour is unchanged.
+> * The issuance flow validates service identity via **mTLS cert**. In-process
+>   there is no peer certificate, so `dp::BindRequest` carries a validated
+>   `ServiceIdentity` field and `5C` populates it from the certificate subject.
+>   The field is **attribution, not authorization**: `DP-C4`'s `tier_capability`
+>   is the authorization table, it is keyed by service and aggregate rather than
+>   by reality, and it has no producer in this repo — its rows come from *"a
+>   deploy manifest calling CP's admin API"*, which does not exist yet. Until it
+>   does, `bind_session` records **who asked** and does not decide **whether they
+>   may**. Saying that plainly is the point: an identity field can be mistaken
+>   for an authentication decision by the next reader, and then the gate has a
+>   subject anyone may claim.
 
 ### Signing key lifecycle
 

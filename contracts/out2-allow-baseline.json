@@ -1,0 +1,29 @@
+{
+ "_what": "The OUT-2 defaults-lint ALLOW list as seeded under DQ-T52. It may only SHRINK.",
+ "_why": "Owner 2026-08-28: 'the allow-list may only SHRINK. That is this loop's standing rule and it is what stops a seeded baseline from becoming a place to hide new violations.' A seeded baseline with no ratchet is an invitation: the next offender is one ALLOW row away from silence.",
+ "_derived_by": "scripts/context-budget-defaults-lint.py (ALLOW), recorded 2026-08-30",
+ "seeded": [
+  "agent-registry-service::registry_list_skills",
+  "agent-registry-service::registry_list_workflows",
+  "composition-service::composition_arc_list",
+  "composition-service::composition_arc_template_list",
+  "composition-service::composition_authoring_run_list",
+  "composition-service::composition_list_canon_rules",
+  "composition-service::composition_list_derivatives",
+  "composition-service::composition_motif_link_list",
+  "composition-service::composition_motif_search",
+  "composition-service::composition_reference_list",
+  "glossary-service::glossary_curation_list",
+  "glossary-service::glossary_list_ai_suggestions",
+  "glossary-service::glossary_list_chapter_links",
+  "glossary-service::glossary_list_entity_revisions",
+  "glossary-service::glossary_list_merge_candidates",
+  "glossary-service::glossary_list_system_standards",
+  "glossary-service::glossary_list_unknown_entities",
+  "glossary-service::glossary_search",
+  "glossary-service::glossary_web_search",
+  "knowledge-service::kg_list_templates",
+  "knowledge-service::kg_project_list"
+ ],
+ "count": 21
+}

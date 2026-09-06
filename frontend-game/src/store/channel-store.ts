@@ -17,12 +17,15 @@ import {
   type TurnOutcome,
   type U64,
   type W0Bind,
+  type FramePlace,
   type W1Frame,
 } from '@/net/channel-protocol';
 
 export interface ChannelState {
   bound: W0Bind | null;
   selfEntityId: U64 | null;
+  /** `A4` — where the driven actor is. `null` when unsited or unknown. */
+  place: FramePlace | null;
   turnNumber: U64;
   roster: RosterEntry[];
   /** Newest-first outcome log for the UI. Bounded — a long session must not
@@ -48,6 +51,7 @@ const LOG_CAP = 200;
 export const useChannelStore = create<ChannelState>((set) => ({
   bound: null,
   selfEntityId: null,
+  place: null,
   turnNumber: '0',
   roster: [],
   log: [],
@@ -59,6 +63,9 @@ export const useChannelStore = create<ChannelState>((set) => ({
   applyW1: (f) =>
     set({
       selfEntityId: f.self.entity_id,
+      // `??` and not `||`: absence is a real answer (unsited, or the advisory
+      // lookup failed), and both mean the header shows no location.
+      place: f.place ?? null,
       turnNumber: f.turn_number,
       roster: f.roster,
     }),

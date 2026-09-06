@@ -18,7 +18,9 @@ import (
 //   - EventVersion    — schema version; matches the @version annotation on the
 //                       struct
 //   - AggregateID     — entity id this event mutates (NPC id, region id, …)
-//   - AggregateType   — string discriminator (e.g. "npc", "region", "pc")
+//   - AggregateType   — OPEN string discriminator, declared by the feature
+//                       that owns the aggregate. Deliberately not a closed set:
+//                       a new kind must not need an engine release (D-2).
 //   - AggregateVersion— monotonic per-aggregate sequence number (optimistic CC)
 //   - RealityID       — per-reality DB isolation key (R05)
 //   - OccurredAt      — when the event actually happened (in-world time may

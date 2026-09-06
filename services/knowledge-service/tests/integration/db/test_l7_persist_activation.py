@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.db.neo4j_repos.relations import relation_id
+from app.db.graph_repos.relations import relation_id
 from app.db.repositories.triage import TriageRepo
 from app.extraction.pass2_writer import write_pass2_extraction
 from loreweave_extraction.extractors.entity import LLMEntityCandidate

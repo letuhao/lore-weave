@@ -69,7 +69,8 @@ def event_to_payload(event: JobEvent) -> dict:
         # reconnect recovers it (this file's SSOT contract). Kind-retryable siblings
         # (translation/extraction/video_gen) are unaffected (their retry is kind-based).
         "control_caps": [c.value for c in derive_control_caps(
-            event.status, event.kind, retryable=(event.params or {}).get("retryable"))],
+            event.status, event.kind, retryable=(event.params or {}).get("retryable"),
+            detail_status=event.detail_status)],
     }
 
 

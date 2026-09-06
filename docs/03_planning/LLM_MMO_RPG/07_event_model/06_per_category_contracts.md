@@ -39,6 +39,37 @@ Every event committed to a per-reality channel event log (or, for EVT-T6 Proposa
 | `idempotency_key` | IdempotencyKey | ✅ | Uniform shape per [EVT-P*](04_producer_rules.md) — `(producer_service, client_request_id, target)`. |
 | `payload` | category + sub-type-specific | ✅ | Feature-defined per sub-type. Schema declared in feature doc + extension contract. |
 
+> ## ⚠️ ROT `E-2` — 2026-08-02: **EIGHT OF THE TWELVE FIELDS ABOVE DO NOT EXIST.** This is the single
+> largest divergence found in the sweep of this folder.
+>
+> The **shipped** envelope, mirrored field-for-field in Go
+> ([`contracts/events/envelope.go:45-58`](../../../../contracts/events/envelope.go#L45)) and Rust
+> ([`crates/dp-kernel/src/envelope.rs:46-76`](../../../../crates/dp-kernel/src/envelope.rs#L46)), has
+> **12 fields and they are not these 12**:
+>
+> `event_id` · `event_type` · `event_version` · `aggregate_id` · `aggregate_type` ·
+> `aggregate_version` · `reality_id` · `occurred_at` · `recorded_at` · `payload` · `metadata` ·
+> **`ruleset_digest`**
+>
+> | | |
+> |---|---|
+> | **absent from the shipped envelope** | `event_category` (removed as a security defect — see `EVT-A1`, rot `E-1`) · `event_sub_shape` (0 occurrences) · `event_schema_version` (versioning is **per-event-type**, not envelope-wide — rot `E-9`) · `producer_service` · `fiction_ts_start` · `fiction_duration` · `turn_number` · `idempotency_key` (1 occurrence, a doc string) · `causal_refs` (a **JSONB column on the row**, not an envelope field — rot `E-6`) |
+> | **present and undocumented here** | **`ruleset_digest`** (`RLS-A13`) — the corpus never mentions it |
+> | **keyed on** | **aggregate**, not channel |
+>
+> There are also **three different shapes**, each a strict subset of the last: the stored row has **19
+> columns** (`contracts/migrations/per_reality/0002_events_table.up.sql:64-101` plus `0013`/`0014`/`0016`),
+> the envelope has **12**, and what reaches a client has **4**
+> (`services/game-server/src/rooms/ChannelRoom.ts:84-96`). ⚠ Two INSERT paths write **different column
+> sets into the same table** (`event_store_pg.rs:251-265` 13 columns, no outbox row; `channel.rs:166-172`
+> 17 columns plus an outbox row in the same transaction), and two columns — `audit_ref` and
+> `registry_version` — appear in **neither** INSERT and are always NULL.
+>
+> **Action: this section must be rewritten against the shipped envelope**, and the fields above that are
+> genuinely wanted must be argued for individually rather than inherited as a block. See
+> [`docs/specs/2026-08-02-event-causality.md`](../../../specs/2026-08-02-event-causality.md) §3.4 for
+> which of them earn their place and why.
+
 **Envelope max size:** ~512 bytes. Payload max size is **feature-declared** per sub-type with guidance defaults documented in `_boundaries/02_extension_contracts.md` §1 (TurnEvent envelope) for the most common case (EVT-T1 Submitted).
 
 `CausalRef` shape (per [EVT-A6](02_invariants.md#evt-a6--causal-references-are-typed-single-reality-gap-free)):

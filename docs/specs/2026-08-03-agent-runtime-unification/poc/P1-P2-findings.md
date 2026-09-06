@@ -1,0 +1,1079 @@
+# POC P1 + P2 — measured on the live stack, 2026-08-03
+
+**Why these exist.** The spec borrows its architecture from Entity Framework, Backstage, Temporal and
+the MCP registry ecosystem. **None of those has a client that is an LLM** — a caller that passes
+strings and can never fail to compile. The PO's instruction was therefore to *decide the architecture
+by POC rather than refactor and discover the assumption was wrong*. Each POC below is designed to
+**falsify** a spec requirement, not to confirm it.
+
+Sources: `ai-gateway /mcp tools/list` (live, 315 tools) and `loreweave_chat.chat_messages.tool_calls`
+(7,442 calls across 549 sessions). Both reproducible; commands in §4.
+
+---
+
+## P1 — Can a group hierarchy be derived from tool names? **NO.**
+
+R2/R14.2 assume a tool's group (and, at scale, its path) can be organised from the name. Test: does
+the second name segment form a taxonomy?
+
+| level-1 prefix | noun-first level-2 | verb-first level-2 | mixed? |
+|---|---|---|---|
+| `composition` (107) | 89 | 15 | ✅ |
+| `glossary` (54) | 26 | 26 | ✅ |
+| `kg` (31) | 19 | 11 | ✅ |
+| `book` (35) | 24 | 5 | ✅ |
+| `plan` (16) | 4 | 9 | ✅ |
+| `world` (17) | 11 | 1 | ✅ |
+| `settings` (12) | 7 | 5 | ✅ |
+| `translation` (12) | 3 | 8 | ✅ |
+
+**8 of 8 mix nouns (`arc`, `motif`, `entity`, `chapter`) with verbs (`get`, `list`, `propose`) at the
+same level.** `glossary` is an exact 26/26 split.
+
+**Verdict — the path must be DECLARED, never parsed.** Any scheme deriving structure from the name
+inherits this inconsistency, which is also the root reason `_domain_of` was always fragile. Settles
+DESIGN Q15's "who decides a tool's path": the author, at registration, gate-checked.
+
+Supporting scale facts, measured (not estimated): **315 tools · ~130k tokens of schema · 413 tokens per
+tool** — higher than the 375 the spec first estimated. `composition` alone is 107 tools, a third of the
+catalog, so the flat taxonomy fails today rather than at 3,000. And **17 level-1 prefixes exist while
+`GROUP_DIRECTORY` declares 14** — three already unaccounted for.
+
+---
+
+## P2 — Is the infinite loop caused by ambiguous tool errors? **PARTLY — and the larger half is us.**
+
+R10 (the error contract) is premised on the loop being driven by errors the model cannot act on. Test:
+autopsy every tool call in the real history.
+
+### The shape of the problem
+
+| | |
+|---|---|
+| tool calls | **7,442** across 549 sessions |
+| failed (`ok=false`) | **4,007 — 54% of every call ever made** |
+| byte-identical repeats (same session, tool, args) | **5,508 — 74% of all calls** |
+| of those repeats | 3,669 error · 1,839 success |
+
+### 🔴 The finding that changes the spec
+
+Of 3,976 errors carrying text, **58% are not tool failures at all — they are our own loop-breakers'
+output**:
+
+| count | error text |
+|---|---|
+| 1,180 | *"You have already called `tool_list` with these exact arguments this turn and it returns the SAME list every time"* |
+| 495 | *"You have already called `book_get` … it returned the IDENTICAL …"* |
+| 263 | *"`kg_project_create` already ran this turn … reported created=false"* |
+| 157 | *"`find_tools` has been called with no `intent` N times this turn — STOP…"* |
+| 86 | *"`book_chapter_save_draft` keeps being called with missing/blank required arguments — STOP."* |
+
+**2,318 of 3,976 errors (58%) are breaker feedback — 31% of every tool call in the system.** Each is a
+call the model emitted, the tool never ran, and a full tool-loop pass was burned re-sending the entire
+context.
+
+**The breakers are participants in the loop, not terminators of it.** The breaker returns prose → the
+prose enters context → the model reads "STOP" and calls again → the breaker fires again. This is the
+context-contamination mechanism observed in our own production data.
+
+> **A message cannot stop a model. Only an absent affordance can.**
+
+The repo already discovered this empirically and wrote it down at `stream_service.py:1905-1911`:
+*"Short-circuiting DISPATCH isn't enough; take the tool OFF THE WIRE so it physically cannot be
+re-emitted."* The de-advertise escalation is the mechanism that works. **The messages are the mechanism
+that fails, and they outnumber real errors 3:2.**
+
+### R10's taxonomy, tested against real tool errors only
+
+Excluding breaker output, the 1,658 genuine tool errors classify well:
+
+| bucket | count | share |
+|---|---|---|
+| `retryable_modified` | 962 | 58% |
+| `terminal_permanent` | 415 | 25% |
+| UNCLASSIFIED | 277 | 17% |
+| `retryable_transient` | 4 | 0% |
+
+**83% bucket deterministically.** R10's taxonomy is sound — but it addresses **42% of error volume**,
+not the loop's dominant driver. `retryable_transient` being ~0 is itself informative: these are not
+flaky-network loops, they are *the model being wrong the same way repeatedly*.
+
+### Concentration
+
+Breaker storms occur in **73 of 549 sessions (13%)**, and the **top 5 sessions produce 66%** of all
+breaker output. The median session is healthy; the failure is a tail that consumes the budget.
+
+### Consequences for the spec
+
+1. **R10 stays, re-scoped honestly.** It fixes the 42% and improves error quality. It is **not** the
+   loop fix, and its DoD must not claim to be.
+2. **The loop fix is R4/R5** — `excluded_by` withholding the affordance — promoted in priority. Add
+   the rule this POC produced: **a guard withholds; it does not argue.** Returning a "STOP" string as
+   a tool result is itself a defect, because the tool result is exactly the channel the model is free
+   to ignore.
+3. **R14 is urgent, not speculative.** `tool_list` is the **single largest loop source in the system**
+   (1,180 breaker fires). The tool built to fix discovery is the biggest generator of the failure it
+   was meant to fix — measured, in production data.
+4. **The 54% failure rate is itself the headline.** No amount of prompt or skill work matters while
+   more than half of every tool call fails.
+
+---
+
+## ⚠️ RETRACTION AND CORRECTION (2026-08-04)
+
+**P2b as first written is withdrawn.** The PO challenged it on two grounds — that skills and tool
+schemas are a *fixed* per-turn cost that does not balloon, and that against a large window they are a
+small share — and then said the measurement itself looked wrong. Both objections were correct, and
+checking them exposed a sampling bias worse than the framing error.
+
+**What was wrong:**
+
+1. **Sampling bias.** `context_breakdown` exists on only **2,029 of 5,720 messages (35%)**, and the
+   coverage is **zero before July 2026** — the instrumentation did not exist. A freshly driven turn
+   (session `019fc893-…`, 3 tool calls, 2026-08-04) wrote **no `context_breakdown` and no
+   `input_tokens` at all**. The aggregate was therefore a July-only, partially-instrumented sample.
+2. **Cumulative spend was reported as context occupancy.** Summing a *fixed* per-turn cost across
+   2,029 messages and calling the result "80% of every turn" conflates what we *pay* with what the
+   window *holds*. The two diverge exactly when the tool loop re-sends the same prompt.
+3. **The tail metric was misread.** `pct` and `raw_tokens` are **cumulative across tool-loop passes**,
+   not context size. The worst observed turn showed `pct` 4.69 (469%) against a `context_size` of
+   **33,918** — i.e. ~28 passes over the same 34k prompt, **96% of it served from cache**. It was
+   never a full window.
+
+**What the PO was right about, confirmed:** tool schemas are fixed per session — in **112 of 119**
+sessions with ≥4 messages, `mcp_tool_schemas` varies by under 25% (mean spread 1,165 tokens). They do
+not balloon. Median context utilisation is **14.4%** of target. **There is no context-pressure
+problem in the median case.**
+
+**Therefore withdrawn:** "80% of every turn is schemas and skills", "≈28% of all context ever was
+schemas on zero-tool turns", and "R14 is the budget fix". None survive the sampling check.
+
+**Standing finding, retained:** the loop is a **pass-count, latency and call-count** problem, not a
+context-occupancy problem. Bounding passes (R11) matters; R14 remains justified by C1 and by
+selection accuracy, **not** by context pressure.
+
+**A real defect surfaced by the correction:** the context telemetry is partial and undated —
+35% coverage, nothing before July, and nothing on a turn driven today. Any future budget decision
+(R13.6.1's per-artifact ceilings, DESIGN Q18) rests on instrumentation that currently cannot support
+it. Fixing the telemetry is a prerequisite for those, not a nicety.
+
+---
+
+## P2 — re-checked against the sampling bias, and it **strengthens**
+
+The same bias check was applied to P2, which reads `tool_calls` rather than `context_breakdown`. The
+concern was that sessions named `G-off`, `G-step_lock-*`, `M-per_turn`, `ds-M0-outage-*` are
+**deliberate experiments that exist to trigger the breakers**, so P2 might have measured its own test
+harness. Segmented:
+
+| session kind | calls | errors | error rate | of which breaker output |
+|---|---|---|---|---|
+| **organic** | 3,813 | 2,749 | **72.1%** | **1,928** |
+| experiment | 3,632 | 1,259 | 34.7% | 415 |
+
+**Organic sessions fail at twice the rate of the experiments**, and **70% of organic errors are our
+own breaker messages** — so **more than half of every tool call in real use is the model arguing with
+a breaker.** P2's conclusion is not an artifact of the harness; the harness was the healthier half.
+
+---
+
+## P2b (ORIGINAL, SUPERSEDED BY THE RETRACTION ABOVE) — kept for the audit trail
+
+The PO asked whether the budget is consumed by stuffing tool input/output into the session and keeping
+it there as conversation. Measured over 2,029 messages carrying `context_breakdown`:
+
+| category | avg tokens / message | share | lifetime total |
+|---|---|---|---|
+| **`mcp_tool_schemas`** | **11,725** | **41%** | 23.8M |
+| **`skills`** | **9,162** | **32%** | 18.6M |
+| `history` (the actual conversation) | 4,424 | 15% | 9.0M |
+| `frontend_tool_schemas` | 2,137 | 7% | 4.3M |
+| **`tool_results`** | **1,146** | **4%** | 2.3M |
+
+**Answer: no.** Tool output is 4% and conversation history is 15%. `tool_result_token_cap` and
+compaction are working — that part of the system was fixed and stayed fixed.
+
+**80% of every turn is tool schemas plus skill bodies** — the static surface, re-sent in full on every
+pass, before the conversation contributes a word.
+
+### Why this compounds with P2
+
+P2 measured that **74% of tool calls are byte-identical repeats**, and each repeat is another
+tool-loop pass. Each pass re-sends the static surface.
+
+> The loop does not merely waste calls — **it re-pays the 80% on every iteration.**
+> Loop × static surface. Two problems we had been treating separately **multiply**.
+
+This is the complete explanation of *"local patching cannot save the repo"*: cutting the loop without
+cutting the surface still pays 23k per pass; cutting the surface without cutting the loop still pays
+it N times.
+
+### Two surprises in the same data
+
+**1 · Schema cost does not rise with tool-call count — it falls.**
+
+| tool calls in the turn | messages | avg `mcp_tool_schemas` |
+|---|---|---|
+| 0 | 1,359 | **13,033** |
+| 1–2 | 304 | 9,573 |
+| 3–5 | 171 | 11,259 |
+| 6+ | 195 | 6,377 |
+
+Turns that call *nothing* carry the **largest** tool surface (rail and curated modes narrow it for the
+turns that do work). **We pay ~13k tokens of tool schema on conversational turns that never call a
+tool.** No requirement currently covers this; it is the cheapest large saving on the board.
+
+**2 · `skills` is 32% of all context while `lazy_skill_bodies` defaults to True.**
+
+That flag exists precisely to *not* inject skill bodies. 9,162 tokens per message says it is not
+achieving its purpose — consistent with `AUDIT.md` §2.3, where the hot-seed and the prompt are
+computed under opposite `lazy_bodies` assumptions. The audit found the *mechanism*; this is its
+*price*.
+
+### Consequences for the spec
+
+1. **R14 is the budget fix, not only the scale fix** — it attacks 41% directly.
+2. **A 32% slice has no requirement covering it.** Skill-body injection needs the same
+   budgeted, explained treatment R4 gives tools.
+3. **New rule: a turn that offers no tools must not pay for tool schemas.** Currently the reverse is
+   true.
+
+---
+
+## P6 — A live capture: every finding in this spec, in one three-call trace
+
+Driven through the real frontend, 2026-08-04, session `019fc893-096d-7193-abd8-7a0b23e81702`, plain
+`/chat` (no book binding), Gemma-4 26B-A4B. One Vietnamese request: *"list my books, tell me which has
+the most chapters, and summarise its first chapter."*
+
+```
+1. tool_list(category="book")   ok   -> 35 bare names, alphabetical, no descriptions
+2. tool_list(category="book")   ok   -> (repeat; empty)
+3. book_list_chapters           FAIL -> "book_id must be a UUID"
+   … ends `interrupted` after 5 calls
+```
+
+### ⚠️ CORRECTION (2026-08-04) — "no descriptions" was my measurement error
+
+The claim below that `tool_list` returned **bare names** is **wrong**. It was an artifact of the SQL
+used to inspect the payload, which `string_agg`'d only the `name` field. The real payload per entry is:
+
+```json
+{"name": "book_audio_generate", "tier": "W", "deprecated": true,
+ "description": "Propose generating chapter audio narration (priced) … DEPRECATED: spending money on
+                 narration is a MANUAL UI action — the agent does not bill."}
+```
+
+**Measured properly: 3,393 tokens · 35 tools · 19 flagged `deprecated: true` (54%).**
+
+And it is worse for the theory, not better. `book_list_chapters` — the tool the model chose — arrived
+carrying `deprecated: true` **and** the sentence *"DEPRECATED: use `book_list` with kind=chapters — the
+one 'ls' tool, paged + self-terminating."* Meanwhile `book_list` was present, unflagged, its
+description opening *"List REFERENCES only (the 'ls') … `kind` selects what: books (default; the
+caller's library)"* — the exact answer, requiring no arguments at all.
+
+**The model was told the tool was retired, told what to use instead, and used the retired one anyway.**
+
+So the corrected diagnosis of this capture is **not** "guidance was missing" but:
+
+1. **`include_deprecated` defaults to `true`, and the cost is now measured.** ~1,840 of the 3,393
+   tokens (54%) describe tools the model must not use. The payload is **46% signal**. This is
+   `audits-01` §5.1's defect with a price tag.
+2. **Labeling is not filtering — and OQ5's premise is falsified on this evidence.** The 2026-07-09
+   decision was that a deprecated tool should be *labeled, not hidden* (reversing CAT-4). Here the
+   label was present, correct, actionable, and **ignored**. A `deprecated: true` field and a
+   "use X instead" sentence did not prevent selection.
+3. **This capture is a SELECTION failure, not an id-provenance failure.** `book_list` needs no
+   identifier. The earlier attribution of this trace to R17/G3 was over-reach on my part; G3 stands on
+   P8's evidence (a different dataset, different tools), not on this one.
+
+**What this trace actually argues for:** R14.1 (a hard result bound — 35 entries in one 3.4k-token
+dump is not a listing), fixing the `include_deprecated` default, and reconsidering OQ5 — because the
+first live test of "label, don't hide" failed.
+
+### What `tool_list` handed the model (original text, superseded on the "no descriptions" point)
+
+35 entries, alphabetically ordered. Checked against the live catalog:
+
+- **19 of the 35 are `visibility:"legacy"` — 54% of the payload is retired tools.**
+- **Not one of the 19 declares `superseded_by`.** Even a model that recognised them as retired could
+  not find the replacement.
+- The correct tool, `book_list`, sits at **position 18**. The tool the model chose,
+  `book_list_chapters`, sits at **position 19 — adjacent** — and is itself one of the retired 19.
+
+The model was asked to *list books*, was handed an alphabetical wall in which *list books* and *list
+chapters* are neighbours, and took the wrong neighbour.
+
+### The causal link the PO supplied: the chat surface cannot resolve a book id at all
+
+Verified in code:
+
+- `_ALWAYS_HOT_ON_BOOK_BOUND_SURFACE` is applied only `if book_scoped or editor or studio`
+  (`tool_discovery.py:413-414`), so a plain `/chat` turn hot-seeds **no `book` domain whatsoever**.
+- `context_ids["book_id"]` is read from `session_row["book_id"]` (`stream_service.py:5143`), which is
+  **NULL** off the studio. So `_inject_context_ids` — the deterministic repair built precisely for
+  "the model cannot transcribe a UUID" — **has nothing to inject on this surface.**
+
+**This is a surface-capability gap, not a tool bug.** On `/chat` the model must both *discover* the
+book tools and *resolve* an id with no server assistance, and discovery answers with 54% retired names
+and no descriptions.
+
+### Every requirement, visible at once
+
+| observed | finding it confirms |
+|---|---|
+| 35 names, no descriptions, alphabetical | R14.1 bounded results · R14.2 hierarchy — the flat dump is unusable at 35, let alone at scale |
+| 19/35 retired, 0 with `superseded_by` | R9 — `legacy` is a runtime filter with no policy and no clock. And `include_deprecated` defaulted **true**, the live confirmation of `AUDIT.md`/audits-01 §5.1 |
+| picked the retired neighbour of the right tool | P1 — naming carries no semantics, so adjacency decides |
+| `tool_list` called twice, second empty | P2 — the discovery tool is the top loop source |
+| *"book_id must be a UUID"* with no path to one | R10.2 — an error that names the constraint but not the remedy |
+| `/chat` has no book binding and no book hot-seed | **new: a surface may advertise an intent it cannot fulfil** |
+| ends `interrupted` after 5 calls | R11 — the turn never terminates on its own |
+
+### The requirement this adds
+
+**R15 — a surface must be able to complete what it advertises.** If a surface exposes a domain's
+tools (or the prompt invites requests about that domain), it must also expose the path to the
+identifiers those tools require — either a hot-seeded resolver tool or a server-side binding. Today
+`/chat` has neither for `book`, and the failure is silent: nothing reports that the surface cannot
+satisfy the request it accepted.
+
+This is the same shape as R4's `excluded_by`, one level up: **not "why can't I see this tool" but "why
+can't this surface do this at all"** — and it should be answerable by the same mechanism.
+
+### The model was not being stupid — it reasoned correctly and we refused to answer
+
+The PO asked why the model does not stop and reason about the missing parameter: is it a weak model, or
+does the response never tell it why the call failed? The raw payload settles it:
+
+```json
+{"tool": "book_list_chapters", "args": {"book_id": "all"},
+ "error": "book_id must be a UUID", "result": null, "iteration": 2}
+```
+
+It passed **`book_id: "all"`** — not a hallucinated UUID, but an attempt to express *"all my books"*
+from a surface that offered no way to enumerate them.
+
+**And it learned `"all"` from us.** `tool_list`'s own closed set is
+`CATEGORY_ENUM = sorted(GROUP_DIRECTORY) + ["all"]`, so call #1 taught the model that `"all"` is this
+platform's sentinel for *everything*. It then generalised that convention to a domain tool. **The
+model correctly applied a convention we taught it one call earlier** — inconsistent conventions across
+meta-tools and domain tools are a defect that produces confident wrong calls.
+
+The reply it received states the type constraint and nothing else: not what a valid `book_id` looks
+like, not where to obtain one, not that `book_list` exists, not that there is no `"all"` mode.
+`result: null`.
+
+> **There is no "stop and reason" because the response contains nothing to reason from.** The model is
+> not stuck for want of capability; it is stuck because every iteration returns the same zero bits.
+
+One sentence would have ended the turn: *"book_id must be a UUID. There is no 'all' mode — call
+`book_list` to get your books and their ids, then call this per book."* That is R10.2 stated as a
+concrete, measured requirement rather than a style preference, and it is why R10 — while **not** the
+loop fix (P2) — still matters: an unactionable error guarantees the next iteration is uninformed.
+
+**Requirement refinement — R10.2a:** a `retryable_modified` error must name the **remedy**, not only
+the violated constraint, and where the remedy is another tool it must name that tool. An error that
+cannot change the model's next action is indistinguishable from silence.
+
+### R16 — one deterministic loop detector, in the stream, that TERMINATES
+
+The PO's reading of the same trace, and the evidence supports it exactly: **the anti-loop machinery
+died here.** The turn ended `finish_reason: interrupted` after 5 calls — **not `stop`**. Nothing
+concluded the turn; it was cut off. The breakers fired (`tool_list` repeat), emitted prose, were
+ignored, and the run was killed from outside rather than terminated from inside.
+
+That is rot, and it has a precise shape:
+
+1. **Not centralised.** There are **14 function-local counters** inside a 7,818-line function
+   (`stream_service.py:1863-1957`) — `blank_tool_args_streak`, `read_call_results`,
+   `noop_write_counts`, `fail_by_tool_error`, `failure_suppress`, `listed_categories`,
+   `rail_nudge_counts`, `reasoning_loop_interventions`, and more. Each was added for one incident.
+   None can see the others. All reset on a confirm suspend/resume (audits-03).
+2. **No deterministic duplicate detection over the stream.** Detection is per-mechanism and
+   *ad hoc*: identical-args hashing here, error-signature keying there, a category counter elsewhere.
+   Nothing computes *"this turn is repeating itself"* as one fact over the whole assembled context.
+3. **It argues instead of withholding** (P2), so its output re-enters the context it is trying to
+   break out of — the contamination mechanism, self-inflicted.
+4. **It does not terminate.** A loop detector whose success condition is *"someone kills the run"*
+   has no success condition. `interrupted` is the tell.
+
+**The requirement:** exactly one loop detector, deterministic, computed over the streaming turn state,
+with a defined terminal outcome:
+
+- **one owner** — the detector is a single component, not a counter in a closure; every existing
+  breaker either becomes an input to it or is deleted (P2's Q10);
+- **deterministic** — a content-addressed signature over emitted calls *and* assembled context, so
+  "we have been here before" is a computed fact, not a heuristic per subsystem;
+- **survives suspend/resume** — it is turn state, not stack state, so a confirm gate does not reset it
+  (today all 14 counters do);
+- **withholds, not argues** — its action is `excluded_by` (R4/R5), never a tool result;
+- **terminates** — on detection the turn ends with an honest `finish_reason` and a user-visible
+  reason, never `interrupted`. *A loop breaker that cannot end the turn is not a breaker.*
+
+This is the deterministic core the 14 heuristics were each approximating, and it is what R11's retry
+budget attaches to.
+
+---
+
+## P7 — R17: guidance becomes a GATE, and 60% of the catalog fails it today
+
+The PO's conclusion from the live capture, and it is the right one: *guidance must be forced into a
+gate rather than left to authorship — after the refactor, an MCP tool without effective guidance must
+be blocked.*
+
+The **mechanism already exists**: `MustValidateToolMeta` panics at registration on a missing `tier`,
+Python's `require_meta` raises, and `tier-tag-gate.py` runs in CI. What is missing is the **predicate**.
+
+### The predicate, and it must be mechanical
+
+| id | rule | rationale |
+|---|---|---|
+| **G1** | a description of substance | trivially checkable |
+| **G2** | `visibility: legacy` ⇒ `superseded_by` is **mandatory** | a retired tool that cannot name its replacement is a trap, and `tool_list` shows it |
+| **G3** | **every REQUIRED id-shaped argument must name the tool that produces it** — unless it is `ambient_*` (server-resolved) | this single rule would have prevented today's loop |
+| G4 | closed-set arg ⇒ `enum` | existing `CLOSED_SET_ARGS` discipline |
+| G5 | belongs to exactly one group **and** is named by a skill | R3's coverage gates — someone must teach it |
+
+### Measured against the live catalog (315 tools)
+
+| rule | failures | share |
+|---|---|---|
+| **G3 — required id arg names no producer** | **189** | **60%** |
+| G2 — legacy without `superseded_by` | 63 | 20% |
+| G1 — description missing/too short | 1 | 0% |
+
+**Descriptions are not the problem. Argument provenance is.** Only one tool in the whole catalog has a
+thin description, while **60% demand an identifier and never say where to obtain one**. That is
+precisely the gap the live capture walked into: `book_list_chapters.book_id` says the value must be a
+UUID and nothing about `book_list`, so the model invented `"all"`.
+
+Sample failures: `book_audio_generate.book_id`, `book_chapter_bulk_create.book_id`,
+`book_chapter_create.book_id`.
+
+### How it ships without dying on day one
+
+The lesson from R6 applies exactly: a gate that reds on 60% of the catalog gets switched off. So:
+
+- **New or modified tools: HARD FAIL at registration.** No new violation can enter — the pattern
+  `context-budget-defaults-lint.py` already uses with its FLIP-PENDING allow-list.
+- **Existing 189: a ratchet** with a recorded baseline that may only shrink, each waiver carrying a
+  reason.
+- **G3 is the priority**, because it is the measured cause of the observed failure and because the
+  remedy is one sentence per argument.
+
+### Why this is the right level to intervene
+
+Everything else in this document treats a symptom: the loop detector ends a bad turn (R16), the error
+contract makes a failure informative (R10), the surface gate stops advertising the unachievable (R15).
+**R17 stops the unusable tool from existing.** It is the only requirement here that operates *before*
+the model is ever involved — which is also why it is the cheapest.
+
+And it reframes the PO's original complaint precisely. *"Adding an MCP tool is a nightmare"* has a
+converse that the data now supports: **adding one is currently too easy.** A tool can ship with no
+group, no skill, no producer for its own required arguments, and no replacement when retired — and
+nothing stops it. R13 makes changing a tool safe; **R17 makes creating one honest.**
+
+---
+
+## P8 — 🔴 THE ROOT CAUSE: 57% of real tool failures are the model unable to name a thing
+
+Continuing the dig, two questions: which tools never succeed, and why.
+
+### Twelve tools ship with a 0% success rate
+
+Across all real usage, excluding breaker noise, counting only tools with ≥8 genuine attempts:
+
+| tool | successes / real attempts |
+|---|---|
+| **`glossary_propose_entity_edit`** | **0 / 101** |
+| `composition_list_outline` | 0 / 33 |
+| `composition_conformance_run` | 0 / 28 |
+| `translation_coverage` | 0 / 22 |
+| `settings_provider_inventory` | 0 / 22 |
+| `composition_get_mine_job` | 0 / 21 |
+| `jobs_get` | 0 / 19 |
+| `book_chapter_delete` | 0 / 19 |
+| `kg_propose_edge` | 0 / 17 |
+| `translation_job_status` | 0 / 13 |
+| `kg_build_graph` | 0 / 13 |
+| `composition_authoring_run_start` | 0 / 10 |
+
+Near-zero alongside them: `glossary_list_chapter_links` **1/264**, `composition_arc_suggest` 2/46,
+`glossary_get_entity` **14/197 (7%)**.
+
+**The liveness matrix reports 211/224 passing and the ship gate reports "0 tools blocked."** It
+measures whether a tool *can* execute under a synthetic probe, never whether it *ever* succeeds in
+real use. Twelve tools at 0% is the falsification.
+
+### They all fail the same way
+
+| tool | dominant failure |
+|---|---|
+| `glossary_propose_entity_edit` | 66× `entity_id must be a real UUID, got 'place…'` · 24× `book_id … got 'current…'` |
+| `translation_coverage` | 22× `book_id: Field required (you sent a dict)` |
+| `jobs_get` | 19× `service` + `job_id` Field required |
+| `settings_provider_inventory` | 22× missing `provider_credential_id` |
+| `glossary_list_chapter_links` | 201× `entity_id must be a UUID` |
+
+**Every one is an identifier the model could not obtain.** Measured over all 1,688 real tool errors:
+
+> **960 of 1,688 — 57% — are identifier-resolution failures.**
+
+### The vocabulary the model invents for "the thing we are discussing"
+
+| count | value it sent |
+|---|---|
+| 60 | `placeholder_id_1` |
+| 18 | `current_book_id_placeholder` |
+| 6 | `current_book_id` |
+| 5 | `placeholder_id` |
+| 2 | `0` |
+| 1 | `placeholder` |
+
+Plus `"all"` from the live capture. **The model is writing, into a UUID field, that it knows it needs
+the current book id and does not have it.** That is not a hallucination; it is a request for a
+capability the surface does not offer, expressed in the only channel available to it.
+
+Worst-affected arguments: `entity_id` (431), `book_id` (182), `job_id` (32),
+`provider_credential_id` (22).
+
+### The whole loop, end to end, with a number at every step
+
+| # | step | measure |
+|---|---|---|
+| 1 | tools require an id and never say where to get it | **60%** of the catalog (G3) |
+| 2 | → identifier-resolution failures | **57%** of all real tool errors |
+| 3 | → the model invents a placeholder | `placeholder_id_1`, `current_book_id_placeholder`, `"all"` |
+| 4 | → which fails deterministically, every time | **12 tools at 0%**, one at 0/101 |
+| 5 | → so it retries | **74%** of all calls are byte-identical repeats |
+| 6 | → breakers fire and *argue* instead of withholding | **58%** of "errors" are our own messages |
+| 7 | → the turn never terminates | `finish_reason: interrupted` |
+
+**This is one defect with six symptoms, and R17/G3 sits at the head of it.** Every other requirement
+in this document treats a step further down the chain.
+
+It also settles the PO's question about model strength definitively: a model that writes
+`current_book_id_placeholder` has understood the task, identified exactly what it lacks, and named it.
+**No increase in model capability fixes a missing capability in the surface.**
+
+---
+
+## P9 — R18: the prompt and the state machine are two hand-synced copies of the same facts
+
+The PO's reading of the description defect: it is not a wording problem, it is architectural — *the
+prompt and the state machine that manages lifecycle and workflow have no relationship to each other.*
+Tested on both halves.
+
+### Half one — lifecycle
+
+| | tools |
+|---|---|
+| lifecycle **STATE** says legacy (`_meta.visibility`) | **117** |
+| **PROSE** says deprecated (the description the model reads) | 49 |
+| **they agree** | **42** |
+| **legacy in state, prose silent** | **75 (64%)** |
+| legacy whose replacement is **only in prose**, absent from `_meta.superseded_by` | **70** |
+
+*(A first pass also reported 7 tools whose prose claimed deprecation while the state said current. All
+7 were false positives of the search pattern — they use "instead"/"superseded" as legitimate
+disambiguation, e.g. `book_search`: "for meaning-alike passages use `story_search` instead". Verified
+individually and withdrawn.)*
+
+**Only 36% of legacy tools say so in the text the model actually reasons over.** The state reaches the
+model as a boolean field on `tool_list`; the *semantics* it reads come from a description written
+independently. And for 70 tools the state machine **cannot answer "what replaces this?"** at all —
+the replacement exists only as a sentence someone typed.
+
+### Half two — workflows
+
+`notes_md` is prose injected into the prompt; `steps` is data the rail driver executes. They are
+authored separately, and **9 of 12 seeded rails disagree**:
+
+| rail | steps | steps never mentioned in the prose | tools named in prose that are not steps |
+|---|---|---|---|
+| **`vision-to-book`** (flagship, mode-binding pinned) | 9 | **5** | 3 |
+| `entity-triage` | 4 | 0 | **6** |
+| `translation-pass` | 3 | 0 | **4** |
+| `glossary-bootstrap` | 4 | **2** | 2 |
+| `chapter-compose` | 2 | 0 | 2 |
+
+The flagship rail has **five of its nine steps absent from the paragraph the model reads**, while
+naming three tools it never runs.
+
+### R18 — the prompt is a PROJECTION of state, never a parallel authoring surface
+
+Every case above is the same defect: **a machine-readable fact was re-typed by a human into the text
+the model reads, and nothing keeps the two in step.** Deprecation, replacement, step order, gates —
+all exist twice.
+
+> Anything the model reads that **asserts a machine fact** must be **generated from that state**.
+> Prose may **teach**; it may not **claim**.
+
+This sharpens R13.6, whose line was "generate the contract, never the prose". That line is not quite
+right, and this data shows where it bends:
+
+| kind of text | authored how | example |
+|---|---|---|
+| **facts about state** — deprecated, replacement, step list, gate, required args | **generated projection**, drift impossible by construction | *"DEPRECATED — use `book_list`"*, the rail step list |
+| **pedagogy** — how to think about a domain, when to prefer one approach | **hand-written**, gate-checked against the manifest (R3) | the glossary skill's guidance on ontology shaping |
+
+The 2026-07-09 decision (OQ5) that a deprecated tool should be *labeled rather than hidden* is not
+wrong in principle — but it silently assumed the label and the description agree. Measured: they agree
+36% of the time, and in the live capture the model read a correct label, a correct replacement, and
+used the retired tool anyway. **Labeling is a projection problem before it is a filtering problem.**
+
+---
+
+## P10 — R19: the volatile tool surface sits in the cache PREFIX, and invalidates everything behind it
+
+The PO's architectural reading: tool *loading* has a lifecycle, but the tool *introduction in the
+prompt* has none — and a system prompt that changes every turn cannot be cached. The principle is
+right, and the mechanism is worse than stated: in the cache hierarchy the order is
+**`tools` → `system` → `messages`**. The tool block is the **first** cache block, so mutating it
+invalidates the system prompt and the conversation behind it. It is not that a volatile system prompt
+kills the cache — **the volatile tool surface sitting in front of it does.**
+
+Measured across 1,973 instrumented turns:
+
+| tool block between turns | n | avg cache hit | avg uncached tokens |
+|---|---|---|---|
+| **CHANGED** | 97 | **0.378** | **31,009** |
+| unchanged | 1,389 | 0.457 | 18,785 |
+
+**A changed tool block costs +65% uncached tokens (+12,224 per turn) and drops the hit rate by a
+sixth.** And this measures *between turns only* — **within** a turn the loop mutates the surface
+between passes (`tool_load` unions names in, suppressions accumulate), which is precisely where the
+2.03 average / 24.4 p99 pass multiplier lives. The real cost is larger than this table.
+
+### The design the PO proposes, and the tension it must resolve
+
+*Static system prompt; load the tool state machine into the conversation.* Cache-correct: an
+append-only suffix preserves the prefix. But it collides with a hard constraint worth stating plainly:
+
+> **A tool must be in the `tools` parameter to be callable.** Tool state can move into the
+> conversation; tool *schemas* cannot — a schema described in a user message does not let the model
+> emit a structured call for it.
+
+So the requirement is real but the naive form is not available. Three shapes, honestly:
+
+| # | shape | cache | scale (C1) | cost |
+|---|---|---|---|---|
+| **a** | stable `tools` per session, re-scoped only at session boundaries | **perfect** | poor — the set must be guessed up front | inflexible mid-session |
+| **b** | mutate `tools` per pass — **today** | **destroyed** | poor | measured above |
+| **c** | **stable `tools` = a small core + one generic invoke envelope**; discovery activates into *conversation state*, not into the schema block | **perfect** | **good** — the block never grows | the inner call loses native schema validation |
+
+**Shape (c) already exists in this repo.** `mcp-public-gateway`'s `invoke_tool` is exactly that
+envelope: a fixed advertised tool through which anything reachable can be called after activation. Its
+known cost is recorded in the audit — `invoke_tool.arguments` is `{type: object}` with no schema, so
+the edge relays unvalidated args, an accepted IN-3/IN-4 deviation.
+
+That trade is now quantifiable rather than aesthetic: a fixed envelope buys a **stable cache prefix at
+any catalog size** and pays in **argument validation**, which R17/G3 and the closed-set discipline
+would have to recover at the envelope boundary instead of at the schema.
+
+### R19 — the advertised tool block is cache-prefix state and must be treated as such
+
+- **The `tools` block is chosen once per session shape and does not mutate mid-turn.** Anything that
+  today changes it mid-turn — `tool_load` activation, oneshot de-advertise, rail gating, the failure
+  breaker — must move to *conversation state* (R18's projection), not to the schema block.
+- **`excluded_by` (R4) becomes a message, not a mutation.** This also fixes the P2 defect from the
+  other direction: a withheld tool is *stated* in conversation state rather than silently vanishing
+  from the schema.
+- **The cache-cost of any surface change is a measurable gate** — the same instrumentation as
+  R13.6.1, applied to the tool block.
+
+This reframes R14 once more. R14 argued discovery must not scale with the catalog; R19 adds that it
+must not **mutate the prefix** either. Those two together are what make shape (c) the leading
+candidate — and they are also why the current `tool_load`-mutates-the-surface design cannot be
+incrementally repaired.
+
+---
+
+## P11 — 🔴 The architectural inversion: skills are static, tools are dynamic, and nothing joins them
+
+The PO's central diagnosis, and it is the correct frame for everything above:
+
+> Skill and workflow are **fixed** — they have no state machine for their own context. Tools are
+> **loaded dynamically**. So a skill introduces tools that may never be loaded, and it cannot say when
+> they will be. The model is told about a capability it does not have and cannot obtain. This has been
+> hit repeatedly and never fixed, because **the architecture was never designed to do it.**
+
+### Ground truth, from the running service
+
+```
+lazy_skill_bodies = True
+chat    hot_domains=['knowledge']                                    skills_injected=[]
+book    hot_domains=['book','glossary','knowledge','story']          skills_injected=['co_write']
+studio  hot_domains=['book','composition','glossary','knowledge','story']  skills_injected=[]
+```
+
+**On two of the three surfaces, zero skills are injected while tools ARE seeded.** The studio — the
+primary authoring workbench — carries five domains of tools and **not one line of guidance**. Chat
+carries no guidance and only `knowledge`, which is why the live capture had to discover the book
+domain from scratch.
+
+Meanwhile `GROUP_DIRECTORY` sits in the system prompt **every turn**, introducing the `plan` domain
+and instructing *"propose_spec → plan_compile"*. `plan` is in no surface's hot domains, and
+`plan_forge` is injected on none of them. **The static layer advertises a capability the dynamic layer
+does not provide, and neither can see the other.**
+
+### The two layers have different models of TIME, and that is the defect
+
+| | skill / workflow | tools |
+|---|---|---|
+| when decided | once, at turn start | per turn **and per pass** |
+| where it lives | system prompt (or nowhere) | the `tools` parameter |
+| how it changes | rewritten by a human | mutated by `tool_load`, gates, breakers |
+| can it reference the other? | names tools as **strings** | knows nothing of skills |
+
+A skill saying *"call `plan_propose_spec`"* is making a claim about a **future dynamic state** from
+inside a **static artifact**, with no mechanism to check it and no way to tell the model *when* the
+claim becomes true. Every patch so far — `D-SKILL-NAMED-TOOLS-RIDE`, the backtick scraper,
+`ALWAYS_HOT_WRITES`, the intent-gated filter — is an attempt to make the static layer guess the
+dynamic one correctly. **They are patches on a missing joint, which is why none of them held.**
+
+### The inversion, against a working reference
+
+The PO's observation about other agentic harnesses is the key: there, **skills are what arrive late,
+into the conversation** — and this session is an existence proof. Calling `ToolSearch` returned a
+`<functions>` block **as a message**, followed by *"Tool loaded."*, after which the tool was callable.
+The schema arrived **in the conversation**; the system prompt did not change.
+
+| | reference harness | LoreWeave |
+|---|---|---|
+| tool **connections** | fixed at session start | fixed at session start |
+| tool **schemas** | revealed **into the conversation** on demand | **mutated into the `tools` block** per pass |
+| **skills** | loaded **into the conversation** on demand | injected into the system prompt — **or not at all** |
+| do the two layers meet? | **yes — both land in the same place** | **no — two mechanisms, two places** |
+
+*(Stated carefully: what is directly observable is that the schema is delivered as a message and the
+tool then becomes callable. Whether the harness also updates an API-level tool list behind that is not
+observable from inside, and the claim here does not depend on it.)*
+
+**So: was lazy-loading MCP tools wrong from the start?** Not by itself. What is wrong is
+**lazy-loading tools while statically injecting skills, and joining them with a string.** The
+reference design makes *both* layers late and puts *both* in the conversation, so a skill body and a
+tool schema are visible to each other because they are in the same stream. LoreWeave made tools late
+and skills early, and then spent thirteen mechanisms trying to make the early one predict the late one.
+
+### R20 — one arrival channel: capability and its guidance land together, in the conversation
+
+- **A capability and its instructions are delivered as one unit, at the same moment, in the same
+  place.** No skill may name a tool it does not deliver with itself; no tool may arrive without the
+  guidance that teaches it. This is `tool_discovery.py:438`'s own stated principle — *"guidance and
+  capability move as ONE signal"* — finally given a mechanism instead of a keyword list.
+- **The conversation is the arrival channel; the system prompt holds only what never changes.** This
+  subsumes R19's cache argument as a consequence rather than a motivation.
+- **The static layer stops making claims about dynamic state** (R18): `GROUP_DIRECTORY` cannot
+  advertise a domain the surface will not provide.
+
+R20 is the joint the architecture never had. R15 (a surface must complete what it advertises) is its
+special case at the surface level; R3's declared `tools` is what makes it checkable.
+
+---
+
+## P12 — Shape 4 is viable: the model calls a capability delivered in the CONVERSATION
+
+Two arms against the real target model (`google/gemma-4-26b-a4b-qat`, LM Studio, direct — no platform
+in the way), same task: *"List my books."*
+
+| arm | `tools` parameter | where the capability's schema lives | result |
+|---|---|---|---|
+| **A** (control) | `book_list` natively | the `tools` block | ✅ `book_list{"kind":"books"}` — **2.6s** |
+| **B** (shape 4) | fixed core only: `tool_load`, `invoke_tool` | delivered as a **tool-result message** | ✅ `invoke_tool{"name":"book_list","arguments":{"kind":"books"}}` — **1.4s** |
+
+**Both correct. Arm B was faster.** So a capability whose schema arrives *in the conversation* and is
+invoked through a **fixed envelope** is usable by a mid-tier local model — which means the `tools`
+block can be **constant regardless of catalog size**. That satisfies C1 and R19 simultaneously, and
+it is the empirical basis for §1.4 shape 4.
+
+Note also what Arm A proves on its own: **given one well-described tool, this model selects and fills
+it perfectly.** The same model failed the live capture. The model was never the variable.
+
+## P13 — 🔴 The real cause of the live failure: the budget deleted the right answer, then the system told the model to pick from what was left
+
+Re-examining the capture with Arm A's result in hand raised a question: if `tool_list` only *lists*,
+how was `book_list_chapters` callable at all? The answer is in the second call's payload:
+
+> *"You already listed 'book' … **Its tools are now LOADED and callable**: `book_chapter_save_draft`,
+> `book_get`, `book_list_chapters`, `book_list_revisions`, `book_scene_get`, `book_steering_list`,
+> `book_update_details`. **Call one of them now**, or answer the user."*
+
+The repeat `tool_list` tripped `TOOL_LIST_CATEGORY_CAP` (F18), which **auto-loads the category**
+(`stream_service.py:2808-2830`) and passes the 35 loaded names through
+`budget_names_by_tokens`. Seven survived. **`book_list` — the correct answer — was not among them.
+Four of the seven are retired.**
+
+| survivor | tokens | |
+|---|---|---|
+| `book_get` | 314 | RETIRED |
+| `book_steering_list` | 310 | |
+| `book_list_revisions` | 341 | RETIRED |
+| `book_scene_get` | 353 | RETIRED |
+| `book_list_chapters` | 357 | RETIRED |
+| `book_update_details` | 523 | |
+| `book_chapter_save_draft` | 726 | |
+| **`book_list`** | **970** | **DROPPED — the right answer, and the largest** |
+
+**The corrected causal chain:**
+
+1. `tool_list(book)` → 35 entries with descriptions — correct behaviour
+2. the model lists again (listing does not activate; it needed them callable)
+3. F18 fires — the loop-breaker **auto-loads** the category
+4. the token budget trims 35 → 7 and **silently deletes `book_list`**
+5. the note **asserts** the survivors are "loaded and callable" and says *"call one of them now"*
+6. the model obeys, and the only remaining "list" verb is the retired `book_list_chapters`
+7. it needs a `book_id` nobody can give it → `"all"` → loop → `interrupted`
+
+**The model did exactly what it was instructed to do.** Four individually-reasonable mechanisms — the
+F18 breaker, the auto-load, the token budget, the helpful note — combined to remove the answer and
+then command a choice among what remained. This is the audit's silent-filter defect (B1,
+`budget_names_by_tokens` drops with no log) meeting R18's projection defect (a note *claiming* a
+machine fact) inside R16's breaker.
+
+### One hypothesis tested and REJECTED
+
+It looked as though the budget might systematically favour retired tools, since consolidation makes
+replacements larger. **Measured across the whole catalog, it does not:** retired tools are 317 tokens
+median against 338 for current — **1.07×, indistinguishable from noise** — and the retired share of the
+smallest 20/40/80 tools (35%/48%/40%) sits at the 37% base rate.
+
+What is real is narrower and still serious: **consolidated replacements are outliers.** `book_list` at
+970 tokens is **2.9× the catalog median** and 2.7× the deprecated tool it replaced. A size-ordered
+budget will therefore preferentially drop exactly the tools that catalog unification created — not
+because they are replacements, but because they are big. The 2026-07-22 unification and
+`budget_names_by_tokens` are each correct alone and defeat each other in combination: **NV-3, in
+production.**
+
+---
+
+## P14 — 🔴 ROOT CAUSE, closed by single-variable experiment
+
+Five arms against `google/gemma-4-26b-a4b-qat` (LM Studio, direct), identical task — *"List my
+books."* — temperature 0.2, tool sets built from the **real** catalog.
+
+| arm | tool set given | result |
+|---|---|---|
+| A | 1 tool (`book_list`) | ✅ **1/1** |
+| B | fixed envelope; schema delivered **in the conversation** | ✅ **1/1** |
+| **C** | **all 35 `book_*` tools — 19 retired, 7,921 tokens** | ✅ **3/3** |
+| D | 16 current-only (retired removed), 4,661 tokens | ✅ 3/3 |
+| **E** | **exactly the 7 the token budget left** | ❌ **0/3** |
+
+Arm E's three attempts: one silence, then
+`book_list_revisions{"book_id":"book_list"}` and `book_list_revisions{"book_id":"books"}`. **In the
+second, the model put the NAME OF THE MISSING TOOL into the argument** — the same shape as `"all"`,
+`placeholder_id_1`, `current_book_id_placeholder`. It reached for what it needed, could not call it,
+and named it in the only field available.
+
+**The only variable between 3/3 success and 0/3 failure is whether `book_list` was on the wire.**
+
+### Hypotheses tested and REJECTED — three of them mine
+
+| hypothesis | verdict |
+|---|---|
+| the model is too weak for this surface | ❌ **rejected** — A, B, C, D all correct |
+| 35 tools is too many to select from | ❌ **rejected** — Arm C, 3/3, at 7,921 tokens |
+| 54% retired tools drowned the signal | ❌ **rejected** — C and D are identical |
+| the model picked the alphabetical neighbour | ❌ **rejected** — with `book_list` present it never did |
+| `tool_list` returned bare names | ❌ already corrected — it returns full descriptions |
+| **the correct tool was silently removed by the token budget** | ✅ **confirmed, reproducible** |
+
+### What this does to the spec — corrections, not confirmations
+
+1. **OQ5 is VINDICATED, not falsified.** My P6 claim that "labeling failed" was wrong. Labeled
+   deprecated tools were correctly ignored in 6/6 trials. *Label, don't hide* works — provided the
+   replacement is actually present.
+2. **R14.1's bounded-results rule loses this justification.** 35 tools in one payload is demonstrably
+   fine at this scale. R14 stands on **C1 (thousands of tools)** and **R19 (prefix stability)** —
+   **not** on selection accuracy today. This is the third time R14's justification has had to be
+   corrected; the requirement survives, the reasoning kept being wrong.
+3. **The silent budget is the defect.** `budget_names_by_tokens` dropping the answer with **no log, no
+   note, no telemetry** (audit B1 — "13 of 18 filters are silent") is the whole failure. R4's
+   `excluded_by` and R5's *guards register what they withhold* are the fix, and they are now backed by
+   a reproducible experiment rather than an argument.
+4. **R18 is reinforced.** The auto-load note *asserted* "these are loaded and callable — call one of
+   them now" from a state that had already deleted the answer. A projection would have been unable to
+   make that claim.
+
+### The corrected one-line diagnosis
+
+> The model was handed a list that no longer contained the answer, told the list was complete, and
+> instructed to choose from it. **It complied.** Everything downstream — the invented identifier, the
+> repeat calls, the breaker messages, the `interrupted` turn — follows from that one silent deletion.
+
+---
+
+## P15 — Shape 5: drop the atomic tools, keep search + coarse capabilities *(PO, offered as a fallback — the evidence says it is not one)*
+
+The proposal: **delete the atomic edit tools.** Give the model only (a) search tools and (b) a handful
+of coarse capabilities that take a **plain-text instruction** and run a whole job to completion via a
+sub-agent — PlanForge end-to-end, world setup, glossary build. Tool count drops to a few dozen, the
+system prompt goes static, and deeper customisation moves to user-configured skills/workflows in the
+session settings, trading cache for flexibility.
+
+**It was offered as "only if we give up." The measurements do not support treating it that way.**
+
+### Why the evidence favours it
+
+The root-cause chain's head is **identifier resolution**: 57% of real tool errors are the model unable
+to name a thing. Sized against the catalog:
+
+| | current tools |
+|---|---|
+| total non-retired | **198** |
+| **require a caller-supplied id** | **112 (57%)** |
+| writes (tier A/W) — collapsible into coarse capabilities | **118** |
+| reads (tier R) | 80, of which **39 still require an id** |
+
+**The share of the surface demanding an id (57%) equals the share of failures that are about ids
+(57%).** A capability that takes **text** does not have the failure mode at all — it is eliminated by
+construction, not mitigated.
+
+### Tested on the target model — and it has a specific, real failure mode
+
+16-tool surface (8 domain searches + 8 `run_*` capabilities, ~1,549 tokens), a genuine multi-step
+Vietnamese request meaning *"my book Mị Đế is only an idea — build its world then plan the plot."*
+<!-- doc-language-gate: ok -- "Mị Đế" is the dogfood book's proper name, an identifier used across this repo -->
+
+| arm | system prompt | result |
+|---|---|---|
+| **F** | describes the tools normally | ❌ **0/3** — answers in fluent prose, `finish_reason: stop`, no tool call |
+| **G** | adds a hard rule: *"if the user asks you to BUILD, PLAN, SET UP… you MUST call a `run_*` tool. Prose instead of a tool call is a failure."* | ✅ **3/3** — `run_world_setup`, request passed verbatim, and world chosen before plot |
+
+**The native failure mode of a coarse surface is prose-instead-of-action.** A `run_*` tool taking free
+text is, to the model, nearly indistinguishable from *"just answer it yourself"* — narrow atomic tools
+at least coerce action through narrow semantics. This is **exactly** the incident the repo already
+recorded for `co_write`: *"6,948 characters of plan prose, `finish_reason=stop`, ZERO tool calls."*
+
+The mitigation is cheap and it works — but it must be a **gate, not a hope**, because the identical
+failure has already shipped once under the identical conditions.
+
+### Honest ledger
+
+**For:** eliminates the 57% failure class by construction · 118 writes collapse · ~20 tools is inside
+the measured comfort zone (arms A and C: 1 tool and 35 tools both perfect) · static system prompt
+satisfies R19 · the sub-agent boundary already exists — `subagent_runtime.py`'s `tool_scope` is
+**the one place in this repo where a capability genuinely owns a tool whitelist**, enforced at both
+advertise and execute time (audit §1d).
+
+**Against:** prose-instead-of-action is the default without steering (F: 0/3) · the **39 id-requiring
+reads must also be consolidated** to text-in/references-out, or the id class survives the refactor ·
+the problem *moves* into the sub-agents, which need their own scoped surfaces and their own
+correctness · fine-grained control is lost, and the PO's answer — user-configured skills/workflows per
+session — reintroduces prefix volatility for those sessions.
+
+### Where it sits among the four shapes
+
+This is **not a fifth option; it is shape 1 (fixed per use-case) made viable**, because it removes the
+reason the fixed set had to be large. Combined with shape 4's arrival channel for the long tail, it is
+the strongest candidate on the evidence:
+
+> a **small static core** (search per domain + coarse capabilities) — cache-stable, id-free, measured
+> to work — plus **arrival-in-conversation** (P12) for anything beyond it, plus **user curation**
+> (shape 3) as the explicit override.
+
+It should be evaluated as a leading design, not held in reserve.
+
+---
+
+## P16 — Universal search: the choking risk is real, concentrated, and already has a rule nobody enforced
+
+The PO's proposal for the 39 id-requiring reads: replace them with a **universal search** — text in,
+no ids. And the stated risk: *the tool returns a pile of tokens and the model chokes.* Claude Code's
+grep/glob works over millions of lines, so the pattern is proven — but only with its three properties:
+**references not content**, a **hard result cap**, and an explicit **detail dial**.
+
+### Measured: result sizes across 3,437 successful calls
+
+| | tokens |
+|---|---|
+| p50 | **171** |
+| p90 | 2,374 |
+| p99 | **12,776** |
+| max | **25,429** |
+
+**The median is healthy; the tail is the hazard.** And the tail is concentrated in exactly the
+list/read tools a universal search would replace:
+
+| tool | calls | avg tokens | lifetime |
+|---|---|---|---|
+| `glossary_book_ontology_read` | **261** | **6,219** | ~1.6M |
+| `glossary_list_system_standards` | **155** | **5,913** | ~0.9M |
+| `jobs_list` | 9 | 7,416 | |
+| `tool_list` | 567 | 1,581 | **max 25,429** |
+
+### The cause is not size — it is the absence of a bound
+
+| bounded | unbounded |
+|---|---|
+| `jobs_list` — `limit=10, detail=summary, cursor` | **`glossary_book_ontology_read` — none** |
+| `story_search` — `limit=10, detail=summary` | **`glossary_list_system_standards` — none** |
+| | `settings_list_models`, `tool_list` — none |
+
+**18 of 36 current list/search/read tools (50%) have no `limit` parameter at all.** `book_list` is a
+partial case: the parameter exists but **defaults to `None`**, i.e. unbounded unless the model thinks
+to bound it.
+
+**And the rule already exists.** OUT-2 in `mcp-tool-io.md` requires a list tool to default
+`detail=summary` with `limit<=25`, and `scripts/context-budget-defaults-lint.py` enforces it — while
+seeding **14 existing offenders as FLIP-PENDING ALLOW**. So: the rule is written, the gate is wired,
+fourteen violations are grandfathered, **and the grandfathered set is measurably the choking hazard.**
+This is the ratchet pattern working as designed for new code and never being paid down.
+
+### What this settles for the universal-search design
+
+The proposal is sound, and its risk is **not intrinsic** — it is the absence of three properties the
+repo has already specified and half-applied:
+
+1. **references, not bodies** — `book_list`'s own description states the rule (*"List REFERENCES only
+   (the 'ls') — never bodies"*); it is simply not universal;
+2. **a hard cap with a default**, not an optional parameter defaulting to `None`;
+3. **an explicit detail dial** (`summary` | `full`), which `jobs_list` and `story_search` already have
+   and 18 tools do not.
+
+A universal search built with all three is Claude Code's grep, and the p50 of 171 tokens says the
+shape works when the bound is present. Built without them it inherits `glossary_book_ontology_read`'s
+6,219-token average at 261 calls — the exact failure the PO anticipated.
+
+**The action is not new design. It is paying down the 14 FLIP-PENDING waivers before they become the
+foundation of a universal search.**
+
+---
+
+## 3 · What P1 and P2 settle, and what they do not
+
+| DESIGN question | settled by | answer |
+|---|---|---|
+| Q15 who decides a tool's path | P1 | declared at registration; parsing is impossible |
+| Q3 group granularity | P1 (partly) | `composition` at 107 must split; the *shape* still needs Q14 |
+| Q10 which breakers R10 deletes | P2 | the ones that argue: `tool_list` cap, `book_get` repeat, blank-args, `find_tools` no-intent |
+| R10 scope | P2 | valid for 42% of errors; not the loop fix |
+
+**Still open and still needing evidence:** Q14 (tool identity — P3, retrospective over git history),
+Q16/Q18 (retrieval backend and budget numbers — need measurement), and R14's flat-cost claim (P4, the
+synthetic 3,000-tool catalog).
+
+---
+
+## 4 · Reproduce
+
+```bash
+# P1 — live catalog
+curl -s -X POST http://localhost:8218/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -H "X-Internal-Token: $INTERNAL_SERVICE_TOKEN" -H 'X-User-Id: <uid>' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+
+# P2 — tool-call history
+docker exec infra-postgres-1 psql -U loreweave -d loreweave_chat -tAc "
+  select json_agg(row_to_json(x)) from (
+    select session_id::text sid, created_at, tc->>'tool' tool, (tc->>'ok')::boolean ok,
+           left(coalesce(tc->>'error',''),200) err, md5(coalesce(tc->>'args','')) argsig
+    from chat_messages, jsonb_array_elements(tool_calls) tc
+    where tool_calls is not null and jsonb_array_length(tool_calls) > 0) x;"
+```
+
+Both are read-only. P2 reads the dogfood history of the shared dev database; no cleanup is performed
+and none is needed.

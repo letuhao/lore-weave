@@ -3,7 +3,6 @@
 // Reality owner ACKed force-propagate (gate 2 of 3, M4 §9.8.3). Either explicit or Q-L5H-1 default-to-consent on 24h timeout.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdminCanonOverrideConsentedV1 {

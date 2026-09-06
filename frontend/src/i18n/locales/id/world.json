@@ -9,7 +9,15 @@
     "description": "Buat dunia pertama Anda untuk mulai menyusun lore — tidak perlu bab."
   },
   "card": {
-    "books": "{{count}} buku"
+    "books": "{{count}} buku",
+    "delete": "Hapus dunia",
+    "delete_blocked": "Pindahkan dulu {{count}} buku dari dunia ini",
+    "delete_title": "Hapus dunia ini?",
+    "delete_description": "Menghapus \"{{name}}\" tidak bisa dibatalkan. Lore, peta, dan lini masanya ikut hilang.",
+    "delete_hint": "Dunia yang berisi buku tidak bisa dihapus — pindahkan dulu.",
+    "delete_cancel": "Batal",
+    "delete_confirm": "Hapus permanen",
+    "delete_done": "Dunia dihapus"
   },
   "create": {
     "cta": "Dunia baru",

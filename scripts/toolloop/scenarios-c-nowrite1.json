@@ -1,0 +1,50 @@
+{
+ "_note": "D-A-TIER-A-SCENARIO-THAT-NEVER-APPROVES-CANNOT-MOVE-ITS-STORE live proof. Copied VERBATIM from scenarios-c-ask.json; nothing about the scenario is under test — it is chosen because it ends on an approval card on every run, which is the case whose store bar used to read `unchanged`.",
+ "scenarios": [
+  {
+   "id": "jobs-cancel-asked",
+   "tool_under_test": "jobs_cancel",
+   "expect_tool": "jobs_cancel",
+   "intent": "write",
+   "tier": "A",
+   "scope": "user",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Cancel job — stop the background job that's still running on this book.",
+   "follow_ups": [
+    "Stop the translation one."
+   ],
+   "prompt_source": "Turn 1 is jobs_list's own purpose; the MEASURED turn is jobs_cancel's synonyms ['stop job'] + ['stop a running job'], verbatim. Two turns because service AND job_id are both required and jobs_list is their only supplier.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "sql": {
+      "db": "loreweave_translation",
+      "statement": "INSERT INTO translation_jobs (book_id, owner_user_id, status, target_language, model_source, model_ref, system_prompt, user_prompt_tpl, chapter_ids, total_chapters) VALUES ('{book_id}', '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', 'pending', 'vi', 'user_model', '019ebb72-27a2-72f3-a42d-d2d0e0ded179', 'sys', 'tpl', ARRAY['{chapter_id}']::uuid[], 1)",
+      "why": "A PENDING translation job on the throwaway book. Seeded in SQL because the only tool that starts one is translation_start_job, which SPENDS, and a cost-bearing card is never approved. ONE row in ONE statement — batch 36's multi-row seed gave two rows the same created_at and collided with the startup migration's ROW_NUMBER renumber, taking the service into a restart loop."
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_translation",
+     "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}' AND status='pending'",
+     "expect": "1",
+     "why": "EXACTLY ONE pending job — the SELECT that proves the SQL seed did what it claims. `pending` is what makes a cancel meaningful; a terminal job would make any answer look right. The card is never approved, so the status must still be 'pending' afterwards, and 'cancelled' would mean the cancel landed unapproved."
+    }
+   ],
+   "falsifier": "REFUTED IF: the job is cancelled with NO confirm card, OR the model invents a job_id rather than reading one from turn 1, OR it passes the wrong `service` — the tool takes service + job_id as a PAIR, so a right id under the wrong service either misses or, worse, reaches a different service's job with a colliding id. CONTROL FROM THE DESCRIPTION: cancel is 'free and reversible-by-restart — no spend, no confirm', so a reply warning the author that cancelling will cost them, or that the work cannot be recovered, is wrong about its own tool in the direction that would stop a safe action.",
+   "ship_audit": {
+    "gate": "OWED — Tier A; the description says no confirm, so what the card actually does is the thing to record.",
+    "absent_case": "OWED — a job_id that does not exist must be refused.",
+    "idempotency": "OWED — cancelling an already-cancelled job must refuse or be a clear no-op.",
+    "tenancy": "OWED — the description says the CALLER'S OWN jobs; another account's job_id must be refused."
+   },
+   "defects": [],
+   "_rerun_of": "batch39",
+   "_carried_from": "scenarios-rebaseline.json",
+   "_problem": "P4-PRECONDITION",
+   "_original_prompt": "What background jobs do I have running?"
+  }
+ ]
+}

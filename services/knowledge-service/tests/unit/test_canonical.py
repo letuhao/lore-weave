@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.db.neo4j_repos.canonical import (
+from app.db.graph_repos.canonical import (
     canonicalize_entity_name,
     entity_canonical_id,
 )
@@ -69,7 +69,7 @@ def test_k11_5a_honorifics_iteration_order_is_deterministic():
     # Frozensets are hash-randomized — using one would make
     # canonical_id non-deterministic across interpreter restarts.
     # Lock the type to tuple and the order to longest-first.
-    from app.db.neo4j_repos.canonical import HONORIFICS
+    from app.db.graph_repos.canonical import HONORIFICS
 
     assert isinstance(HONORIFICS, tuple)
     lengths = [len(h) for h in HONORIFICS]

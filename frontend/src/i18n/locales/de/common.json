@@ -78,7 +78,6 @@
     "sttSection": "Spracherkennung",
     "sttSource": "STT-Quelle",
     "sttModel": "STT-Modell",
-    "ttsSection": "Text-zu-Sprache",
     "ttsSource": "TTS-Quelle",
     "ttsModel": "TTS-Modell",
     "browser": "Browser (kostenlos)",
@@ -140,7 +139,8 @@
     "presetNormalDesc": "Ausgewogen (Standard)",
     "presetPatientDesc": "Wartet länger, gut für langsame Sprecher",
     "presetLearnerDesc": "Lange Pausen okay, für Sprachtraining",
-    "audioRetention": "Sprachaufnahmen werden 48 Stunden lang zur Wiedergabe gespeichert und dann automatisch gelöscht."
+    "audioRetention": "Sprachaufnahmen werden 48 Stunden lang zur Wiedergabe gespeichert und dann automatisch gelöscht.",
+    "ttsSection": "Text-zu-Sprache"
   },
   "theme_name": {
     "dark": "Dunkel",

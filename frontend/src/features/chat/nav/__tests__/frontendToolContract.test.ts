@@ -21,7 +21,7 @@ import { resolveStudioUiTool, STUDIO_UI_TOOLS } from '../../../studio/agent/stud
 // no pure resolver, their args are consumed by the diff/confirm cards.)
 
 const contract: Record<string, { required: string[]; args: Record<string, { type?: string; enum?: string[] }> }> =
-  JSON.parse(readFileSync(resolve(process.cwd(), '../contracts/frontend-tools.contract.json'), 'utf-8'));
+  JSON.parse(readFileSync(resolve(process.cwd(), '../contracts/browser-tools.contract.json'), 'utf-8'));
 
 /** A well-formed args object per the schema: enum→first value, else a typed dummy. */
 function sampleArgs(spec: { args: Record<string, { type?: string; enum?: string[] }> }): Record<string, unknown> {

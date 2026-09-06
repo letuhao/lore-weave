@@ -214,12 +214,12 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 ## Phase 4 severity summary — FINAL
 
 - **🔴 Blockers (0):** all design blockers resolved 2026-04-25
-- **🟡 Significant gaps (0 remaining outright, 1 partial):** Q20 Phần A V1-data-deferred (quantitative DP-S\* rescale; no design action available); Phần B ✅ resolved + ~~Q17, Q18, Q19, Q21, Q22, Q28, Q29, Q30, Q31, Q32, Q34~~ ✅ resolved 2026-04-25
+- **🟡 Significant gaps (0 remaining outright, 1 partial):** Q20 Part A V1-data-deferred (quantitative DP-S\* rescale; no design action available); Part B ✅ resolved + ~~Q17, Q18, Q19, Q21, Q22, Q28, Q29, Q30, Q31, Q32, Q34~~ ✅ resolved 2026-04-25
 - **🟢 Nits / operational (0 remaining, 4 resolved):** ~~Q23, Q24, Q25, Q33~~ ✅ resolved 2026-04-25 (consolidated into [20_operational_residuals.md](20_operational_residuals.md))
 
-**Resolved (19) + 1 partial (Q20 Phần B done; Phần A V1-deferred):** Q15, Q16, Q17, Q18, Q19, Q20-B, Q21, Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34 ✅
+**Resolved (19) + 1 partial (Q20 Part B done; Part A V1-deferred):** Q15, Q16, Q17, Q18, Q19, Q20-B, Q21, Q22, Q23, Q24, Q25, Q26, Q27, Q28, Q29, Q30, Q31, Q32, Q33, Q34 ✅
 
-**🎉🎉 Phase 4 design phase is COMPLETE — every design action that could be taken has been taken.** Q20 Phần A is purely a measurement question requiring V1 prototype data. **06_data_plane is locked baseline for feature design + SDK implementation.** No further design work available until V1 measurement informs DP-S\* recalibration.
+**🎉🎉 Phase 4 design phase is COMPLETE — every design action that could be taken has been taken.** Q20 Part A is purely a measurement question requiring V1 prototype data. **06_data_plane is locked baseline for feature design + SDK implementation.** No further design work available until V1 measurement informs DP-S\* recalibration.
 
 ---
 
@@ -231,7 +231,7 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 - **[DP-A17](02_invariants.md#dp-a17--per-channel-turn-numbering-phase-4-2026-04-25)** Per-channel turn numbering — monotonic gapless `turn_number: u64` per channel, writer-allocated only via `advance_turn`, every event tagged with current turn_number.
 - **[15_turn_boundary.md](15_turn_boundary.md)** DP-Ch21..Ch24:
   - Ch21 `TurnBoundary` event = `ChannelEvent` impl with discriminator `"turn_boundary"`; `advance_turn(ctx, channel, turn_data, causal_refs)` SDK primitive; transparent routing to writer; non-blocking on subscribers.
-  - Ch22 `event_log.turn_number BIGINT` column + `channel_writer_state.last_turn_number`; writer allocation algorithm; recovery via `MAX(turn_number)` reseed; optional UNIQUE index for failover-race safety.
+  - Ch22 `events.turn_number BIGINT` column + `channel_writer_state.last_turn_number`; writer allocation algorithm; recovery via `MAX(turn_number)` reseed; optional UNIQUE index for failover-race safety.
   - Ch23 JWT claim `can_advance_turn: Vec<level_name>` gates the primitive; SDK enforces; concrete assignments per service at deploy time.
   - Ch24 Composition: pause rejects advance; bubble-up observes turns as inputs; reality-scoped events excluded; turn 0 = "never advanced" sentinel.
 
@@ -247,7 +247,7 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 **Resolution:** New file [14_durable_subscribe.md](14_durable_subscribe.md) DP-Ch16..Ch20:
 - **DP-Ch16** `subscribe_channel_events_durable<S: ChannelEvent>(ctx, channel, from_event_id)` returns `DurableEventStream<S>`; visibility check via session capability + ancestor chain.
-- **DP-Ch17** Hybrid backing — Redis Streams `dp:events:{reality}:{channel}` for live tail (7-day retention) + Postgres `event_log` direct query for historical catchup; populated by channel writer in same tx as commit.
+- **DP-Ch17** Hybrid backing — Redis Streams `dp:events:{reality}:{channel}` for live tail (7-day retention) + Postgres `events` direct query for historical catchup; populated by channel writer in same tx as commit.
 - **DP-Ch18** Resume token = `channel_event_id`, client-side cursor; gap-free monotonic delivery; explicit `ResumeTokenExpired` rather than silent gap; catchup → live transition via parallel DB-page + Stream merge with `channel_event_id` deduplication.
 - **DP-Ch19** `subscribe_session_channels` convenience auto-multiplexes ancestor chain; per-channel ordering preserved, cross-channel arbitrary; `resubscribe_for_new_context` helper on `move_session_to_channel`.
 - **DP-Ch20** TCP-level backpressure + 60s stall threshold; idle heartbeat every 30s; explicit reconnect (no auto-reconnect by SDK); `StreamEndReason` taxonomy (retryable vs not).
@@ -298,11 +298,11 @@ Any bucket empty → `DpError::RateLimited { retry_after: Duration }`. Feature c
 
 **What:** LLM calls 1-10s dominate. Two parts: (A) quantitative DP-S\* rescale + (B) LLM turn slot primitive design.
 
-### Phần A — Quantitative DP-S\* rescale 🟡 STILL DEFERRED
+### Part A — Quantitative DP-S\* rescale 🟡 STILL DEFERRED
 
 DP-S\* numbers (500 CCU, 50ms T3 ack, 10k events/s/reality) anchor on MMO scale. Turn-based + channel model may be over-specced. **No design action available without V1 prototype measurement.** Defer until V1 data exists.
 
-### Phần B — LLM turn slot primitive + pattern doc ✅ RESOLVED (Phase 4, 2026-04-25)
+### Part B — LLM turn slot primitive + pattern doc ✅ RESOLVED (Phase 4, 2026-04-25)
 
 [21_llm_turn_slot.md](21_llm_turn_slot.md) DP-Ch51..Ch53:
 - **DP-Ch51** `claim_turn_slot` / `release_turn_slot` / `get_turn_slot` SDK primitives + schema extension on `channel_writer_state` (current_turn_actor + turn_started_at + turn_expected_until + turn_slot_reason); canonical `TurnSlotClaimed` / `TurnSlotReleased` reserved events; per-channel slot uniqueness; capability-gated by existing `can_advance_turn`.
@@ -311,7 +311,7 @@ DP-S\* numbers (500 CCU, 50ms T3 ack, 10k events/s/reality) anchor on MMO scale.
 
 Slot is **advisory hint** — does NOT block writes (that's `channel_pause`'s job per Q19); orthogonal composition with pause covered in [DP-Ch36](17_channel_lifecycle.md#dp-ch36--pause--lifecycle-composition-rules).
 
-**Phần A note:** Even after Phần B, quantitative DP-S\* rescale stays deferred. The DP-S\* targets remain the SLO contract for V1/V2 implementation; V1 measurement decides whether to relax them at V2/V3.
+**Part A note:** Even after Part B, quantitative DP-S\* rescale stays deferred. The DP-S\* targets remain the SLO contract for V1/V2 implementation; V1 measurement decides whether to relax them at V2/V3.
 
 ---
 
@@ -423,7 +423,7 @@ Slot is **advisory hint** — does NOT block writes (that's `channel_pause`'s jo
 
 **What:** Concrete implementation of Q17's invariant.
 
-**Resolution:** [13_channel_ordering_and_writer.md DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism). Single writer maintains in-memory counter per channel, seeded from `MAX(channel_event_id)` query at writer takeover, gaplessness via DB UNIQUE constraint. Reality-scoped events keep `channel_id = NULL` and use existing R7 ordering. Recovery on writer crash via re-query MAX. Schema extension to `event_log` documented in DP-Ch11.
+**Resolution:** [13_channel_ordering_and_writer.md DP-Ch11](13_channel_ordering_and_writer.md#dp-ch11--channel_event_id-allocation-mechanism). Single writer maintains in-memory counter per channel, seeded from `MAX(channel_event_id)` query at writer takeover, gaplessness via DB UNIQUE constraint. Reality-scoped events keep `channel_id = NULL` and use existing R7 ordering. Recovery on writer crash via re-query MAX. Schema extension to `events` documented in DP-Ch11.
 
 ---
 

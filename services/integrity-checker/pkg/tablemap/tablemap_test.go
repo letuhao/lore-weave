@@ -7,7 +7,7 @@ import (
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/types"
 )
 
-// The map MUST cover exactly the 10 L3.A tables — no more, no less. A drift in
+// The map MUST cover exactly the L3.A tables — no more, no less. A drift in
 // either direction (0006 adds a table / types.L3ATables changes) fails here.
 func TestSpecsCoverL3AExactly(t *testing.T) {
 	got := Tables()
@@ -34,7 +34,7 @@ func TestEveryL3ATableHasNonEmptyPK(t *testing.T) {
 		if len(spec.PKColumns) == 0 {
 			t.Errorf("%s: empty PKColumns", tbl)
 		}
-		// Only the one cross-aggregate table has a DeriveOwning.
+		// A cross-aggregate spec must carry a DeriveOwning, and only it may.
 		if spec.CrossAggregate != (spec.DeriveOwning != nil) {
 			t.Errorf("%s: CrossAggregate=%v but DeriveOwning set=%v (must agree)", tbl, spec.CrossAggregate, spec.DeriveOwning != nil)
 		}
@@ -43,12 +43,11 @@ func TestEveryL3ATableHasNonEmptyPK(t *testing.T) {
 
 func TestCompositePKColumnsMatch0006(t *testing.T) {
 	cases := map[string][]string{
-		"pc_inventory_projection":        {"pc_id", "item_code"},
-		"pc_relationship_projection":     {"pc_id", "other_entity_type", "other_entity_id"},
-		"npc_pc_relationship_projection": {"npc_id", "other_entity_id"},
-		"session_participants":           {"session_id", "participant_type", "participant_id"},
-		"world_kv_projection":            {"key"},
-		"npc_session_memory_projection":  {"npc_id", "session_id"},
+		// The last COMPOSITE pk went with session_participants (`0018`), so this
+		// case now only proves single-column PKs match the DDL. Recorded rather
+		// than quietly narrowed: a multi-column projection would need this case
+		// extended, and there is nothing here to notice that today.
+		"canon_projection": {"canon_entry_id"},
 	}
 	for tbl, want := range cases {
 		got, err := PKColumns(tbl)
@@ -66,45 +65,31 @@ func TestCompositePKColumnsMatch0006(t *testing.T) {
 	}
 }
 
-func TestNpcSessionMemoryIsCrossAggregateAndDerivesBothOwners(t *testing.T) {
-	spec, ok := Lookup("npc_session_memory_projection")
-	if !ok || !spec.CrossAggregate || spec.DeriveOwning == nil {
-		t.Fatal("npc_session_memory_projection must be cross-aggregate with DeriveOwning")
-	}
-	owners, err := spec.DeriveOwning(map[string]string{"npc_id": "n-1", "session_id": "s-2"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(owners) != 2 {
-		t.Fatalf("expected 2 owners, got %v", owners)
-	}
-	// session (session_id) + npc (npc_id), in that order.
-	if owners[0] != (OwningAggregate{Type: "session", ID: "s-2"}) {
-		t.Errorf("owner[0] = %+v", owners[0])
-	}
-	if owners[1] != (OwningAggregate{Type: "npc", ID: "n-1"}) {
-		t.Errorf("owner[1] = %+v", owners[1])
-	}
-
-	// Missing a PK component is an error (the sampler must supply both).
-	if _, err := spec.DeriveOwning(map[string]string{"npc_id": "n-1"}); err == nil {
-		t.Error("expected error when session_id missing")
-	}
-	if _, err := spec.DeriveOwning(map[string]string{"session_id": "s-2"}); err == nil {
-		t.Error("expected error when npc_id missing")
-	}
-}
-
-func TestSingleAggregateTablesHaveNoDeriveOwning(t *testing.T) {
-	// All but npc_session_memory_projection are single-aggregate (owner resolved
-	// at runtime via the row's event_id).
-	for _, tbl := range types.L3ATables {
-		if tbl == "npc_session_memory_projection" {
-			continue
-		}
+// TestNoProductionSpecIsCrossAggregateYet states a VACUITY out loud instead of
+// letting it hide.
+//
+// `npc_session_memory_projection` was the only cross-aggregate table the checker
+// ever had, and `0017` dropped it. So `live.ResolveOwning`'s `spec.CrossAggregate`
+// branch is currently unreachable from production data — and the tests that used
+// to cover the derivation went with the table.
+//
+// Deleting the MODE would have been wrong (it is a property of the checker, not
+// of npc vocabulary), but keeping it silently is how dead machinery survives for
+// two months. So the vacuity is asserted: **this test fails the moment anyone
+// adds a cross-aggregate spec**, and the failure message tells that author what
+// coverage they now owe. It is the smallest thing that can red on the event that
+// matters.
+func TestNoProductionSpecIsCrossAggregateYet(t *testing.T) {
+	for _, tbl := range Tables() {
 		spec, _ := Lookup(tbl)
 		if spec.CrossAggregate || spec.DeriveOwning != nil {
-			t.Errorf("%s should be single-aggregate", tbl)
+			t.Fatalf(
+				"%s is cross-aggregate — the first one since 0017 dropped "+
+					"npc_session_memory_projection. This test is now obsolete: replace it with "+
+					"real coverage of %s's DeriveOwning (both owners returned in order, and an "+
+					"error for each missing PK component), and cover the CrossAggregate branch "+
+					"in live.ResolveOwning, which no production table has reached since 0017.",
+				tbl, tbl)
 		}
 	}
 }

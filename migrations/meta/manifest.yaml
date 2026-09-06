@@ -1,0 +1,271 @@
+# migrations/meta/manifest.yaml — the META (control-plane) migration manifest.
+#
+# WHY THIS DID NOT EXIST UNTIL 2026-08-08
+# --------------------------------------
+# `contracts/migrations/per_reality/` has had a manifest since RAID cycle 6, and
+# `1b7gap-H1` measured what happens without one: six migrations shipped
+# unregistered and the orchestrator applied an eight-month-old schema.
+#
+# The META tree is a SECOND migration tree, at repo root, holding 35 migrations —
+# `reality_registry`, `instance_schema_migrations`, the lifecycle audit, the
+# actor/control binding. It had **no manifest, no gate, and no runner**, and
+# `loreweave_meta` does not exist in the dev stack at all. Every artifact that
+# needs it (the provisioner's very first step writes `reality_registry` through
+# the meta bridge) has therefore never run.
+#
+# `scripts/migration-manifest-gate.py` now covers BOTH trees, so a meta migration
+# added tomorrow is registered by existing rather than by someone remembering.
+#
+# Generated from the tree on 2026-08-08 and then owned by hand: ids and order are
+# the filenames, `breaking` is derived from whether the file DROPs, and
+# `dependencies` are left empty because this tree has never declared any — an
+# honest empty is better than an invented graph.
+
+version: 1
+
+migrations:
+  - id: "001_reality_registry"
+    version: 1
+    breaking: false
+    dependencies: []
+    description: "meta — reality registry"
+
+  - id: "002_instance_schema_migrations"
+    version: 2
+    breaking: false
+    dependencies: []
+    description: "meta — instance schema migrations"
+
+  - id: "003_publisher_heartbeats"
+    version: 3
+    breaking: false
+    dependencies: []
+    description: "meta — publisher heartbeats"
+
+  - id: "004_lifecycle_transition_audit"
+    version: 4
+    breaking: false
+    dependencies: []
+    description: "meta — lifecycle transition audit"
+
+  - id: "005_reality_close_audit"
+    version: 5
+    breaking: false
+    dependencies: []
+    description: "meta — reality close audit"
+
+  - id: "006_archive_verification_log"
+    version: 6
+    breaking: false
+    dependencies: []
+    description: "meta — archive verification log"
+
+  - id: "007_reality_migration_audit"
+    version: 7
+    breaking: false
+    dependencies: []
+    description: "meta — reality migration audit"
+
+  - id: "008_session_cost_summary"
+    version: 8
+    breaking: false
+    dependencies: []
+    description: "meta — session cost summary"
+
+  - id: "009_pii_registry"
+    version: 9
+    breaking: false
+    dependencies: []
+    description: "meta — pii registry"
+
+  - id: "010_pii_kek"
+    version: 10
+    breaking: false
+    dependencies: []
+    description: "meta — pii kek"
+
+  - id: "011_user_consent_ledger"
+    version: 11
+    breaking: false
+    dependencies: []
+    description: "meta — user consent ledger"
+
+  - id: "012_player_character_index"
+    version: 12
+    breaking: false
+    dependencies: []
+    description: "meta — player character index"
+
+  - id: "013_meta_write_audit"
+    version: 13
+    breaking: false
+    dependencies: []
+    description: "meta — meta write audit"
+
+  - id: "014_meta_read_audit"
+    version: 14
+    breaking: false
+    dependencies: []
+    description: "meta — meta read audit"
+
+  - id: "015_admin_action_audit"
+    version: 15
+    breaking: false
+    dependencies: []
+    description: "meta — admin action audit"
+
+  - id: "016_service_to_service_audit"
+    version: 16
+    breaking: false
+    dependencies: []
+    description: "meta — service to service audit"
+
+  - id: "017_prompt_audit"
+    version: 17
+    breaking: false
+    dependencies: []
+    description: "meta — prompt audit"
+
+  - id: "018_user_cost_ledger"
+    version: 18
+    breaking: false
+    dependencies: []
+    description: "meta — user cost ledger"
+
+  - id: "019_user_daily_cost"
+    version: 19
+    breaking: false
+    dependencies: []
+    description: "meta — user daily cost"
+
+  - id: "020_user_queue_metrics"
+    version: 20
+    breaking: false
+    dependencies: []
+    description: "meta — user queue metrics"
+
+  - id: "021_incidents"
+    version: 21
+    breaking: false
+    dependencies: []
+    description: "meta — incidents"
+
+  - id: "022_feature_flags"
+    version: 22
+    breaking: false
+    dependencies: []
+    description: "meta — feature flags"
+
+  - id: "023_deploy_audit"
+    version: 23
+    breaking: false
+    dependencies: []
+    description: "meta — deploy audit"
+
+  - id: "024_shard_utilization"
+    version: 24
+    breaking: false
+    dependencies: []
+    description: "meta — shard utilization"
+
+  - id: "025_scaling_events"
+    version: 25
+    breaking: false
+    dependencies: []
+    description: "meta — scaling events"
+
+  - id: "026_book_reality_subscription"
+    version: 26
+    breaking: false
+    dependencies: []
+    description: "meta — book reality subscription"
+
+  - id: "027_meta_write_audit_scrub_version"
+    version: 27
+    breaking: false
+    dependencies: []
+    description: "meta — meta write audit scrub version"
+
+  - id: "028_pii_kek_single_active"
+    version: 28
+    breaking: false
+    dependencies: []
+    description: "meta — pii kek single active"
+
+  - id: "029_meta_read_audit_pii_query_types"
+    version: 29
+    breaking: false
+    dependencies: []
+    description: "meta — meta read audit pii query types"
+
+  - id: "030_meta_outbox"
+    version: 30
+    breaking: false
+    dependencies: []
+    description: "meta — meta outbox"
+
+  - id: "031_meta_read_audit_reconcile_query_types"
+    version: 31
+    breaking: false
+    dependencies: []
+    description: "meta — meta read audit reconcile query types"
+
+  - id: "032_admin_action_audit_started_kind"
+    version: 32
+    breaking: false
+    dependencies: []
+    description: "meta — admin action audit started kind"
+
+  - id: "033_reality_ruleset_binding"
+    version: 33
+    breaking: false
+    dependencies: []
+    description: "meta — reality ruleset binding"
+
+  - id: "034_actor_control_binding"
+    version: 34
+    breaking: false
+    dependencies: []
+    description: "meta — actor control binding"
+
+  - id: "035_drop_player_character_index"
+    version: 35
+    breaking: true
+    dependencies: []
+    description: "meta — drop player character index"
+
+  - id: "036_reality_ownership"
+    version: 36
+    breaking: false
+    dependencies: []
+    description: "meta — reality ownership: owner_kind tier + owner_user_id, consistency CHECK"
+
+  - id: "037_reality_owner_not_nil"
+    version: 37
+    breaking: false
+    dependencies: ["036_reality_ownership"]
+    description: "meta — the nil UUID is not a valid reality owner"
+
+  - id: "038_orphan_scan_finding"
+    version: 38
+    breaking: false
+    dependencies: []
+    description: "meta — orphan_scanner findings as state (W5-REMEDIATE)"
+
+  - id: "039_session_registry"
+    version: 39
+    breaking: false
+    dependencies: []
+    description: "meta — DP-C8 capability store: the session registry the specs referenced but never declared"
+
+  - id: "040_tier_policy"
+    version: 40
+    breaking: false
+    dependencies: []
+    description: "meta — DP-C4 tier policy registry + per-service capability grants; unblocks 5 of the control plane's 8 UNIMPLEMENTED RPCs"
+
+  - id: "041_actor_control_binding_live_unique"
+    version: 41
+    breaking: false
+    dependencies: ["034_actor_control_binding"]
+    description: "meta — 034's PK made revoke TERMINAL (one row total, not one LIVE row as its header states); a partial unique index enforces the invariant as written and lets a handoff be revoke-then-grant"

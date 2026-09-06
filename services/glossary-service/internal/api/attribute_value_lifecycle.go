@@ -133,7 +133,7 @@ func (s *Server) addAttributeValue(w http.ResponseWriter, r *http.Request) {
 	// A 'description' add refreshes the auto short_description (only if still auto); a
 	// 'name'/'term' add moves the dedup key (both mirror patchAttributeValue).
 	if attrCode == "description" {
-		if err := s.regenerateAutoShortDescription(ctx, tx, entityID); err != nil {
+		if _, err := s.regenerateAutoShortDescription(ctx, tx, entityID); err != nil {
 			slog.Warn("add-attr: regen short_description failed (non-fatal)",
 				"entity_id", entityID.String(), "error", err.Error())
 		}
@@ -264,7 +264,7 @@ func (s *Server) deleteAttributeValue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if attrCode == "description" {
-		if err := s.regenerateAutoShortDescription(ctx, tx, entityID); err != nil {
+		if _, err := s.regenerateAutoShortDescription(ctx, tx, entityID); err != nil {
 			slog.Warn("delete-attr: regen short_description failed (non-fatal)",
 				"entity_id", entityID.String(), "error", err.Error())
 		}

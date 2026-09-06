@@ -18,7 +18,11 @@ import (
 func mcpMapPartErr(err error) error {
 	switch {
 	case errors.Is(err, errChapterNotFound):
-		return errBookNotAccessible // H13: no existence oracle — same uniform not-accessible
+		// Was errBookNotAccessible under an H13 'no existence oracle' rationale. That does not
+		// hold once the book grant has passed: errChapterNotInBook's own declaration records
+		// the counter-argument and the observed failure — a caller reads 'no book access' and
+		// gives up instead of fixing the id. The sentinel is literally errChapterNotFound.
+		return errChapterNotInBook
 	default:
 		return errors.New("failed to move chapter")
 	}
@@ -81,7 +85,7 @@ func (s *Server) toolChapterSetPart(ctx context.Context, _ *mcp.CallToolRequest,
 
 	if err := s.moveChapterToPart(ctx, bookID, chID, target); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, chapterSetPartOut{}, errBookNotAccessible
+			return nil, chapterSetPartOut{}, errStructureTargetNotInBook
 		}
 		return nil, chapterSetPartOut{}, mcpMapPartErr(err)
 	}

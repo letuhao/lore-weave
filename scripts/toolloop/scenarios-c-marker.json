@@ -1,0 +1,43 @@
+{
+  "_note": "RE-MEASURE of world_map_add_marker. Its blocked reason says 'the real chain is world_list -> world_map_list -> world_map_add_marker, and the declaration names only the middle link'. That is no longer true: world_map_list.world_id now reads 'NOT a name — if you have the world's NAME, call world_list first and match it to get the id' (065954af0, 2026-08-22). The declaration chain is complete, so the conclusion may predate its own fix.\n\nNOTHING about the scenario changes — same prompt, same seed. Only the platform moved.\n\nWHAT WOULD REFUTE THE RE-MEASURE: the model still calls world_map_list without a world_id, or still never resolves the map. Then the two-link chain is beyond it even when every link is declared, which is a finding about the MODEL and not the declarations.",
+  "scenarios": [
+    {
+      "id": "world-map-add-marker",
+      "tool_under_test": "world_map_add_marker",
+      "expect_tool": "world_map_add_marker",
+      "intent": "write",
+      "tier": "A",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+      "prompt_source": "_meta.synonyms['add pin'] + ['place marker']. The POSITION is described in the user's own words; the x/y the tool needs are derived by the model, never typed here.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "world_create",
+          "args": {
+            "name": "LOOP-THROWAWAY-ashfall",
+            "description": "batch 7 map fixture"
+          }
+        },
+        {
+          "tool": "world_map_create",
+          "args": {
+            "world_id": "{step:0:world.world_id}",
+            "name": "Ashfall"
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool reports a marker placed while the map gains none, OR the marker's x/y fall outside the map's coordinate space, OR a Tier-A write lands with no confirm card. CONTROL: the model must find map_id itself (world_map_list) — a turn that never lists is a DISCOVERY failure, not a failure of this tool.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a map_id that does not exist must be refused.",
+        "tenancy": "OWED — another account's map must be refused."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-c3-rerun.json"
+    }
+  ]
+}

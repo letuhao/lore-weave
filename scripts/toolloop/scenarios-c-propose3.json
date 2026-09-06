@@ -1,0 +1,35 @@
+{
+  "_note": "propose_edit asked for an INSERTION — the half of the tool a turn carrying only book_id and chapter_id can ground.",
+  "scenarios": [
+    {
+      "id": "propose-edit-insertion",
+      "tool_under_test": "propose_edit",
+      "expect_tool": "propose_edit",
+      "intent": "write",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Add a paragraph here — describe the storm breaking over Hollow Keep. Show me the change before it goes in.",
+      "prompt_source": "THE HALF OF THIS TOOL THAT THE TURN CAN GROUND.\n\nThe previous prompt — 'Make the opening line of this chapter darker — show me the change before it goes in.' — asks for a REPLACEMENT, which maps to replace_selection, and that operation presupposes a selection EXISTS. chat-service's EditorContext carries book_id, chapter_id and an optional chapter_title: no selection, no cursor, no flag. So the model cannot tell whether the opening line is what would be replaced, and on 5 of 5 runs it wrote three rewrites in prose instead — a defensible answer to a request whose affordance it cannot confirm applies.\n\ninsert_at_cursor presupposes only a cursor, which an editor turn always has, and takes nothing but `operation` and `text` (the tool's own schema: required: ['operation','text']). An INSERTION is therefore fully groundable from exactly the context this turn carries.\n\n🔴 THIS IS NOT ASKING AN EASIER QUESTION TO GET A GREEN. Both operations are the tool's own, declared in PROPOSE_EDIT_OPERATIONS, and inserting new prose on request is what an author in a chapter editor actually asks for. The replacement half stays blocked and stays recorded — what it needs is EditorContext carrying a selection, which is a contract change across every FE surface and the owner's call. If the model declines this one too, groundability was never the blocker and the finding is the opposite of what I expect.\n\nVerified before the batch was spent, against the LIVE catalogue: R1 forces propose_edit ALONE for this phrasing, exactly as for the original. Surfacing is not the variable.",
+      "needs_target": false,
+      "editor_context": true,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the chapter body CHANGES — propose_edit shows an Apply button and must never write by itself; the store diff is the whole test. Also REFUTED IF the turn ends claiming the edit was made rather than proposed (the D-NARRATED-WRITE shape, which this tool is uniquely able to produce). CONTROL: it declares no synonyms, so if it is NOT surfaced the finding is about the frontend-tool advertisement path, not about answerability.",
+      "ship_audit": {
+        "gate": "The Apply button IS the gate — the proposal must reach the user unapplied.",
+        "empty_case": "OWED — a proposal identical to the current text should be refused or reported as a no-op, not shown as an edit.",
+        "tenancy": "n/a by construction — it edits the chapter open in the caller's own editor."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P6-DESCRIBE-NOT-RECORD",
+      "answer_expect": {
+        "all_of": [
+          "storm"
+        ],
+        "why": "Deliberately weak on the text: the real assertion is that the tool was CALLED and the run suspended on its proposal card, which LIVE called and the gate's own bars carry. A reply that merely writes the paragraph in chat is the failure this scenario exists to detect, and it would satisfy any text bar naming the storm — so the text bar must never be what passes this tool."
+      }
+    }
+  ]
+}

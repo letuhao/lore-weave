@@ -1,0 +1,66 @@
+{
+ "_note": "D-THE-NORMALISER-DROPS-ARTICLES-BUT-NOT-HYPHENS — the live proof, on the instance that found the defect. Same fixture and same seed as c-lintnoauth1; the ONLY change is that the prompt carries the hyphenated compound again.",
+ "scenarios": [
+  {
+   "id": "a-hyphenated-compound-must-reach-its-tool",
+   "tool_under_test": "plan_validate",
+   "expect_tool": "plan_validate",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Run the golden-rules validation on my plan for this book and tell me which rules pass.",
+   "prompt_source": "🔴 THE DEFECT'S OWN INSTANCE, RESTORED VERBATIM. This exact wording lost 5 of 5 runs on 2026-08-27: plan_validate surfaced 0/5 and was called 0/5, with ZERO errors — a clean-looking batch that measured nothing, because `_answer_norm` stripped articles and left hyphens alone, so 'golden-rules' could not meet the declared synonym 'golden rules'. The prompt was then changed to the spaced form to get a measurement at all. This scenario changes it BACK: the fix is not proven by the wording that always worked.",
+   "needs_target": false,
+   "approve": "as-is",
+   "editor_context": false,
+   "seed": [
+    {
+     "tool": "plan_propose_spec",
+     "args": {
+      "book_id": "{book_id}",
+      "mode": "rules",
+      "source_markdown": "# Emberfall\n\n## Arc I — The Ember Codex\n### Chapter 1 — The Black Stair\nAldric Vane climbs the black stair and finds the codex still warm.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide, and the tide is turning.\n\n## Arc II — The Turning Tide\n### Chapter 3 — Low Water\nVane crosses the trench and the codex begins to read him back.\n### Chapter 4 — The Ember Answers\nThe city answers in a language Vane wrote as a child.\n"
+     }
+    },
+    {
+     "wait": {
+      "db": "loreweave_composition",
+      "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='compiled'",
+      "expect": "1",
+      "timeout": 180,
+      "poll": 3,
+      "why": "🔴 THE SEED'S ASYNC HALF, AND TWO THINGS WERE WRONG WITH MY FIRST VERSION. (1) plan_propose_spec declares `async_job=True` — the call ENQUEUES and the row is written by the worker afterwards — and with no wait at all the seed assertion read a store that had not caught up, losing 5 of 5 repeats in provisioning. (2) It then waited for `proposed`, on a ledger note saying \"mode='rules' lands the run at 'proposed'\". RE-DERIVED AGAINST THE STORE: it lands at `compiled`, carrying document, graph, link_report, package and spec — rules-mode runs the whole pipeline. The note was a lead, not a fact, and it was quoted from a batch that had itself corrected this same field once already."
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='compiled'",
+     "expect": "1",
+     "why": "The fixture's ACTUAL starting status, re-derived rather than assumed. Recorded so the falsifier below can compare against something the store really said."
+    },
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM plan_run p WHERE p.book_id='{book_id}' AND EXISTS (SELECT 1 FROM plan_artifact a WHERE a.run_id=p.id AND a.kind='spec')",
+     "expect": "1",
+     "why": "`validate()` reads the spec artifact; without it the tool raises 'no spec to validate' and the turn never reaches the branch under test. Two arcs with two events each are seeded so the HARD rules — spec_has_arc and spec_has_events, the only two that gate — genuinely PASS. The old code stamped a status ONLY on a pass, so a plan that fails the linter would prove nothing here."
+    }
+   ],
+   "falsifier": "REFUTED IF plan_validate surfaces 0/N again — the hyphen still separates the request from the tool that declared the phrase. PASSES IF it surfaces and is CALLED, returning ok with a verdict.\n\nThe DQ-T45 bar rides along unchanged and is still read: the plan_run must NOT advance. A run that refuses on an unresolvable run_id is NEITHER outcome for that bar — but it still counts for THIS one, because reaching the tool at all is what is under test here.",
+   "answer_expect": {
+    "why": "None. The measurement is the plan_run's status and the validation_report artifact in loreweave_composition, read after the turn — not the reply text."
+   },
+   "ship_audit": {
+    "gate": "N/A — Tier R, and the whole point of the fix is that it stays a read.",
+    "absent_case": "OWED — a book with no plan run must be refused, not silently validated.",
+    "idempotency": "OWED — validating twice must not change the run either time.",
+    "tenancy": "Throwaway fixture book per repeat, torn down by the harness."
+   },
+   "defects": [
+    "D-A-TIER-R-TOOL-WRITES-TO-THE-STORE"
+   ]
+  }
+ ]
+}

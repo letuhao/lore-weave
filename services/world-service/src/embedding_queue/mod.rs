@@ -91,7 +91,12 @@ pub const EMBEDDING_DIM: usize = 1536;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemoryRef {
     /// Reality the memory lives in (audit + per-reality DB routing).
-    pub reality_id: Uuid,
+    ///
+    /// `3E` — VERIFIED. This ref is what a write into the per-reality database
+    /// is addressed by, so a raw uuid here is a write aimed at whatever the
+    /// caller happened to name. `dp::RealityId` can only have come from a
+    /// control plane that confirmed the reality accepts commands.
+    pub reality_id: dp::RealityId,
     /// NPC the memory belongs to (PK part 1 of npc_session_memory_embedding).
     pub npc_id: Uuid,
     /// Session the memory was created in (PK part 2).
@@ -159,7 +164,7 @@ pub trait EmbeddingWriter: Send + Sync {
     /// shared, no `&mut`), mirroring `dp-kernel::PgEventStore`.
     async fn write_embedding(
         &self,
-        reality_id: Uuid,
+        reality_id: dp::RealityId,
         npc_id: Uuid,
         session_id: Uuid,
         vector: &[f32],
@@ -360,6 +365,101 @@ impl<'a> Worker<'a> {
 // in-memory fakes. NO docker, NO network.
 // ───────────────────────────────────────────────────────────────────────────
 
+
+
+/// `3E` — turn the configured reality uuid into a VERIFIED `dp::RealityId`.
+///
+/// # What the env string did not check
+///
+/// `EMBEDDING_REALITY_ID` is text. The worker drained it and wrote embeddings
+/// into the matching per-reality database with nothing confirming the reality
+/// existed, let alone that it still ACCEPTED COMMANDS — so a worker pointed at
+/// a frozen, archived or soft-deleted world would backfill happily into a world
+/// that had been closed.
+///
+/// The meta pool is the one the worker already opens for its audit trail, so
+/// this adds a verification rather than a dependency.
+///
+/// Fails closed: an unbindable reality is a startup error, not a warning. A
+/// worker that cannot confirm its world is open should not write to it.
+pub async fn bind_reality(
+    meta_pool: &sqlx::PgPool,
+    reality: Uuid,
+) -> Result<dp::RealityId, Box<dyn std::error::Error>> {
+    use meta_rs::control_plane::MetaControlPlane;
+    use meta_rs::routing::DefaultMetaRead;
+    use meta_rs::sqlx_pg::{PgCapabilityStore, PgConnectionReader};
+
+    let allowlist = meta_rs::allowlist::Allowlist::load("contracts/meta/events_allowlist.yaml")?;
+    let reader = PgConnectionReader::new(meta_pool.clone())?;
+    let store = PgCapabilityStore::new(
+        meta_pool.clone(),
+        allowlist,
+        meta_rs::metawrite::Actor {
+            actor_type: meta_rs::metawrite::ActorType::System,
+            id: "world-service-embedding-worker".to_string(),
+            svid: None,
+        },
+    )?;
+    let plane = MetaControlPlane::new(DefaultMetaRead::new(reader), store);
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_millis() as u64;
+
+    let ctx = dp::SessionContext::bind(
+        &plane,
+        dp::BindRequest {
+            reality,
+            node: std::env::var("HOSTNAME")
+                .or_else(|_| std::env::var("COMPUTERNAME"))
+                .unwrap_or_else(|_| format!("embedding-worker-{}", std::process::id())),
+            service: dp::ServiceIdentity::new("world-service-embedding-worker")
+                .ok_or("the service identity constant is not a valid ServiceIdentity")?,
+        },
+        now_ms,
+    )?;
+    Ok(ctx.reality_id().to_owned())
+}
+
+/// A VERIFIED `RealityId` for this crate's unit tests.
+///
+/// `3E` made the queue's inward types take `dp::RealityId`, and the only way to
+/// hold one is a `SessionContext::bind` against a `ControlPlane`. Production
+/// binds against the real one in `bin/embedding_worker.rs`; a unit test cannot,
+/// so it binds against a double.
+///
+/// That is not a weakening of the guarantee. The guarantee is that PRODUCTION
+/// code cannot forge one — and production here goes through the real control
+/// plane. This is `#[cfg(test)]`, so it does not exist in a release build at
+/// all. `crates/dp`'s own tests and `dp-kernel`'s do exactly the same thing.
+#[cfg(test)]
+pub(crate) fn test_reality(raw: Uuid) -> dp::RealityId {
+    struct Grants;
+    impl dp::ControlPlane for Grants {
+        fn verify_bind(&self, req: &dp::BindRequest) -> Result<dp::VerifiedBind, dp::DpError> {
+            Ok(dp::VerifiedBind {
+                reality: req.reality,
+                session: Uuid::new_v4(),
+                capability_secret: "test-double".into(),
+                expires_at_ms: u64::MAX / 2,
+            })
+        }
+    }
+    dp::SessionContext::bind(
+        &Grants,
+        dp::BindRequest {
+            reality: raw,
+            node: "world-service-test".into(),
+            service: dp::ServiceIdentity::new("world-service-test").expect("valid"),
+        },
+        0,
+    )
+    .expect("the double grants every bind")
+    .reality_id()
+    .to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,7 +474,7 @@ mod tests {
             seed = seed.wrapping_mul(1099511628211).wrapping_add(b as u128);
         }
         MemoryRef {
-            reality_id: Uuid::from_u128(1),
+            reality_id: test_reality(Uuid::from_u128(1)),
             npc_id: Uuid::from_u128(seed | 0x1),
             session_id: Uuid::from_u128(seed | 0x2),
             content_hash: format!("hash-of-{text}"),

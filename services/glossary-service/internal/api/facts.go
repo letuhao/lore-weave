@@ -91,6 +91,43 @@ func ingestEpisode(ctx context.Context, q pgxRWQuerier, bookID, chapterID uuid.U
 	return episodeID, minted, nil
 }
 
+// supersedePriorEpisodeFacts invalidates the facts a chapter REVISION replaced (plan T32 /
+// decision Q6).
+//
+// A chapter edit changes its content hash, so `ingestEpisode` mints a NEW episode row rather
+// than resuming the old one — `uq_episode_chapter_hash` guarantees that. Every fact still
+// citing one of that chapter's OLDER episodes was extracted from prose that no longer exists.
+// Left open, those facts keep answering as-of reads with claims the book no longer makes, and
+// nothing anywhere says so.
+//
+// ── WHY THE BELIEF AXIS AND NOT THE STORY AXIS ───────────────────────────────────────────
+// Q6 is explicit: story-time intervals are UNTOUCHED. A rewrite does not move when something
+// happened in the narrative; it changes what the system is entitled to believe about it. That
+// is exactly what `invalidated_at` / `invalidated_reason` are for, and it is why this reuses
+// the mechanism already live for `superseded_same_ordinal` instead of inventing a third axis.
+//
+// ── WHY THIS PATH HAS NEVER FIRED ────────────────────────────────────────────────────────
+// Measured when the decision was sealed: **99 episodes, 99 chapters, 0 revisions.** Every
+// episode in the corpus is a chapter's first and only one, so no fact has ever been
+// superseded this way. That makes it red-before-green by construction — the test below has to
+// create the revision the corpus has never contained.
+func supersedePriorEpisodeFacts(
+	ctx context.Context, q pgxRWQuerier, chapterID, keepEpisodeID uuid.UUID,
+) (int64, error) {
+	tag, err := q.Exec(ctx, `
+		UPDATE entity_facts
+		   SET invalidated_at = now(), invalidated_reason = 'episode_superseded'
+		 WHERE invalidated_at IS NULL
+		   AND source_episode_id IN (
+		         SELECT episode_id FROM episodes
+		          WHERE chapter_id = $1 AND episode_id <> $2)`,
+		chapterID, keepEpisodeID)
+	if err != nil {
+		return 0, fmt.Errorf("supersede_prior_episode_facts(%s): %w", chapterID, err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // reconcileEpisode flips a sealed 'pending' episode to 'reconciled' once its facts
 // have committed (the tx-2 step of §12.2.5).
 func reconcileEpisode(ctx context.Context, q pgxRWQuerier, episodeID uuid.UUID) error {
@@ -102,6 +139,19 @@ func reconcileEpisode(ctx context.Context, q pgxRWQuerier, episodeID uuid.UUID) 
 	}
 	return nil
 }
+
+// The closed producer set for `entity_facts.origin` (T37c / SPEC §4.2b). Constants, not
+// literals, because the WRITER and the eventual CLOSE path must agree exactly — a fact
+// written as one string and searched for as another is un-retractable in a way nothing
+// reports. One home, one spelling.
+//
+// Deliberately NOT a SQL CHECK: see migrate/entity_facts_origin.go. The handler rejects an
+// unknown value with 400, which fails loudly and needs no migration when a producer is added.
+const (
+	factOriginPlan       = "plan"       // planforge — the roles a plan implies
+	factOriginAuthor     = "author"     // the studio — a human declaring a tie directly
+	factOriginExtraction = "extraction" // the pipeline reading it out of prose
+)
 
 // appendFactParams is one bi-temporal fact to OPEN (Path A, §4 step 4 / §12.2.2).
 type appendFactParams struct {
@@ -116,6 +166,12 @@ type appendFactParams struct {
 	// SourceEpisodeID cites the immutable episode (anti-hallucination, §3.2).
 	// nil for cold-start/migration facts.
 	SourceEpisodeID *uuid.UUID
+
+	// Origin records WHICH PRODUCER wrote this fact (T37c / SPEC §4.2b), so one can retract
+	// its own claims without touching another's. Empty = unknown, which every fact written
+	// before chain step 0066 is: a producer may only close facts it can prove it wrote, so
+	// an unmarked fact is never anyone's to retract. See migrate/entity_facts_origin.go.
+	Origin string
 }
 
 // appendFact opens a fact (Path A), idempotently:
@@ -132,17 +188,62 @@ func appendFact(ctx context.Context, q pgxRWQuerier, p appendFactParams) (uuid.U
 	}
 	var factID uuid.UUID
 	inserted := true
+
+	// ── WRITE-TIME DEDUPE (plan T34 / design D7) ────────────────────────────────────────
+	// If an OPEN fact on this chain already holds this exact value, the chapter re-asserted
+	// something already true. Record the citation and return that fact — do NOT open a second
+	// interval saying the same thing.
+	//
+	// Measured before this: **11.7 % of all fact rows carried no new information** (`gender`
+	// alone 93.2 %), and the share grows with chapter count because re-assertions scale with
+	// the book while real changes do not. The cost is not only storage: a chain of identical
+	// values makes "when did this change?" unanswerable without comparing every adjacent pair.
+	//
+	// Matched on `value_hash` and open-ness rather than on cardinality, so it serves BOTH
+	// shapes: for `single` there is one open fact to compare against; for `multi` (aliases)
+	// the same alias re-asserted matches its own open row while a genuinely new alias does not.
+	// `valid_from_ordinal <= $5` keeps it honest about direction — a fact that opens LATER in
+	// the story is not evidence for an earlier assertion, and treating it as such would let a
+	// back-fill silently answer for a position it does not cover.
+	if err := q.QueryRow(ctx, `
+		SELECT fact_id FROM entity_facts
+		 WHERE entity_id = $1 AND fact_kind = $2 AND attr_or_predicate = $3
+		   AND value_hash = md5($4)
+		   AND invalidated_at IS NULL
+		   AND valid_from_ordinal <= $5
+		   AND $5 < valid_to_eff
+		 ORDER BY valid_from_ordinal DESC
+		 LIMIT 1`,
+		p.EntityID, p.FactKind, p.Attr, p.Value, p.ValidFrom,
+	).Scan(&factID); err == nil {
+		// ON CONFLICT DO NOTHING so a re-extract of the same chapter grows NEITHER table.
+		// Without it "the fact count did not grow" would be true while the evidence count
+		// grew unboundedly — the same bug wearing a different column.
+		if _, e := q.Exec(ctx, `
+			INSERT INTO entity_fact_evidence (fact_id, episode_id, chapter_ordinal)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (fact_id, chapter_ordinal) DO NOTHING`,
+			factID, p.SourceEpisodeID, p.ValidFrom,
+		); e != nil {
+			return uuid.Nil, false, fmt.Errorf("append_fact: attach evidence: %w", e)
+		}
+		return factID, false, nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, false, fmt.Errorf("append_fact: dedupe probe: %w", err)
+	}
+
 	// Targeted ON CONFLICT on the content-addressed natural key (NOT a bare DO NOTHING),
 	// so a future unique constraint on entity_facts can't be silently swallowed.
 	err := q.QueryRow(ctx, `
 		INSERT INTO entity_facts
-		  (book_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		  (book_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id, origin)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''))
 		ON CONFLICT (entity_id, fact_kind, attr_or_predicate, value_hash, valid_from_ordinal,
 		             coalesce(source_episode_id, '00000000-0000-0000-0000-000000000000'::uuid))
 		DO NOTHING
 		RETURNING fact_id`,
 		p.BookID, p.EntityID, p.FactKind, p.Attr, p.Value, p.ValidFrom, p.Card, p.SourceEpisodeID,
+		p.Origin,
 	).Scan(&factID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		inserted = false

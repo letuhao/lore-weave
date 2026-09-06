@@ -73,8 +73,8 @@
       "number": "数値",
       "date": "日付",
       "tags": "タグ",
-      "url": "URL",
-      "boolean": "はい / いいえ"
+      "boolean": "はい / いいえ",
+      "url": "URL"
     }
   },
   "stdform": {

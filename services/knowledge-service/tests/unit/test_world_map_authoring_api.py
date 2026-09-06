@@ -16,8 +16,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.entities import Entity
-from app.db.neo4j_repos.relations import Relation
+from app.db.graph_repos.entities import Entity
+from app.db.graph_repos.relations import Relation
 
 _TEST_USER = uuid4()
 _PROJECT_ID = uuid4()
@@ -84,8 +84,8 @@ def _teardown():
 # ── POST /v1/knowledge/entities ──────────────────────────────────────
 
 
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_create_entity_happy(mock_merge):
     mock_merge.return_value = _entity_stub()
     client = _make_client()
@@ -108,8 +108,8 @@ def test_create_entity_happy(mock_merge):
         _teardown()
 
 
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_create_entity_rejects_unknown_kind(mock_merge):
     client = _make_client()
     try:
@@ -127,8 +127,8 @@ def test_create_entity_rejects_unknown_kind(mock_merge):
 @pytest.mark.parametrize(
     "kind", ["character", "location", "organization", "concept", "item"]
 )
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_create_entity_accepts_all_five_authorable_kinds(mock_merge, kind):
     mock_merge.return_value = _entity_stub(name="Thing", kind=kind)
     client = _make_client()
@@ -143,8 +143,8 @@ def test_create_entity_accepts_all_five_authorable_kinds(mock_merge, kind):
         _teardown()
 
 
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_create_entity_rejects_legacy_faction_misnomer(mock_merge):
     # ``faction`` was the old create-gate misnomer; it is now renamed to
     # ``organization`` and must 422 (proving the rename, not a widen-only).
@@ -160,8 +160,8 @@ def test_create_entity_rejects_legacy_faction_misnomer(mock_merge):
         _teardown()
 
 
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_create_entity_rejects_blank_name(mock_merge):
     client = _make_client()
     try:
@@ -178,8 +178,8 @@ def test_create_entity_rejects_blank_name(mock_merge):
 # ── POST /v1/knowledge/relations ─────────────────────────────────────
 
 
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
 def test_create_relation_happy(mock_recreate):
     mock_recreate.return_value = _relation_stub("borders")
     client = _make_client()
@@ -199,8 +199,8 @@ def test_create_relation_happy(mock_recreate):
         _teardown()
 
 
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
 def test_create_relation_missing_endpoint_409(mock_recreate):
     mock_recreate.return_value = None  # an endpoint entity isn't this user's
     client = _make_client()
@@ -214,14 +214,74 @@ def test_create_relation_missing_endpoint_409(mock_recreate):
         _teardown()
 
 
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
-@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
 def test_create_relation_rejects_self_loop(mock_recreate):
     client = _make_client()
     try:
         resp = client.post(
             "/v1/knowledge/relations",
             json={"subject_id": _SUBJ, "object_id": _SUBJ, "predicate": "borders"},
+        )
+        assert resp.status_code == 422
+        mock_recreate.assert_not_awaited()
+    finally:
+        _teardown()
+
+
+# ── T36 · the author-declared relation carries a story position ──────────
+#
+# This path had NO story axis at all, and that was the binding constraint on
+# the refactor's acceptance case: Q2 says roles are "plan-authored, not
+# extracted", the as-of read excludes positionless edges by design, so
+# author-declared roles were exactly the ones the canon check could never see.
+
+
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
+def test_create_relation_forwards_the_story_position(mock_recreate):
+    mock_recreate.return_value = _relation_stub("enemy_of")
+    client = _make_client()
+    try:
+        resp = client.post(
+            "/v1/knowledge/relations",
+            json={"subject_id": _SUBJ, "object_id": _OBJ, "predicate": "enemy_of",
+                  "valid_from_ordinal": 3_000_000},
+        )
+        assert resp.status_code == 201, resp.json()
+        assert mock_recreate.await_args.kwargs["valid_from_ordinal"] == 3_000_000
+    finally:
+        _teardown()
+
+
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
+def test_create_relation_position_is_optional_and_defaults_to_none(mock_recreate):
+    """ADDITIVE — an existing caller that sends no position is unchanged."""
+    mock_recreate.return_value = _relation_stub("borders")
+    client = _make_client()
+    try:
+        resp = client.post(
+            "/v1/knowledge/relations",
+            json={"subject_id": _SUBJ, "object_id": _OBJ, "predicate": "borders"},
+        )
+        assert resp.status_code == 201, resp.json()
+        assert mock_recreate.await_args.kwargs["valid_from_ordinal"] is None
+    finally:
+        _teardown()
+
+
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.graph_session", new=lambda: _noop_session())
+def test_create_relation_rejects_a_negative_position(mock_recreate):
+    """The axis starts at 0; a negative ordinal is a caller bug, not a wildcard."""
+    mock_recreate.return_value = _relation_stub("borders")
+    client = _make_client()
+    try:
+        resp = client.post(
+            "/v1/knowledge/relations",
+            json={"subject_id": _SUBJ, "object_id": _OBJ, "predicate": "borders",
+                  "valid_from_ordinal": -1},
         )
         assert resp.status_code == 422
         mock_recreate.assert_not_awaited()

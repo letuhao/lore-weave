@@ -225,6 +225,35 @@ class WikiGenJobsRepo:
             out.append(d)
         return out
 
+    async def list_by_ids(self, ids: list[UUID]) -> list[dict[str, Any]]:
+        """The rows among `ids` THIS SERVICE STILL HAS — the existence half of the
+        reconcile contract (owner ruling 2026-08-31, DQ-T65).
+
+        🔴 A DELTA CAN ONLY EVER ADD. `list_since` heals rows the source still reports;
+        a row that stopped changing — or was deleted — never appears in another
+        `?since=` window, so the jobs projection kept 28 rows at running/pending for up
+        to 74 days and advertised `cancel` on every one. THREE of them belong to real
+        users and all three are extraction jobs, 9-11 weeks old.
+
+        The caller reads ABSENCE from the result. Owner-agnostic, exactly like
+        `list_since`, and internal-token gated at the route.
+        """
+        if not ids:
+            return []
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT job_id, user_id, status, cost_spent_usd, error_message,
+                          updated_at
+                   FROM wiki_gen_jobs WHERE job_id = ANY($1::uuid[])""",
+                ids)
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["native_status"] = d["status"]
+            d["status"] = _canonical_status(d["status"])
+            out.append(d)
+        return out
+
     async def mark_running(self, job_id: UUID, *, items_total: int) -> bool:
         """Claim a job for a run: pending|running → running. The status guard makes
         this a CLAIM, not a blind write — if a concurrent cancel flipped the job to

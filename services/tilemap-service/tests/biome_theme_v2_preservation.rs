@@ -18,7 +18,7 @@ use tilemap_service::types::template::{
 };
 use tilemap_service::types::treasure::TreasureTierSpec;
 use tilemap_service::types::zone::{PassageKind, ZoneId, ZoneRole};
-use tilemap_service::types::{ChannelId, ChannelTier, GridSize, TerrainKind};
+use tilemap_service::types::{ChannelId, MapKind, GridSize, TerrainKind};
 
 /// 3-zone fixture mirrors decoration_placer.rs::fixture() so chunk-A
 /// tests share the same baseline shape. All biome-theme fields are
@@ -100,7 +100,7 @@ fn v2_fixture_terrain_layer_is_deterministic_post_chunk_a() {
     let view_a = place_tilemap_with_registry(
         &template,
         ChannelId("ch_v2".to_string()),
-        ChannelTier::Town,
+        MapKind::Locale,
         grid,
         tilemap_service::seed::TilemapSeed(1),
         &registry,
@@ -109,7 +109,7 @@ fn v2_fixture_terrain_layer_is_deterministic_post_chunk_a() {
     let view_b = place_tilemap_with_registry(
         &template,
         ChannelId("ch_v2".to_string()),
-        ChannelTier::Town,
+        MapKind::Locale,
         grid,
         tilemap_service::seed::TilemapSeed(1),
         &registry,
@@ -157,7 +157,7 @@ fn v2_fixture_terrain_layer_survives_serde_round_trip() {
     let view_orig = place_tilemap_with_registry(
         &template,
         ChannelId("ch_v2".to_string()),
-        ChannelTier::Town,
+        MapKind::Locale,
         grid,
         tilemap_service::seed::TilemapSeed(1),
         &registry,
@@ -166,7 +166,7 @@ fn v2_fixture_terrain_layer_survives_serde_round_trip() {
     let view_reborn = place_tilemap_with_registry(
         &reborn,
         ChannelId("ch_v2".to_string()),
-        ChannelTier::Town,
+        MapKind::Locale,
         grid,
         tilemap_service::seed::TilemapSeed(1),
         &registry,

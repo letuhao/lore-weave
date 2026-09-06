@@ -1,0 +1,37 @@
+{
+  "_note": "D-ANSWERABILITY-IS-BLIND-TO-CONSUMER-LOCAL-TOOLS. The row's measured instance (workflow_list vs registry_list_workflows) was REFUTED at K=20 on 2026-08-26 — the federated tool now wins 20/20. The one live overlap left unmeasured is the SIBLING pair: workflow_load (consumer-local, invisible to R1) vs registry_get_workflow (federated, rankable). This asks for one workflow's steps, which is exactly what both tools do.",
+  "scenarios": [
+    {
+      "id": "load-one-workflows-steps-disambiguated",
+      "tool_under_test": "registry_get_workflow",
+      "expect_tool": "registry_get_workflow",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "List the ordered steps of the 'canon-check' recipe itself — I want the recipe's own step list, not my canon rules.",
+      "prompt_source": "CONTROL for the first batch (c-wfload1), where the model matched the words 'canon-check' and answered with composition_list_canon_rules on 5/5 — never reaching either workflow tool. That may be the PROMPT's fault: every workflow slug names a domain, so 'canon-check' collides with canon rules. This disambiguates the ASK (a recipe's step list) without naming any tool, so the two batches together separate 'my prompt collided' from 'the workflow tools are unreachable'.",
+      "needs_target": false,
+      "approve": "none",
+      "approve_why": "Tier R, user-scoped, no write on either path.",
+      "seed": [],
+      "falsifier": "REFUTED IF: neither tool is called (the question was answered from the model's own memory of the catalogue); OR the reply describes steps that are not in the workflow's actual step list.",
+      "ship_audit": {
+        "gate": "NONE - Tier R read on both paths.",
+        "absent_case": "a slug that does not exist is not covered here.",
+        "idempotency": "n/a, read.",
+        "tenancy": "user-scoped; System workflows are visible to every caller."
+      },
+      "defects": [],
+      "_problem": "D-ANSWERABILITY-IS-BLIND-TO-CONSUMER-LOCAL-TOOLS",
+      "answer_expect": {
+        "any_of": [
+          "canon",
+          "step"
+        ],
+        "why": "Loose on wording deliberately — the assertion is the TRACE: WHICH of the two overlapping tools the model reaches for when R1 can rank only one of them."
+      },
+      "_no_seed_assert_why": "Nothing is seeded: canon-check is a System workflow that already exists in the registry, and both tools read it."
+    }
+  ]
+}

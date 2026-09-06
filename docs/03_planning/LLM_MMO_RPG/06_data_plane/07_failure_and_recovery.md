@@ -146,7 +146,7 @@ Per [DP-C9](05_control_plane_spec.md#dp-c9--degraded-mode):
 - **SDK ↔ CP partition** — similar, one SDK isolated.
 - **Redis cluster partition** — two halves of Redis cluster operate independently (rare with Redis Cluster, but possible).
 
-### Preference: Consistency over Availability
+### Preference: Consistency over Availability — **PER TIER** (amended 2026-08-07, `REC-102c`)
 
 Per DP-F1 and [DP-A2](02_invariants.md#dp-a2--control-plane--data-plane-split), the data plane prefers consistency when faced with uncertainty. Partitioned SDKs:
 
@@ -154,6 +154,39 @@ Per DP-F1 and [DP-A2](02_invariants.md#dp-a2--control-plane--data-plane-split), 
 - **Continue T2 writes to outbox** — outbox is local to the session's Postgres, not partitioned; T2 ack is on outbox + local cache. Invalidation broadcast may not reach far side until partition heals.
 - **Continue T1 writes in-memory** — broadcast is best-effort anyway for T1.
 - **Continue reads** with stale flag logged; SWR grace window applies.
+
+> ## ⚠ `REC-102c` — the contradiction this resolves, and why the resolution is a partition
+>
+> **`02_storage/SR06`'s correction banner says the opposite of DP-F4:**
+> *"…and **'per-reality DB down → writes rejected' is inverted**: the island should **buffer and
+> dilate ticks** while the sink is down, **not reject gameplay**."*
+>
+> Both were right about different things, and the reason they collided is datable. `DP-F1`–`F5` were
+> written when the **DB was believed to be the SSOT** (`AUD-F16` root #3). Once the island model
+> landed — *the DB is a persistence medium; live state is island memory* — *"reject writes because the
+> store is unreachable"* became **rejecting gameplay to protect a sink**, which is the wrong trade.
+> But generalising the island's answer is equally wrong: **`DP-T3`'s entire definition is
+> invalidate-before-ack**, so a T3 write during a Redis outage cannot satisfy its own contract, and
+> "buffer it" would mean acking a durability guarantee that has not been met — currency, canon
+> promotion, permission grants.
+>
+> **Resolution — and it is `GDA-F11`'s partition, one failure-mode over:**
+>
+> | tier | during a partition / store outage |
+> |---|---|
+> | **T0 · T1 · T2** | **BUFFER AND DILATE.** The island keeps stepping; ticks stretch. T2's ack is on cache + outbox, and the outbox is on the reality's own Postgres — the thing SR06 is about. **Gameplay does not stop because a sink is unreachable.** |
+> | **T3** | **REJECT — unchanged.** `DpError::CircuitOpen`. T3 *is* the promise that no reader sees a stale value after the ack; a buffered T3 is an ack for a promise not kept. The caller decides: queue, surface, or degrade the feature. |
+>
+> **The shape is the same one this project already adopted for the ack question.** `GDA-F11` found the
+> island model granting T1 coherency to T3 aggregates and resolved it with *the island stays
+> authoritative for STATE, and the tier determines when the ACK fires*. This is that sentence applied
+> to failure: **the island stays authoritative for state, and the tier determines whether the write
+> may proceed without its store.**
+>
+> **Where this seam came from, recorded because it is the generalisable part:** `17`'s flow set never
+> traverses it. `B1`–`B5` are boot, `R1`–`R8` are the healthy path, `L2` is crash recovery *after* the
+> fact. **Degraded-mode-while-running had no flow at all** — and two layers disagreeing for eleven
+> months is exactly what an untraversed path produces.
 
 ### Detection
 

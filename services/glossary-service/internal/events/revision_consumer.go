@@ -17,6 +17,7 @@ package events
 import (
 	"context"
 	"encoding/json"
+	events "github.com/loreweave/foundation/contracts/events/generated"
 	"log/slog"
 	"os"
 	"time"
@@ -30,7 +31,10 @@ import (
 const (
 	revisionStream = "loreweave:events:glossary"
 	revisionGroup  = "glossary-revisions"
-	entityUpdated  = "glossary.entity_updated"
+	// ⚠️ From the contract (T30/OD-1): these were hand-mirrored literals, and a producer
+	// rename left them compiling and silently matching nothing. Now a rename in
+	// `contracts/events/_registry.yaml` is a compile error right here.
+	entityUpdated = events.EventGlossaryEntityUpdated
 	// pipelineKeepN: how many of the most-recent PIPELINE revisions to keep per
 	// entity. Machine writes are high-volume + reproducible → a small rolling
 	// window is enough; USER revisions are never pruned.

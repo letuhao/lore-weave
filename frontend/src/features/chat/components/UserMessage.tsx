@@ -5,12 +5,15 @@ import TextareaAutosize from 'react-textarea-autosize';
 
 interface UserMessageProps {
   content: string;
+  /** R6 — the turn's CP-0.4 outcome. 'failed' here means the turn died before the model
+   *  answered, so NO assistant row exists and this message is the only thing on screen. */
+  outcome?: string | null;
   onEdit?: (newContent: string) => void;
   onDelete?: () => void;
   disabled?: boolean;
 }
 
-export function UserMessage({ content, onEdit, onDelete, disabled }: UserMessageProps) {
+export function UserMessage({ content, outcome, onEdit, onDelete, disabled }: UserMessageProps) {
   const { t } = useTranslation('chat');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
@@ -91,6 +94,26 @@ export function UserMessage({ content, onEdit, onDelete, disabled }: UserMessage
   return (
     <div className="group relative">
       <p className="whitespace-pre-wrap text-sm leading-relaxed">{content}</p>
+      {/* R6 — THE ORPHANED TURN. Measured live 2026-09-04: a turn died before the model
+          answered, CP-0.4 stamped `outcome='failed'` on THIS message because there was no
+          assistant row to stamp, and the author saw their own text and nothing else — no
+          bubble, no badge, no error — while the backend held a precise diagnosis.
+
+          D2's empty-turn badge cannot reach this: it renders on an assistant message, and the
+          whole point of an orphaned turn is that none was written. Same chrome, same promise as
+          D2 — nothing is added to any message's content, and the owner's declined
+          generic-failure-LINE is untouched. */}
+      {outcome === 'failed' && (
+        <div
+          data-testid="message-orphaned-turn-badge"
+          className="mt-1 inline-flex items-center gap-1.5 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-400/90"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80" />
+          {t('message.orphaned_turn', {
+            defaultValue: 'No reply was produced for this message — nothing was changed. Try again.',
+          })}
+        </div>
+      )}
       {!disabled && (onEdit || onDelete) && (
         <div className="absolute -bottom-1 -right-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100 max-md:opacity-70">
           {onEdit && (

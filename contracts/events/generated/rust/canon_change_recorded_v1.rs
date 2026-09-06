@@ -3,7 +3,6 @@
 // APPEND-ONLY per-attribute change history entry. Author-UI change timeline source-of-truth; emitted after canon.entry.* + admin.canon.override.compensating events. NEVER edited or deleted.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanonChangeRecordedV1 {

@@ -33,6 +33,30 @@ last_updated: 2026-04-27 ACT_001 unification refactor (main session attribution;
 
 ## 12H. NPC Memory Aggregate Split (R8 mitigation, A1 foundation) — HISTORICAL CONTEXT
 
+<!-- projections-dropped-0017-0018 -->
+> **⚠️ The projection tables named below DO NOT EXIST.** Of the eleven this
+> track ever specified, **ten were dropped** and one survives.
+>
+> `0017` (2026-08-04) removed the seven `pc_*` / `npc_*` tables; `0018`
+> (2026-08-05) removed `region_projection`, `session_participants` and
+> `world_kv_projection`. **Only `canon_projection` remains** — the one whose
+> events a production writer actually emits.
+>
+> Every removal had the same cause: **no producer.** Each table had a projector,
+> a rebuilder, golden fixtures and an oracle, and no code that ever emitted its
+> events. `world_kv_projection` looked produced only because the gate that asks
+> the question could not see a `#[cfg(test)]` module inside a `src/` file, so a
+> unit-test fixture had been vouching for it. Several also encoded game
+> vocabulary in engine tables — `pc_projection.stats`,
+> `session_participants.participant_type IN ('pc','npc')` — which `D-2`
+> forbids. `session_participants` additionally modelled membership for the OLD
+> world/map feature, which is being redesigned.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #9).** In addition to the ACT_001 note above: the `region` aggregate referenced in this file's aggregate inventory no longer exists (`place`/`actor_core` per the 52-row ownership matrix), and `npc_session_memory` is `actor_session_memory` per ACT_001. Status markers below predate the island/commit-service model.
 
 NPC state grows linearly with interaction count. A popular NPC (tavern keeper) after 1 year with 10K PCs would have ~75MB state per snapshot in a naive design. Resolution: split NPC into core aggregate + per-pair memory aggregates. This is also the storage foundation for A1 (NPC memory at scale) — A1's semantic layer builds on this infrastructure.

@@ -1,5 +1,4 @@
 {
-  "title": "नौकरियाँ",
   "status": {
     "pending": "लंबित",
     "running": "चल रहा है",
@@ -17,11 +16,11 @@
     "glossary_translation": "शब्दावली अनुवाद",
     "video_gen": "वीडियो जनरेशन",
     "campaign": "अभियान",
-    "enrichment_job": "कथा विस्तार",
     "book_import": "किताब इम्पोर्ट",
     "composition": {
       "generate": "रचना (Composition)"
-    }
+    },
+    "enrichment_job": "कथा विस्तार"
   },
   "summary": {
     "active": "सक्रिय",
@@ -86,7 +85,6 @@
   "controls": {
     "pause": "रोकें",
     "resume": "जारी रखें",
-    "resumeFromCheckpoint": "चेकपॉइंट से पुनरारंभ करें",
     "cancel": "रद्द करें",
     "cancelConfirm": "अभी रोकें? प्रगति पर काम हटा दिया जाएगा; पूरा हुआ हिस्सा सुरक्षित रहेगा।",
     "cancelYes": "हाँ",
@@ -98,6 +96,7 @@
     "retried": "एक नई जॉब के रूप में पुनः सबमिट किया गया।",
     "stale": "जॉब की स्थिति बदल गई — रिफ्रेश किया गया।",
     "actionFailed": "कार्रवाई विफल रही: {{error}}",
+    "resumeFromCheckpoint": "चेकपॉइंट से पुनरारंभ करें",
     "retryBenchmarkMissing": "पुनः प्रयास उपलब्ध नहीं है: एम्बेडिंग मॉडल का कोई बेंचमार्क नहीं है। मॉडल बेंचमार्क चलाएं, फिर से जाँचें।",
     "retryBenchmarkFailed": "पुनः प्रयास उपलब्ध नहीं है: एम्बेडिंग मॉडल अपना पिछला बेंचमार्क पूरा करने में विफल रहा।"
   },
@@ -113,7 +112,6 @@
     "elapsed": "बीता हुआ समय",
     "throughput": "थ्रूपुट",
     "throughputVal": "~{{n}} /घंटा",
-    "eta": "अनुमानित समय",
     "costSoFar": "अब तक की लागत",
     "tokensIn": "इनपुट टोकन",
     "tokensOut": "आउटपुट टोकन",
@@ -131,7 +129,8 @@
     "copied": "जॉब ID कॉपी की गई।",
     "copyFailed": "कॉपी नहीं हो सका।",
     "activity": "गतिविधि (लाइव)",
-    "errorTitle": "त्रुटि"
+    "errorTitle": "त्रुटि",
+    "eta": "अनुमानित समय"
   },
   "activity": {
     "created": "निर्मित",
@@ -155,5 +154,6 @@
       "knowledge": "ज्ञान",
       "loreEnrichment": "कथा विस्तार"
     }
-  }
+  },
+  "title": "नौकरियाँ"
 }

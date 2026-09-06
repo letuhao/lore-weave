@@ -48,7 +48,16 @@ pub async fn subscribe_broadcast<A: T1Aggregate>(
 pub enum BroadcastScope {
     Reality,                    // all T1<A> in this reality
     Session(SessionId),         // only from one session (rare)
-    Region(RegionId),           // players in one region (common for position)
+    Channel(ChannelId),         // ⚠ AMENDED 2026-08-07 (REC-101a) — was `Region(RegionId)`.
+                                // `region` is dead vocabulary: GDA-F8 measured that the feature
+                                // layer's 52-row ownership matrix has `place` / `actor_core` and
+                                // no `region`, and GDA-D13 struck the one instance it went looking
+                                // for (DP-X3's hotset default). This was the ONLY other occurrence
+                                // in the locked corpus, and it sat in a TYPE SIGNATURE rather than
+                                // a default value, on the T1 position-broadcast path.
+                                // `ChannelId` is the correct scope: DP-A13/DP-A14 made the channel
+                                // the first-class spatial-and-social scope in Phase 4, and every
+                                // other Phase-4 primitive already keys on it.
 }
 
 pub struct BroadcastStream<A: T1Aggregate> { /* ... */ }
@@ -144,7 +153,10 @@ let inventory = dp::instrumented!(
     op = "read",
     aggregate = "player_inventory",
     {
-        dp::read_projection::<PlayerInventory>(ctx, player_id).await
+        // AMENDED 2026-08-07 (REC-101b): was `read_projection`, a pre-Phase-4 name.
+        // 04b + DP-K12 define the scope-split four: read_projection_reality /
+        // read_projection_channel / query_scoped_reality / query_scoped_channel.
+        dp::read_projection_reality::<PlayerInventory>(ctx, player_id, None, None).await
     }
 );
 ```

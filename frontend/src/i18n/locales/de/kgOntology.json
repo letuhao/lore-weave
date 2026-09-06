@@ -1,6 +1,5 @@
 {
   "page": {
-    "title": "Wissensgraph-Schema",
     "tabs": {
       "adopt": "Übernehmen",
       "schema": "Schema",
@@ -10,7 +9,8 @@
     "noProject": "Kein Knowledge-Projekt für dieses Buch",
     "noProjectHelp": "Dieses Buch hat noch kein verknüpftes Knowledge-Projekt. Führen Sie die Extraktion aus oder erstellen Sie ein Projekt, um das Graph-Schema zu verwalten.",
     "createProject": "Knowledge-Projekt erstellen",
-    "noSchema": "Noch kein Schema übernommen – übernehmen Sie eine Vorlage, um zu starten."
+    "noSchema": "Noch kein Schema übernommen – übernehmen Sie eine Vorlage, um zu starten.",
+    "title": "Wissensgraph-Schema"
   },
   "common": {
     "dismiss": "Schließen",
@@ -101,7 +101,6 @@
     "addEdgeType": "Kanten-Typ hinzufügen",
     "code": "Code",
     "label": "Label",
-    "temporalField": "zeitlich (valid_from + provenance)",
     "cardinality": "Kardinalität",
     "addButton": "Kanten-Typ hinzufügen",
     "addSectionTitle": "Zum Schema hinzufügen",
@@ -132,7 +131,8 @@
     "emptyTitle": "Dieses Schema ist leer",
     "emptyHelp": "Beginnen Sie, indem Sie eine Knoten-Art hinzufügen (einen Charakter, einen Ort, eine Organisation…), und verbinden Sie diese dann mit einem Kanten-Typ.",
     "deleteConfirmTitle": "Diese Komponente löschen?",
-    "deleteConfirmBody": "\"{{code}}\" wird von {{count}} Graph-Element(en) referenziert. Das Löschen markiert es als veraltet — die Daten bleiben abfragbar. Trotzdem löschen?"
+    "deleteConfirmBody": "\"{{code}}\" wird von {{count}} Graph-Element(en) referenziert. Das Löschen markiert es als veraltet — die Daten bleiben abfragbar. Trotzdem löschen?",
+    "temporalField": "zeitlich (valid_from + provenance)"
   },
   "canvas": {
     "list": "Liste",

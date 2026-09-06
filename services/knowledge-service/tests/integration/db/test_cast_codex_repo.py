@@ -10,12 +10,12 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import merge_entity, merge_entities
-from app.db.neo4j_repos.entity_status import (
+from app.db.graph_repos.entities import merge_entity, merge_entities
+from app.db.graph_repos.entity_status import (
     merge_entity_status,
     statuses_detail_at_order,
 )
-from app.db.neo4j_repos.facts import list_facts_for_entity, merge_fact
+from app.db.graph_repos.facts import list_facts_for_entity, merge_fact
 
 
 @pytest_asyncio.fixture

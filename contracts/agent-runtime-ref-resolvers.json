@@ -1,0 +1,78 @@
+{
+  "registry_version": 1,
+  "_why": "CP-5.3 identifier resolution. A ref field declares its RESOLVER -- a statement about how two EXISTING tools relate, which is why it needs no other team to start. A REGISTRY ROW, not a chat-service constant (W1): written as a constant it would be the hardcoding the PO rejected. Gated on 5.3-pilot, which measured this resolver on the population that actually failed: ZERO_EXACT 0 in every stratum, 83.3% of contested pairs resolving to exactly one, and ambiguity REAL at 37.5% of contested calls -- which is why there is no 'pick the best' arm.",
+  "ref_types": {
+    "EntityRef": {
+      "_subject": "338 failed calls / 11 sessions sent a human name into an entity id field",
+      "resolver_tool": "glossary_search",
+      "query_param": "query",
+      "scope_params": [
+        "book_id"
+      ],
+      "result_path": "entities",
+      "id_field": "entity_id",
+      "name_field": "cached_name",
+      "match_field": "tier",
+      "match_value": "exact",
+      "_match_note": "tier=='exact' is a MATCH-QUALITY signal, not a fuzzy score: the selector sets it when lower(cached_name) equals the query OR one of the entity's aliases does. It also normalises -- the model sent 'Lam Uyen' with different diacritics from the stored name and search still returned tier=exact."
+    }
+  },
+  "_bindings_note": "Bound where the resolver can actually be applied: a glossary tool whose schema ALSO carries book_id, because an entity name is only unique within its book. 9 other catalogue params named entity_id are deliberately NOT bound -- composition/kg/world/lore tools are scoped differently and a book-scoped resolver would be wrong there. That residue is stated, and test_THE_UNBOUND_ENTITY_REF_PARAMS_ARE_STATED keeps it visible instead of letting it look like coverage.",
+  "bindings": {
+    "glossary_create_chapter_link": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_create_evidence": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_deep_research": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_entity_delete": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_entity_get_genres": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_entity_rename": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_entity_restore": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_entity_set_attributes": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_entity_set_genres": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_get_entity": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_get_entity_evidence": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_list_chapter_links": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_list_entity_revisions": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_propose_curation": {
+      "entity_id": "EntityRef",
+      "winner_id": "EntityRef"
+    },
+    "glossary_propose_merge": {
+      "winner_id": "EntityRef"
+    },
+    "glossary_propose_reassign_kind": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_propose_restore_revision": {
+      "entity_id": "EntityRef"
+    },
+    "glossary_set_genres": {
+      "entity_id": "EntityRef"
+    }
+  }
+}
