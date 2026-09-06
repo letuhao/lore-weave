@@ -304,7 +304,25 @@ not hidden.
   shape recurred independently in Arc 1's and Arc 2's chapters, on two different scenes with two
   different casts — strong evidence this is a systematic default tendency of the app's prose
   generation, not a one-off prompt-specific slip, and should be called out as such in the report.
-- [ ] **T3.3** — Arc 3: one representative chapter fully drafted + reviewed — same loop.
+- [~] **T3.3** — Arc 3: one representative chapter fully drafted + reviewed — same loop.
+  Re-read Arc 3's LOCKED Goal directly via API. Picked Chapter 3 "Khí Chất Quái Dị" (arc id
+  `01a07858-f677-7b50-9097-4eb54a8996c1`, chapter id `01a07861-f819-713c-bd13-d790acdac4ab`) —
+  the arc's explicitly-marked PIVOTAL chapter containing the "khoảnh khắc mẫu" (defining moment).
+  EVIDENCE: created 5 scenes (Sự Hiện Diện Kỳ Dị, Góc Nhìn Của Kẻ Mạnh, Ánh Mắt Xuyên Thấu, Vũ
+  Điệu Không Tì Vết, Khoảnh Khắc Mẫu) with synopses from the chapter Goal; requested prose from
+  Co-writer Chat in one batched request, this time explicitly warning against BOTH the recurring
+  flash-forward defect (T3.1/T3.2) AND spelling out this arc's own distinct constraint (interior/
+  metaphor-only Đạo Hóa depiction, no direct behavior description, full rationality/no frenzy).
+  CAUGHT DURING TRANSFER (self-directed, before any Workflow run, same discipline as T3.2's Lâm
+  Gia catch): the AI's draft named the one-scene POV cultivator "Lâm Hạo" — but that name already
+  belongs to an established Arc 1 character (Lâm Gia's enforcer/elder), and this chapter's own
+  brief requires the cultivator be a one-scene-only device, unconnected to any recurring cast.
+  Renamed to "Tô Bách Xuyên" throughout before pasting, to avoid a false identity collision. All 5
+  scenes anchored (`Anchored 5 scene(s), 0 unmatched`), saved, statuses set to "done". Word count:
+  1394 — BELOW the 1500 floor this time (T3.2 cleared it; this pass didn't, despite the same
+  instruction) — accepted as an honest data point on generation variance rather than pre-emptively
+  padded before review. REVIEW: 4-lens + synthesis Workflow launched (`wf_908daae2-3ea`) —
+  verdict recorded below once it returns.
 - [ ] **T3.4** — Arc 4: one representative chapter fully drafted + reviewed — same loop.
 - [ ] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
 
