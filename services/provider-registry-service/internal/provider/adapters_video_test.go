@@ -67,8 +67,14 @@ func TestOpenAIAdapter_GenerateVideo_HappyPath_TextToVideo(t *testing.T) {
 	if gotPath != "/v1/videos/generations/text-to-video" {
 		t.Errorf("path=%s, want /v1/videos/generations/text-to-video (NOT singular)", gotPath)
 	}
-	if gotBody["n"] != float64(1) {
-		t.Errorf("body.n=%v, want 1", gotBody["n"])
+	// local-image-generator-service's VideoGenerateRequest has no `n` field
+	// and rejects unknown ones (extra="forbid") -- confirmed live: sending
+	// "n" 400s every real call with "Extra inputs are not permitted".
+	if _, ok := gotBody["n"]; ok {
+		t.Errorf("body.n should be absent (upstream schema has no n field, extra=forbid); got %v", gotBody["n"])
+	}
+	if _, ok := gotBody["duration"]; ok {
+		t.Errorf("body.duration should be absent (upstream schema has no duration field); got %v", gotBody["duration"])
 	}
 	if _, ok := gotBody["init_image"]; ok {
 		t.Errorf("body.init_image should be absent for txt2vid; got %v", gotBody["init_image"])

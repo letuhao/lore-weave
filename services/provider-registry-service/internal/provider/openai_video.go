@@ -111,22 +111,25 @@ func (a *openaiAdapter) GenerateVideo(
 		upstreamPath = videoUpstreamPathTxt2Vid
 	}
 
+	// n=1 is enforced above as a CALLER-facing constraint (reject N>1/N<0)
+	// and is never forwarded upstream: local-image-generator-service's
+	// VideoGenerateRequest (app/validation.py) has no `n` field and sets
+	// `model_config = ConfigDict(extra="forbid")`, so a stray "n" (or
+	// "duration"/"style", also absent from that schema) 400s every real
+	// call with "Extra inputs are not permitted" -- confirmed live against
+	// the one real backend we have. Duration/Style are still accepted as
+	// GenerateVideoInput fields for a future caller, but nothing maps them
+	// to this backend's actual length knobs (frames/fps) yet, so they are
+	// silently not forwarded rather than sent under the wrong key.
 	body := map[string]any{
 		"model":  modelName,
 		"prompt": input.Prompt,
-		"n":      1, // always 1 per Phase 5d lock
 	}
 	if input.Size != "" {
 		body["size"] = input.Size
 	}
-	if input.Duration > 0 {
-		body["duration"] = input.Duration
-	}
 	if input.ResponseFormat != "" {
 		body["response_format"] = input.ResponseFormat
-	}
-	if input.Style != "" {
-		body["style"] = input.Style
 	}
 	if trimmedInitImage != "" {
 		// Field name `init_image` matches local-image-generator-service's
