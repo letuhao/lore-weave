@@ -50,6 +50,7 @@ When you build something new, the question is not "is there a rule?" but "**whic
 | **A stat / correction / feedback event** | [Analytics & Learning Standard](./analytics-and-learning.md) |
 | **A gate, lint, test, `const` assertion, validator, or an axiom that constrains code** | **[Non-Vacuity](./non-vacuity.md)** (NV-1..6) — a check that cannot fail is a claim in the costume of evidence, and is **worse** than no check because it reports coverage. Break the thing, watch it red, put it back, paste the output. Four shapes with real occurrences: the subject cannot vary · the scope never reaches it · **an adjacent decision defeats it** · the escape hatch cannot reach its reason |
 | **Any task, start to finish** | [Task Workflow v2.2](../../agentic-workflow/WORKFLOW.md) (+ opt-in [AMAW](../amaw-workflow.md)) |
+| **Cutting a version / writing a changelog entry / release artifacts** | **[Versioning & Releases](./versioning-and-releases.md)** — SemVer (0.x caveat taken literally), Keep a Changelog as SSOT, pre-release vs. release = GitHub's own `prerelease` flag. **ENFORCED** by `scripts/changelog-gate.py` |
 
 ---
 
@@ -225,7 +226,8 @@ Durable `INV-<id>` rules cited **at the enforcement site and in a proving test**
 | Admin Action Policy | admin tooling: compensating events, audit, destructive dual-approval, impact class | [docs/02_governance/ADMIN_ACTION_POLICY.md](../02_governance/ADMIN_ACTION_POLICY.md) | Policy — enforced at review + CI `ImpactClass` lint |
 | Cross-Instance Data Access Policy | bans cross-reality live queries (no `postgres_fdw` / fan-out) | [docs/02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md](../02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md) | Policy — enforced at review |
 | Service Language Matrix | per-service language/framework/ownership + runtime boundary | [docs/01_foundation/04_TECHSTACK_SERVICE_MATRIX.md](../01_foundation/04_TECHSTACK_SERVICE_MATRIX.md) | Approved v1.3.0 — `language-rule-lint.sh` |
-| V1 Boundaries / Working Model / Operating RACI | scope freeze · scrumban cadence · role accountability | `docs/01_foundation/03_V1_BOUNDARIES.md`, `docs/02_governance/{05_WORKING_MODEL_SCRUMBAN,06_OPERATING_RACI}.md` | Approved | 
+| V1 Boundaries / Working Model / Operating RACI | scope freeze · scrumban cadence · role accountability | `docs/01_foundation/03_V1_BOUNDARIES.md`, `docs/02_governance/{05_WORKING_MODEL_SCRUMBAN,06_OPERATING_RACI}.md` | Approved |
+| Versioning & Releases | SemVer + Keep a Changelog SSOT + pre-release/release artifact policy | [docs/standards/versioning-and-releases.md](./versioning-and-releases.md) | **LOCKED** — `scripts/changelog-gate.py` (`all-gates` + `oss-release.yml --release`) | 
 
 ---
 
