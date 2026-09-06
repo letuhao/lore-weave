@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "description": "LoreWeave MMORPG client. Hybrid React UI overlay + Phaser 4 canvas. Per spec docs/specs/2026-05-24-frontend-game-architecture.md.",
   "scripts": {
     "dev": "vite",

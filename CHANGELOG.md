@@ -71,6 +71,10 @@ derived directly from `infra/docker-compose.yml`'s service list. `docker compose
   volume — `knowledge-service`'s also accounts for its own 4-service startup chain (postgres,
   redis, glossary-service, neo4j). A first `docker compose up` on a fresh volume no longer
   intermittently reports either as unhealthy before it has actually finished starting.
+- 7 `package.json` files (the game workspace root, `frontend-game`, `services/game-server`,
+  and 4 shared `packages/*` libraries) declared `"license": "MIT"`, inconsistent with the
+  AGPLv3 this project releases under. All 7 now declare `"license": "AGPL-3.0-or-later"`,
+  matching `LICENSE` and `README.md`.
 
 ### Security
 

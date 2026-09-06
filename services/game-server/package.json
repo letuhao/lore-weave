@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "LoreWeave MMORPG game server — Node + TypeScript + Colyseus. V0 ships an EchoRoom for Session E WS path validation; V1+ adds real game rooms (zone instances, combat, chat). Spec §17.",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {

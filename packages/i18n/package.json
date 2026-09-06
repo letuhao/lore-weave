@@ -2,7 +2,7 @@
   "name": "@loreweave/i18n",
   "version": "0.0.0",
   "private": true,
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "description": "Cluster-language translations for frontend-game (seeded from frontend/ on 2026-05-24, evolves independently thereafter).",
   "type": "module",
   "main": "./src/index.ts",
