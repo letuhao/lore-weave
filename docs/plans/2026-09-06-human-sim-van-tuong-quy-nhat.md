@@ -379,7 +379,39 @@ not hidden.
   the first, correct portion was used; the leftover was discarded. All 5 scenes anchored (`Anchored
   5 scene(s), 0 unmatched`), saved, statuses set to "done". Word count: 1408 — below the 1500 floor
   (expected/accepted per the established scope decision). REVIEW: 4-lens + synthesis Workflow
-  launched (`wf_a7326358-44c`) — verdict recorded below once it returns.
+  (`wf_a7326358-44c`). **VERDICT: REVISE REQUIRED** (steering PASS 9/10, plot PASS 8/10; prose FAIL
+  4/10, continuity FAIL 5/10) — the flash-forward and interior-only constraints both held clean this
+  time (steering/plot both explicitly confirmed no recurrence of either prior defect, and Planner
+  Secret 1 was actively/explicitly protected, not just unmentioned). Two real issues instead:
+  (1) prose — same length shortfall (1408) plus the "không còn là A, mà là B" antithesis pattern
+  reused 7+ times and heavy abstract-noun ("sự X") stacking, with Scene 3's crystal-flower imagery
+  cited as proof the writing can do concrete/sensory when it tries; (2) continuity — a genuine
+  characterization gap: Scene 2 explicitly describes the anomalous energy behaving "như một thực
+  thể ngoại lai" (like a foreign entity), but Scene 4 has An Nhiên — established as sharply
+  rational — silently ignore that specific observation and jump straight to "thiên địa phản kháng"
+  without weighing the evidence her own senses registered; a truly rational analyst would be
+  expected to address it, not skip it. FIX APPLIED: asked Co-writer Chat to (a) expand Scenes 1/4/5
+  with concrete sensory/physical detail and reduce the repetitive sentence pattern, and (b) — the
+  substantive fix — add a passage where she explicitly recalls the "foreign entity" sensation and
+  reasons her way past it in-character (if it were the technique's own fault, the energy would
+  dissipate/explode chaotically; instead it behaved as a coercive imposition of a new law, which
+  reads as external resistance, not internal flaw) — closing the continuity gap while keeping
+  Planner Secret 1 fully sealed. The revision reused "khoái cảm" and the flash-forward line YET
+  AGAIN in its raw output (4th and 5th occurrences respectively of these two exact defects this
+  session) — both cut/reworded during transfer, same as every prior time.
+  METHODOLOGY NOTE (not a product finding — an artifact of my own browser-automation technique,
+  recorded so T3.5 doesn't repeat it): mid-transfer, using raw `document.execCommand('insertText',
+  ...)` plus manual `Range`/`Selection` API calls (instead of Playwright's own `.fill()` or real
+  keyboard events) caused ProseMirror to silently DISCARD those edits on its next re-render,
+  producing duplicated/truncated paragraphs with no error. Recovered by re-applying the same fixes
+  through plain `.fill()` calls only. Lesson: never use `execCommand` or raw `Range`+`Selection`
+  APIs against this editor for content changes — only Playwright's own `.fill()`/`.click()`/real
+  keyboard presses reliably commit through ProseMirror's transaction system. Two harmless blank
+  paragraphs were left in the document as a result (cosmetically inert, do not affect anchoring
+  since anchoring matches only on heading text) rather than risk further corruption removing them.
+  Re-anchored (`5 already anchored, 0 without a matching heading`), re-saved. New word count: 1558.
+  RE-CHECK (targeted prose+continuity re-run, `wf_384bb1f2-274`) — verdict recorded below once it
+  returns.
 - [ ] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
 
 ### Phase 4 — Consistency pass (open)
