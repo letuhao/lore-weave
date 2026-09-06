@@ -75,6 +75,15 @@ derived directly from `infra/docker-compose.yml`'s service list. `docker compose
   and 4 shared `packages/*` libraries) declared `"license": "MIT"`, inconsistent with the
   AGPLv3 this project releases under. All 7 now declare `"license": "AGPL-3.0-or-later"`,
   matching `LICENSE` and `README.md`.
+- Video generation always failed with a validation error against every real BYOK video backend
+  (`"Extra inputs are not permitted"`) — the request unconditionally sent fields (`n`, plus
+  `duration`/`style` when set) no real backend's schema accepts. Generation now sends only the
+  fields a real backend recognizes; confirmed live against a real ComfyUI-backed provider.
+- Lore enrichment could generate content in the wrong language for a book that had never gone
+  through its optional Profile setup (the default state for every book) — confirmed live: an
+  English book with no profile produced fully Chinese generated content. Enrichment now resolves
+  the book's actual language from its own metadata in that case, instead of falling back to a
+  vague instruction the generating model could (and did) ignore.
 
 ### Security
 
