@@ -354,7 +354,32 @@ not hidden.
   only violation) — both were genuine, both were caught only by the Workflow review, neither by the
   pre-emptive prompt instruction alone (the instruction reduced but did not prevent either defect).
   This is strong evidence for the report that the review step is doing real, necessary work.
-- [ ] **T3.4** — Arc 4: one representative chapter fully drafted + reviewed — same loop.
+- [~] **T3.4** — Arc 4: one representative chapter fully drafted + reviewed — same loop.
+  Re-read Arc 4's LOCKED Goal directly via API (arc id `01a0786c-5657-7757-9b39-fc215e07c319`).
+  Picked Chapter 2 "Vết Nứt Của Sự Hoàn Mỹ" (chapter id `01a07870-d97a-7b91-85d2-10abd4e30fa9`) —
+  Corruption_Debt's first eruption, a solo/no-mentor/no-antagonist chapter with NO external-POV
+  exception (unlike Ch.1/Ch.4's named exception scenes), so the interior-only rule applies fully.
+  EVIDENCE: created 5 scenes (Đỉnh Điểm Của Sự Hài Hòa, Vết Nứt Đầu Tiên, Thực Tại Biến Dạng, Lời
+  Giải Thích Hợp Lý, Quyết Tâm Sửa Chữa); requested prose from Co-writer Chat in one batched
+  request, explicitly warning against BOTH known recurring defects (flash-forward; direct-action-
+  vs-interior-only) plus the CRITICAL Planner-Secret-1-must-never-leak constraint, and pre-emptively
+  avoiding "khoái cảm"-style sensual word choice (used "sự nhẹ nhõm thanh khiết" instead) — applying
+  T3.2's lesson before generation this time, not just after.
+  CAUGHT DURING TRANSFER: the draft's closing paragraph ended with "Nàng không hề biết rằng, chính
+  sự quyết tâm 'sửa chữa' này... lại chính là hành động đang âm thầm bồi đắp thêm cho sự nợ nần của
+  sự tha hóa" — the EXACT flash-forward construction, a THIRD occurrence of this defect despite the
+  prompt explicitly citing it had happened twice before by name. Cut the sentence entirely before
+  pasting (same editorial-cut rationale as T3.1/T3.2), landing the chapter on "...bằng mọi giá"
+  (resolve, not dread) as the brief required.
+  NEW PRODUCT FINDING (#22, logged below): the raw chat response for this request did not stop
+  cleanly — after a complete, correct 5-scene Arc-4 draft and the usual "I did not re-read..."
+  staleness disclaimer, the SAME response then continued into UNRELATED content: a fresh restatement
+  of T3.3's earlier revision request ("Tôi đã nhận được yêu cầu của bạn... Chương 'Khí Chất Quái
+  Dị' (Arc 3)...") re-generating the Arc-3 Lâm-Hạo-named draft from an EARLIER, separate turn. Only
+  the first, correct portion was used; the leftover was discarded. All 5 scenes anchored (`Anchored
+  5 scene(s), 0 unmatched`), saved, statuses set to "done". Word count: 1408 — below the 1500 floor
+  (expected/accepted per the established scope decision). REVIEW: 4-lens + synthesis Workflow
+  launched (`wf_a7326358-44c`) — verdict recorded below once it returns.
 - [ ] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
 
 ### Phase 4 — Consistency pass (open)
@@ -632,6 +657,20 @@ not hidden.
     write. Same shape as finding #14 (canvas not live-updating on new chapter) and finding #15
     (contradictory chapter-count label) — a recurring pattern of Plan/Editor summary widgets not
     reacting to state changes made through their own adjacent controls in the same session.
+22. **MEDIUM — Co-writer Chat's response occasionally does not stop cleanly, continuing past its
+    own staleness disclaimer into unrelated leftover content from an earlier, separate request in
+    the same conversation.** During T3.4, a request for Arc 4 Ch.2's 5 scenes produced a complete,
+    correct draft, followed by the usual "I did not re-read the book's current state in this turn"
+    disclaimer — and then the SAME response kept generating: "Tôi đã nhận được yêu cầu của bạn...
+    Chương 'Khí Chất Quái Dị' (Arc 3)..." followed by a fresh re-generation of T3.3's EARLIER
+    Lâm-Hạo-named revision draft, as if answering a completely different, previous turn's request
+    a second time. The correct Arc-4 content was used; the Arc-3 leftover was discarded. This
+    looks like a context/turn-boundary bug in the chat backend (the model continuing to generate
+    past its intended stop, drifting back into unrelated prior-turn material) rather than a prompt
+    quality issue on my end. Not filed as a GitHub issue yet (never reproduced deliberately) —
+    flagging for Phase 5 as a real, observed reliability gap: a human author skimming only the
+    start of a long response could easily miss that the tail is stale/wrong content bleeding in
+    from a different request.
 
 RESUME: **T3.1, T3.2, AND T3.3 ARE DONE AND ACCEPTED. MOVE TO T3.4 (Arc 4's representative
 chapter) NEXT.** All 5 arcs are fully built (28 chapters total, see prior note). Each of T3.1-T3.3
