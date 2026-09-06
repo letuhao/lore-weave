@@ -1999,6 +1999,14 @@ services:
       # whitelisted federated tool call to ai-gateway's /internal/tools/execute
       # (SO-1, the same internal token above). Same base the chat-service uses.
       AI_GATEWAY_URL: http://ai-gateway:8210
+      # WS handshake ticket store (control #1, HIGH-2). This is the ISSUER side
+      # (ws/ticket-endpoint.ts, via ws.module.ts) — game-server's assertWsAuthConfig
+      # refuses to start in prod without the REDEEMER side of this same URL set on
+      # IT too. Same `redis` instance the rest of the stack already uses
+      # (LW_CHANNEL_REDIS_URL, publisher's REDIS_URL); unset here previously,
+      # which meant neither side of the ticket flow was wired and game-server's
+      # own fail-closed guard was the only thing that ever noticed.
+      LW_WS_REDIS_URL: redis://redis:6379
       # Phase 6c-γ — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
@@ -2047,6 +2055,8 @@ services:
         # degrades gracefully. Mirrors the learning/lore-enrichment posture.
         condition: service_started
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
@@ -2412,6 +2422,20 @@ services:
       # with no grant drives nobody.
       LW_WS_DEV_ALLOW_STATIC: ${LW_WS_DEV_ALLOW_STATIC:-}
       LW_WS_DEV_USER_REF_ID: ${LW_WS_DEV_USER_REF_ID:-}
+      # WS handshake ticket store REDEEMER side (control #1, HIGH-2) — the
+      # `assertWsAuthConfig` startup gate in ws/auth.ts refuses to run with
+      # NODE_ENV=production and this unset, since that combination means the
+      # public WS boundary would silently fall back to static dev_token auth.
+      # Same Redis instance as LW_CHANNEL_REDIS_URL above; the ISSUER side of
+      # this same URL is api-gateway-bff's LW_WS_REDIS_URL — both must point at
+      # the same store or a ticket issued by one is never redeemable by the
+      # other. Set LW_WS_ALLOW_DEV_AUTH=1 instead ONLY for a deliberate
+      # no-Redis local run; that reopens the dev-auth fallback this gate exists
+      # to keep off a public boundary, so it is not the default here.
+      LW_WS_REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:2567/livez"]
       interval: 10s
