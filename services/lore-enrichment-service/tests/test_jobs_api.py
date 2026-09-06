@@ -512,6 +512,57 @@ def test_create_job_unknown_strategy_is_400_and_marks_failed(monkeypatch):
     assert store.marks and store.marks[0]["status"] == "failed"
 
 
+def test_create_job_threads_resolved_language_into_context(monkeypatch):
+    """D-ENRICHMENT-LANGUAGE-FALLBACK (issue #222): the profile
+    ``resolve_effective_language`` returns is what actually reaches the
+    ``StrategyContext`` generation runs against — proving the WIRING, not just
+    the helper in isolation (unit-tested separately in
+    ``test_profile_language.py``)."""
+    captured: dict = {}
+
+    class _Outcome:
+        job_id = JOB_ID
+        final_state = "completed"
+        proposals: list = []
+        skipped_gaps: list = []
+        estimated_cost = 0.0
+        spent = 0.0
+        paused_at_gap = None
+        error = None
+
+    class _FakeRunner:
+        async def run_job(self, *, job_id, gaps, context, entity_kind):
+            captured["context"] = context
+            return _Outcome()
+
+    class _FakeBundle:
+        runner = _FakeRunner()
+
+        async def aclose(self):
+            return None
+
+    async def _build(**kw):
+        return _FakeBundle()
+
+    async def _resolved(profile, *, book_id):
+        captured["resolve_called_with_book_id"] = book_id
+        return profile.model_copy(update={"language": "en"})
+
+    _install_create_fakes(monkeypatch, runner_factory=_build)
+    monkeypatch.setattr(jobs_api, "resolve_effective_language", _resolved)
+    pool = _FakePool(None)
+    body = _create_body()
+    body["book_id"] = BOOK
+    resp = _client(pool).post(
+        "/v1/lore-enrichment/jobs",
+        json=body,
+        headers={"Authorization": f"Bearer {_bearer()}"},
+    )
+    assert resp.status_code == 202, resp.text
+    assert captured["resolve_called_with_book_id"] == BOOK
+    assert captured["context"].profile.language == "en"
+
+
 def test_create_job_unknown_technique_string_is_400_before_factory(monkeypatch):
     """An unknown technique string (not in the Technique enum) → 400 raised BEFORE
     the store/factory are ever reached (no job row created)."""

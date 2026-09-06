@@ -28,6 +28,7 @@ from app.db.book_profile import get_book_profile
 from app.jobs.assembly import build_live_runner
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM
 from app.jobs.job_request import existing_gap_refs, load_job_request
+from app.services.profile_language import resolve_effective_language
 from app.strategies.base import StrategyContext
 from app.strategies.registry import InactiveStrategyError, UnknownStrategyError
 
@@ -105,6 +106,12 @@ async def _redrive_locked(
     # the dimension table the SAME way detect/generation/the ctx below do.
     profile = await get_book_profile(
         pool, UUID(request["book_id"]) if request.get("book_id") else None
+    )
+    # D-ENRICHMENT-LANGUAGE-FALLBACK (issue #222): an unset profile's language=
+    # "auto" makes generate.py fall back to a vague prompt phrase the model can
+    # ignore; resolve the book's real language here so generation targets it.
+    profile = await resolve_effective_language(
+        profile, book_id=request.get("book_id")
     )
     gaps = []
     for t in request.get("targets") or []:

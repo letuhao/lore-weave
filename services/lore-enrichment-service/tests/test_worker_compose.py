@@ -121,6 +121,18 @@ async def test_redrive_threads_seed_text_and_expand_mode(monkeypatch):
         from app.db.book_profile import NEUTRAL_PROFILE
         return NEUTRAL_PROFILE
 
+    # D-ENRICHMENT-LANGUAGE-FALLBACK (issue #222): stubbed rather than left to hit
+    # a real book-service (this file's own "NO live stack, pure wiring test"
+    # promise) — but resolved to a DIFFERENT language than the NEUTRAL profile
+    # carries, and asserted below, so this test still proves the StrategyContext
+    # actually carries resolve_effective_language's RETURN value, not just that
+    # it gets called.
+    resolve_calls: list = []
+
+    async def _resolve_lang(profile, *, book_id):
+        resolve_calls.append(book_id)
+        return profile.model_copy(update={"language": "en"})
+
     async def _spent(*, pool, job_id):
         return 0.0
 
@@ -133,6 +145,7 @@ async def test_redrive_threads_seed_text_and_expand_mode(monkeypatch):
 
     monkeypatch.setattr(rc, "load_job_request", _load_request)
     monkeypatch.setattr(rc, "get_book_profile", _profile)
+    monkeypatch.setattr(rc, "resolve_effective_language", _resolve_lang)
     monkeypatch.setattr(rc, "load_spent_so_far", _spent)
     monkeypatch.setattr(rc, "existing_gap_refs", _done)
     monkeypatch.setattr(rc, "build_live_runner", _build)
@@ -147,6 +160,10 @@ async def test_redrive_threads_seed_text_and_expand_mode(monkeypatch):
     ctx = sink["context"]
     assert ctx.seed_text == "新天地乃星际殖民地，悬于双星轨道之间。"
     assert ctx.expand_mode == "add_only"
+    # D-ENRICHMENT-LANGUAGE-FALLBACK: the ctx carries resolve_effective_language's
+    # RETURN value (not the untouched NEUTRAL profile it was called with).
+    assert resolve_calls == [_BOOK]
+    assert ctx.profile.language == "en"
     assert sink["entity_kind"] == "generic"
     # one gap built from the new target (all dims missing → target_ref None)
     assert len(sink["gaps"]) == 1

@@ -38,6 +38,7 @@ from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_events import JOB_KIND, JOB_SERVICE, canonical_status, job_error
 from app.jobs.job_request import save_job_request
 from app.jobs.proposal_store import PgProposalStore
+from app.services.profile_language import resolve_effective_language
 from app.strategies.base import Technique
 from app.jobs.state_machine import (
     IllegalTransitionError,
@@ -172,6 +173,12 @@ async def create_job(
     # de-bias C1 (#3): resolve the book profile so the gap builder localizes the
     # dimension table the SAME way detect/generation do (per-book round-trip).
     job_profile = await get_book_profile(pool, body.book_id)
+    # D-ENRICHMENT-LANGUAGE-FALLBACK (issue #222): an unset profile's language=
+    # "auto" makes generate.py fall back to a vague prompt phrase the model can
+    # ignore; resolve the book's real language here so generation targets it.
+    job_profile = await resolve_effective_language(
+        job_profile, book_id=str(body.book_id) if body.book_id else None
+    )
     gaps: list[Gap] = []
     for t in body.targets:
         gap = _gap_from_target(t, job_profile)
