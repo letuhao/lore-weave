@@ -266,6 +266,11 @@ LoreWeave is [AGPL-3.0-or-later](LICENSE). By contributing you agree your contri
 under the same terms. If you deploy a modified version as a network service, the AGPL requires you
 to offer its source to users of that service.
 
+## 11. Code of conduct & security
+
+All participation here is governed by the [Code of Conduct](CODE_OF_CONDUCT.md). Found a security
+vulnerability? See [`SECURITY.md`](.github/SECURITY.md) — please don't file it as a public issue.
+
 ---
 
 Questions are welcome in Issues and Discussions — in any language. Thanks for being here.
