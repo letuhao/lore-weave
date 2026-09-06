@@ -28,7 +28,7 @@ pre-release identifiers, what "release" vs "pre-release" means for this repo, ar
 
 ### Security
 
-## [0.1.0] - 2026-09-06
+## [0.1.0-rc.1] - 2026-09-06
 
 First tagged release: the novel-writing platform, published as 33 versioned Docker images
 derived directly from `infra/docker-compose.yml`'s service list. `docker compose up` with no
