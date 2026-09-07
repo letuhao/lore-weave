@@ -500,8 +500,42 @@ not hidden.
   reliably fixable via prompting, the one demonstrated limit of this run's revision loop.
 
 ### Phase 4 — Consistency pass (open)
-- [ ] **T4.1** — Motif Library: set up the recurring Humanity Anchor motifs (bát mì ven đường,
+- [x] **T4.1** — Motif Library: set up the recurring Humanity Anchor motifs (bát mì ven đường,
   tiếng trẻ con, etc.) and confirm the app tracks/flags them fading across tiers
+
+  **EVIDENCE (T4.1).** Opened via Workspace Panels picker (`data-testid="studio-panel-button"`,
+  stray `studio-panel-backdrop` overlay dismissed by clicking it directly — Escape does not
+  dismiss it, same recurring bug shape as earlier sessions). Enabled 5 quality/storyBible panels
+  at once: Motif Library, Canon issues, Story coverage, Conformance, Corrections.
+
+  **Finding: "Motif Library" is NOT a thematic/recurring-symbolic-motif tracker — it is a
+  structural plot-shape template picker for an automated Planner-driven generation pathway.**
+  "Mine" and "Book" scope tabs both empty for this book. Empty-state copy: "Motifs are reusable
+  plot shapes. The planner picks one per chapter so even a small model writes a solid scene. 12
+  starter motifs are already here — tu-tiên and báo-thù." Clicked "Browse the 12 starters"
+  (`data-testid="motif-empty-browse"`) and confirmed: a filterable card list (Kind: "a hook" /
+  "a pattern" / "a plot / deception" / "a plot shape" / "a setup" / "a familiar move"; Genre
+  filter also present) of ~30 generic plot-shape templates tagged "System," each with a title,
+  an Intensity rating (T3-T5), an illustrative one-line example (not from this book — e.g. "A
+  Grudge Older Than the Holder," "Tribulation Ascension," "Waking Before the Ruin," "The Detail
+  That Should Not Be There"), and "Open"/"Adopt" buttons. These are cross-genre narrative-beat
+  templates (cultivation tropes like "Sect-Entrance Trial," "Tribulation Ascension," but also
+  mystery/romance/thriller shapes like "The Misunderstanding That Hardens," "The Lead That Fits
+  Too Well") meant to seed an automated Planner's per-chapter generation — unrelated to tracking
+  a story's own recurring symbolic imagery (e.g. this book's "bát mì ven đường" / "tiếng trẻ con"
+  Humanity Anchor motifs) across chapters or tiers.
+
+  **No feature in this app tracks or flags a book's own recurring thematic motifs fading across
+  tiers.** Checked Motif Library (above — wrong feature, confirmed), Motif Graph (storyBible tab,
+  same 12-starter/plot-shape dataset, graph-rendered — same scope, not per-book), and the newly
+  enabled Canon issues / Story coverage / Conformance panels (T4.2, run against this book next) —
+  none surface anything resembling "this recurring image/theme has appeared N times, last at
+  chapter X, intensity trend Y." The two Humanity Anchor motifs specified in the story plan DO
+  appear verbatim in the drafted prose (T3.1's shared-meal scene for "bát mì ven đường"; T3.5
+  Scene 4's "không còn tiếng cười đùa của trẻ con" for "tiếng trẻ con") — but that consistency was
+  achieved entirely by this run manually re-reading the steering rules before each draft, not by
+  any app-side tracking/flagging mechanism. Per the plan's own instruction, this is a FINDING, not
+  a blocker: logged as FEEDBACK LOG #23.
 - [ ] **T4.2** — Quality / Conformance / Canon-issues panels run against the finished manuscript,
   findings triaged
 - [ ] **T4.3** — Corrections panel checked for anything the flywheel captured worth reviewing
@@ -788,13 +822,36 @@ not hidden.
     flagging for Phase 5 as a real, observed reliability gap: a human author skimming only the
     start of a long response could easily miss that the tail is stale/wrong content bleeding in
     from a different request.
+23. **MEDIUM (naming/expectation mismatch, not a defect) — "Motif Library" does not track a
+    story's own recurring thematic motifs; it is a plot-shape template picker for an automated
+    Planner-driven generation pathway this run never used.** Its empty state ("Motifs are
+    reusable plot shapes. The planner picks one per chapter so even a small model writes a solid
+    scene") and its 12+ starter cards (generic cross-genre beats like "Tribulation Ascension,"
+    "Pyrrhic Victory," "The Misunderstanding That Hardens," each with an Intensity T3-T5 rating
+    and Open/Adopt actions) confirm this. No feature anywhere in the app (Motif Library, Motif
+    Graph, Canon issues, Story coverage, Conformance) tracks or flags a book's own recurring
+    symbolic imagery fading/intensifying across chapters or tiers — the kind of thing the story
+    plan's "Humanity Anchor motifs" (bát mì ven đường, tiếng trẻ con) call for. Those two motifs
+    DO appear verbatim in the drafted prose (T3.1, T3.5), but only because this run manually
+    re-read the steering rules before each draft — nothing in the product enforced or surfaced it.
+    For a product whose steering docs explicitly call out recurring motifs as a consistency
+    device, this is a real gap between what an author would expect "motif" tooling to do and what
+    exists — worth either a rename (e.g. "Plot Shapes") or a genuinely new feature, not a fix to
+    the existing one.
 
-RESUME: **PHASE 3 IS COMPLETE. MOVE TO PHASE 4 (T4.1 → T4.2 → T4.3) NEXT.** All 5 arcs are fully
-built (28 chapters total) and each has ONE fully-drafted, Workflow-reviewed representative chapter
-(T3.1-T3.5), every one carrying a complete build→review→revise→re-check evidence trail — see each
-row's own evidence block for full detail. Every chapter needed at least one revision cycle; none
-passed clean on the first try, which is itself real Phase-5 evidence the review step is load-bearing
-and not theater. **Full defect taxonomy from Phase 3, for the Phase 5 report:**
+RESUME: **T4.1 IS COMPLETE. MOVE TO T4.2 (Quality/Conformance/Canon-issues panels) NEXT, THEN
+T4.3 (Corrections panel), THEN PHASE 5.** T4.1 finding: Motif Library ≠ thematic motif tracker —
+it's a plot-shape template picker for an unused automated-Planner pathway; no app feature tracks
+Humanity Anchor motifs fading across tiers (FEEDBACK LOG #23). The 5 quality/storyBible panels
+needed for T4.2/T4.3 are already enabled via the Workspace Panels picker (Canon issues, Story
+coverage, Conformance, Corrections, plus Motif Library/Motif Graph already checked) — just
+navigate to each tab and run/read it against this book (`01a07780-172b-70fa-bf11-cbf261fa3e91`).
+All 5 arcs are fully built (28 chapters total) and each has ONE fully-drafted, Workflow-reviewed
+representative chapter (T3.1-T3.5), every one carrying a complete build→review→revise→re-check
+evidence trail — see each row's own evidence block for full detail. Every chapter needed at least
+one revision cycle; none passed clean on the first try, which is itself real Phase-5 evidence the
+review step is load-bearing and not theater. **Full defect taxonomy from Phase 3, for the Phase 5
+report:**
 (a) flash-forward/narrator-voice foreshadowing (T3.1, T3.2, recurred pre-fix in T3.4) — fixable via
 a targeted cut, but recurred 5+ times across the session despite explicit warnings each time;
 (b) direct/explicit behavior description violating a chapter-specific interior-only lock (T3.3) —
