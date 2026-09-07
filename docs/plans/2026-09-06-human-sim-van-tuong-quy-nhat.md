@@ -429,7 +429,26 @@ not hidden.
   past those two specific patterns into catching genuinely different issues (craft density,
   characterization logic) each time, which is itself useful Phase-5 evidence that the pattern isn't
   just re-finding the same two bugs forever.
-- [ ] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
+- [~] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
+  Re-read Arc 5's LOCKED Goal directly via API (arc id `01a07881-0d13-7b69-9dd7-b9ee1697b10b`).
+  Picked Chapter 1 "Thiên Địa Tái Tạo" (chapter id `01a07883-2a81-79de-98dd-2d82c2e77814`) — the
+  arc's opener, formally marking Tầng 4 entry, self-contained (unlike Ch.2/Ch.3 which depend on
+  a Planner-Secret-2 reveal and cross-chapter setup this single-chapter sample can't provide).
+  EVIDENCE: created 5 scenes (Cuộc Thanh Tẩy Vĩ Đại, Sự Phản Kháng Bị Hòa Tan, Pha Lê Ánh Sáng, Sự
+  Tĩnh Lặng Hoàn Hảo, Nhịp Tim Không Phải Của Nàng); requested prose from Co-writer Chat in one
+  batched request, applying every lesson accumulated this session (no flash-forward, no "khoái
+  cảm," collective/unnamed resistance not a named rival, explicit lucidity framing). The SAME
+  response-bleed-through bug (finding #22) reproduced a third time — the correct 5-scene Arc-5
+  draft was immediately followed in the same response by an unrelated regurgitation of an earlier
+  T3.4 revision request; only the first, correct portion (cleanly isolated via string search on
+  the raw response text) was used. This draft came through CLEAN on every previously-recurring
+  defect: no flash-forward, no sensual word choice, no named antagonist, fully lucid/conscious
+  framing throughout — the pre-emptive instructions finally landed without needing a correction
+  this time. All 5 scenes anchored (`Anchored 5 scene(s), 0 unmatched`), saved, statuses "done".
+  Word count: 1598 (clears the floor on the first pass). REVIEW: 4-lens + synthesis Workflow
+  launched (`wf_f09c7f26-be5`) — verdict recorded below once it returns. (Also noted: several
+  scene-rail UI interactions timed out transiently during this row's build — page/browser was
+  momentarily slow, not stuck; all retried successfully on the next attempt, no data loss.)
 
 ### Phase 4 — Consistency pass (open)
 - [ ] **T4.1** — Motif Library: set up the recurring Humanity Anchor motifs (bát mì ven đường,
