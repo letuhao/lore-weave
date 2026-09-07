@@ -584,11 +584,32 @@ not hidden.
   human-in-the-loop authoring session using Co-writer Chat instead. Nothing to triage here per
   se — folded into FEEDBACK LOG #26 as the same underlying gap, not a separate bug.
 
-### Phase 5 — Feedback report + go/no-go (open)
-- [ ] **T5.1** — Compile the FEEDBACK LOG into a written report: usable / friction / broken, with
+### Phase 5 — Feedback report + go/no-go (done)
+- [x] **T5.1** — Compile the FEEDBACK LOG into a written report: usable / friction / broken, with
   severity
-- [ ] **T5.2** — Recommend go/no-go: is Writing Studio + PlanForge usable enough, as tested, for
+
+  **EVIDENCE (T5.1).** Written report delivered at
+  [`2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md`](2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md).
+  Synthesizes all 26 FEEDBACK LOG entries into: what worked, findings grouped by severity
+  (BLOCKING / CRITICAL-fixed / HIGH / MEDIUM / LOW), and the Phase 3 prose-defect taxonomy
+  (§3 of the report) showing 3 of 4 recurring defect classes are fixable via the review+revise
+  loop and one (the antithesis/abstract-noun prose tic) demonstrably is not, even after two
+  independent correction attempts.
+
+- [x] **T5.2** — Recommend go/no-go: is Writing Studio + PlanForge usable enough, as tested, for
   the pre-release → release decision this whole run exists to inform
+
+  **EVIDENCE (T5.2).** Recommendation delivered in the report's §4: **Conditional GO for the
+  outline/structure system and its Workflow-style review pattern (both release-quality on 5/5
+  independent samples); NO-GO for the product's flagship "AI writes your manuscript for you"
+  pitch as currently wired**, because (a) no in-Editor AI-write path exists at all — the only
+  working path is chat-draft + manual human copy-paste (finding #19), and (b) the product's own
+  quality-flywheel instrumentation (Conformance, Corrections, Motif binding) never sees content
+  written through that one working path (finding #26) — together meaning the core pitch is not
+  true end-to-end today, independent of any single content-quality issue. Two CRITICAL bugs found
+  this run were fixed and verified live in-run (#223, #224); their shared shape (silent-success
+  write, later-exploding or -truncating read) recurred 3 more times at lower severity and is
+  flagged as worth a dedicated audit, not just point-fixes.
 
 ## FEEDBACK LOG (append here as you go — never reconstruct from memory later)
 1. Steering rules: 20 rules × 8000 chars each — checked, plenty of headroom. Not a problem.
@@ -915,22 +936,15 @@ not hidden.
     one authoring path a real user can actually complete a book through are not currently
     connected.
 
-RESUME: **PHASE 4 IS COMPLETE (T4.1, T4.2, T4.3 all done). MOVE TO PHASE 5 NEXT: T5.1 (compile
-the FEEDBACK LOG into a written report) then T5.2 (go/no-go recommendation).** No more browser
-work is required — T5.1/T5.2 are synthesis of the 26 findings already logged, written directly
-into this doc (or a companion report file) and to the user. Phase 4 findings in one line each:
-T4.1 Motif Library is a plot-shape template picker, not a thematic-motif tracker (#23); T4.2
-Canon issues clean, Story coverage correctly reports zero tracked promises but via an unhelpful
-generic error (#24), Conformance's chapter picker mislabels every chapter "Untitled chapter"
-(#25); T4.3 Corrections empty. **The load-bearing Phase-4 finding for the go/no-go call is #26:**
-Conformance/Corrections/Motif-binding all depend on an automated Planner/Diverge generation path
-this run never used, so a real author completing a book via Co-writer Chat (finding #19's ONLY
-working authoring path) gets none of the app's own quality-flywheel signals. All 5 arcs are fully
-built (28 chapters total) and each has ONE fully-drafted, Workflow-reviewed representative
-chapter (T3.1-T3.5), every one carrying a complete build→review→revise→re-check evidence trail —
-see each row's own evidence block for full detail. Every chapter needed at least one revision
-cycle; none passed clean on the first try, which is itself real Phase-5 evidence the review step
-is load-bearing and not theater. **Full defect taxonomy from Phase 3, for the Phase 5 report:**
+RESUME: **THE RUN IS COMPLETE. All 18 queue rows (T1.1 through T5.2) are done.** Final deliverable:
+[`2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md`](2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md)
+— conditional GO for the outline/structure system + Workflow review pattern, NO-GO for the
+in-manuscript AI-authoring pitch as currently wired (findings #19 + #26). 26 findings logged, 2
+CRITICAL bugs fixed/filed/verified live this run (#223, #224). 5 arcs / 28 chapters outlined, 5
+representative chapters (one per arc) fully drafted + Workflow-reviewed + revised + accepted. If
+resumed: there is no further queued work — this line exists only so a stale check-in doesn't
+re-read an earlier "MOVE TO X NEXT" instruction as still live. Full defect taxonomy from Phase 3,
+kept for reference (already folded into the report's §3):
 (a) flash-forward/narrator-voice foreshadowing (T3.1, T3.2, recurred pre-fix in T3.4) — fixable via
 a targeted cut, but recurred 5+ times across the session despite explicit warnings each time;
 (b) direct/explicit behavior description violating a chapter-specific interior-only lock (T3.3) —
