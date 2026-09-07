@@ -446,9 +446,30 @@ not hidden.
   framing throughout — the pre-emptive instructions finally landed without needing a correction
   this time. All 5 scenes anchored (`Anchored 5 scene(s), 0 unmatched`), saved, statuses "done".
   Word count: 1598 (clears the floor on the first pass). REVIEW: 4-lens + synthesis Workflow
-  launched (`wf_f09c7f26-be5`) — verdict recorded below once it returns. (Also noted: several
-  scene-rail UI interactions timed out transiently during this row's build — page/browser was
-  momentarily slow, not stuck; all retried successfully on the next attempt, no data loss.)
+  (`wf_f09c7f26-be5`). **VERDICT: steering PASS 9/10, plot PASS 9/10, continuity PASS 9/10 — prose
+  FAIL 3/10.** This is the cleanest canon/plot/continuity result of all 5 representative chapters
+  (synthesis: "the cleanest of the five samples" on those axes) — full confirmation that every
+  previously-recurring content defect (flash-forward, named antagonist, sensual diction) is fixable
+  with sufficiently explicit up-front instruction, not just fixable after the fact. But prose was
+  the WORST of the five on the two specifically-tracked craft patterns: the "không phải X, mà là Y"
+  antithesis template in 4-5 of 5 scenes (sometimes twice per paragraph) and "sự X" abstract-noun
+  stacking (3+ per sentence in places) — synthesis explicitly noted these are "worse, not better"
+  than earlier chapters, i.e. a regression, not a new problem. Scene 3 (the pivotal PA+1 crystal-
+  of-light transformation — the single most important image in the chapter) was also flagged as
+  underdeveloped (~150-180 words, reads as a summary not a rendered scene) despite Scene 4's
+  concrete sensory catalogue (lost sounds/smells) being praised as proof the technique works when
+  it holds onto sensory nouns instead of abstractions. Given this is the FINAL arc's OPENING
+  chapter — the single highest-visibility beat in the whole sample set — did one more targeted
+  revision pass rather than accepting a known-weak climactic scene. FIX APPLIED: asked Co-writer
+  Chat to rewrite Scene 1 (reduce antithesis/abstraction, add a fresh image) and substantially
+  expand Scene 3 using Scene 4's sensory-catalogue technique as the explicit model; left Scene 2
+  as originally drafted since the AI's own "revision" of it came back functionally unchanged (same
+  bleed-through-adjacent behavior — it didn't actually address that scene despite being asked).
+  Scene 3 gained real, concrete physical sensory detail (temperature down the spine, skin losing
+  softness, looking at her own hands and seeing light-veins under a diamond-like shell, breath as
+  light-oscillation instead of lung contraction) — a genuine fix, not a reword. Re-anchored,
+  re-saved. New word count: 1718. RE-CHECK (targeted prose-only re-run, `wf_4883a0ab-3b6`) —
+  verdict recorded below once it returns.
 
 ### Phase 4 — Consistency pass (open)
 - [ ] **T4.1** — Motif Library: set up the recurring Humanity Anchor motifs (bát mì ven đường,
