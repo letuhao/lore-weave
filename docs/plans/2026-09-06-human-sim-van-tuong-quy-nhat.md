@@ -536,9 +536,53 @@ not hidden.
   achieved entirely by this run manually re-reading the steering rules before each draft, not by
   any app-side tracking/flagging mechanism. Per the plan's own instruction, this is a FINDING, not
   a blocker: logged as FEEDBACK LOG #23.
-- [ ] **T4.2** — Quality / Conformance / Canon-issues panels run against the finished manuscript,
+- [x] **T4.2** — Quality / Conformance / Canon-issues panels run against the finished manuscript,
   findings triaged
-- [ ] **T4.3** — Corrections panel checked for anything the flywheel captured worth reviewing
+
+  **EVIDENCE (T4.2).** Three panels run against book `01a07780-172b-70fa-bf11-cbf261fa3e91`:
+
+  - **Canon issues**: "No canon issues found." Clean — no triage needed.
+  - **Story coverage → Story promises**: ran "Analyze story promises" (model: Qwen2.5 7B
+    Instruct, local). UI result: "Promise coverage unavailable." Traced the actual job via
+    `GET /v1/composition/jobs/{id}` (auth token recovered from `localStorage.lw_auth` per the
+    plan's standing note): job `status: "completed"`, `result.chapters: 5` (correctly scoped to
+    only the 5 chapters this run actually drafted), `result.coverage.error:
+    "no_tracked_promises"`, all counts 0. Confirmed via the separate **Promises** panel
+    (quality tab, newly enabled): "No open promises — all paid" — i.e., zero promises declared
+    for this book at all, since this run never used the Promises panel to declare any plot
+    thread. So the analysis is CORRECT (there is genuinely nothing to cover), but the UI surfaces
+    a generic "unavailable" instead of the specific, actionable "no_tracked_promises" state — a
+    user has no way to tell "the feature is broken" from "you haven't set anything up yet"
+    without opening dev tools. Logged as FEEDBACK LOG #24.
+  - **Conformance**: chapter picker's `<select>` shows **"Untitled chapter" for all 28 options**,
+    even though every chapter has a distinct, real Vietnamese title visible in the same session's
+    sidebar tree — confirmed via `browser_evaluate` dumping the raw `<option>` values (real
+    chapter UUIDs, e.g. `01a07883-2a63-7d33-8fdf-985477d16932` = T3.5's "Thiên Địa Tái Tạo",
+    identified by cross-referencing the scratchpad JSON from that row's evidence) against blank
+    `text` labels. Selected that known chapter anyway (by UUID via `browser_evaluate` on the
+    native `<select>` — safe here, unlike the ProseMirror execCommand bug from T3.4, since this
+    is a plain form control, not a contenteditable). Result: **all 5 scenes show "Realized: Not
+    written yet,"** despite this chapter being fully drafted (1718 words), Workflow-reviewed, and
+    accepted (T3.5), and despite the Scene Inspector confirming the scene's own `status` field is
+    "Done." Root cause matches finding #21's pattern: Conformance's "Realized" tracking reads a
+    separate `written_scene_id`/`written_at` linkage (confirmed null in this chapter's own
+    StructureNode JSON, captured earlier this run) that the human-in-the-loop Co-writer-Chat
+    → clipboard → Editor authoring path used for all 5 chapters never populates — only some other
+    (Planner-driven?) generation path would set it. Two findings logged: the chapter-picker
+    "Untitled chapter" bug (FEEDBACK LOG #25) and the Conformance/"Realized" blind spot for this
+    run's actual authoring path (FEEDBACK LOG #26, ties to #19/#21/#23's common thread).
+
+- [x] **T4.3** — Corrections panel checked for anything the flywheel captured worth reviewing
+
+  **EVIDENCE (T4.3).** Corrections tab: "No generations yet — compose a few scenes and your
+  accept/edit/regenerate rates will appear here." Panel is explicitly for a "Diverge" K-option
+  reranker flow (multiple candidate generations, then accept/edit/regenerate/reject signal) —
+  a generation UI this run's Co-writer-Chat-based authoring never went through, same root cause
+  as T4.2's Conformance finding and T4.1's Motif Library finding: several of the app's
+  quality-flywheel/instrumentation surfaces are wired to an automated, Planner/Diverge-driven
+  generation pathway, and stay empty for the entire duration of a real, successful,
+  human-in-the-loop authoring session using Co-writer Chat instead. Nothing to triage here per
+  se — folded into FEEDBACK LOG #26 as the same underlying gap, not a separate bug.
 
 ### Phase 5 — Feedback report + go/no-go (open)
 - [ ] **T5.1** — Compile the FEEDBACK LOG into a written report: usable / friction / broken, with
@@ -838,20 +882,55 @@ not hidden.
     device, this is a real gap between what an author would expect "motif" tooling to do and what
     exists — worth either a rename (e.g. "Plot Shapes") or a genuinely new feature, not a fix to
     the existing one.
+24. **LOW-MEDIUM — Story coverage's "Analyze story promises" fails with an unhelpfully generic
+    "Promise coverage unavailable" when the real, specific cause is "no promises tracked yet."**
+    Verified via the job API directly (`GET /v1/composition/jobs/{id}`): job completed
+    successfully, `result.coverage.error: "no_tracked_promises"`. The Promises panel confirms
+    zero promises declared for this book. The analysis is behaving correctly, but the UI message
+    can't distinguish "this feature is broken" from "you haven't declared anything for it to
+    check yet" — a real author hitting this with no dev-tools access would reasonably conclude
+    the feature doesn't work at all. Fix: surface the job's actual error reason (or link straight
+    to the Promises panel to declare one) instead of a bare "unavailable."
+25. **MEDIUM — the Conformance panel's "Pick a chapter" dropdown shows "Untitled chapter" for
+    ALL 28 options**, even though every chapter has a distinct, real title visible in the same
+    session's own sidebar tree seconds earlier. Confirmed the `<option>` elements carry correct,
+    distinct chapter UUIDs as their `value` but an identical, wrong `text`/label for all of them —
+    a chapter-title lookup that isn't wired into this specific selector, even though the exact
+    same title data renders correctly one panel away.
+26. **HIGH (product-shape finding, not a single bug) — several quality-flywheel panels
+    (Conformance's "Realized" status, Corrections' accept/edit/regenerate stats, and Motif
+    Library/binding per finding #23) are wired to an automated, Planner/Diverge-driven generation
+    pathway and stay completely uninformative for a real, successful, human-in-the-loop authoring
+    session.** Concretely: Conformance reported "Realized: Not written yet" for all 5 scenes of
+    T3.5's chapter despite it being fully drafted (1718 words), Workflow-reviewed, ACCEPTED, and
+    marked "Done" in its own Scene Inspector — because Conformance keys off a
+    `written_scene_id`/`written_at` linkage that only a different generation path sets, and this
+    run's actual authoring method (Co-writer Chat → clipboard → Editor, the only working path per
+    finding #19) never populates it. Corrections shows "No generations yet" for the same reason.
+    Net effect: an author who writes and successfully ships real content entirely via Co-writer
+    Chat — which finding #19 established is the ONLY currently-working path for the app's own AI
+    to produce prose — gets none of the product's own quality signals (conformance tracking,
+    correction-rate learning, motif binding) working for them. This is the single most
+    load-bearing finding of Phase 4 for the Phase 5 go/no-go: the flywheel instrumentation and the
+    one authoring path a real user can actually complete a book through are not currently
+    connected.
 
-RESUME: **T4.1 IS COMPLETE. MOVE TO T4.2 (Quality/Conformance/Canon-issues panels) NEXT, THEN
-T4.3 (Corrections panel), THEN PHASE 5.** T4.1 finding: Motif Library ≠ thematic motif tracker —
-it's a plot-shape template picker for an unused automated-Planner pathway; no app feature tracks
-Humanity Anchor motifs fading across tiers (FEEDBACK LOG #23). The 5 quality/storyBible panels
-needed for T4.2/T4.3 are already enabled via the Workspace Panels picker (Canon issues, Story
-coverage, Conformance, Corrections, plus Motif Library/Motif Graph already checked) — just
-navigate to each tab and run/read it against this book (`01a07780-172b-70fa-bf11-cbf261fa3e91`).
-All 5 arcs are fully built (28 chapters total) and each has ONE fully-drafted, Workflow-reviewed
-representative chapter (T3.1-T3.5), every one carrying a complete build→review→revise→re-check
-evidence trail — see each row's own evidence block for full detail. Every chapter needed at least
-one revision cycle; none passed clean on the first try, which is itself real Phase-5 evidence the
-review step is load-bearing and not theater. **Full defect taxonomy from Phase 3, for the Phase 5
-report:**
+RESUME: **PHASE 4 IS COMPLETE (T4.1, T4.2, T4.3 all done). MOVE TO PHASE 5 NEXT: T5.1 (compile
+the FEEDBACK LOG into a written report) then T5.2 (go/no-go recommendation).** No more browser
+work is required — T5.1/T5.2 are synthesis of the 26 findings already logged, written directly
+into this doc (or a companion report file) and to the user. Phase 4 findings in one line each:
+T4.1 Motif Library is a plot-shape template picker, not a thematic-motif tracker (#23); T4.2
+Canon issues clean, Story coverage correctly reports zero tracked promises but via an unhelpful
+generic error (#24), Conformance's chapter picker mislabels every chapter "Untitled chapter"
+(#25); T4.3 Corrections empty. **The load-bearing Phase-4 finding for the go/no-go call is #26:**
+Conformance/Corrections/Motif-binding all depend on an automated Planner/Diverge generation path
+this run never used, so a real author completing a book via Co-writer Chat (finding #19's ONLY
+working authoring path) gets none of the app's own quality-flywheel signals. All 5 arcs are fully
+built (28 chapters total) and each has ONE fully-drafted, Workflow-reviewed representative
+chapter (T3.1-T3.5), every one carrying a complete build→review→revise→re-check evidence trail —
+see each row's own evidence block for full detail. Every chapter needed at least one revision
+cycle; none passed clean on the first try, which is itself real Phase-5 evidence the review step
+is load-bearing and not theater. **Full defect taxonomy from Phase 3, for the Phase 5 report:**
 (a) flash-forward/narrator-voice foreshadowing (T3.1, T3.2, recurred pre-fix in T3.4) — fixable via
 a targeted cut, but recurred 5+ times across the session despite explicit warnings each time;
 (b) direct/explicit behavior description violating a chapter-specific interior-only lock (T3.3) —
