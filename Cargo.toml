@@ -197,7 +197,7 @@ rand_chacha = "0.9"
 # `prost` and its own `hyper`; both are pinned here rather than in the member
 # crate so a second gRPC consumer cannot arrive on a different major and give
 # the workspace two incompatible `prost::Message` traits.
-tonic = "0.12"
+tonic = "0.14"
 prost = "0.13"
 tonic-build = "0.12"
 # The `Stream` trait the two streaming RPCs' associated types name. Taken
