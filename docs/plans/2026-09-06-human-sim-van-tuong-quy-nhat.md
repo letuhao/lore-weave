@@ -429,7 +429,7 @@ not hidden.
   past those two specific patterns into catching genuinely different issues (craft density,
   characterization logic) each time, which is itself useful Phase-5 evidence that the pattern isn't
   just re-finding the same two bugs forever.
-- [~] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
+- [x] **T3.5** — Arc 5: one representative chapter fully drafted + reviewed — same loop.
   Re-read Arc 5's LOCKED Goal directly via API (arc id `01a07881-0d13-7b69-9dd7-b9ee1697b10b`).
   Picked Chapter 1 "Thiên Địa Tái Tạo" (chapter id `01a07883-2a81-79de-98dd-2d82c2e77814`) — the
   arc's opener, formally marking Tầng 4 entry, self-contained (unlike Ch.2/Ch.3 which depend on
@@ -468,8 +468,36 @@ not hidden.
   Scene 3 gained real, concrete physical sensory detail (temperature down the spine, skin losing
   softness, looking at her own hands and seeing light-veins under a diamond-like shell, breath as
   light-oscillation instead of lung contraction) — a genuine fix, not a reword. Re-anchored,
-  re-saved. New word count: 1718. RE-CHECK (targeted prose-only re-run, `wf_4883a0ab-3b6`) —
-  verdict recorded below once it returns.
+  re-saved. New word count: 1718. RE-CHECK (targeted prose-only re-run, `wf_4883a0ab-3b6`):
+  **FAIL 3/10 — unchanged.** The length/sensory-detail goal was genuinely met (Scene 3 confirmed
+  "now substantially expanded... with genuinely concrete sensory material that was missing before").
+  But the antithesis pattern was NOT reduced — the recheck found it now appears in ALL 5 of 5
+  scenes (previously 4-5 of 5), and Scene 3 — the exact scene targeted for the fix — now contains
+  the DENSEST concentration of the construction in the whole chapter, written directly into the
+  brand-new sensory material itself ("Không phải là cái lạnh của băng giá, mà là...", "không còn
+  là sự co bóp của phổi, mà là...", plus a closing chiasmus "Nàng là sự hoàn mỹ, và sự hoàn mỹ
+  chính là nàng"). The recheck's own words: "the scene meant to anchor the fix is now the single
+  densest concentration of the flaw in the whole chapter... a length-focused revision that didn't
+  apply the stylistic note to newly-written prose, only to Scene 1's pre-existing sentences."
+  **DECISION: ACCEPT WITH NOTED SHORTFALL — no third revision attempt.** This is now the SECOND
+  independent correction attempt (one full-chapter instruction up front in the generation prompt,
+  one scene-specific "reduce this exact construction" instruction on a revision) to fail at
+  reducing this pattern — and the second attempt failed specifically because the model reproduced
+  the flagged construction WHILE writing the very content meant to fix it, not because old text was
+  left untouched. This is stronger, more useful evidence for Phase 5 than a clean fix would have
+  been: it demonstrates the "không phải X, mà là Y" antithesis is not a stray stylistic choice this
+  model makes and can be talked out of mid-conversation — it reads as a structural default for this
+  specific philosophical/transcendence register, resistant to explicit, scene-targeted correction
+  even when generating entirely new material. Canon fidelity (steering/plot/continuity, 9/9/9 — the
+  best of all 5 chapters) is unaffected and stands as evidence the review+revise loop DOES work for
+  content/canon violations; prose-craft tics in this specific register are the loop's demonstrated
+  limit. **T3.5 ACCEPTED.** → **PHASE 3 IS NOW COMPLETE.** All 5 arcs have one fully-drafted,
+  Workflow-reviewed representative chapter (T3.1-T3.5), each carrying a full review+revision trail.
+  Defect taxonomy across all 5: flash-forward foreshadowing (T3.1, T3.2, recurred pre-fix in T3.4)
+  — fixable via targeted cuts; direct-action-vs-interior-only (T3.3) — fixable via targeted rewrite;
+  characterization/logic gap (T3.4) — fixable via a reasoned in-character addition; antithesis/
+  abstract-noun prose tic (recurring background noise in T3.1-T3.4, dominant defect in T3.5) — NOT
+  reliably fixable via prompting, the one demonstrated limit of this run's revision loop.
 
 ### Phase 4 — Consistency pass (open)
 - [ ] **T4.1** — Motif Library: set up the recurring Humanity Anchor motifs (bát mì ven đường,
@@ -761,42 +789,35 @@ not hidden.
     start of a long response could easily miss that the tail is stale/wrong content bleeding in
     from a different request.
 
-RESUME: **T3.1-T3.4 ARE ALL DONE AND ACCEPTED. MOVE TO T3.5 (Arc 5's representative chapter, the
-LAST of Phase 3) NEXT.** All 5 arcs are fully built (28 chapters total, see prior note). Each of
-T3.1-T3.4 is fully drafted, anchored, saved, scenes "done", and has been through a full 4-lens+
-synthesis Workflow review — every one of them needed at least one revision+targeted-recheck cycle
-before acceptance; none passed clean on the first try, which is itself real Phase-5 evidence about
-how load-bearing the review step is. Defect patterns found across the 4 chapters so far: (a) T3.1/
-T3.2 — explicit narrator-voice flash-forward/foreshadowing (recurred 5 times total this session,
-including twice within T3.4 alone, despite explicit warnings each time — treat as a persistent
-default tendency, not something a prompt instruction reliably prevents); (b) T3.3 — direct/explicit
-behavior description violating a chapter-specific interior-only lock; (c) T3.4 — a genuine
-characterization/logic gap (ignoring a self-observed clue that contradicted the character's own
-established rationality) plus craft density issues (repetitive antithesis sentence pattern,
-abstract-noun overstacking) — NEITHER of patterns (a) or (b) recurred in T3.4's first pass, showing
-the review step generalizes to new issues rather than just re-finding the same two bugs. Proven
-end-to-end loop for T3.5 (same as before, plus new lessons): (1) read the target arc's chapter Goal
-directly via `GET /v1/composition/outline/nodes/{id}` (finding #16); (2) ask Co-writer Chat to draft
-all 5 scenes in one batched request, warning against known defects as risk-reduction only — still
-expect to catch violations after generation regardless; (3) create scenes via the rail, type a
-Heading-2 per scene, hand-transfer prose into the paragraph under each heading using Playwright's
-`.fill()`/`.click()`/real keyboard events ONLY — NEVER raw `execCommand`/`Range`+`Selection` API
-calls for content changes, which ProseMirror silently discards on its next re-render with no error
-(confirmed the hard way in T3.4, cost significant rework); whole-node deletion via `selectNode()`+
-real `Delete` keypress is fine when used alone, just never interleaved with `execCommand`; (4) before
-pasting, re-check names against established cast EVERY time, including after revisions — the AI has
-reused an already-established character's name 3+ separate times this session even after being
-told the fix once; (5) "⚓" anchor, ⌘S save, set scene statuses to "done" (finding #21 — verify via
-API if the toolbar counter looks stale); (6) run the 4-lens+synthesis Workflow; (7) if REVISE
-REQUIRED, fix locked-constraint violations even if another lens praised the prose (T3.3's
-precedent), log craft-only nitpicks for Phase 5 without chasing them to perfection, then a targeted
-re-check on just the failed lens(es); (8) log evidence, commit, advance. T3.5: Arc 5 "Hủy Diệt"
-(Tầng 4, the FINAL arc) — re-read its locked Steering rule directly first; this arc's own Goal
-requires PA to explicitly cross 80+ via NAMED "hoàn mỹ" moments (Chapter 1 Scene 3, Chapter 3
-Scene 4) and poses the story's final question in Chapter 4 — pick a chapter whose beats don't
-depend on cross-chapter setup this single-chapter sample can't provide (Chapter 1 "Thiên Địa Tái
-Tạo" or Chapter 3 "Cuộc Chiến Giữa Hai Bản Thể" are the most self-contained candidates). After
-T3.5, Phase 3 is COMPLETE — proceed straight to Phase 4 (T4.1-T4.3) without waiting for a check-in.
+RESUME: **PHASE 3 IS COMPLETE. MOVE TO PHASE 4 (T4.1 → T4.2 → T4.3) NEXT.** All 5 arcs are fully
+built (28 chapters total) and each has ONE fully-drafted, Workflow-reviewed representative chapter
+(T3.1-T3.5), every one carrying a complete build→review→revise→re-check evidence trail — see each
+row's own evidence block for full detail. Every chapter needed at least one revision cycle; none
+passed clean on the first try, which is itself real Phase-5 evidence the review step is load-bearing
+and not theater. **Full defect taxonomy from Phase 3, for the Phase 5 report:**
+(a) flash-forward/narrator-voice foreshadowing (T3.1, T3.2, recurred pre-fix in T3.4) — fixable via
+a targeted cut, but recurred 5+ times across the session despite explicit warnings each time;
+(b) direct/explicit behavior description violating a chapter-specific interior-only lock (T3.3) —
+fixable via a targeted rewrite using another scene in the same chapter as the model;
+(c) a characterization/logic gap — ignoring a self-observed clue that contradicted the character's
+own established rationality (T3.4) — fixable via a reasoned in-character addition;
+(d) the "không phải X, mà là Y" antithesis + "sự X" abstract-noun-stacking prose tic — present as
+background noise in T3.1-T3.4, DOMINANT defect in T3.5, and NOT reliably fixable via prompting even
+across two independent, increasingly specific correction attempts (one up-front instruction, one
+scene-targeted revision that reproduced the exact flagged construction while writing brand-new
+content) — this is the one defect class the review+revise loop demonstrably could not resolve, and
+is a load-bearing negative finding for Phase 5, not an oversight to paper over.
+**Phase 4 — Consistency pass.** T4.1: Motif Library — set up the recurring Humanity Anchor motifs
+(bát mì ven đường / street noodles, tiếng trẻ con / children's laughter, etc. — both appear verbatim
+in the drafted chapters: T3.1's shared meal, T3.5 Scene 4's "không còn tiếng cười đùa của trẻ con")
+and confirm whether the app tracks/flags their fading across tiers — if no such feature exists in
+the UI, that is itself the finding (log it, do not build one). T4.2: run the Quality / Conformance /
+Canon-issues panels (if they exist as named UI surfaces — check Quality tab, already visible in the
+top nav) against the finished manuscript state and triage whatever they surface. T4.3: check the
+Corrections panel (if one exists) for anything the flywheel captured worth reviewing. As with Phase
+3: a panel/feature that doesn't exist or doesn't do what the plan assumed is a FINDING, not a
+blocker — log it, decide, keep going. After T4.3, proceed directly to Phase 5 (T5.1 compile the
+FEEDBACK LOG into a written report, T5.2 deliver the go/no-go recommendation) without a check-in.
 
 Findings #10 and #12 are both RESOLVED — root-caused, fixed, filed
 (github.com/letuhao/lore-weave#223 and #224), BITE-verified, live in rebuilt+redeployed containers.
