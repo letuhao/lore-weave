@@ -1531,7 +1531,19 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   EXIT=0
   ```
 
-  **The gate now carries its own `--self-test`, because CI mutates gate RULES.**
+  **I broke Phase 1 while restoring BITE 2, and the gate did not catch it.** The restore script
+  opened with a `.replace("| ✅ Done |", "| 🔄 In Progress |", 1)` before its targeted replacement,
+  and `1` means *the first match in the file*, which is Phase 1's row — not Phase 4's. It shipped in
+  the T22 commit and was caught by reading `git show`, one commit later.
+
+  Worth recording rather than quietly fixing, for two reasons. **The gate structurally cannot see
+  it:** it checks claims against their phases, and no claim is attributed to Phase 1, so a wrong
+  status on an unwatched row is outside what it reads. Widening it would mean pinning roadmap
+  statuses, which are supposed to change. **And it is the same defect class as the `sed` bites that
+  silently did nothing** — an unanchored edit on a non-unique string, trusted without verifying what
+  it actually matched. Verify the bite landed AND verify nothing else did.
+
+    **The gate now carries its own `--self-test`, because CI mutates gate RULES.**
   `gates.yml` runs `gate-self-tests.py` (discovered by which scripts advertise the flag) and then
   `gate-bite-harness.py`, which mutates each gate's production rules one at a time and requires the
   self-test to go RED. A gate with no self-test is invisible to both — it would keep printing OK

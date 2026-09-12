@@ -303,7 +303,7 @@ The complete design lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| **Phase 1** | Platform Core — writing, translation, glossary, sharing | 🔄 In Progress |
+| **Phase 1** | Platform Core — writing, translation, glossary, sharing | ✅ Done |
 | **Phase 2** | Knowledge Graph & RAG — automatic extraction, semantic search | ✅ Done |
 | **Phase 3** | Intelligence Layer — canon co-writing, lore enrichment, translation quality | 🔄 In Progress |
 | **Phase 4** | Continuation & Canon Safety — the Writing Studio, PlanForge, canon rules, Auto-Draft Factory | 🔄 In Progress |
