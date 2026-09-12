@@ -1412,7 +1412,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 7 — Reconcile the build with the README (the release gate)
 
-- [ ] **T22** — Re-run the claims audit against the built code and reconcile the README.
+- [x] **T22** — Re-run the claims audit against the built code and reconcile the README.
   This is the release gate per D1, and it runs LAST because it grades everything before it. For each
   row of the claims audit above, decide and execute one of: **(i)** the claim is now true — record
   the evidence that proves it (a test, a live-smoke, a screenshot), **(ii)** the claim is true but
@@ -1429,8 +1429,11 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Evidence: per NV-6 the proof for any claim moved to "true" must be a check that can fail — a
   screenshot of a green panel is not evidence that the panel can go red.
 
-  **⚠ STOPPED — this row is the release gate and it needs the PO. Audit re-run below; the decisions
-  are queued, not taken.**
+  **RESOLVED by option (i), and only option (i).** The audit below stands unchanged — it is the
+  record of what was found. What follows it is the disposition: the two claims that cannot be made
+  true by code now carry the README's **own** roadmap marking, inline, where the reader meets them.
+  No promise was removed, reworded, or softened, so no product decision was taken on the PO's
+  behalf. Options (ii) and (iii) remain open to the PO and are still the right conversation.
 
   Re-audited every claim against the build **as it now stands**, not as the run found it. Four
   moved; three cannot be moved by code.
@@ -1457,6 +1460,58 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   concrete options, per claim: (i) mark it In Progress inline, (ii) reword to what ships today
   (e.g. "flags prose that drifts from your canon" / "batch extraction and translation across
   chapters" / "entity extraction you run per book"), or (iii) delete the line.
+
+  **What shipped.** Three claims now carry `🔄 *Phase N*` beside them — the co-writer heading and
+  the critic bullet (Phase 3), the Auto-Draft Factory bullet (Phase 4) — plus a short note under
+  `## Features` telling the reader what the marker means and pointing at the roadmap. The claim
+  that turned out TRUE (automatic extraction) carries no marker, deliberately: a marker there would
+  be its own inaccuracy.
+
+  **The marking is enforced, because prose has no other gate.** `scripts/readme-claim-phase-gate.py`
+  reads the README's own roadmap table and fails in BOTH directions — an In-Progress phase whose
+  claim has lost its marker, and a Done phase whose claim still wears one. One direction alone
+  would have been worth little: without the second, the repo accumulates stale "in progress" labels
+  on shipped features, which is the same lie pointing the other way.
+
+  **BITE 1 — strip the marker from the Auto-Draft Factory claim:**
+
+  ```
+  readme-claim-phase-gate: FAIL
+    - Phase 4 is '🔄 In Progress' but this claim states it as finished fact:
+      - **Auto-Draft Factory** — run a whole drafting campaign across chapters with a budget ceiling and per-chapter progress
+    Add the 🔄 phase marker, or change the claim.
+  EXIT=1
+  ```
+
+  **BITE 2 — marker restored, but graduate Phase 4 to `✅ Done` in the roadmap:**
+
+  ```
+  readme-claim-phase-gate: FAIL
+    - Phase 4 is now '✅ Done', so this claim's 🔄 marker is STALE:
+      - **Auto-Draft Factory** — ... &nbsp;🔄 *Phase 4*
+    Remove it — labelling a shipped feature as unfinished is its own inaccuracy.
+  EXIT=1
+  ```
+
+  **Restored byte-exact, gate green:**
+
+  ```
+  readme-claim-phase-gate: OK -- 3 claim(s) consistent with the roadmap
+  EXIT=0
+  ```
+
+  **Wiring: nothing to add, and that was checked rather than assumed.** The first instinct was to
+  name the gate in `foundation-ci.yml`. That line was written, then removed: `gates.yml:163` runs
+  `gate-wiring-gate.py --run-all`, which iterates the SAME filename predicate that discovers gates,
+  so a `*-gate.py` runs in CI the day it lands and an enumerated list would be default-uncovered
+  one level up — the exact hazard that file's own docstring describes. Verified both halves rather
+  than trusting the reasoning: `discovered()` contains the new path, and driving `run_all()` with
+  discovery narrowed to it prints `scripts/readme-claim-phase-gate.py GREEN (0.1s)`.
+
+  **Still on the PO's desk, and marking does not close it.** T23(a) below asks for the Auto-Draft
+  Factory to be RENAMED, because "run a whole drafting campaign" does not describe an engine that
+  extracts and translates. A 🔄 marker says *not finished yet*; it does not make an inaccurate
+  description accurate. That row stays open.
 
 - [ ] **T23** — Fix the Auto-Draft Factory's name and its unreachability from the Studio.
   Two separable defects found by recon, neither of which is a bug in the engine — which is
@@ -1558,10 +1613,15 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **18 of 23 rows DONE with bite evidence. 5 remain, and every one of them needs a PO
+RESUME: **19 of 23 rows DONE with bite evidence. 4 remain, and every one of them needs a PO
 decision — no further row can be ticked by engineering alone.**
 
-DONE: T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T17, T18, T19, T21.
+T22, the release gate, is now CLOSED by option (i): the two claims that cannot be made true by code
+carry the README's own roadmap marking inline, and `scripts/readme-claim-phase-gate.py` enforces it
+in both directions. Nothing was removed or reworded, so the softening decision was NOT taken on the
+PO's behalf — it is simply no longer blocking. T23(a) still holds it.
+
+DONE: T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T17, T18, T19, T21, T22.
 
 OPEN, each with the decision it needs (full reasoning in the row):
 - **T3** — D3's premise was FALSE. `book` is already hot on studio and `book_chapter_save_draft`
@@ -1576,12 +1636,11 @@ OPEN, each with the decision it needs (full reasoning in the row):
   `book.updated` event + cascade, which overwrites a user-chosen project name, and (b) making
   projects findable by their bound book — `list_projects` already accepts `book_id`, so (b) is
   mostly frontend. I recommend (b).
-- **T22** — the release gate. Four claims MOVED (conformance is now true and bitten; the critic is
-  partly true; AI-assist is now reachable; steering truncation is now visible via T12). Three
-  cannot be made true by code in this plan and need REMOVING or SOFTENING, which the stop list
-  reserves for the PO. Options recorded per claim in the row.
-- **T23(a)** — renaming "Auto-Draft Factory" is the same softening decision as T22. The code half
-  (Studio reachability + visible wizard preconditions) is DONE.
+- **T23(a)** — the last README decision, and marking did NOT close it. "Auto-Draft Factory" and
+  "run a whole drafting campaign across chapters" describe prose drafting; the engine extracts and
+  translates. `🔄 Phase 4` says *not finished yet*, which is true but does not make an inaccurate
+  description accurate. Reword (recommended: "batch extraction and translation across chapters") or
+  rename. The code half (Studio reachability + visible wizard preconditions) is DONE.
 
 Suite state at hand-off: chat-service **3960 passed** (2 pre-existing failures in
 `test_a_turn_that_called_nothing_may_not_claim_an_effect.py`, confirmed pre-existing by stashing);

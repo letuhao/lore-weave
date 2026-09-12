@@ -31,7 +31,7 @@ Every chapter you write, LoreWeave automatically extracts every character, locat
 
 Standard AI translators treat your novel like a news article. LoreWeave's translation pipeline knows your glossary, knows your character names, and checks its own work: a multi-agent verifier catches name drift, dropped sentences, pronoun flips, and script contamination before results ever reach you. Your invented terminology survives the language crossing intact — in every target language, every chapter.
 
-### A co-writer that can't contradict your canon
+### A co-writer that can't contradict your canon &nbsp;🔄 *Phase 3 — In Progress*
 
 The composition engine assembles your published chapters, character relationships, and lore context before drafting a single word. An advisory critic cross-checks every suggestion against your established canon. You still decide what goes in — but the AI can no longer confidently write things that never happened in your story.
 
@@ -102,6 +102,8 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 
 ## Features
 
+> Items marked 🔄 belong to a roadmap phase still **In Progress** (see [Roadmap](#roadmap)). They are built and usable, and still being hardened — the marker is the same status this document's own roadmap table assigns them, surfaced here so a reader meets it at the claim rather than several screens later.
+
 ### Writing & Editing
 - Rich text editor with AI-assist mode and Classic mode
 - Paragraph-level editing with revision history and version comparison
@@ -142,9 +144,9 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 ### AI Co-Writing
 - Lore-grounded prose suggestions anchored to your published canon
 - Spoiler-safe context assembly — the AI sees only what's relevant to the current scene
-- Advisory prose critic flags potential canon contradictions before you accept a suggestion
+- Advisory prose critic flags potential canon contradictions before you accept a suggestion &nbsp;🔄 *Phase 3*
 - Auto Reasoning Mode: thinking-capable models switch in automatically when it helps
-- **Auto-Draft Factory** — run a whole drafting campaign across chapters with a budget ceiling and per-chapter progress
+- **Auto-Draft Factory** — run a whole drafting campaign across chapters with a budget ceiling and per-chapter progress &nbsp;🔄 *Phase 4*
 
 ### Worlds & Automation
 - **Worlds** — group books under one shared canon container, with an auto-provisioned world bible
@@ -301,7 +303,7 @@ The complete design lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| **Phase 1** | Platform Core — writing, translation, glossary, sharing | ✅ Done |
+| **Phase 1** | Platform Core — writing, translation, glossary, sharing | 🔄 In Progress |
 | **Phase 2** | Knowledge Graph & RAG — automatic extraction, semantic search | ✅ Done |
 | **Phase 3** | Intelligence Layer — canon co-writing, lore enrichment, translation quality | 🔄 In Progress |
 | **Phase 4** | Continuation & Canon Safety — the Writing Studio, PlanForge, canon rules, Auto-Draft Factory | 🔄 In Progress |
