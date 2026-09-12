@@ -1488,24 +1488,37 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **22 of 23 rows have landed (T12 completed after the fact — the earlier deferral was on
-effort, not a decision, and effort is not a reason to leave a row open); T22 and T23(a) are STOPPED for the PO (README claims), and
-T3/T12/T16/T20 are open with written reasons in their rows.** Nothing further can be ticked without
-a product decision — see T22's table. **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3's premise is false:
-`book` is already hot on studio and `book_chapter_save_draft` is allowlisted against budget
-truncation, so T3 as written has no work. The real finding is that the model had the tool on the
-wire and still claimed it could not write — a prompting/model-capability problem the codebase
-already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). T18 is DONE. T19 is DONE. T20 is PARTIAL and stays OPEN (create-notice done; rename cascade needs a PO decision). T21 is DONE (C9 complete). Next is T22 and T23 — the release gate. Four rows open: T3, T12, T16, T20. Four rows open: T3, T12, T16, T20. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
-pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
-product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
-own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
-`node_modules` was absent and is now installed (`npm install`, no lockfile in repo); vitest runs
-from `frontend/`. The four PO decisions D1-D4 are
-sealed (see "PO decisions taken at CLARIFY"): the release bar is the README claims audit, all phases
-run through, T3 hot-seeds the `book` domain, T7 adds an internal book-service endpoint. Recon has
-already corrected the report three times (C1/C2/C3) — trust the plan's cited line numbers over the
-report's prose, and re-verify a line number before building on it.
+RESUME: **18 of 23 rows DONE with bite evidence. 5 remain, and every one of them needs a PO
+decision — no further row can be ticked by engineering alone.**
+
+DONE: T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T17, T18, T19, T21.
+
+OPEN, each with the decision it needs (full reasoning in the row):
+- **T3** — D3's premise was FALSE. `book` is already hot on studio and `book_chapter_save_draft`
+  is allowlisted outside the token budget, proven by executing `surface_hot_domains`. The tool was
+  on the wire and the model still said it had no access, so this is model-capability/prompting, not
+  gating. Needs a new decision: re-aim, reproduce-and-measure, or drop.
+- **T16** — the re-ask on a short generation is a second PAID generation.
+  `D-DRAFT-OUTPUT-NO-POST-CONDITION` already reserves that exact choice for the author
+  ("detect-and-surface vs detect-and-reject vs strip"). Observability was added; the spend call is
+  not mine.
+- **T20** — the create half is DONE. The rename cascade needs a choice between (a) a new
+  `book.updated` event + cascade, which overwrites a user-chosen project name, and (b) making
+  projects findable by their bound book — `list_projects` already accepts `book_id`, so (b) is
+  mostly frontend. I recommend (b).
+- **T22** — the release gate. Four claims MOVED (conformance is now true and bitten; the critic is
+  partly true; AI-assist is now reachable; steering truncation is now visible via T12). Three
+  cannot be made true by code in this plan and need REMOVING or SOFTENING, which the stop list
+  reserves for the PO. Options recorded per claim in the row.
+- **T23(a)** — renaming "Auto-Draft Factory" is the same softening decision as T22. The code half
+  (Studio reachability + visible wizard preconditions) is DONE.
+
+Suite state at hand-off: chat-service **3960 passed** (2 pre-existing failures in
+`test_a_turn_that_called_nothing_may_not_claim_an_effect.py`, confirmed pre-existing by stashing);
+composition-service **4189 passed**; frontend studio **1524**, composition **1083**, plan-hub
+**257**, steering **21**, campaigns+frame **99**. `tsc` and eslint clean throughout. One
+pre-existing frontend flake (`RawDrawersTab`, full-suite ordering) and one transient membrane
+ordering artifact, both confirmed not caused by this branch.
 
 ```goal-prompt
 goal: every task on the board is done with pasted evidence, and every README claim in the plan's claims audit is either true of the build with a check that can fail, or reconciled with the roadmap's own In-Progress marking
