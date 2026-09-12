@@ -1049,9 +1049,28 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: ERROR with the full rejection chain.
   Tests: a capped-out compile produces a failure-shaped turn end, never a success-shaped one.
 
-  **EVIDENCE (T15).** Delivered inside T14's escalated refusal — see that row. The repeat message
-  explicitly forbids reporting the task as done and requires telling the user what was missing,
-  which is the honesty guard this row asks for, applied at the point the model is actually reading.
+  **EVIDENCE (T15).** Delivered inside T14's escalated refusal: the repeat message forbids reporting
+  the task as done and requires telling the user what was missing, which is this row's honesty guard
+  applied where the model is actually reading.
+
+  **Re-bitten so this row stands on its own.** Pointing at a neighbour's evidence is how T2 sat
+  unticked for eleven commits, and it also leaves a real question unanswered — whether T15 is
+  guarded independently or only incidentally by T14's escalation. So the bite removes ONLY the
+  honesty clause and leaves the STOP escalation intact:
+
+  ```
+  # RED — honesty clause deleted, escalation untouched
+  FAILED tests/test_a_repeated_refusal_stops_asking_for_a_retry.py::TestTheMessageEscalates::test_the_repeat_refusal_forbids_claiming_success
+  1 failed, 12 passed
+  ```
+
+  Exactly one test reddens and it is this row's, so the guard is independent rather than a
+  side-effect of T14 — which a whole-message bite could not have told apart.
+
+  ```
+  # RESTORED byte-exact (git diff clean)
+  13 passed
+  ```
 
 ### Phase 5 — Prose quality
 
