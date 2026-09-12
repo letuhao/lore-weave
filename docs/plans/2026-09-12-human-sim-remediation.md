@@ -1,0 +1,547 @@
+# Implementation Plan: Writing Studio remediation — the human-sim findings
+
+Branch: `feature/human-sim-remediation` (based on `release/v0.1.0`)
+Created: 2026-09-12
+
+## Original Request
+
+ok help me make new plan to improve them
+
+## Settings
+- Testing: yes
+- Logging: verbose
+- Docs: yes  # mandatory documentation checkpoint at completion
+
+## Source
+
+This plan remediates [`2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md`](2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md)
+(26 findings, go/no-go) and its run log [`2026-09-06-human-sim-van-tuong-quy-nhat.md`](2026-09-06-human-sim-van-tuong-quy-nhat.md).
+The report's verdict was: conditional GO for the outline/structure system and the Workflow-style
+review pattern; **NO-GO for the in-manuscript AI-authoring pitch as currently wired.**
+
+## Size
+
+`./scripts/workflow-gate.sh size XL 35 11 4 12` → **XL** (files=35, logic=11, side_effects=4).
+No phases may be skipped. The gate's own budget guidance applies: **commit at RISK boundaries
+(contract, migration, cross-service seam), not at file-count thresholds** — the Commit Plan below
+is structured that way rather than "every 3-5 tasks."
+
+---
+
+## ⚠ Three findings in the delivered report are WRONG — read before planning any task
+
+Codebase reconnaissance contradicted the report on three points. Each correction makes the fix
+**cheaper and more specific**, and each one changes what the corresponding task must do. The
+report is a delivered artifact that informed a go/no-go, so correcting it is Task 1, not a footnote.
+
+### C1 — "No in-Editor AI-write path exists" is false. Three paths exist; all three are gated, and none of the gates is visible.
+
+The report's F-A claimed the capability was absent. It is present, three times over:
+
+1. **`book_chapter_save_draft`** — a real Tier-A MCP tool that writes prose directly into
+   `chapter_drafts.body`, which is *the Manuscript editor's canonical document*
+   (`services/book-service/internal/api/mcp_tools_write.go:778-877`; registered at
+   `mcp_server.go:342-355`). It is advertised in the co-writer skills
+   (`services/chat-service/app/services/book_skill.py:102`,
+   `composition_skill.py:57`) and present in `tool_surface.py:103`.
+   **But it is deliberately LAZY on the editor/studio surface** — reachable only through a
+   `find_tools`/`tool_load` round-trip. The design note states this outright
+   (`services/chat-service/app/services/tool_discovery.py:341-347`): *"The editor's extra
+   capability (prose write-back) is the `propose_edit` FRONTEND tool … NOT a backend domain — so
+   composition / book tools stay lazy there too."*
+2. **`propose_edit`** — the frontend tool that IS the intended editor write-back
+   (`services/ai-gateway/src/mcp/propose-edit-tool.ts:27`). Tier R, client-applied, and it
+   requires the editor open with a live cursor/selection (`insert_at_cursor` / `replace_selection`).
+3. **"✦ Continue from cursor"** — a real handler, not a stub
+   (`frontend/src/features/composition/components/InlineAiLayer.tsx:79-87`).
+
+So the run's observed *"I have no direct access to the Manuscript editor"* was very likely **true
+from the model's own context**: `book_*` was not hot, and `propose_edit` needs a live selection.
+Meanwhile Continue was disabled by `canContinue`
+(`frontend/src/features/composition/hooks/useInlineGhost.ts:40`):
+
+```ts
+const canContinue = !!editor && !!opts.projectId && !!opts.sceneId && !!opts.modelRef;
+```
+
+`modelRef` resolves only from a persisted `settings.default_model_ref` on the Work **or** from the
+user having *exactly one* active chat model (`EditorPanel.tsx:272-275`). With several models
+registered and no persisted default it is null forever. The reason is in a `title` tooltip on a
+`disabled` button (`InlineAiLayer.tsx:48-52`) — the one place a user cannot hover-discover it.
+
+**Consequence for the plan:** this is a *reachability and disclosure* defect, not a missing
+feature. Phase 1 un-gates and discloses; it does not build a new write path.
+
+### C2 — Conformance's "Realized" never consults `written_*`.
+
+The report's F-B attributed "Realized: Not written yet" to the null `written_scene_id`. It is
+actually a **completely separate** signal. `services/composition-service/app/routers/conformance.py:288-291`:
+
+```python
+realized: dict[str, Any] = {
+    "job_id":    latest["job_id"] if latest else None,
+    "has_prose": bool(latest["has_text"]) if latest else False,
+}
+```
+
+`latest` comes from `latest_completed_by_nodes` (`conformance.py:191-229`), which requires a
+**completed `generation_job`** for that scene whose `result.text` is non-empty.
+
+So there are **two** dead signals, not one, and the human path produces neither:
+
+| Signal | Only populated by | Read by |
+|---|---|---|
+| `written_scene_id` / `written_at` (`app/db/models.py:266-268`) | book-service parse/import writes `scenes.source_scene_id` → `chapter.scenes_linked` event → `written_verdict.py:56-73` reconcile | Plan Hub "written" badge (`routers/outline.py:335`) |
+| `realized.has_prose` | a completed per-scene `generation_job` with non-empty `result.text` | Conformance panel |
+
+Neither is reachable from "chat draft → human pastes → save draft."
+
+**Consequence for the plan:** a fix needs a **third, manuscript-derived** signal. The ingredients
+already exist — `BookClient.get_draft` (used at `routers/plan.py:391`), `tiptap_doc_to_text`
+(`app/engine/prose_doc.py:125+`), and server-side heading→scene matching `_attach_scene_ids`
+(`app/engine/prose_doc.py:58-78`). Only the per-scene segmentation helper is missing.
+
+### C3 — `no_tracked_promises` is conflated with LLM failure, so it is a correctness bug, not a copy problem.
+
+The report filed this as a LOW-MEDIUM "unhelpful error message." In fact
+`extract_tracked_promises` returns `[]` on **any** extract failure, including the truncated /
+unusable-content path (`app/engine/promise_audit.py:290-310`, `:276-287`). Downstream that becomes
+`error="no_tracked_promises"` (`app/engine/quality_report.py:255-262`). So one code means either
+*"the spec genuinely declares no promises"* or *"the extraction call failed"* — indistinguishable
+to every caller.
+
+That is the same silent-failure-reported-as-a-clean-empty-result shape as the Phase-3 audit bundle,
+and it belongs with them in severity.
+
+**Also corrected:** the error string already reaches the browser. The UI throws it away —
+`frontend/src/features/composition/components/BookPromiseCoverageSection.tsx:50-54` branches on
+`c.error` and renders a fixed string. The UI half is a few lines.
+
+### One more thing recon found that the run never saw
+
+**The scene decompiler computes the back-link mappings and NO caller ever writes them back.**
+
+Both `materialize-scenes` routes — the Hub CTA (`app/routers/outline.py:1004-1025`) and the
+internal import tail (`:975-1001`) — are behaviourally identical: each calls `materialize_scenes(...)`
+and returns `result.to_dict()`, which includes `mappings[]`. The write-back was designed to be the
+**caller's** job, and `app/engine/scene_decompile.py:284` says so in as many words:
+
+> `# so a retry after a failed write-back returns the SAME mappings.`
+
+But grep finds **no consumer of `mappings` anywhere** outside the engine and its tests. The frontend
+caller (`frontend/src/features/plan-hub/hooks/useExtractPlan.ts`) reads only `work_resolved` and
+discards `res.mappings` entirely. So the idempotent-retry design exists for a write-back that was
+never built on either path.
+
+Since `scenes.source_scene_id` is the sole trigger for the whole `written_*` chain, adding that
+write-back is the missing human-driven path — small change, disproportionate payoff (Task 7).
+**Note this is a caller-side gap, not a route-side one** — do not "fix" the routes.
+
+---
+
+## Standards that govern this work
+
+Cite these at the enforcement site and in the proving test — do not restate them in new prose.
+
+| Area | Standard |
+|---|---|
+| The new/changed MCP surface | [MCP Tool I/O](../standards/mcp-tool-io.md) — **IN-4** bounds-in-schema, **IN-6** self-correcting errors, **IN-8** 4-source drift, **OUT-4** success/error discrimination, **OUT-5** never silently truncate |
+| Agent → GUI writes | [09 Agent GUI Reconciliation](../specs/2026-07-01-writing-studio/09_agent_gui_reconciliation.md) — locked G1-G6, the **G7 DIRTY-HOIST GUARD** (open design hole), Lane B/C |
+| Studio panels | [Dockable Panel Standard](../standards/dockable-gui.md) — DOCK-1..11 |
+| Every test in this plan | [Non-Vacuity](../standards/non-vacuity.md) — **NV-6**: break the guarded thing, watch it go red, restore it, paste the output. *"I added a test" is not evidence.* |
+| Any language-dependent path | [Multilingual](../standards/multilingual.md) — relevant to Task 6's hardcoded `language: 'en'` |
+| Any new toggle/threshold | [Settings & Configuration Boundary](../standards/settings-and-config.md) — SET-1..8 |
+
+**Logging (applies to EVERY task below).** Verbose was selected. At each changed decision point log
+inputs, the branch taken, and the reason — `[Service.method] message {data}`, DEBUG for flow, INFO
+for a state change a user could observe, WARN/ERROR for a degraded or failed path. The recurring
+defect class in this whole plan is *a path that fails or no-ops without saying so*, so **every
+`return` that silently does nothing gets a log line naming which precondition was unmet.**
+
+---
+
+## Commit Plan — checkpoints at RISK boundaries
+
+- **C1** (Task 1) — `docs: correct three factual errors in the human-sim report`. Docs only, no risk.
+- **C2** (Task 4) — `fix(studio): close the G7 dirty-hoist guard`. **Data-loss boundary.** Must land BEFORE the agent write path is made prominent by C3.
+- **C3** (Tasks 2, 3, 5, 6) — `feat(studio): make the existing AI-write paths reachable and their gates visible`. Cross-service seam (chat-service tool surface + frontend).
+- **C4** (Tasks 7, 8) — `feat(composition): recognise human-authored prose as realized`. Contract change (conformance response) + a new write-back.
+- **C5** (Tasks 9, 10) — `fix(composition): un-conflate no_tracked_promises from extraction failure`. Contract + UI.
+- **C6** (Tasks 11, 12, 13) — `fix: close the silent-write/exploding-read class`. Schema/contract boundary across services.
+- **C7** (Tasks 14, 15) — `fix(planforge): bounded compile recovery and an honest turn end`.
+- **C8** (Tasks 16, 17) — `feat(composition): prose length floor and a critic pass`.
+- **C9** (Tasks 18-21) — `fix(studio): title precedence, cache invalidation, and discoverability`.
+
+---
+
+## Tasks
+
+### Phase 0 — Correct the delivered report
+
+- [ ] **Task 1 — Correct C1/C2/C3 in the report and the FEEDBACK LOG.**
+  The report informed a go/no-go; leaving three wrong mechanisms in it means the next reader plans
+  against fiction. Rewrite report §2 F-A (the write path exists but is lazy/gated — cite
+  `tool_discovery.py:341-347` and `useInlineGhost.ts:40`), F-B (two separate dead signals, neither
+  is the `written_*` mechanism claimed — cite `conformance.py:288-291`), and F-L (promise coverage
+  is a conflated silent failure, not a copy problem — cite `promise_audit.py:290-310`).
+  Add the "Extract the plan discards its mappings" discovery. Update FEEDBACK LOG #19, #24, #26 in
+  the run log to match, and add a short "corrected 2026-09-12 by codebase recon" note under each
+  rather than silently editing — the correction trail is the point.
+  **Do NOT restate the verdict as unchanged:** re-derive it. The NO-GO rested on F-A/F-B; with the
+  corrected mechanism the verdict likely becomes *"the capability ships but is unreachable and
+  undisclosed,"* which is a different and far more fixable claim.
+  Files: `docs/plans/2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md`,
+  `docs/plans/2026-09-06-human-sim-van-tuong-quy-nhat.md`.
+  Logging: n/a (docs only).
+
+### Phase 1 — Make the existing write paths reachable (the release-gate work)
+
+- [ ] **Task 2 — Make "Continue from cursor" state its own reason, and give `modelRef` a resolution path.**
+  Today a user with 0 or ≥2 chat models and no persisted `settings.default_model_ref` sees a
+  permanently disabled button whose explanation lives only in a `title` tooltip on a disabled
+  element. Render the `disabledHint` as visible text (or an inline affordance that opens the
+  co-writer model setting), and make the unmet precondition specific — "no default model" and "no
+  scene selected" are different problems with different fixes.
+  Per SET-1..8 a default-model choice is a **user setting**, not a silent fallback: do not invent an
+  implicit "just pick the first model" behavior; make choosing it one click from here.
+  Files: `frontend/src/features/composition/components/InlineAiLayer.tsx` (48-52, 79-87),
+  `frontend/src/features/composition/hooks/useInlineGhost.ts:40`,
+  `frontend/src/features/studio/panels/EditorPanel.tsx` (267-280, 562-574).
+  Logging: DEBUG each precondition of `canContinue` with its resolved value, so a support question
+  is answerable from one log line instead of four.
+  Tests: a render test per unmet precondition asserting the specific reason is *visible* (not in
+  `title`). NV-6: delete the reason text, watch each go red, restore, paste output.
+
+- [ ] **Task 3 — Decide and implement `book_chapter_save_draft` reachability on the studio surface.**
+  The current laziness is deliberate and has a real justification (context budget), so this is a
+  *decision* task, not a mechanical one. Pick ONE and record why in the code comment beside it:
+  (a) add `book` to the studio surface's hot domains, or (b) keep it lazy and make the injected
+  studio skill name the `find_tools` hop explicitly for "write this into the manuscript" intents.
+  Option (b) is cheaper and more likely correct, because the measured failure was the model
+  *asserting* it lacked a capability rather than searching for it.
+  Whichever is chosen, honor `HOT_SEED_TOKEN_BUDGET`. `surface_hot_domains`
+  (`tool_discovery.py:369+`) derives hot domains from injected skills' `SkillDef.hot_domains`, so
+  the change belongs in the skill declaration, not a hand-authored constant — that hand-authored
+  shape already caused one miss ("plan_forge shipped, 'plan' wasn't added to any of them").
+  Files: `services/chat-service/app/services/tool_discovery.py` (328-400),
+  `services/chat-service/app/services/composition_skill.py:57`,
+  `services/chat-service/app/services/book_skill.py` (65, 102-118).
+  Logging: INFO the resolved hot-domain set + total seeded token cost per surface at turn start —
+  the context-explosion investigation had to be reconstructed for want of exactly this line.
+  Tests: extend `tests/test_tool_surface.py`; assert the budget ceiling still holds. NV-6 applies —
+  a budget assertion that cannot exceed its ceiling is the NV-2 "subject cannot vary" shape, so
+  prove it by feeding an oversized candidate set.
+
+- [ ] **Task 4 — Close the G7 DIRTY-HOIST GUARD. (Own commit; data-loss boundary.)**
+  Spec 09 flags this as an open design hole to close *before* Lane B build: an agent MCP-save that
+  triggers `manuscript.reload(chapterId)` while the user is typing in that chapter **clobbers their
+  unsaved keystrokes**. S7 covers only tab-close dirty; the 409 FSM covers only the user's own save.
+  This must land before Task 3 makes agent writes more likely, or the plan ships a data-loss bug in
+  the course of fixing a usability one.
+  Rule from the spec: a reconciler handler that reloads a hoist MUST check `hoist.dirty` first; if
+  dirty, surface a conflict (reload-or-keep, same family as the save-conflict FSM) or no-op with a
+  toast — never a blind reload. The reconciler owns the *signal*; the hoist owns the *dirty decision*.
+  Files: `frontend/src/features/studio/manuscript/unit/ManuscriptUnitProvider.tsx` (415-418 and the
+  reload path), plus the effect-reconciler seam — confirm at BUILD whether
+  `StudioEffectReconciler`/`effectRegistry` exists yet or whether this guard lands in the reload
+  entry point itself.
+  Logging: WARN whenever a reload is refused because the hoist was dirty, with chapter id and the
+  dirty-since timestamp. This is the line that proves the guard fired in the wild.
+  Tests: dirty hoist + incoming reload ⇒ no content loss. NV-6: remove the dirty check, watch the
+  test go red with an actual lost keystroke, restore, paste output.
+
+- [ ] **Task 5 — Make the "✦ Suggest scenes" toolbar button reach the affordance it advertises.**
+  It is a signpost that only fires a toast — by design (`EditorPanel.tsx:356-368`, 452-462). The
+  real generator lives in the selection bubble menu (`SelectionToolbar.tsx:273-281`), which appears
+  only on a non-empty selection under `SCENE_PLAN_MAX_CHARS`. A button that looks like the feature
+  and is actually a pointer to it is a discoverability defect regardless of intent.
+  Either act on the current selection directly, or make the toast an actionable affordance rather
+  than prose instructions. Do not leave a third state where it looks enabled and does nothing.
+  Files: `frontend/src/features/studio/panels/EditorPanel.tsx` (356-368, 452-462),
+  `frontend/src/features/composition/components/SelectionToolbar.tsx` (175-180, 273-281).
+  Logging: DEBUG which branch was taken and why (no selection / too long / dispatched).
+  Tests: assert the no-selection branch produces a reachable path, not a dead toast.
+
+- [ ] **Task 6 — Replace the ✨ narration-attach silent no-ops, raw `alert()`, and hardcoded language.**
+  Three separate silent `return`s and one raw `alert()`
+  (`frontend/src/components/editor/AudioAttachActionsExtension.ts`): `:215-217` returns when
+  `currentPos < 0` or the upload context is unset; `:219-234` fires
+  `alert('Select a TTS model in Reader > TTS Settings first.')`; `:239` returns on empty text. There
+  is no pending/spinner/result UI at all, and errors reach only `console.error` (`:263`, `:266`).
+  Give each branch a visible, localized reason (a toast, consistent with the rest of the app — a raw
+  `alert()` is the same family as deferred item 161's `window.prompt` finding). **Also fix
+  `language: 'en'` hardcoded at `:248`** — the run's book is Vietnamese; per the multilingual
+  standard this must come from the content/display language, not a literal.
+  Files: `frontend/src/components/editor/AudioAttachActionsExtension.ts` (214-292),
+  `frontend/src/features/studio/panels/EditorPanel.tsx` (183-196).
+  Logging: WARN on each unmet precondition, naming the specific missing value.
+  Tests: one per branch asserting a visible reason; one asserting the language is not literal `'en'`.
+
+### Phase 2 — Make the quality signals see human-authored prose
+
+- [ ] **Task 7 — Consume the decompiler's `mappings[]` and write `source_scene_id` back.**
+  **This is a caller-side gap — do not change the routes.** Both `materialize-scenes` routes already
+  return `mappings[]` identically; no caller anywhere consumes them, even though
+  `scene_decompile.py:284` documents an intended, idempotent-on-retry write-back. The frontend
+  caller reads only `work_resolved` and drops `res.mappings`.
+  Since `scenes.source_scene_id` is the **sole** trigger for `chapter.scenes_linked` →
+  `written_verdict.py:56-73` reconcile, adding that write-back is the missing human-driven path into
+  the entire `written_*` chain.
+  **Decide where it belongs before building:** a browser-side loop issuing per-scene writes is the
+  wrong shape (N round-trips, partial-failure states, and it puts a data-integrity step in the least
+  reliable place). Prefer performing the write-back server-side inside the same request that
+  computes the mappings, so it is atomic with the extraction and the documented retry-idempotency
+  actually means something. Confirm at DESIGN which service owns the `scenes.source_scene_id` write
+  and whether composition may call it directly.
+  Respect `scene_decompile.py:263-290` — human-authored nodes are deliberately excluded
+  (`skipped_authored`); this task must not quietly overwrite an author's own structure. Surface a
+  count of what was linked vs skipped.
+  Files: `services/composition-service/app/engine/scene_decompile.py` (85-89, 246, 263-326),
+  `services/composition-service/app/routers/outline.py` (975-1001, 1004-1025 — read for context),
+  `frontend/src/features/plan-hub/hooks/useExtractPlan.ts` (the `res.mappings` drop),
+  plus the book-service scene-write path that owns `source_scene_id`.
+  Logging: INFO linked/skipped counts with reasons; WARN when a mapping is ambiguous and dropped.
+  Tests: extract → mappings persisted → `chapter.scenes_linked` emitted → `written_*` populated.
+  NV-6: assert against a chapter whose heading genuinely does not match a scene and confirm it is
+  NOT linked — a test that only proves the happy path is the NV-3 "scope never reaches it" shape.
+
+- [ ] **Task 8 — Add a manuscript-derived "realized" signal to conformance.**
+  Per C2 both existing signals are structurally unreachable from human authoring. Add a third:
+  fetch the chapter draft (`BookClient.get_draft`, already used at `routers/plan.py:391`), segment
+  the Tiptap body by `attrs.sceneId` (written by `_attach_scene_ids`,
+  `app/engine/prose_doc.py:58-78`) falling back to normalized heading-title match, and report
+  per-scene prose presence and word count.
+  **Keep the three signals distinguishable in the response** — do not collapse them into one
+  boolean. "A generation job wrote this" and "a human typed this" are different facts, and a
+  conformance panel that cannot tell them apart loses exactly the information the flywheel needs.
+  Files: `services/composition-service/app/routers/conformance.py` (191-229, 288-291, 334-421),
+  `services/composition-service/app/engine/prose_doc.py` (40-45, 58-78, 125+),
+  `frontend/src/features/composition/motif/components/ConformanceSceneRow.tsx` (66-68),
+  `frontend/src/i18n/locales/en/composition.json:854`.
+  Logging: DEBUG per scene — which signal matched, segment length, and why a scene was unmatched.
+  Tests: a chapter authored purely by the paste path reports realized. NV-6: empty the body, watch
+  it go red, restore, paste output. Per IN-8's 4-source discipline a response-shape change touches
+  the API model, the FE type, and a drift test — all three, or none.
+
+- [ ] **Task 9 — Un-conflate `no_tracked_promises` from extraction failure.**
+  `extract_tracked_promises` returns `[]` on genuine emptiness AND on any LLM failure, including the
+  truncated/unusable path (`promise_audit.py:276-287`, `:290-310`). Return a discriminated result so
+  `quality_report.py:255-262` can emit a distinct code (e.g. `promise_extraction_failed` vs
+  `no_tracked_promises`), and leave the sibling `coverage_unavailable` (`promise_audit.py:334`,
+  `quality_report.py:233`) meaning what it means today.
+  This is the same class as Phase 3's audit — a failure reported as a clean empty result — so treat
+  it with that severity, not as copy.
+  Files: `services/composition-service/app/engine/promise_audit.py` (276-287, 290-310, 321-322, 334),
+  `services/composition-service/app/engine/quality_report.py` (233, 255-262, 274-276).
+  Logging: ERROR on extraction failure with the provider-side reason; INFO on genuine emptiness.
+  These must be different levels — that is the entire point of the task.
+  Tests: a forced extract failure produces the failure code, not the empty code. NV-6: collapse the
+  two codes, watch it go red, restore, paste output.
+
+- [ ] **Task 10 — Render the coverage reason instead of discarding it.**
+  `BookPromiseCoverageSection.tsx:50-54` branches on `c.error` and renders a fixed string, dropping
+  the machine-readable code that is already on the wire (`api.ts:893-905` types it;
+  `useBookPromiseCoverage.ts:28` preserves it). Map the code through an i18n reason table with
+  `coverageNa` as fallback, and for `no_tracked_promises` link straight to the Promises panel — the
+  user's actual next step. Depends on Task 9 for the new codes.
+  Files: `frontend/src/features/composition/components/BookPromiseCoverageSection.tsx` (48-56),
+  `frontend/src/i18n/locales/en/composition.json:1648`,
+  `frontend/src/features/studio/panels/QualityCoveragePanel.tsx:40`.
+  Logging: DEBUG the raw code received whenever the fallback is used — an unmapped code should be
+  traceable, not invisible.
+  Tests: each known code renders its own reason; an unknown code renders the fallback AND logs.
+
+### Phase 3 — Close the silent-write / exploding-read class
+
+- [ ] **Task 11 — Cap-parity sweep: every response-model bound needs a matching write-side bound (IN-4).**
+  Finding #12's root cause was `goal` capped at 2000 on the *response* model while every write path
+  declared unbounded `str` — so an over-long write always succeeded and then 500'd every later read
+  of the whole book's arc list. That was point-fixed; the *shape* was not. Issue #224's own
+  follow-up names `title`/`summary` on the same Create/Patch schemas as carrying the identical
+  unguarded shape.
+  Enumerate every field where a response model declares a length bound and the corresponding write
+  schema (REST **and** the MCP tool-arg schemas) does not, then close each. Prefer a mechanical
+  check over a one-time sweep — a sweep is `default-uncovered` for any field added tomorrow, which
+  is precisely NV-3.
+  Files: `services/composition-service/app/db/models.py`, `app/routers/arc.py`,
+  `app/routers/outline.py`, `app/mcp/server.py`, plus the equivalent book-service schemas.
+  Logging: the new rejection must be a self-correcting one-liner per IN-6 — name the field, the
+  limit, and the actual length.
+  Tests: a write exceeding each bound gets 422, not a later 500. NV-6 per field family.
+
+- [ ] **Task 12 — Make truncation visible where it happens (OUT-5).**
+  Finding #10's fix raised `STEERING_TOKEN_CAP` 2000→8000 but explicitly deferred the real problem:
+  **truncation still has no UI-visible indicator**, so an author with a genuinely oversized bible
+  silently loses rules, discoverable only in server logs. OUT-5 already says never silently
+  truncate — report the cap. Surface the drop in the Steering panel (how many entries, how many
+  tokens, which ones) and in the chat turn that suffered it.
+  Files: `services/chat-service/app/services/steering.py`, the Steering panel under
+  `frontend/src/features/steering/`, and the turn-metadata path to the chat UI.
+  Logging: the drop is already logged; add the count to the turn's user-visible metadata, not just
+  stderr.
+  Tests: an oversized bible produces a visible indicator. NV-6: this run had to read server logs to
+  find it, so the test must fail if the indicator is removed while the log line stays.
+
+- [ ] **Task 13 — Stop save-on-blur from discarding a sibling field's unsaved text.**
+  Finding #13 is a data-loss shape, not friction: typing a 1686-char chapter Goal, then saving a
+  *different* field, reset the Goal textarea to its last-saved value (empty) — confirmed via API,
+  not just visually. It recurs for every node until fixed. Related to Task 4's dirty-state
+  reasoning; solve them consistently rather than inventing two mechanisms.
+  Files: the Chapter/Arc Inspector field components under `frontend/src/features/composition/` and
+  `frontend/src/features/plan-hub/` (confirm exact files at BUILD — the run observed this on the
+  Chapter Inspector Goal and the Arc Summary field).
+  Logging: WARN when a re-render would replace a dirty field's value with a server value.
+  Tests: edit A, save B, assert A survives. NV-6: revert the guard, watch it go red, restore.
+
+### Phase 4 — PlanForge compile self-recovery
+
+- [ ] **Task 14 — Bounded compile retry that looks up the real `arc_id`.**
+  Finding #11: two Tier-A approvals and ~10 minutes produced zero arcs. The backend's rejections are
+  *good* — placeholder-id rejection, and an `arc_id != run_id` loop-guard that names the confusion
+  explicitly — but the model never adapts across three clearly-worded refusals, and on the third
+  attempt announced it would send the same bad placeholder again.
+  Add bounded recovery: on either named rejection shape, call `composition_arc_list` /
+  `composition_package_tree` for a real id before retrying, capped at 2 attempts. Note the existing
+  precedent and its hazard — `FindToolsAttemptTracker` exists precisely because an unbounded retry
+  invitation once produced 40 `find_tools` iterations and a 0-length final answer. Cap it from the
+  start.
+  Files: `services/chat-service/app/services/stream_service.py` (the tool-loop retry seam),
+  `services/chat-service/app/services/tool_discovery.py` (`FindToolsAttemptTracker` as the pattern),
+  and the `plan` group description in `GROUP_DIRECTORY` (`tool_discovery.py:100-113`).
+  Logging: INFO each recovery attempt with the rejection reason that triggered it and the id looked
+  up; WARN at the cap.
+  Tests: the two rejection shapes each drive exactly one lookup-then-retry, and stop at the cap.
+
+- [ ] **Task 15 — End a failed compile honestly.**
+  The run's turn reported partial success ("Did plan_propose_spec") rather than "compile failed, and
+  here is why" — so the author believed a plan existed when nothing durable had been created. Once
+  Task 14's cap is hit, the turn must state the failure and the last rejection reason.
+  This is the same honesty guard the codebase already gets right elsewhere (*"I did not make any
+  changes to your story or the plan. I only started an asynchronous job…"*) — extend that behavior,
+  do not invent a new mechanism.
+  Files: `services/chat-service/app/services/stream_service.py` (turn-end summary path).
+  Logging: ERROR with the full rejection chain.
+  Tests: a capped-out compile produces a failure-shaped turn end, never a success-shaped one.
+
+### Phase 5 — Prose quality
+
+- [ ] **Task 16 — Close the reproducible prose-length under-delivery.**
+  Finding #20, three independent measurements, all short: an initial ask landed at ~25-40% of the
+  requested length; an explicit expand-and-enrich follow-up still landed short; a batched
+  multi-scene ask landed ~15% under a modest 400-600-word target. It only partially self-corrects
+  when told explicitly.
+  Implement a measured floor rather than a prompt plea: request proportionally more than the target,
+  measure the returned length, and re-ask once when under. Per SET-1..8, if a target length becomes
+  user-visible it is a **setting** with a declared default — not a magic constant and not a silent
+  fallback.
+  Files: the scene/chapter generation prompt assembly in `services/composition-service/app/engine/`
+  and/or the co-writer skill prose in `services/chat-service/app/services/`.
+  Logging: INFO requested vs delivered word count for every generation — this finding took three
+  hand-measurements to establish and should have been one query.
+  Tests: a short return triggers exactly one re-ask, and the ratio is asserted, not eyeballed.
+
+- [ ] **Task 17 — A critic pass for the one defect prompting could not fix.**
+  Report §3: three of four recurring prose defects closed reliably via the review-and-revise loop.
+  <!-- doc-language-gate: ok -- the Vietnamese construction IS the subject matter: it is the literal
+       pattern this task's detector must match, so paraphrasing it into English would destroy the
+       specification. Scoped to the two quoted fragments below. -->
+  The fourth — the `"không phải X, mà là Y"` antithesis plus `"sự X"` abstract-noun stacking — did
+  **not**, across two independent, increasingly specific attempts; the second reproduced the exact
+  flagged construction *inside brand-new content written to remove it*. That is strong evidence it
+  is not addressable by instructing the writer model.
+  <!-- doc-language-gate: end -->
+  Route it instead through a **post-generation** critic (a Critic panel already exists in the
+  quality group), with a detector for the construction and a targeted rewrite. Follow the
+  [AI-Task Standard](../specs/2026-07-03-ai-task-standard.md) for a single-shot generate feature and
+  the provider-gateway invariant — no direct provider SDK, no hardcoded model name.
+  **Scope honestly:** the detector is language-specific. Per the multilingual standard do not
+  hardcode a Vietnamese pattern into a language-agnostic path; make the rule set language-scoped and
+  declare which languages are covered.
+  Files: the Critic path under `services/composition-service/app/engine/`, its panel under
+  `frontend/src/features/studio/panels/`.
+  Logging: INFO detections with position and the rewrite applied; before/after must be
+  reconstructable from logs.
+  Tests: fixture prose with the construction is detected; prose without it is not. NV-7 applies —
+  a detector that fires on everything tells you nothing, so assert the negative case explicitly.
+
+### Phase 6 — Remaining UX
+
+- [ ] **Task 18 — One chapter-title precedence, used by all three quality panels.**
+  The Conformance picker renders `c.title || c.original_filename || #sort_order`
+  (`QualityConformancePanel.tsx:52-56`) instead of the sidebar's `chapterDisplayTitle()`
+  (`frontend/src/features/studio/manuscript/partsTree.ts:26-30`), which deliberately never falls
+  back to a storage filename. The observed "Untitled chapter" is a server-side placeholder arriving
+  via `original_filename`. **The same defect is copy-pasted in two sibling panels** —
+  `QualityCriticPanel.tsx:54-58` and `QualityHealPanel.tsx:110-114`. Route all three through the one
+  helper; per SDK-First, two users of a rule means shared, not copied.
+  Files: the three panels above + `partsTree.ts`.
+  Logging: DEBUG when a fallback tier is used, and which field won.
+  Tests: a chapter with a placeholder `original_filename` and empty `title` renders the localized
+  "Chapter N", not the filename — in all three panels.
+
+- [ ] **Task 19 — Fix the two stale-widget cache invalidations.**
+  Both have exact causes:
+  (a) `frontend/src/features/studio/manuscript/useChapterDoor.ts:33-35` invalidates only
+  `['plan-hub','simple-chapters',bookId]`, missing the advanced canvas keys (`arcs`, `overlay`,
+  `scene-links`, the node windows) and `['plan-hub','book-chapters',bookId]` — so a new chapter is
+  invisible until reload. Fix: broaden to the `['plan-hub']` prefix, which four sibling hooks
+  (`usePlanChildCreate.ts:61`, `usePlanMoves.ts:171`, `usePlanNodeWrites.ts:51`,
+  `useExtractPlan.ts:51`) already do.
+  (b) `SceneRail.tsx` never invalidates `['composition','publish-gate',projectId,chapterId]`, so the
+  "N of N scenes not yet done" counter (`usePublishGate.ts:96-98`) is stale after a status write —
+  as are `canonBlocked` and `uncheckedWarning` from the same query.
+  Files: `frontend/src/features/studio/manuscript/useChapterDoor.ts` (33-35),
+  `frontend/src/features/studio/manuscript/SceneRail.tsx` (55-66, 131-136, 204),
+  `frontend/src/features/composition/hooks/usePublishGate.ts` (18-22).
+  Logging: DEBUG the invalidated key set after each mutation.
+  Tests: mutate through the widget's own adjacent control, assert the widget reflects it with no
+  reload. NV-6: remove each invalidation, watch its test go red, restore.
+
+- [ ] **Task 20 — Cascade the book rename to its Knowledge Project, and stop the silent create no-op.**
+  Findings #6 and #7 compound into a ~20-minute dead end: the auto-created Knowledge Project keeps
+  the book's title *as of creation*, Projects search is by-name only, so searching the book's
+  current title finds nothing and reads exactly like "no project exists" — and the natural recovery
+  (`POST /v1/knowledge/projects` for a book that already has one) returns `200 OK` and silently
+  no-ops, discarding everything typed with no error toast. AGENTS.md's own Agent Extensibility
+  Standard names that anti-pattern explicitly.
+  Two fixes: cascade the rename, and make create return a real conflict (or update) rather than a
+  lying success.
+  Files: `services/knowledge-service/` project routes + the book-rename path in `services/book-service/`.
+  Logging: INFO the cascade; WARN the conflict branch with the existing project id.
+  Tests: rename cascades; create-when-exists no longer returns bare success. NV-6 on both.
+
+- [ ] **Task 21 — Signpost the real AI-planning path, and settle the Motif Library naming.**
+  (a) Finding #9: three plausible entry points are dead ends for "AI, plan my first arc" on a blank
+  book — "Create a plan with AI" (decomposes *existing* prose), "Organise into storylines" (a manual
+  textbox), "Suggest arcs" (matches a template *library*). The real capability sits behind attaching
+  the PlanForge skill to Co-writer Chat, referenced from none of them. Add a pointer from each.
+  (b) Finding #23: "Motif Library" is a plot-shape template picker for the planner, not a tracker of
+  a story's own recurring imagery. Rename it (e.g. "Plot Shapes") **or** state in the empty state
+  what it is not. Do not build a thematic-motif tracker here — that is a feature and it is out of
+  scope. Note the binding data is genuinely load-bearing (conformance and the prompt packer both
+  read `motif_application`), so this is naming only, never removal.
+  Files: the three plan entry points under `frontend/src/features/plan-hub/` and
+  `frontend/src/features/composition/`, the motif panel under
+  `frontend/src/features/composition/motif/`, and the relevant i18n locale files.
+  Logging: n/a (copy/navigation only) — except DEBUG when a new pointer is shown.
+  Tests: each dead end exposes a reachable pointer to the working path.
+
+---
+
+## Explicitly out of scope
+
+- **Building a thematic-motif tracker.** Finding #23 establishes the gap; filling it is a feature,
+  not remediation. Task 21 settles naming only.
+- **Rebuilding the Lane B `StudioEffectReconciler`** beyond what Task 4's guard requires. Spec 09's
+  full build is "Debt #5 — deferred until #03 Compose shell" and is its own effort.
+- **The antithesis detector for languages beyond the one Task 17 declares.** Scoped, not silently
+  universal.
+- **Re-running the full 5-arc human-sim.** A re-run is the natural VERIFY for this plan, but it is
+  an hours-long exercise and belongs in its own session once Phases 1-2 land.
+
+## Open question for the PO at the CLARIFY checkpoint
+
+**Does the corrected C1 change the release decision?** The NO-GO rested on "no in-Editor AI-write
+path exists." The true statement is "three paths exist; each is gated, and no gate is visible."
+Phase 1 is roughly a day of work rather than a feature build — so the go/no-go may flip on Phase 1
+alone, well before Phases 3-6. Worth deciding whether this branch ships in v0.1.0 or after it.
