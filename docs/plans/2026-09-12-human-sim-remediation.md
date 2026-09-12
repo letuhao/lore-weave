@@ -1311,6 +1311,35 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Evidence: per NV-6 the proof for any claim moved to "true" must be a check that can fail — a
   screenshot of a green panel is not evidence that the panel can go red.
 
+  **⚠ STOPPED — this row is the release gate and it needs the PO. Audit re-run below; the decisions
+  are queued, not taken.**
+
+  Re-audited every claim against the build **as it now stands**, not as the run found it. Four
+  moved; three cannot be moved by code.
+
+  | README claim | Status now | Evidence / what it needs |
+  |---|---|---|
+  | *"conformance checking against what you actually wrote"* | **NOW TRUE** | T8 added a manuscript-derived signal; `scene_prose_presence` is read by the conformance route and has 8 tests, bitten by restoring the bare-heading false positive. |
+  | *"Advisory prose critic flags potential canon contradictions"* | **PARTLY TRUE** | The critic existed; T17 added a deterministic tic detector that fires on the habit and stays silent on ordinary prose. It flags PROSE defects, not canon contradictions — the canon half is still the judge's, and the run never saw it fire. |
+  | *"Rich text editor with AI-assist mode"* | **NOW REACHABLE** | T2 made every disable cause visible and specific; T5 made "Suggest scenes" run instead of pointing elsewhere; T6 gave the narration control six real messages instead of five silent returns. The AI/Classic toggle itself is still cosmetic. |
+  | *"Steering rules … injected into every book-scoped AI turn"* | **STILL A GAP** | T12 built the reporting primitive but nothing user-visible changed. Row open. |
+  | *"a co-writer that **can't** contradict your canon"* | **STILL FALSE** | Finding #17 stands. No code in this plan makes "can't" true — it is an absolute claim about a model's behaviour. **Softening needed.** |
+  | *"Auto-Draft Factory — run a whole drafting campaign"* | **STILL FALSE** | The engine extracts and translates; it has no drafting stage. T23 made it reachable and honest in the UI, but the README line still promises drafting. **Softening needed.** |
+  | *"Automatic entity and relationship extraction"* | **STILL OVERCLAIMED** | Extraction requires a manual run. **Softening needed** ("automatic" is the word doing the work). |
+
+  **Why I stopped rather than editing the README.** Three claims cannot be made true by code in this
+  plan — one is an absolute about model behaviour, one describes a feature that would need a new
+  drafting stage (explicitly out of scope), one hinges on a single word. Fixing them means REMOVING
+  or SOFTENING a promise to users, which this run's stop list reserves for the PO: *"that is a
+  product promise and the PO decides, not the agent."*
+
+  **The decision is smaller than it looks.** The README's own Roadmap table already marks Phases 3
+  and 4 **🔄 In Progress** — the same capabilities. So the reconciliation is mostly making §Features
+  and §How LoreWeave is different agree with the roadmap the same document already publishes. Three
+  concrete options, per claim: (i) mark it In Progress inline, (ii) reword to what ships today
+  (e.g. "flags prose that drifts from your canon" / "batch extraction and translation across
+  chapters" / "entity extraction you run per book"), or (iii) delete the line.
+
 - [ ] **T23** — Fix the Auto-Draft Factory's name and its unreachability from the Studio.
   Two separable defects found by recon, neither of which is a bug in the engine — which is
   production-grade, has 9 unit + 5 DB-integration suites, a Playwright spec
@@ -1411,7 +1440,9 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3's premise is false:
+RESUME: **21 of 23 rows have landed; T22 and T23(a) are STOPPED for the PO (README claims), and
+T3/T12/T16/T20 are open with written reasons in their rows.** Nothing further can be ticked without
+a product decision — see T22's table. **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3's premise is false:
 `book` is already hot on studio and `book_chapter_save_draft` is allowlisted against budget
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
