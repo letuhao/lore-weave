@@ -276,7 +276,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 1 — Make the existing write paths reachable (the release-gate work)
 
-- [ ] **T4** — Close the G7 DIRTY-HOIST GUARD. (Own commit; data-loss boundary.)
+- [x] **T4** — Close the G7 DIRTY-HOIST GUARD. (Own commit; data-loss boundary.)
   Spec 09 flags this as an open design hole to close *before* Lane B build: an agent MCP-save that
   triggers `manuscript.reload(chapterId)` while the user is typing in that chapter **clobbers their
   unsaved keystrokes**. S7 covers only tab-close dirty; the 409 FSM covers only the user's own save.
@@ -293,6 +293,43 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   dirty-since timestamp. This is the line that proves the guard fired in the wild.
   Tests: dirty hoist + incoming reload ⇒ no content loss. NV-6: remove the dirty check, watch the
   test go red with an actual lost keystroke, restore, paste output.
+
+  **EVIDENCE (T4) — the plan's premise was half wrong; rule 6 caught it.** The guard is **already
+  built**: `ManuscriptUnitApi.isChapterDirty` exists (`ManuscriptUnitProvider.tsx:85`), `reload`
+  documents the caller's obligation (`:407-410`), and `bookEffects.ts:49` honoured it with
+  `if (ctx.isChapterDirty?.(chapterId)) return;`, covered by tests. So no keystroke was ever at
+  risk, and the spec's "design hole" had been closed.
+
+  **What was actually missing is G7's second half.** Spec 09 allows the dirty branch to be
+  *"no-op **+ toast** 'agent changed this chapter — reload?'"* — the no-op shipped, the toast did
+  not. So an agent write onto the chapter the user was editing vanished **silently**: the agent
+  believed it wrote, the editor kept showing older content, and nothing said the two had diverged.
+  That is this plan's own recurring defect class, and T3 is about to make agent writes far more
+  frequent. Implemented a debounced `toast.warning` naming what happened, with a
+  "Discard mine & reload" action wired to `reloadChapter` — the keystrokes still win, but the user
+  is told and given the choice.
+
+  BITE — reverted the branch to the bare `return` it shipped as:
+
+  ```
+  # RED (guard reverted to the silent no-op)
+    × G7: TELLS the user when a dirty hoist blocked the reload, and offers the reload as their choice
+      → expected "spy" to be called once, but got 0 times
+    × G7 notice is debounced — one agent turn firing the handler repeatedly is one warning, not three
+      → expected "spy" to be called once, but got 0 times
+   Tests  2 failed | 16 passed (18)
+  # RESTORED byte-exact (diff clean)
+   Tests  18 passed (18)
+  ```
+
+  The other 16 stayed green under the bite, so the new tests are pinning the new behaviour and not
+  duplicating existing coverage. A third test asserts the notice does **not** fire on the clean path
+  (NV-7 — a warning that always fires means nothing). Regression: `tsc --noEmit` clean, eslint clean
+  on both files, and the whole studio suite **163 files / 1515 tests passed**.
+
+  Note for T3: `Date.now()` drives the debounce, so the test pins the clock — left real, the first
+  test's toast would have suppressed the second's, and the suite would have gone green for the wrong
+  reason.
 - [ ] **T2** — Make "Continue from cursor" state its own reason, and give `modelRef` a resolution path.
   Today a user with 0 or ≥2 chat models and no persisted `settings.default_model_ref` sees a
   permanently disabled button whose explanation lives only in a `title` tooltip on a disabled
@@ -698,9 +735,13 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **Nothing implemented yet.** Start at the head of the queue and follow board order — it is
-already correct, including T4 (the G7 dirty-hoist guard) sitting deliberately ahead of T2/T3 because
-the guard must exist before agent writes get easier to trigger. Then Phases 2-7 in board order. The four PO decisions D1-D4 are
+RESUME: **T1 and T4 are done and committed.** Next is T2 (disclose why "Continue from cursor" is
+disabled), then T3 (hot-seed `book`), T5, T6, then Phases 2-7 in board order. Two rows in, the
+pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
+product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
+own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
+`node_modules` was absent and is now installed (`npm install`, no lockfile in repo); vitest runs
+from `frontend/`. The four PO decisions D1-D4 are
 sealed (see "PO decisions taken at CLARIFY"): the release bar is the README claims audit, all phases
 run through, T3 hot-seeds the `book` domain, T7 adds an internal book-service endpoint. Recon has
 already corrected the report three times (C1/C2/C3) — trust the plan's cited line numbers over the
