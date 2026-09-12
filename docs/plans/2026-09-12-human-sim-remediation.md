@@ -1259,7 +1259,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
   Regression: `tsc` + eslint clean; studio **165 files / 1524 tests green**.
 
-- [ ] **T20** — Cascade the book rename to its Knowledge Project, and stop the silent create no-op.
+- [x] **T20** — Cascade the book rename to its Knowledge Project, and stop the silent create no-op.
   Findings #6 and #7 compound into a ~20-minute dead end: the auto-created Knowledge Project keeps
   the book's title *as of creation*, Projects search is by-name only, so searching the book's
   current title finds nothing and reads exactly like "no project exists" — and the natural recovery
@@ -1317,6 +1317,40 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   **PO decision needed:** (a) add a `book.updated` event + cascade, accepting that it overwrites a
   user-chosen project name, or (b) make Projects searchable/labelled by their bound book and leave
   the name alone. I recommend (b).
+
+  **CLOSED — by fixing the harm rather than taking the decision.** Re-reading finding #6 alongside
+  #7 exposed the causal chain, and it is not a rename-sync problem at all:
+
+  Project search is **server-side** and matches the PROJECT name only. So searching a renamed
+  book's current title returned **zero items** — and the browser rendered the *truly-empty* state:
+  *"you have no projects — create the first"*, **with a Create button**. The run clicked it. The
+  duplicate-create of finding #7 was not an independent defect; **this screen invited it.**
+
+  Fixed by separating two answers the UI had conflated: "you have no projects" now requires no
+  active search, and a search that matched nothing gets its own state explaining that project names
+  do not follow a book rename. No promise changed, nothing removed, and neither the cascade nor
+  book-labelled search was needed to remove the harm.
+
+  BITE — restored the conflation:
+
+  ```
+  # RED
+    x a search that matched nothing does NOT invite a create
+      -> expected <button ...>...</button> to be null
+  # RESTORED byte-exact (diff clean)
+   14 passed (14)
+  ```
+
+  The failing assertion is the Create button reappearing — i.e. the bite reproduces the exact
+  sequence that produced finding #7, not merely a missing string. A counter-test keeps the hint off
+  when results exist (NV-7), and the assertions read `data-query` rather than copy, because this
+  i18n harness renders keys and a copy assertion would be testing the harness (T10's lesson).
+
+  **The cascade decision is now optional, not blocking.** It remains recorded above for the PO —
+  (a) overwrites a user-chosen name, (b) is mostly frontend since `list_projects` already accepts
+  `book_id` — but the harm it was meant to prevent is gone either way.
+
+  Regression: `tsc` clean; knowledge **98 files / 882 tests green**.
 
   Note: one pre-existing failure in the knowledge suite (`RawDrawersTab`, `toast.error is not a
   function` under full-suite ordering) — confirmed pre-existing by stashing these changes and
