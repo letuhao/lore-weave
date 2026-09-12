@@ -41,13 +41,38 @@ All six phases run straight through (PO decision), and the run ends with a claim
 | *"Automatic entity and relationship extraction from chapters"* | §Worldbuilding & Lore | Required a manual "Build knowledge graph" run; the studio otherwise said *"No knowledge graph yet."* The word doing the overclaiming is **automatic**. | **OVERCLAIMED** |
 | *"Rich text editor with AI-assist mode and Classic mode"* | §Writing & Editing | The AI/Classic toggle is cosmetic — `InlineAiLayer.tsx:42-46` writes `localStorage` and fires an event; **nothing in the Continue path reads `mode`**. | **OVERCLAIMED** |
 | *"PlanForge — plan a novel's structure from your premise"* | §The Writing Studio | Finding #11 — compile never completed across three attempts and two Tier-A approvals; zero arcs produced. | **NOT DELIVERED** |
-| *"Auto-Draft Factory — run a whole drafting campaign across chapters"* | §AI Co-Writing | **Never discovered by the tester** during the entire run. Under investigation — see Task 22a. | **UNKNOWN** |
+| *"Auto-Draft Factory — run a whole drafting campaign across chapters"* | §AI Co-Writing | **The engine is real, production-grade, tested, and has a verified live run** — but it does not draft. Its only stages are `knowledge`, `translation`, `eval` (`campaign-service/app/migrate.py:19`); the driver's entire dispatch surface is `dispatch_extraction` + `dispatch_job` (`app/saga/driver.py:129-216`); campaign-service's book-service client is **GET-only** (`app/clients/book_client.py`). Output lands in `chapter_translations.translated_body` (`translation-service/app/workers/chapter_worker.py:464-477`), and the product's own completion CTA points at `/books/:id/translation`. Its wizard placeholder reads *"e.g. Translate Book 1 → Vietnamese."* | **MISNAMED + OVERCLAIMED** — a translation batch engine wearing a drafting name |
 | *"Steering rules … injected into every book-scoped AI turn"* | §The Writing Studio | Finding #10 — silently truncated to ~3 of 8 rules. Fixed this run (#223); still has no UI indicator when it truncates. | **DELIVERED, with a gap** (Task 12) |
 | *"A workspace that holds your whole novel at once"* (dockable, pop-out, `⌘P`) | §How LoreWeave is different | Worked throughout the run. The strongest part of the product. | **DELIVERED** |
 
-Two of these are flatly false today and three more are reachable-but-undisclosed. That is the gap
-between the README and the build, and closing it — in either direction — is what "really usable
-like readme marketing" means.
+Two of these are flatly false today and four more are reachable-but-undisclosed or misnamed. That
+is the gap between the README and the build, and closing it — in either direction — is what "really
+usable like readme marketing" means.
+
+### The README is not uniformly overclaiming — the tension is internal
+
+Worth stating precisely, because it changes the fix. The README's **Roadmap table already marks the
+relevant phases honestly**:
+
+| Phase 3 | Intelligence Layer — canon co-writing, lore enrichment, translation quality | 🔄 In Progress |
+| Phase 4 | Continuation & Canon Safety — the Writing Studio, PlanForge, canon rules, Auto-Draft Factory | 🔄 In Progress |
+
+But **§Features** and **§How LoreWeave is different** state those same capabilities as unqualified
+present-tense fact — *"a co-writer that **can't** contradict your canon"*, *"conformance checking
+against what you actually wrote"*, *"advisory prose critic **flags**…"*. A reader who reaches the
+roadmap has been told twice already that these ship today.
+
+So the reconciliation is not "rewrite the README to be pessimistic." It is: **make the prose match
+the roadmap the same document already publishes**, and make true the handful of claims that are
+cheap to make true. That is a far smaller and more honest change than it first appears.
+
+**The Auto-Draft Factory finding stands on its own as two defects, neither of which is "it's
+broken":** (a) the name and the README line describe drafting, the engine does extraction +
+translation — a naming/claim defect; (b) the single link lives in a Sidebar the Writing Studio does
+not render (`App.tsx:124` puts Studio outside `EditorLayout`; a grep for `campaign` across
+`features/studio/**` returns zero hits), so a user inside the Studio cannot reach it at all.
+Task 23 covers both. **It does NOT refute the NO-GO** — the tester was right that no path writes AI
+prose into the manuscript.
 
 ## Size
 
@@ -201,6 +226,8 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 - **C7** (Tasks 14, 15) — `fix(planforge): bounded compile recovery and an honest turn end`.
 - **C8** (Tasks 16, 17) — `feat(composition): prose length floor and a critic pass`.
 - **C9** (Tasks 18-21) — `fix(studio): title precedence, cache invalidation, and discoverability`.
+- **C10** (Task 23) — `fix(campaigns): name the factory for what it does, reach it from the Studio`.
+- **C11** (Task 22) — `docs(readme): reconcile the claims with the build`. **The release gate.** Runs last because it grades everything before it.
 
 ---
 
@@ -568,6 +595,53 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: n/a (copy/navigation only) — except DEBUG when a new pointer is shown.
   Tests: each dead end exposes a reachable pointer to the working path.
 
+### Phase 7 — Reconcile the build with the README (the release gate)
+
+- [ ] **Task 22 — Re-run the claims audit against the built code and reconcile the README.**
+  This is the release gate per D1, and it runs LAST because it grades everything before it. For each
+  row of the claims audit above, decide and execute one of: **(i)** the claim is now true — record
+  the evidence that proves it (a test, a live-smoke, a screenshot), **(ii)** the claim is true but
+  conditional — keep it and state the condition inline, or **(iii)** the claim is not true and will
+  not be in this cycle — move it behind the same 🔄 In Progress marking the roadmap table already
+  uses, or delete it.
+  **Prefer (i) where it is cheap.** After Phases 1-6 the critic claim and the conformance claim both
+  become defensible, which is most of the falsified set.
+  **Do not quietly soften a claim without saying so** in the commit — a README edit that removes a
+  promise is a product decision and should read like one.
+  Files: `README.md` (§How LoreWeave is different, §Features, §Screenshots "AI Assistant Mode",
+  the Roadmap table), plus this plan's audit table updated with the final disposition.
+  Logging: n/a (docs).
+  Evidence: per NV-6 the proof for any claim moved to "true" must be a check that can fail — a
+  screenshot of a green panel is not evidence that the panel can go red.
+
+- [ ] **Task 23 — Fix the Auto-Draft Factory's name and its unreachability from the Studio.**
+  Two separable defects found by recon, neither of which is a bug in the engine — which is
+  production-grade, has 9 unit + 5 DB-integration suites, a Playwright spec
+  (`frontend/tests/e2e/specs/campaign-factory.spec.ts`), and a verified live run
+  (`docs/plans/2026-09-06-v0.1.0-go-live.md:320-333`).
+  **(a) Naming.** "Auto-Draft Factory" and the README's *"run a whole drafting campaign across
+  chapters"* describe prose drafting. The engine extracts knowledge and translates existing
+  chapters; its own wizard placeholder says *"e.g. Translate Book 1 → Vietnamese"* and its
+  completion CTA routes to the translation tab. Rename to what it does (the UI already calls it
+  "Campaigns" in the sidebar — `common.json:11`), and fix the README line. **Do not rename the
+  service or its tables** — that is churn with no user benefit; this is user-facing naming only.
+  **(b) Reachability.** `App.tsx:202-205` routes `/campaigns`, and
+  `components/layout/Sidebar.tsx:66` holds the only link — but the Studio sits outside
+  `EditorLayout` (`App.tsx:124`) and never renders that Sidebar, so a user working in the Studio
+  cannot see or reach it. Add a Studio-side entry point for a book already in context.
+  **Also surface its hard preconditions** rather than letting them 400: a campaign requires a
+  knowledge project (`campaigns.py:143-146`), KG-indexed published chapters in range
+  (`campaigns.py:110-113`), `MANAGE` grant (`:154`), and both translator+extractor model roles
+  (`useCampaignWizard.ts:92-94`). A user missing any of these currently meets an error, not an
+  explanation — the same disclosure defect as Task 2.
+  Files: `frontend/src/components/layout/Sidebar.tsx:66`,
+  `frontend/src/i18n/locales/en/common.json:11`,
+  `frontend/src/i18n/locales/en/campaigns.json`, the Studio entry point under
+  `frontend/src/features/studio/`, `README.md`.
+  Logging: DEBUG which precondition blocked wizard advancement, per Task 2's pattern.
+  Tests: each precondition renders a specific, actionable reason; the Studio exposes a reachable
+  entry point. NV-6 on the precondition messages.
+
 ---
 
 ## Explicitly out of scope
@@ -580,6 +654,11 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   universal.
 - **Re-running the full 5-arc human-sim.** A re-run is the natural VERIFY for this plan, but it is
   an hours-long exercise and belongs in its own session once Phases 1-2 land.
+- **Renaming campaign-service, its tables, or its routes.** Task 23 fixes user-facing naming only.
+  The engine is production-grade and verified; renaming its internals is churn with no user benefit.
+- **Building prose drafting into the campaign engine.** That would be a genuine new feature (a
+  third stage beside `knowledge` and `translation`). It may well be the right long-term answer to
+  "the AI co-author," but it is not remediation and it is not in this plan.
 
 ## PO decisions taken at CLARIFY (2026-09-12) — settled, do not relitigate
 
