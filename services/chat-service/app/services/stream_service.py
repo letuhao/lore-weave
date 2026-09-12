@@ -7776,9 +7776,17 @@ async def _stream_with_tools(
                     _dup_required = set(_dup_params.get("required") or ())
                     _dup_optional = tuple(
                         pname for pname in (_dupe[0], _dupe[1]) if pname not in _dup_required)
-                    _dup_msg = _dup_message(*_dupe, optional=_dup_optional)
-                    logger.info("loop#5: refused %r — %s and %s are both %s",
-                                c["name"], _dupe[0], _dupe[1], _dupe[2])
+                    # T14/T15 — count the REPEAT so the refusal can escalate. The advice is
+                    # already good and models still ignore it: one session in the measured corpus
+                    # repeated this exact refusal 14 times, another 71, and a 2026-09-06 PlanForge
+                    # run burned two Tier-A approvals sending the same bad shape three times before
+                    # announcing a fourth. A refusal that says the same thing every time is, to a
+                    # model that has already failed to act on it, no signal at all.
+                    _dup_attempt = _REPEATED_REFUSALS.record(
+                        session_id, c["name"], _dupe[0], _dupe[1], _dupe[2])
+                    _dup_msg = _dup_message(*_dupe, optional=_dup_optional, attempt=_dup_attempt)
+                    logger.info("loop#5: refused %r — %s and %s are both %s (attempt %d)",
+                                c["name"], _dupe[0], _dupe[1], _dupe[2], _dup_attempt)
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content(
@@ -11409,6 +11417,14 @@ async def stream_response(
 #: Strong references to in-flight cancel-path writes. asyncio holds only a WEAK reference to a task
 #: created with create_task, so a write detached during cancellation can be garbage-collected
 #: mid-flight — losing exactly the turn the detach existed to save. Discarded on completion.
+#: T14/T15 — per-session repeat count for the duplicate-identifier refusal, so the SECOND identical
+#: refusal can stop asking for a retry and ask for an honest report instead. Module-level because
+#: the escalation must survive across turns in a session: the PlanForge run that motivated this sent
+#: its bad shape across THREE separate turns, each of which would have looked like a first attempt.
+from app.agentruntime.toolcontract import RepeatedRefusalTracker  # noqa: E402
+
+_REPEATED_REFUSALS = RepeatedRefusalTracker(now=_time.monotonic)
+
 _DETACHED_CANCEL_WRITES: set = set()
 
 

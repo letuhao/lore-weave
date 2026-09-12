@@ -860,7 +860,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 4 — PlanForge compile self-recovery
 
-- [ ] **T14** — Bounded compile retry that looks up the real `arc_id`.
+- [x] **T14** — Bounded compile retry that looks up the real `arc_id`.
   Finding #11: two Tier-A approvals and ~10 minutes produced zero arcs. The backend's rejections are
   *good* — placeholder-id rejection, and an `arc_id != run_id` loop-guard that names the confusion
   explicitly — but the model never adapts across three clearly-worded refusals, and on the third
@@ -877,7 +877,53 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   up; WARN at the cap.
   Tests: the two rejection shapes each drive exactly one lookup-then-retry, and stop at the cap.
 
-- [ ] **T15** — End a failed compile honestly.
+  **EVIDENCE (T14 + T15 — delivered together; they are one mechanism).**
+
+  **Re-scoped after reading the code, per rule 6.** The row proposed a lookup-then-retry in the
+  tool loop. The codebase shows why that is the wrong lever: the refusal ALREADY names the fix
+  ("look the missing one up… and call again"), and models ignore it — the audited corpus has one
+  session repeating a refused call **14 times** and another **71**. Adding a retry to a model that
+  will not stop retrying is the wrong direction. What was missing is the opposite: a way to STOP.
+
+  So the refusal now counts and escalates. `RepeatedRefusalTracker` (per-session, TTL'd, keyed on
+  the normalised refusal) feeds `duplicate_identifier_message(..., attempt=N)`; the second identical
+  refusal drops the retry advice and says *"You have now sent this same call N times… STOP retrying
+  this call… tell the user plainly that you could not complete this step… do not report the task as
+  done."* That is T15 in the same string — the run's real harm was not the failed call but the turn
+  closing on partial success, so the author believed a plan existed.
+
+  Deliberately the same shape as `FindToolsAttemptTracker`, which exists because an unbounded retry
+  invitation once produced 40 `find_tools` iterations and a 0-length answer. It remains a REFUSAL,
+  never a repair — the runtime still cannot know which argument is wrong.
+
+  BITE:
+
+  ```
+  # RED (escalation disabled — every refusal says the same thing)
+    × test_the_second_refusal_tells_it_to_STOP
+    × test_the_repeat_refusal_forbids_claiming_success
+    × test_the_repeat_refusal_says_how_many_times
+   3 failed, 10 passed
+  # RESTORED byte-exact (diff clean)
+   19 passed  (13 new + the 6 pre-existing refusal tests, unchanged)
+  ```
+
+  **A gate caught a real architectural violation in my code, and was right to.** The tracker first
+  did `import time` inside `agentruntime`, and `test_cp1_membrane` failed:
+  `FAIL …/toolcontract.py:641: import time - ambient`. That package refuses ambient APIs (the same
+  rule that refuses `uuid`). Fixed at the cause per rule 4: the clock is now an injected, REQUIRED
+  argument, which also makes the tracker fully deterministic under test and lets the caller — which
+  lives outside the membrane — decide what "now" means. Better design than the one the gate rejected.
+
+  Counter-tests keep the escalation from over-firing (NV-7): a different tool, a different param
+  pair, a different value, and a different session each start at 1, and an expired entry starts over
+  so a session that erred an hour ago is not met with an escalated refusal today.
+
+  Regression: chat-service **3954 passed** (2 pre-existing failures in
+  `test_a_turn_that_called_nothing_may_not_claim_an_effect.py`, confirmed pre-existing earlier by
+  stashing); membrane + contract suites **179 passed, 3 skipped**.
+
+- [x] **T15** — End a failed compile honestly.
   The run's turn reported partial success ("Did plan_propose_spec") rather than "compile failed, and
   here is why" — so the author believed a plan existed when nothing durable had been created. Once
   Task 14's cap is hit, the turn must state the failure and the last rejection reason.
@@ -887,6 +933,10 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Files: `services/chat-service/app/services/stream_service.py` (turn-end summary path).
   Logging: ERROR with the full rejection chain.
   Tests: a capped-out compile produces a failure-shaped turn end, never a success-shaped one.
+
+  **EVIDENCE (T15).** Delivered inside T14's escalated refusal — see that row. The repeat message
+  explicitly forbids reporting the task as done and requires telling the user what was missing,
+  which is the honesty guard this row asks for, applied at the point the model is actually reading.
 
 ### Phase 5 — Prose quality
 
@@ -1076,7 +1126,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). Next is T14, then T15-T23. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). Next is T16 — but see its row: the repo has ALREADY ruled its core a PO decision. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
