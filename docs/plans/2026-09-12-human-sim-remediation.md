@@ -1188,6 +1188,56 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: INFO the cascade; WARN the conflict branch with the existing project id.
   Tests: rename cascades; create-when-exists no longer returns bare success. NV-6 on both.
 
+  **⚠ PARTIAL — row stays OPEN. The create half is done; the rename cascade needs a design
+  decision I would argue against making as specified.**
+
+  **Correction to finding #7 (the fourth premise correction this run).** The create is NOT a
+  silent no-op bug. `POST /v1/knowledge/projects` is **deliberately idempotent** on the
+  book-binding path (`D-COMP-POST-WORK-RACE`): a repeat same-book create returns the existing
+  project with **200** instead of a duplicate with **201**, and the route documents that in its
+  OpenAPI responses. The backend is behaving as designed.
+
+  The real defect is one layer up: `apiJson` returns only the parsed body, so the frontend cannot
+  see 200-vs-201 and reported success either way — which is why the author's typed name and genre
+  vanished with no indication. **Fixed by reporting it**: the hook now compares what came back to
+  what was asked for and tells the author their input was not applied, naming the project that
+  already existed. Raised from `onSuccess` rather than by changing the return type — `tsc` showed
+  three call sites depend on `Promise<Project>`, and a notice was what the author needed, not a new
+  shape for every consumer to thread through. Refactoring the shared, self-recursive `apiJson` to
+  expose a status for one endpoint was considered and rejected as a bad trade.
+
+  BITE:
+
+  ```
+  # RED (notice removed -- silent success again)
+    x tells the author their input was not applied, and names what came back
+   1 failed | 2 passed (3)
+  # RESTORED byte-exact (diff clean)
+   3 passed (3)
+  ```
+
+  Two counter-tests (NV-7): no notice when the project really was created as asked, and none for
+  mere surrounding whitespace — a notice on every create would train the author to ignore it.
+
+  **The rename cascade is NOT built, and the row's framing should be revisited.** Two findings:
+  1. **There is no event to consume.** book-service emits `book.created` and
+     `book.lifecycle_changed` — no rename/update event exists at all. A cascade means adding a
+     cross-service event contract, which this repo treats carefully (see
+     `scenes_linked_parity_test.go` on emit discipline).
+  2. **Cascading may be the wrong fix.** A project's `name` is a user-editable field. Auto-renaming
+     it whenever the book is renamed would clobber a name the author deliberately chose. The harm
+     the run actually suffered was being unable to FIND the project — Projects search is by-name
+     only, and the `Project` model carries `book_id` but not the book's title. So the better fix is
+     probably to make projects findable by their book (search/display), not to denormalise the name.
+
+  **PO decision needed:** (a) add a `book.updated` event + cascade, accepting that it overwrites a
+  user-chosen project name, or (b) make Projects searchable/labelled by their bound book and leave
+  the name alone. I recommend (b).
+
+  Note: one pre-existing failure in the knowledge suite (`RawDrawersTab`, `toast.error is not a
+  function` under full-suite ordering) — confirmed pre-existing by stashing these changes and
+  re-running: **1 failed | 878 passed** without them, **1 failed | 879 passed** with them.
+
 - [ ] **T21** — Signpost the real AI-planning path, and settle the Motif Library naming.
   (a) Finding #9: three plausible entry points are dead ends for "AI, plan my first arc" on a blank
   book — "Create a plan with AI" (decomposes *existing* prose), "Organise into storylines" (a manual
@@ -1289,7 +1339,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). T18 is DONE. T19 is DONE. Next is T20, then T21-T23. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). T18 is DONE. T19 is DONE. T20 is PARTIAL and stays OPEN (create-notice done; rename cascade needs a PO decision). Next is T21, then T22-T23. Four rows open: T3, T12, T16, T20. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
