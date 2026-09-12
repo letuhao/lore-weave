@@ -1771,7 +1771,12 @@ decision record was actually read: see that row's sixth premise correction.
 
 **PO DECISION REQUEST — one question.**
 
-1. **T23(a) — what should the Auto-Draft Factory be called?** It does not draft. The engine extracts
+1. **T23(a) — what should the Auto-Draft Factory be called?** *(Premise re-verified, not assumed —
+   six premises in this plan turned out wrong, so this one was checked against the code before the
+   question was put. The saga driver dispatches knowledge EXTRACTION and TRANSLATION and nothing
+   else; a case-insensitive search of `services/campaign-service/app/` for "draft" returns only the
+   word "Draft" in three module docstrings naming the product. There is no drafting stage, so the
+   claim is false and softening it is unavoidable — which is precisely why it is the PO's call.)* It does not draft. The engine extracts
    knowledge and translates existing chapters; its own wizard placeholder says *"e.g. Translate Book
    1 → Vietnamese"*. The claim now carries a 🔄 Phase 4 marker, which says *not finished yet* and
    does NOT make an inaccurate description accurate. Recommended: *"batch extraction and translation
