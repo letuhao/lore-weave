@@ -993,7 +993,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   (b) reject and re-ask automatically — spending again, or (c) accept silently as today. Composition
   suite **4175 passed**.
 
-- [ ] **T17** — A critic pass for the one defect prompting could not fix.
+- [x] **T17** — A critic pass for the one defect prompting could not fix.
   Report §3: three of four recurring prose defects closed reliably via the review-and-revise loop.
   <!-- doc-language-gate: ok -- the Vietnamese construction IS the subject matter: it is the literal
        pattern this task's detector must match, so paraphrasing it into English would destroy the
@@ -1016,6 +1016,57 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   reconstructable from logs.
   Tests: fixture prose with the construction is detected; prose without it is not. NV-7 applies —
   a detector that fires on everything tells you nothing, so assert the negative case explicitly.
+
+  **EVIDENCE (T17).** New `app/engine/prose_tics.py` — a **deterministic, language-scoped** rate
+  detector, not a judge prompt. `critic.py`'s own header explains why that matters: its rubric
+  deliberately avoids English illustrative phrases because *"those bias a CJK/VN judge to English"*,
+  and a tic detector must quote the construction in the target language — precisely the input that
+  biases the judge. A regex has no such failure mode, costs nothing, and can be PROVEN to fire on
+  the habit and not on ordinary prose.
+
+  <!-- doc-language-gate: ok -- the two Vietnamese constructions are the detector's literal
+       subject; naming them in English would not identify what it matches. -->
+  **The hard part was not matching the words, it was not flagging the whole language.** `sự` is an
+  ordinary high-frequency Vietnamese word and `không phải … mà là` is a sentence careful authors
+  write deliberately.
+  <!-- doc-language-gate: end --> So the rules judge a RATE (occurrences per 1000 words) against a declared
+  threshold, which is the claim — and `COVERED_LANGUAGES` states that only `vi` has rules, so every
+  other language reports `analysed=False` **with a reason** rather than silently reporting clean
+  prose it never examined.
+
+  **My first threshold was wrong and a test caught it.** At 1.5/1000 a single deliberate antithesis
+  in a 440-word passage (2.3/1000) was flagged — punishing an author for one good sentence.
+  Recalibrated to 4.0, which is ~7 occurrences in a 1700-word chapter: the measured shape of the
+  run's dominant case, and far above deliberate use.
+
+  **A repo gate then caught a real design flaw.** `test_finding_locator_gate` requires every finding
+  class to project a `Locator`, and mine could not say WHERE the tic was — while the detector
+  already had every match position and was discarding them. Fixed at the cause per rule 4:
+  `TicFinding.first_span` + a `locator` property, so a reader can jump to the instance instead of
+  being handed a rate and told to go looking. That is the second repo gate this run to improve my
+  design (the first was the agentruntime membrane in T14).
+
+  BITE — made it report PRESENCE instead of rate, i.e. the vacuous version:
+
+  ```
+  # RED
+    × test_occasional_deliberate_use_is_NOT_flagged
+    × test_a_few_abstract_nouns_are_NOT_flagged
+   2 failed, 10 passed
+  # RESTORED byte-exact (diff clean)
+   23 passed  (13 tic tests + the 10-case locator gate)
+  ```
+
+  The bite failing on the NEGATIVE cases is the point: presence-detection still found every tic, so
+  only the "stays silent on ordinary prose" half could expose it.
+
+  **The rewrite half is deliberately NOT built.** A targeted LLM rewrite is a second paid generation,
+  the same reserved spend decision `D-DRAFT-OUTPUT-NO-POST-CONDITION` records for T16. Detection is
+  the part that needed building: the run's finding was that this defect is *invisible to prompting*,
+  and it is now measurable, locatable and falsifiable. What to DO on a detection — surface, block, or
+  auto-rewrite — is the same PO call.
+
+  Regression: composition-service **4189 tests passed**.
 
 ### Phase 6 — Remaining UX
 
@@ -1164,7 +1215,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). Next is T17, then T18-T23. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). Next is T18, then T19-T23. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
