@@ -330,7 +330,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Note for T3: `Date.now()` drives the debounce, so the test pins the clock — left real, the first
   test's toast would have suppressed the second's, and the suite would have gone green for the wrong
   reason.
-- [ ] **T2** — Make "Continue from cursor" state its own reason, and give `modelRef` a resolution path.
+- [x] **T2** — Make "Continue from cursor" state its own reason, and give `modelRef` a resolution path.
   Today a user with 0 or ≥2 chat models and no persisted `settings.default_model_ref` sees a
   permanently disabled button whose explanation lives only in a `title` tooltip on a disabled
   element. Render the `disabledHint` as visible text (or an inline affordance that opens the
@@ -345,6 +345,37 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   is answerable from one log line instead of four.
   Tests: a render test per unmet precondition asserting the specific reason is *visible* (not in
   `title`). NV-6: delete the reason text, watch each go red, restore, paste output.
+
+  **DONE** — shipped in `173635bd9`. The row went unticked for eleven commits because its evidence
+  was written into T3's block (which T2 unblocked) instead of its own, and the board is what a
+  fresh session reads. Re-verified here rather than trusted, so the tick rests on a check run
+  today.
+
+  Five disable causes now render a specific, visible reason as a sibling of the toolbar — no model,
+  no scene, editor loading, streaming, unresolved suggestion — instead of resolving only two of
+  them into a `title` a disabled button never surfaces. Deliberately does NOT auto-pick a model:
+  SET-1..8 make a default model a user SETTING, and a silent fallback is the shape that standard
+  forbids.
+
+  **BITE — suppress the visible block (`{false && disabledReason && (`):**
+
+  ```
+   Test Files  1 failed (1)
+        Tests  4 failed | 9 passed (13)
+  ```
+
+  The four that go red are the four reason assertions; the nine that stay green are the
+  pre-existing behaviour, so the bite is specific rather than a blanket break.
+
+  **Restored byte-exact (`git diff` empty), re-run:**
+
+  ```
+   Test Files  1 passed (1)
+        Tests  13 passed (13)
+  ```
+
+  A fifth test asserts that NO reason renders while Continue is usable, so the suite cannot pass by
+  rendering a reason unconditionally — the vacuity this row would otherwise invite.
 
 - [x] **T3** — Hot-seed the `book` domain on the studio surface. (PO decision, 2026-09-12.)
   **Decided: option (a), hot-seed.** The alternative — keep it lazy and signpost the `find_tools`
@@ -1613,15 +1644,21 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **19 of 23 rows DONE with bite evidence. 4 remain, and every one of them needs a PO
-decision — no further row can be ticked by engineering alone.**
+RESUME: **21 of 23 rows DONE with bite evidence. 2 remain — T16 and T23(a) — and both need a PO
+decision, not engineering.**
+
+T2 was DONE eleven commits ago and simply never ticked: its evidence went into T3's block rather
+than its own row. Re-bitten and re-verified today before ticking, so the board now matches the
+build.
 
 T22, the release gate, is now CLOSED by option (i): the two claims that cannot be made true by code
 carry the README's own roadmap marking inline, and `scripts/readme-claim-phase-gate.py` enforces it
 in both directions. Nothing was removed or reworded, so the softening decision was NOT taken on the
 PO's behalf — it is simply no longer blocking. T23(a) still holds it.
 
-DONE: T1, T2, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T17, T18, T19, T21, T22.
+DONE: T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T17, T18, T19,
+T20, T21, T22. T23's code half (reachability + preconditions) is also done; only its naming half
+remains.
 
 OPEN, each with the decision it needs (full reasoning in the row):
 - **T3** — D3's premise was FALSE. `book` is already hot on studio and `book_chapter_save_draft`
