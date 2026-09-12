@@ -955,6 +955,44 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   hand-measurements to establish and should have been one query.
   Tests: a short return triggers exactly one re-ask, and the ratio is asserted, not eyeballed.
 
+  **⚠ PARTIAL — row stays OPEN. The core is a PO decision the repo has ALREADY reserved, and I am
+  not taking it.**
+
+  **What the code already knows** (found by reading it, per rule 6 — the row's premise that this
+  is unimplemented is wrong):
+  - `MEASURED_SINGLE_CALL_CEILING_WORDS = 1500` — the measured point past which a single call
+    stops complying.
+  - The failure mode is characterised: the model **negotiates** rather than compresses
+    (*"I cannot produce a 4000-word text in a single response…"*), so the shortfall is worse than
+    the word counts suggest because the refusal text is itself counted.
+  - `draft_beats` already solves it, measured same book/model/day: 2500 in one call → ratio
+    **0.61**; in two beats → **0.95 / 1.23**. 4000 in one call → **0.24**; in three → **1.21 / 1.04**.
+  - `book_skill.py:81` already tells the model the 1,200-1,500 ceiling, to state it up front, to
+    offer the composition path, and **never** to promise a Part Two (measured: Part Two arrived
+    **0 times out of 4**).
+
+  So the run's ~25-40% delivery happened *with* that guidance present. This is a model-compliance
+  limit, not missing machinery — the same shape as T3.
+
+  **Why the row's proposed fix is not mine to make.** `SESSION_HANDOFF.md`'s
+  `D-DRAFT-OUTPUT-NO-POST-CONDITION` records the decision explicitly:
+
+  > *"Not fixed yet: detect-and-surface vs detect-and-reject vs strip is a product decision (it
+  > affects spend and UX on a paid generation), so it needs the author's call, not mine."*
+
+  A "re-ask once when under" is a second paid generation on the user's key. All three options in
+  that reserved decision are exactly what this row would pick between.
+
+  **Done, because it costs nothing and the row asks for it:** one INFO line per generation with
+  asked / delivered / ratio / beats / counting-method. The target and the delivered length were
+  both already computed here and never reached a log together, which is why establishing this
+  defect took a human three hand-measurements. `realised_words`' method is included because a
+  `split()` ratio against a spaceless-script target would read as a permanent ~85% shortfall.
+
+  **PO decision needed** to close this row: on a short generation, (a) surface it to the author,
+  (b) reject and re-ask automatically — spending again, or (c) accept silently as today. Composition
+  suite **4175 passed**.
+
 - [ ] **T17** — A critic pass for the one defect prompting could not fix.
   Report §3: three of four recurring prose defects closed reliably via the review-and-revise loop.
   <!-- doc-language-gate: ok -- the Vietnamese construction IS the subject matter: it is the literal
@@ -1126,7 +1164,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). Next is T16 — but see its row: the repo has ALREADY ruled its core a PO decision. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). Next is T17, then T18-T23. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
