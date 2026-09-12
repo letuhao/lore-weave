@@ -42,6 +42,50 @@ describe('BookPromiseCoverageSection', () => {
     expect((screen.getByTestId('coverage-run') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  // T10 — the job already carries a machine-readable reason; the panel used to branch on it and
+  // then render one fixed string for every cause. So "you have not declared any promises yet"
+  // (one click to fix) and "the extraction call failed" (not the user's to fix) read identically.
+  describe('T10 — the reason is rendered, not discarded', () => {
+    const withError = (error: string) =>
+      state.value = base({ coverage: { ...full, coverage: [], tracked_count: 0, error } });
+
+    it('tells an unconfigured user apart from a broken one', () => {
+      // The i18n test harness renders KEYS rather than defaultValue, so assert the property that
+      // actually matters and is harness-independent: the two causes must not produce the same
+      // output. Rendering one fixed string for every cause WAS the defect.
+      withError('no_tracked_promises');
+      const { unmount } = render_();
+      const unconfigured = screen.getByTestId('coverage-na');
+      expect(unconfigured.getAttribute('data-reason')).toBe('no_tracked_promises');
+      const unconfiguredText = unconfigured.textContent;
+      unmount();
+
+      withError('promise_extraction_failed');
+      render_();
+      const failed = screen.getByTestId('coverage-na');
+      expect(failed.getAttribute('data-reason')).toBe('promise_extraction_failed');
+      expect(failed.textContent).not.toBe(unconfiguredText);
+      // …and a genuine failure is styled as one, not as neutral "nothing here yet" grey.
+      expect(failed.className).toMatch(/amber/);
+    });
+
+    it('falls back for an unmapped code rather than rendering blank, and logs it', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      withError('some_future_code');
+      render_();
+      const el = screen.getByTestId('coverage-na');
+      expect(el.textContent?.trim().length).toBeGreaterThan(0);
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('renders no reason at all when coverage succeeded (NV-7)', () => {
+      state.value = base({ coverage: full });
+      render_();
+      expect(screen.queryByTestId('coverage-na')).toBeNull();
+    });
+  });
+
   it('renders count chips and calls out abandoned promises', () => {
     // NOTE: the global i18n mock returns KEYS (count values live in ignored defaultValue
     // interpolation) — assert the chip keys are present + the abandoned promise data.

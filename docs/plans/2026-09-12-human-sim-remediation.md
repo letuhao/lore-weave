@@ -618,7 +618,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
   Regression: composition-service **4162 tests passed**.
 
-- [ ] **T9** — Un-conflate `no_tracked_promises` from extraction failure.
+- [x] **T9** — Un-conflate `no_tracked_promises` from extraction failure.
   `extract_tracked_promises` returns `[]` on genuine emptiness AND on any LLM failure, including the
   truncated/unusable path (`promise_audit.py:276-287`, `:290-310`). Return a discriminated result so
   `quality_report.py:255-262` can emit a distinct code (e.g. `promise_extraction_failed` vs
@@ -633,7 +633,32 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: a forced extract failure produces the failure code, not the empty code. NV-6: collapse the
   two codes, watch it go red, restore, paste output.
 
-- [ ] **T10** — Render the coverage reason instead of discarding it.
+  **EVIDENCE (T9).** Added `extract_tracked_promises_ex()` returning `(promises, extraction_ok)`;
+  the old list-only `extract_tracked_promises` is kept as a wrapper for callers that genuinely
+  cannot act on the difference (the eval harness skips the book either way), so no contract broke.
+  Three previously-collapsed paths now report failure distinctly: LLM error, truncated/unusable
+  response, and unparseable content. `quality_report` emits `promise_extraction_failed` instead of
+  `no_tracked_promises` for all three.
+
+  **A pre-existing test was pinning the defect in place.**
+  `test_coverage_extract_degrade_yields_no_tracked_promises` asserted that a FAILED extraction
+  reports `no_tracked_promises` — the conflation itself, ratified by the suite. Rewritten to assert
+  the corrected contract while keeping the no-phantom guarantee it was really protecting. This is
+  the shape E2E CONVENTIONS warns about: *"an assertion nobody can justify is how a suite ends up
+  pinning a bug in place."*
+
+  BITE:
+
+  ```
+  # RED
+  E  AssertionError: assert 'no_tracked_promises' == 'promise_extraction_failed'
+  # RESTORED byte-exact (diff clean)
+  6 passed
+  ```
+
+  Regression: composition-service **4168 tests passed**.
+
+- [x] **T10** — Render the coverage reason instead of discarding it.
   `BookPromiseCoverageSection.tsx:50-54` branches on `c.error` and renders a fixed string, dropping
   the machine-readable code that is already on the wire (`api.ts:893-905` types it;
   `useBookPromiseCoverage.ts:28` preserves it). Map the code through an i18n reason table with
@@ -645,6 +670,30 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: DEBUG the raw code received whenever the fallback is used — an unmapped code should be
   traceable, not invisible.
   Tests: each known code renders its own reason; an unknown code renders the fallback AND logs.
+
+  **EVIDENCE (T10).** The panel branched on `c.error` and then discarded it, rendering one fixed
+  string for every cause — so "you have not declared any promises yet" (one click to fix) and "the
+  extraction call failed" (not the user's to fix) read identically. Now mapped through a reason
+  table, with `data-reason` on the element, an amber treatment for a genuine failure rather than
+  neutral "nothing here yet" grey, and a direct pointer to the Promises panel for the unconfigured
+  case. An unmapped code falls back to the original string **and** logs, so a future code is
+  traceable rather than invisible.
+
+  BITE — restored the single fixed string:
+
+  ```
+  # RED
+  E  AssertionError: expected 'coverageNa' not to be 'coverageNa'
+   Tests  2 failed | 6 passed (8)
+  # RESTORED byte-exact (diff clean)
+   Tests  8 passed (8)
+  ```
+
+  The test asserts the two causes render **differently from each other** rather than asserting
+  specific copy: the i18n harness renders keys, not `defaultValue`, so a copy assertion would have
+  been testing the harness. A fourth test asserts no reason renders at all on success (NV-7).
+
+  Regression: `tsc` + eslint clean; **1081 composition tests green**.
 
 ### Phase 3 — Close the silent-write / exploding-read class
 
@@ -906,7 +955,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). Next is T9, then T10-T23. Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). Next is T11 (Phase 3, the cap-parity sweep), then T12-T23. Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend

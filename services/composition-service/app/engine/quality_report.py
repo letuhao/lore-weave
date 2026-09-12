@@ -35,7 +35,7 @@ from app.engine.critic import judge_prose
 from app.engine.promise_audit import (
     _coverage_shape,
     audit_promises,
-    extract_tracked_promises,
+    extract_tracked_promises_ex,
     score_promise_coverage,
 )
 from app.packer.profile import BookProfile
@@ -253,10 +253,18 @@ async def build_promise_coverage(
     underlying `_chat` leaves) degrades to the empty-coverage shape. `CancelledError`
     (BaseException) still propagates, so a real cancel aborts."""
     try:
-        promises = await extract_tracked_promises(
+        promises, extraction_ok = await extract_tracked_promises_ex(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
             premise=premise, plan_text=plan_text, source_language=source_language,
             trace_id=trace_id, cancel_check=cancel_check)
+        if not extraction_ok:
+            # T9 — the extraction itself FAILED (LLM error, truncated response, unparseable
+            # content). This used to report `no_tracked_promises`, which reads as "your spec
+            # declares no promises" — so a broken feature and an unconfigured one were the same
+            # string to every caller including the UI. They are different problems with different
+            # fixes, and only one of them is the user's to act on.
+            logger.warning("promise extraction failed — reporting it as such, not as 'none tracked'")
+            return _coverage_shape([], [], error="promise_extraction_failed")
         if not promises:
             # no spec promises → the shape's no-tracked path (score handles [] the same way)
             return _coverage_shape([], [], error="no_tracked_promises")
