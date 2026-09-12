@@ -35,7 +35,6 @@ and which of those happens is the PO's call.
 """
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -64,11 +63,17 @@ def _phase_status(text: str, phase: str) -> str | None:
     return None
 
 
-def main() -> int:
-    text = README.read_text(encoding="utf-8")
+def check(text: str, claims: dict[str, str] | None = None) -> list[str]:
+    """Problems found in `text`. Pure, so `--self-test` can drive it on fixtures.
+
+    The first version read the README inside the checking loop, which left the rules testable
+    only by editing the real file — the `sed` bite this gate was born from silently failed twice
+    before anyone noticed it had not landed. A rule you can only exercise destructively is a rule
+    that gets exercised rarely.
+    """
     problems: list[str] = []
 
-    for claim, phase in CLAIMS.items():
+    for claim, phase in (claims if claims is not None else CLAIMS).items():
         status = _phase_status(text, phase)
         if status is None:
             problems.append(
@@ -104,6 +109,77 @@ def main() -> int:
                 f"  Remove it — labelling a shipped feature as unfinished is its own inaccuracy."
             )
 
+    return problems
+
+
+#: A minimal README shaped like the real one: one roadmap row, one claim line.
+_FIXTURE = """
+## Features
+
+- **Widget** — does the widget thing{marker}
+
+## Roadmap
+
+| Phase | Scope | Status |
+|---|---|---|
+| **Phase 9** | Widgets | {status} |
+"""
+
+_CLAIMS = {"does the widget thing": "Phase 9"}
+
+
+def self_test() -> int:
+    """Each case is a way this gate could stop biting, and each was a real risk.
+
+    Not a re-statement of the code: the two directions are the whole reason this gate is worth
+    having over a one-way check, and the "phase row deleted" and "claim reworded" cases are how a
+    gate quietly stops watching anything at all while still printing OK.
+    """
+    cases: list[tuple[str, str, bool]] = [
+        # (description, text, expect_a_problem)
+        ("in-progress claim WITHOUT a marker must FAIL",
+         _FIXTURE.format(marker="", status="🔄 In Progress"), True),
+        ("in-progress claim WITH a marker is fine",
+         _FIXTURE.format(marker=" &nbsp;🔄 *Phase 9*", status="🔄 In Progress"), False),
+        ("done claim that KEEPS its marker must FAIL (the stale direction)",
+         _FIXTURE.format(marker=" &nbsp;🔄 *Phase 9*", status="✅ Done"), True),
+        ("done claim without a marker is fine",
+         _FIXTURE.format(marker="", status="✅ Done"), False),
+        ("a claim whose phase row is GONE must FAIL, not pass quietly",
+         "- **Widget** — does the widget thing", True),
+        ("a claim that no longer appears must FAIL, not report coverage it lost",
+         _FIXTURE.format(marker="", status="🔄 In Progress").replace(
+             "does the widget thing", "does something else entirely"), True),
+    ]
+
+    failures = 0
+    for desc, text, expect in cases:
+        got = bool(check(text, _CLAIMS))
+        ok = got == expect
+        failures += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {desc}")
+
+    # And the real README's own claims must still be FOUND — a CLAIMS key that drifts out of the
+    # document turns this gate into a no-op that prints OK forever.
+    real = README.read_text(encoding="utf-8")
+    for claim in CLAIMS:
+        if claim not in real:
+            print(f"  FAIL CLAIMS key is not present in README.md: {claim!r}")
+            failures += 1
+        else:
+            print(f"  ok   CLAIMS key still present in README.md: {claim[:40]!r}...")
+
+    print(f"readme-claim-phase-gate --self-test: {'FAIL' if failures else 'OK'} "
+          f"({len(cases) + len(CLAIMS) - failures}/{len(cases) + len(CLAIMS)})")
+    return 1 if failures else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = argv if argv is not None else sys.argv[1:]
+    if "--self-test" in args:
+        return self_test()
+
+    problems = check(README.read_text(encoding="utf-8"))
     if problems:
         print("readme-claim-phase-gate: FAIL")
         for p in problems:

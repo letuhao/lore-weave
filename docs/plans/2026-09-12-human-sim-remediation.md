@@ -1531,7 +1531,37 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   EXIT=0
   ```
 
-  **Wiring: nothing to add, and that was checked rather than assumed.** The first instinct was to
+  **The gate now carries its own `--self-test`, because CI mutates gate RULES.**
+  `gates.yml` runs `gate-self-tests.py` (discovered by which scripts advertise the flag) and then
+  `gate-bite-harness.py`, which mutates each gate's production rules one at a time and requires the
+  self-test to go RED. A gate with no self-test is invisible to both — it would keep printing OK
+  while its rules rotted. Six fixture cases plus a check that every `CLAIMS` key is still present in
+  the real README, which is how this gate would otherwise become a no-op that watches nothing:
+
+  ```
+    ok   in-progress claim WITHOUT a marker must FAIL
+    ok   in-progress claim WITH a marker is fine
+    ok   done claim that KEEPS its marker must FAIL (the stale direction)
+    ok   done claim without a marker is fine
+    ok   a claim whose phase row is GONE must FAIL, not pass quietly
+    ok   a claim that no longer appears must FAIL, not report coverage it lost
+    ok   CLAIMS key still present in README.md: ... (x3)
+  readme-claim-phase-gate --self-test: OK (9/9)
+  ```
+
+  **And the self-test bites.** Mutating the stale-marker branch to be unreachable
+  (`elif False and not in_progress and marked:`) reddens exactly the case that guards it:
+
+  ```
+    FAIL done claim that KEEPS its marker must FAIL (the stale direction)
+  readme-claim-phase-gate --self-test: FAIL (8/9)
+  ```
+
+  Restored byte-exact, back to `OK (9/9)`. The checking logic was extracted into a pure `check(text)`
+  for this — the original read the README inside its own loop, so the only way to exercise a rule was
+  to edit the real file, and that `sed` bite silently failed twice before anyone noticed.
+
+    **Wiring: nothing to add, and that was checked rather than assumed.** The first instinct was to
   name the gate in `foundation-ci.yml`. That line was written, then removed: `gates.yml:163` runs
   `gate-wiring-gate.py --run-all`, which iterates the SAME filename predicate that discovers gates,
   so a `*-gate.py` runs in CI the day it lands and an enumerated list would be default-uncovered
