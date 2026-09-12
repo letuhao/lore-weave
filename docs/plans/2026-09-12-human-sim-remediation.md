@@ -1074,7 +1074,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 5 — Prose quality
 
-- [ ] **T16** — Close the reproducible prose-length under-delivery.
+- [x] **T16** — Close the reproducible prose-length under-delivery.
   Finding #20, three independent measurements, all short: an initial ask landed at ~25-40% of the
   requested length; an explicit expand-and-enrich follow-up still landed short; a batched
   multi-scene ask landed ~15% under a modest 400-600-word target. It only partially self-corrects
@@ -1127,7 +1127,53 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   (b) reject and re-ask automatically — spending again, or (c) accept silently as today. Composition
   suite **4175 passed**.
 
-  **Costed for whichever option is chosen, because the signal is ALREADY on the wire.** The engine
+  **SIXTH PREMISE CORRECTION — the decision record does not say what this row said it says.**
+  Per rule 6 I read `D-DRAFT-OUTPUT-NO-POST-CONDITION` instead of re-quoting it, and two things
+  were wrong. It is not in `SESSION_HANDOFF.md` as cited above; it is in
+  `docs/sessions/SESSION_ARCHIVE.md:1538`. And it is about a **different problem**: the engine
+  accepting NON-PROSE as prose — refusals, assistant meta-text, an echoed `<beat>` block — landing
+  in `result.text` and being counted as words. Its three reserved options, *detect-and-surface vs
+  detect-and-reject vs strip*, are three things to do with **that returned text**.
+
+  This row is about a genuine draft coming back SHORT. The two overlap on one of the record's two
+  clusters (an ask above the single-call ceiling produces a refusal), but they are not the same
+  decision, and **reporting a length is none of the three reserved options**: it does not strip the
+  text, does not reject it, and does not re-ask. So the block this row recorded was not real.
+
+  **DONE — the shortfall is now visible where the author decides.** `CandidatesView` is the
+  controlled-auto gate: K drafts side by side, pick / edit / regenerate / reject. It now states
+  asked-vs-delivered with the percentage, and — only when the engine knows the cause — that one
+  call was asked for more than one call reliably delivers, with the action that fixes it.
+
+  **BITE 1 — suppress the whole report:**
+
+  ```
+   × states what was asked for and what came back
+   × names the CAUSE when the engine knows it, so the author can act
+   × stays silent about the cause when the ask was within the ceiling
+   3 failed | 5 passed (8)
+  ```
+
+  The fourth new test stays GREEN under this bite by design — it asserts that nothing renders when
+  the response carries no target, which is exactly what a suppressed report does. That is what
+  makes it a vacuity guard rather than a fourth copy of the same assertion.
+
+  **BITE 2 — make the cause over-fire (`> 0` becomes `>= 0`):**
+
+  ```
+   × stays silent about the cause when the ask was within the ceiling
+   1 failed | 7 passed (8)
+  ```
+
+  An explanation that is always shown explains nothing, so the negative case has to be able to red
+  on its own. **Restored byte-exact, 8 passed.** `tsc` and eslint clean; composition frontend suite
+  **1087 passed** (1083 before, plus these 4).
+
+  **Deliberately NOT done, and this is the part that stays reserved:** no re-ask, no rejection, no
+  edit of the returned text. A re-ask is a second paid generation on the author's key, and what to
+  do with non-prose output is the decision the archive record actually reserves.
+
+  **Costed for whichever option is chosen, because the signal was ALREADY on the wire.** The engine
   computes `beats_over_ceiling` and both the router and the worker already put it in the response
   (`routers/engine.py:836,854`, `worker/operations.py:620`). Its own docstring states the intent —
   *"a scene that comes back at 60% of its target for this reason must be able to SAY so"*. Nothing
@@ -1135,11 +1181,10 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   today's behaviour is not a considered choice of (c); it is a published advisory that no screen
   renders.
 
-  That makes (a) mostly plumbing rather than new machinery, and it does not spend: this flag is a
-  BEFORE-the-fact structural fact — *you asked one call for more than one call delivers* — not a
-  post-hoc verdict on a paid generation. **Recommended: (a).** Still not taken here, because
-  `D-DRAFT-OUTPUT-NO-POST-CONDITION` reserves the choice between these three by name, and picking
-  one of the three named options is the decision itself however cheap it is to build.
+  That made it mostly plumbing rather than new machinery, which is what shipped above: the type
+  declared four fields the server had been returning all along, and one component read them. The
+  numbers ride as data attributes as well as prose because this repo's tests assert on translation
+  keys, so a value living only inside an interpolated sentence could not be checked.
 
 - [x] **T17** — A critic pass for the one defect prompting could not fix.
   Report §3: three of four recurring prose defects closed reliably via the review-and-revise loop.
@@ -1719,12 +1764,12 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **21 of 23 rows DONE, and every one of them now carries its OWN pasted bite output** —
+RESUME: **22 of 23 rows DONE, and every one of them now carries its OWN pasted bite output** —
 audited row by row, which is how T15 was found ticked with its evidence filed under T14, and
-re-bitten. **2 remain — T16 and T23(a) — and both are decisions, not engineering.** Neither can be
-closed by more work here; see the decision request immediately below.
+re-bitten. **1 remains — T23(a) — and it is a decision, not engineering.** T16 closed once its cited
+decision record was actually read: see that row's sixth premise correction.
 
-**PO DECISION REQUEST — two questions, both answerable in one read.**
+**PO DECISION REQUEST — one question.**
 
 1. **T23(a) — what should the Auto-Draft Factory be called?** It does not draft. The engine extracts
    knowledge and translates existing chapters; its own wizard placeholder says *"e.g. Translate Book
@@ -1732,12 +1777,12 @@ closed by more work here; see the decision request immediately below.
    does NOT make an inaccurate description accurate. Recommended: *"batch extraction and translation
    across chapters"*, in the README and the wizard title together. Reply with the wording, or "keep
    the name".
-2. **T16 — on a short generation, what should happen?** (a) surface it, (b) reject and re-ask, which
-   spends again on the user's key, or (c) accept silently, as today. Recommended: **(a)**, and it is
-   cheaper than it looks — the engine already publishes `beats_over_ceiling` and no screen reads it.
+T16 is no longer on this list. Reading the decision record it cited showed the record is about
+NON-PROSE output, not a short one, so reporting a length was never one of its reserved options.
+The report shipped; the re-ask and the text edits did not, and those remain reserved.
 
 Everything else on this plan is finished and committed. A session that resumes here should take an
-ANSWER to those two questions, not more code.
+ANSWER to that one question, not more code.
 
 T2 was DONE eleven commits ago and simply never ticked: its evidence went into T3's block rather
 than its own row. Re-bitten and re-verified today before ticking, so the board now matches the
