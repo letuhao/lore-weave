@@ -1124,7 +1124,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
   Regression: `tsc` clean; studio panels **100 files / 804 tests green**.
 
-- [ ] **T19** — Fix the two stale-widget cache invalidations.
+- [x] **T19** — Fix the two stale-widget cache invalidations.
   Both have exact causes:
   (a) `frontend/src/features/studio/manuscript/useChapterDoor.ts:33-35` invalidates only
   `['plan-hub','simple-chapters',bookId]`, missing the advanced canvas keys (`arcs`, `overlay`,
@@ -1141,6 +1141,39 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: DEBUG the invalidated key set after each mutation.
   Tests: mutate through the widget's own adjacent control, assert the widget reflects it with no
   reload. NV-6: remove each invalidation, watch its test go red, restore.
+
+  **EVIDENCE (T19).** Both halves fixed, each with its own guard.
+
+  **(a) `useChapterDoor`** invalidated only `['plan-hub','simple-chapters', bookId]`, so a chapter
+  created through that door was invisible on the advanced canvas (`arcs` / `overlay` /
+  `scene-links` / the per-node windows) and in the Unplanned tray until a full page reload.
+  Broadened to the `['plan-hub']` prefix — which **four sibling mutations already used**
+  (`usePlanChildCreate`, `usePlanMoves`, `usePlanNodeWrites`, `useExtractPlan`), making the narrow
+  key a divergence rather than a considered choice. Guarded by a scan, because the next mutation
+  added is otherwise free to narrow it again (NV-3).
+
+  **(b) `SceneRail`** reloaded the hoist's own scenes buffer and nothing else, while the Editor
+  toolbar's "N of N scenes not yet done" counter reads a separate query
+  (`['composition','publish-gate', …]`) — as do `canonBlocked` and `uncheckedWarning`, so all three
+  were stale together. The rail now invalidates that key on every write.
+
+  BITE — restored both defects at once:
+
+  ```
+  # RED
+    x no mutation invalidates a single plan-hub slice
+      -> ...stay stale until a full page reload: expected [ Array(1) ] to deeply equal []
+    x a scene write invalidates the publish-gate query, not just the hoist buffer
+      -> expected "spy" to be called with arguments: [ { queryKey: [ ...(2) ] } ]
+  # RESTORED byte-exact (both diffs clean)
+   20 passed (SceneRail) + 3 passed (prefix guard)
+  ```
+
+  Each guard carries its own non-vacuity check: the scan asserts it finds sources at all and that
+  its pattern can match (NV-2), and the rail asserts it does **not** invalidate on a render with no
+  write (NV-7 — an unconditional invalidation would refetch on every keystroke and signal nothing).
+
+  Regression: `tsc` + eslint clean; studio **165 files / 1524 tests green**.
 
 - [ ] **T20** — Cascade the book rename to its Knowledge Project, and stop the silent create no-op.
   Findings #6 and #7 compound into a ~20-minute dead end: the auto-created Knowledge Project keeps
@@ -1256,7 +1289,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). T18 is DONE. Next is T19, then T20-T23. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). T18 is DONE. T19 is DONE. Next is T20, then T21-T23. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
