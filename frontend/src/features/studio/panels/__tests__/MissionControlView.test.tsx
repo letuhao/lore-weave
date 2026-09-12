@@ -25,6 +25,11 @@ vi.mock('react-i18next', () => ({
       return s;
     },
   }),
+  // T18 — a REAL export of react-i18next, which `@/i18n` initialises with. Reached now that
+  // these views render chapter titles through the shared `chapterDisplayTitle` helper; omitting
+  // it makes the module unloadable, which is a gap in the mock rather than a reason to keep a
+  // second title-fallback implementation.
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 

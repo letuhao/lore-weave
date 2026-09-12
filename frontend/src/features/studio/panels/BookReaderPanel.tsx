@@ -35,6 +35,7 @@ import { useReadingTracker } from '@/hooks/useReadingTracker';
 import { extractSpeakableBlocks } from '@/lib/audio-utils';
 import { useBookReaderContent, computeReadingStats } from '@/features/books/hooks/useBookReaderContent';
 import { useStudioPanel } from './useStudioPanel';
+import { chapterDisplayTitle } from '../manuscript/partsTree';
 
 interface BookReaderPanelParams {
   bookId?: string;
@@ -112,7 +113,7 @@ export function BookReaderPanel(props: IDockviewPanelProps) {
   // meaningful dock-tab title), same pattern JobDetailPanel/SettingsPanel use for retargeting.
   useEffect(() => {
     if (book && chapter) {
-      props.api.setTitle(`${book.title} — ${chapter.title || chapter.original_filename}`);
+      props.api.setTitle(`${book.title} — ${chapterDisplayTitle(chapter)}`);
     } else if (book) {
       props.api.setTitle(book.title);
     }
@@ -240,8 +241,8 @@ export function BookReaderPanel(props: IDockviewPanelProps) {
         <article style={{ maxWidth: 'var(--reader-effective-width)', width: '100%' }}>
           <div className="chapter-header">
             <p className="ch-label">{t('chapter_label', { n: currentIdx + 1 })}</p>
-            {(chapter?.title || chapter?.original_filename) && (
-              <h1 className="ch-title">{chapter?.title || chapter?.original_filename}</h1>
+            {chapter && (
+              <h1 className="ch-title">{chapterDisplayTitle(chapter)}</h1>
             )}
             <div className="ch-divider" />
             <div className="ch-meta">

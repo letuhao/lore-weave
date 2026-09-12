@@ -18,6 +18,7 @@ import type { RevertAllResult } from '@/features/composition/authoringRuns/types
 import type { QueueRow } from './UnitQueue';
 import type { SelectedUnitDetail } from './DiffReviewPanel';
 import type { AffectedUnit } from './RevertAllModal';
+import { chapterDisplayTitle } from '../../manuscript/partsTree';
 
 export function useMissionControl(bookId: string, runId: string | null) {
   const { t } = useTranslation('composition');
@@ -36,7 +37,7 @@ export function useMissionControl(bookId: string, runId: string | null) {
   });
   const chapterLabel = (chapterId: string): string => {
     const c = chaptersQuery.data?.items.find((x) => x.chapter_id === chapterId);
-    return c?.title || c?.original_filename || `${chapterId.slice(0, 8)}…`;
+    return c ? chapterDisplayTitle(c) : `${chapterId.slice(0, 8)}…`;
   };
 
   const reportEnabled = !!run && REPORTABLE_RUN_STATUSES.includes(run.status);
