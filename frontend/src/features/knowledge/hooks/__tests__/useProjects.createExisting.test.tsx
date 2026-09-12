@@ -72,7 +72,7 @@ describe('useProjects — creating over an existing book project (T20)', () => {
   it('tells the author their input was not applied, and names what came back', async () => {
     createProjectMock.mockResolvedValue({ project_id: 'p1', name: 'The Old Placeholder Name' });
     mount();
-    await create({ name: 'Vạn Tượng Quy Nhất', book_id: 'b1' });
+    await create({ name: 'The Name The Author Typed', book_id: 'b1' });
 
     await waitFor(() => expect(info).toHaveBeenCalledTimes(1));
     const msg = String(info.mock.calls[0][0]);
