@@ -49,6 +49,55 @@ describe('InlineAiLayer (T3.3)', () => {
     expect(continueDraft).toHaveBeenCalled();
   });
 
+
+  // T2 — the reason a disabled control is disabled must be VISIBLE. It used to live only in
+  // `title`, which a disabled button never surfaces: a 2026-09-06 human-sim run hand-pasted an
+  // entire 5-arc novel having concluded the feature did not exist, when `modelRef` was simply null.
+  describe('T2 — disabled reasons are visible and specific', () => {
+    const reasonOf = () => screen.getByTestId('inline-continue-disabled-reason').getAttribute('data-reason');
+
+    it('names the MISSING MODEL specifically (not a generic "cannot run")', () => {
+      ghost.mockReturnValue({ ...base, canContinue: false });
+      render0({ modelRef: null });
+      expect(reasonOf()).toBe('need-model');
+      expect(screen.getByTestId('inline-continue-disabled-reason').textContent).toMatch(/model/i);
+    });
+
+    it('names the MISSING SCENE specifically — a different problem with a different fix', () => {
+      ghost.mockReturnValue({ ...base, canContinue: false });
+      render0({ sceneId: null });
+      expect(reasonOf()).toBe('need-scene');
+    });
+
+    it('distinguishes STREAMING from an unmet precondition', () => {
+      ghost.mockReturnValue({ ...base, streaming: true });
+      render0();
+      expect(reasonOf()).toBe('streaming');
+    });
+
+    it('distinguishes an UNRESOLVED SUGGESTION from an unmet precondition', () => {
+      ghost.mockReturnValue({ ...base, anchor: { pos: 1, coords: { top: 0, left: 0 } } });
+      render0();
+      expect(reasonOf()).toBe('pending-ghost');
+    });
+
+    // NV-7: a reason that is always on screen conveys nothing. It must be ABSENT when usable.
+    it('shows NO reason when Continue is actually usable', () => {
+      ghost.mockReturnValue({ ...base });
+      render0();
+      expect(screen.queryByTestId('inline-continue-disabled-reason')).toBeNull();
+      expect(screen.getByTestId('inline-continue')).not.toBeDisabled();
+    });
+
+    // The model gate must NOT be silently self-healed (settings-and-config SET: no silent fallback).
+    it('does not auto-pick a model — it reports the gap instead', () => {
+      ghost.mockReturnValue({ ...base, canContinue: false });
+      render0({ modelRef: null });
+      expect(screen.getByTestId('inline-continue')).toBeDisabled();
+      expect(continueDraft).not.toHaveBeenCalled();
+    });
+  });
+
   it('disables Continue when it cannot run (no scene/model)', () => {
     ghost.mockReturnValue({ ...base, canContinue: false });
     render0({ sceneId: null });

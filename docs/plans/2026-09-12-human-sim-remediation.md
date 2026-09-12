@@ -371,6 +371,43 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   a budget assertion that cannot exceed its ceiling is the NV-2 "subject cannot vary" shape, so
   prove it by feeding an oversized candidate set.
 
+  **🛑 BLOCKED — D3's premise is FALSE. Row stays OPEN, not ticked. PO decision needed.**
+
+  `book` is **already hot on the studio surface**, and `book_chapter_save_draft` is **additionally
+  allowlisted so the token budget cannot starve it**. There is no work in this row as written.
+  Executed, not read (the comment this plan cited turned out to be stale):
+
+  ```
+  $ python -c "from app.services.tool_discovery import surface_hot_domains; ..."
+  studio       -> ['book', 'composition', 'glossary', 'knowledge', 'story']
+  editor       -> ['book', 'glossary', 'knowledge', 'story']
+  book-scoped  -> ['book', 'glossary', 'knowledge', 'story']
+  universal    -> ['knowledge']
+  ```
+
+  Why: `resolve_skills_to_inject` appends `"book"` on the studio branch and the `book` SkillDef
+  declares `hot_domains={"book"}` — both added by **F14 (round-4 dogfood, 2026-07-20)** for exactly
+  this reason (*"A book workbench must offer its own book tools by default"*). Separately,
+  `tool_surface.py:78` puts `book_chapter_save_draft` in `ALWAYS_HOT_WRITES`, and `:546` adds that
+  set to `kept` **outside** the budget loop, so it cannot be truncated out.
+
+  **The comment this plan quoted (`tool_discovery.py:341-347`, *"composition / book tools stay lazy
+  there too"*) describes the pre-F14 world and was never updated.** It is now the third stale or
+  wrong premise this run has caught, and the second one I propagated into the corrected report —
+  F-A's point 1 needs amending again.
+
+  **What this does to the finding.** The tool was on the wire, unconditionally, and the model still
+  said it had no access to the manuscript editor. So for this path the defect is **not** discovery.
+  The codebase already documents the real failure mode in measured live runs:
+  `stream_service.py:1274` (*"`book_chapter_save_draft` WITHOUT its `body`, and the turn ended —
+  chapter created, 0 words"*), `:7745` (*"`book_chapter_save_draft` with `book_id == chapter_id`
+  (38 / 6). Zero successes"*), `:4542`. That is a **model-capability / prompting** problem on an
+  advertised tool, not a gating one — materially harder than un-gating, and it puts D1's
+  "recoverable in about a day" reading of F-A in doubt for this path specifically.
+
+  Note T2 still stands on its own merits and is done: "Continue from cursor" really was gated by an
+  unresolvable `modelRef` with the reason hidden in a `title`.
+
 
 - [ ] **T5** — Make the "✦ Suggest scenes" toolbar button reach the affordance it advertises.
   It is a signpost that only fires a toast — by design (`EditorPanel.tsx:356-368`, 452-462). The
@@ -735,8 +772,12 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **T1 and T4 are done and committed.** Next is T2 (disclose why "Continue from cursor" is
-disabled), then T3 (hot-seed `book`), T5, T6, then Phases 2-7 in board order. Two rows in, the
+RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3's premise is false:
+`book` is already hot on studio and `book_chapter_save_draft` is allowlisted against budget
+truncation, so T3 as written has no work. The real finding is that the model had the tool on the
+wire and still claimed it could not write — a prompting/model-capability problem the codebase
+already documents in measured runs. Do NOT tick T3 without a new PO decision. T5, T6 and Phases 2-7
+are unaffected and can proceed. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
