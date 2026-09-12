@@ -1070,7 +1070,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 6 — Remaining UX
 
-- [ ] **T18** — One chapter-title precedence, used by all three quality panels.
+- [x] **T18** — One chapter-title precedence, used by all three quality panels.
   The Conformance picker renders `c.title || c.original_filename || #sort_order`
   (`QualityConformancePanel.tsx:52-56`) instead of the sidebar's `chapterDisplayTitle()`
   (`frontend/src/features/studio/manuscript/partsTree.ts:26-30`), which deliberately never falls
@@ -1082,6 +1082,47 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: DEBUG when a fallback tier is used, and which field won.
   Tests: a chapter with a placeholder `original_filename` and empty `title` renders the localized
   "Chapter N", not the filename — in all three panels.
+
+  **EVIDENCE (T18).** All three named panels now render via `chapterDisplayTitle()`, the helper
+  that deliberately never falls back to a STORAGE FILENAME — because a filename is not a title, and
+  showing one tells the author their chapter is called something it is not.
+
+  **The gate found four MORE copies the plan did not know about.** Written as a scan rather than
+  three fixed edits precisely because the defect was copy-paste, and it earned that on its first
+  run — seven sites, not three:
+
+  ```
+  + panels/agentMode/NewRunView.tsx
+  + panels/agentMode/useMissionControl.ts
+  + panels/BookReaderPanel.tsx
+  + panels/ChapterBrowserTitleView.tsx
+  ```
+
+  `BookReaderPanel` is the worst of them: it rendered the filename as an `<h1>` chapter title **to
+  readers**, not merely in an author-facing picker. All seven are fixed.
+
+  BITE — reintroduced the fallback in one panel:
+
+  ```
+  # RED
+    x no panel hand-rolls a title fallback through original_filename
+    x the three panels that carried the defect now call the shared helper
+   2 failed | 2 passed (4)
+  # RESTORED byte-exact (diff clean)
+   4 passed (4)
+  ```
+
+  Two tests keep the gate honest: one asserts it finds panel sources at all (without it the scan
+  passes vacuously on an empty list), and one asserts the pattern it scans for can actually match
+  (NV-2 — a regex matching nothing would pass on any codebase).
+
+  **One consequence worth recording.** Pulling the shared helper into two agent-mode views made
+  them reach `@/i18n`, and two test files mocked `react-i18next` without `initReactI18next` — a
+  real export that `@/i18n` initialises with — so those files stopped loading. Completed the mocks
+  rather than keeping a second title implementation to dodge them: an incomplete mock is a gap in
+  the test, not a reason to duplicate product code.
+
+  Regression: `tsc` clean; studio panels **100 files / 804 tests green**.
 
 - [ ] **T19** — Fix the two stale-widget cache invalidations.
   Both have exact causes:
@@ -1215,7 +1256,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). Next is T18, then T19-T23. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). T18 is DONE. Next is T19, then T20-T23. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
