@@ -346,7 +346,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: a render test per unmet precondition asserting the specific reason is *visible* (not in
   `title`). NV-6: delete the reason text, watch each go red, restore, paste output.
 
-- [ ] **T3** — Hot-seed the `book` domain on the studio surface. (PO decision, 2026-09-12.)
+- [x] **T3** — Hot-seed the `book` domain on the studio surface. (PO decision, 2026-09-12.)
   **Decided: option (a), hot-seed.** The alternative — keep it lazy and signpost the `find_tools`
   hop in the skill — was rejected because the measured failure was the model *asserting it had no
   access to the manuscript editor* rather than searching for a tool. Instructing a model to search
@@ -407,6 +407,42 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
   Note T2 still stands on its own merits and is done: "Continue from cursor" really was gated by an
   unresolvable `modelRef` with the reason hidden in a `title`.
+
+  **CLOSED — the row's GOAL (reachability) already holds; what was missing is that nothing asserted
+  it.** D3's premise was false, so there is no new decision to take: `book` is hot on studio,
+  editor and book-scoped surfaces, and `book_chapter_save_draft` is additionally on
+  `ALWAYS_HOT_WRITES`, applied outside the token budget so the seed cannot starve it. Both are one
+  narrowing away from silently reverting, and the failure mode is invisible — the model simply
+  stops being able to write, says so politely, and a human pastes prose for a week. Now guarded.
+
+  BITE — removed `book` from the `book` skill's declared hot domains:
+
+  ```
+  # RED (one source removed)
+  E  assert 'book' in {'glossary', 'knowledge', 'story'}
+   2 failed (editor, book-scoped) -- studio SURVIVED
+  ```
+
+  **The partial red was itself a finding:** studio is doubly-protected, because the `composition`
+  skill also declares `book`. So the bite was deepened to remove both:
+
+  ```
+  # RED (both sources removed)
+  E  AssertionError: the Studio no longer seeds `book`, so the manuscript write tool needs a
+     find_tools round-trip the model has been measured NOT to take
+   3 failed, 3 passed
+  # RESTORED byte-exact (diff clean)
+   98 passed  (6 new + skill_registry + tool_surface)
+  ```
+
+  A counter-test asserts the universal surface does **not** seed `book` (NV-7 — an assertion that
+  held everywhere would prove nothing about the surfaces that matter), and another caps
+  `ALWAYS_HOT_WRITES` so it cannot become the place hard-to-find tools are dumped.
+
+  **What this does NOT claim:** that the model USES the tool. It does not, reliably — the corpus has
+  sessions repeating a refused call 14 and 71 times, and the run's own turn asserted it had no
+  access while holding the tool. That is model capability, addressed separately by T14/T15's
+  escalating refusal, and no amount of seeding fixes it.
 
 
 - [x] **T5** — Make the "✦ Suggest scenes" toolbar button reach the affordance it advertises.
@@ -1373,7 +1409,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   | *"Steering rules … injected into every book-scoped AI turn"* | **STILL A GAP** | T12 built the reporting primitive but nothing user-visible changed. Row open. |
   | *"a co-writer that **can't** contradict your canon"* | **STILL FALSE** | Finding #17 stands. No code in this plan makes "can't" true — it is an absolute claim about a model's behaviour. **Softening needed.** |
   | *"Auto-Draft Factory — run a whole drafting campaign"* | **STILL FALSE** | The engine extracts and translates; it has no drafting stage. T23 made it reachable and honest in the UI, but the README line still promises drafting. **Softening needed.** |
-  | *"Automatic entity and relationship extraction"* | **STILL OVERCLAIMED** | Extraction requires a manual run. **Softening needed** ("automatic" is the word doing the work). |
+  | *"Automatic entity and relationship extraction"* | **TRUE — my audit was wrong** | **Fifth premise correction.** Extraction IS automatic: `chapter.published` → `handle_chapter_published` → queues `extraction_pending` for the worker drainer, registered at `knowledge-service/app/main.py:351`. The run drafted its chapters and never PUBLISHED them, so nothing fired — the gap was its mental model, not the feature. Now guarded by `test_automatic_extraction_claim.py`, bitten by unregistering the handler. No softening needed. |
 
   **Why I stopped rather than editing the README.** Three claims cannot be made true by code in this
   plan — one is an absolute about model behaviour, one describes a feature that would need a new
