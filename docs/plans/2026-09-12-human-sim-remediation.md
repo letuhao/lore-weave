@@ -1339,6 +1339,45 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: each precondition renders a specific, actionable reason; the Studio exposes a reachable
   entry point. NV-6 on the precondition messages.
 
+  **⚠ PARTIAL — the code half is DONE; the naming half is a STOP (see below).**
+
+  **(b) Reachability — done.** Confirmed the gap first: a grep for `campaign` across
+  `features/studio/**` returned **zero hits**, and the Studio mounts outside `EditorLayout` so it
+  never renders the Sidebar carrying the only link. Added an entry point to the Studio **top bar**.
+  Deliberately not a panel: **DOCK-7 forbids route-navigation inside `panels/**`** — a panel that
+  navigates unmounts the Studio around itself — and the frame is where an outbound link belongs,
+  which is exactly what the "Book settings" link beside it already is. `dockablePanelHygiene`
+  stays green (238 passed), confirming the placement respects the standard rather than dodging it.
+
+  **Preconditions — done.** `canAdvance` returned a bare boolean, so Next disabled itself silently
+  and a user missing one of four preconditions was left to guess which — the same defect T2 fixed,
+  fixed the same way. Added `blockedReason()`, rendered **visibly** (T2's lesson: `title` alone is
+  unreachable on a disabled control).
+
+  BITE:
+
+  ```
+  # RED (step-0 reasons suppressed)
+    x names the MISSING NAME on the first step
+    x names the missing knowledge project specifically
+    x agrees with canAdvance -- a reason without a block, or a block without a reason, is a bug
+   3 failed | 2 passed (5)
+  # RESTORED byte-exact (diff clean)
+   5 passed (5)
+  ```
+
+  The invariant test is the valuable one: `blockedReason(s) === null` must equal `canAdvance(s)` for
+  every step, so the two can never drift into disagreeing about whether the user is stuck.
+
+  Regression: `tsc` clean; campaigns + studio frame **99 tests green**.
+
+  **(a) Naming — STOPPED, needs the PO.** Renaming "Auto-Draft Factory" and rewriting its README
+  line means **softening a product claim** — the engine does not draft — and that is explicitly on
+  this run's STOP list: *"a README claim must be REMOVED or softened rather than made true — that
+  is a product promise and the PO decides, not the agent."* The claim cannot be made true by code:
+  adding a prose-drafting stage to the engine is a new feature, and the plan lists it as out of
+  scope. Prepared for decision in T22's table below.
+
 ---
 
 ## Explicitly out of scope
