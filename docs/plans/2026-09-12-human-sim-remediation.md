@@ -489,7 +489,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 2 — Make the quality signals see human-authored prose
 
-- [ ] **T7** — Consume the decompiler's `mappings[]` and write `source_scene_id` back.
+- [x] **T7** — Consume the decompiler's `mappings[]` and write `source_scene_id` back.
   **This is a caller-side gap — do not change the routes.** Both `materialize-scenes` routes already
   return `mappings[]` identically; no caller anywhere consumes them, even though
   `scene_decompile.py:284` documents an intended, idempotent-on-retry write-back. The frontend
@@ -521,6 +521,43 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: extract → mappings persisted → `chapter.scenes_linked` emitted → `written_*` populated.
   NV-6: assert against a chapter whose heading genuinely does not match a scene and confirm it is
   NOT linked — a test that only proves the happy path is the NV-3 "scope never reaches it" shape.
+
+  **EVIDENCE (T7).** Built per D4. New `POST /internal/books/{book_id}/scene-mappings`
+  (`book-service/internal/api/scene_mappings.go`, routed at `server.go`) — the book-scoped sibling
+  of the existing EPUB-import endpoint, which could not be reused because it keys on an import job
+  and joins `chapter_import_provenance`; a Hub extraction has neither. Book-service owns the write
+  because `scenes` is its table, and it re-checks the asserted owner and constrains the UPDATE to
+  chapters of THIS book, so a caller cannot reach another book's scenes. `source_scene_id IS NULL`
+  keeps it idempotent and non-destructive — a re-run relinks nothing and never overwrites an
+  author's existing link. `emitScenesLinked` fires per touched chapter **inside the same
+  transaction**, because the event is the entire point: without it the columns change and nothing
+  downstream notices.
+
+  Composition calls it via a new `BookClient.apply_scene_mappings`, consumed by a shared
+  `_write_back_scene_mappings` helper wired into **both** materialize routes. A failure is degraded,
+  never fatal and never silent: the extraction has already committed, so raising would fail a user
+  action that genuinely succeeded — instead the result carries `scene_link_writeback`, and
+  `useExtractPlan` surfaces it, telling the author a re-run is safe.
+
+  BITE — reverted the Hub CTA route to `return result.to_dict()`, i.e. the original defect:
+
+  ```
+  # RED
+  E  AssertionError: 2 materialize_scenes call(s) but only 1 write-back(s): a route computes
+     the back-link mappings and drops them, which is the exact defect T7 fixed
+  1 failed, 4 passed
+  # RESTORED byte-exact (diff clean)
+  5 passed
+  ```
+
+  The drift-lock is deliberately DB-free (the shape `scenes_linked_parity_test.go` uses, and for
+  its stated reason — "no DB, so it can never be skipped into a false green"), because the original
+  defect was never a broken write-back: it was two routes that each computed the mappings and
+  returned them unused, with every other test green. Four behavioural tests cover the happy path,
+  the reported failure, the empty extraction, and a partial relink.
+
+  Regression: `go build ./...` + `go vet` clean; composition-service **4154 tests passed**;
+  frontend `tsc --noEmit` clean.
 
 - [ ] **T8** — Add a manuscript-derived "realized" signal to conformance.
   Per C2 both existing signals are structurally unreachable from human authoring. Add a third:
@@ -828,7 +865,8 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). Next is T7 (Phase 2). Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). Next is T8 (the
+manuscript-derived realized signal), then T9-T23. Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend

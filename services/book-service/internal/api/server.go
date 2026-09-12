@@ -247,6 +247,11 @@ func (s *Server) Router() http.Handler {
 		r.Post("/epub-import-jobs/{job_id}/items/{item_id}/fail", s.failEPUBImportItem)
 		r.Post("/epub-import-jobs/{job_id}/assets", s.upsertEPUBImportAsset)
 		r.Post("/epub-import-jobs/{job_id}/scene-mappings", s.applyEPUBImportSceneMappings)
+		// T7 — the book-scoped sibling, for the Plan Hub's "Extract the plan" CTA (which has no
+		// import job). `scenes.source_scene_id` is the sole trigger for the written_* chain, and
+		// until now only the EPUB path ever wrote it — so a hand-authored book could never light
+		// that chain up. Book-service owns the write because `scenes` is its table.
+		r.Post("/books/{book_id}/scene-mappings", s.applyBookSceneMappings)
 		r.Get("/epub-import-jobs/{job_id}/hierarchy", s.getEPUBImportHierarchy)
 		r.Post("/epub-import-jobs/{job_id}/hierarchy-mappings", s.applyEPUBImportHierarchyMappings)
 		r.Post("/epub-import-jobs/{job_id}/warnings", s.recordEPUBImportJobWarning)
