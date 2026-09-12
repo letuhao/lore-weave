@@ -48,6 +48,14 @@ router = APIRouter(prefix="/v1/composition")
 # (chapter/scene "Goal (reaches the prompt)") had this same write-unbounded/read-capped
 # split; enforcing the bound here too closes it on this door as well.
 _NodeGoal = Annotated[str, StringConstraints(max_length=20000)]
+# T11 — write-side caps MIRRORING the response models (db/models.py). Issue #224's fix bounded
+# `goal` and its own follow-up recorded that `title`/`synopsis` still carried the identical
+# unguarded shape: capped on the way OUT, bare `str` on the way IN, no constraint in Postgres. So
+# an over-long write succeeded and then 500'd every later read of that row — and the arcs-list
+# endpoint validates a whole book at once, so one bad row took out the entire Plan Hub.
+# `title` is the sharper edge of the two: 500 characters is an ordinary chapter title away.
+_NodeTitle = Annotated[str, StringConstraints(max_length=500)]
+_NodeSynopsis = Annotated[str, StringConstraints(max_length=20000)]
 
 # SC6/B4 — the decompiler's internal-token surface. A separate router (its path is
 # `/internal/...`, not the `/v1/composition` public prefix); wired in main.py
@@ -63,7 +71,7 @@ class NodeCreate(BaseModel):
     kind: NodeKind
     parent_id: UUID | None = None
     rank: str | None = None
-    title: str = ""
+    title: _NodeTitle = ""
     pov_entity_id: UUID | None = None
     present_entity_ids: list[UUID] = []
     goal: _NodeGoal = ""
@@ -72,7 +80,7 @@ class NodeCreate(BaseModel):
     chapter_id: UUID | None = None
     tension: int | None = None
     story_order: int | None = None
-    synopsis: str = ""
+    synopsis: _NodeSynopsis = ""
     # 22 SC4 — authored scene craft/setting. These MUST be declared: Pydantic's default
     # extra='ignore' silently drops an undeclared key, so a REST create sending `conflict`/
     # `target_words`/`location_entity_id` would no-op while the MCP tool (which HAS them) works —
@@ -93,8 +101,8 @@ class PlanImportChapter(BaseModel):
     """One existing manuscript chapter to add to the composition plan."""
 
     chapter_id: UUID
-    title: str = ""
-    synopsis: str = ""
+    title: _NodeTitle = ""
+    synopsis: _NodeSynopsis = ""
     story_order: int | None = None
 
 
@@ -105,7 +113,7 @@ class PlanImportRequest(BaseModel):
 class NodePatch(BaseModel):
     parent_id: UUID | None = None
     rank: str | None = None
-    title: str | None = None
+    title: _NodeTitle | None = None
     pov_entity_id: UUID | None = None
     present_entity_ids: list[UUID] | None = None
     goal: _NodeGoal | None = None
@@ -114,7 +122,7 @@ class NodePatch(BaseModel):
     chapter_id: UUID | None = None
     tension: int | None = None
     story_order: int | None = None
-    synopsis: str | None = None
+    synopsis: _NodeSynopsis | None = None
     # 22 SC4 — the scene-inspector's Craft + Cast&Setting edits and the bulk retarget-words go
     # through THIS model; without these declarations they were silently dropped (extra='ignore')
     # and the GUI edit no-op'd. The repo's _UPDATABLE_COLUMNS already writes them; only the REST

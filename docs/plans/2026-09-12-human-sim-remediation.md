@@ -697,7 +697,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 3 — Close the silent-write / exploding-read class
 
-- [ ] **T11** — Cap-parity sweep: every response-model bound needs a matching write-side bound (IN-4).
+- [x] **T11** — Cap-parity sweep: every response-model bound needs a matching write-side bound (IN-4).
   Finding #12's root cause was `goal` capped at 2000 on the *response* model while every write path
   declared unbounded `str` — so an over-long write always succeeded and then 500'd every later read
   of the whole book's arc list. That was point-fixed; the *shape* was not. Issue #224's own
@@ -712,6 +712,52 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: the new rejection must be a self-correcting one-liner per IN-6 — name the field, the
   limit, and the actual length.
   Tests: a write exceeding each bound gets 422, not a later 500. NV-6 per field family.
+
+  **EVIDENCE (T11).** Built as a mechanical parity check rather than a sweep, per the row's own
+  NV-3 reasoning. It derives BOTH sides from source — response-model caps from `db/models.py`,
+  write-side bounds from the Create/Patch schemas — so a field added tomorrow is covered without
+  anyone remembering to add it.
+
+  **It found five real gaps on its first run**, exactly the shape #224's follow-up predicted:
+
+  ```
+  outline.py::NodeCreate.title     is `str`         but the response model caps `title` at 500
+  outline.py::NodeCreate.synopsis  is `str`         but the response model caps `synopsis` at 20000
+  outline.py::NodePatch.title      is `str | None`  ...
+  outline.py::NodePatch.synopsis   is `str | None`  ...
+  arc.py::PartCreate.title         (false positive — see below)
+  ```
+
+  **`title` is the sharper edge and nobody had noticed it: 500 characters.** #224 was hit at 2800
+  characters in a `goal`; a 501-character chapter title would have 500'd the same reads, and is far
+  easier to reach by accident. Fixed with `_NodeTitle`/`_NodeSynopsis` mirroring the response caps.
+
+  **Two corrections the work forced on the check itself** — both worth more than the fix:
+  1. `PartCreate.title` was a **false positive**: it was already bounded via
+     `Field(default="", max_length=500)`, and the check read only the annotation. A parity check
+     that cries wolf is one people learn to ignore. It now reads the whole declaration.
+  2. **The check passed on a file that did not parse.** While adding the caps I wrote literal
+     backslash-escapes into `outline.py` via a bad raw-string replacement; every parity assertion
+     stayed green because they only ever read TEXT. Added `test_the_files_this_check_reads_are_valid_python`
+     — a source-text check that cannot notice its subject is unparseable is reporting coverage it
+     does not have.
+
+  BITE — removed the write-side cap from `synopsis` again:
+
+  ```
+  # RED
+  E  outline.py::NodeCreate.synopsis is `str = ""` (unbounded) but the response model caps
+     `synopsis` at 20000 — an over-long write will succeed and then 500 every later read
+  1 failed, 6 passed
+  # RESTORED byte-exact (diff clean)
+  7 passed
+  ```
+
+  A companion test feeds `_is_bounded` known-good and known-bad declarations (NV-2), and another
+  asserts the models scan actually discovers `goal`/`synopsis`/`summary` — without it, a silently
+  non-matching regex would make every parity assertion pass vacuously (NV-3).
+
+  Regression: composition-service **4175 tests passed**.
 
 - [ ] **T12** — Make truncation visible where it happens (OUT-5).
   Finding #10's fix raised `STEERING_TOKEN_CAP` 2000→8000 but explicitly deferred the real problem:
@@ -955,7 +1001,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). Next is T11 (Phase 3, the cap-parity sweep), then T12-T23. Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. Next is T12 (truncation visibility), then T13-T23. Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
