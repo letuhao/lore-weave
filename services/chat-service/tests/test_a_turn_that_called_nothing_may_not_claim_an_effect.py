@@ -34,6 +34,27 @@ from app.services.stream_service import (
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CORPUS = ROOT / "docs" / "eval" / "toolloop"
+
+
+def _corpus_files() -> list[pathlib.Path]:
+    """The recorded runs, if this checkout has them.
+
+    🔴 The skip guard used to be `CORPUS.exists()`, and that is the wrong question. The directory
+    IS tracked — it holds two `.md` reading-rule notes — while the recorded `*.json` runs are not.
+    So on every clean checkout the guard said "present", the loader found nothing, and the
+    calibration assertion failed with *"corpus looks truncated"*.
+
+    **Absent is not truncated.** One means nobody recorded the data here; the other means the data
+    is here and wrong, and only the second is a defect in this repo. Conflating them left two tests
+    permanently red in CI, which is how a red suite becomes background noise and then stops being
+    read — exactly NV-3, *the scope never reaches it*, from this repo's own non-vacuity taxonomy.
+
+    `-raw.json` is excluded here for the same reason `_runs()` excludes it: those are unparsed
+    captures, so their presence would satisfy a guard for data the loader then ignores.
+    """
+    if not CORPUS.is_dir():
+        return []
+    return [p for p in CORPUS.rglob("*.json") if not p.name.endswith("-raw.json")]
 STREAM_SRC = ROOT / "services" / "chat-service" / "app" / "services" / "stream_service.py"
 
 #: Verbatim from the run that produced this defect.
@@ -170,7 +191,13 @@ class TestAcknowledgingIsNotActing:
             "I have updated the note you asked about.", attempted=set())
 
 
-@pytest.mark.skipif(not CORPUS.exists(), reason="recorded corpus not present")
+@pytest.mark.skipif(
+    not _corpus_files(),
+    reason=(
+        "recorded tool-loop corpus not present in this checkout — only its reading-rule notes are "
+        "tracked. Re-scoring the calibration needs the runs themselves; see _corpus_files()."
+    ),
+)
 class TestTheCalibrationStillHolds:
     """Re-score the SHIPPED detector against the real corpus, so the numbers written into the
     source comment cannot quietly stop being true."""
