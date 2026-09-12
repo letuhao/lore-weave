@@ -15,6 +15,7 @@ import { PlannerTree } from './PlannerTree';
 import { CommittedSceneBindings } from '../motif/components/CommittedSceneBindings';
 import { booksApi } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
+import { chapterDisplayTitle } from '@/features/studio/manuscript/partsTree';
 
 type Props = {
   projectId: string;
@@ -47,7 +48,11 @@ export function PlannerView({ projectId, bookId, modelRef, modelSource, token, o
   const p = usePlanner(projectId, token);
   const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
   const [scope, setScope] = useState<'current' | 'all'>('current');
-  const [chapters, setChapters] = useState<Array<{ chapter_id: string; title?: string | null; original_filename?: string | null }>>([]);
+  // T21 — `sort_order` added: the shared `chapterDisplayTitle` needs it to render the localized
+  // "Chapter N" fallback instead of a storage filename (T18's defect, which also lived here,
+  // outside the panels/** scan that found the other seven). `listChapters` already returns it;
+  // this local type was simply narrower than the data it holds.
+  const [chapters, setChapters] = useState<Array<{ chapter_id: string; title?: string | null; original_filename?: string | null; sort_order: number }>>([]);
   const [chaptersLoading, setChaptersLoading] = useState(!!token);
   useEffect(() => {
     let alive = true;
@@ -130,7 +135,7 @@ export function PlannerView({ projectId, bookId, modelRef, modelSource, token, o
               disabled={chaptersLoading}
             >
               <option value="all">{t('plan.all_chapters')}</option>
-              {chapters.map((chapter) => <option key={chapter.chapter_id} value={chapter.chapter_id}>{chapter.title || chapter.original_filename}</option>)}
+              {chapters.map((chapter) => <option key={chapter.chapter_id} value={chapter.chapter_id}>{chapterDisplayTitle(chapter)}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-2">

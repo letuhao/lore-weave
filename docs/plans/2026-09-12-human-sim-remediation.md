@@ -1238,7 +1238,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   function` under full-suite ordering) — confirmed pre-existing by stashing these changes and
   re-running: **1 failed | 878 passed** without them, **1 failed | 879 passed** with them.
 
-- [ ] **T21** — Signpost the real AI-planning path, and settle the Motif Library naming.
+- [x] **T21** — Signpost the real AI-planning path, and settle the Motif Library naming.
   (a) Finding #9: three plausible entry points are dead ends for "AI, plan my first arc" on a blank
   book — "Create a plan with AI" (decomposes *existing* prose), "Organise into storylines" (a manual
   textbox), "Suggest arcs" (matches a template *library*). The real capability sits behind attaching
@@ -1253,6 +1253,44 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   `frontend/src/features/composition/motif/`, and the relevant i18n locale files.
   Logging: n/a (copy/navigation only) — except DEBUG when a new pointer is shown.
   Tests: each dead end exposes a reachable pointer to the working path.
+
+  **EVIDENCE (T21).**
+
+  **(a) The signpost, placed where the dead end actually is.** Traced the CTA: "Create a plan with
+  AI" (`SimpleChapterList.tsx:147`) opens the Decompose panel (`PlanHubPanel.tsx:278`), which on a
+  blank book fails with `NO_CHAPTERS` — *"This book has no chapters yet — create chapters before
+  planning."* That is true and useless: it does not say the planner DECOMPOSES existing prose and
+  cannot invent a structure, nor where the capability the user wanted actually lives. The message
+  now says both, and names the real path (Co-writer Chat + the PlanForge skill). Putting it in the
+  refusal reaches the user at the moment they hit the wall, rather than hoping they read a hint on
+  a panel they already left.
+
+  **(b) The Motif Library says what it is NOT.** The existing copy ("Motifs are reusable plot
+  shapes") was already accurate and was still misread, because the panel is called *Motif Library*
+  and "motif" means recurring imagery to an author — the run's own steering rules name two such
+  motifs. Added a line stating it does not track themes in your story. **Renaming was deliberately
+  not done:** that is a product decision with an 18-language ripple, and the plan sanctioned either.
+  A new i18n key was added rather than editing the existing one, so the genre terms already in that
+  string were left untouched.
+
+  BITE:
+
+  ```
+  # RED (disambiguation removed)
+    x states that it does NOT track a story own recurring themes
+      -> Unable to find an element by: [data-testid="motif-empty-not-themes"]
+  # RESTORED byte-exact (diff clean)
+   2 passed (2)
+  ```
+
+  A companion test asserts the panel still explains what it IS — a disclaimer that replaced the
+  purpose would trade one confusion for another.
+
+  **Found in passing: an eighth copy of T18's title defect**, in `PlannerView.tsx`'s chapter
+  `<select>` — outside the `panels/**` scan that caught the other seven. Fixed here; its local
+  chapter type was simply narrower than the data `listChapters` already returns, which `tsc` caught.
+
+  Regression: `tsc` + eslint clean; composition **1083 tests green**.
 
 ### Phase 7 — Reconcile the build with the README (the release gate)
 
@@ -1339,7 +1377,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). T18 is DONE. T19 is DONE. T20 is PARTIAL and stays OPEN (create-notice done; rename cascade needs a PO decision). Next is T21, then T22-T23. Four rows open: T3, T12, T16, T20. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). T14 and T15 are DONE (C7 complete). T16 is PARTIAL and stays OPEN (observability added; the re-ask is a reserved PO/spend decision). T17 is DONE (C8 complete). T18 is DONE. T19 is DONE. T20 is PARTIAL and stays OPEN (create-notice done; rename cascade needs a PO decision). T21 is DONE (C9 complete). Next is T22 and T23 — the release gate. Four rows open: T3, T12, T16, T20. Four rows open: T3, T12, T16, T20. Three rows open: T3, T12, T16. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
