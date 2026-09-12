@@ -806,7 +806,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   `test_a_turn_that_called_nothing_may_not_claim_an_effect.py` — confirmed pre-existing by stashing
   these changes and re-running; unrelated to this work.
 
-- [ ] **T13** — Stop save-on-blur from discarding a sibling field's unsaved text.
+- [x] **T13** — Stop save-on-blur from discarding a sibling field's unsaved text.
   Finding #13 is a data-loss shape, not friction: typing a 1686-char chapter Goal, then saving a
   *different* field, reset the Goal textarea to its last-saved value (empty) — confirmed via API,
   not just visually. It recurs for every node until fixed. Related to Task 4's dirty-state
@@ -816,6 +816,47 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Chapter Inspector Goal and the Arc Summary field).
   Logging: WARN when a re-render would replace a dirty field's value with a server value.
   Tests: edit A, save B, assert A survives. NV-6: revert the guard, watch it go red, restore.
+
+  **EVIDENCE (T13).** Found in `plan-hub/components/PlanDrawerEdit.tsx`: `CommitField` held
+  `useEffect(() => setDraft(value), [value])`, which re-syncs from the server unconditionally —
+  including over text the user has typed and not saved. Both halves of the reported harm follow
+  from it: the draft is replaced, **and** `commit` then sees `draft === value` and writes nothing,
+  so the text is unrecoverable with no error anywhere.
+
+  Fixed with a `dirty` ref — set on keystroke, cleared on commit — gating the re-sync. Same policy
+  as T4's G7 on the manuscript hoist, deliberately: two mechanisms for one rule ("unsaved
+  keystrokes are the user's") is how they drift apart.
+
+  **The first bite did NOT go red, and that was the most useful result of this row.** My initial
+  test re-rendered with a changed *sibling* field, leaving `goal` as `''` in both renders — so the
+  `[value]` effect never fired and the test passed with or without the guard. Textbook NV-2, "the
+  subject cannot vary". Rewritten so the re-render actually changes `goal` (a concurrent edit, a
+  412 recovery reload, or a stale snapshot echoing back — the real conflict shapes). Then:
+
+  ```
+  # RED (guard removed)
+    × keeps a dirty field when the parent re-renders with the server value
+      → expected 'a stale server value' to be 'An Nhien refuses the sect elder, and …'
+    × still commits that text afterwards — surviving on screen is not enough
+      → expected "spy" to be called with arguments: [ { goal: 'the long goal' } ]
+   2 failed | 17 passed (19)
+  # RESTORED byte-exact (diff clean)
+   19 passed (19)
+  ```
+
+  Two companion tests keep the guard from over-reaching (NV-7): a CLEAN field still re-syncs (so
+  selecting a different node updates the drawer), and a field re-syncs again once committed (so it
+  is not permanently pinned to whatever was typed first).
+
+  **Honest scope note.** This fixes the *mechanism* by which unsaved text is destroyed, and the
+  bite proves it. I could not reproduce finding #13's exact reported sequence — typing Goal then
+  saving Synopsis — because that path leaves `goal` unchanged between renders and so never trips
+  this effect at all. Either the run's sequence involved a genuine value change (a 412 reload is
+  the most likely candidate, and this now covers it), or there is a second, server-side
+  last-write-wins path that this does not touch. Worth a live reproduction before finding #13 is
+  called closed.
+
+  Regression: plan-hub **24 files / 257 tests green**; `tsc` clean.
 
 ### Phase 4 — PlanForge compile self-recovery
 
@@ -1035,7 +1076,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). Next is T13, then T14-T23. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). T13 is DONE (C6 complete). Next is T14, then T15-T23. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend

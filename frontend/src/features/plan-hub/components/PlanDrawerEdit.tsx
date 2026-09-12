@@ -5,7 +5,7 @@
 //
 // Every write is OCC'd on the node `version` (If-Match) and settles by RELOADING — a 412 means
 // someone else moved the row, and we say so rather than clobbering them.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import type { OutlineNode } from '@/features/composition/types';
@@ -58,11 +58,39 @@ function CommitField({
   disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
+  // T13 — DIRTY means "the user has typed here and it is not saved yet". Without it this
+  // component silently DESTROYED unsaved text, and it is a data-loss shape, not a staleness one.
+  //
+  // The sequence a 2026-09-06 run hit: type a 1686-character Goal, move to Synopsis and save that.
+  // The sibling save re-renders this drawer from the server, `value` for Goal arrives as its
+  // last-SAVED content (empty), and the re-sync effect below overwrote the user's draft with it.
+  // Worse than losing the save: `commit` then sees `draft === value` and never writes, so the text
+  // is gone with no error anywhere. Confirmed against the API — the field really was "".
+  //
+  // The policy is the same one T4 applied to the manuscript hoist (G7): a keystroke the user has
+  // not saved is THEIRS, and no background refresh may overwrite it. Solving these two the same
+  // way was deliberate — two mechanisms for one rule is how they drift apart.
+  const dirty = useRef(false);
+
   // Re-sync when the row changes underneath (a reload, a 412 recovery, a different selection).
   // This is synchronisation with an external value, not event-handling — a legitimate useEffect.
-  useEffect(() => setDraft(value), [value]);
+  useEffect(() => {
+    // …but NEVER over a dirty field. An external change while the user is mid-edit is a conflict,
+    // and the resolution is to keep what they typed — they can still see and re-commit it, whereas
+    // a clobbered draft is unrecoverable.
+    if (dirty.current) return;
+    setDraft(value);
+  }, [value]);
+
+  const onType = (next: string) => {
+    dirty.current = true;
+    setDraft(next);
+  };
 
   const commit = () => {
+    // Cleared FIRST: once committed, the value is the server's business again, so the next
+    // external change (including the echo of this very save) is free to re-sync.
+    dirty.current = false;
     if (draft !== value) onCommit(draft);
   };
 
@@ -78,7 +106,7 @@ function CommitField({
           className={cn(cls, 'min-h-[3rem] resize-y')}
           value={draft}
           disabled={disabled}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => onType(e.target.value)}
           onBlur={commit}
         />
       ) : (
@@ -90,7 +118,7 @@ function CommitField({
           className={cls}
           value={draft}
           disabled={disabled}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => onType(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur();
