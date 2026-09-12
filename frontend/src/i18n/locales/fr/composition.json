@@ -97,7 +97,10 @@
     "discard": "Échap pour rejeter",
     "need_model": "Définissez un modèle par défaut dans les paramètres du co-auteur",
     "need_scene": "Choisissez d'abord une scène dans le panneau du co-auteur",
-    "stale": "Le curseur a bougé — réessayez."
+    "stale": "Le curseur a bougé — réessayez.",
+    "need_editor": "L'éditeur est en cours de chargement.",
+    "streaming": "Écriture en cours… laissez la suite actuelle se terminer.",
+    "pending_ghost": "Acceptez ou rejetez la suggestion actuelle avant d'en commencer une autre."
   },
   "beats": "Battements",
   "beatsheet": {
@@ -744,7 +747,8 @@
       "title": "Votre bibliothèque de motifs est prête",
       "body": "Les motifs sont des structures narratives réutilisables. Le planificateur en choisit un par chapitre pour que même un modèle simple produise une scène solide. 12 motifs de départ sont déjà présents — tu-tiên et báo-thù.",
       "browseSystem": "Parcourir les 12 modèles",
-      "hint": "Aucun jeton requis — créer un motif à la main est gratuit."
+      "hint": "Aucun jeton requis — créer un motif à la main est gratuit.",
+      "notThemes": "Ce sont des formes de intrigue STRUCTURELLES pour le planificateur, pas un suivi des images ou des thèmes récurrents de votre propre histoire — rien ici ne suit un symbole au fil de vos chapitres."
     },
     "facet": {
       "tier": "Niveau",
@@ -1758,5 +1762,9 @@
   "resolvingWork": "Fin de la configuration… le service de connaissances était brièvement indisponible.",
   "retry": "Réessayer",
   "threadFocusMissing": "La promesse dont vous venez n'est pas dans cette vue — elle a peut-être déjà été payée. Changez le filtre pour « tout ».",
-  "canonConflictCurrent": "Actuel (v{{v}}) : {{text}}"
+  "canonConflictCurrent": "Actuel (v{{v}}) : {{text}}",
+  "coverageExtractionFailed": "Impossible de lire les promesses de votre plan (l'appel au modèle a échoué ou a été interrompu). Réessayez ou choisissez un autre modèle.",
+  "coverageScoreFailed": "Les promesses ont été lues, mais l'évaluation par rapport au livre a échoué. Réessayez.",
+  "lengthAskedDelivered": "Demande de ~{{target}} mots, {{actual}} livrés ({{pct}} %).",
+  "lengthOverCeiling": "Ceci demande en un seul appel plus que ce qu'un appel peut fournir de manière fiable — divisez la scène en passages pour obtenir la longueur complète."
 }

@@ -925,7 +925,8 @@
       "cap": "超出限制 (正文 ≤ 8000 字符, 名称 ≤ 200, ≤ 20 条规则) 或模式无效。",
       "other": "无法保存规则。请重试。",
       "forbidden": "您没有编辑本书引导规则的权限。"
-    }
+    },
+    "overBudget": "您的规则总计约 {{total}} 个 token，超过了模型接收的约 {{cap}} 个 token 的限制。每一轮对话都将忽略 {{dropped}} 个内容：{{names}}。请缩短或禁用某些规则，以确保核心规则能够生效。"
   },
   "palette": {
     "openPanel": "Studio: 打开 {{name}}",
@@ -1927,5 +1928,6 @@
     "load_more": "加载更多",
     "loading_more": "加载中…",
     "restore": "还原"
-  }
+  },
+  "campaigns": "任务 (批量提取与翻译)"
 }

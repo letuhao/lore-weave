@@ -97,7 +97,10 @@
     "discard": "Esc Descartar",
     "need_model": "Defina um modelo padrão nas Configurações do co-escritor",
     "need_scene": "Escolha uma cena no painel do co-escritor primeiro",
-    "stale": "O cursor moveu — tente novamente."
+    "stale": "O cursor moveu — tente novamente.",
+    "need_editor": "O editor ainda está carregando.",
+    "streaming": "Escrevendo… aguarde a conclusão da continuação atual.",
+    "pending_ghost": "Aceite ou descarte a sugestão atual antes de iniciar outra."
   },
   "beats": "Beats",
   "beatsheet": {
@@ -744,7 +747,8 @@
       "title": "Sua biblioteca de motivos está pronta",
       "body": "Motivos são estruturas de enredo reutilizáveis. O planejador escolhe um por capítulo para que, mesmo um modelo pequeno, escreva uma cena sólida. 12 motivos iniciais já estão aqui — tu-tiên e báo-thù.",
       "browseSystem": "Explorar os 12 iniciais",
-      "hint": "Não são necessários tokens — construir um motivo manualmente é grátis."
+      "hint": "Não são necessários tokens — construir um motivo manualmente é grátis.",
+      "notThemes": "São formas ESTRUTURAIS de enredo para o planejador, não um rastreador das imagens ou temas recorrentes da sua própria história — nada aqui acompanha um símbolo ao longo dos seus capítulos."
     },
     "facet": {
       "tier": "Nível",
@@ -1758,5 +1762,9 @@
   "resolvingWork": "Concluindo configuração… o serviço de conhecimento ficou brevemente indisponível.",
   "retry": "Tentar novamente",
   "threadFocusMissing": "A promessa da qual você veio não está nesta visualização — ela pode já ter sido paga. Altere o filtro para «todos».",
-  "canonConflictCurrent": "Atual (v{{v}}): {{text}}"
+  "canonConflictCurrent": "Atual (v{{v}}): {{text}}",
+  "coverageExtractionFailed": "Não foi possível ler as promessas do seu esboço (a chamada do modelo falhou ou foi interrompida). Tente novamente ou escolha um modelo diferente.",
+  "coverageScoreFailed": "As promessas foram lidas, mas a avaliação em relação ao livro falhou. Tente novamente.",
+  "lengthAskedDelivered": "Solicitado: ~{{target}} palavras, entregue: {{actual}} ({{pct}}%).",
+  "lengthOverCeiling": "Isso solicita em uma única chamada mais do que uma chamada consegue entregar com segurança — divida a cena em passagens para obter a extensão completa."
 }

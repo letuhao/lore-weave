@@ -1,6 +1,6 @@
 {
   "wizard": {
-    "title": "New Auto-Draft Campaign",
+    "title": "New Campaign",
     "cancel": "Cancel",
     "back": "Back",
     "next": "Next"
@@ -82,7 +82,7 @@
     "launch": "Launch campaign"
   },
   "list": {
-    "title": "Auto-Draft Campaigns",
+    "title": "Campaigns",
     "new": "New campaign",
     "loading": "Loading…",
     "error": "Failed to load campaigns.",

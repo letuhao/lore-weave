@@ -684,11 +684,6 @@
       "title": "Đề xuất Quy trình làm việc",
       "desc": "Xem xét các quy trình mà tác nhân đã đề xuất",
       "guideBody": "Liệt kê các công thức quy trình mà tác nhân đã gợi ý tạo, dựa trên các chuỗi nhiều bước mà nó nhận thấy bạn thường lặp lại. Mở mục này để phê duyệt một đề xuất — việc này sẽ đúc kết quy trình để nó có thể thực thi được — hoặc từ chối nó. Đây là nơi một quy trình do tác nhân đề xuất thực sự trở thành hiện thực."
-    },
-    "world-setup": {
-      "title": "Thiết lập Thế giới",
-      "desc": "Xây dựng dàn nhân vật, thế giới và các mối quan hệ của họ từ một bản mô tả",
-      "guideBody": "Biến bản mô tả câu chuyện của bạn thành các tư liệu thực tế và có hệ thống: hệ thống sẽ lập kế hoạch những gì cần xây dựng, bạn phê duyệt hoặc lược bỏ danh sách, sau đó từng nhân vật, phe phái và thuật ngữ sẽ được soạn thảo riêng biệt (những nhân vật quan trọng sẽ có hồ sơ chuyên sâu) và được lưu lại để bạn xem xét. Cuối cùng, hệ thống sẽ xác định cách họ kết nối với nhau và yêu cầu bạn phê duyệt các mối quan hệ đó trước khi lưu lại."
     }
   },
   "sceneRail": {
@@ -930,7 +925,8 @@
       "cap": "Vượt quá giới hạn (nội dung ≤ 8000 ký tự, tên ≤ 200, ≤ 20 quy tắc) hoặc chế độ không hợp lệ.",
       "other": "Không lưu được quy tắc. Vui lòng thử lại.",
       "forbidden": "Bạn không có quyền chỉnh sửa steering cho sách này."
-    }
+    },
+    "overBudget": "Tổng số quy tắc của bạn khoảng ~{{total}} token, vượt quá mức ~{{cap}} mà mô hình có thể tiếp nhận. {{dropped}} sẽ bị loại bỏ trong mỗi lượt: {{names}}. Hãy rút ngắn hoặc vô hiệu hóa một quy tắc để các quy tắc quan trọng có thể được truyền đi."
   },
   "palette": {
     "openPanel": "Studio: Mở {{name}}",
@@ -1932,5 +1928,6 @@
     "load_more": "Tải thêm",
     "loading_more": "Đang tải…",
     "restore": "Khôi phục"
-  }
+  },
+  "campaigns": "Chiến dịch (trích xuất & dịch thuật hàng loạt)"
 }

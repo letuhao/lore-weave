@@ -685,7 +685,8 @@
         "name_desc": "Name (Z–A)"
       },
       "thisBookOnly": "This book only",
-      "showAllBooks": "Show all books"
+      "showAllBooks": "Show all books",
+      "searchNoResults": "No project matches \"{{q}}\". Search looks at the PROJECT name, which is set when the project is created and does not change when you rename the book — try the name the book had then, or clear the search to see all your projects."
     },
     "card": {
       "staticMemory": "Static memory",

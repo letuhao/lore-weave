@@ -202,7 +202,11 @@ class OutlineNode(BaseModel):
     title: _Title = ""
     pov_entity_id: UUID | None = None
     present_entity_ids: list[UUID] = Field(default_factory=list)
-    goal: _Short = ""
+    # _Long, not _Short: `goal` is what "reaches the prompt" for drafting — a chapter/scene
+    # goal genuinely needs more than a phrase. Was _Short (2000) until a real arc-planning
+    # goal (~2800 chars) proved that too small; see StructureNode.goal for the write-side
+    # bug this mismatch used to cause.
+    goal: _Long = ""
     beat_role: Annotated[str, StringConstraints(max_length=100)] | None = None
     status: NodeStatus = "empty"
     chapter_id: UUID | None = None
@@ -303,7 +307,15 @@ class StructureNode(BaseModel):
     rank: Annotated[str, StringConstraints(max_length=200)]
     title: _Title = ""
     summary: _Long = ""
-    goal: _Short = ""
+    # _Long, not _Short: this is the arc's "Goal (reaches the prompt)" field in the Arc
+    # Inspector. It was _Short (2000) while `ArcCreate`/`ArcPatch` (routers/arc.py) accept
+    # an UNBOUNDED `goal: str` on write — so a real arc-planning goal over 2000 chars wrote
+    # fine and then made every subsequent GET of this book's arc list 500
+    # (pydantic `string_too_long` on read, per the class of bug already documented at
+    # services/composition-service/app/services/intent_fsm/slots.py:45-50 for OutlineNode).
+    # Raised to match `summary`/`synopsis` (_Long, 20000) and given a matching write-side
+    # cap in ArcCreate/ArcPatch so the two sides can never drift again.
+    goal: _Long = ""
     status: NodeStatus = "outline"
     tracks: list[dict[str, Any]] = Field(default_factory=list)          # [{key,label}]
     roster: list[dict[str, Any]] = Field(default_factory=list)          # [{key,actant,label,constraints[]}]

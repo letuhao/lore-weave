@@ -1,6 +1,6 @@
 {
   "wizard": {
-    "title": "Chiến dịch tạo bản nháp tự động mới",
+    "title": "Chiến dịch mới",
     "cancel": "Hủy",
     "back": "Quay lại",
     "next": "Tiếp"
@@ -82,7 +82,7 @@
     "launch": "Khởi chạy chiến dịch"
   },
   "list": {
-    "title": "Chiến dịch tạo bản nháp tự động",
+    "title": "Chiến dịch",
     "new": "Chiến dịch mới",
     "loading": "Đang tải…",
     "error": "Tải danh sách chiến dịch thất bại.",

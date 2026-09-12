@@ -17,7 +17,7 @@ export function CampaignWizard() {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t('wizard.title', { defaultValue: 'New Auto-Draft Campaign' })}</h1>
+        <h1 className="text-xl font-semibold">{t('wizard.title', { defaultValue: 'New Campaign' })}</h1>
         <Link to="/campaigns" className="text-sm text-muted-foreground hover:text-foreground">
           {t('wizard.cancel', { defaultValue: 'Cancel' })}
         </Link>
@@ -55,12 +55,26 @@ export function CampaignWizard() {
             type="button"
             onClick={wiz.next}
             disabled={!wiz.canAdvance(wiz.stepIndex)}
+            title={wiz.blockedReason(wiz.stepIndex) ?? undefined}
             className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
           >
             {t('wizard.next', { defaultValue: 'Next' })}
           </button>
         )}
       </div>
+      {/* T23 — the reason, VISIBLE. T2 established that `title` alone is unreachable on a disabled
+          control: browsers suppress the tooltip and a disabled button invites no hover. The
+          campaign wizard has four ways to be blocked, and a user missing one otherwise meets a
+          400 from the server after filling in the whole form. */}
+      {wiz.step !== 'review' && wiz.blockedReason(wiz.stepIndex) && (
+        <p
+          role="status"
+          data-testid="campaign-wizard-blocked-reason"
+          className="mt-2 text-right text-[11px] text-muted-foreground"
+        >
+          {wiz.blockedReason(wiz.stepIndex)}
+        </p>
+      )}
     </div>
   );
 }

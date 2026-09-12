@@ -685,7 +685,8 @@
         "name_desc": "Tên (Z–A)"
       },
       "thisBookOnly": "Chỉ sách này",
-      "showAllBooks": "Hiện tất cả sách"
+      "showAllBooks": "Hiện tất cả sách",
+      "searchNoResults": "Không tìm thấy dự án nào khớp với «{{q}}». Tìm kiếm dựa trên TÊN DỰ ÁN, được thiết lập khi tạo dự án và không thay đổi ngay cả khi bạn đổi tên sách — hãy thử tìm theo tên cũ của sách, hoặc xóa tìm kiếm để xem tất cả dự án của bạn."
     },
     "card": {
       "staticMemory": "Bộ nhớ tĩnh",

@@ -4,6 +4,7 @@
 // derived from the outline spec, scored over the whole book — paid / progressing / abandoned /
 // absent, with the ABANDONED ones (introduced then dropped) called out. Diagnostic only.
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 import { useBookPromiseCoverage } from '../hooks/useBookPromiseCoverage';
 
@@ -11,6 +12,36 @@ interface Props {
   projectId: string;
   token: string | null;
   modelRef: string;
+}
+
+/** T10 — the job already tells us WHY coverage is unavailable; this renders it.
+ *
+ * The panel used to branch on `c.error` and then throw the value away, showing one fixed string
+ * for every cause. So "you have not declared any promises yet" (which the user can fix in one
+ * click) and "the extraction call failed" (which they cannot) were the same sentence. A
+ * 2026-09-06 human-sim run hit the first and reasonably concluded the feature was broken.
+ *
+ * Unknown codes fall back to the original string — a code we have not mapped yet must not render
+ * blank — and the caller logs it, so an unmapped reason is traceable rather than invisible. */
+function coverageReason(t: TFunction, code: string): string {
+  switch (code) {
+    case 'no_tracked_promises':
+      return t('coverageNoPromises', {
+        defaultValue: 'No promises are being tracked yet — add one in the Promises panel and re-run this.',
+      });
+    case 'promise_extraction_failed':
+      return t('coverageExtractionFailed', {
+        defaultValue: 'Could not read the promises out of your outline (the model call failed or was cut short). Try again, or pick a different model.',
+      });
+    case 'coverage_unavailable':
+      return t('coverageScoreFailed', {
+        defaultValue: 'The promises were read, but scoring them against the book failed. Try again.',
+      });
+    default:
+      // eslint-disable-next-line no-console
+      console.warn('[promise-coverage] unmapped reason code:', code);
+      return t('coverageNa', { defaultValue: 'Promise coverage unavailable.' });
+  }
 }
 
 export function BookPromiseCoverageSection({ projectId, token, modelRef }: Props) {
@@ -48,8 +79,12 @@ export function BookPromiseCoverageSection({ projectId, token, modelRef }: Props
       {q.error && <div data-testid="coverage-error" className="text-[11px] text-amber-600">{q.error}</div>}
 
       {c?.error && (
-        <span data-testid="coverage-na" className="text-[11px] text-neutral-400">
-          {t('coverageNa', { defaultValue: 'Promise coverage unavailable.' })}
+        <span
+          data-testid="coverage-na"
+          data-reason={c.error}
+          className={`text-[11px] ${c.error === 'promise_extraction_failed' ? 'text-amber-600' : 'text-neutral-400'}`}
+        >
+          {coverageReason(t, c.error)}
         </span>
       )}
 

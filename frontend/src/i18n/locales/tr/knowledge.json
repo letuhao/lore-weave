@@ -685,7 +685,8 @@
         "name_desc": "İsim (Z–A)"
       },
       "thisBookOnly": "Sadece bu kitap",
-      "showAllBooks": "Tüm kitapları göster"
+      "showAllBooks": "Tüm kitapları göster",
+      "searchNoResults": "“{{q}}” ile eşleşen proje bulunamadı. Arama, proje oluşturulurken belirlenen ve kitabın adını değiştirdiğinizde değişmeyen PROJE adına bakar — kitabın o zamanki adını denemeyi veya tüm projelerinizi görmek için aramayı temizlemeyi deneyin."
     },
     "card": {
       "staticMemory": "Statik bellek",

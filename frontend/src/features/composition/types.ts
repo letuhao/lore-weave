@@ -503,6 +503,20 @@ export type AutoGeneration = {
   replay?: boolean;
   // A2-S4 — the canon gate verdict (absent on an idempotent replay / cowrite).
   canon?: CanonResult;
+  // T16 — asked-vs-delivered length. The server has returned these four all along
+  // (`routers/engine.py`, the `/generate` JSONResponse); this type simply never declared them,
+  // so nothing could render them and a 25-40% shortfall was invisible to the author who was
+  // looking straight at the drafts. Optional because the cowrite/replay paths omit them.
+  target_words?: number | null;
+  actual_words?: number | null;
+  // WHY this rides along: a whitespace count against a Chinese or Japanese target reads as a
+  // permanent ~85% shortfall. `cowrite.realised_words` picks the method; showing a ratio
+  // without naming it would manufacture a scare on every CJK scene.
+  word_count_method?: string | null;
+  // Passages that asked one call for more words than one call is measured to deliver. The
+  // engine has published this since D-SCENE-BEATS with the stated intent that a short scene
+  // "must be able to SAY so" — it is the CAUSE, and without it a shortfall reads as a mystery.
+  beats_over_ceiling?: number | null;
 };
 
 // LOOM chapter-assembly-modes — how a chapter's prose is assembled.

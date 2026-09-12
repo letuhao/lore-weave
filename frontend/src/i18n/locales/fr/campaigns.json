@@ -1,6 +1,6 @@
 {
   "wizard": {
-    "title": "Nouvelle campagne Auto-Draft",
+    "title": "Nouvelle campagne",
     "cancel": "Annuler",
     "back": "Retour",
     "next": "Suivant"
@@ -82,7 +82,7 @@
     "tokens": "Tokens (en/sortie)"
   },
   "list": {
-    "title": "Campagnes Auto-Draft",
+    "title": "Campagnes",
     "new": "Nouvelle campagne",
     "loading": "Chargement…",
     "error": "Échec du chargement des campagnes.",

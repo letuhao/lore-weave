@@ -3,7 +3,7 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
-import { ArrowLeft, CircleHelp, LayoutDashboard, Search, Settings, PanelsTopLeft } from 'lucide-react';
+import { ArrowLeft, CircleHelp, LayoutDashboard, Search, Settings, PanelsTopLeft, Factory } from 'lucide-react';
 import { StudioLayoutButton } from './StudioLayoutButton';
 import { PanelPicker } from '../layout/PanelPicker';
 
@@ -74,6 +74,24 @@ export function StudioTopBar({ bookId, bookTitle, onOpenQuickOpen, onOpenGuide }
       >
         <CircleHelp className="h-4 w-4" />
       </button>
+
+      {/* T23 — the campaign engine was UNREACHABLE from here. Its only link lives in the app
+          Sidebar, and the Studio is mounted outside EditorLayout so it never renders that Sidebar:
+          a grep for "campaign" across features/studio returned zero hits. A 2026-09-06 run spent
+          days in the Studio and never found it.
+
+          In the TOP BAR rather than a panel on purpose: DOCK-7 (dockable-gui) forbids
+          route-navigation inside panels/** — a panel that navigates unmounts the Studio around
+          itself. The frame is where an outbound link belongs, which is exactly what the Book
+          settings link beside it already is. */}
+      <Link
+        to="/campaigns"
+        data-testid="studio-campaigns-link"
+        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+        title={t('campaigns', { defaultValue: 'Campaigns (batch extraction & translation)' })}
+      >
+        <Factory className="h-4 w-4" />
+      </Link>
 
       <Link
         to={`/books/${bookId}/settings`}

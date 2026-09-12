@@ -685,7 +685,8 @@
         "name_desc": "Nama (Z–A)"
       },
       "thisBookOnly": "Buku ini saja",
-      "showAllBooks": "Tampilkan semua buku"
+      "showAllBooks": "Tampilkan semua buku",
+      "searchNoResults": "Tidak ada proyek yang cocok dengan \"{{q}}\". Pencarian memeriksa nama PROYEK, yang ditetapkan saat proyek dibuat dan tidak berubah meskipun Anda mengubah nama buku — coba gunakan nama lama buku tersebut, atau hapus pencarian untuk melihat semua proyek Anda."
     },
     "card": {
       "staticMemory": "Memori statis",

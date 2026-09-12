@@ -97,7 +97,10 @@
     "discard": "Esc Bỏ",
     "need_model": "Đặt mô hình mặc định trong Cài đặt đồng tác giả",
     "need_scene": "Hãy chọn một cảnh trong bảng đồng tác giả trước",
-    "stale": "Con trỏ đã di chuyển — hãy thử lại."
+    "stale": "Con trỏ đã di chuyển — hãy thử lại.",
+    "need_editor": "Trình chỉnh sửa vẫn đang tải.",
+    "streaming": "Đang viết… hãy để phần tiếp theo hiện tại hoàn tất.",
+    "pending_ghost": "Hãy chấp nhận hoặc loại bỏ gợi ý hiện tại trước khi bắt đầu một gợi ý khác."
   },
   "beats": "Nhịp",
   "beatsheet": {
@@ -744,7 +747,8 @@
       "title": "Thư viện motif của bạn đã sẵn sàng",
       "body": "Motif là các khuôn mẫu cốt truyện có thể tái sử dụng. Trình lập kế hoạch sẽ chọn một motif cho mỗi chương để ngay cả một mô hình nhỏ cũng có thể tạo nên một cảnh phim vững chắc. Đã có sẵn 12 motif khởi đầu — tu tiên và báo thù.",
       "browseSystem": "Xem 12 motif khởi đầu",
-      "hint": "Không cần token — tự xây dựng motif là hoàn toàn miễn phí."
+      "hint": "Không cần token — tự xây dựng motif là hoàn toàn miễn phí.",
+      "notThemes": "Đây là các khuôn hình cốt truyện mang tính CẤU TRÚC dành cho bộ lập kế hoạch, không phải công cụ theo dõi hình ảnh hay chủ đề lặp lại trong truyện của bạn — không có gì ở đây đi theo một biểu tượng xuyên suốt các chương."
     },
     "facet": {
       "tier": "Tier",
@@ -1758,5 +1762,9 @@
   "resolvingWork": "Đang hoàn tất thiết lập… dịch vụ tri thức vừa tạm thời không khả dụng.",
   "retry": "Thử lại",
   "threadFocusMissing": "Chủ đề bạn đang theo dõi không có trong chế độ xem này — có thể nó đã được thanh toán. Hãy chuyển bộ lọc sang “tất cả”.",
-  "canonConflictCurrent": "Hiện tại (v{{v}}): {{text}}"
+  "canonConflictCurrent": "Hiện tại (v{{v}}): {{text}}",
+  "coverageExtractionFailed": "Không thể đọc các lời hứa từ dàn ý của bạn (lệnh gọi mô hình bị lỗi hoặc bị ngắt quãng). Hãy thử lại hoặc chọn một mô hình khác.",
+  "coverageScoreFailed": "Đã đọc các lời hứa, nhưng việc chấm điểm chúng dựa trên cuốn sách đã thất bại. Hãy thử lại.",
+  "lengthAskedDelivered": "Yêu cầu khoảng {{target}} từ, đã trả về {{actual}} từ ({{pct}}%).",
+  "lengthOverCeiling": "Yêu cầu này vượt quá số lượng từ mà một lần gọi có thể đảm bảo cung cấp — hãy chia cảnh thành các đoạn văn để đạt được độ dài đầy đủ."
 }

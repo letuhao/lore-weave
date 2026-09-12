@@ -66,6 +66,48 @@ function renderBrowser(onOpen: (p: Project) => void = vi.fn(), scopedBookId?: st
   return render(<ProjectsBrowser onOpen={onOpen} scopedBookId={scopedBookId} />);
 }
 
+// T20 — "you have no projects" and "your SEARCH matched nothing" are different answers.
+//
+// Search is SERVER-side, so a search matching nothing returns zero items — and that rendered the
+// truly-empty state: "you have no projects, create the first", with a Create button. A 2026-09-06
+// run renamed a book, searched the book's CURRENT title, found nothing (project names do not follow
+// a book rename), and was invited by this very screen to create the duplicate that finding #7
+// describes. The conflation is the bug; the duplicate-create was its consequence.
+describe('ProjectsBrowser — an empty SEARCH is not an empty ACCOUNT (T20)', () => {
+  beforeEach(() => {
+    loadMoreMock.mockReset();
+    useProjectsMock.mockReset();
+  });
+
+  it('offers "create the first" only when there is genuinely nothing', () => {
+    setProjects([]);
+    renderBrowser();
+    expect(screen.queryByTestId('projects-search-no-results')).toBeNull();
+  });
+
+  it('a search that matched nothing does NOT invite a create', async () => {
+    setProjects([]);
+    renderBrowser();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('projects-search'), { target: { value: 'Renamed Book' } });
+      await new Promise((r) => setTimeout(r, 300));  // past the 250ms debounce
+    });
+    // Asserting the STATE, not the copy: this i18n harness renders keys rather than
+    // defaultValue, so a copy assertion would be testing the harness (the lesson from T10).
+    const hint = screen.getByTestId('projects-search-no-results');
+    expect(hint.getAttribute('data-query')).toBe('Renamed Book');
+    // …and crucially, the create-the-first invitation must be GONE.
+    expect(screen.queryByText(/createFirst|create the first/i)).toBeNull();
+  });
+
+  it('shows rows, not the search hint, when results exist (NV-7)', () => {
+    setProjects([mk({ project_id: 'p1', name: 'Kept' })]);
+    renderBrowser();
+    expect(screen.queryByTestId('projects-search-no-results')).toBeNull();
+    expect(screen.getByTestId('row-p1')).toBeTruthy();
+  });
+});
+
 describe('ProjectsBrowser — 14_kg_panels.md A2 (DOCK-2 extraction shared by ProjectsTab + KnowledgeHubPanel)', () => {
   beforeEach(() => {
     loadMoreMock.mockReset();

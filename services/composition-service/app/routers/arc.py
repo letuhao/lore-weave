@@ -23,12 +23,13 @@ from __future__ import annotations
 
 import datetime as _dt
 import decimal as _dec
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
+from pydantic import StringConstraints
 
 from loreweave_mcp.errors import NOT_ACCESSIBLE_MESSAGE
 
@@ -41,6 +42,13 @@ from app.db.models import (
     _ForbidExtra,
     _Key,
 )
+
+# Mirrors models._Long — the write-side half of StructureNode.goal's cap. Keeping this
+# bound here (not just on the response model) is what stops a future over-long write from
+# reproducing the corrupt-on-read bug the _Long promotion just fixed: a write that exceeds
+# what the read side can render must fail at the door (422), not succeed and break every
+# later GET of this book's arc list.
+_ArcGoal = Annotated[str, StringConstraints(max_length=20000)]
 from app.clients.book_client import BookClient, BookClientError
 from app.db.pool import get_pool
 from app.db.repositories import VersionMismatchError
@@ -508,7 +516,7 @@ class ArcCreate(_ArcContent):
     parent_arc_id: UUID | None = None
     title: str = ""
     summary: str = ""
-    goal: str = ""
+    goal: _ArcGoal = ""
     status: _ArcStatusREST = "outline"
     arc_template_id: UUID | None = None
     template_version: int | None = None
@@ -517,7 +525,7 @@ class ArcCreate(_ArcContent):
 class ArcPatch(_ArcContent):
     title: str | None = None
     summary: str | None = None
-    goal: str | None = None
+    goal: _ArcGoal | None = None
     status: _ArcStatusREST | None = None
     arc_template_id: UUID | None = None
     template_version: int | None = None

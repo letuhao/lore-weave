@@ -1,6 +1,6 @@
 {
   "wizard": {
-    "title": "Yeni Otomatik Taslak Kampanyası",
+    "title": "Yeni Kampanya",
     "cancel": "İptal",
     "back": "Geri",
     "next": "Sonraki"
@@ -82,7 +82,7 @@
     "launch": "Kampanyayı başlat"
   },
   "list": {
-    "title": "Otomatik Taslak Kampanyaları",
+    "title": "Kampanyalar",
     "new": "Yeni kampanya",
     "loading": "Yükleniyor…",
     "error": "Kampanyalar yüklenemedi.",

@@ -97,7 +97,10 @@
     "discard": "Esc 捨棄",
     "need_model": "請在共筆設定中設定預設模型",
     "need_scene": "請先在共筆面板中選擇一個場景",
-    "stale": "游標已移動 — 請重試。"
+    "stale": "游標已移動 — 請重試。",
+    "need_editor": "編輯器仍在載入中。",
+    "streaming": "正在寫作…請等待目前的內容寫完。",
+    "pending_ghost": "在開始下一個建議前，請先接受或捨棄目前的建議。"
   },
   "beats": "節拍",
   "beatsheet": {
@@ -744,7 +747,8 @@
       "title": "您的母題庫已準備就緒",
       "body": "母題是可重複使用的情節結構。規劃器會為每章挑選一個母題，因此即使是簡單的模型也能寫出紮實的場景。這裡已有 12 個入門母題 — 例如：tu-tiên 與 báo-thù。",
       "browseSystem": "瀏覽 12 個入門母題",
-      "hint": "無需消耗 Token — 手動建立母題是免費的。"
+      "hint": "無需消耗 Token — 手動建立母題是免費的。",
+      "notThemes": "這些是供規劃器使用的結構性情節模型，而不是追蹤你故事中反覆出現的意象或主題的工具——這裡沒有任何功能會跨章節追蹤某個象徵。"
     },
     "facet": {
       "tier": "層級",
@@ -1758,5 +1762,9 @@
   "resolvingWork": "設定中… 知識服務曾短暫斷線。",
   "retry": "重試",
   "threadFocusMissing": "您所屬的承諾不在此視圖中 — 它可能已經結清。請將篩選條件切換為「全部」。",
-  "canonConflictCurrent": "當前 (v{{v}}): {{text}}"
+  "canonConflictCurrent": "當前 (v{{v}}): {{text}}",
+  "coverageExtractionFailed": "無法從您的大綱中讀取伏筆（模型呼叫失敗或中斷）。請重試，或選擇不同的模型。",
+  "coverageScoreFailed": "已讀取伏筆，但與全書進行比對評分時失敗。請重試。",
+  "lengthAskedDelivered": "要求約 {{target}} 字，實際交付 {{actual}} 字 ({{pct}}%)。",
+  "lengthOverCeiling": "單次呼叫要求的字數超過了模型能穩定交付的範圍 — 請將場景拆分為段落以獲得完整長度。"
 }

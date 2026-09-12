@@ -12,7 +12,7 @@ export function CampaignsList() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t('list.title', { defaultValue: 'Auto-Draft Campaigns' })}</h1>
+        <h1 className="text-xl font-semibold">{t('list.title', { defaultValue: 'Campaigns' })}</h1>
         <Link to="/campaigns/new"
           className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
           <Plus className="h-4 w-4" />

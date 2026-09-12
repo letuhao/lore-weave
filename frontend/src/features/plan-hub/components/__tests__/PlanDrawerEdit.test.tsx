@@ -44,6 +44,106 @@ function setup(o: Partial<OutlineNode> = {}) {
   return props;
 }
 
+// T13 — DATA LOSS, not staleness. A 2026-09-06 human-sim run typed a 1686-character Goal, moved
+// to Synopsis and saved that, and the sibling save's re-render reset the Goal field to its
+// last-SAVED value (empty). Confirmed against the API: the field really was "". Worse than losing
+// the save, `commit` then saw draft === value and never wrote, so the text was gone with no error
+// anywhere. Same policy as T4's G7 on the manuscript hoist: unsaved keystrokes are the user's.
+describe('PlanDrawerEdit — an unsaved edit survives a sibling re-render (T13)', () => {
+  const rerenderWith = (n: OutlineNode) =>
+    render(
+      <PlanDrawerEdit
+        node={n}
+        chapters={chapters}
+        onEdit={vi.fn()}
+        onArchive={vi.fn()}
+        onRestore={vi.fn()}
+        onOpenInEditor={vi.fn()}
+        saving={false}
+      />,
+    );
+
+  it('keeps a dirty field when the parent re-renders with the server value', () => {
+    const props = {
+      node: node(),
+      chapters,
+      onEdit: vi.fn(),
+      onArchive: vi.fn(),
+      onRestore: vi.fn(),
+      onOpenInEditor: vi.fn(),
+      saving: false,
+    };
+    const { rerender } = render(<PlanDrawerEdit {...props} />);
+
+    const goal = screen.getByTestId('plan-drawer-edit-goal') as HTMLTextAreaElement;
+    fireEvent.change(goal, { target: { value: 'An Nhien refuses the sect elder, and pays for it.' } });
+
+    // The re-render must actually CHANGE `goal`, or the [value] effect never fires and this test
+    // passes with or without the guard (the vacuity a bite exposed on the first attempt). A
+    // server-side goal arriving DIFFERENT from the draft is the real conflict: a concurrent edit,
+    // a 412 recovery reload, or a stale snapshot echoing back.
+    rerender(
+      <PlanDrawerEdit {...props} node={node({ goal: 'a stale server value', version: 8 })} />,
+    );
+
+    expect((screen.getByTestId('plan-drawer-edit-goal') as HTMLTextAreaElement).value).toBe(
+      'An Nhien refuses the sect elder, and pays for it.',
+    );
+  });
+
+  it('still commits that text afterwards — surviving on screen is not enough', () => {
+    // The nastier half of the original defect: after the clobber, draft === value, so the blur
+    // wrote nothing and the text was unrecoverable.
+    const props = {
+      node: node(),
+      chapters,
+      onEdit: vi.fn(),
+      onArchive: vi.fn(),
+      onRestore: vi.fn(),
+      onOpenInEditor: vi.fn(),
+      saving: false,
+    };
+    const { rerender } = render(<PlanDrawerEdit {...props} />);
+    const goal = screen.getByTestId('plan-drawer-edit-goal');
+    fireEvent.change(goal, { target: { value: 'the long goal' } });
+    rerender(<PlanDrawerEdit {...props} node={node({ goal: 'a stale server value', version: 8 })} />);
+    fireEvent.blur(screen.getByTestId('plan-drawer-edit-goal'));
+    expect(props.onEdit).toHaveBeenCalledWith({ goal: 'the long goal' });
+  });
+
+  it('a CLEAN field still re-syncs from the server (the guard must not freeze the drawer)', () => {
+    // NV-7 — a guard that blocks every re-sync would be trivially "safe" and useless: selecting a
+    // different node, or a 412 recovery, must still update the fields.
+    const { unmount } = rerenderWith(node({ goal: 'first' }));
+    expect((screen.getByTestId('plan-drawer-edit-goal') as HTMLTextAreaElement).value).toBe('first');
+    unmount();
+    rerenderWith(node({ goal: 'second' }));
+    expect((screen.getByTestId('plan-drawer-edit-goal') as HTMLTextAreaElement).value).toBe('second');
+  });
+
+  it('re-syncs again once the edit has been committed', () => {
+    // After a commit the value is the server's business again — otherwise the field would be
+    // permanently pinned to whatever was typed first.
+    const props = {
+      node: node(),
+      chapters,
+      onEdit: vi.fn(),
+      onArchive: vi.fn(),
+      onRestore: vi.fn(),
+      onOpenInEditor: vi.fn(),
+      saving: false,
+    };
+    const { rerender } = render(<PlanDrawerEdit {...props} />);
+    const goal = screen.getByTestId('plan-drawer-edit-goal');
+    fireEvent.change(goal, { target: { value: 'mine' } });
+    fireEvent.blur(goal);                                   // committed → no longer dirty
+    rerender(<PlanDrawerEdit {...props} node={node({ goal: 'server wins now' })} />);
+    expect((screen.getByTestId('plan-drawer-edit-goal') as HTMLTextAreaElement).value).toBe(
+      'server wins now',
+    );
+  });
+});
+
 describe('PlanDrawerEdit (PH20)', () => {
   it('renames on blur — NOT on every keystroke', () => {
     // A per-keystroke write would bump `version` on each character and then 412 itself on the next.

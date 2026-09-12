@@ -199,7 +199,7 @@ export function App() {
             <Route path="/worlds" element={<WorldsPage />} />
             <Route path="/worlds/:worldId" element={<WorldWorkspacePage />} />
 
-            {/* Auto-Draft Factory (campaigns) */}
+            {/* Campaigns (extraction + translation batches) */}
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/campaigns/new" element={<CreateCampaignWizardPage />} />
             <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />

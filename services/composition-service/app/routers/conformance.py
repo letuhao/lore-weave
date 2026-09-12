@@ -55,7 +55,11 @@ from app.deps import (get_arc_template_repo, get_grant_client_dep,
 from app.engine.arc_conformance_orchestrate import compute_arc_report
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
-from app.middleware.jwt_auth import get_current_user
+from fastapi.security import HTTPAuthorizationCredentials
+
+from app.clients.book_client import BookClientError
+from app.engine.prose_doc import scene_prose_presence
+from app.middleware.jwt_auth import bearer_scheme, get_current_user
 from app.packer.pack import OwnershipError
 
 logger = logging.getLogger(__name__)
@@ -260,6 +264,9 @@ def _assemble_conformance(
     scenes: list[OutlineNode],
     apps_by_node: dict[UUID, MotifApplication],
     latest_by_node: dict[UUID, dict[str, Any]],
+    # T8 — {scene_id: word_count} for scenes with prose in the SAVED manuscript. Defaults to
+    # empty so every existing caller (and test) keeps the pre-T8 two-signal behaviour exactly.
+    manuscript_prose: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """PURE in-memory join → the §4.1 trace shape. No DB. This is the join-
     correctness surface (audit gap4 / F-3 test target).
@@ -285,9 +292,26 @@ def _assemble_conformance(
         }
 
         # REALIZED — text presence only (never the prose blob in the trace).
+        #
+        # T8: THREE signals, deliberately kept apart rather than collapsed into one boolean.
+        # `generation_job` means an automated run produced this scene; `manuscript` means the prose
+        # is simply THERE in the saved document, however it got there. Both are "written"; only the
+        # first says a generator wrote it, and the flywheel needs to tell them apart.
+        #
+        # Before this, a human who drafted in chat and pasted into the editor could satisfy NEITHER
+        # of the two existing signals, so every finished scene of a 5-arc novel read
+        # "Not written yet" (2026-09-06 human-sim run).
+        manuscript_words = manuscript_prose.get(str(s.id)) if manuscript_prose else None
+        job_has_prose = bool(latest["has_text"]) if latest else False
         realized: dict[str, Any] = {
             "job_id": latest["job_id"] if latest else None,
-            "has_prose": bool(latest["has_text"]) if latest else False,
+            "has_prose": job_has_prose or bool(manuscript_words),
+            "source": (
+                "generation_job" if job_has_prose
+                else "manuscript" if manuscript_words
+                else None
+            ),
+            "manuscript_words": manuscript_words,
         }
 
         # CONFORMANCE — the dim from the latest job's critic, or null. Null when:
@@ -348,6 +372,11 @@ async def read_conformance(
     structure_repo: StructureRepo = Depends(get_structure_repo),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     grant: GrantClient = Depends(get_grant_client_dep),
+    # T8 — OPTIONAL by construction. `get_bearer_token` 401s when no Authorization header is
+    # present, so requiring it here would have changed this route's auth contract for EVERY scope
+    # to buy one best-effort read in one branch. The manuscript signal simply degrades when the
+    # credential is absent.
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
     """The motif-conformance trace (§4). `scope=chapter` (default) is the per-scene
     planned│realized│conformance trace.
@@ -412,12 +441,38 @@ async def read_conformance(
     apps_by_node = await reader.apps_by_nodes(project_id, node_ids)
     latest_by_node = await reader.latest_completed_by_nodes(project_id, node_ids)
 
+    # T8 — the third, manuscript-derived signal. Best-effort by design: conformance is ADVISORY,
+    # so a book-service hiccup must degrade this panel to its old two signals rather than 500 a
+    # read. Logged at WARNING because "no manuscript signal" and "manuscript has no prose" would
+    # otherwise look identical — the silence this remediation exists to remove.
+    manuscript_prose: dict[str, int] = {}
+    bearer = credentials.credentials if credentials else None
+    if not bearer:
+        logger.info(
+            "conformance manuscript signal skipped (no bearer) book_id=%s chapter_id=%s",
+            work.book_id, chapter_id,
+        )
+    try:
+        from app.clients.book_client import get_book_client
+        draft = await get_book_client().get_draft(work.book_id, chapter_id, bearer) if bearer else None
+        if draft:
+            manuscript_prose = scene_prose_presence(
+                draft.get("body"),
+                [{"id": str(sc.id), "title": sc.title} for sc in scenes],
+            )
+    except BookClientError as exc:
+        logger.warning(
+            "conformance manuscript signal unavailable book_id=%s chapter_id=%s code=%s",
+            work.book_id, chapter_id, exc.code,
+        )
+
     return _assemble_conformance(
         chapter_id=chapter_id,
         calibrated=settings.motif_conformance_calibrated,
         scenes=scenes,
         apps_by_node=apps_by_node,
         latest_by_node=latest_by_node,
+        manuscript_prose=manuscript_prose,
     )
 
 

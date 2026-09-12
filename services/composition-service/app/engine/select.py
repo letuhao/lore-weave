@@ -405,6 +405,23 @@ async def select_scene(
             reasons.append(f"beat{i + 1}: {sel.rerank_reason}")
         last = sel
 
+    # T16 — say what was ASKED and what was DELIVERED, every time, in one line.
+    #
+    # The delivered length is already measured here (`words`), and the target is already known
+    # (`targets`), and until now neither reached a log together. So establishing that this engine
+    # under-delivers took a human three hand-measurements across a 2026-09-06 run — a number the
+    # service could have emitted on every generation for free. `realised_words` returns its METHOD
+    # for a reason: a `split()` count against a spaceless-script target would read as a permanent
+    # ~85% shortfall, so the ratio is only meaningful alongside how it was counted.
+    if words and targets:
+        _asked = sum(targets[:len(words)])
+        _got = sum(words)
+        _method = realised_words(parts[0] if parts else "", lang)[1]
+        logger.info(
+            "scene length: asked=%d delivered=%d ratio=%.2f beats=%d method=%s",
+            _asked, _got, (_got / _asked) if _asked else 0.0, len(words), _method,
+        )
+
     failed = len(beats) - len(parts)
     if len(parts) == 1 and last is not None:
         # One passage — the beat's own candidates ARE scene alternatives, so keep them

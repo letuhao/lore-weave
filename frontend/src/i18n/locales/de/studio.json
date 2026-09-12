@@ -684,11 +684,6 @@
       "title": "Workflow-Vorschläge",
       "desc": "Überprüfen Sie die vom Agenten vorgeschlagenen Workflows",
       "guideBody": "Hier werden die Workflow-Rezepte aufgelistet, die der Agent basierend auf mehrstufigen Sequenzen vorgeschlagen hat, die er bei Ihnen wiederkehrend festgestellt hat. Öffnen Sie diesen Bereich, um einen Vorschlag anzunehmen – wodurch der Workflow erstellt wird und ausführbar ist – oder ihn abzulehnen. Hier wird ein vom Agenten vorgeschlagener Workflow tatsächlich realisiert."
-    },
-    "world-setup": {
-      "title": "Weltenaufbau",
-      "desc": "Erstelle deine Besetzung, deine Welt und deren Beziehungen aus einer Beschreibung",
-      "guideBody": "Verwandle eine Beschreibung deiner Geschichte in echtes, nachverfolgbares Lore: Es plant, was erstellt werden muss, du genehmigst oder kürzt die Liste, und dann wird jeder Charakter, jede Fraktion und jeder Begriff einzeln ausgearbeitet (wichtige Elemente erhalten ein ausführliches Tiefenprofil) und zur Überprüfung abgelegt. Schließlich wird ermittelt, wie sie alle miteinander verbunden sind, und du wirst gebeten, diese Beziehungen zu bestätigen, bevor sie gespeichert werden."
     }
   },
   "sceneRail": {
@@ -930,7 +925,8 @@
       "cap": "Das überschreitet ein Limit (Text ≤ 8000 Zeichen, Name ≤ 200, ≤ 20 Regeln) oder ein ungültiger Modus.",
       "other": "Regel konnte nicht gespeichert werden. Bitte versuche es erneut.",
       "forbidden": "Du hast keine Berechtigung, die Steuerung für dieses Buch zu bearbeiten."
-    }
+    },
+    "overBudget": "Deine Regeln umfassen insgesamt ~{{total}} Token und überschreiten das Limit von ~{{cap}}, das an das Modell gesendet wird. {{dropped}} werden bei jedem Durchgang weggelassen: {{names}}. Kürze oder deaktiviere eine Regel, damit die wichtigsten Informationen übertragen werden."
   },
   "palette": {
     "openPanel": "Studio: {{name}} öffnen",
@@ -1932,5 +1928,6 @@
     "load_more": "Mehr laden",
     "loading_more": "Laden…",
     "restore": "Wiederherstellen"
-  }
+  },
+  "campaigns": "Kampagnen (Batch-Extraktion & Übersetzung)"
 }

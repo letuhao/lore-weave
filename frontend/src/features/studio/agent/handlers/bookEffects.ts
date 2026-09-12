@@ -2,10 +2,49 @@
 // the structured MCP result and refreshes the GUI via CODE (invalidate + bus publish) — never by
 // pasting the tool result body into state (G5). Registration is idempotent (guarded) so the
 // reconciler can call it on every mount without duplicating handlers.
+import { toast } from 'sonner';
+import i18n from '@/i18n';
 import { registerEffectHandler, type EffectContext } from '../effectRegistry';
 import { unwrapToolResult } from './resultEnvelope';
 
 let registered = false;
+
+/** G7's SECOND half. Spec 09 allows the dirty branch to be a no-op "+ toast" — the guard shipped,
+ * the toast did not, so an agent write onto a chapter the user is editing vanished silently: the
+ * agent believed it wrote, the editor kept showing older content, and nothing on screen said the
+ * two had diverged. Silence is the failure mode this whole remediation exists to remove, and it
+ * gets worse the moment agent writes become easier to trigger.
+ *
+ * Deliberately NOT a blind reload and NOT a modal: the user is mid-keystroke and owns their buffer
+ * (G7 — "never lose a keystroke to an agent write"). We tell them, and hand them the reload as an
+ * explicit choice they can ignore. */
+let lastDirtyNoticeAt = 0;
+function noticeAgentWroteDirtyChapter(reload: (() => void) | undefined): void {
+  // Debounced like MediaGuardExtension: a multi-tool agent turn can fire this handler several
+  // times for one chapter, and three identical toasts read as a bug rather than a warning.
+  const now = Date.now();
+  if (now - lastDirtyNoticeAt < 4000) return;
+  lastDirtyNoticeAt = now;
+  toast.warning(
+    i18n.t('studio:manuscript.agentWroteDirty', {
+      defaultValue:
+        'The assistant saved a new version of this chapter. Your unsaved edits were kept, so you are looking at your own version.',
+    }),
+    {
+      duration: 10000,
+      ...(reload
+        ? {
+            action: {
+              label: i18n.t('studio:manuscript.agentWroteDirtyReload', {
+                defaultValue: 'Discard mine & reload',
+              }),
+              onClick: reload,
+            },
+          }
+        : {}),
+    },
+  );
+}
 
 function readChapterId(o: unknown): string | null {
   if (o && typeof o === 'object') {
@@ -46,7 +85,13 @@ export function bookDraftEffect(ctx: EffectContext): void {
   // editor never blocks the tree from surfacing a newly-created sibling chapter.
   ctx.host?.publish?.({ type: 'manuscriptChanged' });
   // G7: never clobber a dirty hoist. reloadChapter is a no-op unless this IS the active unit.
-  if (ctx.isChapterDirty?.(chapterId)) return;
+  // The keystrokes win — but the user is TOLD, and offered the reload as their own choice. A bare
+  // `return` here was a silent divergence between what the agent believed it wrote and what the
+  // author could see.
+  if (ctx.isChapterDirty?.(chapterId)) {
+    noticeAgentWroteDirtyChapter(ctx.reloadChapter ? () => ctx.reloadChapter?.(chapterId) : undefined);
+    return;
+  }
   ctx.reloadChapter?.(chapterId);
 }
 

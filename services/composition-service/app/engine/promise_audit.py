@@ -287,14 +287,26 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
     return extract_judge_content(job.result)
 
 
-async def extract_tracked_promises(
+async def extract_tracked_promises_ex(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, plan_text: str, source_language: str = "auto",
     max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
-) -> list[str]:
-    """Derive the fixed tracked-promise set from premise+plan. Returns [] on
-    failure (the harness then skips the book rather than scoring a phantom set)."""
+) -> tuple[list[str], bool]:
+    """T9 — the same extraction, but it says WHETHER IT RAN.
+
+    Returns ``(promises, extraction_ok)``. ``extraction_ok`` is False only when the call itself
+    failed — an LLM error, a truncated/unusable response, or unparseable content.
+
+    WHY THIS EXISTS. `extract_tracked_promises` returns ``[]`` for three unrelated situations: the
+    spec genuinely declares no promises, the LLM call errored, and the response was truncated or
+    unparseable. All three collapsed into one downstream code, ``no_tracked_promises``, so
+    "you have not set this up yet" and "this feature just failed" were indistinguishable to every
+    caller INCLUDING the UI. A 2026-09-06 human-sim run hit the empty case and could not tell
+    which it was without reading the job row in a database.
+
+    That is a silent-failure-reported-as-a-clean-empty-result, the same shape as the response-cap
+    and save-on-blur defects this remediation exists to close — not a copy problem."""
     # Same honest gap as `audit_promises` above: the promise COUNT is the output of this
     # call, so there is nothing truthful to pass as `target`, and STRUCTURED ignores
     # `language`. Left on the ratchet rather than cleared with a kwarg the kind discards.
@@ -305,9 +317,32 @@ async def extract_tracked_promises(
                           tag="promise_extract", code="extract_tracked_promises",
                           cancel_check=cancel_check)
     if content is None:
-        return []
-    obj = parse_critique_json(content) or {}
-    return _str_list(obj.get("promises"))
+        # `_chat` already logged the specific reason (LLM error, or `unusable` truncation).
+        return [], False
+    obj = parse_critique_json(content)
+    if obj is None:
+        logger.warning("promise_extract returned unparseable content")
+        return [], False
+    return _str_list(obj.get("promises")), True
+
+
+async def extract_tracked_promises(
+    llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
+    premise: str, plan_text: str, source_language: str = "auto",
+    max_tokens: int | None = None, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> list[str]:
+    """Derive the fixed tracked-promise set from premise+plan. Returns [] on
+    failure (the harness then skips the book rather than scoring a phantom set).
+
+    Kept as the list-only wrapper for callers that genuinely cannot act on the difference (the
+    eval harness skips the book either way). A caller that REPORTS to a human should use
+    `extract_tracked_promises_ex` and surface the distinction — see T9."""
+    promises, _ok = await extract_tracked_promises_ex(
+        llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+        premise=premise, plan_text=plan_text, source_language=source_language,
+        max_tokens=max_tokens, trace_id=trace_id, cancel_check=cancel_check)
+    return promises
 
 
 async def score_promise_coverage(

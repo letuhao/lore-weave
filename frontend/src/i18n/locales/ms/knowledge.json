@@ -685,7 +685,8 @@
         "name_desc": "Nama (Z–A)"
       },
       "thisBookOnly": "Buku ini sahaja",
-      "showAllBooks": "Tunjukkan semua buku"
+      "showAllBooks": "Tunjukkan semua buku",
+      "searchNoResults": "Tiada projek yang sepadan dengan \"{{q}}\". Carian merujuk kepada nama PROJEK, yang ditetapkan semasa projek dicipta dan tidak berubah walaupun anda menamakan semula buku tersebut — cuba gunakan nama asal buku itu, atau kosongkan carian untuk melihat semua projek anda."
     },
     "card": {
       "staticMemory": "Memori statik",

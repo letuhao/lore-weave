@@ -1,11 +1,30 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterAll } from 'vitest';
 import {
   registerEffectHandler, matchEffectHandlers, runEffectHandlers, clearEffectHandlers, type EffectContext,
 } from '../effectRegistry';
 import { bookDraftEffect, outlineEffect, registerDefaultEffectHandlers } from '../handlers/bookEffects';
 import type { StudioHost } from '../../host/StudioHostProvider';
 
-beforeEach(() => clearEffectHandlers());
+vi.mock('sonner', () => ({
+  toast: { warning: vi.fn(), info: vi.fn(), error: vi.fn(), success: vi.fn() },
+}));
+vi.mock('@/i18n', () => ({
+  default: { t: (key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key },
+}));
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toastWarning = (await import('sonner')).toast.warning as any;
+
+// T4's G7 notice is debounced on wall-clock time. Left real, the FIRST test's toast would suppress
+// the SECOND test's — a cross-test dependency that makes a green run meaningless. Drive the clock.
+let nowMs = 1_000_000;
+vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
+afterAll(() => vi.restoreAllMocks());
+
+beforeEach(() => {
+  clearEffectHandlers();
+  nowMs += 60_000; // past any debounce window, so each test starts clean
+});
 
 const ctx = (over: Partial<EffectContext> = {}): EffectContext => ({
   tool: 'book_save_chapter_draft',
@@ -89,6 +108,42 @@ describe('bookDraftEffect (Lane B v1 handler)', () => {
     bookDraftEffect(c);
     expect(c.queryClient.invalidateQueries).toHaveBeenCalled();
     expect(reloadChapter).not.toHaveBeenCalled();
+  });
+
+  // T4 — G7's second half. The guard shipped; spec 09's "no-op + toast" lost its toast, so an agent
+  // write onto the chapter the user was editing vanished silently: the agent believed it wrote, the
+  // editor showed older content, and nothing said the two had diverged. Protecting the keystrokes
+  // without saying so is still a divergence the author cannot see.
+  it('G7: TELLS the user when a dirty hoist blocked the reload, and offers the reload as their choice', () => {
+    toastWarning.mockClear();
+    const reloadChapter = vi.fn();
+    const c = ctx({ isChapterDirty: () => true, reloadChapter });
+    bookDraftEffect(c);
+
+    expect(toastWarning).toHaveBeenCalledOnce();
+    const [message, opts] = toastWarning.mock.calls[0];
+    expect(String(message)).not.toHaveLength(0);
+    // The action must actually reload THIS chapter — a label with no working handler would be a
+    // worse lie than silence.
+    const action = (opts as { action?: { onClick: () => void } } | undefined)?.action;
+    expect(action).toBeTruthy();
+    action!.onClick();
+    expect(reloadChapter).toHaveBeenCalledWith('ch1');
+  });
+
+  it('G7 notice is debounced — one agent turn firing the handler repeatedly is one warning, not three', () => {
+    toastWarning.mockClear();
+    const c = ctx({ isChapterDirty: () => true });
+    bookDraftEffect(c);
+    bookDraftEffect(c);
+    bookDraftEffect(c);
+    expect(toastWarning).toHaveBeenCalledOnce();
+  });
+
+  it('G7 notice does NOT fire on the clean path — a warning that always fires means nothing (NV-7)', () => {
+    toastWarning.mockClear();
+    bookDraftEffect(ctx({ isChapterDirty: () => false }));
+    expect(toastWarning).not.toHaveBeenCalled();
   });
 
   it('no chapter id in the result → no-op (never guesses)', () => {

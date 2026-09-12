@@ -10,6 +10,11 @@ import { StudioHostProvider } from '../../host/StudioHostProvider';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? k }),
+  // T18 — `initReactI18next` is a REAL export of react-i18next, and `@/i18n` (reached now that
+  // these views render chapter titles through the shared `chapterDisplayTitle` helper) initialises
+  // with it. A mock that omits it makes the module unloadable, which is a gap in the mock rather
+  // than a reason to keep a second title-fallback implementation.
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 

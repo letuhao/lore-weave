@@ -97,7 +97,10 @@
     "discard": "Esc Discard",
     "need_model": "Set a default model in the co-writer Settings",
     "need_scene": "Pick a scene in the co-writer panel first",
-    "stale": "The cursor moved — try again."
+    "stale": "The cursor moved — try again.",
+    "need_editor": "The editor is still loading.",
+    "streaming": "Writing… let the current continuation finish.",
+    "pending_ghost": "Accept or discard the current suggestion before starting another."
   },
   "beats": "Beats",
   "beatsheet": {
@@ -538,7 +541,7 @@
     "replace_prompt": "{{count}} chapter(s) already have scenes. Replace them with this plan?",
     "replace_confirm": "Replace",
     "cancel": "Cancel",
-    "err_no_chapters": "This book has no chapters yet — create chapters before planning.",
+    "err_no_chapters": "This book has no chapters yet. This planner DECOMPOSES prose you have already written — it does not invent a structure from nothing. To have the AI plan a book from just a premise, open the Co-writer Chat and attach the PlanForge skill, then ask it to plan your arcs.",
     "err_too_many_chapters": "Too many chapters to plan at once.",
     "err_bad_entity": "Some scene cast members are not in this book's glossary.",
     "err_bad_chapter": "A chapter in the plan is not part of this book.",
@@ -743,6 +746,7 @@
     "empty": {
       "title": "Your motif library is ready",
       "body": "Motifs are reusable plot shapes. The planner picks one per chapter so even a small model writes a solid scene. 12 starter motifs are already here — tu-tiên and báo-thù.",
+      "notThemes": "These are STRUCTURAL plot shapes for the planner, not a tracker of the recurring images or themes in your own story — nothing here follows a symbol across your chapters.",
       "browseSystem": "Browse the 12 starters",
       "hint": "No tokens needed — building a motif by hand is free."
     },
@@ -1758,5 +1762,9 @@
   "resolvingWork": "Finishing setup… the knowledge service was briefly unavailable.",
   "retry": "Retry",
   "threadFocusMissing": "The promise you came from is not in this view — it may already be paid. Switch the filter to “all”.",
-  "canonConflictCurrent": "Current (v{{v}}): {{text}}"
+  "canonConflictCurrent": "Current (v{{v}}): {{text}}",
+  "coverageExtractionFailed": "Could not read the promises out of your outline (the model call failed or was cut short). Try again, or pick a different model.",
+  "coverageScoreFailed": "The promises were read, but scoring them against the book failed. Try again.",
+  "lengthAskedDelivered": "Asked for ~{{target}} words, delivered {{actual}} ({{pct}}%).",
+  "lengthOverCeiling": "This asked one call for more than one call reliably delivers — split the scene into passages to get the full length."
 }

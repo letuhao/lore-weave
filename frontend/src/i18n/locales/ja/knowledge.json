@@ -685,7 +685,8 @@
         "name_desc": "名前 (Z–A)"
       },
       "thisBookOnly": "この本のみ",
-      "showAllBooks": "すべての本を表示"
+      "showAllBooks": "すべての本を表示",
+      "searchNoResults": "「{{q}}」に一致するプロジェクトは見つかりませんでした。検索対象はプロジェクト作成時に設定される「PROJECT名」です。本のタイトルを変更してもPROJECT名は変わりません。作成当時の名前で検索するか、検索条件をクリアしてすべてのプロジェクトを表示してください。"
     },
     "card": {
       "staticMemory": "静的メモリ",

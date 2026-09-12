@@ -240,8 +240,16 @@ export function ProjectsBrowser({ onOpen, scopedBookId }: ProjectsBrowserProps) 
         </div>
       )}
 
-      {/* Truly-empty (no projects at all) — offer to create the first. */}
-      {!isLoading && !isError && items.length === 0 && (
+      {/* T20 — "no projects at all" and "your SEARCH matched nothing" are different answers, and
+          conflating them is what made a 2026-09-06 run create a duplicate. Search is SERVER-side,
+          so a search that matches nothing returns zero items and this branch rendered the
+          truly-empty state: "you have no projects — create the first", with a Create button. The
+          user had a project; they had renamed the book, and project names do not follow a book
+          rename, so searching the book's CURRENT title found nothing. The UI then invited exactly
+          the duplicate-create that finding #7 describes.
+
+          Guarded below by requiring no active search before claiming the account is empty. */}
+      {!isLoading && !isError && items.length === 0 && !debouncedSearch.trim() && (
         <EmptyState
           icon={FolderOpen}
           title={t('projects.empty.title')}
@@ -256,6 +264,25 @@ export function ProjectsBrowser({ onOpen, scopedBookId }: ProjectsBrowserProps) 
             </button>
           }
         />
+      )}
+
+      {/* A SEARCH that matched nothing — server-side, so there are no items to hide. Says what
+          the search actually covers, because "no results" for a book you renamed reads as "the
+          project is gone" and the next click is a duplicate create. */}
+      {!isLoading && !isError && items.length === 0 && !!debouncedSearch.trim() && (
+        <div
+          className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground"
+          data-testid="projects-search-no-results"
+          data-query={debouncedSearch.trim()}
+        >
+          {t('projects.browser.searchNoResults', {
+            defaultValue:
+              'No project matches "{{q}}". Search looks at the PROJECT name, which is set when the '
+              + 'project is created and does not change when you rename the book — try the name the '
+              + 'book had then, or clear the search to see all your projects.',
+            q: debouncedSearch.trim(),
+          })}
+        </div>
       )}
 
       {/* Loaded rows exist but the current search/filter hides them all. */}

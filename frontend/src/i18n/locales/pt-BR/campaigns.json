@@ -1,6 +1,6 @@
 {
   "wizard": {
-    "title": "Nova Campanha de Rascunho Automático",
+    "title": "Nova Campanha",
     "cancel": "Cancelar",
     "back": "Voltar",
     "next": "Próximo"
@@ -82,7 +82,7 @@
     "tokens": "Tokens (entrada/saída)"
   },
   "list": {
-    "title": "Campanhas de Rascunho Automático",
+    "title": "Campanhas",
     "new": "Nova campanha",
     "loading": "Carregando…",
     "error": "Falha ao carregar campanhas.",

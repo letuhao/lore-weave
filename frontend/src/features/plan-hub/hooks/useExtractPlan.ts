@@ -48,6 +48,18 @@ export function useExtractPlan(
           );
           return;
         }
+        // T7 — a failed back-link write-back must not read as a clean success. The extraction
+        // itself committed, so this is a DEGRADED result, not an error: the plan is there, but
+        // `scenes.source_scene_id` was not written, so the written_* chain (and the Plan Hub's
+        // "written" badge) stays dark until a re-run. Same reasoning as the work_resolved guard
+        // above — a 200 that silently did less than it claims is the bug, not the honesty.
+        const wb = res.scene_link_writeback;
+        if (wb && !wb.ok) {
+          setError(
+            `The plan was extracted, but linking ${wb.attempted} scene(s) back to the manuscript failed`
+            + `${wb.error ? ` (${wb.error})` : ''}. Re-run to retry — re-running is safe and relinks nothing already linked.`,
+          );
+        }
         await qc.invalidateQueries({ queryKey: ['plan-hub'] });
         reloadWindows();
       } catch (e) {

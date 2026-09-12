@@ -95,10 +95,12 @@ def test_the_empty_value_matches_each_columns_nullability():
 
 
 def test_an_over_long_text_slot_is_REJECTED_before_it_poisons_the_node():
-    """`outline_node.goal` is plain TEXT in Postgres but `_Short` (2000) on the Pydantic model, and
-    `settle_intent_slot` writes raw SQL — so an over-long value WRITES FINE and then makes every
-    later `get_node` on that node raise ValidationError. The node goes unreadable to the outline
-    tree, the packer and the rail, long after the write that caused it, with nothing pointing back.
+    """The FSM's own `_MAX_TEXT` (2000, "a phrase, not a passage") is independent of the
+    model's cap (`OutlineNode.goal` / `StructureNode.goal` are `_Long` = 20000, wide enough
+    for a freeform Arc/Chapter Inspector goal) — but it must stay safely under it, or an
+    over-long FSM answer could write fine via `settle_intent_slot`'s raw SQL and then make
+    every later `get_node` on that node raise ValidationError. The node would go unreadable
+    to the outline tree, the packer and the rail, long after the write that caused it.
 
     Caught in review, not by a test failing: nothing in the happy path is long enough to trip it.
     """
@@ -107,15 +109,15 @@ def test_an_over_long_text_slot_is_REJECTED_before_it_poisons_the_node():
     long_value = "x" * 2001
     with pytest.raises(slots.SlotError, match="too long"):
         slots.spec("goal").coerce(long_value)
-    # The bound is not arbitrary — it is the model's own, and this is what ties them together.
-    with pytest.raises(Exception):
-        OutlineNode.model_validate({
-            "id": "00000000-0000-0000-0000-000000000001",
-            "created_by": "00000000-0000-0000-0000-000000000002",
-            "project_id": "00000000-0000-0000-0000-000000000003",
-            "book_id": "00000000-0000-0000-0000-000000000004",
-            "kind": "chapter", "rank": "a0", "goal": long_value,
-        })
+    # The FSM's bound is tighter than the model's by design — a value the FSM itself would
+    # reject still round-trips through the model fine, since 2001 < 20000.
+    OutlineNode.model_validate({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "created_by": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000003",
+        "book_id": "00000000-0000-0000-0000-000000000004",
+        "kind": "chapter", "rank": "a0", "goal": long_value,
+    })
     assert slots.spec("goal").coerce("x" * 2000) == "x" * 2000
 
 

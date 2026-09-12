@@ -11,12 +11,13 @@ call; by-id routes resolve the target row's scope first and gate on ITS book.
 from __future__ import annotations
 
 import base64
-from typing import Any, Literal
+import logging
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 
 from loreweave_mcp.errors import NOT_ACCESSIBLE_MESSAGE
 
@@ -27,8 +28,9 @@ from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
-from app.deps import (get_grant_client_dep, get_outline_repo,
-                      get_scene_links_repo, get_works_repo)
+from app.clients.book_client import BookClient, BookClientError
+from app.deps import (get_book_client_dep, get_grant_client_dep,
+                      get_outline_repo, get_scene_links_repo, get_works_repo)
 from app.engine.scene_decompile import (BookSceneFetchError, fetch_book_scenes,
                                         materialize_scenes, resolve_canonical_work)
 from app.grant_client import GrantClient, GrantLevel
@@ -38,7 +40,22 @@ from app.middleware.internal_auth import require_internal_token
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.pack import OwnershipError
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/v1/composition")
+
+# Mirrors models._Long — see the matching _ArcGoal in routers/arc.py. OutlineNode.goal
+# (chapter/scene "Goal (reaches the prompt)") had this same write-unbounded/read-capped
+# split; enforcing the bound here too closes it on this door as well.
+_NodeGoal = Annotated[str, StringConstraints(max_length=20000)]
+# T11 — write-side caps MIRRORING the response models (db/models.py). Issue #224's fix bounded
+# `goal` and its own follow-up recorded that `title`/`synopsis` still carried the identical
+# unguarded shape: capped on the way OUT, bare `str` on the way IN, no constraint in Postgres. So
+# an over-long write succeeded and then 500'd every later read of that row — and the arcs-list
+# endpoint validates a whole book at once, so one bad row took out the entire Plan Hub.
+# `title` is the sharper edge of the two: 500 characters is an ordinary chapter title away.
+_NodeTitle = Annotated[str, StringConstraints(max_length=500)]
+_NodeSynopsis = Annotated[str, StringConstraints(max_length=20000)]
 
 # SC6/B4 — the decompiler's internal-token surface. A separate router (its path is
 # `/internal/...`, not the `/v1/composition` public prefix); wired in main.py
@@ -54,16 +71,16 @@ class NodeCreate(BaseModel):
     kind: NodeKind
     parent_id: UUID | None = None
     rank: str | None = None
-    title: str = ""
+    title: _NodeTitle = ""
     pov_entity_id: UUID | None = None
     present_entity_ids: list[UUID] = []
-    goal: str = ""
+    goal: _NodeGoal = ""
     beat_role: str | None = None
     status: NodeStatus = "empty"
     chapter_id: UUID | None = None
     tension: int | None = None
     story_order: int | None = None
-    synopsis: str = ""
+    synopsis: _NodeSynopsis = ""
     # 22 SC4 — authored scene craft/setting. These MUST be declared: Pydantic's default
     # extra='ignore' silently drops an undeclared key, so a REST create sending `conflict`/
     # `target_words`/`location_entity_id` would no-op while the MCP tool (which HAS them) works —
@@ -84,8 +101,8 @@ class PlanImportChapter(BaseModel):
     """One existing manuscript chapter to add to the composition plan."""
 
     chapter_id: UUID
-    title: str = ""
-    synopsis: str = ""
+    title: _NodeTitle = ""
+    synopsis: _NodeSynopsis = ""
     story_order: int | None = None
 
 
@@ -96,16 +113,16 @@ class PlanImportRequest(BaseModel):
 class NodePatch(BaseModel):
     parent_id: UUID | None = None
     rank: str | None = None
-    title: str | None = None
+    title: _NodeTitle | None = None
     pov_entity_id: UUID | None = None
     present_entity_ids: list[UUID] | None = None
-    goal: str | None = None
+    goal: _NodeGoal | None = None
     beat_role: str | None = None
     status: NodeStatus | None = None
     chapter_id: UUID | None = None
     tension: int | None = None
     story_order: int | None = None
-    synopsis: str | None = None
+    synopsis: _NodeSynopsis | None = None
     # 22 SC4 — the scene-inspector's Craft + Cast&Setting edits and the bulk retarget-words go
     # through THIS model; without these declarations they were silently dropped (extra='ignore')
     # and the GUI edit no-op'd. The repo's _UPDATABLE_COLUMNS already writes them; only the REST
@@ -967,6 +984,47 @@ def _map_scene_fetch_error(exc: BookSceneFetchError) -> HTTPException:
     )
 
 
+async def _write_back_scene_mappings(
+    result: Any, *, book_id: UUID, owner_user_id: UUID, books: Any,
+) -> dict[str, Any]:
+    """T7 — hand the decompiler's mappings to book-service, which owns `scenes.source_scene_id`.
+
+    Until this existed, BOTH materialize-scenes routes computed the back-links and returned them to
+    a caller that threw them away, so `chapter.scenes_linked` never fired for a hand-authored book
+    and `outline_node.written_*` stayed NULL forever. `scene_decompile.py` documents the write-back
+    as idempotent-on-retry precisely because it was always meant to happen here.
+
+    Degraded, never silent: the extraction itself is already committed, so a write-back failure must
+    not fail the user's action — but it is reported in the response (`scene_link_writeback`) and
+    logged at WARNING, because a silently-missing back-link is indistinguishable from success and
+    that is the exact defect class this work exists to close."""
+    payload = result.to_dict()
+    mappings = payload.get("mappings") or []
+    if not mappings:
+        payload["scene_link_writeback"] = {"attempted": 0, "linked": 0, "ok": True}
+        return payload
+    try:
+        wrote = await books.apply_scene_mappings(book_id, owner_user_id, mappings)
+        linked = int(wrote.get("linked", 0))
+        logger.info(
+            "scene-mapping write-back ok book_id=%s attempted=%d linked=%d skipped=%d",
+            book_id, len(mappings), linked, int(wrote.get("skipped", 0)),
+        )
+        payload["scene_link_writeback"] = {
+            "attempted": len(mappings), "linked": linked, "ok": True,
+        }
+    except BookClientError as exc:
+        logger.warning(
+            "scene-mapping write-back FAILED book_id=%s attempted=%d code=%s detail=%s",
+            book_id, len(mappings), exc.code, exc.detail,
+        )
+        payload["scene_link_writeback"] = {
+            "attempted": len(mappings), "linked": 0, "ok": False,
+            "error": exc.code or "WRITEBACK_FAILED",
+        }
+    return payload
+
+
 @internal_router.post("/{book_id}/materialize-scenes")
 async def materialize_scenes_internal(
     book_id: UUID,
@@ -974,6 +1032,7 @@ async def materialize_scenes_internal(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     grant: GrantClient = Depends(get_grant_client_dep),
+    books: BookClient = Depends(get_book_client_dep),
 ) -> dict[str, Any]:
     """SC6 decompiler — the import-tail entry point (internal token). Reads the
     book's parsed scenes via a minted service bearer for `owner_user_id`, then
@@ -993,7 +1052,9 @@ async def materialize_scenes_internal(
         get_pool(), works, outline,
         book_id=book_id, scenes=scenes, created_by=body.owner_user_id,
     )
-    return result.to_dict()
+    return await _write_back_scene_mappings(
+        result, book_id=book_id, owner_user_id=body.owner_user_id, books=books,
+    )
 
 
 @router.post("/books/{book_id}/materialize-scenes")
@@ -1004,6 +1065,7 @@ async def materialize_scenes_v1(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     grant: GrantClient = Depends(get_grant_client_dep),
+    books: BookClient = Depends(get_book_client_dep),
 ) -> dict[str, Any]:
     """SC6 decompiler — the Hub CTA mirror (EDIT-gated). Same core as the internal
     route; the caller's own bearer reads the scene list (EDIT ⊇ VIEW, so the
@@ -1017,4 +1079,6 @@ async def materialize_scenes_v1(
         get_pool(), works, outline,
         book_id=book_id, scenes=scenes, created_by=user_id,
     )
-    return result.to_dict()
+    return await _write_back_scene_mappings(
+        result, book_id=book_id, owner_user_id=user_id, books=books,
+    )
