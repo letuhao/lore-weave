@@ -97,7 +97,10 @@
     "discard": "Esc Buang",
     "need_model": "Tetapkan model lalai dalam Tetapan co-writer",
     "need_scene": "Pilih babak dalam panel co-writer terlebih dahulu",
-    "stale": "Kursor telah beralih — cuba lagi."
+    "stale": "Kursor telah beralih — cuba lagi.",
+    "need_editor": "Editor masih sedang dimuatkan.",
+    "streaming": "Sedang menulis… biarkan kesinambungan semasa selesai.",
+    "pending_ghost": "Terima atau buang cadangan semasa sebelum memulakan yang lain."
   },
   "beats": "Rentak",
   "beatsheet": {
@@ -744,7 +747,8 @@
       "title": "Perpustakaan motif anda sudah sedia",
       "body": "Motif adalah bentuk plot yang boleh digunakan semula. Perancang akan memilih satu bagi setiap bab supaya walaupun model kecil, ia tetap menghasilkan babak yang mantap. 12 motif permulaan sudah tersedia — tu-tiên dan báo-thù.",
       "browseSystem": "Teroka 12 permulaan",
-      "hint": "Tiada token diperlukan — membina motif secara manual adalah percuma."
+      "hint": "Tiada token diperlukan — membina motif secara manual adalah percuma.",
+      "notThemes": "Ini ialah bentuk plot BERSTRUKTUR untuk perancang, bukan penjejak imej atau tema berulang dalam cerita anda sendiri — tiada apa-apa di sini yang menjejaki simbol merentasi bab anda."
     },
     "facet": {
       "tier": "Tahap",
@@ -1758,5 +1762,9 @@
   "resolvingWork": "Menyiapkan penyediaan… perkhidmatan pengetahuan tidak tersedia buat seketika.",
   "retry": "Cuba lagi",
   "threadFocusMissing": "Janji yang anda rujuk tidak ada dalam paparan ini — ia mungkin telah dibayar. Tukar penapis kepada «semua».",
-  "canonConflictCurrent": "Semasa (v{{v}}): {{text}}"
+  "canonConflictCurrent": "Semasa (v{{v}}): {{text}}",
+  "coverageExtractionFailed": "Tidak dapat membaca janji daripada rangka kerja anda (panggilan model gagal atau terputus). Cuba lagi, atau pilih model yang berbeza.",
+  "coverageScoreFailed": "Janji telah dibaca, tetapi pemarkahan terhadap buku telah gagal. Cuba lagi.",
+  "lengthAskedDelivered": "Meminta ~{{target}} patah perkataan, menghasilkan {{actual}} ({{pct}}%).",
+  "lengthOverCeiling": "Ini meminta satu panggilan untuk lebih daripada jumlah yang boleh dihantar secara stabil oleh satu panggilan — pecahkan 场景 kepada perenggan untuk mendapatkan panjang penuh."
 }

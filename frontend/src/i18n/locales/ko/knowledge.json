@@ -685,7 +685,8 @@
         "name_desc": "이름 (Z–A)"
       },
       "thisBookOnly": "현재 도서만",
-      "showAllBooks": "모든 도서 표시"
+      "showAllBooks": "모든 도서 표시",
+      "searchNoResults": "\"{{q}}\"에 대한 검색 결과가 없습니다. 검색은 프로젝트 생성 시 설정된 PROJECT 이름을 기준으로 하며, 책의 이름을 변경해도 바뀌지 않습니다. 당시의 책 이름을 입력하거나, 검색어를 지워 모든 프로젝트를 확인해 보세요."
     },
     "card": {
       "staticMemory": "정적 메모리",

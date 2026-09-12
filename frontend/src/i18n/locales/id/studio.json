@@ -684,11 +684,6 @@
       "title": "Proposal Alur Kerja",
       "desc": "Tinjau alur kerja yang diusulkan oleh agen",
       "guideBody": "Menampilkan daftar resep alur kerja yang disarankan oleh agen untuk dibuat, berdasarkan urutan multi-langkah yang ia perhatikan sering Anda ulangi. Buka panel ini untuk menyetujui proposal — yang akan mencetak alur kerja tersebut agar dapat dijalankan — atau menolaknya. Di sinilah alur kerja usulan agen benar-benar menjadi nyata."
-    },
-    "world-setup": {
-      "title": "Pengaturan Dunia",
-      "desc": "Bangun karakter, dunia, dan hubungan mereka dari sebuah deskripsi",
-      "guideBody": "Ubah deskripsi cerita Anda menjadi lore nyata yang terorganisir: sistem akan merencanakan apa yang perlu dibangun, Anda menyetujui atau memangkas daftarnya, lalu setiap karakter, faksi, dan istilah akan disusun satu per satu (karakter utama mendapatkan profil mendalam) dan disimpan untuk Anda tinjau. Terakhir, sistem akan menyusun bagaimana mereka semua terhubung dan meminta persetujuan Anda terhadap hubungan tersebut sebelum menyimpannya."
     }
   },
   "sceneRail": {
@@ -930,7 +925,8 @@
       "cap": "Melebihi batas (isi ≤ 8000 karakter, nama ≤ 200, ≤ 20 aturan) atau mode tidak valid.",
       "other": "Tidak dapat menyimpan aturan. Silakan coba lagi.",
       "forbidden": "Anda tidak memiliki izin untuk mengedit pengarah untuk buku ini."
-    }
+    },
+    "overBudget": "Total aturan Anda ~{{total}} token, melebihi batas ~{{cap}} yang dapat diterima model. {{dropped}} akan diabaikan pada setiap giliran: {{names}}. Pendekkan atau nonaktifkan aturan agar aturan yang penting dapat diproses."
   },
   "palette": {
     "openPanel": "Studio: Buka {{name}}",
@@ -1932,5 +1928,6 @@
     "load_more": "Muat lebih banyak",
     "loading_more": "Memuat…",
     "restore": "Pulihkan"
-  }
+  },
+  "campaigns": "Kampanye (ekstraksi & penerjemahan massal)"
 }

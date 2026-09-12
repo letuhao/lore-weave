@@ -925,7 +925,8 @@
       "cap": "超過限制（內容 ≤ 8000 字元、名稱 ≤ 200、規則 ≤ 20 條）或模式無效。",
       "other": "無法儲存規則，請再試一次。",
       "forbidden": "你沒有編輯這本書引導規則的權限。"
-    }
+    },
+    "overBudget": "您的規則總計約 {{total}} 個 token，超過了傳送至模型的 ~{{cap}} 個限制。每一輪對話都將捨棄 {{dropped}} 個 token：{{names}}。請縮減或停用某些規則，以確保重要的規則能成功傳送。"
   },
   "palette": {
     "openPanel": "Studio：開啟 {{name}}",
@@ -1927,5 +1928,6 @@
     "load_more": "載入更多",
     "loading_more": "載入中…",
     "restore": "還原"
-  }
+  },
+  "campaigns": "專案 (批次擷取與翻譯)"
 }

@@ -685,7 +685,8 @@
         "name_desc": "名稱 (Z–A)"
       },
       "thisBookOnly": "僅此書",
-      "showAllBooks": "顯示所有書籍"
+      "showAllBooks": "顯示所有書籍",
+      "searchNoResults": "找不到符合「{{q}}」的專案。搜尋範圍僅限專案名稱，該名稱在建立專案時已設定，且在您重新命名書籍時不會隨之更改 — 請嘗試搜尋書籍當時的名稱，或清除搜尋以查看所有專案。"
     },
     "card": {
       "staticMemory": "靜態記憶",
