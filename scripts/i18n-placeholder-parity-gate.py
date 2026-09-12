@@ -151,15 +151,15 @@ def self_test() -> int:
         return {"en": {"k": en}, "vi": {"k": other}}
 
     cases = [
-        ("identical placeholders pass", b("Asked {{n}} got {{m}}", "Hỏi {{n}} nhận {{m}}"), False),
-        ("a DROPPED placeholder FAILS", b("Asked {{n}} got {{m}}", "Hỏi {{n}} nhận"), True),
-        ("an INVENTED placeholder FAILS", b("Asked {{n}}", "Hỏi {{n}} {{oops}}"), True),
-        ("reordered placeholders are fine", b("{{a}} then {{b}}", "{{b}} rồi {{a}}"), False),
+        ("identical placeholders pass", b("Asked {{n}} got {{m}}", "TGT {{n}} TGT {{m}}"), False),
+        ("a DROPPED placeholder FAILS", b("Asked {{n}} got {{m}}", "TGT {{n}} TGT"), True),
+        ("an INVENTED placeholder FAILS", b("Asked {{n}}", "TGT {{n}} {{oops}}"), True),
+        ("reordered placeholders are fine", b("{{a}} then {{b}}", "{{b}} TGT {{a}}"), False),
         ("an empty translation FAILS", b("Something", "   "), True),
-        ("the unescaped form {{- x}} is recognised", b("{{- raw}}", "xin chào"), True),
-        ("a format spec is the same placeholder", b("{{n, number}}", "{{n, number}} cái"), False),
-        ("a broken $t() nest FAILS", b("see $t(common.more)", "xem $t(common.less)"), True),
-        ("a matching $t() nest passes", b("see $t(common.more)", "xem $t(common.more)"), False),
+        ("the unescaped form {{- x}} is recognised", b("{{- raw}}", "TGT"), True),
+        ("a format spec is the same placeholder", b("{{n, number}}", "{{n, number}} TGT"), False),
+        ("a broken $t() nest FAILS", b("see $t(common.more)", "TGT $t(common.less)"), True),
+        ("a matching $t() nest passes", b("see $t(common.more)", "TGT $t(common.more)"), False),
         ("a key missing from the locale is NOT this gate's business",
          {"en": {"a": "x {{n}}", "b": "y"}, "vi": {"a": "x {{n}}"}}, False),
         ("nested objects are walked",
