@@ -146,7 +146,7 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 - Spoiler-safe context assembly — the AI sees only what's relevant to the current scene
 - Advisory prose critic flags potential canon contradictions before you accept a suggestion &nbsp;🔄 *Phase 3*
 - Auto Reasoning Mode: thinking-capable models switch in automatically when it helps
-- **Auto-Draft Factory** — run a whole drafting campaign across chapters with a budget ceiling and per-chapter progress &nbsp;🔄 *Phase 4*
+- **Campaigns** — run batch extraction and translation across chapters with a budget ceiling and per-chapter progress &nbsp;🔄 *Phase 4*
 
 ### Worlds & Automation
 - **Worlds** — group books under one shared canon container, with an auto-provisioned world bible
@@ -306,7 +306,7 @@ The complete design lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/
 | **Phase 1** | Platform Core — writing, translation, glossary, sharing | ✅ Done |
 | **Phase 2** | Knowledge Graph & RAG — automatic extraction, semantic search | ✅ Done |
 | **Phase 3** | Intelligence Layer — canon co-writing, lore enrichment, translation quality | 🔄 In Progress |
-| **Phase 4** | Continuation & Canon Safety — the Writing Studio, PlanForge, canon rules, Auto-Draft Factory | 🔄 In Progress |
+| **Phase 4** | Continuation & Canon Safety — the Writing Studio, PlanForge, canon rules, Campaigns | 🔄 In Progress |
 | **Phase 5** | Hardening & Scale — performance, multi-tenancy, cloud deployment | Planned |
 | **Phase 6+** | **Living Worlds** — LLM-driven NPCs, shared persistent realities, the MMO | Foundation building |
 

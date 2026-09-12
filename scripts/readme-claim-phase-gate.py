@@ -10,8 +10,12 @@ That gap is not theoretical. A 2026-09-06 human-sim run drove the product as a n
 days, measured the claims against what shipped, and produced a NO-GO on the headline pitch.
 Two claims it could not reconcile are exactly the ones whose phases the roadmap already
 flags: the co-writer that "can't contradict your canon" (Phase 3) and the "Auto-Draft
-Factory" that runs "a whole drafting campaign" (Phase 4 — the engine extracts and
-translates; it has no drafting stage).
+Factory" that runs "a whole drafting campaign" (Phase 4).
+
+The second of those was RESOLVED by renaming rather than marking: the feature is now called
+Campaigns and described as batch extraction and translation, which is what it does. Its phase
+marker stays because Phase 4 itself is still In Progress — the claim being accurate and the
+phase being finished are different questions, and this gate only answers the second.
 
 WHAT THIS ENFORCES, and it is deliberately bidirectional:
 
@@ -50,7 +54,7 @@ MARKER = "🔄"
 CLAIMS: dict[str, str] = {
     "A co-writer that can't contradict your canon": "Phase 3",
     "Advisory prose critic flags potential canon contradictions": "Phase 3",
-    "run a whole drafting campaign across chapters": "Phase 4",
+    "run batch extraction and translation across chapters": "Phase 4",
 }
 
 

@@ -17,7 +17,7 @@ export function CampaignWizard() {
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t('wizard.title', { defaultValue: 'New Auto-Draft Campaign' })}</h1>
+        <h1 className="text-xl font-semibold">{t('wizard.title', { defaultValue: 'New Campaign' })}</h1>
         <Link to="/campaigns" className="text-sm text-muted-foreground hover:text-foreground">
           {t('wizard.cancel', { defaultValue: 'Cancel' })}
         </Link>

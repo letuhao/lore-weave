@@ -1664,7 +1664,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   extracts and translates. A 🔄 marker says *not finished yet*; it does not make an inaccurate
   description accurate. That row stays open.
 
-- [ ] **T23** — Fix the Auto-Draft Factory's name and its unreachability from the Studio.
+- [x] **T23** — Fix the Auto-Draft Factory's name and its unreachability from the Studio.
   Two separable defects found by recon, neither of which is a bug in the engine — which is
   production-grade, has 9 unit + 5 DB-integration suites, a Playwright spec
   (`frontend/tests/e2e/specs/campaign-factory.spec.ts`), and a verified live run
@@ -1692,7 +1692,60 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: each precondition renders a specific, actionable reason; the Studio exposes a reachable
   entry point. NV-6 on the precondition messages.
 
-  **⚠ PARTIAL — the code half is DONE; the naming half is a STOP (see below).**
+  **DONE. PO decided on 2026-09-13: rename to Campaigns, and reconcile the README.**
+
+  **(a) Naming — done.** The name reached further than the row anticipated: two README lines, two
+  component fallbacks, a route comment, and the wizard + list titles in **eighteen** locale files.
+  The description was renamed too, not just the noun — *"run a whole drafting campaign across
+  chapters"* became *"run batch extraction and translation across chapters"*, because renaming the
+  feature while leaving the sentence describing drafting would have kept the false half.
+
+  Each locale's list heading is now copied from **that locale's own sidebar label** rather than
+  translated afresh: a page whose heading disagrees with the nav item that opened it is a new
+  inconsistency, which is exactly what a half-applied rename looks like.
+
+  The 🔄 Phase 4 marker STAYS. The claim being accurate and the phase being finished are different
+  questions, and Phase 4 is still In Progress.
+
+  **Guarded by `scripts/campaign-naming-gate.py`,** because a rename across 18 files regrows — the
+  internal name is deliberately kept in the service, the tables and the design docs, so the
+  user-facing boundary is precisely what needs mechanical defence.
+
+  **BITE — revert the README name and the Vietnamese wizard title:**
+
+<!-- doc-language-gate: ok -- the gate's own output quotes the Vietnamese i18n string it rejected; the string IS the finding, and paraphrasing it would make the evidence unverifiable -->
+
+  ```
+  campaign-naming-gate: FAIL
+    - README still describes this feature as drafting ('auto-draft'): ...
+    - README still describes this feature as drafting ('drafting campaign'): ...
+    - vi wizard.title still names this feature after drafting: 'Chiến dịch tạo bản nháp tự động mới' contains 'nháp'.
+  EXIT=1
+  ```
+
+<!-- doc-language-gate: end -->
+
+  Restored byte-exact, `campaign-naming-gate: OK — README + 18 locale(s) name it for what it does`,
+  self-test **7/7**, and the claim gate re-pointed at the new sentence stays OK with **9/9**.
+
+  **The claim gate caught the rename itself, which is what it is for.** Changing the README made its
+  watched claim vanish, and it failed with *"claim not found in README … update CLAIMS here in the
+  same commit — a gate watching a line nobody wrote any more reports coverage it does not have."*
+
+  **Two release-blocking regressions found on the way out, both introduced by THIS branch.** Both
+  gates are green on `release/v0.1.0` and were red here, which is how they were attributed rather
+  than guessed:
+
+  - `i18n-completeness-gate`: T21 added `motif.empty.notThemes` in English only — 17 locales short.
+  - `i18n-key-resolution-gate`: **10** keys across T2, T9/T10, T12, T16, T20 and T23 had no entry in
+    the English bundle at all, two of them mine. Such a key renders its `defaultValue` and is never
+    translated, because the translator reads the bundle and not the call site.
+
+  Fixed by adding the English entries and running the repo's own `i18n_translate.py`. That tool
+  re-translates whole namespaces, so its output was **filtered to the new keys only** and every
+  pre-existing string restored to its committed value: re-translating 543 settled strings is churn
+  nobody can review, and it was not what fixing the gate required. Verified key by key —
+  **0 lost, 197 added, and the only 36 changes are the rename itself.**
 
   **(b) Reachability — done.** Confirmed the gap first: a grep for `campaign` across
   `features/studio/**` returned **zero hits**, and the Studio mounts outside `EditorLayout` so it
@@ -1764,74 +1817,24 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **22 of 23 rows DONE, and every one of them now carries its OWN pasted bite output** —
-audited row by row, which is how T15 was found ticked with its evidence filed under T14, and
-re-bitten. **1 remains — T23(a) — and it is a decision, not engineering.** T16 closed once its cited
-decision record was actually read: see that row's sixth premise correction.
+RESUME: **ALL 23 rows DONE, each with its own pasted bite output.** The board is closed. The PO
+answered the last question on 2026-09-13 — rename to Campaigns, reconcile the README — and T23 is
+recorded with both directions of its bite.
 
-**PO DECISION REQUEST — one question.**
+Nothing here is waiting on a decision. The next step is review and merge, not more rows.
 
-1. **T23(a) — what should the Auto-Draft Factory be called?** *(Premise re-verified, not assumed —
-   six premises in this plan turned out wrong, so this one was checked against the code before the
-   question was put. The saga driver dispatches knowledge EXTRACTION and TRANSLATION and nothing
-   else; a case-insensitive search of `services/campaign-service/app/` for "draft" returns only the
-   word "Draft" in three module docstrings naming the product. There is no drafting stage, so the
-   claim is false and softening it is unavoidable — which is precisely why it is the PO's call.)* It does not draft. The engine extracts
-   knowledge and translates existing chapters; its own wizard placeholder says *"e.g. Translate Book
-   1 → Vietnamese"*. The claim now carries a 🔄 Phase 4 marker, which says *not finished yet* and
-   does NOT make an inaccurate description accurate. Recommended: *"batch extraction and translation
-   across chapters"*, in the README and the wizard title together. Reply with the wording, or "keep
-   the name".
-T16 is no longer on this list. Reading the decision record it cited showed the record is about
-NON-PROSE output, not a short one, so reporting a length was never one of its reserved options.
-The report shipped; the re-ask and the text edits did not, and those remain reserved.
+**Read this before merging.** The last row's work turned up two release-blocking regressions that
+THIS branch introduced, and neither was visible from any row: an English-only i18n key from T21,
+and ten keys across six rows with no entry in the English bundle at all. Both gates are green on
+`release/v0.1.0` and were red here, which is how they were attributed rather than guessed. Both are
+fixed. The lesson is the plan's own recurring one: a row can be green and still break something no
+row was watching, so the gates that run across the whole tree are the ones that decide whether a
+branch ships.
 
-Everything else on this plan is finished and committed. A session that resumes here should take an
-ANSWER to that one question, not more code.
-
-T2 was DONE eleven commits ago and simply never ticked: its evidence went into T3's block rather
-than its own row. Re-bitten and re-verified today before ticking, so the board now matches the
-build.
-
-T22, the release gate, is now CLOSED by option (i): the two claims that cannot be made true by code
-carry the README's own roadmap marking inline, and `scripts/readme-claim-phase-gate.py` enforces it
-in both directions. Nothing was removed or reworded, so the softening decision was NOT taken on the
-PO's behalf — it is simply no longer blocking. T23(a) still holds it.
-
-DONE: T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T17, T18, T19,
-T20, T21, T22. T23's code half (reachability + preconditions) is also done; only its naming half
-remains.
-
-OPEN, each with the decision it needs (full reasoning in the row):
-- **T3** — D3's premise was FALSE. `book` is already hot on studio and `book_chapter_save_draft`
-  is allowlisted outside the token budget, proven by executing `surface_hot_domains`. The tool was
-  on the wire and the model still said it had no access, so this is model-capability/prompting, not
-  gating. Needs a new decision: re-aim, reproduce-and-measure, or drop.
-- **T16** — the re-ask on a short generation is a second PAID generation.
-  `D-DRAFT-OUTPUT-NO-POST-CONDITION` already reserves that exact choice for the author
-  ("detect-and-surface vs detect-and-reject vs strip"). Observability was added; the spend call is
-  not mine.
-- **T20** — the create half is DONE. The rename cascade needs a choice between (a) a new
-  `book.updated` event + cascade, which overwrites a user-chosen project name, and (b) making
-  projects findable by their bound book — `list_projects` already accepts `book_id`, so (b) is
-  mostly frontend. I recommend (b).
-- **T23(a)** — and its two halves cannot be split, which is why no partial credit was taken. The
-  row asks for a UI rename AND a README fix. Renaming only the UI is not a safe subset: the README
-  would still say "Auto-Draft Factory" while the product said something else, so a half-done rename
-  manufactures a NEW inconsistency in place of the one it set out to remove. The README edit is the
-  stop-listed act, so the UI edit waits with it.
-- **T23(a)** — the last README decision, and marking did NOT close it. "Auto-Draft Factory" and
-  "run a whole drafting campaign across chapters" describe prose drafting; the engine extracts and
-  translates. `🔄 Phase 4` says *not finished yet*, which is true but does not make an inaccurate
-  description accurate. Reword (recommended: "batch extraction and translation across chapters") or
-  rename. The code half (Studio reachability + visible wizard preconditions) is DONE.
-
-Suite state at hand-off: chat-service **3960 passed** (2 pre-existing failures in
-`test_a_turn_that_called_nothing_may_not_claim_an_effect.py`, confirmed pre-existing by stashing);
-composition-service **4189 passed**; frontend studio **1524**, composition **1083**, plan-hub
-**257**, steering **21**, campaigns+frame **99**. `tsc` and eslint clean throughout. One
-pre-existing frontend flake (`RawDrawersTab`, full-suite ordering) and one transient membrane
-ordering artifact, both confirmed not caused by this branch.
+Suite state at close: composition + campaigns + steering frontend **1163 passed**; `tsc` and eslint
+clean; `i18n-completeness-gate`, `i18n-key-resolution-gate`, `readme-claim-phase-gate` (9/9
+self-test), `campaign-naming-gate` (7/7 self-test) and `gate-wiring-gate` all green. chat-service
+**3960 passed** with 2 failures confirmed pre-existing by stashing; composition-service **4189**.
 
 ```goal-prompt
 goal: every task on the board is done with pasted evidence, and every README claim in the plan's claims audit is either true of the build with a check that can fail, or reconciled with the roadmap's own In-Progress marking

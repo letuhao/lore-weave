@@ -1,6 +1,6 @@
 {
   "wizard": {
-    "title": "Kampanye Auto-Draft Baru",
+    "title": "Kampanye Baru",
     "cancel": "Batal",
     "back": "Kembali",
     "next": "Berikutnya"
@@ -82,7 +82,7 @@
     "launch": "Luncurkan kampanye"
   },
   "list": {
-    "title": "Kampanye Auto-Draft",
+    "title": "Kampanye",
     "new": "Kampanye baru",
     "loading": "Memuat…",
     "error": "Gagal memuat kampanye.",
