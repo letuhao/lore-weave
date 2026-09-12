@@ -772,6 +772,40 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: an oversized bible produces a visible indicator. NV-6: this run had to read server logs to
   find it, so the test must fail if the indicator is removed while the log line stays.
 
+  **⚠ PARTIAL — row stays OPEN. The reporting primitive is built and tested; nothing user-visible
+  changed, which is the whole point of the row.**
+
+  Done: `select_steering_ex()` returns `(selected, SteeringTruncation | None)` carrying the dropped
+  count, **the dropped rules' names**, the cap and the kept-token total. The list-only
+  `select_steering` is kept as a wrapper, so no existing caller or test changed. `stream_service`
+  computes it per turn into `steering_truncation`. 6 tests, BITE verified:
+
+  ```
+  # RED (report the count but not WHICH rules)
+  E  assert 0 == 5   [test_a_dropped_rule_is_reported_with_its_NAME]
+  # RESTORED byte-exact (diff clean)
+  21 passed  (6 new + the 15 pre-existing steering tests, unchanged)
+  ```
+
+  **Not done, and why.** Surfacing it needs one of two routes, both larger than they look:
+  - **Per-turn notice.** `stream_response` feeds `StreamingResponse` directly, so it must yield
+    str/bytes; the dict events (`{"compaction": …}`) are serialised in an intermediate layer inside
+    a 14,705-line generator. Threading a new event through it without the ability to run the live
+    stack here risks breaking the product's core stream to add a toast. Not a trade worth making
+    blind.
+  - **Steering panel indicator** (the row's primary ask, and the better UX — an author sees it
+    while editing rules, not mid-generation). The panel reads book-service `/v1/books/{id}/steering`,
+    but the cap and the token estimator live in **chat-service**, which has no book-scoped routes at
+    all. So this needs a new router + gateway wiring + frontend work across three layers.
+    Re-implementing the estimate client-side was rejected outright: a second source of truth that
+    disagrees with the server is worse than no indicator.
+
+  **Recommendation for whoever takes this:** build the panel endpoint, not the turn notice. A
+  budget preview *while editing rules* prevents the problem; a mid-turn toast only reports it after
+  the generation it spoiled. Note two pre-existing failures in
+  `test_a_turn_that_called_nothing_may_not_claim_an_effect.py` — confirmed pre-existing by stashing
+  these changes and re-running; unrelated to this work.
+
 - [ ] **T13** — Stop save-on-blur from discarding a sibling field's unsaved text.
   Finding #13 is a data-loss shape, not friction: typing a 1686-char chapter Goal, then saving a
   *different* field, reset the Goal textarea to its last-saved value (empty) — confirmed via API,
@@ -1001,7 +1035,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. Next is T12 (truncation visibility), then T13-T23. Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). T9 and T10 are DONE (C5 complete). T11 is DONE. T12 is PARTIAL and stays OPEN (primitive built + tested; no UI surfacing — see its row). Next is T13, then T14-T23. Two rows now open: T3 (blocked on PO) and T12 (partial). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
