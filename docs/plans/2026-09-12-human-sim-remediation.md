@@ -409,7 +409,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   unresolvable `modelRef` with the reason hidden in a `title`.
 
 
-- [ ] **T5** — Make the "✦ Suggest scenes" toolbar button reach the affordance it advertises.
+- [x] **T5** — Make the "✦ Suggest scenes" toolbar button reach the affordance it advertises.
   It is a signpost that only fires a toast — by design (`EditorPanel.tsx:356-368`, 452-462). The
   real generator lives in the selection bubble menu (`SelectionToolbar.tsx:273-281`), which appears
   only on a non-empty selection under `SCENE_PLAN_MAX_CHARS`. A button that looks like the feature
@@ -421,7 +421,28 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: DEBUG which branch was taken and why (no selection / too long / dispatched).
   Tests: assert the no-selection branch produces a reachable path, not a dead toast.
 
-- [ ] **T6** — Replace the ✨ narration-attach silent no-ops, raw `alert()`, and hardcoded language.
+  **EVIDENCE (T5).** The no-selection branch was already fair guidance and is kept. The defect was
+  the other one: a user who HAD selected a passage was toasted *"Use Suggest scenes in the AI
+  toolbar above the selected passage"* — sent to a second button for the thing they had just asked
+  for. It now dispatches on the **existing** `lw-editor-context-ai` bridge the right-click menu
+  already uses (`TiptapEditor.tsx:419`), so the generator, its stream and its proposal state stay
+  owned by `SelectionToolbar` — no duplicated pipeline. `scene_plan` was added to that bridge's
+  allowlist, which had deliberately carried only rewrite/expand/describe.
+
+  BITE — reverted `BRIDGED_OPS` to exclude `scene_plan`:
+
+  ```
+  # RED
+    × T5: the lw-editor-context-ai bridge runs scene_plan (the toolbar button path)
+   Tests  1 failed | 8 passed (9)
+  # RESTORED byte-exact (diff clean)
+   Tests  9 passed (9)
+  ```
+
+  The companion test (*"the bridge still ignores an operation outside the allowlist"*) stayed green
+  through the bite — NV-7: a bridge that forwarded anything would forward junk too.
+
+- [x] **T6** — Replace the ✨ narration-attach silent no-ops, raw `alert()`, and hardcoded language.
   Three separate silent `return`s and one raw `alert()`
   (`frontend/src/components/editor/AudioAttachActionsExtension.ts`): `:215-217` returns when
   `currentPos < 0` or the upload context is unset; `:219-234` fires
@@ -435,6 +456,36 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   `frontend/src/features/studio/panels/EditorPanel.tsx` (183-196).
   Logging: WARN on each unmet precondition, naming the specific missing value.
   Tests: one per branch asserting a visible reason; one asserting the language is not literal `'en'`.
+
+  **EVIDENCE (T6).** Six defects, all fixed: five bare `return`s and a raw `alert()` left the ✨
+  button looking active while doing nothing, and `language: 'en'` was hardcoded — which for the
+  run's Vietnamese manuscript would have generated **English audio**, not merely a silent failure.
+
+  Rather than bolt six toasts onto six branches, the precondition logic is extracted into a pure,
+  exported `resolveTtsBlocker()` returning a named blocker, plus a `TTS_BLOCKER_MESSAGES` table.
+  Five `return`s buried in a ProseMirror plugin view cannot be tested; a resolver can — and the
+  table makes "a blocker with no message" a structural impossibility rather than a review item.
+
+  The language now comes from the book's own `original_language`, threaded through a new optional
+  `ImageUploadContext.language` and read from the **same cached `['book', bookId]` query**
+  `useChapterDoor` already uses — whose own comment reads *"never hardcode 'en' — multilingual
+  platform."* Left `undefined` while loading so the resolver can **refuse and say so**, rather than
+  silently asserting English.
+
+  BITE — removed the language guard, restoring the pre-T6 "assume English" behaviour:
+
+  ```
+  # RED
+    × resolveTtsBlocker (T6) > refuses rather than defaulting the language to English
+      → expected null to be 'no-language'
+   Tests  1 failed | 7 passed (8)
+  # RESTORED byte-exact (diff clean)
+   Tests  8 passed (8)
+  ```
+
+  Regression for C3 as a whole: `tsc --noEmit` clean, eslint clean on all four changed files, and
+  **328 test files / 2648 tests green** across `features/studio`, `features/composition` and
+  `components/editor`.
 
 ### Phase 2 — Make the quality signals see human-authored prose
 
@@ -776,8 +827,8 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 `book` is already hot on studio and `book_chapter_save_draft` is allowlisted against budget
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
-already documents in measured runs. Do NOT tick T3 without a new PO decision. T5, T6 and Phases 2-7
-are unaffected and can proceed. Two rows in, the
+already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
+(C3 landed without T3). Next is T7 (Phase 2). Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend

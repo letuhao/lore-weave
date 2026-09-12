@@ -1,12 +1,59 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
+import { toast } from 'sonner';
+import i18n from '@/i18n';
 import { getUploadContext } from './ImageBlockNode';
 import { booksApi } from '@/features/books/api';
 
 const AUDIO_NODE_TYPES = new Set(['paragraph', 'heading', 'blockquote', 'callout']);
 const ALLOWED_AUDIO_TYPES = new Set(['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4']);
 const MAX_AUDIO_SIZE = 20 * 1024 * 1024;
+
+/** T6 — which precondition (if any) blocks TTS generation for the focused block.
+ *
+ * Extracted as a pure function for one reason: the handler it came from `return`ed in SILENCE on
+ * five separate branches, so the button looked active and did nothing, and nothing could prove
+ * otherwise. A resolver returning a reason is testable; five bare `return`s buried in a
+ * ProseMirror plugin view are not.
+ *
+ * `null` means "nothing is blocking" — the ONLY case that may proceed to generation. */
+export type TtsBlocker =
+  | 'no-block' | 'no-context' | 'no-tts-model' | 'empty-block' | 'no-language' | null;
+
+export function resolveTtsBlocker(input: {
+  currentPos: number;
+  hasContext: boolean;
+  ttsModelId: string | null;
+  hasNode: boolean;
+  text: string;
+  language?: string;
+}): TtsBlocker {
+  if (input.currentPos < 0) return 'no-block';
+  if (!input.hasContext) return 'no-context';
+  if (!input.ttsModelId) return 'no-tts-model';
+  if (!input.hasNode) return 'no-block';
+  if (!input.text.trim()) return 'empty-block';
+  // Deliberately NOT defaulted to 'en'. The old code hardcoded English and generated English audio
+  // for a Vietnamese manuscript; a silent fallback here is the multilingual violation itself.
+  if (!input.language) return 'no-language';
+  return null;
+}
+
+/** The user-facing reason for each blocker. Data, not branches, so a new blocker cannot be added
+ *  without a message — the failure mode this whole task exists to remove. */
+export const TTS_BLOCKER_MESSAGES: Record<Exclude<TtsBlocker, null>, { key: string; fallback: string }> = {
+  'no-block': { key: 'audio.attach_no_block', fallback: 'Put the cursor in a paragraph first, then generate audio for it.' },
+  'no-context': { key: 'audio.attach_no_context', fallback: 'This editor is still loading - try again in a moment.' },
+  'no-tts-model': { key: 'audio.attach_no_tts_model', fallback: 'No text-to-speech model selected - pick one in Reader then TTS Settings first.' },
+  'empty-block': { key: 'audio.attach_empty_block', fallback: 'This block has no text to read aloud.' },
+  'no-language': { key: 'audio.attach_no_language', fallback: 'Still loading this book language - try again in a moment.' },
+};
+
+export function reportTtsBlocker(blocker: Exclude<TtsBlocker, null>): void {
+  const m = TTS_BLOCKER_MESSAGES[blocker];
+  toast.error(i18n.t(m.key, { ns: 'editor', defaultValue: m.fallback }));
+}
 
 const pluginKey = new PluginKey('audioAttachActions');
 
@@ -212,11 +259,10 @@ function createActionBar(view: EditorView): HTMLElement {
 
   // AI Generate button — uses TTS model from localStorage prefs
   const aiBtn = makeBtn('\u2728', 'Generate AI audio (TTS)', async () => {
-    if (currentPos < 0) return;
+    // T6 — one resolver decides, one reporter speaks. Previously five bare `return`s (plus a raw
+    // English `alert`) left the button looking active while doing nothing.
     const ctx = getUploadContext((view.dom as any).editor);
-    if (!ctx) return;
 
-    // Read TTS prefs from localStorage
     let ttsModelId: string | null = null;
     let ttsVoice = 'alloy';
     try {
@@ -228,15 +274,20 @@ function createActionBar(view: EditorView): HTMLElement {
       }
     } catch { /* ignore */ }
 
-    if (!ttsModelId) {
-      alert('Select a TTS model in Reader > TTS Settings first.');
-      return;
-    }
+    const node = currentPos >= 0 ? view.state.doc.nodeAt(currentPos) : null;
+    const text = node?.textContent.trim() ?? '';
 
-    const node = view.state.doc.nodeAt(currentPos);
-    if (!node) return;
-    const text = node.textContent.trim();
-    if (!text) return;
+    const blocker = resolveTtsBlocker({
+      currentPos,
+      hasContext: !!ctx,
+      ttsModelId,
+      hasNode: !!node,
+      text,
+      language: ctx?.language,
+    });
+    if (blocker) { reportTtsBlocker(blocker); return; }
+    // Past the resolver these are guaranteed non-null; narrow for TS.
+    if (!ctx || !ctx.language || !ttsModelId) return;
 
     let blockIndex = 0;
     view.state.doc.forEach((_child, _offset, index) => {
@@ -245,7 +296,7 @@ function createActionBar(view: EditorView): HTMLElement {
 
     try {
       const result = await booksApi.generateAudio(ctx.token, ctx.bookId, ctx.chapterId, {
-        language: 'en',
+        language: ctx.language,
         voice: ttsVoice,
         model_ref: ttsModelId,
         blocks: [{ index: blockIndex, text }],
@@ -261,9 +312,13 @@ function createActionBar(view: EditorView): HTMLElement {
         });
       } else if (result.errors.length > 0) {
         console.error('TTS generation error:', result.errors[0].error);
+        toast.error(i18n.t('audio.attach_failed', { ns: 'editor', defaultValue: 'Audio generation failed: {{error}}', error: result.errors[0].error }));
+      } else {
+        toast.error(i18n.t('audio.attach_no_segments', { ns: 'editor', defaultValue: 'Audio generation returned nothing.' }));
       }
     } catch (err) {
       console.error('TTS generation failed:', err);
+      toast.error(i18n.t('audio.attach_failed', { ns: 'editor', defaultValue: 'Audio generation failed: {{error}}', error: (err as Error)?.message ?? 'unknown' }));
     }
     hide();
   });
