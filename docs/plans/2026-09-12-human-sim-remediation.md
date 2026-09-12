@@ -253,6 +253,23 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 1 — Make the existing write paths reachable (the release-gate work)
 
+- [ ] **T4** — Close the G7 DIRTY-HOIST GUARD. (Own commit; data-loss boundary.)
+  Spec 09 flags this as an open design hole to close *before* Lane B build: an agent MCP-save that
+  triggers `manuscript.reload(chapterId)` while the user is typing in that chapter **clobbers their
+  unsaved keystrokes**. S7 covers only tab-close dirty; the 409 FSM covers only the user's own save.
+  This must land before Task 3 makes agent writes more likely, or the plan ships a data-loss bug in
+  the course of fixing a usability one.
+  Rule from the spec: a reconciler handler that reloads a hoist MUST check `hoist.dirty` first; if
+  dirty, surface a conflict (reload-or-keep, same family as the save-conflict FSM) or no-op with a
+  toast — never a blind reload. The reconciler owns the *signal*; the hoist owns the *dirty decision*.
+  Files: `frontend/src/features/studio/manuscript/unit/ManuscriptUnitProvider.tsx` (415-418 and the
+  reload path), plus the effect-reconciler seam — confirm at BUILD whether
+  `StudioEffectReconciler`/`effectRegistry` exists yet or whether this guard lands in the reload
+  entry point itself.
+  Logging: WARN whenever a reload is refused because the hoist was dirty, with chapter id and the
+  dirty-since timestamp. This is the line that proves the guard fired in the wild.
+  Tests: dirty hoist + incoming reload ⇒ no content loss. NV-6: remove the dirty check, watch the
+  test go red with an actual lost keystroke, restore, paste output.
 - [ ] **T2** — Make "Continue from cursor" state its own reason, and give `modelRef` a resolution path.
   Today a user with 0 or ≥2 chat models and no persisted `settings.default_model_ref` sees a
   permanently disabled button whose explanation lives only in a `title` tooltip on a disabled
@@ -294,23 +311,6 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   a budget assertion that cannot exceed its ceiling is the NV-2 "subject cannot vary" shape, so
   prove it by feeding an oversized candidate set.
 
-- [ ] **T4** — Close the G7 DIRTY-HOIST GUARD. (Own commit; data-loss boundary.)
-  Spec 09 flags this as an open design hole to close *before* Lane B build: an agent MCP-save that
-  triggers `manuscript.reload(chapterId)` while the user is typing in that chapter **clobbers their
-  unsaved keystrokes**. S7 covers only tab-close dirty; the 409 FSM covers only the user's own save.
-  This must land before Task 3 makes agent writes more likely, or the plan ships a data-loss bug in
-  the course of fixing a usability one.
-  Rule from the spec: a reconciler handler that reloads a hoist MUST check `hoist.dirty` first; if
-  dirty, surface a conflict (reload-or-keep, same family as the save-conflict FSM) or no-op with a
-  toast — never a blind reload. The reconciler owns the *signal*; the hoist owns the *dirty decision*.
-  Files: `frontend/src/features/studio/manuscript/unit/ManuscriptUnitProvider.tsx` (415-418 and the
-  reload path), plus the effect-reconciler seam — confirm at BUILD whether
-  `StudioEffectReconciler`/`effectRegistry` exists yet or whether this guard lands in the reload
-  entry point itself.
-  Logging: WARN whenever a reload is refused because the hoist was dirty, with chapter id and the
-  dirty-since timestamp. This is the line that proves the guard fired in the wild.
-  Tests: dirty hoist + incoming reload ⇒ no content loss. NV-6: remove the dirty check, watch the
-  test go red with an actual lost keystroke, restore, paste output.
 
 - [ ] **T5** — Make the "✦ Suggest scenes" toolbar button reach the affordance it advertises.
   It is a signpost that only fires a toast — by design (`EditorPanel.tsx:356-368`, 452-462). The
@@ -675,9 +675,9 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **Nothing implemented yet.** Start at T1 (correct the delivered report), then T4 (the G7
-dirty-hoist guard) BEFORE the rest of Phase 1 — T3 makes agent writes more likely and the guard must
-exist first. Then T2/T3/T5/T6, then Phases 2-7 in board order. The four PO decisions D1-D4 are
+RESUME: **Nothing implemented yet.** Start at the head of the queue and follow board order — it is
+already correct, including T4 (the G7 dirty-hoist guard) sitting deliberately ahead of T2/T3 because
+the guard must exist before agent writes get easier to trigger. Then Phases 2-7 in board order. The four PO decisions D1-D4 are
 sealed (see "PO decisions taken at CLARIFY"): the release bar is the README claims audit, all phases
 run through, T3 hot-seeds the `book` domain, T7 adds an internal book-service endpoint. Recon has
 already corrected the report three times (C1/C2/C3) — trust the plan's cited line numbers over the
@@ -690,7 +690,7 @@ rules: |
   2 MCP-first for agentic logic; every provider call goes through provider-registry-service; no hardcoded model names or pricing.
   3 Written artifacts are ENGLISH - run scripts/doc-language-gate.py --staged before every commit and paste its line.
   4 Commit at the Commit Plan's RISK boundaries, never at file-count thresholds. Never --no-verify; if a gate blocks, fix the cause.
-  5 T4 (G7 dirty-hoist guard) lands BEFORE T3, or the run ships a data-loss bug while fixing a usability one.
+  5 The queue already puts T4 (G7 dirty-hoist guard) before T2/T3 on purpose - the guard must exist before agent writes get easier to trigger. Do not reorder it.
   6 Re-verify a cited line number before building on it. Recon corrected the delivered report three times already.
 discipline: |
   Per task: READ the cited files -> BUILD -> run the real check -> PASTE its output -> tick the row -> commit at the next risk boundary -> take the next row.
