@@ -153,3 +153,100 @@ def tiptap_doc_to_text(doc: Any) -> str:
             ]
             out.append("".join(parts))
     return "\n\n".join(out).strip()
+
+
+def _block_text(block: dict[str, Any]) -> str:
+    """One block's plain text — the same `_text`-snapshot-then-inline-runs order
+    `tiptap_doc_to_text` uses, so the two can never disagree about emptiness."""
+    snapshot = block.get("_text")
+    if isinstance(snapshot, str):
+        return snapshot
+    runs = block.get("content")
+    if isinstance(runs, list):
+        return "".join(
+            r.get("text", "") for r in runs
+            if isinstance(r, dict) and isinstance(r.get("text"), str)
+        )
+    return ""
+
+
+def scene_prose_presence(
+    doc: Any, scenes: list[dict[str, Any]],
+) -> dict[str, int]:
+    """T8 — which scenes actually have PROSE under them in the saved manuscript.
+
+    Returns ``{scene_id: word_count}`` for scenes with a non-empty body, keyed by
+    the scene ids in ``scenes`` (``[{"id", "title"}, …]``). A scene with a heading
+    but nothing under it is ABSENT from the result, not present-with-zero — the
+    caller's question is "is this written", and an empty section is not.
+
+    WHY THIS EXISTS. Conformance had two ways to call a scene realized and a human
+    could reach neither: a completed per-scene ``generation_job`` (only an automated
+    generation path creates one) and ``outline_node.written_*`` (only a book-service
+    parse/import populates it). An author who drafted in chat and pasted into the
+    editor — the path a 2026-09-06 run used for an entire 5-arc novel — got
+    "Not written yet" on every finished scene. This reads the manuscript itself, so
+    prose counts as prose regardless of who typed it.
+
+    Anchoring deliberately reuses ``_attach_scene_ids``' rules rather than
+    re-deriving them: a heading anchors a scene only when EXACTLY ONE free heading
+    carries that title, and it anchors at most once. Matching those rules matters
+    more than matching more scenes — the editor draws its own anchors the same way,
+    so a looser rule here would report a scene as written that the author's own
+    Scene Rail shows as unanchored.
+
+    A scene's body runs from its heading to the next HEADING OF THE SAME OR HIGHER
+    level (a deeper heading is a subsection of this scene, not the start of the
+    next one)."""
+    if not isinstance(doc, dict):
+        return {}
+    blocks = doc.get("content")
+    if not isinstance(blocks, list):
+        return {}
+
+    # Work on a shallow copy: _attach_scene_ids MUTATES attrs, and this is a read.
+    nodes = [dict(b) for b in blocks if isinstance(b, dict)]
+    for n in nodes:
+        n["attrs"] = dict(n.get("attrs") or {})
+        if n.get("type") == "heading" and "_text" not in n:
+            n["_text"] = _block_text(n)
+
+    # Honour ids the document already carries (the editor writes them on save);
+    # fall back to title matching for a document that predates them.
+    already = {
+        str(n["attrs"].get("sceneId")) for n in nodes
+        if n.get("type") == "heading" and n["attrs"].get("sceneId")
+    }
+    unresolved = [s for s in scenes if str(s.get("id")) not in already]
+    if unresolved:
+        _attach_scene_ids(nodes, unresolved)
+
+    wanted = {str(s.get("id")) for s in scenes if s.get("id")}
+    out: dict[str, int] = {}
+    i = 0
+    while i < len(nodes):
+        node = nodes[i]
+        scene_id = node["attrs"].get("sceneId") if node.get("type") == "heading" else None
+        if not scene_id or str(scene_id) not in wanted:
+            i += 1
+            continue
+        level = int(node.get("attrs", {}).get("level") or 1)
+        words = 0
+        j = i + 1
+        while j < len(nodes):
+            nxt = nodes[j]
+            if nxt.get("type") == "heading":
+                nxt_level = int(nxt.get("attrs", {}).get("level") or 1)
+                if nxt_level <= level:
+                    break
+                # A SUB-heading belongs to this scene, but its title is not prose. Counting it
+                # would let a scene containing nothing but a sub-heading read as written — the
+                # same false positive the bare-heading case guards against, one level down.
+                j += 1
+                continue
+            words += len(_block_text(nxt).split())
+            j += 1
+        if words > 0:
+            out[str(scene_id)] = words
+        i = j if j > i else i + 1
+    return out

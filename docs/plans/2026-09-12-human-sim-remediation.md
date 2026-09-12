@@ -559,7 +559,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Regression: `go build ./...` + `go vet` clean; composition-service **4154 tests passed**;
   frontend `tsc --noEmit` clean.
 
-- [ ] **T8** — Add a manuscript-derived "realized" signal to conformance.
+- [x] **T8** — Add a manuscript-derived "realized" signal to conformance.
   Per C2 both existing signals are structurally unreachable from human authoring. Add a third:
   fetch the chapter draft (`BookClient.get_draft`, already used at `routers/plan.py:391`), segment
   the Tiptap body by `attrs.sceneId` (written by `_attach_scene_ids`,
@@ -576,6 +576,47 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: a chapter authored purely by the paste path reports realized. NV-6: empty the body, watch
   it go red, restore, paste output. Per IN-8's 4-source discipline a response-shape change touches
   the API model, the FE type, and a drift test — all three, or none.
+
+  **EVIDENCE (T8).** New `scene_prose_presence()` in `app/engine/prose_doc.py` segments the SAVED
+  manuscript by scene and returns `{scene_id: word_count}` for scenes that actually have prose.
+  `realized` now carries **three distinguishable signals**, not one collapsed boolean:
+  `has_prose` (either source), `source` (`generation_job` | `manuscript` | null), and
+  `manuscript_words`. "A generator wrote this" and "a human typed this" are different facts and the
+  flywheel needs both.
+
+  Anchoring deliberately reuses `_attach_scene_ids`' own rules — exactly one free heading per
+  title, each heading anchoring at most once — rather than re-deriving them, because the editor
+  draws its Scene Rail the same way; a looser rule here would report a scene as written that the
+  author's own rail shows as unanchored.
+
+  **The design caught a flaw in itself.** The first implementation counted a sub-heading's TITLE
+  toward the word total, so a scene containing nothing but a sub-heading would have read as
+  written — the same false positive the bare-heading case exists to prevent, one level down. The
+  failing test found it before commit; sub-heading titles are now excluded.
+
+  BITE — restored the bare-heading false positive:
+
+  ```
+  # RED
+  E  AssertionError: an empty section was reported as written
+  E  assert 's1' not in {'s1': 0, 's2': 6}
+  1 failed, 7 passed
+  # RESTORED byte-exact (diff clean)
+  8 passed
+  ```
+
+  Eight tests cover: hand-pasted prose counts (the case the task exists for), a bare heading does
+  NOT, an explicit `attrs.sceneId` beats title matching, an ambiguous title anchors nothing, a
+  deeper heading belongs to its scene, junk input degrades to `{}` rather than raising, and the
+  read does not mutate the caller's document.
+
+  **Two self-inflicted regressions, both caught by the suite and fixed:** a `.replace()` whose
+  anchor didn't exist silently did nothing (no assert — my error, now a habit to assert every
+  patch), and adding `bearer` as a REQUIRED dependency would have changed this route's auth
+  contract for every scope to buy one best-effort read in one branch. It is now optional via
+  `bearer_scheme`, and the manuscript signal degrades with a logged reason when absent.
+
+  Regression: composition-service **4162 tests passed**.
 
 - [ ] **T9** — Un-conflate `no_tracked_promises` from extraction failure.
   `extract_tracked_promises` returns `[]` on genuine emptiness AND on any LLM failure, including the
@@ -865,8 +906,7 @@ RESUME: **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3'
 truncation, so T3 as written has no work. The real finding is that the model had the tool on the
 wire and still claimed it could not write — a prompting/model-capability problem the codebase
 already documents in measured runs. Do NOT tick T3 without a new PO decision. T5 and T6 are DONE and committed
-(C3 landed without T3). T7 is DONE and committed (C4 opened). Next is T8 (the
-manuscript-derived realized signal), then T9-T23. Phases 2-7 are unaffected by the T3 block. Two rows in, the
+(C3 landed without T3). T7 is DONE and committed (C4 opened). T8 is DONE (C4 complete). Next is T9, then T10-T23. Phases 2-7 are unaffected by the T3 block. Two rows in, the
 pattern is clear and worth carrying forward: **the plan's premises keep being half wrong in the
 product's favour** — T4's guard was already built (only its user-facing half was missing), and T1's
 own citation checker caught two bad line numbers. Re-verify before building, every time. Frontend
