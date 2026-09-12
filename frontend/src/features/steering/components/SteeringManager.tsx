@@ -2,6 +2,9 @@
 // (render-only). Holds only view-selection state (which entry, if any, is being edited).
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/auth';
+import { steeringApi } from '../api';
 import { toast } from 'sonner';
 import { useSteering, classifySteeringError, type SteeringErrorKind } from '../hooks/useSteering';
 import type { SteeringEntry, SteeringInput } from '../types';
@@ -13,6 +16,14 @@ export function SteeringManager({ bookId }: { bookId: string }) {
   const steering = useSteering(bookId);
   const [editing, setEditing] = useState<SteeringEntry | 'new' | null>(null);
   const [errorKind, setErrorKind] = useState<SteeringErrorKind>(null);
+  // T12 — the budget, read from chat-service where the cap and the estimator actually live.
+  // Refetched alongside the entry list so editing a rule updates the number that matters.
+  const { accessToken } = useAuth();
+  const budget = useQuery({
+    queryKey: ['steering-budget', bookId, steering.entries.length],
+    queryFn: () => steeringApi.budget(accessToken!, bookId),
+    enabled: !!accessToken && !!bookId,
+  });
 
   const startAdd = () => { setErrorKind(null); setEditing('new'); };
   const startEdit = (e: SteeringEntry) => { setErrorKind(null); setEditing(e); };
@@ -60,6 +71,29 @@ export function SteeringManager({ bookId }: { bookId: string }) {
         </p>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+          {/* T12 — the cap USED to eat rules in silence. A 2026-09-06 run wrote 8 and the model
+              generated against 3 for the whole run, including losing the locked arc outline; the
+              only trace was a line in a container's stderr. OUT-5: never silently truncate, report
+              the cap. Shown HERE, while the author is editing rules, because that is when they can
+              act on it — a mid-turn toast only reports the generation it already spoiled. */}
+          {budget.data?.over_budget && (
+            <div
+              role="status"
+              data-testid="steering-over-budget"
+              className="mx-3 mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-700 dark:text-amber-300"
+            >
+              {t('steering.overBudget', {
+                defaultValue:
+                  'Your rules total ~{{total}} tokens, over the ~{{cap}} that reach the model. '
+                  + '{{dropped}} will be left out of every turn: {{names}}. Shorten or disable a rule '
+                  + 'so the ones that matter get through.',
+                total: budget.data.total_tokens,
+                cap: budget.data.cap_tokens,
+                dropped: budget.data.would_drop,
+                names: budget.data.would_drop_names.join(', '),
+              })}
+            </div>
+          )}
           <SteeringList
             entries={steering.entries}
             atCap={steering.atCap}

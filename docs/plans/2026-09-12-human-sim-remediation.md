@@ -759,7 +759,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
   Regression: composition-service **4175 tests passed**.
 
-- [ ] **T12** — Make truncation visible where it happens (OUT-5).
+- [x] **T12** — Make truncation visible where it happens (OUT-5).
   Finding #10's fix raised `STEERING_TOKEN_CAP` 2000→8000 but explicitly deferred the real problem:
   **truncation still has no UI-visible indicator**, so an author with a genuinely oversized bible
   silently loses rules, discoverable only in server logs. OUT-5 already says never silently
@@ -802,7 +802,55 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
   **Recommendation for whoever takes this:** build the panel endpoint, not the turn notice. A
   budget preview *while editing rules* prevents the problem; a mid-turn toast only reports it after
-  the generation it spoiled. Note two pre-existing failures in
+  the generation it spoiled.
+
+  **COMPLETED — I took my own recommendation.** The earlier deferral was on effort, not on a
+  decision, and effort is not a reason to leave a row open.
+
+  New `GET /v1/chat/books/{book_id}/steering-budget` (chat-service) returns the total the author has
+  written, **the cap that will actually apply**, and — when over — how many rules would be dropped
+  **and their names**. Mounted under `/v1/chat` so the existing gateway proxy reaches it with no
+  gateway change. It lives in chat-service because the cap and the estimator do: re-implementing
+  the estimate in the browser would create a second source of truth that disagrees with the one
+  applied at generation time, which is worse than no indicator because it would be believed.
+
+  **Two defects found while building it, both mine, both caught before commit:**
+  1. **A tenancy break.** `get_steering` reads book-service's INTERNAL route with a service token
+     and does not check the caller at all. Returning that unguarded would have leaked another
+     author's rule NAMES and rule COUNT to any authenticated user. The caller's grant is now
+     resolved FIRST, and a caller below VIEW gets the same 404 a missing book gets — no existence
+     oracle. A test asserts the steering fetch is never even reached in that case.
+  2. **An ambiguous empty.** `get_steering` returns `[]` on ANY failure and never raises, so "no
+     rules" and "book-service is down" arrive identically — the exact silence this row exists to
+     remove. The endpoint now logs the ambiguity rather than presenting a confident zero.
+
+  The Steering panel shows the warning inline while the author is editing, naming the rules that
+  will be left out.
+
+  BITE (the security guard, as the one that matters most here):
+
+  ```
+  # RED (grant check disabled)
+    FAILED test_a_caller_without_VIEW_gets_404_not_a_budget
+   1 failed, 4 passed
+  # RESTORED byte-exact (diff clean)
+   26 passed  (5 endpoint + 6 truncation + 15 pre-existing steering)
+  ```
+
+  And the panel half:
+
+  ```
+  # RED (warning removed)
+    x warns when the cap WILL drop rules, and names which
+      -> Unable to find an element by: [data-testid="steering-over-budget"]
+  # RESTORED byte-exact (diff clean)
+   21 passed
+  ```
+
+  Counter-tests: nothing renders when the bible fits (NV-7), and a budget-read failure never hides
+  the rules themselves — the panel is advisory and must not block on it.
+
+  Regression: `tsc` + eslint clean; steering **21 tests green**. Note two pre-existing failures in
   `test_a_turn_that_called_nothing_may_not_claim_an_effect.py` — confirmed pre-existing by stashing
   these changes and re-running; unrelated to this work.
 
@@ -1440,7 +1488,8 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **21 of 23 rows have landed; T22 and T23(a) are STOPPED for the PO (README claims), and
+RESUME: **22 of 23 rows have landed (T12 completed after the fact — the earlier deferral was on
+effort, not a decision, and effort is not a reason to leave a row open); T22 and T23(a) are STOPPED for the PO (README claims), and
 T3/T12/T16/T20 are open with written reasons in their rows.** Nothing further can be ticked without
 a product decision — see T22's table. **T1, T4, T2 done. T3 is BLOCKED on a PO decision — see its row.** D3's premise is false:
 `book` is already hot on studio and `book_chapter_save_draft` is allowlisted against budget
