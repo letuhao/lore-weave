@@ -852,6 +852,17 @@ not hidden.
     GitHub issue yet — recommend Phase 5 flag this as the single largest usability gap found this
     run, since it directly blocks the product's own stated pitch (AI-assisted authoring in the
     Writing Studio).
+
+    **CORRECTED 2026-09-12 by codebase recon.** The observation stands; the diagnosis was wrong.
+    `book_chapter_save_draft` IS a Tier-A MCP tool that writes prose straight into
+    `chapter_drafts.body` — the editor's own canonical document (`book-service/internal/api/
+    mcp_server.go:342-355`, handler `mcp_tools_write.go:778-877`). It is simply **lazy on the
+    editor/studio surface** by deliberate design (`chat-service/app/services/tool_discovery.py:
+    341-347`), so the model must `find_tools` for it — and instead asserted it had no access,
+    which was plausibly true of its own context. "✦ Continue from cursor" likewise has a real
+    handler (`InlineAiLayer.tsx:79-87`), disabled only because `modelRef` could not resolve
+    (`useInlineGhost.ts:40`, `EditorPanel.tsx:272-275`). So this is a reachability-and-disclosure
+    defect, not a missing capability — and far cheaper to fix than this entry implied.
 20. **MEDIUM — confirmed, repeatable prose length under-delivery vs. the requested word count.**
     Three independent data points this session: (a) first ask for Scene 1, "~1500-2500 words",
     delivered ~500-600 Vietnamese words; (b) an explicit follow-up ask to expand the same scene
@@ -912,6 +923,14 @@ not hidden.
     check yet" — a real author hitting this with no dev-tools access would reasonably conclude
     the feature doesn't work at all. Fix: surface the job's actual error reason (or link straight
     to the Promises panel to declare one) instead of a bare "unavailable."
+
+    **CORRECTED 2026-09-12 by codebase recon — severity raised.** "The analysis is behaving
+    correctly" was wrong. `extract_tracked_promises` returns `[]` on **any** extract failure,
+    including the truncated/unusable-content path (`composition-service/app/engine/
+    promise_audit.py:276-287`, `:290-310`), and that becomes `error="no_tracked_promises"`
+    (`app/engine/quality_report.py:255-262`). One code means either "the spec declares no
+    promises" or "the extraction failed" — indistinguishable to every caller. That is a
+    silent-failure-as-clean-empty-result bug of the same family as #10/#12, not a copy issue.
 25. **MEDIUM — the Conformance panel's "Pick a chapter" dropdown shows "Untitled chapter" for
     ALL 28 options**, even though every chapter has a distinct, real title visible in the same
     session's own sidebar tree seconds earlier. Confirmed the `<option>` elements carry correct,
@@ -935,6 +954,15 @@ not hidden.
     load-bearing finding of Phase 4 for the Phase 5 go/no-go: the flywheel instrumentation and the
     one authoring path a real user can actually complete a book through are not currently
     connected.
+
+    **CORRECTED 2026-09-12 by codebase recon.** The conclusion holds; the mechanism was wrong.
+    Conformance never consults `written_*` at all — it requires a **completed per-scene
+    `generation_job`** with non-empty `result.text` (`composition-service/app/routers/
+    conformance.py:288-291`, via `latest_completed_by_nodes` at `:191-229`). So there are TWO
+    independent dead signals, not one, and the human path produces neither. A third,
+    manuscript-derived signal is what is actually needed. Related: the scene decompiler computes
+    the back-link mappings that would populate `written_*` and **no caller writes them back**,
+    despite `app/engine/scene_decompile.py:284` documenting an intended idempotent write-back.
 
 RESUME: **THE RUN IS COMPLETE. All 18 queue rows (T1.1 through T5.2) are done.** Final deliverable:
 [`2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md`](2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md)

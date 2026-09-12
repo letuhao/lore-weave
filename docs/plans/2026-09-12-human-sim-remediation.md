@@ -235,7 +235,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 0 — Correct the delivered report
 
-- [ ] **T1** — Correct C1/C2/C3 in the report and the FEEDBACK LOG.
+- [x] **T1** — Correct C1/C2/C3 in the report and the FEEDBACK LOG.
   The report informed a go/no-go; leaving three wrong mechanisms in it means the next reader plans
   against fiction. Rewrite report §2 F-A (the write path exists but is lazy/gated — cite
   `tool_discovery.py:341-347` and `useInlineGhost.ts:40`), F-B (two separate dead signals, neither
@@ -250,6 +250,29 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Files: `docs/plans/2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md`,
   `docs/plans/2026-09-06-human-sim-van-tuong-quy-nhat.md`.
   Logging: n/a (docs only).
+
+  **EVIDENCE (T1).** Report §2 rewritten: **F-A** now states the three gated paths with citations
+  (the original "the app's own AI cannot write directly into the manuscript" is preserved in a
+  CORRECTED block, not silently deleted); **F-B** now carries the two-dead-signals table and the
+  decompiler write-back discovery; **F-L** split — the chapter-picker half kept, the promise-coverage
+  half promoted to a new **F-M** as a correctness bug. New **§5 re-derives the verdict**: NO-GO
+  stands, but as reachability-and-disclosure, and §4's "the controls do not work at all" is called
+  out as wrong. Run-log FEEDBACK LOG #19/#24/#26 each carry a dated CORRECTED note.
+
+  BITE — a citation checker over all 10 code references the corrected text makes. It **caught two
+  of my own citations being wrong on its first run** (`promise_audit.py:310` and
+  `quality_report.py:258` held different code; the real lines are 308 and 262, both inside the
+  ranges the prose cites, so no prose change was needed). Then deliberately broken and restored:
+
+  ```
+  # RED (conformance citation moved 290 -> 291)
+    X  services/composition-service/app/routers/conformance.py:291: expected '"has_prose"'
+          got: '}'
+  exit=1
+  # RESTORED byte-exact (diff clean)
+  T1: all 10 code citations verified against the working tree.
+  exit=0
+  ```
 
 ### Phase 1 — Make the existing write paths reachable (the release-gate work)
 
