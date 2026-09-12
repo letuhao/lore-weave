@@ -19,6 +19,36 @@ This plan remediates [`2026-09-06-human-sim-van-tuong-quy-nhat-REPORT.md`](2026-
 The report's verdict was: conditional GO for the outline/structure system and the Workflow-style
 review pattern; **NO-GO for the in-manuscript AI-authoring pitch as currently wired.**
 
+## The release bar (PO decision, 2026-09-12)
+
+> *"we will release that we commit to use — a version that can really usable like readme marketing"*
+
+So the acceptance bar for this work is **not** "the 21 tasks are ticked." It is: **every claim the
+[`README.md`](../../README.md) makes is either true of the shipped build, or removed from the
+README.** A feature that exists but cannot be reached does not satisfy a claim — the human-sim run
+is the proof, since it failed to find working capability that was present the whole time (see C1).
+
+All six phases run straight through (PO decision), and the run ends with a claims reconciliation
+(Task 22), not with a task count.
+
+### Claims audit — README vs. what the run measured
+
+| README claim | Where | Evidence from the run | Status |
+|---|---|---|---|
+| *"A co-writer that can't contradict your canon"* · *"Advisory prose critic flags potential canon contradictions before you accept a suggestion"* | §How LoreWeave is different, §AI Co-Writing | Finding #17 — the co-writer re-derived a **diverging** version of already-committed canon *in the same turn it was told that canon*. No critic fired at any point in a 5-arc run. | **FALSIFIED** |
+| *"Motif and arc libraries with conformance checking against what you actually wrote"* | §The Writing Studio | C2 — conformance structurally cannot see what you actually wrote; it requires a completed per-scene `generation_job`. | **FALSIFIED** |
+| *"Lore-grounded prose suggestions anchored to your published canon"* | §AI Co-Writing | Scene Inspector reported *"Grounding thin / unavailable · 670 tokens"* and *"No knowledge graph yet."* | **NOT DELIVERED by default** |
+| *"Automatic entity and relationship extraction from chapters"* | §Worldbuilding & Lore | Required a manual "Build knowledge graph" run; the studio otherwise said *"No knowledge graph yet."* The word doing the overclaiming is **automatic**. | **OVERCLAIMED** |
+| *"Rich text editor with AI-assist mode and Classic mode"* | §Writing & Editing | The AI/Classic toggle is cosmetic — `InlineAiLayer.tsx:42-46` writes `localStorage` and fires an event; **nothing in the Continue path reads `mode`**. | **OVERCLAIMED** |
+| *"PlanForge — plan a novel's structure from your premise"* | §The Writing Studio | Finding #11 — compile never completed across three attempts and two Tier-A approvals; zero arcs produced. | **NOT DELIVERED** |
+| *"Auto-Draft Factory — run a whole drafting campaign across chapters"* | §AI Co-Writing | **Never discovered by the tester** during the entire run. Under investigation — see Task 22a. | **UNKNOWN** |
+| *"Steering rules … injected into every book-scoped AI turn"* | §The Writing Studio | Finding #10 — silently truncated to ~3 of 8 rules. Fixed this run (#223); still has no UI indicator when it truncates. | **DELIVERED, with a gap** (Task 12) |
+| *"A workspace that holds your whole novel at once"* (dockable, pop-out, `⌘P`) | §How LoreWeave is different | Worked throughout the run. The strongest part of the product. | **DELIVERED** |
+
+Two of these are flatly false today and three more are reachable-but-undisclosed. That is the gap
+between the README and the build, and closing it — in either direction — is what "really usable
+like readme marketing" means.
+
 ## Size
 
 `./scripts/workflow-gate.sh size XL 35 11 4 12` → **XL** (files=35, logic=11, side_effects=4).
@@ -212,14 +242,19 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: a render test per unmet precondition asserting the specific reason is *visible* (not in
   `title`). NV-6: delete the reason text, watch each go red, restore, paste output.
 
-- [ ] **Task 3 — Decide and implement `book_chapter_save_draft` reachability on the studio surface.**
-  The current laziness is deliberate and has a real justification (context budget), so this is a
-  *decision* task, not a mechanical one. Pick ONE and record why in the code comment beside it:
-  (a) add `book` to the studio surface's hot domains, or (b) keep it lazy and make the injected
-  studio skill name the `find_tools` hop explicitly for "write this into the manuscript" intents.
-  Option (b) is cheaper and more likely correct, because the measured failure was the model
-  *asserting* it lacked a capability rather than searching for it.
-  Whichever is chosen, honor `HOT_SEED_TOKEN_BUDGET`. `surface_hot_domains`
+- [ ] **Task 3 — Hot-seed the `book` domain on the studio surface. (PO decision, 2026-09-12.)**
+  **Decided: option (a), hot-seed.** The alternative — keep it lazy and signpost the `find_tools`
+  hop in the skill — was rejected because the measured failure was the model *asserting it had no
+  access to the manuscript editor* rather than searching for a tool. Instructing a model to search
+  does not fix a model that has concluded it cannot. Hot-seeding puts `book_chapter_save_draft` in
+  context every turn, so the claim "I have no access" becomes impossible rather than merely
+  discouraged.
+  **The cost is real and must be paid deliberately:** a hot-seeded domain is ~24K tokens against
+  ~300-500 for the group-directory pointer (see `docs/eval/context-budget/`). Measure what the
+  studio surface's seeded set costs before and after, and confirm what `budget_names_by_tokens`
+  truncates to make room — if it silently evicts something the studio skill depends on, that is a
+  new instance of this plan's own recurring defect class and must be surfaced, not absorbed.
+  Honor `HOT_SEED_TOKEN_BUDGET`. `surface_hot_domains`
   (`tool_discovery.py:369+`) derives hot domains from injected skills' `SkillDef.hot_domains`, so
   the change belongs in the skill declaration, not a hand-authored constant — that hand-authored
   shape already caused one miss ("plan_forge shipped, 'plan' wasn't added to any of them").
@@ -287,12 +322,19 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Since `scenes.source_scene_id` is the **sole** trigger for `chapter.scenes_linked` →
   `written_verdict.py:56-73` reconcile, adding that write-back is the missing human-driven path into
   the entire `written_*` chain.
-  **Decide where it belongs before building:** a browser-side loop issuing per-scene writes is the
-  wrong shape (N round-trips, partial-failure states, and it puts a data-integrity step in the least
-  reliable place). Prefer performing the write-back server-side inside the same request that
-  computes the mappings, so it is atomic with the extraction and the documented retry-idempotency
-  actually means something. Confirm at DESIGN which service owns the `scenes.source_scene_id` write
-  and whether composition may call it directly.
+  **Decided (PO, 2026-09-12): a new internal book-service endpoint that accepts the mapping batch.**
+  Composition POSTs the mappings; **book-service performs the write to its own table.** This keeps
+  the scope-separation standard intact (one owner per concept — `scenes.source_scene_id` belongs to
+  book-service), makes the batch atomic, and gives the retry-idempotency documented at
+  `scene_decompile.py:284` something real to be idempotent against.
+  Rejected alternatives, recorded so they are not relitigated: composition writing book-service's
+  column directly (crosses the ownership boundary that standard exists to protect), and a
+  browser-side per-scene loop (N round-trips, partial-failure states, and it puts a data-integrity
+  step in the least reliable place).
+  The new endpoint is internal-token authenticated but must **still grant-check** the asserted
+  owner's EDIT grant on the book before writing — follow the pattern already used at
+  `outline.py:975-1001` (`internal-route-driven-by-a-session-must-grant-check`), which exists
+  because the internal token authenticates the caller but does not authorize the action.
   Respect `scene_decompile.py:263-290` — human-authored nodes are deliberately excluded
   (`skipped_authored`); this task must not quietly overwrite an author's own structure. Surface a
   count of what was linked vs skipped.
@@ -539,9 +581,15 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 - **Re-running the full 5-arc human-sim.** A re-run is the natural VERIFY for this plan, but it is
   an hours-long exercise and belongs in its own session once Phases 1-2 land.
 
-## Open question for the PO at the CLARIFY checkpoint
+## PO decisions taken at CLARIFY (2026-09-12) — settled, do not relitigate
 
-**Does the corrected C1 change the release decision?** The NO-GO rested on "no in-Editor AI-write
-path exists." The true statement is "three paths exist; each is gated, and no gate is visible."
-Phase 1 is roughly a day of work rather than a feature build — so the go/no-go may flip on Phase 1
-alone, well before Phases 3-6. Worth deciding whether this branch ships in v0.1.0 or after it.
+| # | Question | Decision |
+|---|---|---|
+| D1 | Release posture | **The bar is the README, not the task count.** Ship when every README claim is true of the build or removed from it. See "The release bar" above. |
+| D2 | Execution scope | **All six phases straight through**, per the size gate's "prefer ONE continuous run." |
+| D3 | Task 3 approach | **Hot-seed the `book` domain** on the studio surface; pay and measure the token cost. Signposting rejected — see Task 3. |
+| D4 | Task 7 ownership | **New internal book-service endpoint** taking the mapping batch; book-service owns the write. See Task 7. |
+
+**Superseded:** this plan originally asked whether the corrected C1 flips the go/no-go and whether
+to ship in v0.1.0. D1 answers both — the verdict is re-derived against the README claims audit at
+Task 22, and the release waits for that, not for a date.
