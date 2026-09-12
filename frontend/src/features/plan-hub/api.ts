@@ -115,6 +115,16 @@ export interface MaterializeScenesResult {
   skipped_authored: number;
   chapters: number;
   detail: string | null;
+  /** T7 — did the back-link write-back reach book-service? The decompiler's mappings are what
+   *  populate `scenes.source_scene_id`, and that column is the sole trigger for the whole
+   *  written_* chain. A failed write-back leaves the extraction itself intact but the back-links
+   *  missing, which looks identical to success unless it is reported. */
+  scene_link_writeback?: {
+    attempted: number;
+    linked: number;
+    ok: boolean;
+    error?: string;
+  };
 }
 
 /** PH21 empty-state CTA #1 — "Extract the plan from the manuscript" (the DECOMPILER, 22 SC6).

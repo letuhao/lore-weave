@@ -170,14 +170,21 @@ async def test_coverage_both_ok():
     assert len(llm.calls) == 2                    # extract then score
 
 
-async def test_coverage_extract_degrade_yields_no_tracked_promises():
-    # extract fails → empty promise set → score returns the no-tracked shape (never a phantom).
+async def test_coverage_extract_degrade_reports_the_FAILURE_not_an_empty_spec():
+    # T9 — this test previously asserted `error == "no_tracked_promises"` for a FAILED extraction,
+    # which is how the conflation stayed in place: a failing feature and an unconfigured one
+    # reported the same code, and the suite called that correct. (E2E CONVENTIONS: "an assertion
+    # nobody can justify is how a suite ends up pinning a bug in place.")
+    #
+    # The no-phantom guarantee it was really protecting is unchanged and still asserted below:
+    # a failed extract still yields an empty tracked set and never scores a fabricated one.
     llm = FakeCoverageLLM(extract="fail")
     cov = await build_promise_coverage(
         llm, user_id="u", model_source="s", model_ref="m",
         premise="", plan_text="plan", book_text="prose")
     assert cov["tracked_count"] == 0
-    assert cov["error"] == "no_tracked_promises"
+    assert cov["error"] == "promise_extraction_failed"
+    assert cov["error"] != "no_tracked_promises", "a broken extraction reads as an empty spec again"
     # the coverage LLM is never asked to score an empty set (short-circuit in the engine).
     assert len(llm.calls) == 1
 

@@ -4,7 +4,25 @@
 import { apiJson } from '@/api';
 import type { SteeringEntry, SteeringInput } from './types';
 
+/** T12 — what this book's steering COSTS against the cap that will actually apply.
+ *
+ * Served by chat-service (under /v1/chat so the existing gateway proxy reaches it) because the cap
+ * and the token estimator live there. Deliberately NOT re-implemented in the browser: a second
+ * estimate that disagreed with the one applied at generation time would be worse than no
+ * indicator, because it would be believed. */
+export interface SteeringBudget {
+  total_entries: number;
+  total_tokens: number;
+  cap_tokens: number;
+  over_budget: boolean;
+  would_drop: number;
+  would_drop_names: string[];
+}
+
 export const steeringApi = {
+  budget(token: string, bookId: string) {
+    return apiJson<SteeringBudget>(`/v1/chat/books/${bookId}/steering-budget`, { token });
+  },
   list(token: string, bookId: string) {
     // book-service returns the {items,total} envelope (review-impl HIGH: the FE
     // consumed it as a bare array → .map crashed the panel on every load).

@@ -1,8 +1,8 @@
 """RAID C1 (DR-C1) — pure selection/render tests for per-book steering.
 
 select_steering is pure (no I/O): entries in, matching entries out, ordered
-always → scene_match → manual/auto, soft-capped at ~2000 tokens dropping from
-the tail (manual first — DR-C1 "manual < scene_match < always keeps").
+always → scene_match → manual/auto, soft-capped at ~STEERING_TOKEN_CAP tokens
+dropping from the tail (manual first — DR-C1 "manual < scene_match < always keeps").
 """
 from __future__ import annotations
 
@@ -101,8 +101,12 @@ class TestOrderingAndCap:
         assert [e["name"] for e in out] == ["a1", "a2", "s1", "m1"]
 
     def test_cap_drops_from_tail_manual_first(self):
-        # Each body ≈ 1000 tokens of ASCII (4000 chars) → 3 entries ≈ 3000 > 2000.
-        big = "word " * 800  # 4000 chars ≈ 1000 tokens
+        # Each body ≈ 0.5×STEERING_TOKEN_CAP tokens of ASCII → 3 entries ≈ 1.5×cap,
+        # scaled to the real constant (not a value tuned to the old 2000 flat cap) so
+        # this stays a real BITE against whatever STEERING_TOKEN_CAP is set to.
+        tokens_per_entry = STEERING_TOKEN_CAP // 2
+        repeats = int(tokens_per_entry * 4 / 5)  # "word " ≈ 5 chars/repeat, ASCII ≈ chars/4
+        big = "word " * repeats
         entries = [
             _e("keep-always", body=big),
             _e("scene", mode="scene_match", pattern="t", body=big),
@@ -115,10 +119,12 @@ class TestOrderingAndCap:
         assert len(names) < 3
 
     def test_cap_scales_up_with_context_length(self):
-        # Same 3-entry ~3000-token case as test_cap_drops_from_tail_manual_first, but
-        # a 1M-context session must NOT be capped at the same flat 2000 tokens a 200K
-        # session gets — all 3 survive once the cap scales with the real window.
-        big = "word " * 800  # ≈ 1000 tokens each
+        # Same 3-entry ~1.5×cap case as test_cap_drops_from_tail_manual_first, but a
+        # 1M-context session must NOT be capped at the same flat number a 200K session
+        # gets — all 3 survive once the cap scales with the real window.
+        tokens_per_entry = STEERING_TOKEN_CAP // 2
+        repeats = int(tokens_per_entry * 4 / 5)
+        big = "word " * repeats
         entries = [
             _e("keep-always", body=big),
             _e("scene", mode="scene_match", pattern="t", body=big),

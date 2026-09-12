@@ -7776,9 +7776,17 @@ async def _stream_with_tools(
                     _dup_required = set(_dup_params.get("required") or ())
                     _dup_optional = tuple(
                         pname for pname in (_dupe[0], _dupe[1]) if pname not in _dup_required)
-                    _dup_msg = _dup_message(*_dupe, optional=_dup_optional)
-                    logger.info("loop#5: refused %r — %s and %s are both %s",
-                                c["name"], _dupe[0], _dupe[1], _dupe[2])
+                    # T14/T15 — count the REPEAT so the refusal can escalate. The advice is
+                    # already good and models still ignore it: one session in the measured corpus
+                    # repeated this exact refusal 14 times, another 71, and a 2026-09-06 PlanForge
+                    # run burned two Tier-A approvals sending the same bad shape three times before
+                    # announcing a fourth. A refusal that says the same thing every time is, to a
+                    # model that has already failed to act on it, no signal at all.
+                    _dup_attempt = _REPEATED_REFUSALS.record(
+                        session_id, c["name"], _dupe[0], _dupe[1], _dupe[2])
+                    _dup_msg = _dup_message(*_dupe, optional=_dup_optional, attempt=_dup_attempt)
+                    logger.info("loop#5: refused %r — %s and %s are both %s (attempt %d)",
+                                c["name"], _dupe[0], _dupe[1], _dupe[2], _dup_attempt)
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content(
@@ -10586,21 +10594,30 @@ async def stream_response(
     # Guarded end-to-end: the client degrades to [] and this block swallows
     # everything else — a steering failure never affects the turn.
     steering_block: str | None = None
+    # T12 — set when the soft cap dropped rules from THIS turn; surfaced to the client so the
+    # author learns their bible outgrew the budget instead of quietly generating without it.
+    steering_truncation: dict | None = None
     if _ctx_book_id:
         try:
             from app.client.book_steering_client import get_book_steering_client
-            from app.services.steering import render_steering_block, select_steering
+            from app.services.steering import render_steering_block, select_steering_ex
 
             _steering_entries = await get_book_steering_client().get_steering(str(_ctx_book_id))
             if _steering_entries:
                 _active_title = (editor_context or {}).get("chapter_title")
-                _steering_selected = select_steering(
+                _steering_selected, _steering_truncation = select_steering_ex(
                     _steering_entries,
                     message=user_message_content,
                     active_title=_active_title,
                     context_length=creds.context_length,
                 )
                 steering_block = render_steering_block(_steering_selected) or None
+                # T12 — carry a truncation to the turn so the UI can SAY that rules were dropped.
+                # #223 raised the cap and deferred exactly this; until now an author whose bible
+                # outgrew it lost rules from every generation with no indication anywhere outside
+                # a container's stderr, which is how the 2026-09-06 run eventually found it.
+                if _steering_truncation is not None:
+                    steering_truncation = _steering_truncation.as_dict()
         except Exception:
             logger.warning(
                 "steering fetch/render failed for book %s — turn proceeds without steering",
@@ -11400,6 +11417,14 @@ async def stream_response(
 #: Strong references to in-flight cancel-path writes. asyncio holds only a WEAK reference to a task
 #: created with create_task, so a write detached during cancellation can be garbage-collected
 #: mid-flight — losing exactly the turn the detach existed to save. Discarded on completion.
+#: T14/T15 — per-session repeat count for the duplicate-identifier refusal, so the SECOND identical
+#: refusal can stop asking for a retry and ask for an honest report instead. Module-level because
+#: the escalation must survive across turns in a session: the PlanForge run that motivated this sent
+#: its bad shape across THREE separate turns, each of which would have looked like a first attempt.
+from app.agentruntime.toolcontract import RepeatedRefusalTracker  # noqa: E402
+
+_REPEATED_REFUSALS = RepeatedRefusalTracker(now=_time.monotonic)
+
 _DETACHED_CANCEL_WRITES: set = set()
 
 

@@ -1,6 +1,6 @@
 {
   "wizard": {
-    "title": "Kempen Draf-Auto Baharu",
+    "title": "Kempen Baharu",
     "cancel": "Batal",
     "back": "Kembali",
     "next": "Seterusnya"
@@ -82,7 +82,7 @@
     "launch": "Lancarkan kempen"
   },
   "list": {
-    "title": "Kempen Draf-Auto",
+    "title": "Kempen",
     "new": "Kempen baharu",
     "loading": "Memuatkan…",
     "error": "Gagal memuatkan kempen.",

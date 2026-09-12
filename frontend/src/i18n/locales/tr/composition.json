@@ -97,7 +97,10 @@
     "discard": "Esc ile Kaldır",
     "need_model": "Yazma ortağı Ayarlarından varsayılan bir model belirleyin",
     "need_scene": "Önce yazma ortağı panelinden bir sahne seçin",
-    "stale": "İmleç hareket etti — tekrar deneyin."
+    "stale": "İmleç hareket etti — tekrar deneyin.",
+    "need_editor": "Editör hâlâ yükleniyor.",
+    "streaming": "Yazılıyor… mevcut devamlılığın tamamlanmasına izin verin.",
+    "pending_ghost": "Başka bir öneriye başlamadan önce mevcut öneriyi kabul edin veya reddedin."
   },
   "beats": "Olay Örgüsü",
   "beatsheet": {
@@ -744,7 +747,8 @@
       "title": "Motif kütüphaneniz hazır",
       "body": "Motiflar yeniden kullanılabilir olay örgüsü kalıplarıdır. Planlayıcı, her bölüm için bir tane seçer; böylece küçük bir model bile sağlam bir sahne yazar. 12 başlangıç motifi zaten burada — tu-tiên ve báo-thù.",
       "browseSystem": "12 başlangıç motifine göz at",
-      "hint": "Token gerekmez — bir motifi elle oluşturmak ücretsizdir."
+      "hint": "Token gerekmez — bir motifi elle oluşturmak ücretsizdir.",
+      "notThemes": "Bunlar planlayıcı için YAPISAL olay örgüsü biçimleridir; kendi hikâyenizdeki yinelenen imgelerin veya temaların izleyicisi değildir — burada hiçbir şey bölümleriniz boyunca bir simgeyi takip etmez."
     },
     "facet": {
       "tier": "Seviye",
@@ -1758,5 +1762,9 @@
   "resolvingWork": "Kurulum tamamlanıyor… bilgi servisine kısa süreliğine ulaşılamadı.",
   "retry": "Tekrar dene",
   "threadFocusMissing": "Geldiğiniz söz henüz bu görünümde değil — zaten ödenmiş olabilir. Filtreyi “tümü” olarak değiştirin.",
-  "canonConflictCurrent": "Mevcut (v{{v}}): {{text}}"
+  "canonConflictCurrent": "Mevcut (v{{v}}): {{text}}",
+  "coverageExtractionFailed": "Taslağınızdaki vaatler okunamadı (model çağrısı başarısız oldu veya yarıda kesildi). Tekrar deneyin veya farklı bir model seçin.",
+  "coverageScoreFailed": "Vaatler okundu ancak kitapla karşılaştırılırken puanlama başarısız oldu. Tekrar deneyin.",
+  "lengthAskedDelivered": "~{{target}} kelime istendi, {{actual}} kelime iletildi ({{pct}}%).",
+  "lengthOverCeiling": "Bu istek, tek bir çağrının güvenilir bir şekilde teslim edebileceğinden daha fazla kelime içeriyor — tam uzunluğu elde etmek için sahneyi pasajlara bölün."
 }

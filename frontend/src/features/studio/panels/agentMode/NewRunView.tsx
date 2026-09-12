@@ -9,6 +9,7 @@ import { useStudioHost } from '../../host/StudioHostProvider';
 import { ModelPicker } from '@/components/model-picker';
 import { useNewRunForm } from './useNewRunForm';
 import { GateChecklist } from './GateChecklist';
+import { chapterDisplayTitle } from '../../manuscript/partsTree';
 
 interface Props {
   bookId: string;
@@ -125,7 +126,7 @@ export function NewRunView({ bookId, onCreated, onCancel }: Props) {
                     checked={f.scopeIds.includes(c.chapter_id)}
                     onChange={() => f.toggleChapter(c.chapter_id)}
                   />
-                  {c.title || c.original_filename}
+                  {chapterDisplayTitle(c)}
                 </label>
               ))}
             </div>
@@ -157,7 +158,7 @@ export function NewRunView({ bookId, onCreated, onCancel }: Props) {
             return (
               <div key={id} className="flex items-center gap-2 border-b px-2 py-1.5 text-xs last:border-b-0">
                 <span className="w-5 font-mono text-muted-foreground">{idx + 1}</span>
-                <span className="flex-1 truncate">{chapter?.title || chapter?.original_filename || id.slice(0, 8)}</span>
+                <span className="flex-1 truncate">{chapter ? chapterDisplayTitle(chapter) : id.slice(0, 8)}</span>
                 <button
                   type="button"
                   aria-label="Move up"

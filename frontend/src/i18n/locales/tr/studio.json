@@ -684,11 +684,6 @@
       "title": "İş Akışı Teklifleri",
       "desc": "Aracın önerdiği iş akışlarını inceleyin",
       "guideBody": "Aracın, tekrarladığınızı fark ettiği çok adımlı dizilere dayanarak oluşturulmasını önerdiği iş akışı tariflerini listeler. Bir teklifi onaylamak —böylece iş akışı çalıştırılabilir hale gelir— veya reddetmek için açın. Aracın önerdiği bir iş akışının gerçek anlamda hayata geçtiği yer burasıdır."
-    },
-    "world-setup": {
-      "title": "Dünya Kurulumu",
-      "desc": "Bir açıklamadan karakter kadronuzu, dünyanızı ve aralarındaki ilişkileri oluşturun",
-      "guideBody": "Hikayenizin açıklamasını gerçek, takip edilebilir bir evrene dönüştürün: sistem ne inşa edileceğini planlar, siz listeyi onaylar veya kırparsınız; ardından her karakter, grup ve terim tek tek hazırlanır (önemli olanlar kapsamlı bir profil alır) ve incelemeniz için dosyalanır. Son olarak, tüm bunların birbirine nasıl bağlandığını belirler ve bunları kaydetmeden önce ilişkileri onaylamanızı ister."
     }
   },
   "sceneRail": {
@@ -930,7 +925,8 @@
       "cap": "Bu işlem bir sınırı aşıyor (gövde ≤ 8000 karakter, isim ≤ 200, ≤ 20 kural) veya geçersiz bir mod.",
       "other": "Kural kaydedilemedi. Lütfen tekrar deneyin.",
       "forbidden": "Bu kitabın yönlendirmelerini düzenleme yetkiniz yok."
-    }
+    },
+    "overBudget": "Kurallarınız toplam ~{{total}} token tutuyor ve modele ulaşan ~{{cap}} sınırını aşıyor. Her turda {{dropped}} şu isimler dışarıda bırakılacak: {{names}}. Önemli olan kuralların iletilebilmesi için bir kuralı kısaltın veya devre dışı bırakın."
   },
   "palette": {
     "openPanel": "Studio: {{name}}'i Aç",
@@ -1932,5 +1928,6 @@
     "load_more": "Daha fazla yükle",
     "loading_more": "Yükleniyor…",
     "restore": "Geri yükle"
-  }
+  },
+  "campaigns": "Kampanyalar (toplu çıkarma ve çeviri)"
 }

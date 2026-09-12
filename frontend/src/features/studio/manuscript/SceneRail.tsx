@@ -6,6 +6,7 @@
 // anchors by unique title match (dirties → the user saves). M-G: ＋ create / ✕ archive
 // (with Undo via restore) / ▲▼ reorder, all through the existing outline REST.
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { compositionApi } from '@/features/composition/api';
@@ -186,6 +187,9 @@ export function SceneRail() {
   const unit = useManuscriptUnit();
   const meta = useManuscriptUnitMeta();
   const activeSceneId = useStudioBusSelector((s) => s.activeSceneId);
+  // T19 — declared with the other hooks, ABOVE the `if (!unit) return null` early return:
+  // a hook after a conditional return breaks the Rules of Hooks on the render where unit is null.
+  const qc = useQueryClient();
   const [notice, setNotice] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
   const [adding, setAdding] = useState(false);
@@ -201,7 +205,21 @@ export function SceneRail() {
 
   if (!unit) return null;
   const scenes = unit.state.scenes;
-  const reload = () => void unit.reloadScenes();
+  // T19 — reloading the hoist's own scenes buffer is NOT enough. The Editor toolbar's
+  // "N of N scenes not yet done" counter reads a SEPARATE react-query key
+  // (`['composition','publish-gate', projectId, chapterId]`, see usePublishGate), and nothing here
+  // ever invalidated it — so setting every scene to "done" through this rail left the counter
+  // reading the old number, and a 2026-09-06 run confirmed via the API that the writes HAD landed.
+  // The same query backs `canonBlocked` and `uncheckedWarning`, so all three were stale together.
+  //
+  // A widget that contradicts the control sitting next to it teaches an author to distrust both.
+  const reload = () => {
+    void unit.reloadScenes();
+    // Prefix-invalidated on purpose: the gate is keyed by project AND chapter, and this rail does
+    // not always know the projectId. Narrowing it is how the original bug happened one hook over
+    // (T19's other half, useChapterDoor).
+    void qc.invalidateQueries({ queryKey: ['composition', 'publish-gate'] });
+  };
 
   const onJump = (sceneId: string) => {
     if (!unit.jumpToScene(sceneId)) {

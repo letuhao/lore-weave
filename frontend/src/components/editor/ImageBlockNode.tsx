@@ -25,6 +25,10 @@ export interface ImageUploadContext {
   token: string;
   bookId: string;
   chapterId: string;
+  /** T6 — the book's own language, for media generation that must not assume English.
+   *  Optional so existing hosts keep compiling; consumers MUST surface the gap rather than
+   *  silently substituting a literal (the multilingual standard's whole point). */
+  language?: string;
   /** Opens the media version-history panel for a block. Shared between image and video blocks
    *  — `VersionHistoryPanel` works for any block type. */
   onOpenHistory?: (blockId: string, blockTitle: string, mediaSrc: string | null) => void;

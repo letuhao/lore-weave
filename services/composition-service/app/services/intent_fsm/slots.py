@@ -42,12 +42,18 @@ class SlotError(ValueError):
     """An answer that cannot be written to its column — surfaced as 422, never coerced silently."""
 
 
-#: Mirrors `models._Short`. `outline_node.goal` is plain TEXT in Postgres but `_Short`
-#: (max_length=2000) on the Pydantic model, so a longer write SUCCEEDS and then makes every
-#: subsequent `get_node` on that node raise ValidationError — the node becomes unreadable to the
-#: outline tree, the packer and the rail alike, long after the write that caused it. `settle_intent_slot`
-#: writes raw SQL and therefore bypasses the model's own guard, so the bound has to be enforced here,
-#: on the way IN, where it is still a 422 the author can act on.
+#: This FSM's own bound, independent of the model's — an intent slot is a guided,
+#: one-question-at-a-time answer ("a phrase, not a passage"), not the freeform Goal an
+#: author can type straight into the Arc/Chapter Inspector (`models.OutlineNode.goal` /
+#: `StructureNode.goal`, both `_Long` = 20000). `settle_intent_slot` writes raw SQL and
+#: therefore bypasses the model's own guard entirely, so a bound has to be enforced here,
+#: on the way IN, where it is still a 422 the author can act on — but the VALUE is this
+#: flow's UX choice, not a mirror of the model's cap. It only has to stay comfortably
+#: under whatever the model allows, so an over-long FSM answer can never again write fine
+#: and then make every later `get_node` on that node raise ValidationError (the node going
+#: unreadable to the outline tree, the packer and the rail alike) — the exact bug this
+#: guard exists to prevent, caught in review before it shipped rather than by a failing
+#: test, since nothing in the happy path was long enough to trip it.
 _MAX_TEXT = 2000
 
 

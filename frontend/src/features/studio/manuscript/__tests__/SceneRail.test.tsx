@@ -6,6 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutlineNode } from '@/features/composition/types';
 
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+// T19 — the rail now invalidates the publish-gate query after a scene write. Mocked rather than
+// wrapped in a provider so the invalidation itself is assertable, which is the behaviour at issue.
+const invalidateQueries = vi.fn();
+vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries }) }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? k }),
 }));
@@ -67,6 +71,7 @@ beforeEach(() => {
   restoreNode.mockReset().mockResolvedValue({});
   reorderNode.mockReset().mockResolvedValue({});
   reloadScenes.mockClear();
+  invalidateQueries.mockClear();
   jumpToScene.mockClear().mockReturnValue(true);
   anchorScenes.mockClear().mockReturnValue({ anchored: 2, unmatched: 0, changed: true });
   busState.activeSceneId = undefined;
@@ -109,6 +114,28 @@ describe('SceneRail (#12 M-C)', () => {
     fireEvent.focus(ta);
     await act(async () => { fireEvent.blur(ta); });
     expect(patchNode).not.toHaveBeenCalled();
+  });
+
+  // T19 — the Editor toolbar's "N of N scenes not yet done" counter reads a SEPARATE react-query
+  // key, and nothing here invalidated it. A 2026-09-06 run set every scene to done through this
+  // rail and watched the counter keep its old number; the API confirmed the writes had landed.
+  // A widget that contradicts the control next to it teaches an author to distrust both.
+  it('a scene write invalidates the publish-gate query, not just the hoist buffer', async () => {
+    render(<SceneRail />);
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('scene-rail-status-s1'), { target: { value: 'done' } });
+    });
+    expect(reloadScenes).toHaveBeenCalled();
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['composition', 'publish-gate'],
+    });
+  });
+
+  it('does NOT invalidate on a render with no write (NV-7)', () => {
+    // An invalidation that fires unconditionally would refetch the gate on every keystroke and
+    // tell a reader nothing about whether a write happened.
+    render(<SceneRail />);
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   it('status select PATCHes immediately', async () => {

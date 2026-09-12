@@ -4,6 +4,8 @@ import {
   useMutation,
 } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { knowledgeApi } from '../api';
 import type {
@@ -46,6 +48,7 @@ export interface ProjectsQueryParams {
 export function useProjects(arg: boolean | ProjectsQueryParams) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
+  const { t } = useTranslation('knowledge');
 
   const params: ProjectsQueryParams =
     typeof arg === 'boolean' ? { includeArchived: arg } : arg;
@@ -94,9 +97,38 @@ export function useProjects(arg: boolean | ProjectsQueryParams) {
     queryClient.invalidateQueries({ queryKey: ['knowledge-projects'] });
 
   const createMutation = useMutation({
+    // T20 — say when the server returned an EXISTING project instead of creating one.
+    //
+    // `POST /v1/knowledge/projects` is idempotent on the book-binding path by design
+    // (D-COMP-POST-WORK-RACE): a second same-book create returns the existing project with 200
+    // rather than a duplicate with 201. That is correct — and it means everything the author typed
+    // into the dialog (a new name, a genre) was NOT applied. The UI closed the dialog on success
+    // either way, so a 2026-09-06 run filled the form, clicked Create, and saw nothing at all: the
+    // project it "created" kept its old name and the typed values vanished.
+    //
+    // `apiJson` returns only the parsed body, so the 200/201 distinction is not visible here, and
+    // refactoring that shared, self-recursive helper to expose a status for one endpoint is a bad
+    // trade. The response itself carries the answer: a project that does not match what was asked
+    // for is one the server already had.
+    //
+    // Reported from here rather than by changing the return type, which three call sites depend on
+    // — a notice is what the author needed, not a new shape for every consumer to thread through.
     mutationFn: (payload: ProjectCreatePayload) =>
       knowledgeApi.createProject(payload, accessToken!),
-    onSuccess: invalidate,
+    onSuccess: (project, payload) => {
+      const requested = payload.name?.trim();
+      if (requested && project.name?.trim() !== requested) {
+        toast.info(
+          t('projects.alreadyExists', {
+            defaultValue:
+              'This book already has a knowledge project ("{{name}}"), so it was opened instead of '
+              + 'creating a second one. The details you entered were not applied — use Edit to change them.',
+            name: project.name,
+          }),
+        );
+      }
+      invalidate();
+    },
   });
 
   const updateMutation = useMutation({

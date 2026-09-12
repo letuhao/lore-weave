@@ -151,6 +151,7 @@ def duplicate_identifier(call_args: dict) -> tuple[str, str, str] | None:
 
 def duplicate_identifier_message(
     param_a: str, param_b: str, value: str, *, optional: tuple[str, ...] = (),
+    attempt: int = 1,
 ) -> str:
     """The refusal. `optional` names those of the two the tool does NOT require.
 
@@ -179,6 +180,29 @@ def duplicate_identifier_message(
             f"OMIT it entirely rather than repeating another. If you did mean a specific one, "
             f"look it up (a list/search tool for that kind of record returns it) and call again "
             f"with both ids distinct."
+        )
+    # T14/T15 — ESCALATE ON REPEAT. The advice above is good and models still ignore it: the
+    # measured corpus has one session repeating a refused call 14 times and another 71, and a
+    # 2026-09-06 PlanForge run sent the same bad shape three times across two Tier-A approvals
+    # before announcing it would send it a fourth. Ten minutes of the author's time, two consent
+    # prompts, zero arcs created — and the turn still closed reporting partial success.
+    #
+    # A refusal that says the same thing every time is, to a model that has already failed to act
+    # on it, no signal at all. So the SECOND identical refusal stops asking for a retry and asks
+    # for an honest report instead. This is the same escalation shape `FindToolsAttemptTracker`
+    # uses for repeated find_tools guessing, and for the same reason: an unbounded retry
+    # invitation is what turns one bad call into seventy.
+    #
+    # It remains a REFUSAL either way — the runtime still does not know which argument is wrong,
+    # and §3a forbids a guess deciding that. Only the instruction changes.
+    if attempt >= 2:
+        return (
+            f"'{param_a}' and '{param_b}' were both set to {value} — they identify DIFFERENT "
+            f"things and can never be the same id. You have now sent this same call {attempt} "
+            f"times and it has been refused every time, so sending it again will not work either. "
+            f"STOP retrying this call. Either look up the correct distinct id first, or tell the "
+            f"user plainly that you could not complete this step and what you were missing — do "
+            f"not report the task as done."
         )
     return (
         f"'{param_a}' and '{param_b}' were both set to {value} — they identify DIFFERENT things "
@@ -594,3 +618,63 @@ def resolve_contract(tool_def: dict, registry: dict | None) -> tuple[dict, str]:
     if type(row) is dict and row:
         return row, "registry"
     return {}, "none"
+
+
+class RepeatedRefusalTracker:
+    """T14/T15 — how many times THIS session has been refused THIS exact call.
+
+    WHY. The duplicate-identifier refusal is well-worded and models still ignore it: the measured
+    corpus has one session repeating a refused call 14 times and another 71, and a 2026-09-06
+    PlanForge run sent the same bad shape three times across two Tier-A approvals before announcing
+    a fourth. The refusal text cannot escalate without knowing it is a repeat, so this counts.
+
+    Deliberately the same shape as `FindToolsAttemptTracker` (per-session, TTL'd, keyed on the
+    NORMALISED attempt) rather than a new mechanism — that tracker exists because an unbounded
+    retry invitation once produced 40 find_tools iterations and a 0-length answer, which is the
+    same failure wearing a different hat.
+
+    Counting, not blocking: the call is refused either way. What the count buys is the difference
+    between "look it up and try again" and "stop, and tell the user you could not do this".
+    """
+
+    def __init__(self, now: Callable[[], float], ttl_s: float = 900.0) -> None:
+        """`now` is REQUIRED and injected, never imported.
+
+        The membrane gate refuses an ambient `import time` in this package for the same reason it
+        refuses `import uuid` — and it caught this exact line. Taking the clock as an argument is
+        the better design regardless: the tracker becomes fully deterministic under test, and the
+        caller (which lives outside the membrane) decides what "now" means."""
+        self._ttl_s = ttl_s
+        self._now = now
+        self._sessions: dict[str, dict[str, tuple[int, float]]] = {}
+
+    @staticmethod
+    def _key(tool: str, param_a: str, param_b: str, value: str) -> str:
+        # The two param names are order-insensitive: (parent_id, project_id) and
+        # (project_id, parent_id) are the same mistake, and counting them apart would let a model
+        # alternate between orderings and never trip the escalation.
+        a, b = sorted((param_a, param_b))
+        return f"{tool}|{a}|{b}|{value}"
+
+    def record(self, session_id: str | None, tool: str, param_a: str, param_b: str,
+               value: str) -> int:
+        """Record this refusal and return how many times it has now happened (1 = first)."""
+        if not session_id:
+            return 1
+        now = self._now()
+        # Prune expired entries for this session, and drop the session bucket when it empties —
+        # the leak `FindToolsAttemptTracker` had to be patched for twice, in two engines.
+        bucket = self._sessions.get(session_id)
+        if bucket is not None:
+            for k, (_n, ts) in list(bucket.items()):
+                if now - ts > self._ttl_s:
+                    del bucket[k]
+            if not bucket:
+                del self._sessions[session_id]
+                bucket = None
+        if bucket is None:
+            bucket = self._sessions.setdefault(session_id, {})
+        key = self._key(tool, param_a, param_b, value)
+        count = bucket.get(key, (0, now))[0] + 1
+        bucket[key] = (count, now)
+        return count

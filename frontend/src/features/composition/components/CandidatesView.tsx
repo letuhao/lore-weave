@@ -46,6 +46,51 @@ export function CandidatesView({ gen, busy, onAcceptText, onCorrect, onRegenerat
       <div className="mb-2 text-xs uppercase tracking-wide text-indigo-500">
         {t('candidatesTitle', { defaultValue: '{{k}} options — pick, edit, or regenerate', k: gen.k })}
       </div>
+      {/* T16 — asked vs delivered, HERE, where the author is looking at the drafts and deciding.
+          A 2026-09-06 human-sim run received 25-40% of the length it asked for across a whole
+          novel and never learned it from the product; establishing it took three measurements by
+          hand. The server has returned these numbers all along and no screen read them.
+          Deliberately a STATEMENT and never a blocker: it does not re-ask (that would spend the
+          author's key again), does not reject, and does not touch the text — those three are a
+          product decision reserved elsewhere. This only reports what the response already says.
+
+          The numbers ride as data ATTRIBUTES as well as prose because this repo's test convention
+          asserts on translation KEYS rather than English fallbacks — a value living only inside an
+          interpolated sentence cannot be asserted, and an unassertable number is one that can go
+          wrong silently. `data-method` carries the counting method for the same reason it is
+          shown at all. */}
+      {typeof gen.target_words === 'number' && gen.target_words > 0
+        && typeof gen.actual_words === 'number' && (
+        <div
+          role="status"
+          data-testid="candidates-length-report"
+          data-short={String(gen.actual_words < gen.target_words * 0.8)}
+          data-target={gen.target_words}
+          data-actual={gen.actual_words}
+          data-pct={Math.round((gen.actual_words / gen.target_words) * 100)}
+          data-method={gen.word_count_method ?? undefined}
+          className="mb-2 text-[11px] text-neutral-600 dark:text-neutral-400"
+        >
+          {t('lengthAskedDelivered', {
+            defaultValue: 'Asked for ~{{target}} words, delivered {{actual}} ({{pct}}%).',
+            target: gen.target_words,
+            actual: gen.actual_words,
+            pct: Math.round((gen.actual_words / gen.target_words) * 100),
+          })}
+          {/* The CAUSE, when the engine already knows it. Without this the author reads a
+              shortfall as the model being lazy, when the real answer is that one call was asked
+              for more than one call delivers — which they can act on by declaring passages. */}
+          {typeof gen.beats_over_ceiling === 'number' && gen.beats_over_ceiling > 0 && (
+            <span data-testid="candidates-length-cause">
+              {' '}
+              {t('lengthOverCeiling', {
+                defaultValue: 'This asked one call for more than one call reliably delivers — '
+                  + 'split the scene into passages to get the full length.',
+              })}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         {gen.candidates.map((text, i) => (
           <CandidateCard

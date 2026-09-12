@@ -133,6 +133,42 @@ class BookClient:
             raise BookClientError(502, "BOOK_PROJECTION_MALFORMED", "projection missing lifecycle_state")
         return lifecycle
 
+    async def apply_scene_mappings(
+        self, book_id: UUID, owner_user_id: UUID, mappings: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """T7 — hand the decompiler's back-link mappings to their OWNER so it can write
+        ``scenes.source_scene_id``.
+
+        That column is the sole trigger for the whole ``written_*`` chain (it is what makes
+        book-service emit ``chapter.scenes_linked``, which reconciles ``outline_node.written_*``).
+        The decompiler has always produced these mappings — ``scene_decompile.py`` documents the
+        write-back as idempotent-on-retry and names the owner — but only the EPUB import path ever
+        consumed them, so a hand-authored book could never light that chain up.
+
+        Composition does NOT write the column itself: ``scenes`` is book-service's table
+        (scope-separation, one owner per concept). The internal token authenticates this service;
+        the caller has already grant-checked EDIT, and ``owner_user_id`` re-asserts that decision at
+        the write boundary so book-service can fail closed on a disagreement.
+
+        Best-effort by contract: raises BookClientError so the CALLER decides. Extraction itself has
+        already succeeded and committed by this point, and losing the back-links is a degraded
+        result, not a reason to fail the user's extraction — but it must be REPORTED, never
+        swallowed (that silence is the defect this whole task exists to remove)."""
+        url = f"{self._base_url}/internal/books/{book_id}/scene-mappings"
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            resp = await self._http.post(
+                url, headers=headers,
+                json={"owner_user_id": str(owner_user_id), "mappings": mappings},
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("scene-mappings write-back unreachable: %s err=%s", url, exc)
+            raise BookClientError(502, "BOOK_SERVICE_UNAVAILABLE", str(exc)) from exc
+        return self._raise_for_status(resp)
+
     async def get_draft(
         self, book_id: UUID, chapter_id: UUID, bearer: str
     ) -> dict[str, Any]:

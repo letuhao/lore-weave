@@ -97,7 +97,10 @@
     "discard": "Esc 舍弃",
     "need_model": "请在 co-writer 设置中设置默认模型",
     "need_scene": "请先在 co-writer 面板中选择一个场景",
-    "stale": "光标已移动 — 请重试。"
+    "stale": "光标已移动 — 请重试。",
+    "need_editor": "编辑器正在加载中。",
+    "streaming": "正在写作……请等待当前续写完成。",
+    "pending_ghost": "在开始新的建议之前，请先接受或舍弃当前的建议。"
   },
   "beats": "情节节拍",
   "beatsheet": {
@@ -744,7 +747,8 @@
       "title": "您的模组库已准备就绪",
       "body": "情节模组是可复用的情节结构。规划器会为每章选择一个模组，因此即使是简单的模型也能写出扎实的场景。这里已有 12 个入门模组 — 包括“奇遇”和“复仇”。",
       "browseSystem": "浏览 12 个入门模组",
-      "hint": "无需消耗 Token — 手动构建模组是免费的。"
+      "hint": "无需消耗 Token — 手动构建模组是免费的。",
+      "notThemes": "这些是供规划器使用的结构性情节模型，而不是追踪你故事中反复出现的意象或主题的工具——这里没有任何功能会跨章节追踪某个象征。"
     },
     "facet": {
       "tier": "层级",
@@ -1758,5 +1762,9 @@
   "resolvingWork": "正在完成设定… 知识服务曾短暂不可用。",
   "retry": "重试",
   "threadFocusMissing": "您所属的承诺在此视图中不可见 —— 它可能已被支付。请将过滤器切换为“全部”。",
-  "canonConflictCurrent": "当前 (v{{v}}): {{text}}"
+  "canonConflictCurrent": "当前 (v{{v}}): {{text}}",
+  "coverageExtractionFailed": "无法从大纲中提取伏笔（模型调用失败或被截断）。请重试，或选择其他模型。",
+  "coverageScoreFailed": "已读取伏笔，但无法根据书籍内容进行评分。请重试。",
+  "lengthAskedDelivered": "请求字数约为 {{target}}，实际生成 {{actual}} ({{pct}}%)。",
+  "lengthOverCeiling": "单次调用请求的字数超过了模型的可靠输出上限——请将场景拆分为段落以获得完整长度。"
 }

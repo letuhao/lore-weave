@@ -28,6 +28,7 @@ import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
 import { resolveActiveWork } from '@/features/composition/workSelect';
 import { aiModelsApi } from '@/features/ai-models/api';
 import { glossaryApi } from '@/features/glossary/api';
+import { booksApi } from '@/features/books/api';
 import type { EntityNameEntry } from '@/features/glossary/types';
 import { GlossaryTooltip } from '@/components/editor/GlossaryTooltip';
 import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
@@ -180,6 +181,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // #16 2.7 — wire this panel's own upload context onto the editor instance it owns
   // (editor.storage.mediaUpload, NOT a module singleton — each dockview EditorPanel tab gets
   // its own copy so concurrently-open chapters never cross-attribute uploads/history).
+  // T6 — the book's own language for media generation. Same key as useChapterDoor/PlanHubPanel,
+  // so this is a cache read in practice rather than an extra fetch.
+  const bookInfoForLanguage = useQuery({
+    queryKey: ['book', bookId],
+    queryFn: () => booksApi.getBook(accessToken!, bookId),
+    enabled: !!accessToken && !!bookId,
+  });
+  const bookInfoLanguage = bookInfoForLanguage.data?.original_language ?? undefined;
+
   useEffect(() => {
     if (!accessToken || !bookId || !chapterId) return;
     const openHistory = (blockId: string, blockTitle: string, mediaSrc: string | null) => {
@@ -191,9 +201,15 @@ export function EditorPanel(props: IDockviewPanelProps) {
     };
     editorRef.current?.setUploadContext({
       token: accessToken, bookId, chapterId, onOpenHistory: openHistory, onOpenVideoHistory: openHistory,
+      // T6 — media generation (TTS) used to hardcode `language: 'en'`, which is wrong on a
+      // multilingual platform and was measurably wrong for the Vietnamese book a 2026-09-06 run
+      // wrote. Same source and same cached query key useChapterDoor already uses for exactly this
+      // reason ("never hardcode 'en'"). Left undefined while the book is still loading so the
+      // consumer can SAY it doesn't know, rather than silently asserting English.
+      language: bookInfoLanguage,
     });
     return () => editorRef.current?.setUploadContext(null);
-  }, [accessToken, bookId, chapterId, editorRef, host, t]);
+  }, [accessToken, bookId, chapterId, editorRef, host, t, bookInfoLanguage]);
 
   // #16 2.3 — mention heatmap: windowed to THIS chapter's per-chapter mention_count (glossary),
   // tinting the canonical name AND every alias so alias-heavy (CJK) prose still lights up.
@@ -353,6 +369,16 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // default is fine, but it means retiring the tri-state and amending #12 M-C + #16 Phase 4
   // together, not flipping this one operand.
   const railOpen = railChoice ?? (hasScenes && !isMobile);
+  // T5 — this button now RUNS scene suggestions instead of describing where to find them.
+  //
+  // It used to toast in both branches. The no-selection branch is fair guidance and is kept. The
+  // other one was the defect: a user who HAD selected a passage was told to go use "Suggest scenes
+  // in the AI toolbar above the selected passage" — a second button, for the thing they had just
+  // asked for. The control looked like the feature and never performed it.
+  //
+  // Dispatches on the SAME `lw-editor-context-ai` bridge the right-click menu already uses, so the
+  // generator (and its stream + proposal state) stays owned by SelectionToolbar — no duplicated
+  // pipeline, no second code path to keep in step.
   const guideSceneSuggestions = () => {
     const selection = editorRef.current?.getSelection();
     if (!selection || selection.empty) {
@@ -362,9 +388,11 @@ export function EditorPanel(props: IDockviewPanelProps) {
       }));
       return;
     }
-    toast.info(t('editor.sceneSuggestionsReady', {
-      defaultValue: 'Use Suggest scenes in the AI toolbar above the selected passage.',
-    }));
+    window.dispatchEvent(
+      new CustomEvent('lw-editor-context-ai', {
+        detail: { operation: 'scene_plan', from: selection.from, to: selection.to },
+      }),
+    );
   };
 
   return (

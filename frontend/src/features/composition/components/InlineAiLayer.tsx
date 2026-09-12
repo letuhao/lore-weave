@@ -45,11 +45,54 @@ export function InlineAiLayer({
     window.dispatchEvent(new CustomEvent('lw-editor-mode-change', { detail: { mode: m } }));
   };
 
-  const disabledHint = !modelRef
-    ? t('inline.need_model', { defaultValue: 'Set a default model in the co-writer Settings' })
+  // T2 — why Continue is disabled, as a SPECIFIC reason the user can act on.
+  //
+  // This used to resolve only the model/scene pair and live exclusively in `title`. A `title`
+  // tooltip on a `disabled` button is the one place a reason cannot be discovered: most browsers
+  // suppress the tooltip, and a disabled control invites no hover in the first place. A 2026-09-06
+  // human-sim run spent an entire 5-arc novel hand-pasting prose having concluded the feature did
+  // not exist — it existed, and `modelRef` was simply null the whole time.
+  //
+  // `modelRef` is null unless the Work has a persisted `settings.default_model_ref` OR the user
+  // happens to have exactly one chat model, so "several models registered, no default chosen" —
+  // an ordinary state — disables the button forever with no visible cause.
+  //
+  // Deliberately NOT auto-picking a model: per settings-and-config SET-1..8 a default model is a
+  // user setting, and silently choosing one on their behalf is the "silent fallback" that standard
+  // forbids. Name the gap, point at where it is fixed, let the author decide.
+  const disabledReason: { text: string; key: string } | null = !modelRef
+    ? {
+        key: 'need-model',
+        text: t('inline.need_model', {
+          defaultValue: 'No default model set for this book — pick one in the co-writer panel’s Settings to enable AI continuation.',
+        }),
+      }
     : !sceneId
-      ? t('inline.need_scene', { defaultValue: 'Pick a scene in the co-writer panel first' })
-      : '';
+      ? {
+          key: 'need-scene',
+          text: t('inline.need_scene', {
+            defaultValue: 'No scene selected — pick a scene in the co-writer panel first.',
+          }),
+        }
+      : !editor
+        ? {
+            key: 'need-editor',
+            text: t('inline.need_editor', { defaultValue: 'The editor is still loading.' }),
+          }
+        : g.streaming
+          ? {
+              key: 'streaming',
+              text: t('inline.streaming', { defaultValue: 'Writing… let the current continuation finish.' }),
+            }
+          : g.anchor
+            ? {
+                key: 'pending-ghost',
+                text: t('inline.pending_ghost', {
+                  defaultValue: 'Accept or discard the current suggestion before starting another.',
+                }),
+              }
+            : null;
+  const disabledHint = disabledReason?.text ?? '';
 
   return (
     <>
@@ -86,6 +129,20 @@ export function InlineAiLayer({
           ✦ {t('inline.continueFromCursor', { defaultValue: 'Continue from cursor' })}
         </button>
       </div>
+
+      {/* T2 — the reason, VISIBLE. `title` alone was unreachable on a disabled control (see the
+          comment on disabledReason). Rendered as a sibling of the toolbar so it cannot be clipped
+          by the button row, and marked role="status" so it reaches assistive tech too. */}
+      {disabledReason && (
+        <div
+          role="status"
+          data-testid="inline-continue-disabled-reason"
+          data-reason={disabledReason.key}
+          className="absolute right-2 top-9 z-30 max-w-[22rem] rounded-md border bg-background/95 px-2 py-1 text-right text-[11px] leading-snug text-muted-foreground shadow-sm"
+        >
+          {disabledReason.text}
+        </div>
+      )}
 
       {/* anchor-based → a streaming ghost stays visible even if the user toggles Classic */}
       {g.anchor && (

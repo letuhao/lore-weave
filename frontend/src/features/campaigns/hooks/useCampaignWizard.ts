@@ -79,6 +79,46 @@ export function useCampaignWizard() {
   // Per-step gating. Required: name/book/project (step 0) and translator+extractor
   // models (step 2) — without those the campaign's stages 422 on dispatch. Range,
   // verifier, eval-judge, embedding, reranker are optional (backend fallbacks).
+  /** T23 — WHY the step is blocked, not just THAT it is.
+   *
+   * `canAdvance` returns a bare boolean, so the Next button disabled itself silently and a user
+   * missing one of four preconditions was left to guess which. That is the same defect T2 fixed on
+   * "Continue from cursor", and the campaign engine has more ways to be blocked than most: a
+   * knowledge project is required, chapters must be KG-indexed and in range, MANAGE grant is
+   * needed, and BOTH model roles must be picked — a missing one of those otherwise surfaces as a
+   * 400 from the server after the user has filled in the whole form.
+   *
+   * Returns null when the step can advance, so a caller can render it directly. */
+  const blockedReason = useCallback(
+    (step: number): string | null => {
+      if (step === 0) {
+        if (!form.name.trim()) return 'Give this campaign a name.';
+        if (!form.bookId) return 'Pick the book to run over.';
+        if (!form.projectId) {
+          return 'This book has no knowledge project yet — create one before running a campaign.';
+        }
+        return null;
+      }
+      if (step === 1) {
+        const { chapterFrom: lo, chapterTo: hi } = form;
+        if (lo !== null && hi !== null && lo > hi) {
+          return 'The first chapter must come before the last.';
+        }
+        return null;
+      }
+      if (step === 2) {
+        if (!form.picks.extractor && !form.picks.translator) {
+          return 'Pick an Extractor and a Translator model.';
+        }
+        if (!form.picks.extractor) return 'Pick an Extractor model.';
+        if (!form.picks.translator) return 'Pick a Translator model.';
+        return null;
+      }
+      return null;
+    },
+    [form],
+  );
+
   const canAdvance = useCallback(
     (step: number): boolean => {
       if (step === 0) {
@@ -156,9 +196,9 @@ export function useCampaignWizard() {
     () => ({
       step, stepIndex, totalSteps: WIZARD_STEPS.length,
       form, setField, setPick,
-      canAdvance, next, back,
+      canAdvance, blockedReason, next, back,
       buildEstimateRequest, buildCreatePayload,
     }),
-    [step, stepIndex, form, setField, setPick, canAdvance, next, back, buildEstimateRequest, buildCreatePayload],
+    [step, stepIndex, form, setField, setPick, canAdvance, blockedReason, next, back, buildEstimateRequest, buildCreatePayload],
   );
 }

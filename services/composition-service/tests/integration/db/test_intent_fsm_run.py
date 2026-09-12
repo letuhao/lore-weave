@@ -326,8 +326,10 @@ async def test_REVISE_with_no_value_422s_instead_of_settling_the_word_None(pool)
 
 
 async def test_an_over_long_value_is_refused_at_the_boundary(pool):
-    """`goal` is unbounded TEXT in Postgres but `_Short` (2000) on the model. Writing past it makes
-    every later read of the node raise — so the node must be UNCHANGED and still readable here."""
+    """The FSM's own slot bound (`slots._MAX_TEXT` = 2000, tighter than the model's `_Long` =
+    20000 by design — "a phrase, not a passage") must refuse past its boundary BEFORE the raw-SQL
+    write, since `settle_intent_slot` bypasses the model's own guard — so the node must be
+    UNCHANGED and still readable here."""
     actor, book_id, project_id, node, outline = await _seed(pool)
     svc = _svc(pool, outline, _FakeLLM([_cands("a guess")]))
     run = await svc.open_run(owner=actor, book_id=book_id, node_id=node.id,

@@ -112,10 +112,20 @@ export function SelectionToolbar({
     });
   };
 
+  // T5 — `scene_plan` joins the bridge. The Editor toolbar's "✦ Suggest scenes" button used to be a
+  // SIGNPOST: with no selection it said "select a passage first" (fair), but WITH a selection it
+  // said "use Suggest scenes in the AI toolbar above the selected passage" — i.e. it told a user
+  // who had already done the work to go find a different button. That middle state is the defect;
+  // the button looked like the feature and never performed it.
+  //
+  // The generator lives here because it owns the stream + proposal state, so the toolbar button
+  // reaches it the same way the right-click menu already does, rather than duplicating any of it.
+  const BRIDGED_OPS: SelectionOperation[] = ['rewrite', 'expand', 'describe', 'scene_plan'];
+
   useEffect(() => {
     const onContextAi = (event: Event) => {
       const detail = (event as CustomEvent<{ operation?: SelectionOperation; from?: number; to?: number }>).detail;
-      if (!detail?.operation || !['rewrite', 'expand', 'describe'].includes(detail.operation)) return;
+      if (!detail?.operation || !BRIDGED_OPS.includes(detail.operation)) return;
       if (typeof detail.from !== 'number' || typeof detail.to !== 'number') return;
       editor.chain().focus().setTextSelection({ from: detail.from, to: detail.to }).run();
       run(detail.operation);

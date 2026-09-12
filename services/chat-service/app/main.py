@@ -32,8 +32,9 @@ from app.db.pool import close_pool, create_pool, get_pool
 from app.middleware.trace_id import TraceIdMiddleware, current_trace_id
 from app.routers import (
     ai_settings, catalog, evaluate, feedback, internal, messages, outputs,
-    sessions, tool_permissions, voice,
+    sessions, steering_budget, tool_permissions, voice,
 )
+
 from app.storage.minio_client import delete_object, ensure_bucket
 
 logger = logging.getLogger(__name__)
@@ -249,6 +250,8 @@ app.include_router(evaluate.router)  # M6: interview-practice scorecard
 app.include_router(voice.router)
 app.include_router(voice.voice_mgmt_router)
 app.include_router(feedback.router)
+# T12 — the steering budget an author can read BEFORE the cap silently drops their rules.
+app.include_router(steering_budget.router)
 app.include_router(internal.router)  # FD-2: chat-turn text fetch for KG extraction
 app.include_router(internal.telemetry_router)  # W1: /internal/tool-health telemetry
 app.include_router(ai_settings.prefs_router)  # Chat & AI settings — per-user prefs blob

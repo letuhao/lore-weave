@@ -16,6 +16,7 @@ import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
 import { QualityWorkGate } from './QualityNoWorkState';
 import { useQualityWork } from './useQualityWork';
+import { chapterDisplayTitle } from '../manuscript/partsTree';
 
 const CHAPTER_PICKER_LIMIT = 500;
 
@@ -53,7 +54,7 @@ export function QualityCriticPanel(props: IDockviewPanelProps) {
           <option value="">{t('quality.pickChapter', { defaultValue: 'Pick a chapter' })}</option>
           {chapters.map((c) => (
             <option key={c.chapter_id} value={c.chapter_id}>
-              {c.title || c.original_filename || `#${c.sort_order}`}
+              {chapterDisplayTitle(c)}
             </option>
           ))}
         </select>

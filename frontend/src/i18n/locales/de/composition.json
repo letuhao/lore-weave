@@ -97,7 +97,10 @@
     "discard": "Esc zum Verwerfen",
     "need_model": "Lege ein Standardmodell in den Co-Writer-Einstellungen fest",
     "need_scene": "Wähle zuerst eine Szene im Co-Writer-Panel aus",
-    "stale": "Der Cursor hat sich bewegt — bitte erneut versuchen."
+    "stale": "Der Cursor hat sich bewegt — bitte erneut versuchen.",
+    "need_editor": "Der Editor wird noch geladen.",
+    "streaming": "Schreibt… bitte warten, bis die aktuelle Fortsetzung abgeschlossen ist.",
+    "pending_ghost": "Akzeptieren oder verwerfen Sie den aktuellen Vorschlag, bevor Sie einen neuen starten."
   },
   "beats": "Beats",
   "beatsheet": {
@@ -744,7 +747,8 @@
       "title": "Deine Motiv-Bibliothek ist bereit",
       "body": "Motive sind wiederverwendbare Handlungsstrukturen. Der Planner wählt pro Kapitel eines aus, damit selbst ein kleines Modell eine solide Szene schreibt. 12 Start-Motive sind bereits vorhanden – tu-tiên und báo-thù.",
       "browseSystem": "Die 12 Start-Motive durchsuchen",
-      "hint": "Keine Token nötig – das manuelle Erstellen eines Motivs ist kostenlos."
+      "hint": "Keine Token nötig – das manuelle Erstellen eines Motivs ist kostenlos.",
+      "notThemes": "Dies sind STRUKTURELLE Handlungsformen für den Planer, kein Tracker für wiederkehrende Bilder oder Themen in deiner eigenen Geschichte — nichts hier verfolgt ein Symbol über deine Kapitel hinweg."
     },
     "facet": {
       "tier": "Stufe",
@@ -1758,5 +1762,9 @@
   "resolvingWork": "Einrichtung wird abgeschlossen… der Wissensdienst war kurzzeitig nicht verfügbar.",
   "retry": "Wiederholen",
   "threadFocusMissing": "Das Versprechen, aus dem Sie kommen, ist in dieser Ansicht nicht enthalten – es wurde möglicherweise bereits eingelöst. Stellen Sie den Filter auf „Alle“ um.",
-  "canonConflictCurrent": "Aktuell (v{{v}}): {{text}}"
+  "canonConflictCurrent": "Aktuell (v{{v}}): {{text}}",
+  "coverageExtractionFailed": "Die Versprechen konnten nicht aus Ihrem Entwurf gelesen werden (der Modellaufruf ist fehlgeschlagen oder wurde abgebrochen). Versuchen Sie es erneut oder wählen Sie ein anderes Modell.",
+  "coverageScoreFailed": "Die Versprechen wurden gelesen, aber die Bewertung im Abgleich mit dem Buch ist fehlgeschlagen. Versuchen Sie es erneut.",
+  "lengthAskedDelivered": "Anforderung: ~{{target}} Wörter, geliefert: {{actual}} ({{pct}}%).",
+  "lengthOverCeiling": "Dies erfordert mehr Wörter, als ein einzelner Aufruf zuverlässig liefern kann – teilen Sie die Szene in Passagen auf, um die volle Länge zu erreichen."
 }

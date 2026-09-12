@@ -31,8 +31,19 @@ export function useChapterDoor(bookId: string): ChapterDoor {
   const create = useMutation({
     mutationFn: () => booksApi.createChapterEditor(accessToken!, bookId, { original_language: originalLanguage, title: '' }),
     onSuccess: (created) => {
-      // Refresh the Plan Hub's simple list (react-query) AND the hand-rolled navigator tree (bus, M2).
-      void qc.invalidateQueries({ queryKey: ['plan-hub', 'simple-chapters', bookId] });
+      // Refresh the Plan Hub (react-query) AND the hand-rolled navigator tree (bus, M2).
+      //
+      // T19 — the PREFIX, not just the simple-chapters list. This narrower key refreshed
+      // simple mode only, so a chapter created through this door was invisible on the advanced
+      // canvas (keys `arcs` / `overlay` / `scene-links` / the per-node windows) and in the
+      // Unplanned tray (`book-chapters`) until a full page reload. A 2026-09-06 run hit exactly
+      // that and recorded it as the canvas "not live-updating".
+      //
+      // Every sibling mutation already invalidates the prefix — usePlanChildCreate,
+      // usePlanMoves, usePlanNodeWrites, useExtractPlan. This door was the one that did not, and
+      // an invalidation that covers one of five consumers is the shape that makes a widget look
+      // broken while the write it reflects succeeded.
+      void qc.invalidateQueries({ queryKey: ['plan-hub'] });
       publish({ type: 'manuscriptChanged' });
       if (created?.chapter_id) {
         // F15 (newcomer polish) — don't yank the writer out of an ACTIVE different panel (e.g.

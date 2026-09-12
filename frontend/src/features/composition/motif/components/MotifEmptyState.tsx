@@ -22,6 +22,20 @@ export function MotifEmptyState({ onNewMotif, onBrowseSystem }: Props) {
           defaultValue: 'Motifs are reusable plot shapes. The planner picks one per chapter so even a small model writes a solid scene. 12 starter motifs are already here — tu-tiên and báo-thù.',
         })}
       </p>
+      {/* T21 — say what this is NOT. A 2026-09-06 run opened this panel expecting a tracker for
+          the story's own recurring imagery (its steering rules name two such motifs by name),
+          found a picker of generic cross-genre plot templates, and recorded the feature as
+          missing. The copy below was accurate and still misread, because the panel is called
+          "Motif Library" and "motif" means something else to an author. Renaming is a product
+          decision with an 18-language ripple; saying what it is not costs nothing and answers the
+          question at the moment it is asked. */}
+      <p data-testid="motif-empty-not-themes" className="max-w-sm text-[11px] text-muted-foreground/80">
+        {t('motif.empty.notThemes', {
+          defaultValue:
+            'These are STRUCTURAL plot shapes for the planner, not a tracker of the recurring '
+            + 'images or themes in your own story — nothing here follows a symbol across your chapters.',
+        })}
+      </p>
       <div className="flex flex-wrap items-center justify-center gap-2">
         <button
           type="button"

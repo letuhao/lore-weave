@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useChapterBrowserGroups, type ChapterArcGroup } from '@/features/books/hooks/useChapterBrowserGroups';
 import { TranslateModal } from '@/pages/book-tabs/TranslateModal';
+import { chapterDisplayTitle } from '../manuscript/partsTree';
 
 type SortKey = 'sort_order' | 'updated_at' | 'word_count' | 'lifecycle_state';
 type StatusFilter = 'all' | 'draft' | 'published' | 'trashed';
@@ -475,7 +476,7 @@ export function ChapterBrowserTitleView({ bookId }: { bookId: string }) {
                     className="accent-primary"
                   />
                   <span className="font-mono text-[10px] text-muted-foreground">#{c.sort_order}</span>
-                  <span className="truncate font-medium">{c.title || c.original_filename || tBooks('chapterBrowser.untitled', { defaultValue: 'Untitled' })}</span>
+                  <span className="truncate font-medium">{chapterDisplayTitle(c)}</span>
                   <span className="font-mono text-[10px] text-muted-foreground">{c.original_language}</span>
                   <StatusPill status={chapterStatusVariant(c)} />
                   {/* CB3 — word_count may not exist on the API response yet; render gracefully. */}

@@ -118,6 +118,34 @@ describe('SelectionToolbar (T3.2)', () => {
     expect(trackRangeMock).toHaveBeenCalledWith(editor, 5, 20);
   });
 
+  // T5 — the Editor toolbar's "✦ Suggest scenes" used to toast "use Suggest scenes in the AI
+  // toolbar above the selected passage" at a user who had ALREADY selected a passage. It now
+  // dispatches on the same `lw-editor-context-ai` bridge the right-click menu uses, so the
+  // generator stays owned by this component. These pin the bridge accepting scene_plan.
+  it('T5: the lw-editor-context-ai bridge runs scene_plan (the toolbar button path)', async () => {
+    const editor = fakeEditor('the gate of ash', 5, 20, 100);
+    editor._chain.setTextSelection = vi.fn(() => editor._chain);
+    renderTB(editor, 'ch1');
+    await modelReady();
+    fireEvent(window, new CustomEvent('lw-editor-context-ai', {
+      detail: { operation: 'scene_plan', from: 5, to: 20 },
+    }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    expect(start.mock.calls[0][0]).toMatchObject({ operation: 'scene_plan', selection: 'the gate of ash' });
+  });
+
+  // NV-7 — a bridge that forwards ANY operation would forward junk too. The allowlist must bite.
+  it('T5: the bridge still ignores an operation outside the allowlist', async () => {
+    const editor = fakeEditor('the gate of ash', 5, 20, 100);
+    editor._chain.setTextSelection = vi.fn(() => editor._chain);
+    renderTB(editor, 'ch1');
+    await modelReady();
+    fireEvent(window, new CustomEvent('lw-editor-context-ai', {
+      detail: { operation: 'not_a_real_op', from: 5, to: 20 },
+    }));
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it('Accept replaces the tracked range (remapped) with the ghost', async () => {
     const editor = fakeEditor('the gate of ash', 5, 20, 100);
     const { rerender } = renderTB(editor);

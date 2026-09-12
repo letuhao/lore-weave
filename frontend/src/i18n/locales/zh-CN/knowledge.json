@@ -685,7 +685,8 @@
         "name_desc": "名称 (Z–A)"
       },
       "thisBookOnly": "仅限本书",
-      "showAllBooks": "显示所有书籍"
+      "showAllBooks": "显示所有书籍",
+      "searchNoResults": "没有匹配“{{q}}”的项目。搜索范围为项目名称，该名称在创建项目时设定，且在您重命名书籍时不会更改 —— 请尝试使用书籍当时的名称，或清除搜索以查看所有项目。"
     },
     "card": {
       "staticMemory": "静态记忆",

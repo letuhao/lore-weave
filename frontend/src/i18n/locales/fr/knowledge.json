@@ -685,7 +685,8 @@
         "name_desc": "Nom (Z–A)"
       },
       "thisBookOnly": "Ce livre uniquement",
-      "showAllBooks": "Afficher tous les livres"
+      "showAllBooks": "Afficher tous les livres",
+      "searchNoResults": "Aucun projet ne correspond à « {{q}} ». La recherche porte sur le NOM DU PROJET, qui est défini lors de la création du projet et ne change pas lorsque vous renommez le livre — essayez d'utiliser le nom qu'avait le livre à ce moment-là, ou effacez la recherche pour voir tous vos projets."
     },
     "card": {
       "staticMemory": "Mémoire statique",

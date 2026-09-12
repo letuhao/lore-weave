@@ -97,7 +97,10 @@
     "discard": "Esc untuk Buang",
     "need_model": "Atur model default di Pengaturan co-writer",
     "need_scene": "Pilih adegan di panel co-writer terlebih dahulu",
-    "stale": "Kursor berpindah — coba lagi."
+    "stale": "Kursor berpindah — coba lagi.",
+    "need_editor": "Editor sedang memuat.",
+    "streaming": "Sedang menulis… biarkan kelanjutan saat ini selesai.",
+    "pending_ghost": "Terima atau buang saran saat ini sebelum memulai yang lain."
   },
   "beats": "Beat",
   "beatsheet": {
@@ -744,7 +747,8 @@
       "title": "Perpustakaan motif Anda sudah siap",
       "body": "Motif adalah bentuk plot yang dapat digunakan kembali. Planner akan memilih satu per bab sehingga model kecil sekalipun dapat menulis adegan yang solid. 12 motif awal sudah tersedia — tu-tiên dan báo-thù.",
       "browseSystem": "Jelajahi 12 motif awal",
-      "hint": "Tidak butuh token — membangun motif secara manual itu gratis."
+      "hint": "Tidak butuh token — membangun motif secara manual itu gratis.",
+      "notThemes": "Ini adalah bentuk plot STRUKTURAL untuk perencana, bukan pelacak citra atau tema berulang dalam cerita Anda sendiri — tidak ada di sini yang mengikuti sebuah simbol lintas bab Anda."
     },
     "facet": {
       "tier": "Tingkat",
@@ -1758,5 +1762,9 @@
   "resolvingWork": "Menyelesaikan pengaturan... layanan pengetahuan sempat tidak tersedia.",
   "retry": "Coba lagi",
   "threadFocusMissing": "Janji yang Anda ikuti tidak ada dalam tampilan ini — mungkin sudah dibayar. Ubah filter ke «semua».",
-  "canonConflictCurrent": "Saat ini (v{{v}}): {{text}}"
+  "canonConflictCurrent": "Saat ini (v{{v}}): {{text}}",
+  "coverageExtractionFailed": "Tidak dapat membaca janji dalam kerangka Anda (pemanggilan model gagal atau terputus). Coba lagi, atau pilih model lain.",
+  "coverageScoreFailed": "Janji telah dibaca, tetapi gagal saat mencocokkannya dengan buku. Coba lagi.",
+  "lengthAskedDelivered": "Meminta ~{{target}} kata, menghasilkan {{actual}} ({{pct}}%).",
+  "lengthOverCeiling": "Permintaan ini melebihi jumlah kata yang dapat dihasilkan dalam satu panggilan secara andal — bagi adegan menjadi beberapa bagian untuk mendapatkan panjang penuh."
 }
