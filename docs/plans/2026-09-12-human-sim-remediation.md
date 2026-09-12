@@ -29,7 +29,7 @@ README.** A feature that exists but cannot be reached does not satisfy a claim �
 is the proof, since it failed to find working capability that was present the whole time (see C1).
 
 All six phases run straight through (PO decision), and the run ends with a claims reconciliation
-(Task 22), not with a task count.
+(T22), not with a task count.
 
 ### Claims audit — README vs. what the run measured
 
@@ -217,17 +217,17 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ## Commit Plan — checkpoints at RISK boundaries
 
-- **C1** (Task 1) — `docs: correct three factual errors in the human-sim report`. Docs only, no risk.
-- **C2** (Task 4) — `fix(studio): close the G7 dirty-hoist guard`. **Data-loss boundary.** Must land BEFORE the agent write path is made prominent by C3.
-- **C3** (Tasks 2, 3, 5, 6) — `feat(studio): make the existing AI-write paths reachable and their gates visible`. Cross-service seam (chat-service tool surface + frontend).
-- **C4** (Tasks 7, 8) — `feat(composition): recognise human-authored prose as realized`. Contract change (conformance response) + a new write-back.
-- **C5** (Tasks 9, 10) — `fix(composition): un-conflate no_tracked_promises from extraction failure`. Contract + UI.
-- **C6** (Tasks 11, 12, 13) — `fix: close the silent-write/exploding-read class`. Schema/contract boundary across services.
-- **C7** (Tasks 14, 15) — `fix(planforge): bounded compile recovery and an honest turn end`.
-- **C8** (Tasks 16, 17) — `feat(composition): prose length floor and a critic pass`.
-- **C9** (Tasks 18-21) — `fix(studio): title precedence, cache invalidation, and discoverability`.
-- **C10** (Task 23) — `fix(campaigns): name the factory for what it does, reach it from the Studio`.
-- **C11** (Task 22) — `docs(readme): reconcile the claims with the build`. **The release gate.** Runs last because it grades everything before it.
+- **C1** (T1) — `docs: correct three factual errors in the human-sim report`. Docs only, no risk.
+- **C2** (T4) — `fix(studio): close the G7 dirty-hoist guard`. **Data-loss boundary.** Must land BEFORE the agent write path is made prominent by C3.
+- **C3** (T2, T3, T5, T6) — `feat(studio): make the existing AI-write paths reachable and their gates visible`. Cross-service seam (chat-service tool surface + frontend).
+- **C4** (T7, T8) — `feat(composition): recognise human-authored prose as realized`. Contract change (conformance response) + a new write-back.
+- **C5** (T9, T10) — `fix(composition): un-conflate no_tracked_promises from extraction failure`. Contract + UI.
+- **C6** (T11, T12, T13) — `fix: close the silent-write/exploding-read class`. Schema/contract boundary across services.
+- **C7** (T14, T15) — `fix(planforge): bounded compile recovery and an honest turn end`.
+- **C8** (T16, T17) — `feat(composition): prose length floor and a critic pass`.
+- **C9** (T18-T21) — `fix(studio): title precedence, cache invalidation, and discoverability`.
+- **C10** (T23) — `fix(campaigns): name the factory for what it does, reach it from the Studio`.
+- **C11** (T22) — `docs(readme): reconcile the claims with the build`. **The release gate.** Runs last because it grades everything before it.
 
 ---
 
@@ -235,7 +235,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 0 — Correct the delivered report
 
-- [ ] **Task 1 — Correct C1/C2/C3 in the report and the FEEDBACK LOG.**
+- [ ] **T1** — Correct C1/C2/C3 in the report and the FEEDBACK LOG.
   The report informed a go/no-go; leaving three wrong mechanisms in it means the next reader plans
   against fiction. Rewrite report §2 F-A (the write path exists but is lazy/gated — cite
   `tool_discovery.py:341-347` and `useInlineGhost.ts:40`), F-B (two separate dead signals, neither
@@ -253,7 +253,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 1 — Make the existing write paths reachable (the release-gate work)
 
-- [ ] **Task 2 — Make "Continue from cursor" state its own reason, and give `modelRef` a resolution path.**
+- [ ] **T2** — Make "Continue from cursor" state its own reason, and give `modelRef` a resolution path.
   Today a user with 0 or ≥2 chat models and no persisted `settings.default_model_ref` sees a
   permanently disabled button whose explanation lives only in a `title` tooltip on a disabled
   element. Render the `disabledHint` as visible text (or an inline affordance that opens the
@@ -269,7 +269,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: a render test per unmet precondition asserting the specific reason is *visible* (not in
   `title`). NV-6: delete the reason text, watch each go red, restore, paste output.
 
-- [ ] **Task 3 — Hot-seed the `book` domain on the studio surface. (PO decision, 2026-09-12.)**
+- [ ] **T3** — Hot-seed the `book` domain on the studio surface. (PO decision, 2026-09-12.)
   **Decided: option (a), hot-seed.** The alternative — keep it lazy and signpost the `find_tools`
   hop in the skill — was rejected because the measured failure was the model *asserting it had no
   access to the manuscript editor* rather than searching for a tool. Instructing a model to search
@@ -294,7 +294,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   a budget assertion that cannot exceed its ceiling is the NV-2 "subject cannot vary" shape, so
   prove it by feeding an oversized candidate set.
 
-- [ ] **Task 4 — Close the G7 DIRTY-HOIST GUARD. (Own commit; data-loss boundary.)**
+- [ ] **T4** — Close the G7 DIRTY-HOIST GUARD. (Own commit; data-loss boundary.)
   Spec 09 flags this as an open design hole to close *before* Lane B build: an agent MCP-save that
   triggers `manuscript.reload(chapterId)` while the user is typing in that chapter **clobbers their
   unsaved keystrokes**. S7 covers only tab-close dirty; the 409 FSM covers only the user's own save.
@@ -312,7 +312,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: dirty hoist + incoming reload ⇒ no content loss. NV-6: remove the dirty check, watch the
   test go red with an actual lost keystroke, restore, paste output.
 
-- [ ] **Task 5 — Make the "✦ Suggest scenes" toolbar button reach the affordance it advertises.**
+- [ ] **T5** — Make the "✦ Suggest scenes" toolbar button reach the affordance it advertises.
   It is a signpost that only fires a toast — by design (`EditorPanel.tsx:356-368`, 452-462). The
   real generator lives in the selection bubble menu (`SelectionToolbar.tsx:273-281`), which appears
   only on a non-empty selection under `SCENE_PLAN_MAX_CHARS`. A button that looks like the feature
@@ -324,7 +324,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: DEBUG which branch was taken and why (no selection / too long / dispatched).
   Tests: assert the no-selection branch produces a reachable path, not a dead toast.
 
-- [ ] **Task 6 — Replace the ✨ narration-attach silent no-ops, raw `alert()`, and hardcoded language.**
+- [ ] **T6** — Replace the ✨ narration-attach silent no-ops, raw `alert()`, and hardcoded language.
   Three separate silent `return`s and one raw `alert()`
   (`frontend/src/components/editor/AudioAttachActionsExtension.ts`): `:215-217` returns when
   `currentPos < 0` or the upload context is unset; `:219-234` fires
@@ -341,7 +341,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 2 — Make the quality signals see human-authored prose
 
-- [ ] **Task 7 — Consume the decompiler's `mappings[]` and write `source_scene_id` back.**
+- [ ] **T7** — Consume the decompiler's `mappings[]` and write `source_scene_id` back.
   **This is a caller-side gap — do not change the routes.** Both `materialize-scenes` routes already
   return `mappings[]` identically; no caller anywhere consumes them, even though
   `scene_decompile.py:284` documents an intended, idempotent-on-retry write-back. The frontend
@@ -374,7 +374,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   NV-6: assert against a chapter whose heading genuinely does not match a scene and confirm it is
   NOT linked — a test that only proves the happy path is the NV-3 "scope never reaches it" shape.
 
-- [ ] **Task 8 — Add a manuscript-derived "realized" signal to conformance.**
+- [ ] **T8** — Add a manuscript-derived "realized" signal to conformance.
   Per C2 both existing signals are structurally unreachable from human authoring. Add a third:
   fetch the chapter draft (`BookClient.get_draft`, already used at `routers/plan.py:391`), segment
   the Tiptap body by `attrs.sceneId` (written by `_attach_scene_ids`,
@@ -392,7 +392,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   it go red, restore, paste output. Per IN-8's 4-source discipline a response-shape change touches
   the API model, the FE type, and a drift test — all three, or none.
 
-- [ ] **Task 9 — Un-conflate `no_tracked_promises` from extraction failure.**
+- [ ] **T9** — Un-conflate `no_tracked_promises` from extraction failure.
   `extract_tracked_promises` returns `[]` on genuine emptiness AND on any LLM failure, including the
   truncated/unusable path (`promise_audit.py:276-287`, `:290-310`). Return a discriminated result so
   `quality_report.py:255-262` can emit a distinct code (e.g. `promise_extraction_failed` vs
@@ -407,7 +407,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: a forced extract failure produces the failure code, not the empty code. NV-6: collapse the
   two codes, watch it go red, restore, paste output.
 
-- [ ] **Task 10 — Render the coverage reason instead of discarding it.**
+- [ ] **T10** — Render the coverage reason instead of discarding it.
   `BookPromiseCoverageSection.tsx:50-54` branches on `c.error` and renders a fixed string, dropping
   the machine-readable code that is already on the wire (`api.ts:893-905` types it;
   `useBookPromiseCoverage.ts:28` preserves it). Map the code through an i18n reason table with
@@ -422,7 +422,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 3 — Close the silent-write / exploding-read class
 
-- [ ] **Task 11 — Cap-parity sweep: every response-model bound needs a matching write-side bound (IN-4).**
+- [ ] **T11** — Cap-parity sweep: every response-model bound needs a matching write-side bound (IN-4).
   Finding #12's root cause was `goal` capped at 2000 on the *response* model while every write path
   declared unbounded `str` — so an over-long write always succeeded and then 500'd every later read
   of the whole book's arc list. That was point-fixed; the *shape* was not. Issue #224's own
@@ -438,7 +438,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   limit, and the actual length.
   Tests: a write exceeding each bound gets 422, not a later 500. NV-6 per field family.
 
-- [ ] **Task 12 — Make truncation visible where it happens (OUT-5).**
+- [ ] **T12** — Make truncation visible where it happens (OUT-5).
   Finding #10's fix raised `STEERING_TOKEN_CAP` 2000→8000 but explicitly deferred the real problem:
   **truncation still has no UI-visible indicator**, so an author with a genuinely oversized bible
   silently loses rules, discoverable only in server logs. OUT-5 already says never silently
@@ -451,7 +451,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: an oversized bible produces a visible indicator. NV-6: this run had to read server logs to
   find it, so the test must fail if the indicator is removed while the log line stays.
 
-- [ ] **Task 13 — Stop save-on-blur from discarding a sibling field's unsaved text.**
+- [ ] **T13** — Stop save-on-blur from discarding a sibling field's unsaved text.
   Finding #13 is a data-loss shape, not friction: typing a 1686-char chapter Goal, then saving a
   *different* field, reset the Goal textarea to its last-saved value (empty) — confirmed via API,
   not just visually. It recurs for every node until fixed. Related to Task 4's dirty-state
@@ -464,7 +464,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 4 — PlanForge compile self-recovery
 
-- [ ] **Task 14 — Bounded compile retry that looks up the real `arc_id`.**
+- [ ] **T14** — Bounded compile retry that looks up the real `arc_id`.
   Finding #11: two Tier-A approvals and ~10 minutes produced zero arcs. The backend's rejections are
   *good* — placeholder-id rejection, and an `arc_id != run_id` loop-guard that names the confusion
   explicitly — but the model never adapts across three clearly-worded refusals, and on the third
@@ -481,7 +481,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   up; WARN at the cap.
   Tests: the two rejection shapes each drive exactly one lookup-then-retry, and stop at the cap.
 
-- [ ] **Task 15 — End a failed compile honestly.**
+- [ ] **T15** — End a failed compile honestly.
   The run's turn reported partial success ("Did plan_propose_spec") rather than "compile failed, and
   here is why" — so the author believed a plan existed when nothing durable had been created. Once
   Task 14's cap is hit, the turn must state the failure and the last rejection reason.
@@ -494,7 +494,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 5 — Prose quality
 
-- [ ] **Task 16 — Close the reproducible prose-length under-delivery.**
+- [ ] **T16** — Close the reproducible prose-length under-delivery.
   Finding #20, three independent measurements, all short: an initial ask landed at ~25-40% of the
   requested length; an explicit expand-and-enrich follow-up still landed short; a batched
   multi-scene ask landed ~15% under a modest 400-600-word target. It only partially self-corrects
@@ -509,7 +509,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   hand-measurements to establish and should have been one query.
   Tests: a short return triggers exactly one re-ask, and the ratio is asserted, not eyeballed.
 
-- [ ] **Task 17 — A critic pass for the one defect prompting could not fix.**
+- [ ] **T17** — A critic pass for the one defect prompting could not fix.
   Report §3: three of four recurring prose defects closed reliably via the review-and-revise loop.
   <!-- doc-language-gate: ok -- the Vietnamese construction IS the subject matter: it is the literal
        pattern this task's detector must match, so paraphrasing it into English would destroy the
@@ -535,7 +535,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 6 — Remaining UX
 
-- [ ] **Task 18 — One chapter-title precedence, used by all three quality panels.**
+- [ ] **T18** — One chapter-title precedence, used by all three quality panels.
   The Conformance picker renders `c.title || c.original_filename || #sort_order`
   (`QualityConformancePanel.tsx:52-56`) instead of the sidebar's `chapterDisplayTitle()`
   (`frontend/src/features/studio/manuscript/partsTree.ts:26-30`), which deliberately never falls
@@ -548,7 +548,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: a chapter with a placeholder `original_filename` and empty `title` renders the localized
   "Chapter N", not the filename — in all three panels.
 
-- [ ] **Task 19 — Fix the two stale-widget cache invalidations.**
+- [ ] **T19** — Fix the two stale-widget cache invalidations.
   Both have exact causes:
   (a) `frontend/src/features/studio/manuscript/useChapterDoor.ts:33-35` invalidates only
   `['plan-hub','simple-chapters',bookId]`, missing the advanced canvas keys (`arcs`, `overlay`,
@@ -566,7 +566,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Tests: mutate through the widget's own adjacent control, assert the widget reflects it with no
   reload. NV-6: remove each invalidation, watch its test go red, restore.
 
-- [ ] **Task 20 — Cascade the book rename to its Knowledge Project, and stop the silent create no-op.**
+- [ ] **T20** — Cascade the book rename to its Knowledge Project, and stop the silent create no-op.
   Findings #6 and #7 compound into a ~20-minute dead end: the auto-created Knowledge Project keeps
   the book's title *as of creation*, Projects search is by-name only, so searching the book's
   current title finds nothing and reads exactly like "no project exists" — and the natural recovery
@@ -579,7 +579,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Logging: INFO the cascade; WARN the conflict branch with the existing project id.
   Tests: rename cascades; create-when-exists no longer returns bare success. NV-6 on both.
 
-- [ ] **Task 21 — Signpost the real AI-planning path, and settle the Motif Library naming.**
+- [ ] **T21** — Signpost the real AI-planning path, and settle the Motif Library naming.
   (a) Finding #9: three plausible entry points are dead ends for "AI, plan my first arc" on a blank
   book — "Create a plan with AI" (decomposes *existing* prose), "Organise into storylines" (a manual
   textbox), "Suggest arcs" (matches a template *library*). The real capability sits behind attaching
@@ -597,7 +597,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 
 ### Phase 7 — Reconcile the build with the README (the release gate)
 
-- [ ] **Task 22 — Re-run the claims audit against the built code and reconcile the README.**
+- [ ] **T22** — Re-run the claims audit against the built code and reconcile the README.
   This is the release gate per D1, and it runs LAST because it grades everything before it. For each
   row of the claims audit above, decide and execute one of: **(i)** the claim is now true — record
   the evidence that proves it (a test, a live-smoke, a screenshot), **(ii)** the claim is true but
@@ -614,7 +614,7 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   Evidence: per NV-6 the proof for any claim moved to "true" must be a check that can fail — a
   screenshot of a green panel is not evidence that the panel can go red.
 
-- [ ] **Task 23 — Fix the Auto-Draft Factory's name and its unreachability from the Studio.**
+- [ ] **T23** — Fix the Auto-Draft Factory's name and its unreachability from the Studio.
   Two separable defects found by recon, neither of which is a bug in the engine — which is
   production-grade, has 9 unit + 5 DB-integration suites, a Playwright spec
   (`frontend/tests/e2e/specs/campaign-factory.spec.ts`), and a verified live run
@@ -672,3 +672,36 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
 **Superseded:** this plan originally asked whether the corrected C1 flips the go/no-go and whether
 to ship in v0.1.0. D1 answers both — the verdict is re-derived against the README claims audit at
 Task 22, and the release waits for that, not for a date.
+
+---
+
+RESUME: **Nothing implemented yet.** Start at T1 (correct the delivered report), then T4 (the G7
+dirty-hoist guard) BEFORE the rest of Phase 1 — T3 makes agent writes more likely and the guard must
+exist first. Then T2/T3/T5/T6, then Phases 2-7 in board order. The four PO decisions D1-D4 are
+sealed (see "PO decisions taken at CLARIFY"): the release bar is the README claims audit, all phases
+run through, T3 hot-seeds the `book` domain, T7 adds an internal book-service endpoint. Recon has
+already corrected the report three times (C1/C2/C3) — trust the plan's cited line numbers over the
+report's prose, and re-verify a line number before building on it.
+
+```goal-prompt
+goal: every task on the board is done with pasted evidence, and every README claim in the plan's claims audit is either true of the build with a check that can fail, or reconciled with the roadmap's own In-Progress marking
+rules: |
+  1 NON-VACUITY (NV-6) is the bar for every test: break the guarded thing, watch it go red, restore it, and PASTE the output. "I added a test" is not evidence and does not satisfy this goal.
+  2 MCP-first for agentic logic; every provider call goes through provider-registry-service; no hardcoded model names or pricing.
+  3 Written artifacts are ENGLISH - run scripts/doc-language-gate.py --staged before every commit and paste its line.
+  4 Commit at the Commit Plan's RISK boundaries, never at file-count thresholds. Never --no-verify; if a gate blocks, fix the cause.
+  5 T4 (G7 dirty-hoist guard) lands BEFORE T3, or the run ships a data-loss bug while fixing a usability one.
+  6 Re-verify a cited line number before building on it. Recon corrected the delivered report three times already.
+discipline: |
+  Per task: READ the cited files -> BUILD -> run the real check -> PASTE its output -> tick the row -> commit at the next risk boundary -> take the next row.
+  No bite output or no pasted evidence => the row is NOT done, regardless of how finished it looks.
+  Update the RESUME line after every commit so a fresh session can resume from the file, not from memory.
+stop: |
+  a sealed decision D1-D4 turns out to be wrong
+  a README claim must be REMOVED or softened rather than made true - that is a product promise and the PO decides, not the agent
+  a destructive or irreversible action would be needed (force-push, branch delete, dropping data)
+  the write target would be main, a shared deployment, or a non-throwaway database
+  a security or data-loss-shaped bug is found
+note: |
+  NOT reasons to stop: a row finishing, a green suite, a commit landing, finding a pre-existing bug, context filling, or wanting to check in.
+```
