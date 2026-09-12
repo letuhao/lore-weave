@@ -1127,6 +1127,20 @@ defect class in this whole plan is *a path that fails or no-ops without saying s
   (b) reject and re-ask automatically — spending again, or (c) accept silently as today. Composition
   suite **4175 passed**.
 
+  **Costed for whichever option is chosen, because the signal is ALREADY on the wire.** The engine
+  computes `beats_over_ceiling` and both the router and the worker already put it in the response
+  (`routers/engine.py:836,854`, `worker/operations.py:620`). Its own docstring states the intent —
+  *"a scene that comes back at 60% of its target for this reason must be able to SAY so"*. Nothing
+  in the frontend reads it: a search of `frontend/src` for `beats_over_ceiling` returns nothing. So
+  today's behaviour is not a considered choice of (c); it is a published advisory that no screen
+  renders.
+
+  That makes (a) mostly plumbing rather than new machinery, and it does not spend: this flag is a
+  BEFORE-the-fact structural fact — *you asked one call for more than one call delivers* — not a
+  post-hoc verdict on a paid generation. **Recommended: (a).** Still not taken here, because
+  `D-DRAFT-OUTPUT-NO-POST-CONDITION` reserves the choice between these three by name, and picking
+  one of the three named options is the decision itself however cheap it is to build.
+
 - [x] **T17** — A critic pass for the one defect prompting could not fix.
   Report §3: three of four recurring prose defects closed reliably via the review-and-revise loop.
   <!-- doc-language-gate: ok -- the Vietnamese construction IS the subject matter: it is the literal
@@ -1705,8 +1719,25 @@ Task 22, and the release waits for that, not for a date.
 
 ---
 
-RESUME: **21 of 23 rows DONE with bite evidence. 2 remain — T16 and T23(a) — and both need a PO
-decision, not engineering.**
+RESUME: **21 of 23 rows DONE, and every one of them now carries its OWN pasted bite output** —
+audited row by row, which is how T15 was found ticked with its evidence filed under T14, and
+re-bitten. **2 remain — T16 and T23(a) — and both are decisions, not engineering.** Neither can be
+closed by more work here; see the decision request immediately below.
+
+**PO DECISION REQUEST — two questions, both answerable in one read.**
+
+1. **T23(a) — what should the Auto-Draft Factory be called?** It does not draft. The engine extracts
+   knowledge and translates existing chapters; its own wizard placeholder says *"e.g. Translate Book
+   1 → Vietnamese"*. The claim now carries a 🔄 Phase 4 marker, which says *not finished yet* and
+   does NOT make an inaccurate description accurate. Recommended: *"batch extraction and translation
+   across chapters"*, in the README and the wizard title together. Reply with the wording, or "keep
+   the name".
+2. **T16 — on a short generation, what should happen?** (a) surface it, (b) reject and re-ask, which
+   spends again on the user's key, or (c) accept silently, as today. Recommended: **(a)**, and it is
+   cheaper than it looks — the engine already publishes `beats_over_ceiling` and no screen reads it.
+
+Everything else on this plan is finished and committed. A session that resumes here should take an
+ANSWER to those two questions, not more code.
 
 T2 was DONE eleven commits ago and simply never ticked: its evidence went into T3's block rather
 than its own row. Re-bitten and re-verified today before ticking, so the board now matches the
@@ -1734,6 +1765,11 @@ OPEN, each with the decision it needs (full reasoning in the row):
   `book.updated` event + cascade, which overwrites a user-chosen project name, and (b) making
   projects findable by their bound book — `list_projects` already accepts `book_id`, so (b) is
   mostly frontend. I recommend (b).
+- **T23(a)** — and its two halves cannot be split, which is why no partial credit was taken. The
+  row asks for a UI rename AND a README fix. Renaming only the UI is not a safe subset: the README
+  would still say "Auto-Draft Factory" while the product said something else, so a half-done rename
+  manufactures a NEW inconsistency in place of the one it set out to remove. The README edit is the
+  stop-listed act, so the UI edit waits with it.
 - **T23(a)** — the last README decision, and marking did NOT close it. "Auto-Draft Factory" and
   "run a whole drafting campaign across chapters" describe prose drafting; the engine extracts and
   translates. `🔄 Phase 4` says *not finished yet*, which is true but does not make an inaccurate
