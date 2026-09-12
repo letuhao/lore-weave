@@ -52,8 +52,18 @@ Five columns, and each earns its place:
   "tested" are not verification methods**; they name no artifact a third party can re-run or read.
 - **Rows** — which board rows serve this criterion. Empty means the criterion is *unclaimed*: real,
   agreed, and nobody is doing it. That is legitimate and must be visible.
-- **Status** — `✅ met` with its evidence, `❌ not met`, `🚧 partial` with what remains, or
-  `🅿 waived` naming **who** waived it and **why**.
+- **Status** — one of five: `✅ met` with its evidence, `❌ not met`, `🚧 partial` with what
+  remains, `🅿 waived` naming **who** waived it and **why**, or `❓ unknown`.
+
+  **`❓ unknown` is load-bearing, and was added the day this standard was written.** The first real
+  document to use the standard — the v0.1.0 ship criteria — had to say that whether the product
+  builds at all had *never been attempted*, which is not the claim *it does not build*. The gate
+  rejected it, correctly against its own token list and wrongly against the world, and the token
+  was added rather than the document softened.
+
+  Collapsing "nobody checked" into "not met" hides the more dangerous state: a failure is a known
+  quantity, an unasked question is not. This is the same distinction the repo already enforces for
+  a SKIPPED CI leg versus a PASSED one, and for a scanner that scanned zero modules.
 
 ## 4. The rules the gate enforces
 
@@ -62,7 +72,7 @@ Five columns, and each earns its place:
 | **AC-1** | The plan has an `## Acceptance criteria` section with at least one row. |
 | **AC-2** | Ids are `AC-<n>`, unique within the plan. |
 | **AC-3** | Every criterion names a verification method. Bare "reviewed"/"tested"/"checked"/"n/a" is rejected. |
-| **AC-4** | Status is one of the four tokens. An invented status is a status nobody can filter on. |
+| **AC-4** | Status is one of the five tokens. An invented status is a status nobody can filter on. |
 | **AC-5** | `✅ met` carries evidence text. A tick with nothing after it is the claim this repo already refuses everywhere else. |
 | **AC-6** | `🅿 waived` names a waiver. A waiver with no author is an unattributed decision. |
 | **AC-7** | Every board row is referenced by at least one criterion, or the plan says why not. Work serving no criterion is work nobody agreed was needed. |

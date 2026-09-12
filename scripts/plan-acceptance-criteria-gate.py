@@ -31,8 +31,20 @@ PLANS = REPO / "docs" / "plans"
 IN_SCOPE_FROM = "2026-09-13"
 
 #: Status tokens a criterion may carry (AC-4).
-MET, NOT_MET, PARTIAL, WAIVED = "✅ met", "❌ not met", "🚧 partial", "🅿 waived"
-STATUSES = (MET, NOT_MET, PARTIAL, WAIVED)
+#:
+#: 🔴 `UNKNOWN` was MISSING from the first version, and this gate rejected the very first real
+#: document written against the standard — the v0.1.0 ship criteria — for using it. The rejection
+#: was right about the token list and wrong about the world: **"we checked and it is false" and
+#: "nobody has ever checked" are different states**, and collapsing them hides the more dangerous
+#: one. A failure is a known quantity; an unasked question is not. A ship decision needs to see
+#: those apart.
+#:
+#: The same distinction this repo already enforces elsewhere — a SKIPPED CI leg is not a PASSED
+#: one, and a scanner that scanned zero modules has not found zero vulnerabilities.
+MET, NOT_MET, PARTIAL, WAIVED, UNKNOWN = (
+    "✅ met", "❌ not met", "🚧 partial", "🅿 waived", "❓ unknown",
+)
+STATUSES = (MET, NOT_MET, PARTIAL, WAIVED, UNKNOWN)
 
 #: Words that look like a verification method and are not one (AC-3). Each names no artifact a
 #: third party could re-run or read, which is the whole point of the column.
@@ -206,6 +218,10 @@ def self_test() -> int:
          _HEAD + "| **AC-1** | a | `s.py` | T1 | ❌ not met |\n- [ ] **T1** — x\n- [ ] **T2** — orphan\n", True),
         ("'not met' needs no evidence — it claims nothing",
          _HEAD + "| **AC-1** | a | `s.py` | T1 | ❌ not met |\n- [ ] **T1** — x\n", False),
+        ("'unknown' is accepted — never-assessed is not assessed-and-false",
+         _HEAD + "| **AC-1** | a | `s.py` | T1 | ❓ unknown — never attempted |\n- [ ] **T1** — x\n", False),
+        ("'unknown' needs no evidence either — it too claims nothing",
+         _HEAD + "| **AC-1** | a | `s.py` | T1 | ❓ unknown |\n- [ ] **T1** — x\n", False),
     ]
 
     failures = 0
