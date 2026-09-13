@@ -122,7 +122,8 @@ real and only the PO can resolve it.
   the navigation does not. Find the cause, THEN decide who owns it. A verdict of
   "undiagnosed, with the trace" remains legal and is better than a guess.
 
-- [ ] **G2** — **#268**, wiki articles never appear after Generate. *(1 test)*
+- [x] **G2** — **DONE (Cycle 7). #268 was NOT a product defect.** Generate only OPENS a dialog;
+  nothing is generated until it is confirmed. Product untouched; 1 passed. *(1 test)*
   The spec's comment says the API is synchronous. **If it is job-backed now, the test is stale and
   the product is fine** — that has to be established before either is touched.
 
@@ -537,6 +538,51 @@ tests were shown to bite instead. AC-3 — one claim was narrowed because the me
 was removed; a stricter idempotency guard replaces it, and the reasoning is recorded rather than
 buried.
 
+### Cycle 7 — Generate opens a dialog; the test never confirmed it (G2, #268)
+
+**Investigated:** `pages/WikiTab.ts:18-26`; `WikiWorkspace.tsx:505,571,589-596`;
+`GenerateWikiDialog.tsx:166,206-208`; `glossary-service/internal/api/server.go:462-466`;
+`wiki_handler.go:117`.
+
+**Issues:** #268 — **not a product defect.** To be corrected on the issue.
+
+**Fix:** the row said to establish sync-vs-job-backed before touching either side. It is neither:
+the Generate button does not generate at all. It calls `openBatchGenerate`, which is
+`setGenOpen(true)` — it **opens `GenerateWikiDialog`**. Nothing is requested until
+`wiki-gen-confirm` is pressed, and `canConfirm` wants a model or stub mode. The page object
+clicked Generate and returned, so the spec waited for articles **that had never been asked for**,
+and it read as "generation is broken".
+
+`WikiTab.generate()` now opens the dialog AND confirms it — which is what a person does, so the
+claim is completed rather than weakened. It also asserts the confirm is ENABLED first, with a
+message naming the model/stub requirement, so a future gating change fails with a reason instead
+of a bare timeout.
+
+**This is the second row in this plan to be a missed confirmation step** (F7 is the archive
+`ConfirmDialog`). Both times the product had added a deliberate "are you sure" and the test read
+its absence of effect as a broken feature.
+
+**Proof:**
+
+```
+AFTER the repair ............................ 1 passed (58.6s)
+
+BITE -- `listWikiArticles` forced to return an empty list, glossary-service rebuilt:
+  Error: expect(locator).toBeVisible() failed
+  Locator: getByTestId('wiki-article-row').first()
+  1 failed        <- red on the articles claim
+
+RESTORED byte-exact, rebuilt:
+  56165c779c18acfa01f31f5dbc562ec6  /tmp/wh.go.orig
+  56165c779c18acfa01f31f5dbc562ec6  services/glossary-service/internal/api/wiki_handler.go
+  git diff --stat services/glossary-service -> empty
+  1 passed (50.9s)
+```
+
+**AC impact:** AC-1 — 9 of the 18 green, exactly half. AC-2 not applicable: no product fix, and the
+repaired test was shown to bite instead. AC-3 holds — the claim is unchanged and the page object
+gained an assertion it did not have.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -546,7 +592,7 @@ buried.
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-6 done. 8 of the 18 green. REAL defects fixed + re-broken: #262 (F1), #264 (F3), and the canApprove bug found beside #265 (F4). NOT defects, issues corrected: #266 (F5), #267 (G1) -- both were tests driving mechanisms the product had retired or testids that never existed. F2 has options ready and AWAITS the PO. Decisions are BANKED (F2, H1, H2) for one hand-back. Head of the queue is G2 (#268, wiki articles never appear -- establish sync vs job-backed BEFORE touching either side).
+RESUME: Cycles 1-7 done. 9 of the 18 green (half). REAL defects fixed + re-broken: #262 (F1), #264 (F3), and the canApprove bug beside #265 (F4). NOT defects, issues corrected: #266, #267, #268 -- retired mechanisms, a testid that never existed, and an unconfirmed dialog. FOUR of my five filings needed correcting. F2 awaits the PO with options ready; decisions BANKED for one hand-back. Head of the queue is J1 (a seeded + extracted book for enrichment-profile) -- fixture work, no decision.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
