@@ -15,13 +15,34 @@ export interface PlanLedger {
 }
 
 /** The test account's local gemma-4-26B-A4B QAT ($0), if present — the S3 LLM smokes' model. */
+/** The local gemma chat model, or null.
+ *
+ * 🔴 This asked `/v1/ai/models?capability=chat`, which answers **404 Not Found**. So it returned
+ * null unconditionally and BOTH plan-forge specs skipped permanently with
+ * "needs the local gemma model" -- a reason that reads like a missing model and was a dead
+ * endpoint. A skip is unanswered, and this one had been unanswered silently.
+ *
+ * The live route is the model registry, which returns `{ items: [...] }` rather than a bare
+ * array. INACTIVE models are excluded: an inactive model is a ref that resolves to nothing, and
+ * handing one to a run produces LLM_MODEL_NOT_FOUND on every batch (the A6 lesson).
+ */
 export async function findGemma(request: APIRequestContext, token: string): Promise<string | null> {
-  const r = await request.get('/v1/ai/models?capability=chat', auth(token));
+  const r = await request.get('/v1/model-registry/user-models?capability=chat', auth(token));
   if (!r.ok()) return null;
-  const models = (await r.json()) as Array<{ user_model_id: string; alias?: string; provider_model_name?: string }>;
-  const g = models.find((m) => /gemma-4.*26b.*qat/i.test(`${m.alias} ${m.provider_model_name}`));
+  const body = (await r.json()) as { items?: UserModelRow[] } | UserModelRow[];
+  const models: UserModelRow[] = Array.isArray(body) ? body : (body.items ?? []);
+  const g = models
+    .filter((m) => m.is_active !== false)
+    .find((m) => /gemma-4.*26b.*qat/i.test(`${m.alias ?? ''} ${m.provider_model_name ?? ''}`));
   return g?.user_model_id ?? null;
 }
+
+type UserModelRow = {
+  user_model_id: string;
+  alias?: string;
+  provider_model_name?: string;
+  is_active?: boolean;
+};
 
 export async function createPlanRun(
   request: APIRequestContext, token: string, bookId: string,
