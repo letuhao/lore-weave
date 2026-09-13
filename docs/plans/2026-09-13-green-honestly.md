@@ -115,7 +115,9 @@ real and only the PO can resolve it.
 
 ### Lane G — diagnose before touching anything.
 
-- [ ] **G1** — **#267**, `ui_open_book` / `ui_show_panel` never navigate. *(2 tests)*
+- [x] **G1** — **DONE (Cycle 6). #267 was NOT a product defect.** The tests drove the SUSPEND path
+  for `ui_*`, which was deliberately retired; the executor listens for a directive RESULT. Product
+  untouched; 4 passed. *(2 tests)*
   The sibling card tests pass on the same suspend/resume machinery, so the plumbing works and only
   the navigation does not. Find the cause, THEN decide who owns it. A verdict of
   "undiagnosed, with the trace" remains legal and is better than a guess.
@@ -473,6 +475,68 @@ not a bare question. AC-1 — #263's single test is neither green nor undiagnose
 recorded reason (it creates a `beat`, a kind the data model deleted in July). AC-2 not
 applicable — nothing was fixed, so there is nothing to re-break.
 
+### Cycle 6 — the tests drove a mechanism the product had retired (G1, #267)
+
+**Investigated:** `hooks/useUiToolExecutor.ts:10-48,58-70`; `nav/uiNav.ts:17,27-41,131-150`;
+`hooks/runChatStream.ts:318-335`; `hooks/agUiEvents.ts:85-92`;
+`tests/e2e/helpers/frontendToolInject.ts:52-80`.
+
+**Issues:** #267 — **not a product defect.** To be corrected on the issue.
+
+**Fix:** the executor's own header says what happened:
+
+```
+The legacy pending-suspend path was retired in Phase 4 / D-P3-RETIRE-UI-SUSPEND once the
+ui_* cutover was live-proven — no ui_* suspends any more.
+```
+
+It now watches the message list for a `TOOL_CALL_RESULT` whose content carries an
+`io.loreweave/ui-directive`, and acts on it at most once. The two tests injected a **suspended
+call** (`TOOL_CALL_START/ARGS/END` + `RUN_FINISHED status:'suspended'`, no result), so the
+executor had nothing to act on and correctly did nothing. **The sibling CARD tests kept passing
+because those are genuinely still suspend-based** — a human gate — which is why the failure looked
+selective and product-shaped.
+
+A new `installUiDirectiveResult` emits what the executor actually listens for. **No product code
+was touched** (`git diff --stat` on `features/chat` is empty).
+
+**One claim was narrowed, and it is not a weakening.** `ui_show_panel` asserted a `/tool-results`
+round-trip and its name said "and resolves the round-trip". That round-trip **no longer exists**:
+a ui_* call does not suspend, so the FE has nothing to resolve. Asserting a POST the product
+deliberately stopped making would be pinning the retired design. The name lost that clause, and in
+its place the test now pins the executor's IDEMPOTENCY — `panel` must appear exactly once in the
+query, never stacked by a re-render:
+
+```ts
+expect(url.searchParams.getAll('panel')).toEqual(['glossary']);
+```
+
+**Proof:**
+
+```
+AFTER the repair ............................ 4 passed (16.6s)
+
+BITE -- the executor made to stop navigating, frontend rebuilt (build CONFIRMED "Built"):
+  TimeoutError: page.waitForURL  > 126 |  /[?&]panel=glossary/
+  TimeoutError: page.waitForURL  > 144 |  /books/${bookId}/
+  2 failed        <- both red on the navigation, which is the claim
+
+RESTORED byte-exact, rebuilt:
+  bbd10004d847f288cba4d2b97dfe6af0  /tmp/uite.ts.orig
+  bbd10004d847f288cba4d2b97dfe6af0  hooks/useUiToolExecutor.ts
+  git diff --stat features/chat -> empty
+  4 passed (17.6s)
+```
+
+**A harness bug of my own, fixed and recorded:** the first version of the injector called
+`page.unroute()` from inside its own handler, which makes Playwright treat the in-flight route as
+handled — `route.fulfill: Route is already handled!`. A one-shot flag replaces it.
+
+**AC impact:** AC-1 — 8 of the 18 green. AC-2 not applicable: no product fix, and the repaired
+tests were shown to bite instead. AC-3 — one claim was narrowed because the mechanism it described
+was removed; a stricter idempotency guard replaces it, and the reasoning is recorded rather than
+buried.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -482,7 +546,7 @@ applicable — nothing was fixed, so there is nothing to re-break.
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-5 done. 6 of the 18 green. F1/F3 were REAL defects (fixed + re-broken); F4/F5 were NOT what I filed and both issues are corrected. F2 is INVESTIGATED with options ready and AWAITING the PO -- M5 deliberately deleted `arc`/`beat` from outline_node, so the Literal is stale and widening the CHECK would undo a migration. Decisions are being BANKED (F2, H1, H2) and presented together rather than halting the run once per question. Head of the queue is G1 (#267, the nav executor) -- diagnosis, no decision needed.
+RESUME: Cycles 1-6 done. 8 of the 18 green. REAL defects fixed + re-broken: #262 (F1), #264 (F3), and the canApprove bug found beside #265 (F4). NOT defects, issues corrected: #266 (F5), #267 (G1) -- both were tests driving mechanisms the product had retired or testids that never existed. F2 has options ready and AWAITS the PO. Decisions are BANKED (F2, H1, H2) for one hand-back. Head of the queue is G2 (#268, wiki articles never appear -- establish sync vs job-backed BEFORE touching either side).
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned

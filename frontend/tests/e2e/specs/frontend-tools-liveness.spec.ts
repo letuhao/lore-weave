@@ -13,7 +13,7 @@ import { loginViaUI } from '../helpers/auth';
 import { getAccessToken, createBook, createChapter, trashBook } from '../helpers/api';
 import { queryDb } from '../helpers/db';
 import { apiBase } from '../helpers/stack';
-import { installFrontendToolSuspend } from '../helpers/frontendToolInject';
+import { installFrontendToolSuspend, installUiDirectiveResult } from '../helpers/frontendToolInject';
 
 const API = apiBase(); // derived from the browser target -- see helpers/stack.ts
 // gemma-4-26b-a4b-qat (chat + tool_calling) on the test account — a valid BYOK
@@ -116,22 +116,30 @@ test.describe('Frontend-tools liveness (G4 — real browser executor)', () => {
 
   // ── Nav executor (useUiToolExecutor, mounted in ChatView) ──────────────────
 
-  test('ui_show_panel — executor sets the panel query and resolves the round-trip', async ({ page }) => {
+  test('ui_show_panel — executor sets the panel query from a ui-directive result', async ({ page }) => {
     await openSession(page, 'fe-tools liveness');
-    const inj = await installFrontendToolSuspend(page, { tool: 'ui_show_panel', args: { panel: 'glossary' }, text: 'Opening the glossary panel.' });
+    // ui_* does NOT suspend any more (useUiToolExecutor: "no ui_* suspends any more"). The
+    // executor acts on a TOOL_CALL_RESULT carrying an io.loreweave/ui-directive.
+    await installUiDirectiveResult(page, { tool: 'ui_show_panel', args: { panel: 'glossary' }, text: 'Opening the glossary panel.' });
     await sendChat(page, 'show glossary');
     // Effect: the executor navigates to current path + ?panel=glossary (stays mounted).
     await page.waitForURL(/[?&]panel=glossary/, { timeout: 15000 });
-    // Round-trip: the executor POSTed the structured resolve to /tool-results.
-    const body = await inj.resumeBody;
-    expect(body.run_id).toBe(inj.runId);
-    expect(body.tool_call_id).toBe(inj.toolCallId);
-    expect((body.result as Record<string, unknown>)?.shown).toBe(true);
+    // The /tool-results round-trip assertions that used to live here are GONE, and the test's
+    // name lost "and resolves the round-trip" with them -- because the round-trip itself is gone.
+    // A ui_* call no longer suspends, so the FE has nothing to resolve: the server executed the
+    // tool and sent a directive, and the FE's whole job is to act on it. Asserting a POST that
+    // the product deliberately stopped making would be asserting the retired design.
+    //
+    // What IS still guarded, and is the point: the directive produced the NAVIGATION above, and
+    // the executor is idempotent -- a re-render must not navigate a second time, so the panel
+    // query is still exactly one `panel=glossary`, not stacked.
+    const url = new URL(page.url());
+    expect(url.searchParams.getAll('panel')).toEqual(['glossary']);
   });
 
   test('ui_open_book — executor navigates to the book', async ({ page }) => {
     await openSession(page, 'fe-tools liveness');
-    await installFrontendToolSuspend(page, { tool: 'ui_open_book', args: { book_id: bookId }, text: 'Opening the book.' });
+    await installUiDirectiveResult(page, { tool: 'ui_open_book', args: { book_id: bookId }, text: 'Opening the book.' });
     await sendChat(page, 'open my book');
     await page.waitForURL(new RegExp(`/books/${bookId}`), { timeout: 15000 });
   });
