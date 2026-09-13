@@ -166,7 +166,9 @@ real and only the PO can resolve it.
   One long-lived session currently carries earlier runs' unanswered Tier-A consent gates. Decide
   deliberately whether the test answers consent or avoids provoking it.
 
-- [ ] **F10** — `propose_cast` is never given the cast the spec already holds. Found closing F8. *(1 test, the pass-rail journey's approve step)*
+- [x] **F10** — **FIXED and RE-BROKEN (Cycle 31).** `propose_cast` was never given the cast the spec already holds. Found closing F8. *(1 test, the pass-rail journey's approve step)*
+
+- [ ] **F11** — `materialize` loops to the token cap exactly like `analyze` did; `SPEC_SCHEMA` is still unbounded and unmeasured. Found biting F10. *(the pass-rail journey)*
 
 - [x] **F9** — **DONE (Cycle 25).** The distiller never asked the model to stop thinking. *(1 test, D12)*
 
@@ -1554,11 +1556,52 @@ RESTORED byte-exact + rebuilt:
 **AC impact:** AC-2 — bitten both ways through a rebuilt worker. AC-1 — F8's own failure (0 arcs, truncated) is gone; the test's remaining red belongs to F10.
 
 
+### Cycle 31 — the cast pass was asked to design a cast it was never shown (F10)
+
+**Investigated:** the `review-approve` failure (`title="Apply the glossary seed first (PF-7)"`); the `propose_cast` job's input and reply; `plan_pass_adapters.run_cast` and `worker/operations.py` (`known_cast` source); `bootstrap_service.propose_seed` (does the seed filter `is_new`?); `plan_forge/compile.py` (what `premise` holds).
+
+**Issues:** none filed — fixed in this row. Materialize's runaway, found while biting, is F11.
+
+**Fix:** with F8 fixed, the journey got past propose and stopped at approve. The PF-7 gate was right to refuse, because the cast came back empty. The `propose_cast` prompt shows why: its "PREMISE" was `Arc / Theme / Key events` and nothing else. The model replied, verbatim, *"the premise provided does not contain any character names."* Yet the author's document named three people, and the spec held all three.
+
+The cast reached `glossary_seeds` in compile and no pass prompt at all. `known_cast` holds only characters already APPLIED to the glossary, so it is empty on a new book by design. This file has recorded the same stored-and-unread shape twice before (`canon`, `author_notes`), and D-PLANFORGE-NO-PREMISE-KIND fixed the book premise the same way.
+
+The seed proposal keeps every named cast member and filters nothing on `is_new`, so the names only had to reach the model. Compile now puts `Cast: name (role); …` in `premise` ahead of the arc.
+
+**Proof:**
+
+```
+BEFORE (propose_cast input):  PREMISE:
+
+Arc: Arc I — The Discarded Miss
+Theme: ...
+Key events: ...
+  reply: "I cannot fulfill this request because the premise provided does not contain any character names."
+  review-approve disabled — "Apply the glossary seed first (PF-7)"
+
+unit: tests/unit/test_declared_cast_reaches_the_cast_pass.py  4 passed
+  bite (drop the Cast line): 3 failed, 1 passed (the no-cast case, correctly)
+
+AFTER (both composition images rebuilt, marker grep = 1 in each):
+  propose_cast input: "Cast: Diep Van Vu (protagonist, ...); Bach Su; To Diep (rival)"
+  plan-forge-pass-rail  2 passed (1.0m)
+
+BITE — drop the Cast line, rebuild both images:
+  run 2: review-approve disabled "(PF-7)"; reply "...does not contain any character names"
+  run 1: never reached the cast step — materialize|length|13961 (that is F11, not this row)
+RESTORED byte-exact + rebuilt:
+  propose_cast reply names "Diep Van Vu", every plan step stop — then materialize|length|13997 on the
+  next run (F11), and page.goto /login timed out once with host CPU sampled at 80% (Cycle 29's hypothesis)
+```
+
+**AC impact:** AC-2 — bitten both ways through rebuilt images; the bite reproduced the refusal word for word. AC-1 — the journey's approve-step red is closed; its remaining red is F11.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
 lanes: |
-  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9, F10
+  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9, F10, F11
   G diagnose = G1, G2
   J fixture  = J1, J2, J3
   H decide   = H1, H2, H3, H4

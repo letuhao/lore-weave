@@ -114,7 +114,22 @@ def compile_artifacts(
     # only ever saw "Arc: <title> / Theme: …": the story's own premise had no kind, so it compiled
     # into `mechanics` and was read as a law the story must obey.
     book_premise = [str(x) for x in (spec.get("charter", {}).get("premise_notes") or []) if x]
-    premise_parts = [f"Premise: {p}" for p in book_premise[:6]] + [
+    # F10 — the AUTHOR'S DECLARED CAST, the same kind of loss as the book premise above. The spec's
+    # `layers.characters` compiles into `glossary_seeds` below and reached no pass prompt: pass 2
+    # (cast) was handed "Arc / Theme / Key events" and nothing else, so on a document whose cast
+    # section names three people the model answered, verbatim, "the premise provided does not contain
+    # any character names", returned an empty cast, and the PF-7 seed gate then — correctly — refused
+    # the checkpoint. Names and roles only: the pass's job is to design around them, not re-read notes.
+    declared_cast = []
+    for ch in (spec.get("layers", {}).get("characters") or [])[:12]:
+        name = str((ch or {}).get("name") or "").strip()
+        if not name:
+            continue
+        role = str((ch or {}).get("role") or "").strip().strip(",;:. ")
+        declared_cast.append(f"{name} ({role})" if role else name)
+    premise_parts = [f"Premise: {p}" for p in book_premise[:6]] + (
+        [f"Cast: {'; '.join(declared_cast)}"] if declared_cast else []
+    ) + [
         f"Arc: {arc['title']}" if arc else arc_id,
         f"Theme: {arc['theme']}" if arc and arc.get("theme") else "",
         f"Summary: {arc['summary']}" if arc and arc.get("summary") else "",
