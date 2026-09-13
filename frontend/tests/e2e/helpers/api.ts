@@ -220,6 +220,28 @@ export async function deleteKnowledgeProject(
   await request.delete(`/v1/knowledge/projects/${projectId}`, auth(token));
 }
 
+/** The knowledge projects linked to a book, newest first. Used to find a project the PRODUCT
+ *  provisioned (StudioFrame's useEnsureWork POSTs /work on mount, which creates one) rather
+ *  than one the test made. */
+export async function listKnowledgeProjectsForBook(
+  request: APIRequestContext, token: string, bookId: string,
+): Promise<Array<{ project_id: string }>> {
+  const res = await request.get(`/v1/knowledge/projects?book_id=${bookId}`, auth(token));
+  if (!res.ok()) throw new Error(`list knowledge projects: ${res.status()} ${await res.text()}`);
+  const body = await res.json();
+  return body.items ?? [];
+}
+
+/** Archive a knowledge project. The book keeps its Work; the project simply stops being
+ *  LINKED, which is the state `useBookKnowledgeProject` (includeArchived: false) reports as
+ *  "this book has no knowledge project". A normal, reversible user action -- not a delete. */
+export async function archiveKnowledgeProject(
+  request: APIRequestContext, token: string, projectId: string,
+): Promise<void> {
+  const res = await request.post(`/v1/knowledge/projects/${projectId}/archive`, auth(token));
+  if (!res.ok()) throw new Error(`archive knowledge project: ${res.status()} ${await res.text()}`);
+}
+
 /** Create a user-authored (DISCOVERED / unanchored) knowledge entity — the input
  *  to the D-079 anchor-and-override flow (a discovered entity the wizard offers to
  *  anchor inline). Idempotent on (name, kind) within the project. */

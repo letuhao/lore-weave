@@ -166,6 +166,9 @@ real and only the PO can resolve it.
   One long-lived session currently carries earlier runs' unanswered Tier-A consent gates. Decide
   deliberately whether the test answers consent or avoids provoking it.
 
+- [x] **H4** — **DONE (Cycle 21).** #269's test destroyed the state it asserted, in its own first line.
+  *(1 test, found while measuring H1 in Cycle 20)* Independent of the PO's H1 decision.
+
 - [x] **H3** — **DONE (Cycle 18). Does not reproduce.** 16 of 17 pass; the one failure is H1's.
   *(1 test, found in Cycle 11)* Which repair removed it is deliberately not guessed.
 
@@ -1185,6 +1188,41 @@ books currently holding a pending Work with no project: 298
 **AC impact:** AC-6 — H1 returns to the PO as a choice with a measured cost and a recommendation. AC-1 — #269 stays red with a corrected reason, and its real cause is now a separate test defect rather than this decision.
 
 
+### Cycle 21 — the test destroyed the state it was asserting (H4, #269)
+
+**Investigated:** `specs/kg-panels.spec.ts:81-90`; `StudioFrame.tsx:52` → `useEnsureWork` (`hooks/useWork.ts:38`); `KgOverviewPanel.tsx:34` (the gate) and `useBookKnowledgeProject.ts` (`includeArchived: false`); the failing run's own screenshot.
+
+**Issues:** none in the product — #269 is a test defect, and the gate it doubted is real and correct.
+
+**Fix:** the spec created a bare book and asserted the no-project empty state immediately. It could never have worked. `StudioPage.goto` mounts `StudioFrame`, which mounts `useEnsureWork`, which POSTs `/work` — and that route creates the book's knowledge project. **Opening the Studio to look at the panel is what gives the book a project.** The failure screenshot shows it plainly: a fully rendered overview with STATIC MEMORY and CONFIGURATION cards, for the book the test calls "bare".
+
+Twice I blamed something else — first "the Studio auto-provisions, so the empty state is unreachable" (half right, wrong conclusion), then "the panel never opened" (wrong; the screenshot shows it open). Reading the artefact the run already produced settled it in one look.
+
+The empty state is real and reachable: a user can archive their knowledge project, and the resolver lists with `includeArchived: false`. So the test now reaches it the way a user would — open, archive what the product provisioned, reload — rather than mocking the resolution under test. **The claim is unchanged**: a book with no linked KG project shows the empty state.
+
+**Proof:**
+
+```
+BEFORE
+  Error: expect(locator).toBeVisible() failed — getByTestId('kg-overview-no-project')
+  Error: element(s) not found
+  ... and the screenshot shows the panel OPEN, rendering a project overview.
+
+AFTER
+  1 passed (6.1s)
+  whole spec: 17 passed (1.1m)
+
+BITE — delete the archive step, change nothing else:
+  Error: expect(locator).toBeVisible() failed
+  Error: element(s) not found        <- the original #269 red, exactly
+
+RESTORED byte-exact:
+  17 passed (1.1m)
+```
+
+**AC impact:** AC-1 — #269 is green, 15 of 18. AC-3 — the claim is identical before and after; only the route to the state changed, from impossible to real.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
@@ -1192,7 +1230,7 @@ lanes: |
   F fix      = F1, F3, F4, F5, F2, F6, F7
   G diagnose = G1, G2
   J fixture  = J1, J2, J3
-  H decide   = H1, H2, H3
+  H decide   = H1, H2, H3, H4
   K skips    = K1, K2
   Z close    = Z1, Z2
 rules: |

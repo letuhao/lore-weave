@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import {
   getAccessToken, createBook, trashBook, createKnowledgeProject, deleteKnowledgeProject,
-  createKnowledgeEntity,
+  createKnowledgeEntity, listKnowledgeProjectsForBook, archiveKnowledgeProject,
 } from '../helpers/api';
 import { StudioPage } from '../pages/StudioPage';
 
@@ -78,8 +78,29 @@ test.describe('Knowledge/KG dock panels', () => {
     await expect(page.getByTestId('shell-overview-missing')).toHaveCount(0);
   });
 
-  test('kg-overview shows the empty state for a book with no linked KG project', async ({ page }) => {
+  // This spec USED to create a bare book and assert the empty state straight away, and it could
+  // never have worked: StudioFrame mounts `useEnsureWork`, which POSTs /work on open, and that
+  // route creates the book's knowledge project with the caller's own bearer. So the act of
+  // opening the Studio to LOOK at the panel is what gives the book a project -- the test
+  // destroyed the state it was asserting, in its own first line. Measured: the "bare" book had
+  // a project created 6ms after its Work, and the panel rendered a full overview.
+  //
+  // The empty state is still real and still reachable: a user can archive their knowledge
+  // project, and `useBookKnowledgeProject` lists with includeArchived:false. So reach it the way
+  // a user would -- open, archive what the product provisioned, reload -- instead of mocking the
+  // very resolution under test. The claim is unchanged: a book with no linked KG project shows
+  // the empty state.
+  test('kg-overview shows the empty state for a book with no linked KG project', async ({ page, request }) => {
     const studio = new StudioPage(page);
+    await studio.goto(bookBare);
+    // Opening provisioned it; take it back off the book before asserting the absence.
+    await expect
+      .poll(async () => (await listKnowledgeProjectsForBook(request, token, bookBare)).length,
+        { timeout: 20_000, message: 'the Studio provisions a knowledge project on open' })
+      .toBeGreaterThan(0);
+    for (const p of await listKnowledgeProjectsForBook(request, token, bookBare)) {
+      await archiveKnowledgeProject(request, token, p.project_id);
+    }
     await studio.goto(bookBare);
     await studio.openPanel('kg-overview', 'Overview');
     // KgOverviewPanel's OWN no-project empty state (rendered before OverviewSection ever
