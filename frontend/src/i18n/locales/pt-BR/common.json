@@ -8,13 +8,13 @@
     "roleplay": "Roleplay",
     "knowledge": "Conhecimento",
     "worlds": "Mundos",
-    "campaigns": "Campanhas",
+    "campaigns": "Tarefas",
     "standards": "Padrões",
-    "jobs": "Tarefas",
+    "jobs": "Jobs",
     "browse": "Explorar",
     "trash": "Lixeira",
     "usage": "Uso",
-    "leaderboard": "Ranking",
+    "leaderboard": "Classificação",
     "extensions": "Extensões",
     "settings": "Configurações",
     "notifications": "Notificações",
@@ -34,7 +34,7 @@
     "title": "Sair sem salvar as alterações?",
     "description": "Você tem alterações não salvas que serão perdidas permanentemente se você sair agora.",
     "confirm": "Sair mesmo assim",
-    "cancel": "Continuar na página"
+    "cancel": "Permanecer na página"
   },
   "common": {
     "save": "Salvar",
@@ -42,7 +42,7 @@
     "delete": "Excluir",
     "create": "Criar",
     "edit": "Editar",
-    "search": "Pesquisar",
+    "search": "Buscar",
     "loading": "Carregando...",
     "error": "Ocorreu um erro",
     "confirm": "Confirmar",
@@ -71,16 +71,16 @@
   },
   "placeholder": {
     "coming_soon": "{{title}} — em breve.",
-    "phase": "Chegará na fase {{phase}}."
+    "phase": "Disponível em {{phase}}."
   },
   "voice": {
     "settingsTitle": "Configurações de Voz",
     "sttSection": "Reconhecimento de Fala",
-    "sttSource": "Fonte STT",
-    "sttModel": "Modelo STT",
+    "sttSource": "Fonte de STT",
+    "sttModel": "Modelo de STT",
     "ttsSection": "Texto para Fala",
-    "ttsSource": "Fonte TTS",
-    "ttsModel": "Modelo TTS",
+    "ttsSource": "Fonte de TTS",
+    "ttsModel": "Modelo de TTS",
     "browser": "Navegador (grátis)",
     "aiModel": "Modelo de IA",
     "noModels": "Nenhum modelo configurado",
@@ -93,9 +93,9 @@
     "browserVoice": "Voz do Navegador",
     "defaultVoice": "Padrão",
     "speed": "Velocidade",
-    "autoTTS": "Reproduzir respostas da IA automaticamente",
+    "autoTTS": "Reproduzir respostas de IA automaticamente",
     "pauseMic": "Pausar microfone durante TTS",
-    "resetDefaults": "Redefinir para o padrão",
+    "resetDefaults": "Redefinir padrões",
     "voiceMode": "Modo de Voz",
     "listening": "Ouvindo...",
     "processing": "Processando...",
@@ -140,7 +140,7 @@
     "presetNormalDesc": "Equilibrado (padrão)",
     "presetPatientDesc": "Espera mais tempo, ideal para quem fala devagar",
     "presetLearnerDesc": "Pausas longas são aceitáveis, para prática de idiomas",
-    "audioRetention": "O áudio da voz é armazenado por 48 horas para reprodução e depois é excluído automaticamente."
+    "audioRetention": "O áudio da voz é armazenado por 48 horas para reprodução e, em seguida, é excluído automaticamente."
   },
   "theme_name": {
     "dark": "Escuro",
@@ -149,8 +149,8 @@
     "oled": "OLED"
   },
   "modelPicker": {
-    "placeholder": "Selecionar um modelo...",
-    "search": "Pesquisar modelos...",
+    "placeholder": "Selecione um modelo…",
+    "search": "Pesquisar modelos…",
     "favorites": "Favoritos",
     "recents": "Recentes",
     "none": "Nenhum",
@@ -167,11 +167,11 @@
   },
   "modelOrder": {
     "heading": "Ordem dos modelos",
-    "subtitle": "Arraste para definir a ordem em que os modelos aparecem em todos os seletores. Salvo na sua conta (sincronizado entre dispositivos). Favoritos ainda aparecem primeiro quando um modelo não tem uma posição definida.",
+    "subtitle": "Arraste para definir a ordem em que os modelos aparecem em cada seletor. Salvo na sua conta (sincronizado entre dispositivos). Os favoritos continuam aparecendo primeiro quando um modelo não possui uma posição definida.",
     "dragAria": "Reordenar modelo",
     "saved": "Ordem dos modelos salva",
     "saveFailed": "Falha ao salvar a ordem.",
-    "loadFailed": "Falha ao carregar modelos."
+    "loadFailed": "Falha ao carregar os modelos."
   },
   "errorBoundary": {
     "title": "Esta página não pôde ser exibida",
