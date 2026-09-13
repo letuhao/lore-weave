@@ -140,7 +140,8 @@ real and only the PO can resolve it.
 
 ### Lane J — fixture work. No product change.
 
-- [ ] **J1** — **B3**: a seeded + extracted book for `enrichment-profile`. *(2 tests)*
+- [x] **J1** — **DONE (Cycle 8).** The fixture is assembled for real — adopt, extract, profile —
+  rather than shortcut. 2 passed, bitten. **B3**: a seeded + extracted book. *(2 tests)*
   They assert a non-empty worldview and an extraction history. The pieces exist — adopt + extract
   now work end to end — and must be assembled, not shortcut. Pointing them at a fresh book would
   make both claims vacuous.
@@ -583,6 +584,50 @@ RESTORED byte-exact, rebuilt:
 repaired test was shown to bite instead. AC-3 holds — the claim is unchanged and the page object
 gained an assertion it did not have.
 
+### Cycle 8 — the fixture that had to be built, not borrowed (J1)
+
+**Investigated:** `specs/enrichment-profile.spec.ts:1-20,55-70`; `pages/EnrichmentTab.ts:27-42`;
+`src/features/enrichment/api.ts:27,305-322`; the live profile endpoint by hand;
+`specs/demo-pipeline-3b.spec.ts` for the extraction sequence.
+
+**Issues:** none — no product defect here.
+
+**Fix:** the spec defaulted to a hard-coded *"seeded demo Fengshen book"* on one stack and one
+account. **The shortcut was the trap.** Pointing it at a FRESH book would have made both tests
+pass and prove nothing: the worldview would be empty, so *"loads the seeded profile"* would be
+vacuous, and the C2 "extract first" notice would be CORRECT, so asserting its absence would be
+asserting a bug. Two green tests, zero information.
+
+`seedProfiledExtractedBook` builds the real thing — create, adopt the ontology, run a LIVE
+extraction, then PUT a worldview — and **refuses rather than degrade**: it throws if adopt yields
+no auto-selected kinds (`"the fixture would be vacuous"`), and if extraction does not finish
+`completed` exactly. It costs a live model run, and that cost is what makes the two claims mean
+anything.
+
+**Proof:**
+
+```
+AFTER the fixture ........................... 2 passed (1.0m)
+
+BITE -- `worldview` removed from the profile view (lore-enrichment rebuilt):
+  Error: expect(locator).not.toHaveValue(expected) failed
+  Locator: getByTestId('profile-worldview')
+  > 63 |  await expect(enr.worldview).not.toHaveValue('');
+  1 failed, 1 passed      <- red on the worldview claim, which is the point of the fixture
+
+RESTORED byte-exact:
+  f48eabdd89323486867fdc0eefba933d  /tmp/bp.orig
+  f48eabdd89323486867fdc0eefba933d  /app/app/api/book_profile.py
+  2 passed (42.0s)
+```
+
+The bite is the answer to "did the fixture actually matter": with the worldview blanked the test
+goes red, so it is reading real data rather than rendering something regardless.
+
+**AC impact:** AC-1 — 11 of the 18 green. AC-2 not applicable: no product fix; the repaired tests
+were shown to bite. AC-3 holds — no assertion changed, and the fixture now supports the ones that
+were already there.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -592,7 +637,7 @@ gained an assertion it did not have.
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-7 done. 9 of the 18 green (half). REAL defects fixed + re-broken: #262 (F1), #264 (F3), and the canApprove bug beside #265 (F4). NOT defects, issues corrected: #266, #267, #268 -- retired mechanisms, a testid that never existed, and an unconfirmed dialog. FOUR of my five filings needed correcting. F2 awaits the PO with options ready; decisions BANKED for one hand-back. Head of the queue is J1 (a seeded + extracted book for enrichment-profile) -- fixture work, no decision.
+RESUME: Cycles 1-8 done. 11 of the 18 green. REAL defects fixed + re-broken: #262 (F1), #264 (F3), canApprove beside #265 (F4). NOT defects, issues corrected/closed: #266, #267, #268. J1 built a REAL seeded+extracted fixture rather than shortcutting to a fresh book, which would have made both tests pass vacuously. F2 awaits the PO; decisions BANKED for one hand-back. Head of the queue is J2 (a mock that STREAMS, for the agent-context-rack intermediate phase).
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned

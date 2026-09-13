@@ -135,3 +135,56 @@ export async function pollUntilComplete(
 
   throw new Error(`extraction job ${jobId} did not complete within ${timeoutMs}ms`);
 }
+
+/** Seed a book that has BOTH a profile and an extraction history, and return its id.
+ *
+ * 🔴 #268-adjacent / J1 — `enrichment-profile` asserts a NON-EMPTY worldview and that the Gaps
+ * panel never shows the C2 "extract first" notice. Both are true only of a book that has been
+ * profiled AND extracted. It used to point at a hard-coded "seeded demo Fengshen book" that
+ * exists on one stack and one account; everywhere else the page rendered `book not found`.
+ *
+ * Pointing it at a FRESH book instead would be worse than the bug: the worldview would be empty
+ * and "extract first" would be correct, so both assertions would pass vacuously while proving
+ * nothing. The fixture is therefore assembled for real -- adopt, extract, profile -- which is
+ * slow (a live model run) and is the price of the claims being worth anything.
+ */
+export async function seedProfiledExtractedBook(
+  request: APIRequestContext,
+  token: string,
+  opts: { title: string; chapterTitle: string; body: string; worldview: string; modelRef: string },
+): Promise<string> {
+  const post = async <T>(url: string, data: unknown): Promise<T> => {
+    const r = await request.post(url, { headers: authHeaders(token), data });
+    if (!r.ok()) throw new Error(`seedProfiledExtractedBook: POST ${url} -> ${r.status()} ${await r.text()}`);
+    return (await r.json()) as T;
+  };
+
+  const book = await post<{ book_id: string }>('/v1/books', { title: opts.title, original_language: 'en' });
+  const bookId = book.book_id;
+  await post(`/v1/books/${bookId}/chapters`, {
+    original_language: 'en', title: opts.chapterTitle, body: opts.body,
+  });
+  await adoptBookOntology(request, token, bookId);
+
+  const chRes = await request.get(`/v1/books/${bookId}/chapters`, { headers: authHeaders(token) });
+  if (!chRes.ok()) throw new Error(`seedProfiledExtractedBook: list chapters -> ${chRes.status()}`);
+  const chapters = (await chRes.json()) as { items?: Array<{ chapter_id?: string; id?: string }> };
+  const chapterId = chapters.items?.[0]?.chapter_id ?? chapters.items?.[0]?.id ?? '';
+  if (!chapterId) throw new Error('seedProfiledExtractedBook: the chapter did not come back');
+
+  const profile = await buildAutoExtractionProfile(request, token, bookId);
+  if (Object.keys(profile).length === 0) {
+    throw new Error('seedProfiledExtractedBook: no auto-selected kinds after adopt — the fixture would be vacuous');
+  }
+  const jobId = await createExtractionJob(request, token, bookId, chapterId, opts.modelRef, profile);
+  const final = await pollUntilComplete(request, token, jobId, { timeoutMs: 300_000 });
+  if (!/^completed$/.test(final.status)) {
+    throw new Error(`seedProfiledExtractedBook: extraction did not complete cleanly (status=${final.status})`);
+  }
+
+  const put = await request.put(`/v1/lore-enrichment/books/${bookId}/profile`, {
+    headers: authHeaders(token), data: { worldview: opts.worldview },
+  });
+  if (!put.ok()) throw new Error(`seedProfiledExtractedBook: profile PUT -> ${put.status()}`);
+  return bookId;
+}

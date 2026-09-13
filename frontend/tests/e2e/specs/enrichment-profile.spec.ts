@@ -2,15 +2,45 @@ import { test, expect } from '@playwright/test';
 import { LoginPage } from '../pages/LoginPage';
 import { EnrichmentTab } from '../pages/EnrichmentTab';
 import { TEST_USER } from '../helpers/auth';
+import { getAccessToken } from '../helpers/api';
+import { seedProfiledExtractedBook } from '../helpers/extraction';
+import { ensureLmStudioProvider, ensureLmStudioUserModel } from '../helpers/provider';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// The seeded demo Fengshen book (owned by the test user). Override via env.
-const BOOK = process.env.E2E_BOOK_ID ?? '019e7850-a8d9-78dd-8b2a-f33ccc2396ad';
+// This defaulted to a hard-coded "seeded demo Fengshen book" that exists on ONE stack and one
+// account; everywhere else the page rendered `book not found` and both assertions failed.
+//
+// Pointing it at a FRESH book would have been worse than the bug: the worldview would be empty
+// and the "extract first" notice would be CORRECT, so both assertions would pass while proving
+// nothing. The book is therefore seeded for real -- adopt, extract, profile -- which costs a live
+// model run and is what makes the two claims mean something. E2E_BOOK_ID still wins.
+let BOOK = process.env.E2E_BOOK_ID ?? '';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DRACULA_CH01 = readFileSync(resolve(__dirname, '../fixtures/dracula-ch01.txt'), 'utf-8');
 
 // LE-068 — browser-layer e2e of the de-bias C3 GUI: it exercises the real chain
 // (login → gateway → FE → Enrichment tab → lore-enrichment + book-service) that
 // the unit tests mock. The profile tab is the core C3 proof; the gaps detect
 // proves the C2 "extract first" signal is wired (and absent for an extracted book).
 test.describe('Enrichment GUI — de-bias C3 (profile authoring + gaps)', () => {
+  test.beforeAll(async ({ request }) => {
+    if (BOOK) return;
+    test.setTimeout(600_000);
+    const token = await getAccessToken(request);
+    const providerId = await ensureLmStudioProvider(request, token);
+    const modelRef = await ensureLmStudioUserModel(request, token, providerId);
+    BOOK = await seedProfiledExtractedBook(request, token, {
+      title: `E2E enrichment profile ${Date.now()}`,
+      chapterTitle: 'Chapter I',
+      body: DRACULA_CH01,
+      worldview: 'A gothic epistolary world where correspondence is evidence and distance is danger.',
+      modelRef,
+    });
+  });
+
   test.beforeEach(async ({ page }) => {
     const login = new LoginPage(page);
     await login.goto();
