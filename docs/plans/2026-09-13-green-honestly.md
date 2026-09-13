@@ -137,7 +137,7 @@ real and only the PO can resolve it.
   Present what each answer costs. Also fix the unit test that renders the component with the id
   directly — it cannot fail for the reason it was written, whichever way the decision goes.
 
-- [~] **H2** — **INVESTIGATED, OPTIONS READY, AWAITING THE PO (Cycle 12).** The constraint blocks
+- [x] **H2** — **INVESTIGATED, OPTIONS READY, AWAITING THE PO (Cycle 12).** The constraint blocks
   THREE things, not two, and one of them wants a NON-REASONING model rather than a second strong
   one — which changes the memory arithmetic.
   **D13 and the one-model constraint.** *(1 test now, 1 skip)*
@@ -1221,6 +1221,49 @@ RESTORED byte-exact:
 ```
 
 **AC impact:** AC-1 — #269 is green, 15 of 18. AC-3 — the claim is identical before and after; only the route to the state changed, from impossible to real.
+
+
+### Cycle 22 — two roles the backend resolves and nothing could set (H2, #270)
+
+**Investigated:** `provider-registry-service/internal/api/default_models_handler.go:19-56` (the capability whitelist) and `:71-85` (`defaultModelCapQuery`); `settings/api.ts:99-113`; the rows `DefaultModelsCard.tsx` actually renders; `chat-service/app/routers/evaluate.py:171-180` and `internal.py:565-575`.
+
+**Issues:** #270 — `critic` and `distill` were resolvable by the backend and settable in no row.
+
+**Fix:** the PO ruled that the one-model story was wrong and the model setup is stale and scattered. It is, and the measurement is unambiguous: **the backend has supported both roles all along.** `defaultModelCapabilities` has carried `distill` since WS-3.0 and `critic` since WS-5.10, and `defaultModelCapQuery` validates them against the `chat` flag exactly like `planner` and `composer`. **Only the settings card never rendered a row for either.** So `get_default_model("critic")` and `get_default_model("distill")` fell through to `chat` and handed every role the same reasoning model.
+
+The product already told users to fix it and gave them nowhere to do it — `evaluate.py:180` refuses to score and says *"Set a critic model in Settings › Chat & AI › default models."*
+
+Added both rows. This is a **surface**, not a new mechanism: nothing in the resolution path changed, and no model was activated. Whether a second model is worth loading stays the PO's call and is untouched here.
+
+`embedding` stays deliberately unexposed — a query-time embedding default would break retrieval, which must use the model the project was indexed with. That is a documented decision, not drift, and the row-count test now says so instead of leaving it to be "fixed" later by someone counting roles.
+
+**The guard that was missing is the real lesson.** Nothing asserted the card covered the roles it claims to cover, so a role could be added to the backend and silently never surfaced. Two tests now save through each new row.
+
+**Proof:**
+
+```
+BACKEND, all along:
+  defaultModelCapabilities = rerank embedding chat planner distill critic composer
+  defaultModelCapQuery: planner|distill|critic|composer  ->  validated as 'chat'
+
+LIVE, against the account under test:
+  PUT /v1/model-registry/default-models/critic   -> HTTP 200
+  PUT /v1/model-registry/default-models/distill  -> HTTP 200
+
+AFTER
+  settings suite: 10 files, 66 passed, 0 failed
+  tsc --noEmit: exit 0
+
+BITE — delete the critic row, change nothing else:
+  AssertionError: expected [...] to have a length of 6 but got 5
+  AssertionError: expected "vi.fn()" to be called with arguments: [ 'tok', 'critic', 'm1' ]
+  3 failed | 4 passed
+
+RESTORED byte-exact:
+  7 passed
+```
+
+**AC impact:** AC-2 — the fix is bitten both ways. AC-6 — the PO's H2 ruling is applied as far as it goes without activating anything; the remaining question is theirs. AC-4 — K2's skip now has a settable role behind it rather than a hardware story.
 
 
 ```goal-prompt

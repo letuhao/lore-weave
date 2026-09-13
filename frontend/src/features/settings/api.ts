@@ -111,6 +111,14 @@ export const CHAT_CAPABILITY = 'chat' as const;
 // the CHAT default was the cheap fix and was not taken: picking a model for conversation is not
 // consent to spend it on the most expensive call on the platform.
 export const COMPOSER_CAPABILITY = 'composer' as const;
+// #270 — `critic` and `distill` were resolvable by the backend and settable NOWHERE. The
+// provider-registry whitelist has carried both since WS-5.10 / WS-3.0, and validates them
+// against the 'chat' flag like planner and composer; only the settings card never rendered a
+// row, so `get_default_model` fell back to 'chat' and handed every role the same model.
+// evaluate.py:180 even tells the user to "Set a critic model in Settings > Chat & AI >
+// default models" -- an instruction that could not be followed.
+export const CRITIC_CAPABILITY = 'critic' as const;
+export const DISTILL_CAPABILITY = 'distill' as const;
 
 // Per-user DEFAULT model per capability (rerank/embedding). The default is the
 // user's own BYOK user_model, resolved server-side by provider-registry — it
