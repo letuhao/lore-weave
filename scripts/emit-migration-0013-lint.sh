@@ -38,91 +38,110 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 #
 # A status cannot come back empty. 0 = violates, 1 = clean, and no subshell stands between the
 # predicate and its caller.
-violates() {
-  local text="$1"
-  if printf '%s' "$text" | grep -q '0002_events_table' \
-     && printf '%s' "$text" | grep -q ' -emit' \
-     && ! printf '%s' "$text" | grep -q '0013_events_content_sha256'; then
-    return 0
-  fi
-  return 1
+# violates_file FILE -> 0 violates, 1 clean, 3 vanished mid-scan.
+#
+# 🔴 THE FILE IS NEVER BUFFERED INTO A VARIABLE, and this is the THIRD attempt at that:
+#
+#   1. `$(cat "$f")` INLINED into the test. A read returning nothing -- or PART of the file --
+#      was indistinguishable from a script that genuinely omits 0013. On 2026-08-08 this
+#      flagged scale-rig.sh on one run and ledger-verify-smoke.sh on the next, both of which
+#      CONTAIN 0013_events_content_sha256.
+#   2. Read into a variable, then check the status. That catches a FAILED read and is still
+#      wrong, because a TRUNCATED read exits 0. On 2026-09-13 two all-gates runs of the SAME
+#      commit disagreed: one reported scale-rig.sh and standing-integrity-gate-smoke.sh as
+#      missing 0013 -- both contain it -- while the other passed. Same bytes, same minute.
+#
+# A status check cannot see a short read, so the buffer had to go. `grep` reads the FILE, which
+# removes the copy that was being truncated, and it tells the three outcomes apart by exit
+# status: 0 found, 1 absent, >1 could not read. A finding now requires all three greps to have
+# completed; anything else is a read error and says nothing about the script.
+violates_file() {
+  local f="$1" rc
+  _g() {
+    grep -q -- "$1" "$f" 2>/dev/null
+    rc=$?
+    if [ "$rc" -gt 1 ]; then
+      [ -e "$f" ] || return 3
+      echo "[emit-0013] FAIL -- could not read $f (grep exit $rc)." >&2
+      echo "  -> this is a READ failure, not a finding. Nothing about the script is implied." >&2
+      exit 1
+    fi
+    return "$rc"
+  }
+  _g "0002_events_table" || { rc=$?; [ "$rc" -eq 3 ] && return 3; return 1; }
+  _g " -emit"            || { rc=$?; [ "$rc" -eq 3 ] && return 3; return 1; }
+  _g "0013_events_content_sha256" && return 1
+  rc=$?
+  [ "$rc" -eq 3 ] && return 3
+  return 0
 }
 
 run_lint() {
-  local violations=0 scanned=0 f text rc
+  local violations=0 scanned=0 f rc
   while IFS= read -r f; do
     [ -f "$f" ] || continue
-    # `$(cat "$f")` was inlined into the test below, so a read that returned nothing —
-    # or returned PART of the file — was indistinguishable from a script that genuinely
-    # omits 0013. Under CI load that produced confident, specific, WRONG findings:
-    # 2026-08-08 flagged scale-rig.sh on one run and ledger-verify-smoke.sh on the next,
-    # both of which contain 0013_events_content_sha256, while this lint passed locally
-    # 3/3 on the same bytes. Read first, check the status, and only then judge.
-    # 🔴 THE CHECK BELOW USED TO BE DEAD CODE. It read:
-    #
-    #     text=$(cat "$f")
-    #     rc=$?
-    #     if [ "$rc" -ne 0 ]; then ... exit 1; fi
-    #
-    # `set -euo pipefail` is on line 22. Under errexit an assignment whose command
-    # substitution fails terminates the script AT the assignment, so `rc=$?` was never
-    # reached and the FAIL message above it never printed. The careful comment explaining
-    # why the read must be checked was defeated three lines later by a shell option.
-    #
-    # What that looked like in CI on 2026-09-13: this gate went RED in 1.4s having printed
-    # exactly one line — `[emit-0013] SELFTEST PASS ... (non-vacuous)` — so `all-gates`
-    # reported a failing gate by quoting a line that says it passed. Reproduced minimally:
-    # a script with errexit, a banner, and `text=$(cat /missing)` prints the banner and
-    # exits 1 with no further output.
-    #
-    # `if ! text=$(...)` puts the assignment in a condition, where errexit does not apply,
-    # so the status is the script's to read again.
-    if ! text=$(cat "$f" 2>/dev/null); then
-      # A file that `find` listed and `cat` could not open is USUALLY gone rather than
-      # unreadable: `--run-all` executes gates concurrently and the bite harnesses write a
-      # modified copy beside the gate they are proving, so transient files appear and
-      # vanish under scripts/ mid-sweep. That is not this gate's subject, and failing on it
-      # would make an unrelated gate's normal operation look like a finding here.
-      if [ ! -e "$f" ]; then
-        echo "[emit-0013] note — $f vanished during the scan (transient file); skipped"
-        continue
-      fi
-      echo "[emit-0013] FAIL — could not read $f."
-      echo "  → this is a READ failure, not a finding. Nothing about the script is implied."
-      exit 1
+    violates_file "$f" && rc=0 || rc=$?
+    if [ "$rc" -eq 3 ]; then
+      # `--run-all` executes gates concurrently and the bite harnesses write a modified copy
+      # beside the gate they are proving, so transient files appear and vanish under scripts/
+      # mid-sweep. That is another gate operating normally, not a finding here.
+      echo "[emit-0013] note -- $f vanished during the scan (transient file); skipped"
+      continue
     fi
     scanned=$((scanned + 1))
-    if violates "$text"; then
-      echo "[emit-0013] FAIL — $f sets up its own events baseline + runs 'wg -emit' but does NOT apply 0013_events_content_sha256"
-      echo "  → add 0013_events_content_sha256 to its migration list (the emit path stamps events.content_sha256)."
+    if [ "$rc" -eq 0 ]; then
+      echo "[emit-0013] FAIL -- $f sets up its own events baseline + runs 'wg -emit' but does NOT apply 0013_events_content_sha256"
+      echo "  -> add 0013_events_content_sha256 to its migration list (the emit path stamps events.content_sha256)."
       violations=$((violations + 1))
     fi
   done < <(find "$repo_root/scripts" -name '*.sh' -type f)
   if [ "$violations" -gt 0 ]; then exit 1; fi
-  # scripts/ always holds shell scripts — this one among them. Zero scanned means the
-  # find failed, and reporting PASS on it would certify a tree nothing looked at.
+  # scripts/ always holds shell scripts -- this one among them. Zero scanned means the find
+  # failed, and reporting PASS on it would certify a tree nothing looked at.
   if [ "$scanned" -eq 0 ]; then
-    echo "[emit-0013] FAIL — no .sh files found under $repo_root/scripts; the scan, not the tree, is empty."
+    echo "[emit-0013] FAIL -- no .sh files found under $repo_root/scripts; the scan, not the tree, is empty."
     exit 1
   fi
-  echo "[emit-0013] PASS — every own-baseline emit script applies 0013 ($scanned scanned)"
+  echo "[emit-0013] PASS -- every own-baseline emit script applies 0013 ($scanned scanned)"
 }
 
-# --selftest is the non-vacuity BITE: a synthetic bad script (own baseline + emit,
-# no 0013) MUST flag; a good one (with 0013) MUST pass.
+# --selftest is the non-vacuity BITE. It drives violates_file on REAL FILES, because that is the
+# function run_lint uses. An earlier version tested a TEXT-taking helper that the lint had
+# stopped calling -- so the self-test would have passed while the lint was broken, which is the
+# same shape of vacuity this gate exists to catch in other people's fixtures.
 selftest() {
-  local bad good
-  bad='for m in 0001_initial 0002_events_table 0005_events_outbox_table; do :; done
-"$WG" -seed 1 -profile x -emit -dsn "$DSN"'
-  good='for m in 0001_initial 0002_events_table 0013_events_content_sha256; do :; done
-"$WG" -emit -dsn "$DSN"'
-  if ! violates "$bad"; then
-    echo "[emit-0013] SELFTEST FAIL — did NOT flag an own-baseline emit script missing 0013 (vacuous)"; exit 2
+  local d bad good gone rc
+  d=$(mktemp -d)
+  bad="$d/bad.sh"; good="$d/good.sh"; gone="$d/gone.sh"
+  {
+    echo 'for m in 0001_initial 0002_events_table 0005_events_outbox_table; do :; done'
+    echo '"$WG" -seed 1 -profile x -emit -dsn "$DSN"'
+  } > "$bad"
+  {
+    echo 'for m in 0001_initial 0002_events_table 0013_events_content_sha256; do :; done'
+    echo '"$WG" -emit -dsn "$DSN"'
+  } > "$good"
+
+  violates_file "$bad" && rc=0 || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    rm -rf "$d"
+    echo "[emit-0013] SELFTEST FAIL -- did NOT flag an own-baseline emit script missing 0013 (vacuous)"; exit 2
   fi
-  if violates "$good"; then
-    echo "[emit-0013] SELFTEST FAIL — flagged a script that DOES apply 0013"; exit 2
+  violates_file "$good" && rc=0 || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -rf "$d"
+    echo "[emit-0013] SELFTEST FAIL -- flagged a script that DOES apply 0013"; exit 2
   fi
-  echo "[emit-0013] SELFTEST PASS — flags a missing-0013 emit script, passes one with 0013 (non-vacuous)"
+  # THE READ ARM, which is the half both previous fixes got wrong: a path that is not there must
+  # come back "vanished" (3), never "violates" (0). Without this the truncation lesson above is a
+  # comment rather than a check.
+  violates_file "$gone" && rc=0 || rc=$?
+  if [ "$rc" -ne 3 ]; then
+    rm -rf "$d"
+    echo "[emit-0013] SELFTEST FAIL -- a missing file reported $rc, not 3 (vanished); a read failure must never read as a finding"; exit 2
+  fi
+  rm -rf "$d"
+  echo "[emit-0013] SELFTEST PASS -- flags a missing-0013 emit script, passes one with 0013, and reads a missing file as vanished rather than as a finding (non-vacuous)"
 }
 
 case "${1:-}" in

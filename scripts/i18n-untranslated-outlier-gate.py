@@ -212,8 +212,15 @@ def main() -> int:
     new = [(k, e, s) for k, e, s in found if k not in BASELINE]
     stale = [k for k in BASELINE if k not in {f[0] for f in found}]
 
+    # The THRESHOLD is printed on the PASS path, not only when something fails. A ratchet
+    # nobody can see is not a ratchet: printed only on failure it says nothing on every
+    # green run, and a later widening of MAX_LOCALES becomes history rather than a diff.
+    # `gate-number-visibility-gate.py` caught this file omitting it, on the first CI run
+    # after it was added.
     print(f"i18n-untranslated-outlier-gate: {len(data)} locales, "
-          f"{len(data[BASE])} keys, {len(found)} outlier(s), {len(new)} new.")
+          f"{len(data[BASE])} keys, {len(found)} outlier(s), {len(new)} new "
+          f"(MAX_LOCALES = {MAX_LOCALES}, {len(NON_LATIN)} non-Latin scripts, "
+          f"{len(UNIVERSAL_TERMS)} universal terms, {len(BASELINE)} baselined).")
 
     if stale:
         print(f"\n{len(stale)} BASELINE row(s) are STALE — the string is translated now:\n")
