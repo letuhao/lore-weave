@@ -166,6 +166,9 @@ real and only the PO can resolve it.
   One long-lived session currently carries earlier runs' unanswered Tier-A consent gates. Decide
   deliberately whether the test answers consent or avoids provoking it.
 
+- [x] **F8** — **DIAGNOSED, NOT FIXED (Cycle 23).** `plan-forge-pass-rail` proposes 0 arcs because the
+  LLM job is `truncated`. Converges with `assistant-endofday` and K2 on one cause. *(1 test)*
+
 - [x] **H4** — **DONE (Cycle 21).** #269's test destroyed the state it asserted, in its own first line.
   *(1 test, found while measuring H1 in Cycle 20)* Independent of the PO's H1 decision.
 
@@ -1266,11 +1269,48 @@ RESTORED byte-exact:
 **AC impact:** AC-2 — the fix is bitten both ways. AC-6 — the PO's H2 ruling is applied as far as it goes without activating anything; the remaining question is theirs. AC-4 — K2's skip now has a settable role behind it rather than a hardware story.
 
 
+### Cycle 23 — three reds and a skip turn out to be one cause (F8, #265)
+
+**Investigated:** `specs/plan-forge-pass-rail.spec.ts:65-69`; the `plan_run` rows this run wrote and the one from 18:33 that did not fail; `error_detail` on both.
+
+**Issues:** none new in the product — it detected the bad model output and said so.
+
+**Fix:** none applied; this row diagnoses rather than guesses, and names a cause instead of calling it flaky. The propose step returns **0 arcs**, and the product is not silently swallowing it:
+
+The model's completion was **truncated**, so nothing parseable came back. A run 85 minutes earlier, same spec, same model, reached `proposed` — so this is borderline rather than broken: the sole registered model is a **reasoning** model, it spends completion budget on `reasoning_content` before the structured answer, and whether the real payload fits is a coin toss on prompt length.
+
+That is the same root as the other two open reds and the remaining skip:
+
+| | wants | gets |
+|---|---|---|
+| `assistant-endofday` | a NON-reasoning **distill** model | the reasoning model, blank completion |
+| `composition-generate` (K2, SKIP) | a distinct **critic** | nothing to be distinct from |
+| `plan-forge-pass-rail` | a completion that fits | reasoning eats the budget → truncated |
+
+**#270 made all three settable.** What it did not do — deliberately — is load anything. Every one of these closes the moment a small non-reasoning model exists on the account, and none of them closes without one. That is the PO's call and it is the only thing between this plan and its last three rows.
+
+**Proof:**
+
+```
+plan_run, most recent first:
+  failed   | "LLM job unusable: truncated" | 2026-09-13 19:58:30
+  proposed | (none)                        | 2026-09-13 18:33:19   <- same spec, same model
+
+spec result:
+  Error: expect(received).toBeGreaterThanOrEqual(expected)
+    Expected: >= 1
+    Received:    0
+  1 failed | 1 passed (3.2m)
+```
+
+**AC impact:** AC-1 — F8 carries a diagnosed reason with the product's own error string and a counter-example run, not a "flaky" label. AC-5 — it is a known, explained red rather than a newly discovered one.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
 lanes: |
-  F fix      = F1, F3, F4, F5, F2, F6, F7
+  F fix      = F1, F3, F4, F5, F2, F6, F7, F8
   G diagnose = G1, G2
   J fixture  = J1, J2, J3
   H decide   = H1, H2, H3, H4
