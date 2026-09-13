@@ -29,6 +29,17 @@ vi.mock('../api', () => ({
   EMBEDDING_CAPABILITY: 'embedding',
   PLANNER_CAPABILITY: 'planner',
   CHAT_CAPABILITY: 'chat',
+  // 🔴 MISSING, and it took the whole file down with it: `DefaultModelsCard` renders a composer
+  // row (`DefaultModelsCard.tsx:166`), so it imports `COMPOSER_CAPABILITY` from `./api`. A
+  // `vi.mock` factory REPLACES the module wholesale, so a constant the factory forgets does not
+  // fall back to the real one — it is simply undefined, and vitest fails the import with
+  // "No COMPOSER_CAPABILITY export is defined on the ../api mock".
+  //
+  // Completed from the real value (`api.ts:113`) rather than invented, which is the point: a mock
+  // that drifts from its module tests a module that does not exist. Third time this exact shape
+  // has appeared in this repo — react-i18next missing `initReactI18next`, sonner missing `error`,
+  // and now this.
+  COMPOSER_CAPABILITY: 'composer',
   defaultModelsApi: {
     get: (...a: unknown[]) => getDefaults(...a),
     set: (...a: unknown[]) => setDefault(...a),
@@ -71,7 +82,15 @@ describe('DefaultModelsCard', () => {
     expect(listUserModels).not.toHaveBeenCalledWith('tok', { capability: 'embedding', include_inactive: false });
 
     const triggers = await screen.findAllByRole('combobox');
-    expect(triggers).toHaveLength(3);
+    // FOUR rows, not three: chat, rerank, planner, composer — in that order
+    // (`DefaultModelsCard.tsx` 119 / 134 / 148 / 166). The composer row was added to the
+    // component and this count was left at 3, which is what actually failed here; the missing
+    // mock constant above was only what stopped the file importing at all.
+    //
+    // Composer APPENDS, so every index this file already uses still points where it did — that
+    // is checked against the component rather than assumed, because `openRow(0)` and `openRow(2)`
+    // below would silently test the wrong row if a future row were inserted rather than appended.
+    expect(triggers).toHaveLength(4);
     // Row [1] = rerank: open + pick the model.
     fireEvent.click(triggers[1]);
     fireEvent.click(await screen.findByText('bge-reranker'));
