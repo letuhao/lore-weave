@@ -107,7 +107,7 @@ real and only the PO can resolve it.
   the identical stale assumption Cycle 12 of red-by-red fixed in `composition-gate`, in a spec
   that never got there because the reasoning control blocked it first. Harness, not product.
 
-- [ ] **F7** — the archive test never CONFIRMS the archive. *(1 test, from F3)*
+- [x] **F7** — **DONE (Cycle 17).** The confirm step was missing, and ConfirmDialog had no testid to reach it by. *(1 test, from F3)*
   `onArchive` opens the app's own `ConfirmDialog` (*"C1/C4 -- the app's own confirm, never OS
   confirm()"*), and the spec clicks Archive then immediately asserts the row is gone. Measured:
   `archived=false | v2` -- the save landed, the archive never happened, because nobody confirmed
@@ -1029,6 +1029,45 @@ RESTORED byte-exact (git diff: 18 insertions, 3 deletions -- the fix only):
 ```
 
 **AC impact:** AC-1 — F6 is green, 12 of 18. AC-3 — the claim is stated before and after and is stricter, not weaker. AC-2 — the bite is pasted both ways.
+
+
+### Cycle 17 — the archive that nobody confirmed (F7)
+
+**Investigated:** `specs/studio-structure-templates-journey.spec.ts:120-158`;
+`StructureTemplatesPanel.tsx:72-79` (`askArchive`) and `:192-196` (*"C1/C4 — the app's own
+confirm, never OS confirm()"*); `components/shared/ConfirmDialog.tsx:64,123,144`.
+
+**Issues:** none — no product defect. The dialog is correct; the spec walked past it.
+
+**Fix:** `onArchive` does not archive. It opens the app's own `ConfirmDialog`, and the spec clicked Archive and asserted immediately, so the archive never happened — measured earlier as `archived=false | v2`: the rename had saved, the archive had not. A user has to confirm as well, so adding the step is faithful to the journey rather than an accommodation.
+
+`ConfirmDialog` had **no `data-testid` on either button**, so the confirm could only be reached by its translated label — which E2E CONVENTIONS §1 exists to forbid on a product whose UI language changes. Added `confirm-dialog`, `confirm-dialog-confirm` and `confirm-dialog-cancel`: additive affordances on shared UI, no behaviour touched, the same class of change as the epub-import testids earlier in this work.
+
+The claim is unchanged: *archive removes it from the default list, the archived toggle shows it, restore brings it back — a round-trip, not a dead-end.* It simply now performs the archive it always claimed to.
+
+**Proof:**
+
+```
+AFTER
+  3 passed (13.1s)
+
+BITE — delete the two confirm lines, change nothing else:
+  Error: after archiving, the template is gone from the default list
+  expect(locator).toHaveCount(expected) failed
+    Expected: 0
+    Received: 1
+  1 failed                   <- the ORIGINAL F7 failure, reproduced exactly
+
+RESTORED byte-exact:
+  3 passed (13.1s)
+```
+
+The end state in the database cannot tell these apart — a round-trip finishes
+un-archived by design, so `is_archived=f` is correct for both a real archive-then-restore
+and an archive that never happened. The bite is what distinguishes them, which is the
+reason the rule asks for one.
+
+**AC impact:** AC-1 — F7 is green, 13 of 18. AC-3 — the claim is identical before and after; only the missing user step was added.
 
 
 ```goal-prompt

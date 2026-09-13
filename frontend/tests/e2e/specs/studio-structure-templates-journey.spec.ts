@@ -132,8 +132,14 @@ test.describe('@s01 Studio · structure-templates (blackbox: clone from empty)',
     await expect(page.getByTestId('structtpl-save-error')).toHaveCount(0);
     await page.getByTestId('structtpl-row').filter({ hasText: uniqueName }).click();
 
-    // ARCHIVE → it leaves the default (non-archived) list
+    // ARCHIVE → confirm, THEN it leaves the default (non-archived) list.
+    // Archive opens the app's own ConfirmDialog ("C1/C4 -- the app's own confirm, never OS
+    // confirm()"), and this spec used to click Archive and assert straight away. Measured at
+    // the time: archived=false | v2 -- the rename had saved, the archive had never happened,
+    // because nobody confirmed it. A user must confirm too, so this step is faithful.
     await page.getByTestId('structtpl-archive').click();
+    await expect(page.getByTestId('confirm-dialog')).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId('confirm-dialog-confirm').click();
     await expect(
       page.getByTestId('structtpl-row').filter({ hasText: uniqueName }),
       'after archiving, the template is gone from the default list',
