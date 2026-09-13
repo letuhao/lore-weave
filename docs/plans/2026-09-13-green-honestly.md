@@ -801,6 +801,10 @@ recorded rather than quietly dropped.**
 
 ### Cycle 12 — the one-model constraint costs more than two tests (H2)
 
+> **Superseded in part by Cycle 15.** The costs measured below are real; the CAUSE attributed to
+> them is wrong. Items 1 and 3 are not blocked by memory. Left standing rather than rewritten,
+> because the wrong reason is the finding.
+
 **Investigated:** the three blocked items and their exact requirements;
 `CompositionPanel.tsx:317-325` (the cascade); `worker-ai` distiller advisory; LM Studio's
 advertised model list (read-only — no control, per the standing instruction); live memory.
@@ -905,7 +909,7 @@ OWNED by H2 with a named blocker. AC-1 — 13 of the 18 green. AC-2 not applicab
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-14 done. Z1 is CLOSED: the whole suite re-run on a rebuilt image is 192 passed / 7 failed / 1 skipped (200), verified by allure summary.json content -- 18 failures became 7, 11 fixed, **0 newly red**. The 7 that remain are the three PO decisions (F2 #263, H1 #269, D13 B4.1), F6, F7, and the two model-ROLE failures. H2 needs correcting: assistant-endofday and the K2 skip fail because the `critic` and `distill` roles have NO settings row, not because only one model fits in memory. Head of the queue is that correction, then Z2 hands over with the three decisions.
+RESUME: Cycles 1-15 done. Z1 CLOSED: 192 passed / 7 failed / 1 skipped of 200, verified by allure summary.json CONTENT -- 18 became 7, 0 newly red. Cycle 15 CORRECTS H2 and filed #270: assistant-endofday and the K2 skip fail because `critic` and `distill` are settable in NO settings row, not because of memory. The PO has ruled on all three decisions (F2, H1, H2) and that work is NEW, beyond this plan. Head of the queue is Z2 -- hand over; only the PO closes AC-7.
 
 ### Cycle 14 — the whole suite, test by test (Z1)
 
@@ -948,6 +952,43 @@ NEWLY RED (0): none.
 
 **AC impact:** AC-5 is met — the suite was re-run whole and the delta is explained test by test, with no newly red.
 AC-1 stands at 11 of 18 green with a recorded reason for each of the 7; AC-4's K2 remains owned, not answered.
+
+
+### Cycle 15 — the "one-model constraint" was a missing settings row (H2, corrected)
+
+**Investigated:** every declaration of the model-ROLE vocabulary — `frontend/src/features/chat-ai-settings/types.ts:42`;
+`frontend/src/features/settings/api.ts:99-113`; the rows `DefaultModelsCard.tsx` actually renders;
+and every `get_default_model(...)` / `resolve_default_model(...)` call in `services/`.
+
+**Issues:** #270 — `critic` and `distill` are resolvable by the backend but settable in no settings row; the role vocabulary is declared in four places and no two agree.
+
+**Fix:** none applied here — this corrects a recorded reason and hands H2 back to the PO with a different question. Cycle 12 attributed `composition-generate` (K2) and `assistant-endofday` to "only one strong model fits in memory". That is false. Both need a ROLE, and the role has no settings row, so `get_default_model` falls back to `chat` and returns the same reasoning model. A second model would have hidden a settings gap behind a hardware story.
+
+The product already knows. `evaluate.py:180` refuses to score and instructs the user, verbatim, to
+*"Set a critic model in Settings › Chat & AI › default models."* No such row exists. The instruction
+cannot be followed.
+
+**Proof:**
+
+```
+role vocabulary, as declared:
+  chat-ai-settings/types.ts:42   chat composer planner embedding rerank critic     (6)
+  settings/api.ts:99-113         chat composer planner embedding rerank            (5)
+  DefaultModelsCard rows         chat composer planner        rerank                (4)
+  backend get_default_model()    chat composer         embedding      critic distill (5)
+
+settable but never resolved : planner, rerank
+resolved but NEVER SETTABLE : critic, distill      <- K2 and assistant-endofday
+declared but no row         : embedding
+
+evaluate.py:171-180    judge = get_default_model("critic") or get_default_model("chat")
+                       -> "Set a critic model in Settings > Chat & AI > default models."
+internal.py:570-571    get_default_model("distill") or get_default_model("chat")
+
+frontend surfaces that pick a model independently: 53
+```
+
+**AC impact:** AC-6 — H2 returns to the PO as a different choice, with the measured cause rather than the assumed one. AC-4 — K2 stays owned, but by a settings gap, not by memory.
 
 
 ```goal-prompt
