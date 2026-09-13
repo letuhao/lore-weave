@@ -183,7 +183,7 @@ real and only the PO can resolve it.
   anywhere. `campaign-factory` needed `E2E_FACTORY_PROJECT_ID` / `E2E_FACTORY_BOOK_ID`.
   Seed them the way `seed-evidence-account.py` seeds the rest, so a clean machine can run it.
 - [x] **K2** — **ANSWERED (Cycle 27). The skip is GONE — it RUNS, and it fails on its first-ever execution.**
-  *(was: OWNED, not answered, Cycle 13)* It belongs to **H2**, where it is priced
+  *(was: OWNED, not answered, Cycle 13)* Its two findings are filed: #273 (draft asks for context instead of writing), #274 (critic call times out). It belongs to **H2**, where it is priced
   alongside the other two things the constraint blocks. Nothing was activated.
   `composition-generate` needs **two active models**, which the one-model constraint forbids. **Do not quietly activate a second** — that already exhausted this machine once (#260).
   It is H2's decision; this row only records the outcome.
@@ -919,7 +919,7 @@ OWNED by H2 with a named blocker. AC-1 — 13 of the 18 green. AC-2 not applicab
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-15 done. Z1 CLOSED: 192 passed / 7 failed / 1 skipped of 200, verified by allure summary.json CONTENT -- 18 became 7, 0 newly red. Cycle 15 CORRECTS H2 and filed #270: assistant-endofday and the K2 skip fail because `critic` and `distill` are settable in NO settings row, not because of memory. The PO has ruled on all three decisions (F2, H1, H2) and that work is NEW, beyond this plan. Head of the queue is Z2 -- hand over; only the PO closes AC-7.
+RESUME: Cycles 1-29 done. Final full run 196 passed / 4 failed / 0 skipped of 200, read from allure by content. Of the 18: 17 green or answered. Open reds: F8 plan-forge propose truncation (diagnosed, not a missing lever); K2 now RUNS and fails (#273 draft asks for context, #274 critic timeout); two page.goto timeouts in one window after local inference, undiagnosed with trace. H1 stops on sealed OQ-1 with options. Head of the queue is Z2: hand over; only the PO closes AC-7.
 
 ### Cycle 14 — the whole suite, test by test (Z1)
 
