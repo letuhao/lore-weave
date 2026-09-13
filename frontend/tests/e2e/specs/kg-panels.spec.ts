@@ -19,6 +19,7 @@ test.describe('Knowledge/KG dock panels', () => {
   let bookLinked: string;
   let bookBare: string;
   let projectId: string;
+  let entityName = '';
 
   test.beforeAll(async ({ request }) => {
     token = await getAccessToken(request);
@@ -26,7 +27,12 @@ test.describe('Knowledge/KG dock panels', () => {
     bookBare = await createBook(request, token, `E2E KG bare ${Date.now()}`);
     const project = await createKnowledgeProject(request, token, `E2E KG project ${Date.now()}`, bookLinked);
     projectId = project.project_id;
-    await createKnowledgeEntity(request, token, projectId, 'Seraphine Vale', 'character');
+    // UNIQUE per run. A fixed name accumulated one row per run in this long-lived database --
+    // six 'Seraphine Vale' rows by the time this was looked at -- and the assertion below then
+    // died on a strict-mode violation. A unique name also makes the claim STRONGER: it proves
+    // the entity THIS run created is found, not one a previous run left behind.
+    entityName = `Seraphine Vale ${Date.now()}`;
+    await createKnowledgeEntity(request, token, projectId, entityName, 'character');
   });
 
   test.afterAll(async ({ request }) => {
@@ -91,10 +97,10 @@ test.describe('Knowledge/KG dock panels', () => {
     // The shared dev DB carries hundreds of entities across every project (this is a real,
     // populated environment, not a clean fixture) — search narrows to just the one this
     // test created, rather than assuming it lands on page 1 of the unfiltered global list.
-    await page.getByTestId('entities-filter-search').fill('Seraphine');
+    await page.getByTestId('entities-filter-search').fill(entityName);
     // Both a desktop `entities-row` and a `entities-row-mobile` render simultaneously (CSS
     // hides one per breakpoint) — scope to the desktop row so the text match stays strict.
-    await expect(page.getByTestId('entities-row').getByText('Seraphine Vale')).toBeVisible();
+    await expect(page.getByTestId('entities-row').getByText(entityName)).toBeVisible();
   });
 
   // DOCK-7 proof: OverviewSection's book backlink used to be a hard-coded <Link>; it's now a
