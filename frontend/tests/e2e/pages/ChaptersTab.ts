@@ -41,8 +41,12 @@ export class ChaptersTab {
       await this.bodyInput.fill(input.body);
     }
     await this.createSubmit.click();
-    // App auto-navigates to /books/:bookId/chapters/:chapterId/edit on success
-    await this.page.waitForURL(/\/books\/[^/]+\/chapters\/[^/]+\/edit/, { timeout: 15_000 });
+    // On success the app opens the new chapter IN THE STUDIO -- /books/:bookId/studio?chapter=:id
+    // -- not the classic /chapters/:id/edit route. #18 retargeted chapter and book entry to the
+    // Studio on purpose (the classic detail page is still reachable and writing-studio.spec.ts
+    // pins that separately). The CLAIM is unchanged: creating a chapter lands you where you can
+    // edit it, and the URL must carry the chapter that was just made.
+    await this.page.waitForURL(/\/books\/[^/]+\/studio\?.*chapter=[0-9a-fA-F-]+/, { timeout: 15_000 });
   }
 
   chapterRow(titleSubstring: string): Locator {
