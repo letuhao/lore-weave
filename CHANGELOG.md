@@ -28,6 +28,87 @@ pre-release identifiers, what "release" vs "pre-release" means for this repo, ar
 
 ### Security
 
+## [0.1.0] - 2026-09-13
+
+Everything in `0.1.0-rc.1`, plus a week of remediation driven by a simulated-user run against the
+live product and a first pass at the dependency backlog. 39 of the 89 commits since the rc are
+user-facing. The scope is unchanged: 33 versioned images derived from `infra/docker-compose.yml`.
+
+### Added
+
+- **Campaigns is reachable from the Studio**, and the wizard now says *why* it is blocked instead
+  of presenting a dead control.
+- **Suggest scenes runs**, and narration-attach reports what it did.
+- **A prose-tic detector in composition** — the repetition that prompting alone could not remove is
+  now found mechanically rather than left to the reader.
+- **Asked-vs-delivered length is reported.** A chapter that comes back short says so; previously the
+  gap was silent.
+- **The steering budget is visible before the cap bites**, so an author can see a story bible is
+  about to be truncated rather than discovering it in the output.
+- **The decompiler writes its back-links back**, and human-authored prose is recognised as realized
+  rather than treated as missing.
+- **A rollback runbook** (`docs/runbooks/rollback.md`), including the one command that decides
+  whether a given release is rollback-safe — the schema is the deciding factor, not the images.
+- **Two new cross-cutting standards, each with an enforcing gate**: plan acceptance criteria
+  (a plan states what DONE means before its board) and the remediation cycle (a criterion moves only
+  through investigate → issues → fix → proof → AC impact).
+- **A translation placeholder-parity gate**, which verified 150,365 translated strings.
+
+### Changed
+
+- **"Auto-Draft Factory" is now "Campaigns"** — 36 strings across 18 locale files plus two component
+  fallbacks. The old name described a mechanism nobody had asked for; the new one describes what the
+  feature does.
+- **The chat steering token cap is 8000, up from 2000.** At 2000 most of a real story bible was
+  being dropped silently.
+- **The frontend builds with `npm ci` against a committed lockfile** instead of `npm install` against
+  74 floating ranges, so two builds of one commit can no longer differ.
+- **The pgvector image derives its LLVM toolchain from `pg_config`** rather than hardcoding a major.
+
+### Fixed
+
+- **Arc and chapter Goal fields were written unbounded but read back capped at 2000 characters**,
+  which corrupted the whole book's arc list. This is the most damaging bug fixed in this release.
+- **An empty search result was presented as an empty account** — a user with books was told they had
+  none.
+- **Chapter-title precedence** had five independent copies disagreeing with each other; now one.
+- **A re-render destroyed unsaved field text** in the plan hub.
+- **A dirty hoist blocked agent writes silently**; the user is now told.
+- **A refused chat turn kept asking for a retry** that could not succeed.
+- **`no_tracked_promises` was conflated with extraction failure**, so "nothing to track" and "the
+  extractor broke" were indistinguishable.
+- **MinIO moved off Docker Hub** — six call sites repointed to `quay.io`, which had been failing CI.
+- **`govulncheck` had silently stopped auditing** and had not run for months; it now scans 76
+  modules and fails closed if it ever scans zero.
+- **The stack could not be rebuilt from scratch** — the pgvector image's pinned toolchain no longer
+  exists in its own base image.
+- **`all-gates` could not report why a gate failed**: it quoted the first line of a failing gate's
+  output, which by repo convention is that gate's self-test success banner.
+
+### Removed
+
+- Nothing. No feature, endpoint or image was withdrawn between `0.1.0-rc.1` and this release.
+
+### Security
+
+- **`react-router` 6 → 7.18.3** — an open redirect and constructor injection in SSR hydration. This
+  is the only advisory in this release that reaches an end user, and it is closed.
+- **`vite` 5 → 8 and `vitest` 2 → 4.1.11**, which takes the frontend to **zero vulnerabilities of
+  any severity** — critical, high, moderate and low all at zero.
+- **The frontend was never actually pinned.** `frontend/package-lock.json` was suppressed in three
+  separate ignore files, so no dependency fix had ever been pinned. It is now tracked and enforced.
+- **23 of 52 high-severity findings** across the repo were fixed without breaking changes.
+
+**Known, and deliberately not fixed in 0.1.0:**
+
+- `rsa` RUSTSEC-2023-0071 (Marvin Attack, 5.9 medium) has **no published fix**. It is recorded and
+  awaiting a written risk acceptance rather than quietly carried.
+- Four NestJS gateways remain on `@nestjs/*` 10. Moving to 12 requires a Jest/ESM migration, not a
+  version bump; a half-migrated gateway would be worse than the advisories it closes.
+- **17 of the 18 locales are machine-translated and have not been read by a native speaker.** The
+  strings are mechanically sound — placeholder parity is gated — but mechanical soundness is not
+  meaning. Treat non-English UI text as provisional.
+
 ## [0.1.0-rc.1] - 2026-09-06
 
 First tagged release: the novel-writing platform, published as 33 versioned Docker images
