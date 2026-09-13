@@ -82,7 +82,8 @@ real and only the PO can resolve it.
   recommendation and STOP.** Widening a CHECK constraint to make an INSERT succeed is exactly the
   hollow fix this plan is guarding against.
 
-- [ ] **F3** — **#264**, the structure editor claims unsaved changes after a save. *(2 tests)*
+- [~] **F3** — **#264 FIXED and RE-BROKEN (Cycle 2). 1 of its 2 green; the other moved to F7.**
+  The structure editor claims unsaved changes after a save. *(2 tests)*
   `initial` is a `useRef` captured at mount and never reassigned, so the draft is permanently
   "diverged" after the first edit. The baseline must move on save success — and the component's
   remount/`onDirty` contract has to stay coherent. **Re-break:** freeze the baseline again; both
@@ -101,6 +102,12 @@ real and only the PO can resolve it.
   "2"`. The GUIDED first run seeds an "Opening scene" before `addScene` adds its own; this is
   the identical stale assumption Cycle 12 of red-by-red fixed in `composition-gate`, in a spec
   that never got there because the reasoning control blocked it first. Harness, not product.
+
+- [ ] **F7** — the archive test never CONFIRMS the archive. *(1 test, from F3)*
+  `onArchive` opens the app's own `ConfirmDialog` (*"C1/C4 -- the app's own confirm, never OS
+  confirm()"*), and the spec clicks Archive then immediately asserts the row is gone. Measured:
+  `archived=false | v2` -- the save landed, the archive never happened, because nobody confirmed
+  it. A user must confirm too, so adding the step is faithful, not a weakening. Harness.
 
 ### Lane G — diagnose before touching anything.
 
@@ -222,6 +229,77 @@ retreat from this fix.
 fail for the same reason. AC-1 — 3 of the 18 are green. AC-3 holds: no test was touched at all in
 this row. The probe spec was deleted rather than left behind as a permanent fixture.
 
+### Cycle 2 — three fixes deep, and only the third was the cause (F3, F7)
+
+**Investigated:** `StructureTemplatesPanel.tsx:270-310,179-186,429-439`;
+`useStructureTemplates.ts:86-129,153-155`; the templates API round-trip by hand; and finally the
+two snapshots themselves, through a throwaway debug attribute.
+
+**Issues:** #264 — fixed here.
+
+**Fix:** three changes, and **I guessed wrong twice before measuring**, which is worth recording
+because the guesses were plausible and both failed.
+
+**(1) The baseline was snapshotted at mount and never reassigned.** `OwnEditor` is keyed on
+`s.selected.id`, so it remounts when the SELECTION changes but not when the same template is
+SAVED. The baseline is now DERIVED from `tpl`: `save` invalidates `['structure-templates']` and
+`selected` is re-read from that query, so on success `tpl` carries the saved values and dirty
+falls to false with no `useEffect`. **This was necessary and not sufficient.**
+
+**(2) `save` stamped `order` on the way out but kept the un-stamped beats in state**, so a newly
+added beat never matched the row that came back. Also necessary, also not sufficient.
+
+**(3) The real cause: `JSON.stringify` on objects whose KEY ORDER differed.** The draft spreads
+`{...b, order}` and produces `key,label,purpose,order`; the API returns `key,label,order,purpose`.
+Identical data, different strings — measured directly:
+
+```
+server: {"key":"beat_2","label":"","order":2,"purpose":""}
+draft : {...b, order}  ->  key, label, purpose, order
+```
+
+Beats are now reduced to positional TUPLES, which no key order can disturb.
+
+**(4) And one race.** Between clicking Save and the refetch arriving, `tpl` is still the OLD row,
+so comparing against it alone warns about discarding work already saved. The draft is now also
+clean when it matches what was last SUBMITTED and `saveError` is null — if the save errors, it is
+dirty again, which is correct.
+
+**Proof:**
+
+```
+INSTRUMENTED (a temporary data attribute, removed afterwards -- `grep -c __f3dbg` -> 0):
+  DRAFT : {"name":"PROBE …","kind":"save_the_cat","beats":[…["beat_16","","",16]]}
+  ROW   : {"name":"PROBE …","kind":"save_the_cat","beats":[…["beat_16","","",16]]}
+  EQUAL : true
+
+RE-BREAK (Rule 1) -- the mount-snapshot version restored, frontend rebuilt:
+  89f12bcd0d2cf6981f2b02c06c796cf5  /tmp/stp.tsx.orig
+  89f12bcd0d2cf6981f2b02c06c796cf5  src/features/studio/panels/StructureTemplatesPanel.tsx
+  - tabpanel "Structure Templates": ● Unsaved
+  - dialog "Discard unsaved changes?"
+  1 failed   <- the original symptom, exactly
+
+FIX RESTORED, rebuilt:
+  fa15aacbeb76eb820780258b58782498  /tmp/stp.tsx.FIXED
+  fa15aacbeb76eb820780258b58782498  src/features/studio/panels/StructureTemplatesPanel.tsx
+  2 passed, 1 failed (31.8s)      <- the 1 is F7
+  unit suite: 100 files, 804 tests, all passing
+```
+
+**Not ticked.** The archive test is past the dirty dialog and now fails because it never confirms
+the archive — measured as `archived=false | v2`: the save landed, the archive did not. That is F7
+and it is harness work.
+
+**A latent inconsistency fixed in passing, and named as latent:** the draft normalised `kind` with
+`?? ''` while the baseline used `?? 'generic'`, so a template with a null kind would have been born
+dirty. No row has a null kind today (`custom 3, generic 19, hero_journey 2, kishotenketsu 11,
+save_the_cat 13, story_circle 8`), so it was never firing — but the two halves of one comparison
+should not disagree.
+
+**AC impact:** AC-2 met for F3 — proven by re-breaking, with the original symptom reproduced
+exactly. AC-1 — 4 of the 18 are now green. AC-3 holds: no test was touched in this row.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -231,7 +309,7 @@ this row. The probe spec was deleted rather than left behind as a permanent fixt
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycle 1 done. F1: #262 FIXED (portal, not z-index -- the probe proved there was NO competing stacking context; the menu opened upward out of an overflow-auto container and was clipped out of reach) and RE-BROKEN per Rule 1. 3 of its 4 tests green; the 4th is now F6 (composition-journey asserts 1 scene where the guided first run makes 2 -- the same stale count Cycle 12 fixed elsewhere). Head of the queue is F3 (#264, the false 'unsaved changes' -- reset the dirty baseline on save success). F2, H1, H2 STOP for the PO with options ready.
+RESUME: Cycles 1-2 done. F1 (#262, portal not z-index) and F3 (#264) both FIXED and RE-BROKEN. 4 of the 18 green. #264 took three changes and I guessed wrong twice before instrumenting -- the real cause was JSON.stringify comparing objects whose KEY ORDER differed between draft and API. Two harness rows fell out: F6 (composition-journey asserts 1 scene, guided run makes 2) and F7 (the archive test never confirms the ConfirmDialog; measured archived=false). Head of the queue is F4 (#265, pass_cursor stays 1 after approving cast). F2, H1, H2 STOP for the PO with options ready.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
