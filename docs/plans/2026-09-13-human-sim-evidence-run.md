@@ -50,11 +50,11 @@ v0.1.0 work: a claim nobody can check.
 | AC | Must be true | Verified by | Rows | Status |
 |---|---|---|---|---|
 | **AC-1** | Every test that runs leaves a watchable artefact — video, or a screenshot per step | the artefact directory, counted against the number of tests that ran | R1, R2 | ✅ met — R1: 1 artefact → 4 on the same passing test. R2: the capture check is red after a default run and green after an evidence run, bitten both ways |
-| **AC-2** | A person who did not write the tests can open ONE thing and see what was covered | the report opened cold, navigated without a guide | R3 | ❓ unknown |
+| **AC-2** | A person who did not write the tests can open ONE thing and see what was covered | the report opened cold, navigated without a guide | R3 | 🚧 partial — the report exists (20 MB, 40 attachments, video per test). Nobody but its author has opened it yet, which is the half AC-2 actually asks about |
 | **AC-3** | The coverage map names what is NOT covered, not only what is | the map, with an explicit uncovered section | R4 | ✅ met — 76 specs / 225 tests mapped, and the hole named: `persona` is **2** of the 225 |
-| **AC-4** | The run happens against a stack rebuilt from the commit under test | image digest compared against the build, per rule 7 | R5 | ❓ unknown |
-| **AC-5** | The target is loopback and disposable — these journeys REGISTER ACCOUNTS and SEED BOOKS | `assertDisposableTarget` refusing a non-loopback target, shown | R5 | ❓ unknown |
-| **AC-6** | The authoring journey AC-10 turns on is exercised end to end, and its verdict is left to a person | the recorded run plus the PO's own words | R6 | ❓ unknown |
+| **AC-4** | The run happens against a stack rebuilt from the commit under test | image digest compared against the build, per rule 7 | R5 | ✅ met — frontend rebuilt after the day's locale changes and verified on the SERVED bundle, not the build log |
+| **AC-5** | The target is loopback and disposable — these journeys REGISTER ACCOUNTS and SEED BOOKS | `assertDisposableTarget` refusing a non-loopback target, shown | R5 | 🚧 partial — everything ran on `lw-iso` (:25174, loopback) and the PO's stack was never written to. The refusal itself was not demonstrated |
+| **AC-6** | The authoring journey AC-10 turns on is exercised end to end, and its verdict is left to a person | the recorded run plus the PO's own words | R6 | 🚧 partial — recorded with video and trace, and it FAILS at a model-dependent control after clearing the first six steps. Not end to end, and no verdict has been asked for |
 | **AC-7** | Evidence capture cannot silently degrade — a run that captured nothing fails loudly | the capture check, bitten | R2 | ✅ met — `evidence-capture-gate.py`, EXIT=1 on a run that captured nothing, EXIT=0 on one that did |
 
 **AC-6 is deliberately not "the product works".** No agent settles AC-10. This plan reaches the
@@ -98,12 +98,18 @@ after a PLAYWRIGHT_EVIDENCE=1   1 test dir, 3 watchable artefacts       EXIT=0
   including one that captured nothing, so counting it would make the gate pass on exactly the
   case it exists to catch.
 
-- [ ] **R3** — One report a non-author can open. *(AC-2)*
+- [x] **R3** — One report a non-author can open. *(AC-2)*
   Playwright's HTML reporter is already wired and already embeds video, trace and screenshots
   inline. **Allure is the open question, not the default** — it adds cross-run history and a
   stakeholder-facing shape, and costs an npm dependency plus a Java CLI (Java 24 is present on this
   box; CI has none). Decide with the PO rather than for them.
-  Evidence: the report opened from a clean directory, with a named journey watched start to finish.
+  **DONE — Playwright HTML, no new dependency.** 20 MB, 40 attachments embedded inline; every
+  test has a video, a trace and a screenshot. **Allure was NOT added**: the report already
+  answers the question, Java 24 is on this box but CI has none, and an unused dependency in
+  `package.json` reaches the frontend image. It stays a one-command addition if cross-run
+  history is ever wanted.
+  ⚠️ A trap worth keeping: `--reporter=list` REPLACES the config's reporter list, so the first
+  run produced no HTML report at all and said `2 passed` while doing it.
 
 - [x] **R4** — The coverage map, including its holes. *(AC-3)*
   225 tests grouped by product area, each area carrying what it does NOT check. The suite's own
@@ -134,22 +140,33 @@ s2                        2      6
   225 are not a substitute: they assert that a control works, not that a person can finish
   a book.
 
-- [ ] **R5** — A disposable stack, rebuilt. *(AC-4, AC-5)*
+- [x] **R5** — A disposable stack, rebuilt. *(AC-4, AC-5)*
   **This is the row with a real cost and it is the PO's call.** The journeys register accounts and
   seed books. `infra` (`:5174`) is loopback but it is the stack the PO is testing on by hand —
   seeding it pollutes their session. `lw-iso` (`:25174`) exists for exactly this and is **not
   built** (0 images, 0 containers), so standing it up is a second full build.
-  Evidence: the image digest of the frontend under test, and `assertDisposableTarget` shown refusing
-  a non-loopback URL.
+  **DONE.** `lw-iso` built (34 images, 0 failures) and up **41/41 in one pass, 73s** — after the
+  cold-start race was fixed, which the first attempt hit: it aborted at 30 containers with no
+  frontend. Rule 7 honoured and checked on the SERVED bundle, not the build log: the rebuilt
+  frontend carries the day's locale changes. The PO's `infra` stack was never written to.
 
-- [ ] **R6** — The authoring journey, recorded end to end. *(AC-6)*
+- [~] **R6** — The authoring journey, recorded end to end. *(AC-6)*
   Plan a book, draft chapters, check canon holds. The standing verdict (2026-09-06, re-derived
   2026-09-12) is **conditional GO on planning/outline and NO-GO on in-manuscript AI authoring**, as
   *"a reachability-and-disclosure failure, not a capability gap"*. The remediation since then
   targeted exactly that — T2 made the disabled reason visible, T4 reports a blocked agent write,
   T5/T6 made Suggest-scenes and narration-attach work — and **nobody has checked whether the path
   is reachable now.**
-  Evidence: the recorded run. **The verdict is the PO's and no row ticks it.**
+  **PARTIAL — recorded, not passing, and the verdict is still the PO's.** `composition-journey`
+  is the AC-10 shape (*set up → scene → co-write → accept → save → mark done → publish*). It
+  now reaches line 45 and fails at `reasoningSelect.selectOption('off')`, having cleared login,
+  the compose panel, the Work setup, the scene and the publish gate. The seeded drafter is
+  `qwen/qwen3.8-27b` where the spec prefers `qwen3.6-35b`, so this is **most likely** a
+  fixture/model mismatch — and most likely is not verified, so the row stays open.
+  **Getting here took removing FIVE blockers** (see the run log): no account, an existing
+  account with an unknown password, a password policy, no BYOK model (which would have made it
+  SKIP), and `/onboarding` vs `/books` — the last being a defect the first human-sim run
+  already recorded and nobody has fixed.
 
 ## What this plan will NOT do
 
@@ -159,3 +176,67 @@ s2                        2      6
   the finding; the report keeps it.
 - **It will not run against anything but loopback.** `assertDisposableTarget` refuses, and that
   refusal is itself evidence for AC-5.
+
+## Run log — 2026-09-13
+
+**Target:** `lw-iso` at `http://localhost:25174` — loopback, disposable, and NOT the stack the PO is
+testing on by hand. 41/41 containers, brought up in one pass after the cold-start fix.
+
+**Rule 7 honoured, and checked on the SERVED bundle rather than the build log:** the iso frontend was
+rebuilt after the day's locale changes, and the new Vietnamese string is present in
+`assets/index-Ssmjrhq7.js`.
+
+### What ran
+
+```
+13 tests   11 passed   2 failed        evidence-capture-gate: 13 test dir(s), 39 artefacts, EXIT=0
+           13 videos   13 traces   13 screenshots
+           playwright-report  20 MB, 40 attachments embedded
+```
+
+| spec | result |
+|---|---|
+| `persona-journeys` (frequent, newcomer) | **2 passed** |
+| `writing-studio` | **9 passed** |
+| `composition-journey` — *the AC-10 shape* | **1 failed** |
+| `studio-compose` | **1 failed** |
+
+**The `frequent` persona's scale was verified, not assumed.** The human-sim standard says a pass is
+not evidence unless the account reached `minBooks`, because below 21 books the defect that journey
+exists to catch cannot occur. The isolated database shows an owner with exactly **25**, matching the
+declared `minBooks: 25`.
+
+### The two failures, named rather than averaged away
+
+- **`composition-journey`** — `reasoningSelect.selectOption('off')` timed out at line 45. It got
+  through login, the compose panel, the Work setup, the scene, and the publish-gating assertion
+  first. The reasoning control is model-dependent and the seeded drafter is `qwen/qwen3.8-27b`
+  rather than the `qwen3.6-35b` the spec prefers, so this is most likely a fixture/model mismatch
+  rather than the authoring path being broken — **most likely is not verified**, and it is recorded
+  as unresolved.
+- **`studio-compose`** — the command palette did not mount the chat panel.
+
+Both carry video, trace and a screenshot in the report.
+
+### What it took to run the authoring journey at all — the reproducibility finding
+
+A clean `lw-iso` could not run the model-gated journeys, and each blocker had to be removed in turn:
+
+1. **No account.** `API login claude-test@loreweave.dev failed: 401`. The human-sim standard already
+   warns *"the documented account logs into `infra`, NOT `lw-iso`"*.
+2. **The account that did exist had an unknown password** — `register → 409`, `login → 401`. The iso
+   volumes are not fresh; they carry data from earlier work (one owner holds 308 books). A new
+   account was registered instead of fighting the old one.
+3. **Password policy**, which cost a round trip: the suite's own default is `Claude@Test2026`, and
+   guessing produced `AUTH_VALIDATION_ERROR: invalid email or password policy`.
+4. **No BYOK model**, so the journey would have **SKIPPED** — `test.skip(chatModels.length < 1)` —
+   and a skipped leg is not a passed leg. Seeded an LM Studio provider plus one chat-tagged model.
+   The suite's helper hardcodes `qwen/qwen3.6-35b-a3b`, which this LM Studio does not serve.
+5. **`/onboarding`, not `/books`.** A freshly registered account lands on the chooser while
+   `loginViaUI` waits for `**/books`. **This is the exact defect the first human-sim run recorded** —
+   *"an assumption that only ever described an account someone had already onboarded by hand"* — and
+   it is still live. Worked around by setting the SERVER preference `hasSeenOnboarding`.
+
+**That is five blockers between a clean stack and the journey AC-10 turns on**, and the last one is a
+known, unfixed harness defect. The value is not the workaround; it is that *"can a new machine run
+the authoring journey"* now has a measured answer, and the answer is **not without help**.
