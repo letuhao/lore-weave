@@ -1442,6 +1442,37 @@ and a toast: "Request timed out"
 **AC impact:** AC-4 — K2 is ANSWERED, not owned: it runs, and passed/failed/skipped are reported separately. AC-1 — it is now a red with a measured reason instead of a silent unknown.
 
 
+### Cycle 28 — the second model turned a green test red, and the cause was test-order luck (Z2)
+
+**Investigated:** the full re-run's three failures against the Z1 set; `helpers/api.ts` `listChatModels`; the eleven `chatModels.find(...) ?? chatModels[0]` sites across eight specs; the registry's returned order before and after Cycle 27; `GET /v1/model-registry/default-models` (the per-capability GET answers 405).
+
+**Issues:** none in the product. A NEWLY RED test, caused by this plan's own Cycle 27.
+
+**Fix:** the full re-run found `composition-correction-gate` red — green in Z1, nothing in its spec or the product touched since. Cause: eleven call sites pick the drafter by `.find(<a model this account does not have>) ?? chatModels[0]`, so every one of them silently depended on registry order. Cycle 27 registered a small 12B, the registry returned it FIRST, and the Diverge path's K candidates collapsed to one on the smaller drafter.
+
+The seeder already warns *"a second active model is NOT additive"* about the critic path. This is the other half. `listChatModels` now sorts the **account's own chat default** first, so slot 0 is a declared preference, not an accident of order; a missing default falls back to registry order, exactly the old behaviour.
+
+My first version of the helper called the per-capability GET, which answers **405** — it would have fallen back silently and fixed nothing while looking correct. Checked the endpoint before trusting the green.
+
+**Proof:**
+
+```
+full re-run:            197 passed, 3 failed, 0 skipped
+  NEWLY RED:            composition-correction-gate   (green in Z1)
+registry order after Cycle 27:
+  0 google/gemma-4-12b-qat        <- new, small, now the drafter
+  1 google/gemma-4-26b-a4b-qat    <- the account chat default
+GET /default-models/chat -> HTTP 405 ; GET /default-models -> {"defaults":{"chat":"01a09a53-..."}}
+
+AFTER:  composition-correction-gate  1 passed (33.1s)
+BITE — disable only the reorder:
+  Expected: >= 2   Received: 1   1 failed
+RESTORED: all eight order-dependent specs  13 passed (1.9m)
+```
+
+**AC impact:** AC-5 — the newly red test was caught, explained and closed rather than reported as a pass. AC-2 — bitten both ways.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]

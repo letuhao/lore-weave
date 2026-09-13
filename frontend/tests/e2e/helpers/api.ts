@@ -376,7 +376,31 @@ export async function listChatModels(request: APIRequestContext, token: string):
   const d = await ok<{ items: ChatModel[] }>(
     request.get('/v1/model-registry/user-models?capability=chat', auth(token)),
   );
-  return (d.items ?? []).filter((m) => m.is_active);
+  const active = (d.items ?? []).filter((m) => m.is_active);
+  // The ACCOUNT'S OWN chat default sorts first, so `chatModels[0]` is a deliberate choice
+  // rather than whatever order the registry happened to return.
+  //
+  // Eleven call sites across eight specs do `.find(<a model this account may not have>) ??
+  // chatModels[0]`, and every one of them was silently depending on registry order. Adding a
+  // second model to the evidence account moved a SMALLER model into slot 0 and turned
+  // `composition-correction-gate` red -- it had been green the run before, and nothing about
+  // that spec or the product had changed. The seeder warns "a second active model is NOT
+  // additive"; this is the other half of why. Ordering by the account default makes it additive.
+  //
+  // A failed lookup is not fatal: fall back to registry order, which is exactly today's
+  // behaviour, so a stack without a default is no worse off than before.
+  try {
+    // The per-capability GET answers 405; the collection returns {defaults: {chat: <id>}}.
+    const dm = await request.get('/v1/model-registry/default-models', auth(token));
+    if (dm.ok()) {
+      const id = (await dm.json())?.defaults?.chat;
+      if (id) {
+        const i = active.findIndex((m) => m.user_model_id === id);
+        if (i > 0) active.unshift(...active.splice(i, 1));
+      }
+    }
+  } catch { /* registry order it is */ }
+  return active;
 }
 
 // All active models — the critic is set via API (not the UI picker), so it only
