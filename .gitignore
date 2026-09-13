@@ -221,7 +221,7 @@ frontend-v2/node_modules/
 
 services/api-gateway-bff/node_modules/
 
-frontend/package-lock.json
+# frontend/package-lock.json  # TRACKED since 2026-09-13 -- the image is built from it (#254)
 frontend-v2/package-lock.json
 
 # pnpm workspace (game subtree) — root + packages + future frontend-game
