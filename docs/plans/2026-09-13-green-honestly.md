@@ -166,9 +166,11 @@ real and only the PO can resolve it.
   One long-lived session currently carries earlier runs' unanswered Tier-A consent gates. Decide
   deliberately whether the test answers consent or avoids provoking it.
 
+- [ ] **F10** — `propose_cast` is never given the cast the spec already holds. Found closing F8. *(1 test, the pass-rail journey's approve step)*
+
 - [x] **F9** — **DONE (Cycle 25).** The distiller never asked the model to stop thinking. *(1 test, D12)*
 
-- [x] **F8** — **DIAGNOSED, NOT FIXED (Cycle 23).** `plan-forge-pass-rail` proposes 0 arcs because the
+- [x] **F8** — **FIXED and RE-BROKEN (Cycle 30).** Was: DIAGNOSED, NOT FIXED (Cycle 23). `plan-forge-pass-rail` proposes 0 arcs because the
   LLM job is `truncated`. Converges with `assistant-endofday` and K2 on one cause. *(1 test)*
 
 - [x] **H4** — **DONE (Cycle 21).** #269's test destroyed the state it asserted, in its own first line.
@@ -1512,11 +1514,51 @@ isolated re-run:  4 passed, 1 failed (F8 only)
 **AC impact:** AC-5 — newly red tests explained test by test; neither traces to a change in this plan. AC-1 — both carry a recorded reason and a trace rather than a "flaky" label.
 
 
+### Cycle 30 — the model never closed a string, and a schema bound was measured before it went in (F8)
+
+**Investigated:** the truncated `analyze` results in `llm_jobs`; the captured outbound request (logging proxy on the throwaway stack, provider endpoint restored after); direct LM Studio replays; `frequency_penalty` measured on its own; `maxLength` enforcement measured on its own; `plan_forge/schemas.py` and the `maxItems` episode it documents; token and field lengths of every successful `analyze` output.
+
+**Issues:** none filed — fixed in this row. One defect found beside it becomes F10.
+
+**Fix:** Cycle 23 called F8 "genuine verbosity" and left it. That was wrong. Successful `analyze` runs use 1,295–3,022 tokens; every failure hit the 12,000 cap. That is a runaway, not verbosity. The truncated output shows the shape: the model never closes a JSON string. An arc's `theme` keeps reading the author's document ("- Arc II…", "## 3. Cast") and then loops the arc list. In 21 of 32 themes from *successful* runs the same bleed was present, just shorter.
+
+Ruled out, each measured: the gateway (outbound body byte-identical to a direct replay); `frequency_penalty` being ignored (it is honoured: 400 apples → 9); the prompt being bad (the same request ran clean when the prompt cache had been evicted). What held: `maxLength` is enforced by LM Studio's grammar (unbounded string → truncated and unparseable; `maxLength: 40` → parsed, `stop`).
+
+`schemas.py` records an earlier `maxItems` change that four uncontrolled runs blamed wrongly, and asks for controlled measurement. So this went in on a controlled A/B only: the captured production request, arms interleaved, prompt cache evicted before every call.
+
+`ANALYZE_SCHEMA` now bounds every free-text string with the exact caps of the winning arm (product schema asserted equal to it). It is scoped to ANALYZE on a copy, because SPEC shares item objects whose fields were never measured.
+
+**A bug caught before it shipped:** `copy.deepcopy` keeps shared references, and `_STR` is one dict used by every field, so every cap came out as 300. A JSON round-trip reproduces the measured request exactly. A unit test pins it and was bitten.
+
+**A second rebuild trap:** the first E2E after the fix still truncated, and the job's input carried **no** `maxLength`. Plan jobs run in `lw-iso-composition-worker-1`, a separate image from the same Dockerfile, 15 hours old. Rule 4 means every image that runs the code.
+
+**Proof:**
+
+```
+controlled A/B, analyze, captured production request, cache evicted per call:
+  current schema          2/14 parsed   12 truncated at 12000
+  theme maxLength         12/14 parsed
+  all strings bounded      8/8 parsed    extraction identical in every parsed run: 3 arcs 3 events 3 chars
+
+unit: tests/unit/test_analyze_strings_are_bounded.py  5 passed
+  bite (deepcopy instead of JSON round-trip): assert 300 == 80 · shared object  -> 2 failed
+
+E2E, composition-worker rebuilt:
+  plan-forge-pass-rail            2 passed (57.0s)    analyze|stop|1625|maxLength=t
+BITE — unbound ANALYZE_SCHEMA, rebuild worker:
+  Expected: >= 1  Received: 0     analyze|length|12941|maxLength=f
+RESTORED byte-exact + rebuilt:
+  analyze|stop|1295|t · analyze|stop|1600|t   (arcs produced; the journey now fails LATER, at approve — F10)
+```
+
+**AC impact:** AC-2 — bitten both ways through a rebuilt worker. AC-1 — F8's own failure (0 arcs, truncated) is gone; the test's remaining red belongs to F10.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
 lanes: |
-  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9
+  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9, F10
   G diagnose = G1, G2
   J fixture  = J1, J2, J3
   H decide   = H1, H2, H3, H4
