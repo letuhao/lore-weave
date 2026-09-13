@@ -1306,6 +1306,34 @@ spec result:
 **AC impact:** AC-1 — F8 carries a diagnosed reason with the product's own error string and a counter-example run, not a "flaky" label. AC-5 — it is a known, explained red rather than a newly discovered one.
 
 
+### Cycle 24 — B4.1 joins them, and my earlier recommendation was wrong (D13)
+
+**Investigated:** `specs/composition-engine.spec.ts:16-38`; `CompositionPanel.tsx:317-325` (the model cascade); the live registry for the account under test.
+
+**Issues:** none — no product defect, and no test defect either.
+
+**Fix:** none, and **I am withdrawing the fix I recommended.** Cycle 12 proposed re-aiming this test on the grounds that it asserts a state the cascade exists to prevent — *"with exactly one registered model it is auto-picked, so 'no model picked' cannot occur"* — and called the assertion unreachable.
+
+It is not unreachable. It is unreachable **on an account with exactly one model**. Add a second and the cascade has nothing to auto-pick, the `needModel` hint renders, and the test asserts precisely what it says it does. Re-aiming it would have weakened a correct test to fit a temporary environment — the exact failure mode this plan's note warns about, and I nearly did it.
+
+So D13 is not a decision about a test. It is the same decision as F8, K2 and `assistant-endofday`: **whether a second, small, non-reasoning model exists on this account.** Four items, one answer.
+
+**Proof:**
+
+```
+B4.1, current:
+  Error: expect(locator).toBeVisible() failed   [composition-need-model]
+  Expected: visible
+  Error: element(s) not found
+  1 failed | 2 passed (22.7s)
+
+cause: CompositionPanel.tsx:325 — "... > the sole-registered model auto-pick"
+       one model registered  ->  auto-picked  ->  the "pick a model" hint never renders
+```
+
+**AC impact:** AC-3 — a correct test was NOT weakened; the earlier recommendation to re-aim it is withdrawn with the reason. AC-6 — D13 collapses into the single model decision rather than standing as its own.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
