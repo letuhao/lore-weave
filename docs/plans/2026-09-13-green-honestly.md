@@ -1473,6 +1473,45 @@ RESTORED: all eight order-dependent specs  13 passed (1.9m)
 **AC impact:** AC-5 — the newly red test was caught, explained and closed rather than reported as a pass. AC-2 — bitten both ways.
 
 
+### Cycle 29 — the final run, and two reds that are not the code's (Z2)
+
+**Investigated:** the full run's Allure results by content (now actually emitted — see below); nginx access logs for `lw-iso-frontend-1` across 21:35–21:40Z; container restart/OOM state and docker events; the Playwright trace attached to the failed result (network, screencast, errors); both specs re-run in isolation.
+
+**Issues:** none filed — undiagnosed WITH a reason and a trace, which Rule 5 allows. No product or test defect found.
+
+**Fix:** none, deliberately. Raising the `page.goto` timeout would close the row by weakening the test, which Rule 3 forbids.
+
+The previous full run emitted no Allure results at all. Cause: it passed `--reporter=line` on the CLI, and a CLI reporter **replaces** the configured ones. This run used the configured reporters, and the `resultsDir` fix from earlier work — measured but never committed — is now committed.
+
+Result: **196 passed, 4 failed, 0 skipped.** Two failures are known (K2 first-execution findings; F8 truncation). Two are new, and both are the same event: `page.goto /login` timing out at 15s, back-to-back in one ~35s window (21:38:32–21:39:08Z) that begins the instant a ~190s local-LLM plan generation stopped polling.
+
+What the evidence rules out and what it does not:
+
+- **Not the network.** nginx logged `/login` and the entire bundle as 200 in the same second; the trace shows every resource finished in ≤193 ms with nothing pending.
+- **Not the container.** `restarts=0 oom=false`; no docker events in the window.
+- **Not the code.** Both specs pass re-run in isolation (4 passed), and the same bundle loads in ~190 other tests in the same run.
+- **The renderer stopped producing frames:** one screencast frame in 15 s, and none of the follow-on fetches a healthy boot makes within a second (`vitesse-*.js`, `/sw.js`, manifest).
+
+That pattern fits host starvation — headless Chromium sharing the machine with local inference — but I could not sample host load retroactively, so it stays a hypothesis. The next run should record CPU and GPU load alongside the suite, which would settle it.
+
+**Proof:**
+
+```
+allure-report by content: 200 results {'passed': 196, 'failed': 4}  skipped: 0
+known:  composition-generate (K2 findings) · plan-forge-pass-rail full journey (F8, "Received: 0")
+new:    plan-forge-grounding affirmation · plan-forge-pass-rail reachability
+        TimeoutError: page.goto: Timeout 15000ms exceeded — navigating to ".../login"
+
+nginx, 21:38:32Z: GET /login 200 + 7 assets 200, then nothing until 21:38:46 DELETE /v1/books
+trace network:    login 12ms, index-C24ky7Am.js 193ms (the slowest); 0 pending
+trace screencast: 1 frame in 15s
+container:        restarts=0 oom=false
+isolated re-run:  4 passed, 1 failed (F8 only)
+```
+
+**AC impact:** AC-5 — newly red tests explained test by test; neither traces to a change in this plan. AC-1 — both carry a recorded reason and a trace rather than a "flaky" label.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
