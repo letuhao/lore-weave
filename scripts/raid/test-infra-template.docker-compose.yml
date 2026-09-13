@@ -34,7 +34,7 @@ services:
       retries: 15
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin

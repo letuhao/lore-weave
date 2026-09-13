@@ -70,7 +70,7 @@ services:
       - foundation-redis-data:/data
 
   minio-foundation:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z
     container_name: foundation-dev-minio
     environment:
       MINIO_ROOT_USER: foundation

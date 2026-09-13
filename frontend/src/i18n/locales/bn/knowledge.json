@@ -247,12 +247,12 @@
     "card": {
       "sourcePrefix": "উৎস",
       "chapterLabel": "অধ্যায় {{index}}",
+      "chunkLabel": "Chunk {{index}}",
       "matchLabel": "ম্যাচ স্কোর",
       "openLabel": "{{score}} ম্যাচসহ {{sourceType}} ড্রয়ার ওপেন করুন",
       "hubBadge": "সারসংক্ষেপ",
       "hubHint": "এই চাঙ্কটি একটি সারসংক্ষেপ বা দীর্ঘ বায়ো অংশ; র‍্যাঙ্কিংয়ে এর গুরুত্ব কম হতে পারে তবে এটি সামনে আসতে পারে।",
-      "langHint": "উৎস ভাষা: {{lang}}",
-      "chunkLabel": "Chunk {{index}}"
+      "langHint": "উৎস ভাষা: {{lang}}"
     },
     "coverage": {
       "partial": "{{total}}টির মধ্যে {{count}}টি ফলাফল আপনার ভাষায় ({{lang}}); বাকিগুলো মূল ভাষায় দেখানো হচ্ছে।",
@@ -308,26 +308,26 @@
       "pivotal": "গুরুত্বপূর্ণ"
     },
     "row": {
-      "noOrder": "—",
-      "chapterUnresolved": "অধ্যায় আইডি {{id}} — শিরোনাম অমীমাংসিত",
-      "timeLabel": "গল্পের সময়কাল",
       "orderLabel": "আখ্যানের ক্রম",
+      "noOrder": "—",
       "chapterLabel": "অধ্যায়",
+      "chapterUnresolved": "অধ্যায় আইডি {{id}} — শিরোনাম অমীমাংসিত",
       "participantsMore": "+{{count}} জন আরও",
-      "confidenceLabel": "নির্ভরযোগ্যতা"
+      "confidenceLabel": "নির্ভরযোগ্যতা",
+      "timeLabel": "গল্পের সময়কাল"
     },
     "detail": {
-      "noSummary": "কোনো সারাংশ পাওয়া যায়নি।",
       "summary": "সারসংক্ষেপ",
+      "noSummary": "কোনো সারাংশ পাওয়া যায়নি।",
       "participants": "অংশগ্রহণকারী",
       "sources": "উৎস"
     },
     "pagination": {
-      "backToFirst": "প্রথম পৃষ্ঠায় ফিরে যান",
       "range": "{{total}}টির মধ্যে {{from}}–{{to}}",
       "refreshing": "রिफ্রেস করা হচ্ছে…",
       "prev": "আগের",
       "next": "পরের",
+      "backToFirst": "প্রথম পৃষ্ঠায় ফিরে যান",
       "pageSize": "প্রতি পৃষ্ঠায়"
     },
     "localization": {
@@ -340,63 +340,102 @@
     }
   },
   "entities": {
+    "loading": "এনটিটিগুলো লোড হচ্ছে…",
     "loadFailed": "এনটিটি লোড করা সম্ভব হয়নি: {{error}}",
     "empty": "এখনো কোনো এনটিটি নিষ্কাশন করা হয়নি — এক্সট্রাকশন পাইপলাইন চলাকালীন এগুলো এখানে প্রদর্শিত হবে।",
     "emptyForFilters": "এই ফিল্টারগুলোর সাথে মিলে এমন কোনো এনটিটি নেই।",
     "filters": {
-      "searchPlaceholder": "নাম বা ছদ্মনাম (ন্যূনতম ২টি অক্ষর)",
-      "semanticPlaceholder": "আপনি কী খুঁজছেন তা বর্ণনা করুন (ভেক্টর সার্চ)",
       "project": "প্রকল্প",
       "kind": "ধরণ",
       "status": "অবস্থা",
       "search": "খুঁজুন",
+      "searchPlaceholder": "নাম বা ছদ্মনাম (ন্যূনতম ২টি অক্ষর)",
       "semantic": "সিম্যান্টিক সার্চ",
+      "semanticPlaceholder": "আপনি কী খুঁজছেন তা বর্ণনা করুন (ভেক্টর সার্চ)",
       "anyProject": "যেকোনো প্রকল্প",
       "anyKind": "যেকোনো ধরণ",
       "anyStatus": "যেকোনো স্ট্যাটাস"
     },
+    "status": {
+      "canonical": "ক্যানোনিকাল",
+      "discovered": "আবিষ্কৃত",
+      "archived": "আর্কাইভ করা"
+    },
     "legend": {
+      "title": "স্ট্যাটাস",
       "canonical": "আপনার গ্লসারি-তে",
       "discovered": "পাওয়া গেছে, এখনও প্রমোটেড করা হয়নি",
-      "archived": "অনুসন্ধান থেকে লুকানো",
-      "title": "স্ট্যাটাস"
+      "archived": "অনুসন্ধান থেকে লুকানো"
     },
     "anchor": {
       "badge": "⚓ {{pct}}",
       "tooltip": "অ্যাঙ্কর স্কোর {{pct}}% — এই সত্তাটি কতটা সুদৃঢ়ভাবে প্রতিষ্ঠিত"
     },
+    "table": {
+      "ariaLabel": "এনটিটিসমূহ",
+      "global": "গ্লোবাল",
+      "col": {
+        "name": "নাম",
+        "kind": "ধরণ",
+        "project": "প্রজেক্ট",
+        "mentions": "উল্লেখ",
+        "confidence": "নিশ্চয়তা",
+        "updated": "আপডেট করা হয়েছে"
+      }
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} এর মধ্যে {{total}}",
+      "refreshing": "রিফ্রেশ করা হচ্ছে…",
+      "prev": "আগের",
+      "next": "পরের"
+    },
     "detail": {
+      "loading": "এনটিটি লোড করা হচ্ছে…",
       "loadFailed": "সত্তাটি লোড করা সম্ভব হয়নি: {{error}}",
+      "close": "বন্ধ করুন",
+      "edit": "সম্পাদনা করুন",
       "merge": "অন্য একটি সত্তার সাথে মার্জ করুন",
+      "metadata": "মেটাডেটা",
+      "description": "বিবরণ",
       "descriptionSource": "লিঙ্ক করা গ্লসারি এন্ট্রি থেকে",
+      "aliases": "উপনামসমূহ",
+      "relations": "সম্পর্কসমূহ ({{count}})",
       "truncated": "{{total}}টির মধ্যে {{shown}}টি দেখানো হচ্ছে — টেবিল থেকে ফিল্টার বা সার্চ করুন",
       "noRelations": "এখনো কোনো সম্পর্ক নেই — এক্সট্রাকশন রান সম্পন্ন হলে আরও দেখা যাবে।",
       "relationArrow": "→",
+      "pendingBadge": "অপেক্ষমান",
       "pendingValidation": "পাস-১ কোয়ারেন্টাইন — LLM যাচাইকরণের অপেক্ষায়",
       "unlock": "আনলক করুন (পুনরায় এক্সট্রাকশন সক্ষম করুন)",
       "unlockHint": "এই সত্তাটি ব্যবহারকারী দ্বারা সম্পাদিত। আপনি আনলক না করা পর্যন্ত এক্সট্রাকশনগুলো মুছে ফেলা ছদ্মনামগুলো (aliases) পুনরায় যুক্ত করবে না।",
       "unlockConfirm": "এই সত্তাটি কি আনলক করবেন? ভবিষ্যতের এক্সট্রাকশনগুলো পুনরায় ছদ্মনাম যোগ করতে পারবে।",
+      "unlockSuccess": "আনলক করা হয়েছে।",
+      "unlockFailed": "আনলক করা সম্ভব হয়নি: {{error}}",
       "field": {
-        "scope": "পরিধি",
         "project": "প্রকল্প",
         "global": "গ্লোবাল",
         "confidence": "আত্মবিশ্বাস",
         "mentions": "উল্লেখ",
-        "anchor": "অ্যাঙ্কর স্কোর"
+        "anchor": "অ্যাঙ্কর স্কোর",
+        "scope": "পরিধি"
       },
       "promote": "গ্লসারিতে উন্নীত করুন",
       "promoteHint": "এনটিটিটি শনাক্ত করা হয়েছে। পর্যালোচনার জন্য একটি AI-প্রস্তাবিত গ্লসারি ড্রাফট তৈরি করতে এটিকে প্রোমোট করুন।",
+      "promotePending": "প্রমোশন চলছে…",
       "promoteSuccess": "প্রোমোট করা হয়েছে — পর্যালোচনার জন্য একটি গ্লসারি ড্রাফট তৈরি করা হয়েছে।",
+      "promoteFailed": "প্রমোশন করা সম্ভব হয়নি: {{error}}",
       "unpin": "কনটেক্সট পিন থেকে সরান",
       "unpinHint": "এই এনটিটিটি এক্সট্রাকশন কনটেক্সটে পিন করা আছে।",
       "unpinSuccess": "কনটেক্সট থেকে আনপিন করা হয়েছে।",
+      "unpinFailed": "আনপিন করা সম্ভব হয়নি: {{error}}",
+      "facts": "জানা তথ্য ({{count}})",
+      "factSource": "অধ্যায় {{chapter}}",
       "factType": {
+        "decision": "সিদ্ধান্ত",
         "preference": "Preference",
         "milestone": "Milestone",
         "negation": "Negation",
         "statement": "বিবৃতি",
-        "commitment": "অঙ্গীকার",
-        "decision": "সিদ্ধান্ত"
+        "commitment": "অঙ্গীকার"
       },
       "addFact": "তথ্য যোগ করুন",
       "addFactTitle": "এই সত্তা সম্পর্কে একটি তথ্য যোগ করুন",
@@ -420,21 +459,6 @@
       "replaceFactSuccess": "তথ্যটি পরিবর্তন করা হয়েছে",
       "markWrongUndo": "পূর্বাবস্থায় ফিরুন",
       "markWrongUndoFailed": "পূর্বাবস্থায় ফিরতে ব্যর্থ হয়েছে: {{error}}",
-      "loading": "এনটিটি লোড করা হচ্ছে…",
-      "close": "বন্ধ করুন",
-      "edit": "সম্পাদনা করুন",
-      "metadata": "মেটাডেটা",
-      "description": "বিবরণ",
-      "aliases": "উপনামসমূহ",
-      "relations": "সম্পর্কসমূহ ({{count}})",
-      "pendingBadge": "অপেক্ষমান",
-      "unlockSuccess": "আনলক করা হয়েছে।",
-      "unlockFailed": "আনলক করা সম্ভব হয়নি: {{error}}",
-      "promotePending": "প্রমোশন চলছে…",
-      "promoteFailed": "প্রমোশন করা সম্ভব হয়নি: {{error}}",
-      "unpinFailed": "আনপিন করা সম্ভব হয়নি: {{error}}",
-      "facts": "জানা তথ্য ({{count}})",
-      "factSource": "অধ্যায় {{chapter}}",
       "tabs": {
         "current": "বর্তমান",
         "temporal": "কালানুক্রমিক"
@@ -497,14 +521,14 @@
       "discoveredHint": "নতুন এনটিটিগুলো প্রথমে 'আবিষ্কৃত' (discovered) হিসেবে শুরু হয়। গ্লসারি বা শব্দকোষের সাথে যুক্ত করার মাধ্যমে এটি 'ক্যানোনিকাল' (canonical) মর্যাদা পায়।"
     },
     "kind": {
+      "unknown": "অজানা ধরন",
+      "person": "ব্যক্তি",
+      "artifact": "আর্টিফ্যাক্ট",
       "character": "চরিত্র",
       "location": "স্থান",
       "organization": "সংস্থা",
       "concept": "ধারণা",
       "item": "জিনিস",
-      "unknown": "অজানা ধরন",
-      "person": "ব্যক্তি",
-      "artifact": "আর্টিফ্যাক্ট",
       "event_ref": "ঘটনা",
       "preference": "পছন্দ",
       "event": "ঘটনা",
@@ -534,30 +558,6 @@
     "restore": {
       "success": "এনটিটিটি পুনরুদ্ধার করা হয়েছে।",
       "failed": "পুনরুদ্ধার করা সম্ভব হয়নি — {{error}}"
-    },
-    "loading": "এনটিটিগুলো লোড হচ্ছে…",
-    "status": {
-      "canonical": "ক্যানোনিকাল",
-      "discovered": "আবিষ্কৃত",
-      "archived": "আর্কাইভ করা"
-    },
-    "table": {
-      "ariaLabel": "এনটিটিসমূহ",
-      "global": "গ্লোবাল",
-      "col": {
-        "name": "নাম",
-        "kind": "ধরণ",
-        "project": "প্রজেক্ট",
-        "mentions": "উল্লেখ",
-        "confidence": "নিশ্চয়তা",
-        "updated": "আপডেট করা হয়েছে"
-      }
-    },
-    "pagination": {
-      "range": "{{from}}–{{to}} এর মধ্যে {{total}}",
-      "refreshing": "রিফ্রেশ করা হচ্ছে…",
-      "prev": "আগের",
-      "next": "পরের"
     }
   },
   "jobs": {
@@ -671,12 +671,12 @@
       "loadingMore": "লোড হচ্ছে…",
       "stateFilter": {
         "all": "সবগুলো",
+        "disabled": "স্থির মেমরি",
         "building": "নির্মাণাধীন",
         "paused": "স্থগিত",
         "ready": "প্রস্তুত",
         "failed": "ব্যর্থ",
-        "archived": "আর্কাইভ করা",
-        "disabled": "স্থির মেমরি"
+        "archived": "আর্কাইভ করা"
       },
       "sortOption": {
         "recent": "সম্প্রতি আপডেট করা",
@@ -689,14 +689,14 @@
       "searchNoResults": "“{{q}}” এর সাথে মিলে যায় এমন কোনো প্রজেক্ট পাওয়া যায়নি। সার্চ করার সময় প্রজেক্টের নাম বিবেচনা করা হয়, যা প্রজেক্ট তৈরির সময় নির্ধারিত হয় এবং বইয়ের নাম পরিবর্তন করলেও তা পরিবর্তন হয় না — তখন বইটির যে নাম ছিল সেটি দিয়ে চেষ্টা করুন, অথবা সব প্রজেক্ট দেখতে সার্চটি মুছে ফেলুন।"
     },
     "card": {
+      "staticMemory": "স্থির মেমরি",
+      "archivedBadge": "আর্কাইভ করা",
       "open": "খুলুন",
       "edit": "এডিট",
       "archive": "আর্কাইভ",
       "restore": "রিস্টোর",
       "delete": "ডিলিট",
       "tuneExtraction": "Extraction টিউন করুন",
-      "staticMemory": "স্থির মেমরি",
-      "archivedBadge": "আর্কাইভ করা",
       "bookId": "বই আইডি"
     },
     "form": {
@@ -733,7 +733,6 @@
         "errorProviderFlake": "এমবেডিং প্রোভাইডার চলাকালীন ত্রুটি হয়েছে। দয়া করে আবার চেষ্টা করুন।",
         "errorGeneric": "বেঞ্চমার্ক ব্যর্থ হয়েছে: {{message}}"
       },
-      "bookIdPlaceholder": "uuid",
       "benchmarkNoRun": "⋯ এখনও কোনো বেঞ্চমার্ক নেই — এক্সট্রাকশন সক্ষম করতে গোল্ডেন-সেট বেঞ্চমার্কটি চালান।",
       "bookIdLocked": "এই বইটি (লক করা)",
       "canonCapture": "চ্যাট থেকে নতুন নাম স্বয়ংক্রিয়ভাবে ক্যাপচার করুন",
@@ -758,7 +757,8 @@
       "benchmarkFailed": "✗ বেঞ্চমার্ক সফল হয়নি (recall@3 {{recall}}) — এই মডেলটি এক্সট্রাকশনের ক্ষেত্রে মানদণ্ডের নিচে স্কোর করেছে; অন্য একটি এমবেডিং মডেল চেষ্টা করুন।",
       "benchmarkInconclusive": "⋯ বেঞ্চমার্ক অস্পষ্ট (recall@3 {{recall}}) — এই মডেলটি যাচাই করতে ≥৩ বার সফল হওয়া প্রয়োজন। পুনরায় চালান।",
       "benchmarkPassed": "✓ বেঞ্চমার্ক সফল হয়েছে (recall@3 {{recall}})।",
-      "genreError": "জঁরা (Genre) অবশ্যই সর্বোচ্চ {{max}} অক্ষরের হতে হবে।"
+      "genreError": "জঁরা (Genre) অবশ্যই সর্বোচ্চ {{max}} অক্ষরের হতে হবে।",
+      "bookIdPlaceholder": "uuid"
     },
     "archiveDialog": {
       "title": "প্রজেক্ট আর্কাইভ করবেন?",

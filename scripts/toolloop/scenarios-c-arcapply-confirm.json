@@ -53,9 +53,9 @@
         },
         {
           "db": "loreweave_composition",
-          "query": "SELECT count(*)::text FROM arc_template WHERE code='loop-arc-{run_id}'",
+          "query": "SELECT count(*)::text FROM arc_template WHERE code='loop-arc-{run_id}' AND status='active'",
           "expect": "1",
-          "why": "The template this run's prompt NAMES must exist, or the run measures the same unanswerable question p4-confirm already measured. Keyed on the run's own nonce, so it cannot pass on one of the 31 pre-existing account templates."
+          "why": "The template this run's prompt NAMES must exist, or the run measures the same unanswerable question p4-confirm already measured. Keyed on the run's own nonce, so it cannot pass on one of the 31 pre-existing account templates. || LIFECYCLE PREDICATE (2026-09-13, T17/#256): `status='active'` is not decoration -- it is the predicate the TOOL reads under. motif_repo.get_by_codes is `WHERE code = ANY($2) AND status = 'active' AND <visible>`, and arc_template's read paths default `status='active'`. Without it this assertion counts rows the tool is structurally unable to see, which is the exact 2026-08-23 failure this family of bugs is named after: the fixture counted ARCHIVED motifs and passed while the tool could not resolve them, costing fifteen runs and thirteen refuted hypotheses. This database currently holds 27 archived arc_template rows and 162 archived motif rows, so the hazard is present, not theoretical. Narrowed to what the tool sees -- NOT relaxed."
         }
       ],
       "falsifier": "REFUTED IF: the confirmation turn reaches composition_arc_apply and applies the template — that would mean a bare affirmative does NOT lose the tool, and the re-attribution this scenario exists to test is wrong.\n\n🔴 THE POINT IS THE WIRE LOG, NOT THE OUTCOME. The row's open question is whether the tool was ABSENT from the surface on the confirmation turn (a SURFACE property) or present and not chosen (a MODEL property). Either result is informative; what was missing in August was the record that distinguishes them. A 0/5 with the tool ON the wire refutes the re-attribution; a 0/5 with it absent supports it.",

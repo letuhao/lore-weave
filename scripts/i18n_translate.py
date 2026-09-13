@@ -332,6 +332,30 @@ SYSTEM = (
     "'Parts' is a top-level book DIVISION that groups chapters (zh 部 / ja パート / ko 부) — NEVER render it "
     "as a chapter (章 / 章节 / チャプター) or a dramatic 'act' (幕); an 'Arc' is a narrative planning unit "
     "distinct from a Part; a 'Chapter' is 章 / 章 / 장; a 'Scene' is 场景 / シーン / 장면. "
+    # A 'Campaign' is the SAME defect shape as 'Part', measured 2026-09-13: zh-CN rendered it
+    # three different ways across 16 strings -- 任务 x11 (task), 战役 x3 (a MILITARY battle) and
+    # 活动 x2 (activity) -- with the military word on the three most visible surfaces (the
+    # sidebar, the page heading, the wizard heading) while the body text underneath said
+    # "task". zh-TW was internally consistent on 活動 but disagreed with all of them.
+    "A 'Campaign' here is a BATCH JOB that runs a pipeline (knowledge extraction, "
+    "translation, evaluation) across a book's chapters under a budget ceiling -- use the "
+    "target language's word for a scheduled batch job or task run, NEVER a military "
+    "campaign/battle (战役 / 戰役 / 戦役) and never a marketing or social 'activity/event' "
+    "(活动 / 活動). Use ONE word for it consistently across every string. "
+    # 🔴 THIS ENTRY IS NOT FINISHED, and the missing half is measured rather than guessed.
+    # Run 2026-09-13: with the concept description above, `--ns campaigns --force` made zh-CN
+    # internally CONSISTENT (任务 x13, the military word gone) and made zh-TW agree with it
+    # (任務 x13) -- within a namespace it works. But `campaigns.list.title` and
+    # `common.nav.campaigns` live in DIFFERENT namespaces, so they are separate model calls
+    # with no shared memory, and the two came back as 任务列表 vs 任务批处理. `campaign-naming
+    # -gate.py` went RED on TWELVE locales for exactly that -- heading disagreeing with the
+    # nav item that opened it. The run was reverted byte-exact.
+    #
+    # "Use ONE word" cannot be obeyed across calls. The fix is the one the 'Part' entry above
+    # already uses: PIN THE ACTUAL TARGET WORD per language (zh 部 / ja パート / ko 부). That is
+    # a native-language judgement per locale, it is tracked as T9 on the ship plan, and until
+    # those words are chosen a regeneration of `campaigns` or `common` will fail the naming
+    # gate. The gate catching it is the system working; do not silence it.
     "Rules: keep every JSON key byte-identical; preserve every {{placeholder}}, $t(...) "
     "reference, and <html/tag> EXACTLY as-is; keep brand/proper names and short technical "
     "tokens (API, URL, ID, PDF) untranslated; produce idiomatic, natural phrasing. "

@@ -59,9 +59,9 @@
         },
         {
           "db": "loreweave_composition",
-          "query": "SELECT jsonb_array_length(beats)::text FROM motif WHERE code='emberfall-vein-b27-{run_id}'",
+          "query": "SELECT jsonb_array_length(beats)::text FROM motif WHERE code='emberfall-vein-b27-{run_id}' AND status='active'",
           "expect": "2",
-          "why": "🔴 THE MOTIF MUST HAVE BEATS OR THE BIND IS A NO-OP. Measured 2026-08-23: with an outline node present the bind SUCCEEDED — 'success: true' — and instantiated nothing, new_scene_ids: []. The tool 'instantiates the motif's BEATS as scene nodes', and a motif created with only code/name/kind has none. Two successful calls that both write nothing look strictly idempotent and prove nothing, which is exactly what idempotency_probe's own guard says."
+          "why": "🔴 THE MOTIF MUST HAVE BEATS OR THE BIND IS A NO-OP. Measured 2026-08-23: with an outline node present the bind SUCCEEDED — 'success: true' — and instantiated nothing, new_scene_ids: []. The tool 'instantiates the motif's BEATS as scene nodes', and a motif created with only code/name/kind has none. Two successful calls that both write nothing look strictly idempotent and prove nothing, which is exactly what idempotency_probe's own guard says. || LIFECYCLE PREDICATE (2026-09-13, T17/#256): `status='active'` is not decoration -- it is the predicate the TOOL reads under. motif_repo.get_by_codes is `WHERE code = ANY($2) AND status = 'active' AND <visible>`, and arc_template's read paths default `status='active'`. Without it this assertion counts rows the tool is structurally unable to see, which is the exact 2026-08-23 failure this family of bugs is named after: the fixture counted ARCHIVED motifs and passed while the tool could not resolve them, costing fifteen runs and thirteen refuted hypotheses. This database currently holds 27 archived arc_template rows and 162 archived motif rows, so the hazard is present, not theoretical. Narrowed to what the tool sees -- NOT relaxed."
         }
       ],
       "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run ending with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — re-run it, never read it as 0/5.",

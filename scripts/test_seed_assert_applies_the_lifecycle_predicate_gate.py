@@ -68,7 +68,13 @@ def main() -> int:
     if not life:
         print("SKIPPED — could not read the schemas (is infra-postgres-1 up?). A probe that")
         print("cannot see the thing must not report a pass, so this is a skip, not a green.")
-        return 0
+        # 🔴 EXIT 3, NOT 0. The two lines above have been correct since this was written, and
+        # they were not enough: `gate-wiring-gate` reads the exit code, so a run that said "this
+        # is a skip, not a green" was tallied as GREEN — CI recorded it `GREEN (0.2s)` on
+        # 2026-09-13 while it could see nothing, and a 150-row sweep is read by its tally, not
+        # by its prose. 3 is the runner's SKIP code (gate-wiring-gate.GATE_SKIP_RC); it prints
+        # the reason and counts the gate as unanswered rather than passed. #256.
+        return 3
 
     acct, book = [], []
     for f in sorted(glob.glob("scripts/toolloop/scenarios-*.json")):

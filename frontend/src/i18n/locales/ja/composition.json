@@ -75,13 +75,13 @@
     "discard": "破棄",
     "stop": "停止",
     "stale": "選択範囲が変わりました — もう一度お試しください。",
-    "scenePlan": "Suggest scenes",
-    "scenePlanOnly": "This selection is available for scene suggestions only.",
-    "scenePlanInvalid": "The model did not return valid scene proposals. Try again.",
-    "scenePlanNeedsOutline": "This chapter has no outline yet. Create or extract its plan first.",
-    "scenePlanCreateFailed": "Could not create scene proposals.",
-    "createScenes": "Create selected scenes",
-    "applying": "Creating…"
+    "applying": "Creating…",
+    "scenePlan": "シーンを提案",
+    "scenePlanOnly": "この選択肢はシーンの提案にのみ利用可能です。",
+    "scenePlanInvalid": "モデルから有効なシーンの提案が返されませんでした。もう一度お試しください。",
+    "scenePlanNeedsOutline": "この章にはまだアウトラインがありません。先にアウトラインを作成するか、抽出してください。",
+    "scenePlanCreateFailed": "シーンの提案を作成できませんでした。",
+    "createScenes": "選択したシーンを作成"
   },
   "inline": {
     "mode": "執筆モード",
@@ -746,9 +746,9 @@
     "empty": {
       "title": "モチーフライブラリの準備ができました",
       "body": "モチーフは再利用可能なプロットの型です。プランナーは1章につき1つのモチーフを選択するため、簡単な構成でも堅実なシーンを描くことができます。12個のスターターモチーフが用意されています — tu-tiên と báo-thù。",
+      "notThemes": "これはプランナー向けの構造的なプロット型であり、あなたの物語に繰り返し現れるイメージやテーマを追跡するものではありません。章をまたいで象徴を追う機能はここにはありません。",
       "browseSystem": "12個のスターターを閲覧する",
-      "hint": "トークンは不要です。手動でのモチーフ作成は無料です。",
-      "notThemes": "これはプランナー向けの構造的なプロット型であり、あなたの物語に繰り返し現れるイメージやテーマを追跡するものではありません。章をまたいで象徴を追う機能はここにはありません。"
+      "hint": "トークンは不要です。手動でのモチーフ作成は無料です。"
     },
     "facet": {
       "tier": "ティア",
@@ -1378,12 +1378,12 @@
   "canonUncheckedWhich": "{{count}} 件の確認が完了していません",
   "structureTemplates": {
     "templates": {
-      "save_the_cat": "Save the Cat",
       "hero_journey": "ヒーローズ・ジャーニー",
       "story_circle": "ストーリー・サークル",
       "kishotenketsu": "起承転結",
       "web_novel": "ウェブ小説アーク",
-      "generic": "三幕構成（汎用）"
+      "generic": "三幕構成（汎用）",
+      "save_the_cat": "Save the Cat"
     },
     "beats": {
       "save_the_cat": {
@@ -1613,8 +1613,8 @@
     "noProseTitle": "未執筆",
     "noSource": "このブランチには、比較対象となる解決済みのソースがありません。",
     "scenes": "{{n}} 件の分岐",
-    "todo": "todo",
-    "untitledScene": "シーン"
+    "untitledScene": "シーン",
+    "todo": "todo"
   },
   "canonBrokenBadge": "{{n}} 件の不整合 →",
   "canonConflictDiscard": "自分の変更を破棄",

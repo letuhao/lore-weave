@@ -1,5 +1,6 @@
 # Implementation Plan: Human-sim book-writing run — "Vạn Tượng Quy Nhất" (5 acts) + feedback
 
+Reconciles: Non-Vacuity · MCP Tool I/O Standard · Settings & Configuration Boundary · Multilingual / Anti-Language-Bias — the raw run log for the report beside it. It adds no rule; it is the evidence those rows are measured against, recorded as it happened.
 Created: 2026-09-06
 
 ## Original Request
