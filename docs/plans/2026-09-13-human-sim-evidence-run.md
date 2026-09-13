@@ -49,13 +49,13 @@ v0.1.0 work: a claim nobody can check.
 
 | AC | Must be true | Verified by | Rows | Status |
 |---|---|---|---|---|
-| **AC-1** | Every test that runs leaves a watchable artefact — video, or a screenshot per step | the artefact directory, counted against the number of tests that ran | R1, R2 | 🚧 partial — R1 done: 1 artefact → 4 on the same passing test. R2 (the check that a run captured anything) is open |
+| **AC-1** | Every test that runs leaves a watchable artefact — video, or a screenshot per step | the artefact directory, counted against the number of tests that ran | R1, R2 | ✅ met — R1: 1 artefact → 4 on the same passing test. R2: the capture check is red after a default run and green after an evidence run, bitten both ways |
 | **AC-2** | A person who did not write the tests can open ONE thing and see what was covered | the report opened cold, navigated without a guide | R3 | ❓ unknown |
 | **AC-3** | The coverage map names what is NOT covered, not only what is | the map, with an explicit uncovered section | R4 | ✅ met — 76 specs / 225 tests mapped, and the hole named: `persona` is **2** of the 225 |
 | **AC-4** | The run happens against a stack rebuilt from the commit under test | image digest compared against the build, per rule 7 | R5 | ❓ unknown |
 | **AC-5** | The target is loopback and disposable — these journeys REGISTER ACCOUNTS and SEED BOOKS | `assertDisposableTarget` refusing a non-loopback target, shown | R5 | ❓ unknown |
 | **AC-6** | The authoring journey AC-10 turns on is exercised end to end, and its verdict is left to a person | the recorded run plus the PO's own words | R6 | ❓ unknown |
-| **AC-7** | Evidence capture cannot silently degrade — a run that captured nothing fails loudly | the capture check, bitten | R2 | ❓ unknown |
+| **AC-7** | Evidence capture cannot silently degrade — a run that captured nothing fails loudly | the capture check, bitten | R2 | ✅ met — `evidence-capture-gate.py`, EXIT=1 on a run that captured nothing, EXIT=0 on one that did |
 
 **AC-6 is deliberately not "the product works".** No agent settles AC-10. This plan reaches the
 point where a person can watch a book being planned and drafted and say yes or no.
@@ -78,10 +78,25 @@ EVIDENCE=1        1 passed    artefacts: 4   -> video.webm
 
   Same test, same result, and only one of them leaves something a person can watch.
 
-- [ ] **R2** — A capture check that fails loudly. *(AC-1, AC-7)*
+- [x] **R2** — A capture check that fails loudly. *(AC-1, AC-7)*
   A run that produced zero artefacts must not report success — the `govulncheck: scanned 0` lesson,
   applied to evidence. Counts artefacts against tests-that-ran and exits non-zero on a mismatch.
-  Evidence: the check red on a deliberately empty run, green on a real one, restored byte-exact.
+  **DONE.** `scripts/e2e/evidence-capture-gate.py`. Counts watchable artefacts per test
+  directory and fails on zero — for the whole run, or for any single test.
+
+```
+self-test                       OK  (counts real artefacts, refuses `.last-run.json`
+                                     as evidence, reports an absent dir as absent)
+after a DEFAULT run             FAIL - no per-test directory            EXIT=1
+after a PLAYWRIGHT_EVIDENCE=1   1 test dir, 3 watchable artefacts       EXIT=0
+```
+
+  The failure modes it closes are all silent ones: `PLAYWRIGHT_EVIDENCE` is a string compare
+  so `=true` sets nothing, `PLAYWRIGHT_VIDEO=off` still wins if left exported, and a browser
+  without an encoder drops the video and carries on — while `--reporter=list` says `1 passed`
+  either way. **`.last-run.json` is excluded by name**, because it is written after every run
+  including one that captured nothing, so counting it would make the gate pass on exactly the
+  case it exists to catch.
 
 - [ ] **R3** — One report a non-author can open. *(AC-2)*
   Playwright's HTML reporter is already wired and already embeds video, trace and screenshots
