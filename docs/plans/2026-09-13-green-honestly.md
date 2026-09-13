@@ -1140,6 +1140,51 @@ RESTORED byte-exact (NodeKind = Literal["chapter", "scene"]):
 **AC impact:** AC-1 — F2 is green, 14 of 18. AC-2 — the product fix is bitten both ways. AC-6 — the PO's decision is applied as given, and the sweep they asked for produced #271 and #272.
 
 
+### Cycle 20 — H1 measured properly, and it stops on a SEALED decision (H1, #269)
+
+**Investigated:** `events/book_lifecycle_consumer.py:88-112` (`_provision_work`); `routers/works.py:180-250` (POST /work) and its `OQ-1 (ratified)` comment at :221; `useEnsureWork` (`hooks/useWork.ts:38`) and `StudioFrame.tsx:52`; the live rows for two books, one opened and one never opened.
+
+**Issues:** none new — but my earlier diagnosis of #269 was wrong twice and is corrected here.
+
+**Fix:** none applied. **This row STOPS**: delivering what the PO asked for reverses a decision the code records as ratified.
+
+What is actually true, measured on two books rather than reasoned about:
+
+A book's `book.created` event provisions a composition Work with **`project_id = NULL` and `pending_project_backfill = true`** — deliberately, because the consumer has no bearer. The knowledge project appears only when somebody OPENS the book in the Studio: `StudioFrame` mounts `useEnsureWork`, which POSTs `/work`, and that route creates the project with **the caller's own bearer**. So creation ships a half-provisioned Work and opening finishes it. **298 books on this stack are sitting in that state right now.**
+
+The PO's ruling — ship Work *and* knowledge project at creation — needs the consumer to create a knowledge project with no user bearer. There are exactly two ways, and the code has already refused one of them:
+
+> `# OQ-1 (ratified): knowledge auto-provision stays OWNER-only — the caller's own bearer is forwarded and knowledge rejects a non-owner (F4), which surfaces below rather than minting an owner-identity token.`
+
+**A — a new internal knowledge route that trusts `owner_user_id` from the event.** Delivers exactly what was asked. It is a new service-to-service trust boundary that mints user-owned data from a caller-supplied id, which is the shape OQ-1 was ratified to avoid. **My recommendation, but only with the PO's explicit yes**, because it is a security decision and not mine.
+
+**B — mint an owner-identity token in the consumer.** Smaller diff, and the thing the comment names and rejects outright. Not recommended.
+
+**C — leave provisioning where it is and backfill the 298 on the owner's next visit.** No new trust boundary, no change to the sealed decision. The half-provisioned window stays.
+
+**Separately: #269's test is not blocked by any of this.** I was wrong twice about it. It fails because the panel resolves a project for a book created bare — and the reason it resolves one is that the *test itself* opens the Studio, which provisions it. The empty state is reachable; the spec destroys it in its own setup. That is a test defect, independent of the PO's decision, and it gets its own row rather than waiting on A/B/C.
+
+**Proof:**
+
+```
+book created by API, NEVER opened in the Studio:
+  composition_work | project_id = NULL | pending_project_backfill = t
+  knowledge_projects .......................... (none)
+
+book created by API, then OPENED in the Studio:
+  composition_work | project_id = 01a09c48-b835-... | pending = f
+  knowledge_projects | "E2E KG bare 1789328395394" | 19:40:06.581
+
+the read does NOT provision (so it is the Studio's POST, not a lazy GET):
+  GET /v1/knowledge/projects?book_id=<never-opened>  ->  {"items":[]}  HTTP 200
+  ... and no row appeared afterwards.
+
+books currently holding a pending Work with no project: 298
+```
+
+**AC impact:** AC-6 — H1 returns to the PO as a choice with a measured cost and a recommendation. AC-1 — #269 stays red with a corrected reason, and its real cause is now a separate test defect rather than this decision.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
