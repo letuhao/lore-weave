@@ -77,13 +77,28 @@ UNIVERSAL_TERMS = {
 #: on the ship plan. The gate reds the moment a NEW one appears, so the debt cannot grow while
 #: nobody is looking. Delete a row when its string is translated; do not add one to get green.
 BASELINE: dict[str, str] = {
-    "chat.inspector.title": "th kept 'Agent runtime' -- needs a Thai rendering (T8)",
-    "composition.branchdiff.todo": "ja kept 'todo' (T8)",
-    "kgOntology.adopt.scope.project": "ru kept 'Project' -- Russian localises this (T8)",
-    "kgOntology.adopt.scope.user": "ru kept 'User' -- Russian localises this (T8)",
-    "knowledge.temporal.timeline.interval.open": "ja kept '[{{from}} -> open)' (T8)",
-    "studio.checkpoints.insert": "bn kept 'Inserted' (T8)",
-    "usage.purpose.chunk_edit": "bn kept 'Chunk Edit' (T8)",
+    # ADJUDICATED BY THE TOOL, 2026-09-13, not by a person and not by me. The sanctioned fix for
+    # this population is `i18n_translate.py --retry-echoed`, whose contract is: "one pass -- a
+    # genuine loan word returns unchanged and stays". It was run scoped to these namespaces and
+    # languages. ONE of the original seven was a real gap and is now translated
+    # (`knowledge.temporal.timeline.interval.open`, ja: `[{{from}} -> open)` became
+    # `[{{from}} -> オープン)`); its row is deleted rather than kept, which is what the stale-row
+    # check below exists to force.
+    #
+    # The six here came back UNCHANGED from a model that was asked again with the full namespace
+    # as context. That is evidence, NOT proof: an unchanged value means the translator declined to
+    # change it, which a genuine loan word and a lazy echo both produce. `ru` keeping "Project"
+    # and "User" is the least convincing of the six -- Russian has Проект and Пользователь, and ru
+    # is the most thoroughly translated locale in the repo (44 English leftovers against French's
+    # 479). Reading them is T8, and T8 is a person's.
+    "chat.inspector.title": "th kept 'Agent runtime' -- unchanged after --retry-echoed (T8)",
+    "composition.branchdiff.todo": "ja kept 'todo' -- unchanged after --retry-echoed (T8)",
+    "kgOntology.adopt.scope.project": "ru kept 'Project' -- unchanged after --retry-echoed; "
+        "the least convincing of the six, Russian has Проект (T8)",
+    "kgOntology.adopt.scope.user": "ru kept 'User' -- unchanged after --retry-echoed; "
+        "Russian has Пользователь (T8)",
+    "studio.checkpoints.insert": "bn kept 'Inserted' -- unchanged after --retry-echoed (T8)",
+    "usage.purpose.chunk_edit": "bn kept 'Chunk Edit' -- unchanged after --retry-echoed (T8)",
 }
 
 
