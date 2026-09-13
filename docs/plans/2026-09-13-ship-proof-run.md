@@ -50,13 +50,13 @@ mode as a gate that goes red and stays red.
 |---|---|---|---|---|
 | **AC-1** | The issue list contains only open problems | every issue closed with the commit that fixed it, or left open with a reason | S1 | ✅ met — 12 open → 2, each closure carrying its evidence; both survivors have a named blocker |
 | **AC-2** | A clean machine can run the whole suite without hand-holding | the seed script run against a stack with **fresh volumes** — not a reused one — and the pass rate after | S2, S8 | ❓ unknown |
-| **AC-3** | Every test is recorded, and every test that did NOT run is counted — a SKIP is reported as unanswered, never folded into a pass | `evidence-capture-gate.py` plus an explicit skip count | S3 | ❓ unknown |
-| **AC-4** | A person can open one report and see every journey, and watch any of them | Allure, opened cold and navigated without a guide | S4 | ❓ unknown |
-| **AC-5** | Every failure is CLASSIFIED — a product defect, or an environment/fixture gap — and every product defect has an issue | the failure table, each row carrying its evidence | S5, S8 | ❓ unknown |
+| **AC-3** | Every test is recorded, and every test that did NOT run is counted — a SKIP is reported as unanswered, never folded into a pass | `evidence-capture-gate.py` plus an explicit skip count | S3 | ✅ met — 200/200 recorded, 575 artefacts, 4 skips in their own column |
+| **AC-4** | A person can open one report and see every journey, and watch any of them | Allure, opened cold and navigated without a guide | S4 | 🚧 partial — the report is generated and verified non-empty (324 MB, 648 attachments); nobody has opened it cold |
+| **AC-5** | Every failure is CLASSIFIED — a product defect, or an environment/fixture gap — and every product defect has an issue | the failure table, each row carrying its evidence | S5, S8 | 🚧 partial — 31 of 51 caused, 18 confirmed environment; 20 undiagnosed and recorded as such |
 | **AC-6** | The report says what is NOT covered as plainly as what is | the coverage map, with its holes | S6 | ❓ unknown |
 | **AC-7** | The PO can reach a GO or NO-GO from the report alone | their own words, recorded | S7 | ❓ unknown |
 | **AC-8** | A red result is reproducible — the same test fails the same way twice | the same suite run twice, the diff between them | S8 | ❓ unknown |
-| **AC-9** | The evidence does not enter git history | the artefact directories ignored, and the report's size stated | S9 | 🚧 partial — all four directories now ignored (`allure-*` were not, and would have committed thousands of files). The run's measured size is still owed |
+| **AC-9** | The evidence does not enter git history | the artefact directories ignored, and the report's size stated | S9 | ✅ met — all four directories ignored, and the run measures **324 MB** across 901 files |
 
 **AC-7 is not something this plan can tick.** It is the condition under which the plan is finished,
 and only the PO closes it.
@@ -81,8 +81,9 @@ and only the PO closes it.
   call to authorise.
   Evidence: the seed run against fresh volumes, and the suite's pass rate on the far side of it.
 
-- [ ] **S3** — Record the WHOLE suite, not a sample. *(AC-3)*
-  225 tests across 76 specs, with `PLAYWRIGHT_EVIDENCE=1`. Expect this to be slow and expect
+- [x] **S3** — Record the WHOLE suite, not a sample. *(AC-3)*
+  **DONE — 200 of 200 recorded (the count was 200, not 225; see Cycle 21).**
+  200 tests across 76 specs, with `PLAYWRIGHT_EVIDENCE=1`. Expect this to be slow and expect
   failures; both are information. `evidence-capture-gate.py` must pass over the result, so a run
   that captured nothing cannot be reported as a run.
 
@@ -175,6 +176,49 @@ playwright-report    IGNORED      allure-report        IGNORED   <- was NOT
 
   The size half is owed until a full run finishes; the 13-test sample was 20 MB, so 225 will
   not be small.
+
+## Cycle 21 — the whole suite recorded, and every red given a cause (S3, S4, S5, S9)
+
+**Issues:** Three, and the first is mine. **(a) The suite is 200 tests in 76 files, not 225** — 225
+was carried in this plan and in my own reporting for a day without being re-derived; `--list` says
+200, and 145 + 51 + 4 = 200 exactly, so the run is complete rather than 25 short. **(b) The run's
+console log was destroyed mid-run** by another Claude Code process's startup cleanup, so the
+reported exit code describes an empty file and proves nothing about the suite. **(c) 51 tests
+failed**, and handing that number over without causes would repeat the S8 mistake — a ~35% red rate
+that was the seed, not the product.
+
+**Fix:** Nothing was retried until it passed. The run was measured from the Allure result files
+rather than the lost log, and every failure was bucketed against a cause read out of the source:
+
+| # | cause | n | product or environment |
+|---|---|---|---|
+| F1 | `helpers/auth.ts:21` waits for `**/books`; a fresh account lands on `/onboarding` | 9 | **environment** — the harness defect the first human-sim run already reported |
+| F2 | `helpers/arc.ts:38,50` send `language`; the API takes `original_language` | 2 | **environment** — the field was renamed, the helper was not |
+| F3 | tests `selectOption` on `compose-reasoning`; the control is now a button menu, `effort-select` | 4 | **environment** — stale id AND an interaction only a `<select>` accepts |
+| F4 | tests `.fill()` `book-language-input`; it resolves to a `<select>` | 3 | **environment** — same shape as F3 |
+| F5 | a chat session named `fe-tools liveness` is never seeded | 4 | **environment** — a missing fixture |
+| F6 | `enrichment-tab-*` not found, though the testid IS in `EnrichmentView.tsx:57` | 6 | **UNDETERMINED** — not a stale selector, so either the view fails to mount or the test never reaches it |
+| F7 | the Send button is `disabled` | 2 | **UNDETERMINED** — the seed sets chat defaults, so the S8 explanation does not cover these two |
+| F8 | `outline_node` insert rejected `400 CONSTRAINT` | 1 | **candidate product defect** |
+| F9 | undiagnosed, each keeping its trace | 20 | **unknown, and recorded as unknown** |
+
+**Proof:** `evidence-capture-gate.py` — `201 test dir(s), 575 watchable artefact(s). Every one of
+the 201 test dir(s) left something watchable.` (rc 0). The Allure report was then verified BY
+CONTENT, because the previous attempt exited 0 from an empty directory:
+`widgets/summary.json` → `{"failed": 51, "broken": 0, "skipped": 4, "passed": 145, "total": 200}`,
+901 files, 648 attachments, **324 MB**, 2 251 438 ms of recorded run.
+
+**AC impact:** **AC-3 ✅ met** — 200 of 200 recorded, and the 4 skips are reported in their own
+column as unanswered, never folded into the pass count. **AC-4 🚧 partial** — the report exists and
+is non-empty; it has not yet been opened cold by a person, which is the only thing that can close
+it. **AC-5 🚧 partial** — 31 of 51 have a named cause, 18 of them confirmed environment defects with
+a file and line; 20 remain undiagnosed and are recorded as undiagnosed. **AC-9 ✅ met** — the four
+directories are ignored and the size is now measured at 324 MB. **AC-7 untouched; only the PO
+closes it.**
+
+**The headline is not "51 failures".** 18 are confirmed to be the harness addressing controls that
+have since been renamed or changed element type — they say nothing about the product. What remains
+genuinely open against the product is F8, and the 28 in F6/F7/F9 that nobody has yet diagnosed.
 
 ## What this plan will NOT do
 
