@@ -146,7 +146,9 @@ real and only the PO can resolve it.
   now work end to end — and must be assembled, not shortcut. Pointing them at a fresh book would
   make both claims vacuous.
 
-- [ ] **J2** — **B4**: a mock that STREAMS. *(1 test)* `route.fulfill` delivers the whole SSE body
+- [x] **J2** — **DONE (Cycle 9), and NOT by making the mock stream.** The inspector already keeps
+  a phase TRAIL, which records the same claim deterministically. 4 passed, bitten.
+  **B4**: a mock that STREAMS. *(1 test)* `route.fulfill` delivers the whole SSE body
   at once, so an intermediate phase can pass unpainted. The claim — phases reach the inspector —
   is worth keeping; the mock is what must change.
 
@@ -628,6 +630,60 @@ goes red, so it is reading real data rather than rendering something regardless.
 were shown to bite. AC-3 holds — no assertion changed, and the fixture now supports the ones that
 were already there.
 
+### Cycle 9 — the deterministic record was already there (J2)
+
+**Investigated:** `specs/agent-context-rack.spec.ts:94-170`;
+`components/AgentRuntimeInspector.tsx:31-36,44-59,85-92`; `hooks/useAgentSurface.ts:23-24,44-60`.
+
+**Issues:** none — no product defect.
+
+**Fix:** the row proposed making the mock STREAM with gaps so the intermediate phase could be
+painted. That turned out to be the wrong shape of answer. `route.fulfill` delivers one body and
+cannot stream, and chasing a transient render is a race however it is arranged — the old assertion
+polled 23 times and saw `Idle` every one.
+
+**The inspector already keeps a phase TRAIL** (`useAgentSurface.ts:24`, appended on every
+transition), rendered as `Curated → Idle`. That is the same claim — *"agentSurface phases update
+inspector"* — recorded rather than glimpsed. The end state is settled first, then the trail is
+asserted:
+
+```ts
+await expect(phase).toHaveText('Idle', { timeout: 10_000 });
+await page.getByTestId('agent-runtime-inspector').getByRole('button').first().click();
+await expect(page.getByTestId('agent-inspector-trail')).toContainText('Curated → Idle');
+```
+
+**This is STRICTER than what it replaced.** The old version could pass on timing luck — if the
+paint happened to land, it went green for the wrong reason. The trail cannot: the phase either
+reached the inspector or it did not.
+
+The expand click is not a workaround: the trail lives in the inspector's expanded body
+(`AgentRuntimeInspector.tsx:59`), collapsed by default, so a person reading the trail expands it
+too. The toggle carries no testid, so it is reached by ROLE within the inspector — still
+language-agnostic.
+
+**Proof:**
+
+```
+first attempt ... trail element not found -- it renders only when expanded
+AFTER the expand step ....................... 4 passed (13.2s)
+
+BITE -- the trail stops recording (`setTrail(() => [])`), frontend rebuilt:
+  Locator: getByTestId('agent-inspector-trail')
+  Expected substring: "Curated → Idle"
+  1 failed, 3 passed
+
+RESTORED byte-exact, rebuilt:
+  801433d976fb72b905d9f933dbea1a72  /tmp/uas.ts.orig
+  801433d976fb72b905d9f933dbea1a72  hooks/useAgentSurface.ts
+  git diff --stat -> empty
+  4 passed (12.9s)
+```
+
+**AC impact:** AC-1 — 12 of the 18 green. AC-2 not applicable: no product fix; the repaired test
+was shown to bite. AC-3 — the claim is unchanged and the assertion became deterministic where it
+had been a race.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -637,7 +693,7 @@ were already there.
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-8 done. 11 of the 18 green. REAL defects fixed + re-broken: #262 (F1), #264 (F3), canApprove beside #265 (F4). NOT defects, issues corrected/closed: #266, #267, #268. J1 built a REAL seeded+extracted fixture rather than shortcutting to a fresh book, which would have made both tests pass vacuously. F2 awaits the PO; decisions BANKED for one hand-back. Head of the queue is J2 (a mock that STREAMS, for the agent-context-rack intermediate phase).
+RESUME: Cycles 1-9 done. 12 of the 18 green. REAL defects fixed + re-broken: #262 (F1), #264 (F3), canApprove beside #265 (F4). NOT defects, closed: #266, #267, #268. J2 did NOT need a streaming mock -- the inspector already keeps a phase TRAIL, which records the claim deterministically instead of racing a paint. F2 awaits the PO; decisions BANKED for one hand-back. Head of the queue is J3 (a per-run Assistant session on an active model, plus a deliberate Tier-A consent decision).
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
