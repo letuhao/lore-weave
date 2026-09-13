@@ -74,8 +74,16 @@ test.describe('S5 · divergence manage surface (list / spec / diff / switch / ar
     await page.getByTestId(`divergence-row-${derivProjectId}`).click();
     await expect(page.getByTestId('divergence-detail')).toBeVisible();
     await page.getByTestId('divergence-tab-spec').click();
-    await expect(page.getByTestId('divergence-spec-taxonomy')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId('divergence-spec-taxonomy')).toHaveText('au');
+    // S-04 replaced the read-only spec block with an EDITABLE one
+    // (DivergenceSpecEditor.tsx header), so the taxonomy is now a <select>.
+    //
+    // The value is asserted, NOT the visible text. That select deliberately stopped showing the
+    // raw enum -- "Audit fix -- human labels (the select used to show the raw enum: 'au',
+    // 'pov_shift')" -- so `toHaveText('au')` would now be pinning the very bug that was fixed,
+    // and it would break again the moment the label is translated. The VALUE is the data.
+    const taxonomy = page.getByTestId('divergence-edit-taxonomy');
+    await expect(taxonomy).toBeVisible({ timeout: 15_000 });
+    await expect(taxonomy).toHaveValue('au');
     await expect(page.getByTestId('divergence-spec-error')).toHaveCount(0);
   });
 
