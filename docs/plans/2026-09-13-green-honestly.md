@@ -1376,6 +1376,35 @@ RESTORED byte-exact + rebuilt:
 **AC impact:** AC-1 — F9 is green, 16 of 18. AC-2 — bitten both ways, through a real rebuild. AC-6 — the PO's correction overturned a claim this plan had recorded three times.
 
 
+### Cycle 26 — it was never the model count, it was the account default (D13, B4.1)
+
+**Investigated:** `CompositionPanel.tsx:317-325` (the cascade, read rather than assumed); the account's registered models; `personas/account.ts:84` (`freshAccount`, `markOnboarded`); and the gate measured with the account chat default set and cleared.
+
+**Issues:** none in the product — the cascade is correct and the test is correct. The FIXTURE was wrong.
+
+**Fix:** three cycles of this plan said B4.1 was blocked by having one model, and Cycle 24 said adding a second would free it. Both wrong, and adding a second model proved it: **still red.** Reading the cascade instead of theorising a fourth time:
+
+> session pick > per-Work default > **the account-tier chat model** > the sole-registered auto-pick
+
+The shared evidence account has an account-tier chat default, so a model always resolves and the "pick a model" hint can never render — whatever the model count. Measured both ways: clear that default and B4.1 passes; restore it and B4.1 fails.
+
+So B4.1 now runs on its **own fresh account**, which is race-free under parallel workers and more faithful besides — a brand-new author who has configured no model is exactly the user this gate exists for.
+
+**Proof:**
+
+```
+with the shared account's chat default SET      -> 1 failed   (compose-need-model absent)
+with that default CLEARED                       -> 1 passed (5.2s)
+default restored, test moved to a fresh account -> 1 passed (5.1s)
+whole spec                                      -> 3 passed (18.7s)
+
+BITE — point it back at the shared account, change nothing else:
+  Error: expect(locator).toBeVisible() failed — element(s) not found
+```
+
+**AC impact:** AC-1 — D13 is green, 17 of 18. AC-3 — the test was not re-aimed or weakened; only the account it runs on changed. AC-2 — bitten both ways.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]

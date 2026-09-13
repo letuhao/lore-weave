@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { ChapterComposePanel } from '../pages/ChapterComposePanel';
 import { loginViaUI } from '../helpers/auth';
+import { LoginPage } from '../pages/LoginPage';
+import { freshAccount, markOnboarded } from '../personas/account';
 import {
   getAccessToken, createBook, createChapter, trashBook,
   listChatModels, createCompositionWork, createCompositionScene,
@@ -13,13 +15,28 @@ import {
 // are covered by the 29 M6 unit tests and are not deterministically reproducible
 // in a browser, so they stay unit-only here.
 test.describe('Composition co-write engine (B4.*)', () => {
+  // Runs on its OWN fresh account, and that is the point rather than hygiene. The model
+  // cascade (CompositionPanel.tsx:317-325) is: session pick > per-Work default > the
+  // ACCOUNT-TIER chat model > the sole-registered auto-pick. The shared evidence account has
+  // an account-tier chat default, so a model always resolves and the "pick a model" hint can
+  // never render — the test was measured green the moment that default was cleared, and red
+  // again with it restored. It was NOT the model count, which is what this row believed for
+  // three cycles.
+  //
+  // A brand-new author with no model configured is also the exact user the gate exists for, so
+  // this is more faithful than the shared account was, not less.
   test('B4.1: Generate is gated until both a scene and a model are picked', async ({ page, request }) => {
-    const token = await getAccessToken(request);
+    const acct = await freshAccount(request, 'gate-gen');
+    await markOnboarded(request, acct.token);
+    const token = acct.token;
     const bookId = await createBook(request, token, `E2E gate-gen ${Date.now()}`);
     const chapterId = await createChapter(request, token, bookId, 'Gen gate chapter');
     await createCompositionWork(request, token, bookId); // Work, no scenes yet
     try {
-      await loginViaUI(page);
+      const login = new LoginPage(page);
+      await login.goto();
+      await login.login(acct.email, acct.password);
+      await page.waitForURL('**/books');
       const panel = new ChapterComposePanel(page);
       await panel.gotoEditor(bookId, chapterId);
       await panel.openComposeTab();
