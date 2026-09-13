@@ -60,7 +60,7 @@ real and only the PO can resolve it.
 | **AC-2** | Every product fix is proven by RE-BREAKING it — the test that found the defect goes red again, for the same reason | both outputs pasted, per fix | F1–F5 | ❓ unknown |
 | **AC-3** | No test was weakened to accommodate a fix | per row, the claim before and after, stated and unchanged | all | ❓ unknown |
 | **AC-4** | Both SKIPS are answered, or their blocker is named and owned | passed / failed / skipped stated separately | K1, K2 | ❓ unknown |
-| **AC-5** | The whole suite is re-run and the delta explained test by test, with **no newly red** | the two result sets and their diff | Z1 | ❓ unknown |
+| **AC-5** | The whole suite is re-run and the delta explained test by test, with **no newly red** | the two result sets and their diff | Z1 | ✅ met — 18→7, 0 newly red |
 | **AC-6** | Every decision owed to the PO is asked as a CHOICE, with options and a recommendation | the decision record | H1, H2, F2 | ❓ unknown |
 | **AC-7** | The PO can reach a GO or NO-GO | **their own words.** No row ticks this | Z2 | ❓ unknown |
 
@@ -180,7 +180,7 @@ real and only the PO can resolve it.
 
 ### Lane Z — the close.
 
-- [ ] **Z1** — Rebuild (Rule 4), re-run the WHOLE suite, diff it test by test against
+- [x] **Z1** — Rebuild (Rule 4), re-run the WHOLE suite, diff it test by test against
   `evidence/z1-baseline-failures.txt` and the 180/18/2 recorded here. **No newly red.** *(AC-5)*
 - [ ] **Z2** — Hand over. **The PO's words close it.** No row ticks this. *(AC-7)*
 
@@ -905,16 +905,59 @@ OWNED by H2 with a named blocker. AC-1 — 13 of the 18 green. AC-2 not applicab
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-13 done. 13 of the 18 green. K1 ANSWERED a skip that had never run on any machine (7 passed, 0 skipped, bitten); K2 is OWNED by H2. All three decision rows have options ready: F2 (#263), H1 (#269), H2 (the one-model constraint, which blocks THREE things). Head of the queue is Z1 -- rebuild, re-run the WHOLE suite, diff it test by test, NO newly red. Then Z2 hands over with the three decisions.
+RESUME: Cycles 1-14 done. Z1 is CLOSED: the whole suite re-run on a rebuilt image is 192 passed / 7 failed / 1 skipped (200), verified by allure summary.json content -- 18 failures became 7, 11 fixed, **0 newly red**. The 7 that remain are the three PO decisions (F2 #263, H1 #269, D13 B4.1), F6, F7, and the two model-ROLE failures. H2 needs correcting: assistant-endofday and the K2 skip fail because the `critic` and `distill` roles have NO settings row, not because only one model fits in memory. Head of the queue is that correction, then Z2 hands over with the three decisions.
+
+### Cycle 14 — the whole suite, test by test (Z1)
+
+**Investigated:** the full 200-test suite re-run on `lw-iso` against a rebuilt frontend image, diffed
+test by test against `docs/plans/evidence/z1-green-honestly-baseline.txt` (18 rows) and
+`z1-green-honestly-skips.txt` (2 rows).
+
+**Issues:** none new — **0 newly red**. All 7 remaining failures are baseline rows.
+
+**Fix:** no code changed in this cycle; it is the measurement row. 18 failures → 7, and all 11 that
+went green did so for the reason their row claimed. The 7 that remain are the three banked PO
+decisions (`#263`/F2 telemetry, `#269`/H1 kg-panels, D13 `B4.1`), the two model-role failures that
+Cycle 12 attributed to the one-model constraint (`assistant-endofday`, and K2's skip beside it),
+and the two open product rows F6 (composition-journey scene count) and F7 (archive ConfirmDialog).
+
+The single remaining SKIP is `composition-generate` — **unanswered, not passed** — and it is the same
+root as `assistant-endofday`: both need a role (`critic`, `distill`) that the settings UI has no row
+for. That reframes H2 and is recorded there, not here.
+
+**Proof:**
+
+```
+BASELINE .... 18 failed,  2 skipped, 180 passed   (200 total)
+Z1 .......... 7 failed,   1 skipped, 192 passed   (200 total)
+
+allure-report/widgets/summary.json (read by CONTENT, not exit code):
+  {'failed': 7, 'broken': 0, 'skipped': 1, 'passed': 192, 'unknown': 0, 'total': 200}
+  duration 1741979 ms (29.0 min)
+
+evidence-capture-gate: 201 test dir(s), 576 watchable artefact(s). Every one left something.
+
+FIXED (11): composition-engine B4.2 · composition-engine B4.4 · composition-correction-gate Diverge
+            · studio-structure-templates "edit a cloned" · plan-forge-grounding · frontend-tools
+            ui_open_book · frontend-tools ui_show_panel · demo-pipeline-3c wiki · enrichment-profile
+            "Profile tab loads" · enrichment-profile "Gaps detect" · agent-context-rack mock SSE
+STILL RED (7): assistant-endofday · composition-engine B4.1 · composition-journey · composition-
+            telemetry · kg-panels · plan-forge-pass-rail · studio-structure-templates "archive an own"
+NEWLY RED (0): none.
+```
+
+**AC impact:** AC-5 is met — the suite was re-run whole and the delta is explained test by test, with no newly red.
+AC-1 stands at 11 of 18 green with a recorded reason for each of the 7; AC-4's K2 remains owned, not answered.
+
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
 lanes: |
-  F fix      = F1, F3, F4, F5, F2
+  F fix      = F1, F3, F4, F5, F2, F6, F7
   G diagnose = G1, G2
   J fixture  = J1, J2, J3
-  H decide   = H1, H2
+  H decide   = H1, H2, H3
   K skips    = K1, K2
   Z close    = Z1, Z2
 rules: |
