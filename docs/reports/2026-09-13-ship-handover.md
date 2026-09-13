@@ -145,3 +145,43 @@ stay open until you write it. No agent ticks either.
 
 If it is NO-GO, the most useful thing you can tell me is **which of the 16** would have to be green
 first — several are one product decision away, and three of them are decisions only you can make.
+
+---
+
+## Update — 2026-09-14, after the green-honestly plan
+
+| | the 51 | red-by-red | green-honestly Z1 |
+|---|---|---|---|
+| passed | 145 | 180 | **192** |
+| failed | **51** | 18 | **7** |
+| skipped | 4 | 2 | **1** |
+| newly red | — | 0 | **0** |
+
+Verified by reading `allure-report/widgets/summary.json` by content, not by exit code —
+`{'failed': 7, 'skipped': 1, 'passed': 192, 'total': 200}`, 29.0 min. Eleven went green, each for
+the reason its row claimed. Nothing went red that was not already red, which was the thing worth
+checking: this plan changed product code in three places.
+
+**The one remaining SKIP is unanswered, not passed.**
+
+### What the 7 are
+
+| test | why |
+|---|---|
+| `composition-telemetry` | **F2 / #263** — your decision |
+| `kg-panels` | **H1 / #269** — your decision |
+| `composition-engine B4.1` | D13 — a test asserting a state the product exists to prevent |
+| `assistant-endofday` | **#270** — needs a `distill` role with no settings row |
+| `composition-journey` | F6 — scene count, open |
+| `studio-structure-templates` archive | F7 — archive ConfirmDialog, open |
+| `plan-forge-pass-rail` | #265, open |
+
+### One correction to what I told you earlier
+
+I reported that `assistant-endofday` and the `composition-generate` skip were blocked by the
+one-strong-model constraint. **That was wrong.** Both need a model ROLE — `critic`, `distill` —
+and neither role has a settings row, so the resolver falls back to `chat` and returns the same
+reasoning model. Loading a second model would have hidden a settings gap behind a hardware story.
+
+Filed as **#270**. The product already knows: `evaluate.py:180` refuses to score and instructs the
+user to *"Set a critic model in Settings › Chat & AI › default models"* — a row that does not exist.
