@@ -76,7 +76,10 @@ real and only the PO can resolve it.
   the bar merely occupying those coordinates. A z-index change could not have worked. Fixed with
   `createPortal` + fixed coordinates. **Re-broken** per Rule 1.
 
-- [ ] **F2** — **#263**, the API offers `arc` and `beat`; the table permits `chapter` and `scene`.
+- [~] **F2** — **INVESTIGATED, OPTIONS READY, AWAITING THE PO (Cycle 5).** The ambiguity is gone:
+  M5 deliberately removed both kinds, so the `Literal` is STALE and the schema is the intended end
+  state. What remains is a contract call, which is the PO's.
+  **#263**, the API offers `arc` and `beat`; the table permits `chapter` and `scene`.
   *(1 test)* **A DATA-MODEL DECISION, not a repair.** Investigate which half is correct — was the
   migration missed, or is the `Literal` stale? — then **present both options with a
   recommendation and STOP.** Widening a CHECK constraint to make an INSERT succeed is exactly the
@@ -427,6 +430,49 @@ SUCCEEDED**; the grep is now `grep -E "Built|ERROR"`.
 re-break, and the repaired test was shown to bite instead. AC-3 holds — the locator got stricter
 (a swallowed click became a real one) and no assertion changed.
 
+### Cycle 5 — the migration already decided it; only the contract call is left (F2, #263)
+
+**Investigated:** `services/composition-service/app/db/arc_lift.py:5-28` (the M4/M5 migration
+header); `app/db/models.py:39,283`; `package_migration`; and `outline_node` itself.
+
+**Issues:** #263 — the finding is recorded on the issue.
+
+**Fix:** **none applied, deliberately.** The row asked which half is correct — a missed migration,
+or a stale `Literal`. It is the `Literal`, and the product says so in its own migration:
+
+```
+M5 — CONTRACT (the point of no return; gated on M4 assertions):
+  1. re-assert guards (zero kind='beat', zero orphan arc-children), DELETE the lifted arc
+     rows, swap the kind CHECK to ('chapter','scene').
+```
+
+`arc` was **lifted out** of `outline_node` into `structure_node`; `beat` had to be ZERO before M5
+would run at all. The CHECK constraint is not a gap — it is the migrated end state.
+
+**Proof:**
+
+```
+package_migration:  pkg_lift_v1 | 2026-07-11 07:56:35     <- M5 completed here
+outline_node kinds: chapter x274
+                    scene   x489                          <- no arc, no beat anywhere
+models.py:39        NodeKind = Literal["arc", "chapter", "scene", "beat"]   <- stale
+models.py:283       StructureNodeKind = Literal["saga", "arc", "part"]      <- where arc lives now
+```
+
+**Widening the CHECK constraint would have been the wrong fix**, and it was the obvious one: it
+would re-admit rows that a "point of no return" migration deliberately deleted, and `arc_lift`
+refuses to run while any `kind='beat'` exists. This is the hollow fix this plan named in advance —
+*"a constraint widened until an INSERT succeeds"*.
+
+**Why this still STOPS.** Narrowing a published type removes two values other clients may send.
+That is an API-compatibility judgement, not a code question, so it is the PO's. Options and a
+recommendation are on the issue and in the hand-back.
+
+**AC impact:** AC-6 — the decision is prepared as a CHOICE with evidence and a recommendation,
+not a bare question. AC-1 — #263's single test is neither green nor undiagnosed: it carries a
+recorded reason (it creates a `beat`, a kind the data model deleted in July). AC-2 not
+applicable — nothing was fixed, so there is nothing to re-break.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -436,7 +482,7 @@ re-break, and the repaired test was shown to bite instead. AC-3 holds — the lo
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-4 done. 6 of the 18 green. F1 (#262) and F3 (#264) were REAL product defects, fixed and re-broken. F4 (#265) and F5 (#266) were NOT what I filed -- #265's rail was correct (an empty cast legitimately refuses; the real bug was canApprove offering a doomed button, fixed) and #266 was a testid that never existed with its failure swallowed. Both issues corrected. Cycle 4 also records a Rule 4 trap: a FAILED frontend build let the old bundle serve and produced a false green. Head of the queue is F2 -- a DATA-MODEL DECISION, so reach it with options and STOP.
+RESUME: Cycles 1-5 done. 6 of the 18 green. F1/F3 were REAL defects (fixed + re-broken); F4/F5 were NOT what I filed and both issues are corrected. F2 is INVESTIGATED with options ready and AWAITING the PO -- M5 deliberately deleted `arc`/`beat` from outline_node, so the Literal is stale and widening the CHECK would undo a migration. Decisions are being BANKED (F2, H1, H2) and presented together rather than halting the run once per question. Head of the queue is G1 (#267, the nav executor) -- diagnosis, no decision needed.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
