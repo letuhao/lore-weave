@@ -98,7 +98,9 @@ export class ChapterComposePanel {
     this.groundingEmptyHint = page.getByTestId('composition-grounding-empty-hint');
     this.canonInput = page.getByTestId('composition-canon-input');
     this.canonScope = page.getByTestId('composition-canon-scope');
-    this.canonAdd = page.getByTestId('composition-canon-add');
+    // The canon form's submit control is `composition-canon-submit` (CanonRuleForm.tsx:134);
+    // `composition-canon-add` exists nowhere in src/ -- the id was renamed and the POM was not.
+    this.canonAdd = page.getByTestId('composition-canon-submit');
     this.canonRules = page.getByTestId('composition-canon-rule');
     this.canonArchive = page.getByTestId('composition-canon-archive');
   }
