@@ -71,12 +71,26 @@ describe('CheckpointReview (M4-CP)', () => {
     expect(api.bootstrapApprove).toHaveBeenCalled();
   });
 
-  it('Approve calls onReview(true)', async () => {
+  // #265 — this used to render a BLOCKING pass with NO proposal and assert Approve worked. That
+  // is the one state where the server refuses forever:
+  //   409 CHECKPOINT_REFUSED — "cast cannot be accepted before its glossary seed proposal exists"
+  // so the old assertion passed on a build that dead-ends the author. The claim it was really
+  // making — "Approve reports the approval" — is kept, on a pass that CAN be approved.
+  it('Approve calls onReview(true) once the seed is applied', async () => {
+    const onReview = vi.fn();
+    api.bootstrapGet.mockResolvedValue(proposal('applied'));
+    render(<CheckpointReview {...props({ pass: pass({ bootstrap_proposal_id: 'prop1' }), onReview })} />);
+    await waitFor(() => screen.getByTestId('review-content'));
+    await waitFor(() => expect((screen.getByTestId('review-approve') as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByTestId('review-approve'));
+    expect(onReview).toHaveBeenCalledWith(true);
+  });
+
+  it('blocking pass with NO seed proposal → Approve is DISABLED, not a 409 waiting to happen', async () => {
     const onReview = vi.fn();
     render(<CheckpointReview {...props({ pass: pass({ checkpoint: 'blocking', bootstrap_proposal_id: undefined }), onReview })} />);
     await waitFor(() => screen.getByTestId('review-content'));
-    fireEvent.click(screen.getByTestId('review-approve'));
-    expect(onReview).toHaveBeenCalledWith(true);
+    expect((screen.getByTestId('review-approve') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('no RAW-JSON editor — the artifact view is read-only until the structured editor is opened', async () => {

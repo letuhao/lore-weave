@@ -89,9 +89,10 @@ real and only the PO can resolve it.
   remount/`onDirty` contract has to stay coherent. **Re-break:** freeze the baseline again; both
   must go red.
 
-- [ ] **F4** — **#265**, approving the cast checkpoint leaves `pass_cursor` at 1. *(1 test)*
-  Backend. Find where approval is meant to advance the cursor and why it does not.
-  **Re-break** once fixed.
+- [x] **F4** — **DONE (Cycle 3), but #265 as I FILED it was wrong.** The rail is correct: it
+  refused because the cast pass produced `{"cast": []}` and so opened no seed proposal — *"you
+  cannot accept a cast that does not exist"*. A REAL defect was found alongside it and fixed:
+  `canApprove` offered an Approve button that 409s forever. E2E green twice. *(1 test)*
 
 - [ ] **F5** — **#266**, the grounded affirmation never renders. *(1 test)*
   The run records `grounded_on` and `plan-grounded-note` exists in `PlannerPanel.tsx`, so the gap
@@ -300,6 +301,76 @@ should not disagree.
 **AC impact:** AC-2 met for F3 — proven by re-breaking, with the original symptom reproduced
 exactly. AC-1 — 4 of the 18 are now green. AC-3 holds: no test was touched in this row.
 
+### Cycle 3 — the rail was right, and the bug was next to it (F4, #265)
+
+**Investigated:** `plan_pass_service.py:259-300` (`pass_cursor`, `PASS_ORDER`);
+`routers/plan_forge.py:389-413`; `worker/job_consumer.py:108-140`;
+`hooks/useCheckpointReview.ts:59-60`; `components/CheckpointReview.tsx:1-11,128`; and the live
+run's `pass_state`, `plan_artifact` and `plan_bootstrap_proposal` rows.
+
+**Issues:** #265 — and **my own filing of it was wrong**; corrected on the issue.
+
+**Fix:** the chain, measured end to end rather than reasoned:
+
+```
+pass_state.cast.decision              = "pending"     (the approve never landed)
+POST …/checkpoint {approved, cast}    -> 409 CHECKPOINT_REFUSED
+  "cast cannot be accepted before its glossary seed proposal exists"
+plan_bootstrap_proposal WHERE run_id  -> (none)
+plan_artifact cast_plan content       -> {"cast": []}
+```
+
+So the refusal is **correct**, and the product says why in its own source: a pass that produced
+nothing opens no proposal, *"and for `cast` that means acceptance will refuse, which is correct:
+you cannot accept a cast that does not exist."* **#265 is not a pass-rail defect.** Had I "fixed"
+the rail to accept an empty cast I would have destroyed a deliberate guard — which is precisely the
+hollow fix this plan was written to prevent.
+
+**The real defect was one line away.** `canApprove = !proposalId || proposal?.status === 'applied'`
+made `!proposalId` do double duty: it means "advisory pass, no gate", but it is ALSO true for a
+BLOCKING pass whose proposal was never opened. In that state the button was **enabled while the
+server refused forever** — exactly what `CheckpointReview.tsx`'s own header warns about ("409s the
+approve forever"). Blocking passes are now gated on the proposal EXISTING as well as being applied.
+
+**A unit test was guarding the broken state.** `CheckpointReview.test.tsx` rendered
+`checkpoint: 'blocking'` with `bootstrap_proposal_id: undefined` and asserted Approve worked — it
+would pass on a build that dead-ends the author. Its real claim ("Approve reports the approval") is
+kept, on a pass that CAN be approved, and a second case now pins the disabled state. **This is the
+third time in this work a test was found defending a bug** (red-by-red Cycles 11 and 18).
+
+**Proof:**
+
+```
+RE-BREAK (Rule 1) -- the conflation restored:
+  ff2b188a1b38f8b9ec17d119aac0c029  /tmp/ucr.ts.orig
+  ff2b188a1b38f8b9ec17d119aac0c029  hooks/useCheckpointReview.ts
+  × blocking pass with NO seed proposal → Approve is DISABLED, not a 409 waiting to happen
+  Tests  1 failed | 10 passed
+
+FIX RESTORED:
+  c70a483125f410b7cee75ecb5c1f7999  /tmp/ucr.ts.FIXED
+  c70a483125f410b7cee75ecb5c1f7999  hooks/useCheckpointReview.ts
+  Test Files 18 passed | Tests 185 passed
+
+E2E, rebuilt, twice:  2 passed (1.1m)   then   2 passed (50.6s)
+```
+
+**An honest limit on this green.** The E2E passes because the cast pass produced characters. The
+artifacts show both outcomes across today's runs:
+
+```
+{"cast": [{"name": "Diep Van Vu", "role": "protagonist", …}]}   <- the last two runs
+{"cast": []}                                                    <- the run that failed
+```
+
+With an empty cast it will fail again — and now it will fail by TIMING OUT on a disabled button
+rather than on a cursor assertion, which is a clearer signal but still a failure. That is
+model-output dependence with a named cause, not flakiness, and Z1 must watch it.
+
+**AC impact:** AC-2 met for F4 — the fix was proven by re-breaking it and watching the guard go
+red. AC-1 — 5 of the 18 green. AC-3: one unit test was CORRECTED, with the server's 409 as the
+evidence that its old assertion was wrong; no E2E assertion was touched.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -309,7 +380,7 @@ exactly. AC-1 — 4 of the 18 are now green. AC-3 holds: no test was touched in 
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-2 done. F1 (#262, portal not z-index) and F3 (#264) both FIXED and RE-BROKEN. 4 of the 18 green. #264 took three changes and I guessed wrong twice before instrumenting -- the real cause was JSON.stringify comparing objects whose KEY ORDER differed between draft and API. Two harness rows fell out: F6 (composition-journey asserts 1 scene, guided run makes 2) and F7 (the archive test never confirms the ConfirmDialog; measured archived=false). Head of the queue is F4 (#265, pass_cursor stays 1 after approving cast). F2, H1, H2 STOP for the PO with options ready.
+RESUME: Cycles 1-3 done. F1 (#262), F3 (#264), F4 (#265) all FIXED and RE-BROKEN. 5 of the 18 green. Cycle 3 corrected my own issue: #265 is NOT a pass-rail defect -- the rail correctly refuses an empty cast; the real bug was canApprove offering a button that 409s forever, and a unit test was guarding that broken state. F4's green is MODEL-DEPENDENT (an empty cast makes it fail again, now by timing out on a disabled button) -- Z1 must watch it. Head of the queue is F5 (#266, the grounded affirmation never renders). F2, H1, H2 STOP for the PO with options ready.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
