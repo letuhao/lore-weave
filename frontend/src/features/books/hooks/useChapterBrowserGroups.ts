@@ -111,8 +111,16 @@ export function useChapterBrowserGroups(bookId: string): UseChapterBrowserGroups
     const gen = ++genRef.current;
     setFetching(true);
     (async () => {
+      // #271 — LEFT EXACTLY AS IT WAS, deliberately. This reads `outline_node` and keeps
+      // `kind === 'arc'`, and arcs moved to `structure_node` in pkg_lift_v1 ("M5 -- CONTRACT:
+      // the point of no return"), which also swapped the outline CHECK to ('chapter','scene').
+      // So this filter has matched NOTHING since that migration: groups are always [] and the
+      // browser shows its ungrouped fallback, indistinguishable from a book with no arcs.
+      // Repairing it means reading structure_node and comes with a test that would have caught
+      // it -- that is #271's work, not this type-narrowing's. The cast is how the narrowing
+      // admits the line is wrong instead of silencing it or, worse, pinning the bug in a test.
       const arcNodes = (await fetchAllChildren(projectId, accessToken, null, ARC_PAGE))
-        .filter((n) => n.kind === 'arc');
+        .filter((n) => (n.kind as string) === 'arc');
 
       const nextGroups: ChapterArcGroup[] = [];
       const nextArcMap = new Map<string, string>();

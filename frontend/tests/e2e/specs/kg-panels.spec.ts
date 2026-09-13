@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import {
   getAccessToken, createBook, trashBook, createKnowledgeProject, deleteKnowledgeProject,
-  createKnowledgeEntity,
+  createKnowledgeEntity, listKnowledgeProjectsForBook, archiveKnowledgeProject,
 } from '../helpers/api';
 import { StudioPage } from '../pages/StudioPage';
 
@@ -19,6 +19,7 @@ test.describe('Knowledge/KG dock panels', () => {
   let bookLinked: string;
   let bookBare: string;
   let projectId: string;
+  let entityName = '';
 
   test.beforeAll(async ({ request }) => {
     token = await getAccessToken(request);
@@ -26,7 +27,12 @@ test.describe('Knowledge/KG dock panels', () => {
     bookBare = await createBook(request, token, `E2E KG bare ${Date.now()}`);
     const project = await createKnowledgeProject(request, token, `E2E KG project ${Date.now()}`, bookLinked);
     projectId = project.project_id;
-    await createKnowledgeEntity(request, token, projectId, 'Seraphine Vale', 'character');
+    // UNIQUE per run. A fixed name accumulated one row per run in this long-lived database --
+    // six 'Seraphine Vale' rows by the time this was looked at -- and the assertion below then
+    // died on a strict-mode violation. A unique name also makes the claim STRONGER: it proves
+    // the entity THIS run created is found, not one a previous run left behind.
+    entityName = `Seraphine Vale ${Date.now()}`;
+    await createKnowledgeEntity(request, token, projectId, entityName, 'character');
   });
 
   test.afterAll(async ({ request }) => {
@@ -72,8 +78,29 @@ test.describe('Knowledge/KG dock panels', () => {
     await expect(page.getByTestId('shell-overview-missing')).toHaveCount(0);
   });
 
-  test('kg-overview shows the empty state for a book with no linked KG project', async ({ page }) => {
+  // This spec USED to create a bare book and assert the empty state straight away, and it could
+  // never have worked: StudioFrame mounts `useEnsureWork`, which POSTs /work on open, and that
+  // route creates the book's knowledge project with the caller's own bearer. So the act of
+  // opening the Studio to LOOK at the panel is what gives the book a project -- the test
+  // destroyed the state it was asserting, in its own first line. Measured: the "bare" book had
+  // a project created 6ms after its Work, and the panel rendered a full overview.
+  //
+  // The empty state is still real and still reachable: a user can archive their knowledge
+  // project, and `useBookKnowledgeProject` lists with includeArchived:false. So reach it the way
+  // a user would -- open, archive what the product provisioned, reload -- instead of mocking the
+  // very resolution under test. The claim is unchanged: a book with no linked KG project shows
+  // the empty state.
+  test('kg-overview shows the empty state for a book with no linked KG project', async ({ page, request }) => {
     const studio = new StudioPage(page);
+    await studio.goto(bookBare);
+    // Opening provisioned it; take it back off the book before asserting the absence.
+    await expect
+      .poll(async () => (await listKnowledgeProjectsForBook(request, token, bookBare)).length,
+        { timeout: 20_000, message: 'the Studio provisions a knowledge project on open' })
+      .toBeGreaterThan(0);
+    for (const p of await listKnowledgeProjectsForBook(request, token, bookBare)) {
+      await archiveKnowledgeProject(request, token, p.project_id);
+    }
     await studio.goto(bookBare);
     await studio.openPanel('kg-overview', 'Overview');
     // KgOverviewPanel's OWN no-project empty state (rendered before OverviewSection ever
@@ -91,10 +118,10 @@ test.describe('Knowledge/KG dock panels', () => {
     // The shared dev DB carries hundreds of entities across every project (this is a real,
     // populated environment, not a clean fixture) — search narrows to just the one this
     // test created, rather than assuming it lands on page 1 of the unfiltered global list.
-    await page.getByTestId('entities-filter-search').fill('Seraphine');
+    await page.getByTestId('entities-filter-search').fill(entityName);
     // Both a desktop `entities-row` and a `entities-row-mobile` render simultaneously (CSS
     // hides one per breakpoint) — scope to the desktop row so the text match stays strict.
-    await expect(page.getByTestId('entities-row').getByText('Seraphine Vale')).toBeVisible();
+    await expect(page.getByTestId('entities-row').getByText(entityName)).toBeVisible();
   });
 
   // DOCK-7 proof: OverviewSection's book backlink used to be a hard-coded <Link>; it's now a

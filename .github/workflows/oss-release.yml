@@ -3,7 +3,7 @@
 #
 # WHY THE CHANGELOG CHECK IS ITS OWN JOB, FIRST, BLOCKING EVERYTHING ELSE. "The changelog is
 # the source of truth for what shipped" is only true if nothing can ship without it. Building
-# 41 images before checking is possible, but it means every one of those pushes has to be
+# 33 images before checking is possible, but it means every one of those pushes has to be
 # treated as provisional if the changelog check then fails — cheaper to fail in ~10s before any
 # image is built than to publish first and hope. See scripts/changelog-gate.py for what
 # "RELEASE MODE" actually checks; this workflow is just the thing that calls it at the moment

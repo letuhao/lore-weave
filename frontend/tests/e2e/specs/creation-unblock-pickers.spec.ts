@@ -23,9 +23,12 @@ test.describe('Creation-unblock — reusable pickers (G2)', () => {
       // open the per-session settings panel (where the project memory link lives)
       await page.getByTestId('chat-session-settings-button').click();
 
-      // the project link is now the ProjectPicker — a search combobox, empty=valid
-      // ("no project" default) — NOT the old <select>.
-      const picker = page.getByTestId('project-picker-input');
+      // The grounding control is now a MULTI-project picker, not a single ProjectPicker:
+      // "The grounding SET is a session concept" (GroundingSection.tsx:67), so a chat can be
+      // grounded on several knowledge graphs at once. The CLAIM is unchanged and is the point
+      // of this test -- it is a SEARCH COMBOBOX, empty=valid ("no project" default), and NOT
+      // the old raw <select>.
+      const picker = page.getByTestId('multi-project-input');
       await expect(picker).toBeVisible({ timeout: 15_000 });
       await expect(picker).toHaveAttribute('role', 'combobox');
     } finally {

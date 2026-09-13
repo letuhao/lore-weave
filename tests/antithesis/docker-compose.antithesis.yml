@@ -23,7 +23,7 @@ services:
     image: redis:7
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z
     command: server /data
     environment:
       MINIO_ROOT_USER: foundation

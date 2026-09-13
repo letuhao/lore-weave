@@ -2,7 +2,8 @@ node_modules
 dist
 .env*.local
 *.tsbuildinfo
-package-lock.json
+# package-lock.json  # KEPT IN CONTEXT since 2026-09-13 (#254) -- `npm ci` copies it; excluding
+#                    # it here was the second of three places the lock was suppressed.
 **/__tests__
 **/*.test.ts
 **/*.test.tsx

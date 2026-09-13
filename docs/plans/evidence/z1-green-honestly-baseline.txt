@@ -1,0 +1,18 @@
+composition-journey.spec.ts|set up|#262 (also F6: scene count)
+composition-engine.spec.ts|B4.2|#262
+composition-engine.spec.ts|B4.4|#262
+composition-correction-gate.spec.ts|Diverge|#262
+studio-structure-templates-journey.spec.ts|edit a cloned|#264
+studio-structure-templates-journey.spec.ts|archive an own|#264 (also F7: unconfirmed archive)
+composition-telemetry.spec.ts|scene_committed|#263 DECISION
+plan-forge-pass-rail.spec.ts|propose|#265
+plan-forge-grounding.spec.ts|a grounded run|#266
+frontend-tools-liveness.spec.ts|ui_open_book|#267
+frontend-tools-liveness.spec.ts|ui_show_panel|#267
+demo-pipeline-3c.spec.ts|generates wiki|#268
+kg-panels.spec.ts|kg-overview shows the empty|#269 DECISION
+composition-engine.spec.ts|B4.1|D13 DECISION
+enrichment-profile.spec.ts|Profile tab loads|B3
+enrichment-profile.spec.ts|Gaps detect|B3
+agent-context-rack.spec.ts|mock SSE|B4
+assistant-endofday.spec.ts|type a diary note|D12 (model-dependent)

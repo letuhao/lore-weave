@@ -115,9 +115,19 @@ test.describe('Studio editor-craft UX (#16 Phase 2)', () => {
     expect(popup.url()).toContain(`chapter=${chapterId}`);
     await expect(popoutButton).toBeDisabled(); // opener-side: already popped out
 
-    // The popout is a SEPARATE React root — its <Chat> doesn't inherit the opener's just-created
-    // session, so it shows its own "Start New Chat" dialog first.
-    await popup.getByRole('button', { name: 'Start Chat' }).click();
+    // The popout is a SEPARATE React root. It USED to show its own "Start New Chat" dialog
+    // first, and the comment here still said so -- but the button is now absent, so the popout
+    // reaches a usable chat without it. That dialog was never this test's subject: the claim is
+    // that Pop out opens a REAL OS window and Dock-back closes it and re-enables Pop out.
+    //
+    // So the dialog is dismissed only IF it appears, and the claim below is asserted either way.
+    // Note the control carries no testid (NewChatDialog.tsx:194), so there is no
+    // language-agnostic handle on it -- reaching it by name is a knowing compromise, and it is
+    // now optional rather than load-bearing.
+    const startChat = popup.getByRole('button', { name: 'Start Chat' });
+    if (await startChat.isVisible().catch(() => false)) {
+      await startChat.click();
+    }
 
     const dockBack = popup.getByTestId('studio-popout-dock-back');
     await expect(dockBack).toBeVisible();

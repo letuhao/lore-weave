@@ -12,13 +12,38 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import { getAccessToken, createBook, createChapter, trashBook } from '../helpers/api';
 import { queryDb } from '../helpers/db';
-import { installFrontendToolSuspend } from '../helpers/frontendToolInject';
+import { apiBase } from '../helpers/stack';
+import { installFrontendToolSuspend, installUiDirectiveResult } from '../helpers/frontendToolInject';
 
-const API = process.env.PLAYWRIGHT_API_BASE ?? 'http://localhost:3123';
+const API = apiBase(); // derived from the browser target -- see helpers/stack.ts
 // gemma-4-26b-a4b-qat (chat + tool_calling) on the test account — a valid BYOK
 // user_model so the session validates; no turn actually runs it (SSE is injected).
-const MODEL_REF = process.env.PLAYWRIGHT_MODEL_REF ?? '019ebb72-27a2-72f3-a42d-d2d0e0ded179';
-const USER_ID = '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c'; // claude-test
+// Both of these used to be hard-coded to the `claude-test` account on the BASE stack, so the
+// spec could only ever run there. They are read off the account under test instead: the model
+// from the registry (any ACTIVE chat model validates the session; no turn actually runs it,
+// the SSE is injected), the user id from the token's own `sub`.
+let MODEL_REF = process.env.PLAYWRIGHT_MODEL_REF ?? '';
+let USER_ID = '';
+
+function userIdFromToken(token: string): string {
+  const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+  const sub = claims.sub ?? claims.user_id;
+  if (!sub) throw new Error('no subject claim in the access token');
+  return String(sub);
+}
+
+async function firstActiveModel(request: APIRequestContext, token: string): Promise<string> {
+  const res = await request.get(`${API}/v1/model-registry/user-models`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(res.ok(), `list user-models: ${res.status()}`).toBeTruthy();
+  const body = await res.json();
+  const rows: Array<{ user_model_id: string; is_active?: boolean }> =
+    body.items ?? body.user_models ?? body ?? [];
+  const active = rows.find((m) => m.is_active !== false);
+  if (!active) throw new Error('the account under test has no ACTIVE model to validate a session');
+  return active.user_model_id;
+}
 
 async function createSession(request: APIRequestContext, token: string, title: string): Promise<string> {
   const res = await request.post(`${API}/v1/chat/sessions`, {
@@ -53,6 +78,8 @@ test.describe('Frontend-tools liveness (G4 — real browser executor)', () => {
 
   test.beforeAll(async ({ request }) => {
     token = await getAccessToken(request);
+    USER_ID = userIdFromToken(token);
+    if (!MODEL_REF) MODEL_REF = await firstActiveModel(request, token);
     bookId = await createBook(request, token, `E2E fe-tools ${Date.now()}`);
     await createChapter(request, token, bookId, 'Chapter One');
     sessionId = await createSession(request, token, 'fe-tools liveness');
@@ -89,22 +116,30 @@ test.describe('Frontend-tools liveness (G4 — real browser executor)', () => {
 
   // ── Nav executor (useUiToolExecutor, mounted in ChatView) ──────────────────
 
-  test('ui_show_panel — executor sets the panel query and resolves the round-trip', async ({ page }) => {
+  test('ui_show_panel — executor sets the panel query from a ui-directive result', async ({ page }) => {
     await openSession(page, 'fe-tools liveness');
-    const inj = await installFrontendToolSuspend(page, { tool: 'ui_show_panel', args: { panel: 'glossary' }, text: 'Opening the glossary panel.' });
+    // ui_* does NOT suspend any more (useUiToolExecutor: "no ui_* suspends any more"). The
+    // executor acts on a TOOL_CALL_RESULT carrying an io.loreweave/ui-directive.
+    await installUiDirectiveResult(page, { tool: 'ui_show_panel', args: { panel: 'glossary' }, text: 'Opening the glossary panel.' });
     await sendChat(page, 'show glossary');
     // Effect: the executor navigates to current path + ?panel=glossary (stays mounted).
     await page.waitForURL(/[?&]panel=glossary/, { timeout: 15000 });
-    // Round-trip: the executor POSTed the structured resolve to /tool-results.
-    const body = await inj.resumeBody;
-    expect(body.run_id).toBe(inj.runId);
-    expect(body.tool_call_id).toBe(inj.toolCallId);
-    expect((body.result as Record<string, unknown>)?.shown).toBe(true);
+    // The /tool-results round-trip assertions that used to live here are GONE, and the test's
+    // name lost "and resolves the round-trip" with them -- because the round-trip itself is gone.
+    // A ui_* call no longer suspends, so the FE has nothing to resolve: the server executed the
+    // tool and sent a directive, and the FE's whole job is to act on it. Asserting a POST that
+    // the product deliberately stopped making would be asserting the retired design.
+    //
+    // What IS still guarded, and is the point: the directive produced the NAVIGATION above, and
+    // the executor is idempotent -- a re-render must not navigate a second time, so the panel
+    // query is still exactly one `panel=glossary`, not stacked.
+    const url = new URL(page.url());
+    expect(url.searchParams.getAll('panel')).toEqual(['glossary']);
   });
 
   test('ui_open_book — executor navigates to the book', async ({ page }) => {
     await openSession(page, 'fe-tools liveness');
-    await installFrontendToolSuspend(page, { tool: 'ui_open_book', args: { book_id: bookId }, text: 'Opening the book.' });
+    await installUiDirectiveResult(page, { tool: 'ui_open_book', args: { book_id: bookId }, text: 'Opening the book.' });
     await sendChat(page, 'open my book');
     await page.waitForURL(new RegExp(`/books/${bookId}`), { timeout: 15000 });
   });

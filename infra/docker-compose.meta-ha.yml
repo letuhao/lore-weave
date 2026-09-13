@@ -59,7 +59,7 @@ services:
       - lw-meta
 
   minio:
-    image: minio/minio:RELEASE.2024-08-17T01-24-54Z
+    image: quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z
     container_name: lw-meta-minio
     command: server /data --console-address ":9001"
     environment:

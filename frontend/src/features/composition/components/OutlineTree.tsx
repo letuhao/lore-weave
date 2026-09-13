@@ -27,7 +27,7 @@ import type { OutlineNode } from '../types';
 
 // kind → the kind a node of this kind must be parented under (fixed-depth tree).
 const PARENT_KIND: Record<OutlineNode['kind'], OutlineNode['kind'] | null> = {
-  arc: null, chapter: 'arc', scene: 'chapter', beat: 'scene',
+  chapter: null, scene: 'chapter',
 };
 
 // Pure (exported for tests): given the flat display rows + a drag (active dropped
@@ -158,11 +158,11 @@ export function OutlineTree(
   const cycleStatus = (node: OutlineNode, status: OutlineNode['status']) =>
     m.setStatus.mutate({ nodeId: node.id, status, version: node.version }, { onError });
   // Add a child + immediately open it for rename (new nodes are created with an
-  // empty title, so without this they'd all read "scene"/"beat" until edited).
+  // empty title, so without this they'd all read "scene" until edited).
   // Also expand the parent so the new child is visible.
-  const addChild = (node: OutlineNode, kind: 'scene' | 'beat') =>
+  const addChild = (node: OutlineNode, kind: 'scene') =>
     m.addChild.mutate(
-      { kind, parent_id: node.id, chapter_id: kind === 'scene' ? node.chapter_id : null, title: '' },
+      { kind, parent_id: node.id, chapter_id: node.chapter_id, title: '' },
       {
         onError,
         onSuccess: (created: OutlineNode) => {

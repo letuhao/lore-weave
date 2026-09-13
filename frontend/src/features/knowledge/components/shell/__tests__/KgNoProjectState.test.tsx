@@ -9,8 +9,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 
 const toastSuccess = vi.fn();
+const toastError = vi.fn();
+// `error` is NOT optional here even though no assertion reads it. `ProjectFormModal`'s failure
+// path calls `toast.error(msg)` (`ProjectFormModal.tsx:223`), and a `vi.mock` factory replaces the
+// module wholesale — so omitting it does not mean "unused", it means the failure path throws
+// `toast.error is not a function` as an UNHANDLED REJECTION. Vitest reports that separately from
+// the test result and warns it "might cause false positive tests": the suite was green while one
+// of its components could not report a save failure at all.
+//
+// Fourth occurrence of this shape in this repo — react-i18next missing `initReactI18next`, sonner
+// missing `error` twice now, and a settings mock missing `COMPOSER_CAPABILITY`. A partial mock
+// tests a module that does not exist.
 vi.mock('sonner', () => ({
-  toast: { success: (...a: unknown[]) => toastSuccess(...a) },
+  toast: {
+    success: (...a: unknown[]) => toastSuccess(...a),
+    error: (...a: unknown[]) => toastError(...a),
+  },
 }));
 
 const createProjectApi = vi.fn();

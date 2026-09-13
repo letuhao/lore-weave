@@ -215,7 +215,9 @@ export type OutlineNode = {
   id: string;
   project_id: string;
   parent_id: string | null;
-  kind: 'arc' | 'chapter' | 'scene' | 'beat';
+  /** chapter > scene, fixed depth. `arc` lives in structure_node and `beat` is JSONB on the
+   *  scene since pkg_lift_v1; outline_node's CHECK is ('chapter','scene'). */
+  kind: 'chapter' | 'scene';
   rank: string; // lexorank — the BE's primary within-parent order (story_order NULLS LAST, then rank)
   title: string;
   chapter_id: string | null;

@@ -153,12 +153,31 @@ test.describe('Agent context rack (story 04)', () => {
       const phase = page.getByTestId('agent-inspector-phase');
       await expect(phase).toHaveText('Idle', { timeout: 15_000 });
 
-      const textarea = page.getByRole('textbox').first();
+      // NOT getByRole('textbox').first(): the sidebar's "Search conversations..." box comes
+      // first in the DOM, so the text went there and the chat input stayed EMPTY -- which
+      // disables Send correctly (ChatInputBar.tsx:478 `!value.trim() || disabled`). The
+      // product was right and the locator was wrong. Address it by testid, per E2E
+      // CONVENTIONS S1 -- a placeholder is translatable, a testid is not.
+      const textarea = page.getByTestId('chat-input-textarea');
       await textarea.fill('ping');
       await page.getByTitle('Send').click();
 
-      await expect(phase).toHaveText('Curated', { timeout: 10_000 });
+      // The mock delivers RUN_STARTED, Curated, the message, Idle and RUN_FINISHED in ONE
+      // `route.fulfill` body, so the UI can pass THROUGH `Curated` without ever painting it --
+      // the old assertion polled 23 times and saw `Idle` every one. A real server streams these
+      // with gaps; this one cannot, and chasing a transient render would be a race either way.
+      //
+      // The inspector keeps a phase TRAIL (`useAgentSurface.ts:24,50-57` — every transition is
+      // appended), which is the deterministic record of the same claim: the phases reached the
+      // inspector. So the end state is settled first and the trail is then asserted, which is
+      // STRICTER than before — the old version could pass on timing luck, this one cannot.
       await expect(phase).toHaveText('Idle', { timeout: 10_000 });
+      // The trail lives in the inspector's EXPANDED body (AgentRuntimeInspector.tsx:59), which is
+      // collapsed by default -- so expand it, exactly as a person would to read the trail. The
+      // toggle carries no testid, so it is reached by role WITHIN the inspector, which is still
+      // language-agnostic.
+      await page.getByTestId('agent-runtime-inspector').getByRole('button').first().click();
+      await expect(page.getByTestId('agent-inspector-trail')).toContainText('Curated → Idle');
     } finally {
       await deleteChatSession(request, token, session.session_id).catch(() => {});
     }
@@ -180,7 +199,12 @@ test.describe('Agent context rack live [model-gated]', () => {
 
       await expect(page.getByTestId('agent-rack-chip-tool-find_tools')).toBeVisible({ timeout: 15_000 });
 
-      const textarea = page.getByRole('textbox').first();
+      // NOT getByRole('textbox').first(): the sidebar's "Search conversations..." box comes
+      // first in the DOM, so the text went there and the chat input stayed EMPTY -- which
+      // disables Send correctly (ChatInputBar.tsx:478 `!value.trim() || disabled`). The
+      // product was right and the locator was wrong. Address it by testid, per E2E
+      // CONVENTIONS S1 -- a placeholder is translatable, a testid is not.
+      const textarea = page.getByTestId('chat-input-textarea');
       await textarea.fill('Say hi in one word.');
       await page.getByTitle('Send').click();
 

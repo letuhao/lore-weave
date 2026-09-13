@@ -553,9 +553,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # 🔴 REGISTRY + TAG both changed on 2026-09-13, and for two different reasons.
+          #
+          # Registry: `docker.io/minio/minio` stopped being anonymously pullable and this step
+          # began failing with `pull access denied ... repository does not exist or may require
+          # 'docker login'` and exit 125 — docker refusing, not a test failing. Verified both ways
+          # rather than guessed: `docker manifest inspect` is DENIED on Docker Hub and OK on
+          # quay.io, which is MinIO's own published location.
+          #
+          # Tag: `:latest` from a registry that can revoke or move a tag is how a green pipeline
+          # turns red with no commit to blame. Pinned to the same release `infra/docker-compose.
+          # meta-ha.yml` already uses, so CI and that compose file agree on the version under test.
           docker run -d --name minio-ci -p 9000:9000 \
             -e MINIO_ROOT_USER=foundation -e MINIO_ROOT_PASSWORD=foundation-secret-dev-only \
-            minio/minio:latest server /data
+            quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z server /data
           # Wait for MinIO to accept connections.
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1; then break; fi

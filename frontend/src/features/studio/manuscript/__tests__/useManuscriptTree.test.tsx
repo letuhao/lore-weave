@@ -278,19 +278,23 @@ describe('useManuscriptTree', () => {
     expect(restorePart).toHaveBeenCalledWith('t', 'b1', 'gone');
   });
 
-  it('filters structural `beat` nodes out of the outline', async () => {
+  // This used to assert that structural `beat` nodes are filtered out of the outline. There is
+  // no beat kind to filter: pkg_lift_v1 made beats JSONB on the scene and left outline_node's
+  // CHECK at ('chapter','scene'), so the API cannot return one and the filter could never fire.
+  // What IS true, and worth guarding, is that the two real kinds both arrive.
+  it('keeps both real outline kinds — chapter and scene', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
     listOutlineChildren.mockResolvedValue({
       items: [
-        { id: 'arc1', kind: 'arc', title: 'Arc', chapter_id: null, status: null },
-        { id: 'b1', kind: 'beat', title: 'Beat', chapter_id: null, status: null },
+        { id: 'ch1', kind: 'chapter', title: 'Chapter', chapter_id: 'C1', status: null },
+        { id: 'sc1', kind: 'scene', title: 'Scene', chapter_id: 'C1', status: null },
       ],
       next_cursor: null,
     });
     const { result } = renderHook(() => useManuscriptTree('b1', 't'));
     await waitFor(() => expect(result.current.rows.length).toBeGreaterThan(0));
-    expect(result.current.rows.some((r) => isNode(r, 'arc1'))).toBe(true);
-    expect(result.current.rows.some((r) => isNode(r, 'b1'))).toBe(false); // beat dropped
+    expect(result.current.rows.some((r) => isNode(r, 'ch1'))).toBe(true);
+    expect(result.current.rows.some((r) => isNode(r, 'sc1'))).toBe(true);
   });
 
   // P1.2 review-impl HIGH — a /structure OUTAGE (loaded, no data) must NOT brick the rail with a

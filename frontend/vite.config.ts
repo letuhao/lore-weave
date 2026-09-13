@@ -61,14 +61,38 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-tiptap': [
-            '@tiptap/react', '@tiptap/core', '@tiptap/starter-kit',
-            '@tiptap/extension-placeholder', '@tiptap/extension-highlight',
-          ],
-          'vendor-ui': ['lucide-react', 'sonner', 'recharts'],
-          'vendor-query': ['@tanstack/react-query'],
+        // 🔴 FUNCTION form, not the object form, since vite 8 (2026-09-13). Vite 8 bundles with
+        // rolldown, which accepts only a function here — the object form fails the build outright
+        // with `TypeError: manualChunks is not a function`, after a softer warning
+        // (`Invalid type: Expected Function but received Object`) that is easy to scroll past.
+        //
+        // Same grouping as before, expressed as a lookup so the mapping stays readable: the point
+        // was never the syntax, it is which vendors share a chunk.
+        manualChunks(id: string) {
+          const GROUPS: Record<string, readonly string[]> = {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-tiptap': [
+              '@tiptap/react', '@tiptap/core', '@tiptap/starter-kit',
+              '@tiptap/extension-placeholder', '@tiptap/extension-highlight',
+            ],
+            'vendor-ui': ['lucide-react', 'sonner', 'recharts'],
+            'vendor-query': ['@tanstack/react-query'],
+          };
+          if (!id.includes('node_modules')) return undefined;
+          // Match on the package boundary rather than a bare substring: `react` must not claim
+          // `react-router-dom`, and the longest match wins so a scoped name beats its prefix.
+          const norm = id.replace(/\\/g, '/');
+          let best: string | undefined;
+          let bestLen = 0;
+          for (const [chunk, pkgs] of Object.entries(GROUPS)) {
+            for (const pkg of pkgs) {
+              if (norm.includes(`node_modules/${pkg}/`) && pkg.length > bestLen) {
+                best = chunk;
+                bestLen = pkg.length;
+              }
+            }
+          }
+          return best;
         },
       },
     },

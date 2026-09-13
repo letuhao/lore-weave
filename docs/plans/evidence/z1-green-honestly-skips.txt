@@ -1,0 +1,2 @@
+campaign-factory.spec.ts|create|K1 — env vars never set
+composition-generate.spec.ts|drafts a scene|K2 — needs 2 active models

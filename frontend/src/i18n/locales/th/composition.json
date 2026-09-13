@@ -75,13 +75,13 @@
     "discard": "ยกเลิก",
     "stop": "หยุด",
     "stale": "ข้อความที่เลือกมีการเปลี่ยนแปลง — โปรดลองอีกครั้ง",
-    "scenePlan": "Suggest scenes",
-    "scenePlanOnly": "This selection is available for scene suggestions only.",
-    "scenePlanInvalid": "The model did not return valid scene proposals. Try again.",
-    "scenePlanNeedsOutline": "This chapter has no outline yet. Create or extract its plan first.",
-    "scenePlanCreateFailed": "Could not create scene proposals.",
-    "createScenes": "Create selected scenes",
-    "applying": "Creating…"
+    "applying": "Creating…",
+    "scenePlan": "แนะนำฉาก",
+    "scenePlanOnly": "ตัวเลือกนี้ใช้สำหรับการแนะนำฉากเท่านั้น",
+    "scenePlanInvalid": "โมเดลไม่ได้ส่งข้อเสนอแนะฉากที่ถูกต้องมาให้ กรุณาลองใหม่อีกครั้ง",
+    "scenePlanNeedsOutline": "บทนี้ยังไม่มีโครงเรื่อง กรุณาสร้างหรือสกัดโครงเรื่องก่อน",
+    "scenePlanCreateFailed": "ไม่สามารถสร้างข้อเสนอแนะฉากได้",
+    "createScenes": "สร้างฉากที่เลือก"
   },
   "inline": {
     "mode": "โหมดการเขียน",
@@ -746,9 +746,9 @@
     "empty": {
       "title": "คลังโมทีฟของคุณพร้อมใช้งานแล้ว",
       "body": "โมทีฟคือโครงสร้างพล็อตที่นำกลับมาใช้ใหม่ได้ ตัววางแผนจะเลือกหนึ่งโมทีฟต่อหนึ่งตอน เพื่อให้แม้แต่โมเดลขนาดเล็กก็สามารถเขียนฉากที่แข็งแรงได้ มีโมทีฟเริ่มต้น 12 แบบเตรียมไว้ให้แล้ว — เช่น tu-tiên และ báo-thù",
+      "notThemes": "สิ่งเหล่านี้คือรูปแบบโครงเรื่องเชิงโครงสร้างสำหรับตัววางแผน ไม่ใช่ตัวติดตามภาพหรือแก่นเรื่องที่ปรากฏซ้ำในเรื่องของคุณ — ไม่มีสิ่งใดที่นี่ติดตามสัญลักษณ์ข้ามบทของคุณ",
       "browseSystem": "เลือกดู 12 แบบเริ่มต้น",
-      "hint": "ไม่ต้องใช้โทเคน — การสร้างโมทีฟด้วยตัวเองนั้นฟรี",
-      "notThemes": "สิ่งเหล่านี้คือรูปแบบโครงเรื่องเชิงโครงสร้างสำหรับตัววางแผน ไม่ใช่ตัวติดตามภาพหรือแก่นเรื่องที่ปรากฏซ้ำในเรื่องของคุณ — ไม่มีสิ่งใดที่นี่ติดตามสัญลักษณ์ข้ามบทของคุณ"
+      "hint": "ไม่ต้องใช้โทเคน — การสร้างโมทีฟด้วยตัวเองนั้นฟรี"
     },
     "facet": {
       "tier": "ระดับ",
@@ -1378,12 +1378,12 @@
   "canonUncheckedWhich": "มี {{count}} รายการตรวจสอบที่ยังไม่เสร็จ",
   "structureTemplates": {
     "templates": {
-      "save_the_cat": "Save the Cat",
       "hero_journey": "การเดินทางของวีรบุรุษ",
       "story_circle": "วงจรเรื่องเล่า",
       "kishotenketsu": "คิโชเทนเคตสึ",
       "web_novel": "โครงเรื่องนิยายเว็บ",
-      "generic": "สามองก์ (ทั่วไป)"
+      "generic": "สามองก์ (ทั่วไป)",
+      "save_the_cat": "Save the Cat"
     },
     "beats": {
       "save_the_cat": {

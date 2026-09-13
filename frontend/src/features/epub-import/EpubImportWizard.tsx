@@ -155,7 +155,7 @@ export function EpubImportWizard({ open, onOpenChange, bookId, onImported }: Epu
   if (!open) return null;
   return <Dialog.Root open onOpenChange={(next) => onOpenChange(next)}><Dialog.Portal>
     <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-    <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background shadow-xl">
+    <Dialog.Content data-testid="epub-import-dialog" className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background shadow-xl">
       <header className="flex items-center justify-between border-b px-5 py-3"><div><Dialog.Title className="text-sm font-semibold">{t('epubImport.title')}</Dialog.Title><Dialog.Description className="text-xs text-muted-foreground">{t('epubImport.description')}</Dialog.Description></div><button aria-label={t('epubImport.close')} onClick={() => onOpenChange(false)} className="rounded p-1 hover:bg-secondary"><X className="h-4 w-4" /></button></header>
       <div className="flex gap-1 overflow-x-auto border-b px-4 py-2">{STEPS.map((item, index) => <span key={item} className={`whitespace-nowrap rounded px-2 py-1 text-[11px] ${index === currentIndex ? 'bg-primary/10 text-primary' : index < currentIndex ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>{index + 1}. {t(`epubImport.steps.${item}`)}</span>)}</div>
       <main className="min-h-0 flex-1 overflow-y-auto p-5">{error && <div className="mb-4 flex gap-2 rounded border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive"><AlertTriangle className="h-4 w-4 shrink-0" />{error}</div>}

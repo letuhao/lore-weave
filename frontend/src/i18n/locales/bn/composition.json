@@ -75,13 +75,13 @@
     "discard": "বাতিল করুন",
     "stop": "বন্ধ করুন",
     "stale": "নির্বাচনটি পরিবর্তিত হয়েছে — আবার চেষ্টা করুন।",
-    "scenePlan": "Suggest scenes",
-    "scenePlanOnly": "This selection is available for scene suggestions only.",
-    "scenePlanInvalid": "The model did not return valid scene proposals. Try again.",
-    "scenePlanNeedsOutline": "This chapter has no outline yet. Create or extract its plan first.",
-    "scenePlanCreateFailed": "Could not create scene proposals.",
-    "createScenes": "Create selected scenes",
-    "applying": "Creating…"
+    "applying": "Creating…",
+    "scenePlan": "দৃশ্য প্রস্তাব করুন",
+    "scenePlanOnly": "এই নির্বাচনটি শুধুমাত্র দৃশ্য প্রস্তাবনার জন্য উপলব্ধ।",
+    "scenePlanInvalid": "মডেলটি কোনো সঠিক দৃশ্য প্রস্তাব করতে পারেনি। আবার চেষ্টা করুন।",
+    "scenePlanNeedsOutline": "এই অধ্যায়ের এখনও কোনো আউটলাইন নেই। প্রথমে এর পরিকল্পনা তৈরি করুন বা সংগ্রহ করুন।",
+    "scenePlanCreateFailed": "দৃশ্য প্রস্তাবনা তৈরি করা সম্ভব হয়নি।",
+    "createScenes": "নির্বাচিত দৃশ্যগুলো তৈরি করুন"
   },
   "inline": {
     "mode": "রাইটিং মোড",
@@ -746,9 +746,9 @@
     "empty": {
       "title": "আপনার Motif লাইব্রেরি প্রস্তুত",
       "body": "Motif হলো পুনরায় ব্যবহারযোগ্য প্লট কাঠামো। প্ল্যানার প্রতিটি অধ্যায়ের জন্য একটি করে বেছে নেয় যাতে একটি ছোট মডেলও একটি শক্তিশালী দৃশ্য তৈরি করতে পারে। ১২টি স্টার্টার Motif এখানে আছে — tu-tiên এবং báo-thù।",
+      "notThemes": "এগুলি পরিকল্পনাকারীর জন্য কাঠামোগত প্লট-আকৃতি, আপনার নিজের গল্পের পুনরাবৃত্ত চিত্রকল্প বা থিমের ট্র্যাকার নয় — এখানে কিছুই আপনার অধ্যায় জুড়ে কোনো প্রতীক অনুসরণ করে না।",
       "browseSystem": "১২টি স্টার্টার দেখুন",
-      "hint": "কোনো টোকেন প্রয়োজন নেই — হাতে তৈরি করা Motif সম্পূর্ণ ফ্রি।",
-      "notThemes": "এগুলি পরিকল্পনাকারীর জন্য কাঠামোগত প্লট-আকৃতি, আপনার নিজের গল্পের পুনরাবৃত্ত চিত্রকল্প বা থিমের ট্র্যাকার নয় — এখানে কিছুই আপনার অধ্যায় জুড়ে কোনো প্রতীক অনুসরণ করে না।"
+      "hint": "কোনো টোকেন প্রয়োজন নেই — হাতে তৈরি করা Motif সম্পূর্ণ ফ্রি।"
     },
     "facet": {
       "tier": "স্তর",

@@ -28,15 +28,27 @@ test.describe('Composition chapter-gate (U1/U2/B3/B7)', () => {
       // U2 — add a scene; it appears in the picker.
       await expect(panel.addScene).toBeVisible();
       await panel.addScene.click();
-      await expect(panel.sceneSelect.locator('option')).toHaveCount(1);
+      // TWO scenes exist here, not one: the GUIDED first run seeds an "Opening scene"
+      // (useGuidedFirstRun.ts) before addScene adds its own. Asserting 1 used to pass only
+      // because toHaveCount polls and the picker is briefly stale before it refetches --
+      // a stale assertion succeeding on a transient state.
+      await expect(panel.sceneSelect.locator('option')).toHaveCount(2);
 
       // B7.1 — a Work + a not-done scene → Publish is now DISABLED (chapter-gate).
       await expect(panel.publishButton).toBeDisabled();
 
       // B3.1 + B7.4 + B7.5 — Mark done from the UI re-enables Publish (no reload,
       // no API back-door — the gate is satisfiable through the affordance).
+      // The gate counts EVERY scene ("1 of 2 scenes not yet done" is what the disabled
+      // button's own title said), so every scene has to be marked done through the UI --
+      // which is the claim: the gate is satisfiable through the affordance, not a back door.
       await expect(panel.markDone).toBeVisible();
-      await panel.markDone.click();
+      const options = panel.sceneSelect.locator('option');
+      for (let i = 0; i < (await options.count()); i++) {
+        const value = await options.nth(i).getAttribute('value');
+        if (value) await panel.sceneSelect.selectOption(value);
+        if (await panel.markDone.isVisible()) await panel.markDone.click();
+      }
       await expect(panel.publishButton).toBeEnabled({ timeout: 10_000 });
     } finally {
       await trashBook(request, token, bookId);

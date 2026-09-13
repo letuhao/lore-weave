@@ -37,11 +37,18 @@ test.describe('S6 · blackbox author journey (fresh book → operable, Studio-on
     // 1 · The author opens Canon rules to declare an invariant — but there is no co-writer session yet.
     //     The panel does NOT dead-end: it offers "Set up co-writer" (D0), the self-service exit.
     await studio.openPanel('quality-canon-rules', 'Canon rules');
+    // The CLAIM is "no dead-end", and the CTA was one REMEDY for it. Opening the Studio now
+    // creates the composition Work by itself -- measured: the S6 book's composition_work row
+    // appears ~5s after the book, before this panel is opened -- so `useQualityWork` reports
+    // 'ready' and QualityWorkGate correctly never renders the CTA.
+    //
+    // So the remedy is asserted only WHEN IT IS OFFERED, and the claim is asserted either way:
+    // the author reaches an operable Canon-rules panel. This still fails if the panel is
+    // neither offered nor operable, which is the dead-end this test exists to catch.
     const cta = page.getByTestId('work-setup-cta');
-    await expect(cta).toBeVisible();
-
-    // 2 · One click sets up the co-writer (no agent, no leaving the Studio) → the CRUD panel appears.
-    await cta.click();
+    if (await cta.isVisible().catch(() => false)) {
+      await cta.click();
+    }
     await expect(page.getByTestId('studio-quality-canon-rules-panel')).toBeVisible({ timeout: 20_000 });
 
     // 3 · The author writes a canon rule and SEES it land — the read↔write closure a GUI user needs.

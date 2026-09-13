@@ -43,11 +43,24 @@ test.describe('Manuscript Navigator — chapters path (no Work)', () => {
     const studio = new StudioPage(page);
     await studio.goto(bookId);
     await expect(page.getByTestId(`manuscript-row-${chapterIds[0]}`)).toBeVisible();
-    // Header actions (mockup .nav-head): Collapse-all + Reload always available; New disabled
-    // (create flow is Debt); the Side-Bar collapse moved into the navigator header.
+    // Header actions (mockup .nav-head): Collapse-all + Reload always available; the Side-Bar
+    // collapse moved into the navigator header.
     await expect(page.getByTestId('manuscript-collapse')).toBeVisible();
     await expect(page.getByTestId('manuscript-reload')).toBeVisible();
-    await expect(page.getByTestId('manuscript-new')).toBeDisabled();
+
+    // The `+` was asserted DISABLED here because the create flow was Debt. It is not a create
+    // button any more -- it opens the Plan hub, and the product says why:
+    //
+    //   "it read 'New chapter' while being permanently disabled, which is the worst of both --
+    //    a promise it never kept and couldn't"   (ManuscriptNavigator.tsx:297-300)
+    //
+    // Keeping `toBeDisabled()` would have pinned exactly that state back in place. What is
+    // asserted instead is what the control now DOES, which is a stronger claim than "is inert":
+    // it is enabled, and it opens the Plan.
+    const planAction = page.getByTestId('manuscript-new');
+    await expect(planAction).toBeEnabled();
+    await planAction.click();
+    await expect(page.getByTestId('plan-hub-book-title')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('manuscript-collapse-sidebar')).toBeVisible();
     // Footer: whole-book totals (a flat import → chapter count) + window readout.
     await expect(page.getByTestId('manuscript-totals')).toContainText('ch');

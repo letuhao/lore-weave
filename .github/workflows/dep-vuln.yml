@@ -32,22 +32,43 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          # 🔴 Raised 1.25 -> 1.26 on 2026-09-13 because this leg had stopped auditing.
+          # `setup-go` pins GOTOOLCHAIN=local to enforce this version, and `govulncheck@latest`
+          # (golang.org/x/vuln v1.8.0) now requires go >= 1.26.0 — so `go install` failed and the
+          # scan loop below NEVER RAN. The Go ecosystem was unscanned while the check looked
+          # merely advisory-red, which is indistinguishable from "found something".
+          #
+          # Safe for this job: the highest `go` directive across the repo's go.mod files is
+          # 1.25.0, so a newer toolchain changes nothing about what compiles here.
+          go-version: "1.26"
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        # A tool that will not install must not be mistakable for a tool that found nothing.
       - name: govulncheck every go.mod module
         shell: bash
         run: |
           set -uo pipefail
           fail=0
+          scanned=0
           while IFS= read -r mod; do
             dir=$(dirname "$mod")
             echo "::group::govulncheck $dir"
+            scanned=$((scanned + 1))
             if ! ( cd "$dir" && govulncheck ./... ); then
               echo "::warning::govulncheck findings in $dir"
               fail=1
             fi
             echo "::endgroup::"
           done < <(find . -name go.mod -not -path '*/.git/*' -not -path '*/.claude/*')
+          # SCANNED NOTHING is not CLEAN. Without this, a `find` that matches no module — a
+          # layout change, a bad checkout, a future path exclusion — exits 0 and reports a
+          # healthy audit over zero code. This leg already spent time in exactly that state
+          # for a different reason (see the toolchain note above), so it gets the guard.
+          echo "govulncheck: scanned $scanned module(s)"
+          if [ "$scanned" -eq 0 ]; then
+            echo "::error::govulncheck scanned ZERO modules — the audit did not run. This is a"
+            echo "::error::  broken check, not a clean result."
+            exit 2
+          fi
           # Non-zero surfaces the findings; job-level continue-on-error keeps it advisory.
           exit $fail
 

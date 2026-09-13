@@ -1,26 +1,26 @@
 {
   "title": "ジョブ",
   "status": {
-    "pending": "待機中",
+    "pending": "保留中",
     "running": "実行中",
-    "paused": "一時停止",
+    "paused": "一時停止中",
     "cancelling": "キャンセル中",
     "completed": "完了",
     "failed": "失敗",
     "cancelled": "キャンセル済み"
   },
   "kind": {
-    "extraction": "ナレッジ抽出",
+    "extraction": "知識抽出",
     "glossary_extraction": "用語集抽出",
     "wiki_gen": "Wiki生成",
     "translation": "翻訳",
     "glossary_translation": "用語集翻訳",
     "video_gen": "動画生成",
-    "campaign": "キャンペーン",
-    "enrichment_job": "ロア拡充",
+    "campaign": "ジョブ",
+    "enrichment_job": "設定補完",
     "book_import": "書籍インポート",
     "composition": {
-      "generate": "創作"
+      "generate": "構成生成"
     }
   },
   "summary": {
@@ -34,48 +34,48 @@
     "kind": "種類",
     "allStatuses": "すべてのステータス",
     "allKinds": "すべての種類",
-    "search": "タイトルで検索…",
-    "searchWide": "タイトル・種類・サービス・モデル・ジョブIDで検索…",
-    "searchHint": "タイトル · 種類 · サービス · モデル · ジョブID を検索（デバウンス）。"
+    "search": "タイトルを検索…",
+    "searchWide": "タイトル、種類、サービス、モデル、またはジョブIDを検索…",
+    "searchHint": "タイトル · 種類 · サービス · モデル · ジョブIDを検索（デバウンス処理あり）。"
   },
   "col": {
     "job": "ジョブ",
     "status": "ステータス",
     "progress": "進捗",
     "cost": "コスト · トークン",
-    "started": "開始",
-    "actions": "操作"
+    "started": "開始日",
+    "actions": "アクション"
   },
   "section": {
-    "active": "実行中 · ライブ",
-    "activeHint": "ページ送りなし — SSEでその場更新",
+    "active": "アクティブ · 実行中",
+    "activeHint": "ページ分割なし — SSEによりその場で更新されます",
     "history": "履歴",
-    "historyHint": "作成日順 · ページ送りあり"
+    "historyHint": "作成順にソート · ページ分割あり"
   },
   "list": {
     "loading": "読み込み中…",
     "error": "ジョブの読み込みに失敗しました。",
-    "empty": "ジョブはまだありません。",
+    "empty": "ジョブがありません。",
     "noActive": "実行中のジョブはありません。",
-    "more": "さらに読み込む",
-    "toggleChildren": "子ジョブの表示切替",
+    "more": "もっと見る",
+    "toggleChildren": "子要素を表示/非表示",
     "noChildren": "子ジョブはありません。",
     "errorWithReason": "ジョブを読み込めませんでした: {{error}}"
   },
   "row": {
-    "ran": "{{d}} 実行",
+    "ran": "{{d}} 実行済み",
     "running": "{{d}} 実行中",
     "details": "詳細 ↗"
   },
   "pager": {
     "range": "{{total}} 件中 {{from}}–{{to}}",
     "pageSize": "ページサイズ",
-    "perPage": "{{n}} 件 / ページ",
-    "page": "ページ {{n}}",
+    "perPage": "1ページあたり {{n}} 件",
+    "page": "{{n}} ページ",
     "prev": "前のページ",
     "next": "次のページ",
-    "outOfRange": "このページに行がありません（全 {{total}} 件）。",
-    "first": "最初のページに戻る"
+    "outOfRange": "このページにデータはありません（全 {{total}} 件）。",
+    "first": "最初のページへ"
   },
   "live": {
     "on": "● ライブ",
@@ -88,72 +88,72 @@
     "resume": "再開",
     "resumeFromCheckpoint": "チェックポイントから再開",
     "cancel": "キャンセル",
-    "cancelConfirm": "今すぐ停止しますか？処理中の作業は破棄され、完了した部分は保持されます。",
+    "cancelConfirm": "停止しますか？進行中の作業は破棄されますが、完了したパートは保持されます。",
     "cancelYes": "はい",
     "cancelNo": "いいえ",
-    "cancelled": "キャンセルしました。",
+    "cancelled": "キャンセルされました。",
     "paused": "一時停止しました。",
     "resumed": "再開しました。",
     "retry": "再試行",
-    "retried": "新しいジョブとして再送信しました。",
-    "stale": "状態が変わりました — 更新しました。",
-    "actionFailed": "操作に失敗しました: {{error}}",
-    "retryBenchmarkMissing": "再試行は利用できません：埋め込みモデルのベンチマークがありません。モデルのベンチマークを実行してから、再度確認してください。",
-    "retryBenchmarkFailed": "再試行は利用できません：埋め込みモデルの前回のベンチマークが失敗しました。"
+    "retried": "新しいジョブとして再提出されました。",
+    "stale": "ジョブの状態が変更されました — 更新しました。",
+    "actionFailed": "アクションに失敗しました: {{error}}",
+    "retryBenchmarkMissing": "再試行できません: エンベディングモデルのベンチマークがありません。モデルのベンチマークを実行してから、再度確認してください。",
+    "retryBenchmarkFailed": "再試行できません: エンベディングモデルの前回のベンチマークが失敗しました。"
   },
   "monitor": {
     "back": "すべてのジョブ",
     "error": "ジョブの読み込みに失敗しました。",
-    "pausedBanner": "一時停止中 — 新しいユニットは送出されず、実行中のものは完了します。上で再開できます。",
+    "pausedBanner": "一時停止中 — 新しいユニットの割り当ては停止し、実行中のものは完了するまで継続されます。上部から再開してください。",
     "children": "子ジョブ"
   },
   "detail": {
     "progress": "進捗",
-    "llmCalls": "LLM 呼び出し",
-    "elapsed": "経過",
+    "llmCalls": "LLM呼び出し",
+    "elapsed": "経過時間",
     "throughput": "スループット",
-    "throughputVal": "~{{n}} /時",
-    "eta": "残り見込み",
+    "throughputVal": "~{{n}} /h",
+    "eta": "到着予定時刻",
     "costSoFar": "現在のコスト",
-    "tokensIn": "入力トークン",
-    "tokensOut": "出力トークン",
-    "bestEffort": "概算",
+    "tokensIn": "入力トークン数",
+    "tokensOut": "出力トークン数",
+    "bestEffort": "ベストエフォート",
     "models": "モデル",
-    "parameters": "パラメータ",
-    "parametersHint": "動的 — ジョブの params オブジェクトより",
+    "parameters": "パラメーター",
+    "parametersHint": "動的：ジョブのparamsオブジェクトから取得",
     "jobId": "ジョブID",
     "kind": "種類",
     "service": "サービス",
-    "parent": "親ジョブ",
-    "viewParent": "親ジョブを表示 ↗",
-    "created": "作成",
-    "lastUpdate": "最終更新",
+    "parent": "親",
+    "viewParent": "親を表示 ↗",
+    "created": "作成日",
+    "lastUpdate": "最終更新日",
     "copied": "ジョブIDをコピーしました。",
     "copyFailed": "コピーできませんでした。",
-    "activity": "アクティビティ（ライブ）",
+    "activity": "アクティビティ (ライブ)",
     "errorTitle": "エラー"
   },
   "activity": {
-    "created": "作成",
-    "pending": "キュー追加",
+    "created": "作成済み",
+    "pending": "待機中",
     "running": "実行中",
-    "paused": "一時停止",
+    "paused": "一時停止中",
     "cancelling": "キャンセル中",
     "completed": "完了",
     "failed": "失敗",
     "cancelled": "キャンセル済み"
   },
   "mobile": {
-    "children": "件の子ジョブ"
+    "children": "子"
   },
   "fairness": {
-    "title": "公平スケジューリング",
+    "title": "公平なスケジューリング",
     "running": "{{running}}/{{cap}} 実行中",
-    "queued": "· {{queued}} 待機中",
+    "queued": "・{{queued}} キュー待ち",
     "lane": {
       "translation": "翻訳",
-      "knowledge": "ナレッジ",
-      "loreEnrichment": "ロア補完"
+      "knowledge": "知識抽出",
+      "loreEnrichment": "設定の拡充"
     }
   }
 }

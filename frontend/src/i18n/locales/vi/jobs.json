@@ -1,31 +1,31 @@
 {
-  "title": "Tác vụ",
+  "title": "Tiến trình",
   "status": {
-    "pending": "Chờ xử lý",
+    "pending": "Đang chờ",
     "running": "Đang chạy",
-    "paused": "Tạm dừng",
+    "paused": "Đã tạm dừng",
     "cancelling": "Đang hủy",
-    "completed": "Hoàn tất",
+    "completed": "Đã hoàn thành",
     "failed": "Thất bại",
     "cancelled": "Đã hủy"
   },
   "kind": {
-    "extraction": "Trích xuất tri thức",
+    "extraction": "Trích xuất kiến thức",
     "glossary_extraction": "Trích xuất thuật ngữ",
-    "wiki_gen": "Tạo wiki",
+    "wiki_gen": "Tạo Wiki",
     "translation": "Dịch thuật",
-    "glossary_translation": "Dịch thuật ngữ",
+    "glossary_translation": "Dịch thuật thuật ngữ",
     "video_gen": "Tạo video",
-    "campaign": "Chiến dịch",
-    "enrichment_job": "Làm giàu lore",
+    "campaign": "Tiến trình",
+    "enrichment_job": "Làm giàu cốt truyện",
     "book_import": "Nhập sách",
     "composition": {
       "generate": "Sáng tác"
     }
   },
   "summary": {
-    "active": "Đang hoạt động",
-    "completed": "Hoàn tất",
+    "active": "Đang chạy",
+    "completed": "Đã hoàn thành",
     "failed": "Thất bại",
     "cancelled": "Đã hủy"
   },
@@ -34,33 +34,33 @@
     "kind": "Loại",
     "allStatuses": "Tất cả trạng thái",
     "allKinds": "Tất cả loại",
-    "search": "Tìm theo tiêu đề…",
-    "searchWide": "Tìm theo tiêu đề, loại, dịch vụ, model hoặc ID…",
-    "searchHint": "Tìm trong tiêu đề · loại · dịch vụ · model · ID tác vụ (có trễ)."
+    "search": "Tìm kiếm tiêu đề…",
+    "searchWide": "Tìm kiếm tiêu đề, loại, dịch vụ, mô hình hoặc ID Tiến trình…",
+    "searchHint": "Tìm kiếm theo tiêu đề · loại · dịch vụ · mô hình · ID Tiến trình (đã được tối ưu hóa)."
   },
   "col": {
-    "job": "Tác vụ",
+    "job": "Tiến trình",
     "status": "Trạng thái",
     "progress": "Tiến độ",
     "cost": "Chi phí · token",
     "started": "Bắt đầu",
-    "actions": "Thao tác"
+    "actions": "Hành động"
   },
   "section": {
     "active": "Đang hoạt động · trực tiếp",
-    "activeHint": "không phân trang — cập nhật trực tiếp qua SSE",
+    "activeHint": "không phân trang — cập nhật tại chỗ qua SSE",
     "history": "Lịch sử",
-    "historyHint": "sắp theo ngày tạo · có phân trang"
+    "historyHint": "sắp xếp theo ngày tạo · có phân trang"
   },
   "list": {
     "loading": "Đang tải…",
-    "error": "Không tải được tác vụ.",
-    "empty": "Chưa có tác vụ nào.",
-    "noActive": "Không có tác vụ đang chạy.",
+    "error": "Không thể tải Tiến trình.",
+    "empty": "Chưa có Tiến trình nào.",
+    "noActive": "Không có Tiến trình nào đang chạy.",
     "more": "Tải thêm",
-    "toggleChildren": "Mở/đóng tác vụ con",
-    "noChildren": "Không có tác vụ con.",
-    "errorWithReason": "Không thể tải công việc: {{error}}"
+    "toggleChildren": "Đóng/mở các mục con",
+    "noChildren": "Không có Tiến trình con.",
+    "errorWithReason": "Không thể tải Tiến trình: {{error}}"
   },
   "row": {
     "ran": "đã chạy {{d}}",
@@ -69,13 +69,13 @@
   },
   "pager": {
     "range": "{{from}}–{{to}} trên {{total}}",
-    "pageSize": "Số mục mỗi trang",
+    "pageSize": "Kích thước trang",
     "perPage": "{{n}} / trang",
     "page": "Trang {{n}}",
     "prev": "Trang trước",
-    "next": "Trang sau",
-    "outOfRange": "Không có dòng nào ở trang này (tổng {{total}}).",
-    "first": "Về trang đầu"
+    "next": "Trang tiếp theo",
+    "outOfRange": "Không có hàng nào trên trang này (tổng cộng {{total}}).",
+    "first": "Quay lại trang đầu tiên"
   },
   "live": {
     "on": "● trực tiếp",
@@ -86,65 +86,65 @@
   "controls": {
     "pause": "Tạm dừng",
     "resume": "Tiếp tục",
-    "resumeFromCheckpoint": "Tiếp tục từ điểm lưu",
+    "resumeFromCheckpoint": "Tiếp tục từ điểm kiểm tra",
     "cancel": "Hủy",
-    "cancelConfirm": "Dừng ngay? Phần đang xử lý sẽ bị bỏ; phần đã hoàn tất được giữ lại.",
+    "cancelConfirm": "Dừng lại ngay bây giờ? Các phần việc đang thực hiện sẽ bị hủy bỏ; các phần đã hoàn thành sẽ được giữ lại.",
     "cancelYes": "Có",
     "cancelNo": "Không",
     "cancelled": "Đã hủy.",
     "paused": "Đã tạm dừng.",
     "resumed": "Đã tiếp tục.",
     "retry": "Thử lại",
-    "retried": "Đã gửi lại thành một job mới.",
-    "stale": "Trạng thái đã thay đổi — đã làm mới.",
+    "retried": "Đã gửi lại dưới dạng một Tiến trình mới.",
+    "stale": "Trạng thái Tiến trình đã thay đổi — đã làm mới.",
     "actionFailed": "Thao tác thất bại: {{error}}",
-    "retryBenchmarkMissing": "Không thể thử lại: mô hình embedding chưa có kết quả kiểm thử (benchmark). Hãy chạy kiểm thử mô hình, sau đó kiểm tra lại.",
-    "retryBenchmarkFailed": "Không thể thử lại: mô hình embedding đã thất bại trong lần kiểm thử cuối cùng."
+    "retryBenchmarkMissing": "Không thể thử lại: mô hình embedding không có kết quả kiểm thử. Hãy chạy kiểm thử mô hình, sau đó kiểm tra lại.",
+    "retryBenchmarkFailed": "Không thể thử lại: mô hình embedding đã thất bại trong lần kiểm thử trước đó."
   },
   "monitor": {
-    "back": "Tất cả tác vụ",
-    "error": "Không tải được tác vụ.",
-    "pausedBanner": "Đã tạm dừng — không gửi đơn vị mới, các đơn vị đang chạy sẽ hoàn tất. Tiếp tục bên trên.",
-    "children": "Tác vụ con"
+    "back": "Tất cả Tiến trình",
+    "error": "Không thể tải Tiến trình.",
+    "pausedBanner": "Đã tạm dừng — không có đơn vị mới nào được điều phối và các đơn vị đang chạy sẽ hoàn tất. Nhấn Tiếp tục ở trên.",
+    "children": "Tiến trình con"
   },
   "detail": {
     "progress": "Tiến độ",
-    "llmCalls": "Lượt gọi LLM",
-    "elapsed": "Đã chạy",
+    "llmCalls": "Số lần gọi LLM",
+    "elapsed": "Thời gian đã trôi qua",
     "throughput": "Thông lượng",
-    "throughputVal": "~{{n}} /giờ",
-    "eta": "Dự kiến còn",
-    "costSoFar": "Chi phí đến nay",
-    "tokensIn": "Token vào",
-    "tokensOut": "Token ra",
-    "bestEffort": "ước tính",
-    "models": "Model",
+    "throughputVal": "~{{n}} /h",
+    "eta": "Thời gian dự kiến hoàn thành",
+    "costSoFar": "Chi phí hiện tại",
+    "tokensIn": "Token đầu vào",
+    "tokensOut": "Token đầu ra",
+    "bestEffort": "nỗ lực tối đa",
+    "models": "Mô hình",
     "parameters": "Tham số",
-    "parametersHint": "động, từ đối tượng params của tác vụ",
-    "jobId": "ID tác vụ",
+    "parametersHint": "động, từ đối tượng tham số của Tiến trình",
+    "jobId": "ID Tiến trình",
     "kind": "Loại",
     "service": "Dịch vụ",
-    "parent": "Tác vụ cha",
-    "viewParent": "Xem tác vụ cha ↗",
-    "created": "Tạo lúc",
-    "lastUpdate": "Cập nhật cuối",
-    "copied": "Đã sao chép ID.",
-    "copyFailed": "Không sao chép được.",
+    "parent": "Phần tử cha",
+    "viewParent": "Xem phần tử cha ↗",
+    "created": "Đã tạo",
+    "lastUpdate": "Cập nhật lần cuối",
+    "copied": "Đã sao chép ID Tiến trình.",
+    "copyFailed": "Không thể sao chép.",
     "activity": "Hoạt động (trực tiếp)",
     "errorTitle": "Lỗi"
   },
   "activity": {
     "created": "Đã tạo",
-    "pending": "Đã xếp hàng",
+    "pending": "Đang chờ",
     "running": "Đang chạy",
     "paused": "Đã tạm dừng",
     "cancelling": "Đang hủy",
-    "completed": "Hoàn tất",
+    "completed": "Đã hoàn thành",
     "failed": "Thất bại",
     "cancelled": "Đã hủy"
   },
   "mobile": {
-    "children": "tác vụ con"
+    "children": "con"
   },
   "fairness": {
     "title": "Lập lịch công bằng",
@@ -152,8 +152,8 @@
     "queued": "· {{queued}} đang chờ",
     "lane": {
       "translation": "Dịch thuật",
-      "knowledge": "Tri thức",
-      "loreEnrichment": "Làm giàu lore"
+      "knowledge": "Kiến thức",
+      "loreEnrichment": "Làm giàu cốt truyện"
     }
   }
 }

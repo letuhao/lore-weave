@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { AssistantPage } from '../pages/AssistantPage';
 import { loginViaUI } from '../helpers/auth';
+import { getAccessToken, clearAssistantSessions } from '../helpers/api';
 
 // QC Track-B — S1: the CORE loop, now unblocked by the F-QC-1 fix (the assistant auto-creates its diary
 // session, so a real user can just type + journal). Drive it end-to-end on the built image: land in the
@@ -12,6 +13,14 @@ import { loginViaUI } from '../helpers/auth';
 // (`assistant- --grep-invert @slow`) because real-LLM timing + accumulated diary state make it flaky when
 // batched. It exists to prove the core loop actually works end-to-end, not for CI gating.
 test.describe('Assistant — end-of-day core loop (S1) @slow', () => {
+  // A stale assistant session is inherited forever (see clearAssistantSessions). Clearing it makes
+  // the product auto-create a fresh one on the CURRENT default model, which is what the first
+  // assertion below actually claims.
+  test.beforeEach(async ({ request }) => {
+    const token = await getAccessToken(request);
+    await clearAssistantSessions(request, token);
+  });
+
   test('type a diary note → End my day → a distilled entry appears', async ({ page }) => {
     test.setTimeout(180_000);
     await loginViaUI(page);

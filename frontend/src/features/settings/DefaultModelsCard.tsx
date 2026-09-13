@@ -4,7 +4,10 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { AddModelCta } from '@/components/shared/AddModelCta';
 import { ModelPicker } from '@/components/model-picker';
-import { defaultModelsApi, RERANK_CAPABILITY, PLANNER_CAPABILITY, CHAT_CAPABILITY, COMPOSER_CAPABILITY } from './api';
+import {
+  defaultModelsApi, RERANK_CAPABILITY, PLANNER_CAPABILITY, CHAT_CAPABILITY, COMPOSER_CAPABILITY,
+  CRITIC_CAPABILITY, DISTILL_CAPABILITY,
+} from './api';
 
 /**
  * Per-user DEFAULT model per capability (rerank/embedding). Restores the
@@ -171,6 +174,40 @@ export function DefaultModelsCard() {
             })}
             value={defaults[COMPOSER_CAPABILITY] ?? null}
             onChange={(id) => void save(COMPOSER_CAPABILITY, id)}
+            disabled={saving}
+          />
+        </div>
+        {/* #270 — CRITIC. Roleplay scoring refuses outright when this is unset and the only
+            other model is the one that played the scene: "scoring needs a CRITIC model distinct
+            from this session's model (the session model played the roleplay partner and must not
+            grade itself)". It then tells the user to set one HERE, and until now there was no
+            row to set it in. A role, so it lists chat models and saves under 'critic'. */}
+        <div className="mt-4">
+          <DefaultModelRow
+            capability={CRITIC_CAPABILITY}
+            listCapability={CHAT_CAPABILITY}
+            label={t('defaultModels.critic', { defaultValue: 'Default critic' })}
+            hint={t('defaultModels.criticHint', {
+              defaultValue: 'The model that GRADES work — scoring refuses rather than let a model judge its own output, so pick one distinct from the model you write and roleplay with.',
+            })}
+            value={defaults[CRITIC_CAPABILITY] ?? null}
+            onChange={(id) => void save(CRITIC_CAPABILITY, id)}
+            disabled={saving}
+          />
+        </div>
+        {/* #270 — DISTILL. "End my day" runs headless and a REASONING model emits only
+            reasoning_content, so the diary comes back empty with no error a user can act on.
+            Pick a non-reasoning model here. A role, so it lists chat models. */}
+        <div className="mt-4">
+          <DefaultModelRow
+            capability={DISTILL_CAPABILITY}
+            listCapability={CHAT_CAPABILITY}
+            label={t('defaultModels.distill', { defaultValue: 'Default distiller' })}
+            hint={t('defaultModels.distillHint', {
+              defaultValue: 'Summarises your day into diary entries, headless. Pick a NON-reasoning model — a reasoning model returns only its thinking here, and the entry comes back blank.',
+            })}
+            value={defaults[DISTILL_CAPABILITY] ?? null}
+            onChange={(id) => void save(DISTILL_CAPABILITY, id)}
             disabled={saving}
           />
         </div>

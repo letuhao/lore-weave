@@ -332,6 +332,62 @@ SYSTEM = (
     "'Parts' is a top-level book DIVISION that groups chapters (zh 部 / ja パート / ko 부) — NEVER render it "
     "as a chapter (章 / 章节 / チャプター) or a dramatic 'act' (幕); an 'Arc' is a narrative planning unit "
     "distinct from a Part; a 'Chapter' is 章 / 章 / 장; a 'Scene' is 场景 / シーン / 장면. "
+    # A 'Campaign' is the SAME defect shape as 'Part', measured 2026-09-13: zh-CN rendered it
+    # three different ways across 16 strings -- 任务 x11 (task), 战役 x3 (a MILITARY battle) and
+    # 活动 x2 (activity) -- with the military word on the three most visible surfaces (the
+    # sidebar, the page heading, the wizard heading) while the body text underneath said
+    # "task". zh-TW was internally consistent on 活動 but disagreed with all of them.
+    "A 'Campaign' here is a BATCH JOB that runs a pipeline (knowledge extraction, "
+    "translation, evaluation) across a book's chapters under a budget ceiling. Render it as the "
+    "target language's ordinary word for a TASK or JOB -- NEVER a military campaign/battle "
+    "(战役 / 戰役 / 戦役) and never a marketing or social 'activity/event' "
+    "(活动 / 活動). PINNED WORDS, use these EXACTLY and use the SAME one in every "
+    "string including navigation labels and page headings: zh-CN 任务 / zh-TW 任務 / "
+    "ja ジョブ / ko 작업 / vi Tiến trình / de Aufträge / fr Tâches / "  # doc-language-gate: ok -- the pinned target words ARE the instruction; in English they would pin nothing
+    "ru Задачи / es Tareas / pt-BR Tarefas / it Attività / id Tugas / "
+    "ms Tugas / tr Görevler / th งาน / ar مهام / hi कार्य / "
+    "bn কাজ. "
+    # The pin is repeated as a KEY-LEVEL instruction because a namespace-wide one was not
+    # enough: on 2026-09-13 `campaigns.json` honoured the pinned words in all 18 locales while
+    # `common.json` ignored them in 10, translating the bare nav label "Campaigns" literally
+    # (ko 캐페인, pt-BR Campanhas, th แคมเปญ). The two live in
+    # separate namespaces, so they are separate model calls -- and in `common` the word arrives
+    # as one item among 159 unrelated keys with no surrounding context to mark it as the
+    # feature. `campaign-naming-gate.py` fails when the nav label and the page heading
+    # disagree, which is how this was caught rather than shipped.
+    "CRITICAL: the key `nav.campaigns` is THIS SAME FEATURE and MUST use the pinned word "
+    "above -- never a transliteration of 'campaign'. It is the sidebar label for the page "
+    "whose heading is also the pinned word, and a label that disagrees with the page it "
+    "opens is a defect. The same applies to any key whose English value is exactly "
+    "'Campaigns' or 'Campaign'. "
+    # And the PAGE HEADING must be the bare pinned word too. After the key-level pin above,
+    # 14 of 18 locales matched and four did not -- not because they used a different word,
+    # but because `campaigns.list.title` reads as "list" and the model appended one or
+    # inflected it: ar مهام vs المهام (definite),
+    # bn কাজ vs কাজসমূহ (plural),
+    # ja ジョブ vs ジョブ一覧 ("job list"),
+    # ko 작업 vs 작업 목록 ("task list"). Each is a fine translation and
+    # all four fail campaign-naming-gate, which requires the heading and the nav label to be
+    # the same string -- because a heading that differs from the item that opened it is what a
+    # half-applied rename looks like from the outside.
+    "The key `campaigns.list.title` is the PAGE HEADING for that same nav item: render it as "
+    "the bare pinned word, character for character identical to `nav.campaigns`. Do NOT add "
+    "'list'/'index'/'overview', do not pluralise it differently, and do not add a definite "
+    "article. The heading and the sidebar label must be the SAME STRING. "
+    # 🔴 THIS ENTRY IS NOT FINISHED, and the missing half is measured rather than guessed.
+    # Run 2026-09-13: with the concept description above, `--ns campaigns --force` made zh-CN
+    # internally CONSISTENT (任务 x13, the military word gone) and made zh-TW agree with it
+    # (任務 x13) -- within a namespace it works. But `campaigns.list.title` and
+    # `common.nav.campaigns` live in DIFFERENT namespaces, so they are separate model calls
+    # with no shared memory, and the two came back as 任务列表 vs 任务批处理. `campaign-naming
+    # -gate.py` went RED on TWELVE locales for exactly that -- heading disagreeing with the
+    # nav item that opened it. The run was reverted byte-exact.
+    #
+    # "Use ONE word" cannot be obeyed across calls. The fix is the one the 'Part' entry above
+    # already uses: PIN THE ACTUAL TARGET WORD per language (zh 部 / ja パート / ko 부). That is
+    # a native-language judgement per locale, it is tracked as T9 on the ship plan, and until
+    # those words are chosen a regeneration of `campaigns` or `common` will fail the naming
+    # gate. The gate catching it is the system working; do not silence it.
     "Rules: keep every JSON key byte-identical; preserve every {{placeholder}}, $t(...) "
     "reference, and <html/tag> EXACTLY as-is; keep brand/proper names and short technical "
     "tokens (API, URL, ID, PDF) untranslated; produce idiomatic, natural phrasing. "

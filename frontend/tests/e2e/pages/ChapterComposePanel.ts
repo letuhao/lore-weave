@@ -65,7 +65,11 @@ export class ChapterComposePanel {
     this.titleInput = page.getByTestId('chapter-title-input');
     this.saveButton = page.getByTestId('chapter-save-button');
     this.modelSelect = page.getByTestId('composition-model-select');
-    this.reasoningSelect = page.getByTestId('compose-reasoning');
+    // The reasoning control was a raw <select data-testid="compose-reasoning">. It is now the
+    // shared AI-task EffortSelect -- a <button> that opens a role="menu" (ComposeView.tsx:159,
+    // EffortSelect.tsx:46). Same control, same 5-level vocabulary, so `selectOption` was
+    // replaced by setReasoning() rather than the claim being dropped.
+    this.reasoningSelect = page.getByTestId('effort-select');
     this.generate = page.getByTestId('compose-generate');
     this.stop = page.getByTestId('compose-stop');
     this.regenerate = page.getByTestId('compose-regenerate');
@@ -94,7 +98,9 @@ export class ChapterComposePanel {
     this.groundingEmptyHint = page.getByTestId('composition-grounding-empty-hint');
     this.canonInput = page.getByTestId('composition-canon-input');
     this.canonScope = page.getByTestId('composition-canon-scope');
-    this.canonAdd = page.getByTestId('composition-canon-add');
+    // The canon form's submit control is `composition-canon-submit` (CanonRuleForm.tsx:134);
+    // `composition-canon-add` exists nowhere in src/ -- the id was renamed and the POM was not.
+    this.canonAdd = page.getByTestId('composition-canon-submit');
     this.canonRules = page.getByTestId('composition-canon-rule');
     this.canonArchive = page.getByTestId('composition-canon-archive');
   }
@@ -108,6 +114,14 @@ export class ChapterComposePanel {
   async selectModel(userModelId: string): Promise<void> {
     await this.modelSelect.locator('[role="combobox"], button').first().click();
     await this.page.locator(`[role="option"][data-model-id="${userModelId}"]`).click();
+  }
+
+  /** Set the reasoning/effort level. The control is a button + role="menu", not a <select>,
+   *  so this opens it and picks the option; the LEVEL VOCABULARY is unchanged
+   *  (off|low|medium|high|auto -- src/components/ai-task/effort.ts). */
+  async setReasoning(level: 'off' | 'low' | 'medium' | 'high' | 'auto'): Promise<void> {
+    await this.reasoningSelect.click();
+    await this.page.getByTestId(`effort-select-opt-${level}`).click();
   }
 
   async openComposeTab(): Promise<void> {
