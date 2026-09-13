@@ -1,0 +1,51 @@
+composition-publish-lifecycle.spec.ts|B1.3: Re-publish after an edit advances the pinned published_revision_id
+composition-publish-lifecycle.spec.ts|B1.5: Draft-save does NOT canonize (no publish side effect)
+studio-chapter-assemble.spec.ts|Assembly mode toggle persists across a reload (per_scene / chapter)
+studio-chapter-assemble.spec.ts|Regenerate captures a correction (second producer of the flywheel)
+studio-compose-reachability.spec.ts|both panels appear in the User Guide with non-empty guide copy
+studio-translation-review.spec.ts|Translate quick-access button opens translation-versions scoped to the open chapter
+studio-translation-s8-journey.spec.ts|the author opens Translation and reaches a working translate flow
+studio-translation-s8.spec.ts|T2/D3: with a translated language, every chapter renders as a selectable row
+wiki-panels.spec.ts|DOCK-10: an unsaved edit survives closing and reopening the wiki-editor dock tab
+s2-plan-structure.spec.ts|34a book tier: a book-shared template is visible in the Book tier
+studio-arc-drift.spec.ts|a materialized arc renders the STRUCTURED drift view, not raw JSON
+composition-correction-gate.spec.ts|Diverge -> K cards -> use a non-winner captures pick_different
+composition-engine.spec.ts|B4.2: Stop mid-stream halts streaming and keeps the partial ghost
+composition-engine.spec.ts|B4.4 + reasoning badge: generate -> ghost + resolved badge -> discard clears it
+composition-journey.spec.ts|set up -> scene -> co-write -> accept -> save -> mark done -> publish
+demo-pipeline-3a.spec.ts|creates a Dracula book with Chapter 1 and verifies persistence
+demo-pipeline-3b.spec.ts|extracts canon entities from Dracula Ch.1 via LM Studio Qwen3
+demo-pipeline-3c.spec.ts|generates wiki articles from extracted Dracula entities
+frontend-tools-liveness.spec.ts|confirm_action - renders the ConfirmAction card from the suspended call
+frontend-tools-liveness.spec.ts|propose_edit - renders the ProposeEdit card from the suspended call
+frontend-tools-liveness.spec.ts|ui_open_book - executor navigates to the book
+frontend-tools-liveness.spec.ts|ui_show_panel - executor sets the panel query and resolves the round-trip
+enrichment-gui-sweep.spec.ts|Compose author controls (Slice 1+4)
+enrichment-gui-sweep.spec.ts|Jobs + Sources + Proposals panels mount against live data
+enrichment-gui-sweep.spec.ts|Profile override editor (Slice 2)
+enrichment-gui-sweep.spec.ts|the enrichment shell renders all 6 panels incl. the Compose tab
+enrichment-profile.spec.ts|Gaps detect on the extracted demo book never shows the extract first state
+enrichment-profile.spec.ts|Profile tab loads the seeded book profile + suggest/save controls
+agent-context-rack.spec.ts|mock SSE - agentSurface phases update inspector
+agent-context-rack.spec.ts|pin + send - inspector leaves Idle
+composition-telemetry.spec.ts|scene_committed is emitted once on mark-done
+assistant-endofday.spec.ts|type a diary note -> End my day -> a distilled entry appears
+composition-engine.spec.ts|B4.1: Generate is gated until both a scene and a model are picked
+composition-flywheel.spec.ts|publish auto-drains only after the project has an extraction history
+composition-gate.spec.ts|U1+U2+B7: setup co-writer, add a scene, Publish gated until the scene is done
+composition-grounding-canon.spec.ts|U6: add a canon rule -> it lists; archive removes it from the active set
+creation-unblock-crosslink.spec.ts|book settings attaches to a world + opens it; project overview backlinks to both
+creation-unblock-pickers.spec.ts|chat session settings shows the ProjectPicker combobox (not a raw select)
+epub-import-wizard.spec.ts|authenticated wizard previews nested ToC and completes a mocked durable job
+kg-panels.spec.ts|kg-entities (global, no scopedProjectId) finds an entity created via the API
+kg-panels.spec.ts|kg-overview shows the empty state for a book with no linked KG project
+manuscript-navigator.spec.ts|shows the view header actions + window-position footer
+s5-blackbox-journey.spec.ts|a GUI-only author branches a what-if, lives on it, and archives it
+s6-blackbox-journey.spec.ts|a GUI-only author goes fresh-book -> set up co-writer -> author a rule
+studio-cast-arc-journey.spec.ts|an author can review the cast + a character arc in the Studio
+studio-compose.spec.ts|Studio: Open Compose mounts the chat panel in the dock
+studio-divergence.spec.ts|selecting the di ban shows its read-only Spec (taxonomy), never a spec error
+studio-editor-craft.spec.ts|popout Compose opens a REAL OS window at /studio/popout
+studio-structure-templates-journey.spec.ts|archive an own structure then restore it - a clean round-trip
+studio-structure-templates-journey.spec.ts|edit a cloned structure beats and save - the change persists across a reopen
+studio-structure-templates-journey.spec.ts|reach the panel, read a built-in, clone it into my own editable tier
