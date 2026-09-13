@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Brain, ChevronDown, Sparkles, Zap } from 'lucide-react';
 import { EFFORT_LEVELS, type EffortLevel } from './effort';
@@ -28,15 +29,54 @@ export function EffortSelect({ value, onChange, disabled, compact }: Props) {
   const { t } = useTranslation('chat');
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+
+  // 🔴 #262 — this menu used to be `absolute bottom-full` inside the trigger's own box, which put
+  // it INSIDE whatever scrolled. In the Compose panel that is `composition-content`
+  // (overflow-auto), and the menu opened UPWARD straight out of it: measured, the option sat at
+  // y=181..224 while its scroll container started at y=335. It was clipped away and the hit test
+  // at those coordinates returned the what-if promote bar sitting above, so every click landed on
+  // the bar and nothing in the menu could be chosen — silently, with no error.
+  //
+  // A z-index could never have fixed that: the probe found NO competing stacking ancestor. The
+  // menu was not painted under something, it was painted where nothing could reach it. So it is
+  // rendered in a PORTAL with fixed coordinates measured off the trigger, which takes it out of
+  // every ancestor's clip. It still prefers to open upward — that is why it exists, the control
+  // sits at the bottom of an input bar — and flips down only when there is no room above.
+  const place = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const GAP = 4;
+    const roomAbove = r.top;
+    const needed = menuRef.current?.offsetHeight ?? 260;
+    setPos(roomAbove >= needed + GAP
+      ? { left: r.left, bottom: window.innerHeight - r.top + GAP }
+      : { left: r.left, top: r.bottom + GAP });
+  }, []);
+
+  useLayoutEffect(() => { if (open) place(); }, [open, place]);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      // the menu is portalled, so it is NOT inside `ref` any more — both must be consulted or
+      // the first click on an option closes the menu before it registers.
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
+    const onMove = () => place();
     document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
+    window.addEventListener('resize', onMove);
+    window.addEventListener('scroll', onMove, true);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('resize', onMove);
+      window.removeEventListener('scroll', onMove, true);
+    };
+  }, [open, place]);
 
   const Active = META[value].Icon;
   return (
@@ -63,9 +103,10 @@ export function EffortSelect({ value, onChange, disabled, compact }: Props) {
         {t(`input.effort_${value}`)}
         <ChevronDown className="h-2.5 w-2.5 opacity-60" />
       </button>
-      {open && (
-        <div role="menu" data-testid="effort-select-menu"
-          className="absolute bottom-full left-0 z-20 mb-1 w-64 rounded-md border border-border bg-card py-1 shadow-lg">
+      {open && pos && createPortal(
+        <div role="menu" data-testid="effort-select-menu" ref={menuRef}
+          style={{ position: 'fixed', left: pos.left, top: pos.top, bottom: pos.bottom }}
+          className="z-50 w-64 rounded-md border border-border bg-card py-1 shadow-lg">
           {EFFORT_LEVELS.map((level) => {
             const { Icon, color } = META[level];
             return (
@@ -90,7 +131,8 @@ export function EffortSelect({ value, onChange, disabled, compact }: Props) {
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

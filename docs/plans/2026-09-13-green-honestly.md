@@ -68,11 +68,13 @@ real and only the PO can resolve it.
 
 ### Lane F — fix the product. Each ends in a RE-BREAK, or it is not done.
 
-- [ ] **F1** — **#262**, the reasoning menu cannot be clicked. *(4 tests)*
-  `EffortSelect` opens upward (`absolute bottom-full … z-20`) into the space the what-if promote
-  bar occupies, and the bar wins the hit test. Raise the menu's stacking context, portal it, or
-  flip it when there is no room — whichever is right for the component, not whichever makes the
-  click land. **Re-break:** put the overlap back; all four must go red again.
+- [~] **F1** — **#262 FIXED and RE-BROKEN (Cycle 1). 3 of its 4 green; the 4th moved to F6.**
+  The reasoning menu cannot be clicked. *(4 tests)*
+  **The row's original premise was wrong and Cycle 1 corrected it.** It said the promote bar "wins
+  the hit test", which reads as a stacking problem. The probe found NO competing stacking context:
+  the menu opened upward out of `composition-content` (`overflow-auto`) and was CLIPPED away, with
+  the bar merely occupying those coordinates. A z-index change could not have worked. Fixed with
+  `createPortal` + fixed coordinates. **Re-broken** per Rule 1.
 
 - [ ] **F2** — **#263**, the API offers `arc` and `beat`; the table permits `chapter` and `scene`.
   *(1 test)* **A DATA-MODEL DECISION, not a repair.** Investigate which half is correct — was the
@@ -93,6 +95,12 @@ real and only the PO can resolve it.
 - [ ] **F5** — **#266**, the grounded affirmation never renders. *(1 test)*
   The run records `grounded_on` and `plan-grounded-note` exists in `PlannerPanel.tsx`, so the gap
   is between them. **Re-break** once fixed.
+
+- [ ] **F6** — `composition-journey` asserts **1** scene where there are **2**. *(1 test, from F1)*
+  It is past #262 now and fails on `composition-scene-select` option count — `unexpected value
+  "2"`. The GUIDED first run seeds an "Opening scene" before `addScene` adds its own; this is
+  the identical stale assumption Cycle 12 of red-by-red fixed in `composition-gate`, in a spec
+  that never got there because the reasoning control blocked it first. Harness, not product.
 
 ### Lane G — diagnose before touching anything.
 
@@ -145,6 +153,75 @@ real and only the PO can resolve it.
   `evidence/z1-baseline-failures.txt` and the 180/18/2 recorded here. **No newly red.** *(AC-5)*
 - [ ] **Z2** — Hand over. **The PO's words close it.** No row ticks this. *(AC-7)*
 
+## Cycles
+
+### Cycle 1 — the menu was not out-stacked, it was clipped out of reach (F1, F6)
+
+**Investigated:** `src/components/ai-task/EffortSelect.tsx`;
+`src/features/composition/components/CompositionPanel.tsx:701` (`composition-content`,
+`overflow-auto`); `ComposeView.tsx:159`; and the live DOM through a throwaway probe spec that
+measured rects, clipping ancestors, stacking ancestors and `elementFromPoint`.
+
+**Issues:** #262 — fixed here.
+
+**Fix:** **the diagnosis in red-by-red's Cycle 3 was incomplete, and acting on it would have failed.**
+That cycle recorded "the what-if promote bar wins the hit test", which reads as a z-index problem.
+The probe says otherwise:
+
+```
+option rect            top=181  bottom=224
+its scroll container   top=335  bottom=696   (composition-content, overflow-auto)
+stackingAncestors      ONLY the menu itself (z=20) -- nothing competes
+elementAtCenter        span "Name the what-if to promote it."
+```
+
+The menu was `absolute bottom-full` inside the trigger's box, so it opened **upward out of its own
+scrolling container** and came to rest 150px above it, clipped away. The promote bar merely
+occupies those coordinates. **There was no competing stacking context, so raising `z-index` could
+not have worked** — the menu was not painted under something, it was painted where nothing could
+reach it.
+
+It is now rendered through `createPortal` with fixed coordinates measured off the trigger, which
+escapes every ancestor clip. It still prefers to open upward — that is the point of the control,
+which sits at the bottom of an input bar — and flips down only when there is no room. The
+outside-click handler now consults the portalled menu as well as the trigger; without that the
+first click on an option would close the menu before it registered. No new dependency: this repo
+has `@radix-ui/react-dialog` but no dropdown primitive, so React's own portal is the honest tool.
+
+**Proof:**
+
+```
+PROBE, after the fix -- same coordinates, now reachable:
+  clippingAncestors : []                       (was 7, innermost composition-content)
+  elementAtCenter   : span "Off"               (was the promote bar)
+  isTheOption       : true
+  stackingAncestors : div[effort-select-menu] z=50 pos=fixed
+
+TESTS ......... 3 passed (B4.2, B4.4, correction-gate)
+
+RE-BREAK (Rule 1) -- the defect put BACK, frontend rebuilt:
+  9ffe6f0e2ae3d762f78ba8f56c429f21  /tmp/es.tsx.orig
+  9ffe6f0e2ae3d762f78ba8f56c429f21  src/components/ai-task/EffortSelect.tsx
+  TimeoutError: locator.click -- waiting for getByTestId('effort-select-opt-off')
+    <span>Name the what-if to promote it.</span> from
+    <div data-testid="composition-whatif-promote"> subtree intercepts pointer events
+  RED again, same reason.
+
+FIX RESTORED, rebuilt:
+  2f45b19464a93fb4ce06c1904ce47655  /tmp/es.tsx.FIXED
+  2f45b19464a93fb4ce06c1904ce47655  src/components/ai-task/EffortSelect.tsx
+  2 passed (13.3s) + correction-gate 1 passed (31.5s)
+```
+
+**Not ticked.** F1 covers 4 tests and 3 are green. `composition-journey` is past #262 and now fails
+on a scene count — the same guided-"Opening scene" assumption Cycle 12 of red-by-red fixed
+elsewhere, in a spec that never reached it before. That is F6, and it is harness work, not a
+retreat from this fix.
+
+**AC impact:** AC-2 met for F1 — the fix was proven by re-breaking it and watching the same tests
+fail for the same reason. AC-1 — 3 of the 18 are green. AC-3 holds: no test was touched at all in
+this row. The probe spec was deleted rather than left behind as a permanent fixture.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -154,7 +231,7 @@ real and only the PO can resolve it.
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Nothing started. Head of the queue is F1 (#262) — 4 of the 18 hang on it and it is the one defect on the ordinary writing path. F2, H1 and H2 STOP for the PO; reach them with options ready, not questions.
+RESUME: Cycle 1 done. F1: #262 FIXED (portal, not z-index -- the probe proved there was NO competing stacking context; the menu opened upward out of an overflow-auto container and was clipped out of reach) and RE-BROKEN per Rule 1. 3 of its 4 tests green; the 4th is now F6 (composition-journey asserts 1 scene where the guided first run makes 2 -- the same stale count Cycle 12 fixed elsewhere). Head of the queue is F3 (#264, the false 'unsaved changes' -- reset the dirty baseline on save success). F2, H1, H2 STOP for the PO with options ready.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
