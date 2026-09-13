@@ -58,10 +58,36 @@ run_lint() {
     # 2026-08-08 flagged scale-rig.sh on one run and ledger-verify-smoke.sh on the next,
     # both of which contain 0013_events_content_sha256, while this lint passed locally
     # 3/3 on the same bytes. Read first, check the status, and only then judge.
-    text=$(cat "$f")
-    rc=$?
-    if [ "$rc" -ne 0 ]; then
-      echo "[emit-0013] FAIL — could not read $f (cat exit $rc)."
+    # 🔴 THE CHECK BELOW USED TO BE DEAD CODE. It read:
+    #
+    #     text=$(cat "$f")
+    #     rc=$?
+    #     if [ "$rc" -ne 0 ]; then ... exit 1; fi
+    #
+    # `set -euo pipefail` is on line 22. Under errexit an assignment whose command
+    # substitution fails terminates the script AT the assignment, so `rc=$?` was never
+    # reached and the FAIL message above it never printed. The careful comment explaining
+    # why the read must be checked was defeated three lines later by a shell option.
+    #
+    # What that looked like in CI on 2026-09-13: this gate went RED in 1.4s having printed
+    # exactly one line — `[emit-0013] SELFTEST PASS ... (non-vacuous)` — so `all-gates`
+    # reported a failing gate by quoting a line that says it passed. Reproduced minimally:
+    # a script with errexit, a banner, and `text=$(cat /missing)` prints the banner and
+    # exits 1 with no further output.
+    #
+    # `if ! text=$(...)` puts the assignment in a condition, where errexit does not apply,
+    # so the status is the script's to read again.
+    if ! text=$(cat "$f" 2>/dev/null); then
+      # A file that `find` listed and `cat` could not open is USUALLY gone rather than
+      # unreadable: `--run-all` executes gates concurrently and the bite harnesses write a
+      # modified copy beside the gate they are proving, so transient files appear and
+      # vanish under scripts/ mid-sweep. That is not this gate's subject, and failing on it
+      # would make an unrelated gate's normal operation look like a finding here.
+      if [ ! -e "$f" ]; then
+        echo "[emit-0013] note — $f vanished during the scan (transient file); skipped"
+        continue
+      fi
+      echo "[emit-0013] FAIL — could not read $f."
       echo "  → this is a READ failure, not a finding. Nothing about the script is implied."
       exit 1
     fi

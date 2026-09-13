@@ -520,6 +520,12 @@ NEEDS_ARGS: dict[str, tuple[list[str], str]] = {
 }
 
 
+# How many trailing output lines to quote for a gate that went RED. Enough for a
+# traceback's final frames or a multi-line verdict; not so many that one noisy
+# gate buries the rest of the report.
+TAIL_LINES = 6
+
+
 def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float, str]:
     # RELATIVE path + cwd=REPO, never an absolute one.
     #
@@ -794,8 +800,28 @@ def run_all() -> int:
     if failures:
         print(f"\ngate-wiring-gate: {len(failures)} gate(s) FAILED and are not tracked:\n")
         for n, out in failures:
-            head = next((l for l in out.splitlines() if l.strip()), "")
-            print(f"  {n}: {head[:110]}")
+            # 🔴 PRINT THE TAIL, NOT THE HEAD. This printed the FIRST non-empty line, and
+            # this repo's gates print a `SELFTEST PASS` banner BEFORE doing their real work
+            # -- so for every gate that follows the convention, the one line reported was
+            # guaranteed to be the line saying it was fine. On 2026-09-13
+            # `emit-migration-0013-lint.sh` went RED in CI and all-gates reported
+            # `[emit-0013] SELFTEST PASS ... (non-vacuous)`, which is not merely unhelpful:
+            # it reads as evidence the gate is healthy. A failure message that quotes a
+            # success line is worse than no message.
+            #
+            # The last lines are where a script that dies says why -- a traceback's final
+            # line, a `FAIL --` verdict, a shell error. Kept to a few lines so one broken
+            # gate cannot bury the other findings in this report.
+            lines = [l for l in out.splitlines() if l.strip()]
+            if not lines:
+                print(f"  {n}: (no output -- exited non-zero silently)")
+                continue
+            tail = lines[-TAIL_LINES:]
+            print(f"  {n}:")
+            if len(lines) > len(tail):
+                print(f"      ... {len(lines) - len(tail)} earlier line(s) omitted")
+            for l in tail:
+                print(f"      {l[:160]}")
         print("\nFix it, or add a KNOWN_RED row naming a tracked deferral. A gate that "
               "is red and unacknowledged is how a whole suite becomes background noise.")
         rc = 1
