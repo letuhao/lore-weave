@@ -12,13 +12,38 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import { getAccessToken, createBook, createChapter, trashBook } from '../helpers/api';
 import { queryDb } from '../helpers/db';
+import { apiBase } from '../helpers/stack';
 import { installFrontendToolSuspend } from '../helpers/frontendToolInject';
 
-const API = process.env.PLAYWRIGHT_API_BASE ?? 'http://localhost:3123';
+const API = apiBase(); // derived from the browser target -- see helpers/stack.ts
 // gemma-4-26b-a4b-qat (chat + tool_calling) on the test account — a valid BYOK
 // user_model so the session validates; no turn actually runs it (SSE is injected).
-const MODEL_REF = process.env.PLAYWRIGHT_MODEL_REF ?? '019ebb72-27a2-72f3-a42d-d2d0e0ded179';
-const USER_ID = '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c'; // claude-test
+// Both of these used to be hard-coded to the `claude-test` account on the BASE stack, so the
+// spec could only ever run there. They are read off the account under test instead: the model
+// from the registry (any ACTIVE chat model validates the session; no turn actually runs it,
+// the SSE is injected), the user id from the token's own `sub`.
+let MODEL_REF = process.env.PLAYWRIGHT_MODEL_REF ?? '';
+let USER_ID = '';
+
+function userIdFromToken(token: string): string {
+  const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+  const sub = claims.sub ?? claims.user_id;
+  if (!sub) throw new Error('no subject claim in the access token');
+  return String(sub);
+}
+
+async function firstActiveModel(request: APIRequestContext, token: string): Promise<string> {
+  const res = await request.get(`${API}/v1/model-registry/user-models`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(res.ok(), `list user-models: ${res.status()}`).toBeTruthy();
+  const body = await res.json();
+  const rows: Array<{ user_model_id: string; is_active?: boolean }> =
+    body.items ?? body.user_models ?? body ?? [];
+  const active = rows.find((m) => m.is_active !== false);
+  if (!active) throw new Error('the account under test has no ACTIVE model to validate a session');
+  return active.user_model_id;
+}
 
 async function createSession(request: APIRequestContext, token: string, title: string): Promise<string> {
   const res = await request.post(`${API}/v1/chat/sessions`, {
@@ -53,6 +78,8 @@ test.describe('Frontend-tools liveness (G4 — real browser executor)', () => {
 
   test.beforeAll(async ({ request }) => {
     token = await getAccessToken(request);
+    USER_ID = userIdFromToken(token);
+    if (!MODEL_REF) MODEL_REF = await firstActiveModel(request, token);
     bookId = await createBook(request, token, `E2E fe-tools ${Date.now()}`);
     await createChapter(request, token, bookId, 'Chapter One');
     sessionId = await createSession(request, token, 'fe-tools liveness');

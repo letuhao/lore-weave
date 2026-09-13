@@ -1,17 +1,20 @@
 import { execFileSync } from 'node:child_process';
+import { pgContainer } from './stack';
 
 // DB-assert helper for the DB-backed scenarios (telemetry / spoiler / extraction)
-// that have no read API. Shells out to `docker exec` against the dev stack's
-// Postgres so the e2e can verify backend rows the UI never surfaces. Dev-stack
-// only — keyed to the compose container name.
-const PG_CONTAINER = process.env.PLAYWRIGHT_PG_CONTAINER ?? 'infra-postgres-1';
+// that have no read API. Shells out to `docker exec` against the stack's Postgres so the
+// e2e can verify backend rows the UI never surfaces.
+//
+// The container is derived from the BROWSER TARGET (helpers/stack.ts). It used to default to
+// `infra-postgres-1` regardless, so a run against the isolated frontend asserted -- and
+// INSERTED, via seedPriorExtractionJob -- into the developer's long-running database.
 
 /** Run a scalar SQL query against a stack database and return the trimmed text
  * result (psql -tAc). Throws if docker / the container is unavailable. */
 export function queryDb(database: string, sql: string): string {
   return execFileSync(
     'docker',
-    ['exec', PG_CONTAINER, 'psql', '-U', 'loreweave', '-d', database, '-tAc', sql],
+    ['exec', pgContainer(), 'psql', '-U', 'loreweave', '-d', database, '-tAc', sql],
     { encoding: 'utf8' },
   ).trim();
 }
