@@ -35,7 +35,13 @@ test.describe('Composition happy-path journey (U1→U7) [model-gated]', () => {
       // U2 — add a scene
       await expect(panel.addScene).toBeVisible();
       await panel.addScene.click();
-      await expect(panel.sceneSelect.locator('option')).toHaveCount(1);
+      // TWO scenes, not one: the GUIDED first run seeds an "Opening scene"
+      // (CompositionPanel.tsx:192, guarded against a second by useGuidedFirstRun)
+      // and addScene adds its own beside it. Asserting 1 used to PASS by racing the
+      // guided seed's arrival, then the run failed 40 lines later on a gate that was
+      // correct -- "1 of 2 scenes not yet done". composition-gate.spec.ts:35 already
+      // pins 2 for this same sequence.
+      await expect(panel.sceneSelect.locator('option')).toHaveCount(2);
 
       // U7 (pre) — Work + a not-done scene → Publish is gated
       await expect(panel.publishButton).toBeDisabled();
@@ -57,9 +63,18 @@ test.describe('Composition happy-path journey (U1→U7) [model-gated]', () => {
       await expect(panel.publishButton).toBeDisabled();
       await panel.saveButton.click();
 
-      // U7 — still gated until the scene is done; mark done → publish enables
+      // U7 — still gated until EVERY scene is done; mark them all done → publish enables.
+      // A user with two scenes must finish both, and the button says so: it stayed
+      // disabled with title="1 of 2 scenes not yet done" while one was outstanding.
       await expect(panel.publishButton).toBeDisabled();
-      await panel.markDone.click();
+      const sceneOptions = panel.sceneSelect.locator('option');
+      const sceneCount = await sceneOptions.count();
+      for (let i = 0; i < sceneCount; i++) {
+        const value = await sceneOptions.nth(i).getAttribute('value');
+        if (!value) continue;
+        await panel.sceneSelect.selectOption(value);
+        await panel.markDone.click();
+      }
       await expect(panel.publishButton).toBeEnabled({ timeout: 10_000 });
       await panel.publishButton.click();
 

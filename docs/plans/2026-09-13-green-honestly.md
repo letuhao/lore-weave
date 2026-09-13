@@ -101,7 +101,7 @@ real and only the PO can resolve it.
   `plan-run-open-<id8>`, a testid that exists nowhere, and swallowed the failure with
   `.catch(() => {})` — so the planner never opened the grounded run. Product untouched; 3 passed. *(1 test)*
 
-- [ ] **F6** — `composition-journey` asserts **1** scene where there are **2**. *(1 test, from F1)*
+- [x] **F6** — **DONE (Cycle 16).** Not the scene-select count the row claimed — the publish gate, correctly refusing "1 of 2 scenes not yet done". *(1 test, from F1)*
   It is past #262 now and fails on `composition-scene-select` option count — `unexpected value
   "2"`. The GUIDED first run seeds an "Opening scene" before `addScene` adds its own; this is
   the identical stale assumption Cycle 12 of red-by-red fixed in `composition-gate`, in a spec
@@ -989,6 +989,46 @@ frontend surfaces that pick a model independently: 53
 ```
 
 **AC impact:** AC-6 — H2 returns to the PO as a different choice, with the measured cause rather than the assumed one. AC-4 — K2 stays owned, but by a settings gap, not by memory.
+
+
+### Cycle 16 — the row named the wrong symptom; the gate was right all along (F6)
+
+**Investigated:** `specs/composition-journey.spec.ts:36-38,60-63`; `composition-gate.spec.ts:35`
+(the same sequence, already pinning 2); `CompositionPanel.tsx:192` and
+`hooks/useGuidedFirstRun.ts:22` (the guided "Opening scene" and its no-second-seed guard);
+the Z1 Allure `statusDetails` for this test.
+
+**Issues:** none — no product defect. The publish gate is correct; the spec's model of the world was not.
+
+**Fix:** the row said this failed on `composition-scene-select` option count with `unexpected value "2"`. **It does not, and has not.** Re-reading the Z1 failure before building on it (Rule 7) showed the run reaching the END of the journey and failing on `publish-button` disabled with `title="1 of 2 scenes not yet done"`. The stale `toHaveCount(1)` was *passing* — by racing the guided seed's arrival — and the damage surfaced forty lines later on a gate that was behaving correctly.
+
+Two changes, both to the spec's assumptions, neither to its claim. The count assertion now pins **2**, which is what `composition-gate` already asserts for the identical setup→addScene sequence, and Playwright's retry makes it wait for the seed instead of outrunning it. Mark-done now iterates **every** scene: a user with two scenes must finish both, and the button says exactly that.
+
+The user-visible claim is unchanged and stricter: *publish is gated until the scenes are done, then enables*. Before, it proved that for one scene by accident; now it proves it for all of them on purpose.
+
+**Proof:**
+
+```
+BEFORE (stale count passes by racing, gate refuses at the end)
+  Error: expect(locator).toBeEnabled() failed
+    24 x <button disabled data-testid="publish-button" title="1 of 2 scenes not yet done">
+  1 failed
+
+AFTER
+  1 passed (1.3m)
+  verified by PRODUCT STATE, not the reporter word:
+    E2E journey 1789326010503 | published | published_revision_id NOT NULL
+
+BITE — replace the loop with the single markDone the spec used to do, nothing else:
+  Error: expect(locator).toBeEnabled() failed
+    <button disabled data-testid="publish-button" title="1 of 2 scenes not yet done">
+  1 failed                      <- SAME failure, SAME reason
+
+RESTORED byte-exact (git diff: 18 insertions, 3 deletions -- the fix only):
+  1 passed (1.3m)
+```
+
+**AC impact:** AC-1 — F6 is green, 12 of 18. AC-3 — the claim is stated before and after and is stricter, not weaker. AC-2 — the bite is pasted both ways.
 
 
 ```goal-prompt
