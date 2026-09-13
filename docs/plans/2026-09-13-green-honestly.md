@@ -94,9 +94,9 @@ real and only the PO can resolve it.
   cannot accept a cast that does not exist"*. A REAL defect was found alongside it and fixed:
   `canApprove` offered an Approve button that 409s forever. E2E green twice. *(1 test)*
 
-- [ ] **F5** — **#266**, the grounded affirmation never renders. *(1 test)*
-  The run records `grounded_on` and `plan-grounded-note` exists in `PlannerPanel.tsx`, so the gap
-  is between them. **Re-break** once fixed.
+- [x] **F5** — **DONE (Cycle 4). #266 was NOT a product defect either.** The test targeted
+  `plan-run-open-<id8>`, a testid that exists nowhere, and swallowed the failure with
+  `.catch(() => {})` — so the planner never opened the grounded run. Product untouched; 3 passed. *(1 test)*
 
 - [ ] **F6** — `composition-journey` asserts **1** scene where there are **2**. *(1 test, from F1)*
   It is past #262 now and fails on `composition-scene-select` option count — `unexpected value
@@ -371,6 +371,62 @@ model-output dependence with a named cause, not flakiness, and Z1 must watch it.
 red. AC-1 — 5 of the 18 green. AC-3: one unit test was CORRECTED, with the server's 409 as the
 evidence that its old assertion was wrong; no E2E assertion was touched.
 
+### Cycle 4 — a testid that never existed, and a swallow that hid it (F5, #266)
+
+**Investigated:** `specs/plan-forge-grounding.spec.ts:104-114`;
+`components/PlannerPanel.tsx:208-224`; `components/PlanRunsListView.tsx:84-104`; every
+`plan-run*` testid in `src/`.
+
+**Issues:** #266 — **not a product defect.** To be corrected on the issue.
+
+**Fix:** the note is gated on `plan.run?.grounded_on`, i.e. the run **currently loaded** in the
+planner. The test tried to load its grounded run with
+
+```ts
+await page.getByTestId(`plan-run-open-${grounded.slice(0, 8)}`).click().catch(() => {});
+```
+
+`plan-run-open` exists **nowhere in `src/`** — it never did — and `.catch(() => {})` swallowed the
+miss, so the planner silently stayed on whatever run was already loaded and correctly showed no
+grounded note. **The product was right the whole time.**
+
+Rows are `plan-run-row`, each printing `id.slice(0, 8)` (`PlanRunsListView.tsx:91`) — data, not
+copy, so it survives translation. The swallow is gone: a click that cannot land must say so.
+**No product code was touched in this row** (`git diff --stat` on `PlannerPanel.tsx` is empty).
+
+**Proof:**
+
+```
+AFTER the repair ............................ 3 passed (50.6s)
+
+BITE 1 -- `grounded_on` dropped in the API serializer:
+  1 skipped, 2 passed      <- NOT a failure. The spec's own ceiling guard
+  (`test.skip(!run.grounded_on, 'ceiling off in this deployment')`) converts a
+  backend regression into a SKIP. Worth knowing: if grounding stopped being
+  recorded, this test would go quiet rather than red. Restored md5-identical.
+
+BITE 2 -- the note's testid renamed, frontend rebuilt:
+  Locator: getByTestId('plan-grounded-note')
+  1 failed, 2 passed
+
+RESTORED byte-exact, rebuilt:
+  d540385be57cb6df6220f7c24b772f2d  /tmp/pp.tsx.orig
+  d540385be57cb6df6220f7c24b772f2d  components/PlannerPanel.tsx
+  git diff --stat -> empty
+  3 passed (2.2m)
+```
+
+**A Rule 4 trap I walked into, recorded because it produced a false green.** My first attempt at
+bite 2 used `{false && plan.run?.grounded_on ? …}`. The build FAILED (`exit code: 2`), the
+container went on serving the OLD bundle, and the suite reported **3 passed** — a pass against
+un-bitten code that I nearly accepted. I had grepped the build output with `tail -1` and caught an
+unrelated line instead of the error. **Checking that a build command RAN is not checking that it
+SUCCEEDED**; the grep is now `grep -E "Built|ERROR"`.
+
+**AC impact:** AC-1 — 6 of the 18 green. AC-2 is not applicable: there was no product fix to
+re-break, and the repaired test was shown to bite instead. AC-3 holds — the locator got stricter
+(a swallowed click became a real one) and no assertion changed.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -380,7 +436,7 @@ evidence that its old assertion was wrong; no E2E assertion was touched.
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-3 done. F1 (#262), F3 (#264), F4 (#265) all FIXED and RE-BROKEN. 5 of the 18 green. Cycle 3 corrected my own issue: #265 is NOT a pass-rail defect -- the rail correctly refuses an empty cast; the real bug was canApprove offering a button that 409s forever, and a unit test was guarding that broken state. F4's green is MODEL-DEPENDENT (an empty cast makes it fail again, now by timing out on a disabled button) -- Z1 must watch it. Head of the queue is F5 (#266, the grounded affirmation never renders). F2, H1, H2 STOP for the PO with options ready.
+RESUME: Cycles 1-4 done. 6 of the 18 green. F1 (#262) and F3 (#264) were REAL product defects, fixed and re-broken. F4 (#265) and F5 (#266) were NOT what I filed -- #265's rail was correct (an empty cast legitimately refuses; the real bug was canApprove offering a doomed button, fixed) and #266 was a testid that never existed with its failure swallowed. Both issues corrected. Cycle 4 also records a Rule 4 trap: a FAILED frontend build let the old bundle serve and produced a false green. Head of the queue is F2 -- a DATA-MODEL DECISION, so reach it with options and STOP.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
