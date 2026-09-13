@@ -172,6 +172,40 @@ export async function moveBookIntoWorld(
 
 /** Create a knowledge project bound to a book — drives the project→book+world
  *  Overview backlink (D-WORLD-PROJECT-BACKLINK). */
+/** Seed a book with a PUBLISHED chapter plus a knowledge project, and return both ids.
+ *
+ * 🔴 K1 — `campaign-factory`'s fixture-gated test skipped on
+ * `!E2E_FACTORY_PROJECT_ID || !E2E_FACTORY_BOOK_ID`, and nothing ever set them, so it had never
+ * run anywhere. A skip is UNANSWERED, not a pass: the create → report/activity/chapters contract
+ * it guards has simply never been exercised.
+ *
+ * `published` is the part that matters — the factory drafts against published chapters, so a book
+ * with a draft chapter would satisfy the env check and still prove nothing.
+ */
+export async function seedFactoryFixture(
+  request: APIRequestContext, token: string, label: string,
+): Promise<{ bookId: string; projectId: string }> {
+  const bookId = await createBook(request, token, `${label} ${Date.now()}`);
+  const chapter = await ok<{ chapter_id?: string; id?: string }>(
+    request.post(`/v1/books/${bookId}/chapters`, {
+      ...auth(token),
+      data: {
+        original_language: 'en',
+        title: 'Chapter I',
+        body: 'The lamp guttered as Harker set down his pen and listened to the wolves.',
+      },
+    }),
+  );
+  const chapterId = chapter.chapter_id ?? chapter.id ?? '';
+  if (!chapterId) throw new Error('seedFactoryFixture: the chapter did not come back');
+  const pub = await request.post(`/v1/books/${bookId}/chapters/${chapterId}/publish`, {
+    ...auth(token), data: {},
+  });
+  if (!pub.ok()) throw new Error(`seedFactoryFixture: publish -> ${pub.status()} ${await pub.text()}`);
+  const project = await createKnowledgeProject(request, token, `${label} project ${Date.now()}`, bookId);
+  return { bookId, projectId: project.project_id };
+}
+
 export async function createKnowledgeProject(
   request: APIRequestContext, token: string, name: string, bookId: string,
 ): Promise<{ project_id: string }> {

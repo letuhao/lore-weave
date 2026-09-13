@@ -170,10 +170,12 @@ real and only the PO can resolve it.
 
 ### Lane K — the skips. A skip is unanswered.
 
-- [ ] **K1** — `campaign-factory` needs `E2E_FACTORY_PROJECT_ID` / `E2E_FACTORY_BOOK_ID`.
+- [x] **K1** — **DONE (Cycle 13). The skip is GONE: 7 passed, 0 skipped.** The test had never run
+  anywhere. `campaign-factory` needed `E2E_FACTORY_PROJECT_ID` / `E2E_FACTORY_BOOK_ID`.
   Seed them the way `seed-evidence-account.py` seeds the rest, so a clean machine can run it.
-- [ ] **K2** — `composition-generate` needs **two active models**, which the one-model constraint
-  forbids. **Do not quietly activate a second** — that already exhausted this machine once (#260).
+- [~] **K2** — **OWNED, not answered (Cycle 13).** It belongs to **H2**, where it is priced
+  alongside the other two things the constraint blocks. Nothing was activated.
+  `composition-generate` needs **two active models**, which the one-model constraint forbids. **Do not quietly activate a second** — that already exhausted this machine once (#260).
   It is H2's decision; this row only records the outcome.
 
 ### Lane Z — the close.
@@ -848,6 +850,52 @@ permanent red honestly. B buys the last two at a memory risk only the PO can pri
 skip (`composition-generate`) is owned by this decision rather than left unexplained. AC-1 — items
 2 and 3 carry recorded reasons.
 
+### Cycle 13 — a skip that had never run anywhere (K1, K2)
+
+**Investigated:** `specs/campaign-factory.spec.ts:134-142,165-175`;
+`services/book-service/internal/api/server.go:403` (the publish route);
+`helpers/api.ts:175-181`; and the publish + project endpoints by hand.
+
+**Issues:** none — no product defect.
+
+**Fix:** `campaign-factory`'s fixture-gated test skipped on
+`!E2E_FACTORY_PROJECT_ID || !E2E_FACTORY_BOOK_ID`, and **nothing anywhere ever set them** — not the
+seeder, not CI, not the run command. So the create → report/activity/chapters contract it guards
+had never been exercised on any machine. A skip is UNANSWERED, and this one had been unanswered
+since it was written.
+
+`seedFactoryFixture` seeds what it actually needs: a book with a **PUBLISHED** chapter plus a
+knowledge project. Published is the load-bearing word — the factory drafts against published
+chapters, so a draft chapter would satisfy the env check and prove nothing. The env still wins if
+someone sets it.
+
+**K2 is OWNED, not answered.** `composition-generate` needs two ACTIVE models. Activating one is on
+this plan's STOP list and it is what exhausted this machine in #260, so it goes to **H2** with its
+price rather than being quietly arranged.
+
+**Proof:**
+
+```
+BEFORE ..... 6 passed, 1 skipped   "set E2E_FACTORY_PROJECT_ID + E2E_FACTORY_BOOK_ID"
+AFTER ...... 7 passed, 0 skipped
+
+BITE -- `error_groups` dropped from the campaign report (campaign-service):
+  Error: expect(received).toBeTruthy()
+  170 |  for (const k of ['status', 'total_chapters', 'stages', 'error_groups'])
+  1 failed, 6 passed      <- the newly-running test red on the contract it guards
+
+RESTORED byte-exact:
+  b4fa41e200130aa10e14ea48172100fc  /tmp/cs.orig
+  b4fa41e200130aa10e14ea48172100fc  /app/app/routers/campaigns.py
+  7 passed (1.5s)
+```
+
+The bite matters more than usual: a test that has never run is exactly the kind that could be
+vacuous. It is not — dropping one key from the report turns it red.
+
+**AC impact:** **AC-4 half met** — one skip ANSWERED (it now runs and is proven to bite), one
+OWNED by H2 with a named blocker. AC-1 — 13 of the 18 green. AC-2 not applicable: no product fix.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -857,7 +905,7 @@ skip (`composition-generate`) is owned by this decision rather than left unexpla
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-12 done. 12 of the 18 green. All THREE decision rows now have options ready: F2 (#263, narrow the stale Literal), H1 (#269, Studio auto-provisions a KG project on open), H2 (the one-model constraint blocks THREE things, and one wants a NON-REASONING model rather than a second strong one). Next: K1 (seed the campaign-factory env vars), then Z1 (full re-run) and Z2. The three decisions go to the PO together.
+RESUME: Cycles 1-13 done. 13 of the 18 green. K1 ANSWERED a skip that had never run on any machine (7 passed, 0 skipped, bitten); K2 is OWNED by H2. All three decision rows have options ready: F2 (#263), H1 (#269), H2 (the one-model constraint, which blocks THREE things). Head of the queue is Z1 -- rebuild, re-run the WHOLE suite, diff it test by test, NO newly red. Then Z2 hands over with the three decisions.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
