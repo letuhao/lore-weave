@@ -36,6 +36,32 @@ function authHeaders(token: string): { Authorization: string } {
 }
 
 /** Build the same auto-selected profile that StepProfile constructs from book.extraction-profile. */
+/** Adopt the book's ontology — copy the System standards down into book-local kinds.
+ *
+ * REQUIRED BEFORE EXTRACTION. glossary-service states the invariant itself: "A book MUST be
+ * adopted (book_kinds populated) before extraction can run — an un-adopted book yields zero
+ * kinds, which the worker treats as 'book not scaffolded'"
+ * (internal/api/extraction_handler.go, writeExtractionProfile).
+ *
+ * A person does this through the extraction wizard. Specs that say they "skip wizard UI for
+ * determinism" still have to do the equivalent setup, or they are asking a book that was never
+ * scaffolded to extract. An empty body adopts the mandatory `universal` genre, which is what the
+ * wizard lands on by default.
+ */
+export async function adoptBookOntology(
+  request: APIRequestContext,
+  token: string,
+  bookId: string,
+): Promise<void> {
+  const resp = await request.post(`/v1/glossary/books/${bookId}/adopt`, {
+    headers: authHeaders(token),
+    data: {},
+  });
+  if (!resp.ok()) {
+    throw new Error(`adopt book ontology failed: ${resp.status()} ${await resp.text()}`);
+  }
+}
+
 export async function buildAutoExtractionProfile(
   request: APIRequestContext,
   token: string,

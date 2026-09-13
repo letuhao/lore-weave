@@ -11,6 +11,7 @@ import { getAccessToken } from '../helpers/api';
 import { ensureLmStudioProvider, ensureLmStudioUserModel } from '../helpers/provider';
 import {
   buildAutoExtractionProfile,
+  adoptBookOntology,
   createExtractionJob,
   pollUntilComplete,
 } from '../helpers/extraction';
@@ -54,10 +55,14 @@ test.describe('Demo pipeline 3c — wiki article auto-generation from glossary',
     const chapterId = extractChapterIdFromEditorUrl(page.url());
 
     // ── API extraction (entities prerequisite for wiki generate) ────────
+    // The book must be ADOPTED before it can be extracted -- the wizard this spec skips
+    // is what normally does it. Without it the profile is empty and the job is refused
+    // 502 EXTRACT_PROFILE_UNAVAILABLE.
+    await adoptBookOntology(request, token, bookId);
     const profile = await buildAutoExtractionProfile(request, token, bookId);
     const jobId = await createExtractionJob(request, token, bookId, chapterId, modelRef, profile);
     const finalStatus = await pollUntilComplete(request, token, jobId, { timeoutMs: 300_000 });
-    expect(finalStatus.status).toMatch(/^completed/);
+    expect(finalStatus.status).toMatch(/^completed$/);
 
     // ── Activate draft entities (wiki generate filters by status='active') ──
     const activated = await activateAllDraftEntities(request, token, bookId);
