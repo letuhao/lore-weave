@@ -16,55 +16,55 @@
     "translation": "번역",
     "glossary_translation": "용어집 번역",
     "video_gen": "비디오 생성",
-    "campaign": "캠페인",
+    "campaign": "작업",
     "enrichment_job": "설정 보강",
     "book_import": "도서 가져오기",
     "composition": {
-      "generate": "구성 생성"
+      "generate": "구성"
     }
   },
   "summary": {
-    "active": "활성",
-    "completed": "완료됨",
-    "failed": "실패함",
+    "active": "진행 중",
+    "completed": "완료",
+    "failed": "실패",
     "cancelled": "취소됨"
   },
   "filters": {
     "status": "상태",
     "kind": "종류",
     "allStatuses": "모든 상태",
-    "allKinds": "모든 종류",
+    "allKinds": "모든 유형",
     "search": "제목 검색…",
-    "searchWide": "제목, 종류, 서비스, 모델 또는 작업 ID 검색…",
-    "searchHint": "제목 · 종류 · 서비스 · 모델 · 작업 ID 검색 가능 (디바운스 적용)."
+    "searchWide": "제목, 유형, 서비스, 모델 또는 작업 ID 검색…",
+    "searchHint": "제목 · 유형 · 서비스 · 모델 · 작업 ID 검색 (디바운스 적용)."
   },
   "col": {
     "job": "작업",
     "status": "상태",
     "progress": "진행률",
     "cost": "비용 · 토큰",
-    "started": "시작 시간",
+    "started": "시작일",
     "actions": "작업"
   },
   "section": {
     "active": "활성 · 실시간",
-    "activeHint": "페이지 구분 없음 — SSE를 통해 실시간 업데이트",
+    "activeHint": "페이지가 나누어지지 않음 — SSE를 통해 실시간 업데이트됨",
     "history": "기록",
-    "historyHint": "생성순 정렬 · 페이지 구분 있음"
+    "historyHint": "생성순 정렬 · 페이지 구분됨"
   },
   "list": {
     "loading": "로딩 중…",
     "error": "작업을 불러오지 못했습니다.",
-    "empty": "작업이 없습니다.",
-    "noActive": "활성 작업이 없습니다.",
+    "empty": "아직 작업이 없습니다.",
+    "noActive": "진행 중인 작업이 없습니다.",
     "more": "더 보기",
-    "toggleChildren": "하위 작업 펼치기/접기",
+    "toggleChildren": "하위 항목 펼치기/접기",
     "noChildren": "하위 작업이 없습니다.",
     "errorWithReason": "작업을 불러올 수 없습니다: {{error}}"
   },
   "row": {
-    "ran": "{{d}} 전 실행됨",
-    "running": "{{d}} 동안 실행 중",
+    "ran": "{{d}} 동안 실행됨",
+    "running": "{{d}} 진행 중",
     "details": "상세 정보 ↗"
   },
   "pager": {
@@ -75,36 +75,36 @@
     "prev": "이전 페이지",
     "next": "다음 페이지",
     "outOfRange": "이 페이지에 데이터가 없습니다 (총 {{total}}개).",
-    "first": "첫 페이지로"
+    "first": "첫 페이지로 이동"
   },
   "live": {
-    "on": "● 실시간",
-    "onShort": "실시간",
+    "on": "● 라이브",
+    "onShort": "라이브",
     "reconnecting": "재연결 중…",
     "off": "오프라인"
   },
   "controls": {
-    "pause": "일시 중지",
+    "pause": "일시정지",
     "resume": "재개",
     "resumeFromCheckpoint": "체크포인트에서 재개",
     "cancel": "취소",
-    "cancelConfirm": "지금 중단하시겠습니까? 진행 중인 작업은 폐기되지만, 완료된 부분은 유지됩니다.",
+    "cancelConfirm": "지금 중단하시겠습니까? 진행 중인 작업은 삭제되지만, 완료된 부분은 유지됩니다.",
     "cancelYes": "예",
     "cancelNo": "아니요",
     "cancelled": "취소되었습니다.",
-    "paused": "일시 중지되었습니다.",
+    "paused": "일시정지되었습니다.",
     "resumed": "재개되었습니다.",
     "retry": "재시도",
-    "retried": "새 작업으로 재제출되었습니다.",
+    "retried": "새 작업으로 다시 제출되었습니다.",
     "stale": "작업 상태가 변경되어 새로고침되었습니다.",
     "actionFailed": "작업 실패: {{error}}",
-    "retryBenchmarkMissing": "재시도를 할 수 없습니다: 임베딩 모델에 벤치마크가 없습니다. 모델 벤치마크를 실행한 후 다시 확인해 주세요.",
-    "retryBenchmarkFailed": "재시도를 할 수 없습니다: 임베딩 모델의 마지막 벤치마크 테스트에 실패했습니다."
+    "retryBenchmarkMissing": "재시도를 사용할 수 없습니다: 임베딩 모델의 벤치마크 결과가 없습니다. 모델 벤치마크를 실행한 후 다시 확인하세요.",
+    "retryBenchmarkFailed": "재시도를 사용할 수 없습니다: 임베딩 모델의 마지막 벤치마크가 실패했습니다."
   },
   "monitor": {
     "back": "모든 작업",
     "error": "작업을 불러오지 못했습니다.",
-    "pausedBanner": "일시 중지됨 — 새로운 단위 작업이 할당되지 않으며, 진행 중인 작업만 완료됩니다. 위에서 재개하세요.",
+    "pausedBanner": "일시 중지됨 — 새로운 단위가 할당되지 않으며 진행 중인 작업만 완료됩니다. 위에서 재개하세요.",
     "children": "하위 작업"
   },
   "detail": {
@@ -112,20 +112,20 @@
     "llmCalls": "LLM 호출",
     "elapsed": "경과 시간",
     "throughput": "처리량",
-    "throughputVal": "~{{n}}/h",
+    "throughputVal": "~{{n}} /h",
     "eta": "예상 완료 시간",
-    "costSoFar": "현재까지의 비용",
+    "costSoFar": "현재까지 발생 비용",
     "tokensIn": "입력 토큰",
     "tokensOut": "출력 토큰",
     "bestEffort": "최선 노력",
     "models": "모델",
     "parameters": "매개변수",
-    "parametersHint": "작업의 params 객체에서 가져온 동적 데이터",
+    "parametersHint": "작업의 params 객체에서 동적으로 가져옴",
     "jobId": "작업 ID",
-    "kind": "종류",
+    "kind": "유형",
     "service": "서비스",
-    "parent": "상위 작업",
-    "viewParent": "상위 작업 보기 ↗",
+    "parent": "상위 항목",
+    "viewParent": "상위 항목 보기 ↗",
     "created": "생성일",
     "lastUpdate": "최근 업데이트",
     "copied": "작업 ID가 복사되었습니다.",
@@ -144,7 +144,7 @@
     "cancelled": "취소됨"
   },
   "mobile": {
-    "children": "하위 작업"
+    "children": "자식 요소"
   },
   "fairness": {
     "title": "공정 스케줄링",
@@ -152,8 +152,8 @@
     "queued": "· {{queued}} 대기 중",
     "lane": {
       "translation": "번역",
-      "knowledge": "지식",
-      "loreEnrichment": "설정 보강"
+      "knowledge": "지식 추출",
+      "loreEnrichment": "세계관 보강"
     }
   }
 }
