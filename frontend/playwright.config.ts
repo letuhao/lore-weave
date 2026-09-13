@@ -30,9 +30,26 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  // Allure is OPT-IN and must stay that way. The PO asked for it by name for the ship-proof run
+  // (`allure-playwright` emits results; `allure-commandline` renders them, and that CLI needs
+  // JAVA -- which this box has at 24 and **CI does not**). Making it a default reporter would put
+  // a Java dependency on every CI run of a suite that does not need one.
+  //
+  //     PLAYWRIGHT_ALLURE=1 npx playwright test
+  //     npx allure generate tests/e2e/allure-results --clean -o tests/e2e/allure-report
+  //
+  // The html reporter stays unconditional: it already embeds video, trace and screenshots inline
+  // and needs nothing installed, so a run is never left with no readable output if Allure breaks.
   reporter: [
     ['list'],
     ['html', { outputFolder: 'tests/e2e/playwright-report', open: 'never' }],
+    ...(process.env.PLAYWRIGHT_ALLURE === '1'
+      ? [['allure-playwright', {
+          outputFolder: 'tests/e2e/allure-results',
+          detail: true,
+          suiteTitle: true,
+        }] as const]
+      : []),
   ],
   outputDir: 'tests/e2e/test-results',
   use: {

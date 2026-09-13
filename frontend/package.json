@@ -80,6 +80,8 @@
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "allure-commandline": "^2.43.0",
+    "allure-playwright": "^3.12.1",
     "autoprefixer": "^10.5.2",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^5.2.0",
