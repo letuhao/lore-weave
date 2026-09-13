@@ -165,8 +165,8 @@ real and only the PO can resolve it.
   One long-lived session currently carries earlier runs' unanswered Tier-A consent gates. Decide
   deliberately whether the test answers consent or avoids provoking it.
 
-- [ ] **H3** — `kg-panels`: a second test fails with `page.goto: Timeout 15000ms exceeded`.
-  *(1 test, found in Cycle 11)* Unexamined. Recorded rather than folded into H1.
+- [x] **H3** — **DONE (Cycle 18). Does not reproduce.** 16 of 17 pass; the one failure is H1's.
+  *(1 test, found in Cycle 11)* Which repair removed it is deliberately not guessed.
 
 ### Lane K — the skips. A skip is unanswered.
 
@@ -1068,6 +1068,32 @@ and an archive that never happened. The bite is what distinguishes them, which i
 reason the rule asks for one.
 
 **AC impact:** AC-1 — F7 is green, 13 of 18. AC-3 — the claim is identical before and after; only the missing user step was added.
+
+
+### Cycle 18 — the second kg-panels failure no longer exists (H3)
+
+**Investigated:** `specs/kg-panels.spec.ts` in full (17 tests), re-run on the rebuilt image; and the Z1 Allure results for that spec.
+
+**Issues:** none — the failure this row recorded does not reproduce.
+
+**Fix:** none needed. H3 recorded a second `kg-panels` failure — `page.goto: Timeout 15000ms exceeded` — as unexamined, deliberately kept out of H1 rather than folded into it. Re-checking it before acting on it (Rule 7) finds it gone: **16 passed, 1 failed**, and the single failure is the empty-state test that belongs to **H1/#269**, which is the PO's decision, not a second defect.
+
+**I did not isolate which repair removed it** and will not guess. Between Cycle 11 and now the login throttle got isolated-stack headroom, the DB and API helpers stopped crossing stacks, and several studio URLs were corrected — any of which could account for a navigation timeout. Naming one without evidence would be the kind of premise this plan has had to correct a dozen times.
+
+**Proof:**
+
+```
+kg-panels.spec.ts, full spec, rebuilt image:
+
+  16 passed (1.5m)
+  1 failed   -> "kg-overview shows the empty state for a book with no linked KG project"
+               Error: expect(locator).toBeVisible() failed
+               Timeout: 5000ms — element(s) not found
+
+  page.goto: Timeout 15000ms exceeded   <- NOT PRESENT. 0 occurrences.
+```
+
+**AC impact:** AC-1 — H3 carries a recorded reason: it no longer reproduces, measured, with the cause honestly left unattributed.
 
 
 ```goal-prompt
