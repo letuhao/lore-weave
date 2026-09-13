@@ -46,6 +46,23 @@ i18n
     nonExplicitSupportedLngs: true,
     defaultNS: 'common',
     fallbackLng: 'en',
+    // 🔴 AN EMPTY TRANSLATION MEANS "MISSING", NOT "RENDER NOTHING".
+    //
+    // i18next defaults `returnEmptyString` to TRUE, so `""` in a resource is a legitimate
+    // VALUE and `t()` returns it -- a `defaultValue` at the call site is never consulted.
+    // Measured 2026-09-13: all 48 `composition.structureTemplates.beats.*.purpose` keys are
+    // `""` in `en` and fully written in the other 17 locales, while composition-service DOES
+    // seed an English purpose for every one of them. `localizedBeat()` passes exactly the
+    // right `defaultValue: beat.purpose`, and it was being discarded, so `StructureTemplates
+    // Panel`'s `{lb.purpose && …}` drew nothing. **English was the degraded locale** -- a
+    // Vietnamese author read what each story beat is for and an English author got a blank,
+    // across Save the Cat, Hero's Journey, Story Circle, Kishotenketsu and Web Novel.
+    //
+    // Blast radius is exactly those 48 keys, and that is CHECKED rather than assumed:
+    // `emptyStringDoesNotSuppressContent.test.ts` fails if any other empty value appears in
+    // any of the 18 locales, because a new one would silently start rendering its
+    // `defaultValue` -- or, with no default, its raw key.
+    returnEmptyString: false,
     interpolation: {
       escapeValue: false,
     },
