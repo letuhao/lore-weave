@@ -104,6 +104,10 @@ def main() -> int:
     ap.add_argument("--model", default="qwen/qwen3.8-27b",
                     help="a model LM Studio actually serves; the e2e helper hardcodes "
                          "qwen/qwen3.6-35b-a3b, which is often not the one loaded")
+    ap.add_argument("--allow-second-model", action="store_true",
+                    help="register a model even when the account already has an ACTIVE one. "
+                         "Off by default because a SECOND active model arms the distinct-critic "
+                         "path, which loads TWO models at once -- see the note on SECOND_MODEL_WARNING")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -158,7 +162,33 @@ def main() -> int:
     q = "/v1/model-registry/user-models?include_inactive=true&provider_kind=lm_studio"
     st, payload = _req(b, q, token=token)
     models = payload.get("items", []) if isinstance(payload, dict) else []
-    if not any(m.get("provider_model_name") == a.model for m in models):
+
+    # 🔴 A SECOND ACTIVE MODEL IS NOT ADDITIVE -- IT ARMS A DIFFERENT CODE PATH.
+    #
+    # Several specs want a drafter AND a distinct critic, and they GUARD on the count:
+    #
+    #     test.skip(chatModels.length < 1 || allModels.length < 2,
+    #       'needs a chat-tagged drafter + >=1 distinct active critic model + LM Studio');
+    #     const critic = allModels.find((m) => m.user_model_id !== drafter.user_model_id)!;
+    #
+    # With ONE active model those tests SKIP. With TWO they RUN, and one test then asks the
+    # backend for two models at once. Measured 2026-09-13: this seeder added a second model to an
+    # account that already had one, which flipped that guard, and a 35B + 27B pair was requested
+    # concurrently -- the developer's machine ran out of memory and LM Studio answered
+    # "Engine protocol startup was aborted" to everything after.
+    #
+    # So the count is a SAFETY setting, not a convenience, and raising it is opt-in.
+    active = [m for m in models if m.get("is_active")]
+    already = any(m.get("provider_model_name") == a.model for m in models)
+    if active and not already and not a.allow_second_model:
+        print(f"  chat model(s)       -> {len(active)} active already: "
+              f"{', '.join(m.get('provider_model_name', '?') for m in active)}")
+        print("\n  REFUSING to add a second ACTIVE model.")
+        print("  A second one arms the distinct-critic path, which loads TWO models at once and")
+        print("  can exhaust memory. Pass --allow-second-model only if the pair FITS -- two small")
+        print("  models, not a 35B beside a 27B. With one, those tests SKIP and say so.")
+        models = active
+    elif not already:
         st, payload = _req(b, "/v1/model-registry/user-models", "POST", token=token, body={
             "provider_credential_id": provider_id, "provider_model_name": a.model,
             "alias": "Evidence drafter", "context_length": 120_000,
@@ -168,10 +198,19 @@ def main() -> int:
             return 1
     st, payload = _req(b, q, token=token)
     models = payload.get("items", []) if isinstance(payload, dict) else []
-    print(f"  chat model(s)       -> {len(models)}: "
-          f"{', '.join(m.get('provider_model_name', '?') for m in models)}")
-    if not models:
-        print("\nFAIL — no chat model on the account, so every model-gated journey will SKIP.")
+    # ACTIVE is the number that decides behaviour -- `listActiveModels` filters on it, and the
+    # distinct-critic guard counts the filtered list. Reporting the raw total said "2" on an
+    # account with ONE active model, which is the same misleading-count shape this script exists
+    # to stop. Inactive rows are shown, separately, so they are visible without being counted.
+    active = [m for m in models if m.get("is_active")]
+    inactive = [m for m in models if not m.get("is_active")]
+    print(f"  chat model(s)       -> {len(active)} ACTIVE: "
+          f"{', '.join(m.get('provider_model_name', '?') for m in active) or '(none)'}")
+    if inactive:
+        print(f"                         {len(inactive)} inactive (not counted): "
+              f"{', '.join(m.get('provider_model_name', '?') for m in inactive)}")
+    if not active:
+        print("\nFAIL -- no ACTIVE chat model, so every model-gated journey will SKIP.")
         print("  -> a skipped leg is not a passed leg, and a skip reads as success in a summary.")
         return 1
 
@@ -189,7 +228,10 @@ def main() -> int:
     #    to spend it on the most expensive call on the platform"). On a throwaway stack pointed at
     #    a LOCAL model that reasoning does not apply, and leaving it unset silently gates every
     #    drafting journey. It is set here and named here rather than inherited quietly.
-    model_id = models[0].get("user_model_id")
+    # From ACTIVE only. `models[0]` could be an inactive row -- it was, in the run that found
+    # this -- and a default pointing at an inactive model is a control that looks set and
+    # resolves to nothing.
+    model_id = active[0].get("user_model_id")
     for capability in ("chat", "composer"):
         st, payload = _req(b, f"/v1/model-registry/default-models/{capability}", "PUT",
                            token=token, body={"user_model_id": model_id})

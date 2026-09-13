@@ -113,6 +113,31 @@ and only the PO closes it.
   The report, the coverage map, the failure list, and the standing AC-10 verdict in one place.
   Evidence: **the PO's own words.** No row ticks this.
 
+- [x] **S10** — The model count is a SAFETY setting. *(AC-2, AC-5. Found by causing it. #260)*
+  Seeding a second model made a developer machine run out of memory. It is not additive — it arms a
+  different path:
+
+```js
+test.skip(chatModels.length < 1 || allModels.length < 2, 'needs a drafter + >=1 distinct critic');
+const critic = allModels.find((m) => m.user_model_id !== drafter.user_model_id)!;
+```
+
+  One active model and those tests SKIP; two and a single test asks for **two models at once** — a
+  35B beside a 27B, on a local backend. Every later request then failed with
+  `Engine protocol startup was aborted`, **which looks like a broken model and is a broken budget**.
+
+  I also reported that as "neither qwen model can load", which was wrong: the probes ran while the
+  suite was still hammering LM Studio, so the abort was the exhaustion itself. It was stated as a
+  property of the models and was a property of the moment.
+
+  Fixed: the seeder refuses a second ACTIVE model without `--allow-second-model` and says why; the
+  added model was deactivated, restoring `1 ACTIVE`. Two further bugs in my own script fell out,
+  both the misleading-count shape — it reported `2` on an account with one active model, and it
+  picked the capability default from `models[0]`, which can be an **inactive** row: a control that
+  looks set and resolves to nothing.
+  Evidence: the guard refusing (`REFUSING to add a second ACTIVE model`), and
+  `chat model(s) -> 1 ACTIVE` with the inactive row shown but not counted.
+
 - [ ] **S8** — The differential: two runs, and the delta is the answer. *(AC-2, AC-5, AC-8)*
   **This row exists because the audit found the plan would have misled the PO.** A first pass of the
   full suite, with a MINIMAL seed, came back **40 passed / 23 failed / 2 skipped** over its first 65
