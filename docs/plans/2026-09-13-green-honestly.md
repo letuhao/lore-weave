@@ -136,7 +136,10 @@ real and only the PO can resolve it.
   Present what each answer costs. Also fix the unit test that renders the component with the id
   directly — it cannot fail for the reason it was written, whichever way the decision goes.
 
-- [ ] **H2** — **D13 and the one-model constraint.** *(1 test now, 1 skip)*
+- [~] **H2** — **INVESTIGATED, OPTIONS READY, AWAITING THE PO (Cycle 12).** The constraint blocks
+  THREE things, not two, and one of them wants a NON-REASONING model rather than a second strong
+  one — which changes the memory arithmetic.
+  **D13 and the one-model constraint.** *(1 test now, 1 skip)*
   `compose-need-model` asserts a state the model cascade exists to prevent, and
   `composition-generate` needs a second ACTIVE model. Both are downstream of *"we only can run 1
   strong model at same time"*. Options, cost of each, PO decides.
@@ -794,6 +797,57 @@ and is recorded as such rather than folded in here.
 carries a recorded reason. AC-2 not applicable. **Two corrections to my own prior findings are
 recorded rather than quietly dropped.**
 
+### Cycle 12 — the one-model constraint costs more than two tests (H2)
+
+**Investigated:** the three blocked items and their exact requirements;
+`CompositionPanel.tsx:317-325` (the cascade); `worker-ai` distiller advisory; LM Studio's
+advertised model list (read-only — no control, per the standing instruction); live memory.
+
+**Issues:** none — this is a constraint, not a defect.
+
+**Fix:** none applied. This row prepares a decision.
+
+**Proof:** what the constraint actually blocks, measured:
+
+```
+1 composition-generate   SKIP  "needs a chat-tagged drafter + >=1 distinct active critic"
+2 compose-need-model     FAIL  the cascade ends "... > the sole-registered model auto-pick"
+                               (CompositionPanel.tsx:325), so "no model picked" cannot occur
+3 assistant-endofday     FAIL  distiller: "model returned a BLANK completion — the distill model
+                               produced no output (a reasoning model? use a NON-REASONING distill
+                               model)"; 0 entries after 270s
+
+memory now:  14.6 GB free of 95.7   (gemma-4-26b resident, ~14 GB)
+LM Studio advertises 72 models, including smaller ones (e.g. google/gemma-4-12b-qat)
+```
+
+**The important nuance.** I had been treating this as "one STRONG model". Item 3 does not want a
+second strong model — it wants a **non-reasoning** one, which can be small. That is a different
+memory profile from the two-model load that exhausted this machine in #260 (a 35B beside a 27B).
+
+**Options, for the PO:**
+
+**A — keep exactly one model.** 1 skip and 2 permanent reds, each with a recorded reason. Honest,
+and the suite can never reach 100%. No risk.
+
+**B — add ONE SMALL NON-REASONING model beside gemma, used only as critic/distiller.** Unblocks 1
+and 3. Does NOT unblock 2. Memory: gemma ~14 GB resident with 14.6 GB free; a ~12B QAT is roughly
+7-8 GB, leaving ~7 GB. **Not risk-free** — #260 is why this is the PO's call and not mine, and I
+will not activate anything without a yes.
+
+**C — for item 2 specifically, retire or REAIM the test.** `compose-need-model` asserts a state the
+cascade exists to prevent. It cannot be reached without removing the sole-model auto-pick, which
+would make the product worse. **Recommended:** re-aim it at what the cascade actually promises —
+*with exactly one registered model it is auto-picked* — which is a real, currently untested claim.
+That is not weakening: it swaps an unreachable assertion for a reachable one about the same code.
+
+**Recommendation: A + C now, B only if the PO wants 100%.** A+C costs nothing and removes one
+permanent red honestly. B buys the last two at a memory risk only the PO can price.
+
+**AC impact:** AC-6 — prepared as a choice with measured costs and a recommendation. AC-4 — K2's
+skip (`composition-generate`) is owned by this decision rather than left unexplained. AC-1 — items
+2 and 3 carry recorded reasons.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -803,7 +857,7 @@ recorded rather than quietly dropped.**
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-11 done. 12 of the 18 green. Cycle 11 CORRECTED TWO of my own earlier findings: the kg-overview gate was never dropped (it is at KgOverviewPanel.tsx:38) and its unit test is not vacuous. The real H1 question is better: opening a book in the Studio AUTO-PROVISIONS a knowledge project (measured: 10s after the book), so the no-project state is unreachable and every book merely opened gets a project. New row H3 (a kg-panels page.goto timeout, unexamined). Head of the queue is H2 -- the one-model constraint, which now blocks THREE things.
+RESUME: Cycles 1-12 done. 12 of the 18 green. All THREE decision rows now have options ready: F2 (#263, narrow the stale Literal), H1 (#269, Studio auto-provisions a KG project on open), H2 (the one-model constraint blocks THREE things, and one wants a NON-REASONING model rather than a second strong one). Next: K1 (seed the campaign-factory env vars), then Z1 (full re-run) and Z2. The three decisions go to the PO together.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
