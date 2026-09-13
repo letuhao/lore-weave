@@ -129,7 +129,10 @@ real and only the PO can resolve it.
 
 ### Lane H — decisions. These STOP for the PO.
 
-- [ ] **H1** — **#269**: was the Overview panel's no-project gate dropped deliberately? *(1 test)*
+- [~] **H1** — **INVESTIGATED; the question turned out to be a DIFFERENT one (Cycle 11).** The
+  gate was never dropped, and the unit test is not vacuous — BOTH of my earlier claims were wrong
+  and are corrected. The real question is that opening a book in the Studio AUTO-PROVISIONS a
+  knowledge project, which makes the no-project state unreachable. Awaiting the PO. *(1 test)*
   Present what each answer costs. Also fix the unit test that renders the component with the id
   directly — it cannot fail for the reason it was written, whichever way the decision goes.
 
@@ -158,6 +161,9 @@ real and only the PO can resolve it.
   **D12**: a per-run Assistant session on an active model. *(1 test)*
   One long-lived session currently carries earlier runs' unanswered Tier-A consent gates. Decide
   deliberately whether the test answers consent or avoids provoking it.
+
+- [ ] **H3** — `kg-panels`: a second test fails with `page.goto: Timeout 15000ms exceeded`.
+  *(1 test, found in Cycle 11)* Unexamined. Recorded rather than folded into H1.
 
 ### Lane K — the skips. A skip is unanswered.
 
@@ -735,6 +741,59 @@ to green, and this one does not pass, so it FAILS CLOSED and the row is not tick
 not applicable. AC-6 — this hands H2 a concrete cost: the one-model constraint is not only about
 two-model tests, it also means the diary distiller cannot produce an entry at all.
 
+### Cycle 11 — two of my own findings were wrong, and the real question is better (H1, #269)
+
+**Investigated:** `KgOverviewPanel.tsx:9,26-41`; `hooks/useBookKnowledgeProject.ts:18-23`;
+`hooks/useProjects.ts:36,77`; `api.ts:1048`; the projects API with a `book_id` filter;
+`git log -S` over the panel; and `knowledge_projects` timings.
+
+**Issues:** #269 — **to be corrected**, because I filed it on two premises that do not hold.
+
+**Fix:** none applied. What changed is the question.
+
+**Correction 1 — the gate was never dropped.** I reported that `kg-overview-no-project` "is
+rendered by nothing". It is rendered at `KgOverviewPanel.tsx:38`, behind `if (!projectId)`. My
+Cycle-14 grep in red-by-red listed the two OTHER callers and was cut off by `head -5`; I read the
+absence of a third line as an absence in the code. `git log -S` confirms the id has only ever been
+ADDED, never removed.
+
+**Correction 2 — the unit test is not vacuous.** I said `KgNoProjectState.test.tsx` guards an id
+the app never passes. The app passes exactly that id, one line from the panel. The test is fine.
+
+**What is actually true, and is worth a decision.** The bare book DOES get a project:
+
+```
+books             01a09bef-db7e-… | E2E KG bare … | 18:03:02.910
+knowledge_projects 01a09bef-ffc0-… | E2E KG bare … | 18:03:12.190
+```
+
+Ten seconds later, named after the book, created by opening it in the Studio — the same
+auto-provisioning shape as D4's composition Work. The API filter is correct (`?book_id=<bare>`
+returns 0 for a book that has not been opened), so nothing is broken. But it means the no-project
+empty state is **unreachable through the Studio**, and every book a writer merely LOOKS at gets a
+knowledge project.
+
+**Proof:**
+
+```
+grep KgOverviewPanel.tsx      -> line 38: <KgNoProjectState … testId="kg-overview-no-project" />
+git log -S kg-overview-no-project -> one commit, the one that ADDED it
+GET /v1/knowledge/projects?book_id=<never-opened bare book>  -> returned: 0
+knowledge_projects for the opened bare book                  -> 1, created 10s after the book
+```
+
+**The decision, for the PO.** Options are on the issue. This is not a bug report any more; it is
+"should opening a book silently create a knowledge project", and the cost is a project per book
+opened plus an empty state that can never be seen.
+
+**A second failure in this spec is NOT this row.** The same run showed
+`TimeoutError: page.goto: Timeout 15000ms exceeded` on another kg-panels test. That is unexamined
+and is recorded as such rather than folded in here.
+
+**AC impact:** AC-6 — the decision is prepared with evidence and options. AC-1 — #269's test
+carries a recorded reason. AC-2 not applicable. **Two corrections to my own prior findings are
+recorded rather than quietly dropped.**
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -744,7 +803,7 @@ two-model tests, it also means the diary distiller cannot produce an entry at al
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-10 done. 12 of the 18 green. J3 fixed the stale inherited Assistant session (verified: was an inactive qwen, now the active gemma) but stays RED for a cause the product names itself -- gemma is a REASONING model and returns a blank completion to the distiller (advisory=distill_model_no_output, 0 entries after 270s). That is the THIRD thing blocked by the one-model constraint and is evidence for H2. Head of the queue is H1 -- a PO decision; reach it with options ready, then H2, then K1/K2 and Z.
+RESUME: Cycles 1-11 done. 12 of the 18 green. Cycle 11 CORRECTED TWO of my own earlier findings: the kg-overview gate was never dropped (it is at KgOverviewPanel.tsx:38) and its unit test is not vacuous. The real H1 question is better: opening a book in the Studio AUTO-PROVISIONS a knowledge project (measured: 10s after the book), so the no-project state is unreachable and every book merely opened gets a project. New row H3 (a kg-panels page.goto timeout, unexamined). Head of the queue is H2 -- the one-model constraint, which now blocks THREE things.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
