@@ -175,7 +175,32 @@ def main() -> int:
         print("  -> a skipped leg is not a passed leg, and a skip reads as success in a summary.")
         return 1
 
-    # 4. onboarding. Without this a fresh account lands on /onboarding and loginViaUI waits
+    # 4. DEFAULT models per capability. Having a model on the account is NOT the same as having
+    #    one SELECTED, and the difference is most of a suite. Measured 2026-09-13: with a chat
+    #    model registered but no default, 23 of the first 65 tests failed, and the error was always
+    #    the same shape --
+    #        TimeoutError: locator.click: waiting for getByTitle('Send')
+    #        locator resolved to <button DISABLED data-testid="chat-send-button" ...>
+    #    -- a disabled send button, because nothing was picked. `docs/dev/LOCAL_TEST_ENV.example.md`
+    #    says it outright: "user_default_models is typically empty on a fresh account".
+    #
+    #    `composer` is set DELIBERATELY and is not the same decision as `chat`. The product keeps
+    #    them apart on purpose (settings/api.ts: "picking a model for conversation is not consent
+    #    to spend it on the most expensive call on the platform"). On a throwaway stack pointed at
+    #    a LOCAL model that reasoning does not apply, and leaving it unset silently gates every
+    #    drafting journey. It is set here and named here rather than inherited quietly.
+    model_id = models[0].get("user_model_id")
+    for capability in ("chat", "composer"):
+        st, payload = _req(b, f"/v1/model-registry/default-models/{capability}", "PUT",
+                           token=token, body={"user_model_id": model_id})
+        print(f"  default[{capability:8}]    -> {st}")
+        if st not in (200, 204):
+            print(f"\nFAIL -- could not set the {capability} default: {payload}")
+            print("  -> without it the UI has a model available but none SELECTED, and every")
+            print("     journey that sends a message fails on a disabled control.")
+            return 1
+
+    # 5. onboarding. Without this a fresh account lands on /onboarding and loginViaUI waits
     #    forever for **/books.
     st, payload = _req(b, "/v1/me/preferences", "PATCH", token=token,
                        body={"prefs": {"hasSeenOnboarding": True,

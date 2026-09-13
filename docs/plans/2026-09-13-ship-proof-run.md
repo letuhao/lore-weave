@@ -48,36 +48,51 @@ mode as a gate that goes red and stays red.
 
 | AC | Must be true | Verified by | Rows | Status |
 |---|---|---|---|---|
-| **AC-1** | The issue list contains only open problems | every issue closed with the commit that fixed it, or left open with a reason | S1 | ❓ unknown |
-| **AC-2** | A clean machine can run the whole suite without hand-holding | the documented setup run start to finish on a stack that has never seen it | S2 | ❓ unknown |
-| **AC-3** | Every test that runs is recorded — video and screenshot, pass or fail | `evidence-capture-gate.py` over the full run | S3 | ❓ unknown |
+| **AC-1** | The issue list contains only open problems | every issue closed with the commit that fixed it, or left open with a reason | S1 | ✅ met — 12 open → 2, each closure carrying its evidence; both survivors have a named blocker |
+| **AC-2** | A clean machine can run the whole suite without hand-holding | the seed script run against a stack with **fresh volumes** — not a reused one — and the pass rate after | S2, S8 | ❓ unknown |
+| **AC-3** | Every test is recorded, and every test that did NOT run is counted — a SKIP is reported as unanswered, never folded into a pass | `evidence-capture-gate.py` plus an explicit skip count | S3 | ❓ unknown |
 | **AC-4** | A person can open one report and see every journey, and watch any of them | Allure, opened cold and navigated without a guide | S4 | ❓ unknown |
-| **AC-5** | Every failure in that run is diagnosed to a cause, or named as undiagnosed | one line per failure, with its trace | S5 | ❓ unknown |
+| **AC-5** | Every failure is CLASSIFIED — a product defect, or an environment/fixture gap — and every product defect has an issue | the failure table, each row carrying its evidence | S5, S8 | ❓ unknown |
 | **AC-6** | The report says what is NOT covered as plainly as what is | the coverage map, with its holes | S6 | ❓ unknown |
 | **AC-7** | The PO can reach a GO or NO-GO from the report alone | their own words, recorded | S7 | ❓ unknown |
+| **AC-8** | A red result is reproducible — the same test fails the same way twice | the same suite run twice, the diff between them | S8 | ❓ unknown |
+| **AC-9** | The evidence does not enter git history | the artefact directories ignored, and the report's size stated | S9 | 🚧 partial — all four directories now ignored (`allure-*` were not, and would have committed thousands of files). The run's measured size is still owed |
 
 **AC-7 is not something this plan can tick.** It is the condition under which the plan is finished,
 and only the PO closes it.
 
 ## Board
 
-- [ ] **S1** — Close what is done; leave what is not. *(AC-1)*
+- [x] **S1** — Close what is done; leave what is not. *(AC-1)*
   Ten issues are fixed and open. Each gets closed against the commit that fixed it, or a comment
   saying why it stays. #247 stays open with its measured scope.
-  Evidence: the issue list before and after, and the reason on anything still open.
+  **DONE.** Ten closed against the evidence that fixed them; **two remain and both are real** —
+  #257 (six strings needing `ru`/`bn`/`ja`/`th` readers) and #247 (the ESM migration).
 
 - [ ] **S2** — A seed path a clean machine can follow. *(AC-2)*
   Recording one run took removing five blockers by hand. That is not reproducible and it is not
   written down. This turns it into something checked in and runnable — account, BYOK model,
   onboarding flag — and the `/onboarding` vs `/books` harness defect gets fixed rather than
   worked around, because the next person will hit it too.
-  Evidence: the seed run on a stack that has never seen it, and the journeys passing login after.
+  **The audit tightened what "clean" means.** The seeder was first proved against a stack that
+  already had the account (`register -> 409`), which proves the idempotent path and NOT the
+  first-run path. `lw-iso`'s volumes are not fresh either — one owner holds 308 books. So the bar is
+  a stack with **fresh volumes** (`iso.sh down -v`), which is destructive and therefore the PO's
+  call to authorise.
+  Evidence: the seed run against fresh volumes, and the suite's pass rate on the far side of it.
 
 - [ ] **S3** — Record the WHOLE suite, not a sample. *(AC-3)*
   225 tests across 76 specs, with `PLAYWRIGHT_EVIDENCE=1`. Expect this to be slow and expect
   failures; both are information. `evidence-capture-gate.py` must pass over the result, so a run
   that captured nothing cannot be reported as a run.
-  Evidence: the capture gate's count against the number of tests that ran.
+
+  **The audit caught this row excusing exactly what this repo spent the day fixing.** It originally
+  said *"every test that RUNS is recorded"*, which silently forgives a skip — and **19 of the 76
+  specs contain `test.skip()`**, almost all of them model- or stack-gated. A suite that skips eighty
+  tests and records the rest would satisfy that wording while answering nothing, which is the
+  `GATE_SKIP_RC` lesson arriving from the other direction. **A skip is reported as UNANSWERED and
+  counted in its own column**, never folded into a pass.
+  Evidence: the capture gate's artefact count, AND passed / failed / skipped stated separately.
 
 - [ ] **S4** — Allure. *(AC-4)*
   The PO asked for it by name. `allure-playwright` as an opt-in reporter plus the CLI (Java 24 is
@@ -97,6 +112,44 @@ and only the PO closes it.
 - [ ] **S7** — Hand it over. *(AC-7)*
   The report, the coverage map, the failure list, and the standing AC-10 verdict in one place.
   Evidence: **the PO's own words.** No row ticks this.
+
+- [ ] **S8** — The differential: two runs, and the delta is the answer. *(AC-2, AC-5, AC-8)*
+  **This row exists because the audit found the plan would have misled the PO.** A first pass of the
+  full suite, with a MINIMAL seed, came back **40 passed / 23 failed / 2 skipped** over its first 65
+  tests — a ~35% failure rate. Handing that to someone as "the product" would say the wrong thing,
+  because the failures were not the product:
+
+```
+TimeoutError: locator.click: waiting for getByTitle('Send')
+  locator resolved to <button DISABLED data-testid="chat-send-button" ...>
+```
+
+  A disabled send button, because the account had a model REGISTERED but none SELECTED.
+  `docs/dev/LOCAL_TEST_ENV.example.md` says it outright — *"user_default_models is typically empty
+  on a fresh account"*. The seeder now sets the `chat` and `composer` defaults.
+
+  So the method is a **differential, not a single number**: run the suite under the minimal seed and
+  again under the full seed, on the same commit and the same stack. A test that fails BOTH times is
+  a candidate product defect. A test that fails only under the minimal seed is an
+  environment-dependency — which is a finding about *portability*, not about the product, and the
+  two must never be added together.
+  Evidence: both result sets and the diff between them, with every test named in exactly one column.
+
+- [x] **S9** — Where the evidence lives. *(AC-9)*
+  225 tests × video is large. `test-results/` and `playwright-report/` are already ignored in
+  `frontend/tests/e2e/.gitignore`; **`allure-results/` and `allure-report/` are NOT**, so the first
+  Allure run would commit thousands of files into history, where they cannot be removed later
+  without a rewrite. Ignore them, and state the report's real size so the PO knows what they are
+  opening.
+  **DONE for the ignore half.**
+
+```
+test-results         IGNORED      allure-results       IGNORED   <- was NOT
+playwright-report    IGNORED      allure-report        IGNORED   <- was NOT
+```
+
+  The size half is owed until a full run finishes; the 13-test sample was 20 MB, so 225 will
+  not be small.
 
 ## What this plan will NOT do
 
