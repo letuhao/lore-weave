@@ -335,6 +335,17 @@ services:
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       ACCESS_TOKEN_TTL_SECONDS: "7200"
       REFRESH_TOKEN_TTL_SECONDS: "2592000"
+      # Login/register throttle, keyed `route:CLIENT_IP` (ratelimit/limiter.go:86). The
+      # DEFAULTS HERE ARE THE PRODUCTION ONES and must stay 60/60s — they are a
+      # credential-stuffing guard, not a tuning knob.
+      #
+      # They are passed through as variables ONLY so the isolated E2E stack can raise them
+      # (infra/iso.sh). Every Playwright worker shares ONE client IP, so a 76-spec run
+      # exceeds 60 logins/minute and the limiter starts answering 429 — which the suite
+      # reports as `waitForURL('**/books') timeout`, a failure that looks like a broken
+      # product and is a saturated throttle. Nine tests failed that way on 2026-09-13.
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-60}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
       DEV_LOG_EMAIL_TOKENS: "1"
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
