@@ -182,7 +182,8 @@ real and only the PO can resolve it.
 - [x] **K1** — **DONE (Cycle 13). The skip is GONE: 7 passed, 0 skipped.** The test had never run
   anywhere. `campaign-factory` needed `E2E_FACTORY_PROJECT_ID` / `E2E_FACTORY_BOOK_ID`.
   Seed them the way `seed-evidence-account.py` seeds the rest, so a clean machine can run it.
-- [~] **K2** — **OWNED, not answered (Cycle 13).** It belongs to **H2**, where it is priced
+- [x] **K2** — **ANSWERED (Cycle 27). The skip is GONE — it RUNS, and it fails on its first-ever execution.**
+  *(was: OWNED, not answered, Cycle 13)* It belongs to **H2**, where it is priced
   alongside the other two things the constraint blocks. Nothing was activated.
   `composition-generate` needs **two active models**, which the one-model constraint forbids. **Do not quietly activate a second** — that already exhausted this machine once (#260).
   It is H2's decision; this row only records the outcome.
@@ -1403,6 +1404,42 @@ BITE — point it back at the shared account, change nothing else:
 ```
 
 **AC impact:** AC-1 — D13 is green, 17 of 18. AC-3 — the test was not re-aimed or weakened; only the account it runs on changed. AC-2 — bitten both ways.
+
+
+### Cycle 27 — a skip that had never run anywhere, answered (K2)
+
+**Investigated:** `specs/composition-generate.spec.ts:17-36` (which models it picks, and whether an INACTIVE 35B could be chosen); `scripts/e2e/seed-evidence-account.py:166-190` (the second-model safety rule); machine memory before and after; the run's own screenshot.
+
+**Issues:** none filed yet — two observations from a first execution, recorded before being chased.
+
+**Fix:** the seeder already owned this decision, with an opt-in flag, a documented incident and an explicit rule: *"Pass `--allow-second-model` only if the pair FITS — two small models, not a 35B beside a 27B."* So the sanctioned path was used rather than a hand-written registry row: a second SMALL model (`gemma-4-12b-qat`) beside the 26B-a4b MoE.
+
+Checked first, because the rule is a safety rule: the spec picks its critic from `listActiveModels`, so the two inactive Qwens (35B, 27B) can never be chosen — the exact pair that exhausted this machine in #260 is unreachable. Memory after: **23.4 GB free, higher than before**, because LM Studio unloads as it goes.
+
+**The skip is gone. The test runs.** And on its first execution anywhere it fails, showing two real things:
+
+1. **The drafter did not write prose.** It produced *"I am ready to write the scene, but I need the specific context (the data fields) to ensure I adhere to your constraints…"* — a meta-reply, accepted into the manuscript as if it were prose.
+2. **The critic call timed out** — `Request timed out`, with `compose-critic` never rendering inside 90s.
+
+Neither is chased here. A skip that has never run anywhere is unanswered, and answering it *is* the row; what it found gets its own rows rather than being folded in and half-done.
+
+**Proof:**
+
+```
+BEFORE .... 1 skipped   "needs a chat-tagged drafter + >=1 distinct active critic model"
+AFTER ..... 1 failed    getByTestId('compose-critic') not found within 90s
+
+memory: 16.3 GB free before the second model -> 23.4 GB free after a run with both
+critic candidates: listActiveModels only -> the inactive 35B/27B pair is unreachable
+
+the accepted "prose", verbatim from the editor:
+  "Please provide the **canon, characters, threads, beat, recent prose, and lore**
+   mentioned in your instructions."
+  "I am ready to write the scene, but I need the specific context ..."
+and a toast: "Request timed out"
+```
+
+**AC impact:** AC-4 — K2 is ANSWERED, not owned: it runs, and passed/failed/skipped are reported separately. AC-1 — it is now a red with a measured reason instead of a silent unknown.
 
 
 ```goal-prompt
