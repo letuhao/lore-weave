@@ -75,7 +75,7 @@ export function useOutlineMutations(projectId: string | undefined, token: string
     onSuccess: invalidate,
   });
   const addChild = useMutation({
-    mutationFn: (v: { kind: 'scene' | 'beat'; parent_id: string; chapter_id?: string | null; title: string }) =>
+    mutationFn: (v: { kind: 'scene'; parent_id: string; chapter_id?: string | null; title: string }) =>
       compositionApi.createNode(
         projectId!,
         { kind: v.kind, parent_id: v.parent_id, chapter_id: v.chapter_id ?? null, title: v.title },

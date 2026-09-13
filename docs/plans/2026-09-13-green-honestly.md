@@ -76,7 +76,8 @@ real and only the PO can resolve it.
   the bar merely occupying those coordinates. A z-index change could not have worked. Fixed with
   `createPortal` + fixed coordinates. **Re-broken** per Rule 1.
 
-- [~] **F2** — **INVESTIGATED, OPTIONS READY, AWAITING THE PO (Cycle 5).** The ambiguity is gone:
+- [x] **F2** — **DONE (Cycle 19). The PO ruled: reconcile toward the schema.** Narrowed; the sweep found #271 and #272.
+  *(Cycle 5 investigated it and banked the options.)* The ambiguity is gone:
   M5 deliberately removed both kinds, so the `Literal` is STALE and the schema is the intended end
   state. What remains is a contract call, which is the PO's.
   **#263**, the API offers `arc` and `beat`; the table permits `chapter` and `scene`.
@@ -1094,6 +1095,49 @@ kg-panels.spec.ts, full spec, rebuilt image:
 ```
 
 **AC impact:** AC-1 — H3 carries a recorded reason: it no longer reproduces, measured, with the cause honestly left unattributed.
+
+
+### Cycle 19 — the API offered two kinds the database refuses (F2, #263, #271, #272)
+
+**Investigated:** the live `outline_node` CHECK; `models.py:39` and `frontend/src/features/composition/types.ts:218`; `migrate.py:2365-2400` (`_assert_lift_applied`); every site the narrowing turned red.
+
+**Issues:** #263 closed by the PO's ruling; #271 and #272 filed — two real defects the narrowing surfaced.
+
+**Fix:** the PO ruled: reconcile toward the schema, then sweep for the same class of drift. `NodeKind` becomes `Literal["chapter","scene"]` and the TS union with it. Widening the CHECK was never an option — `pkg_lift_v1` is explicitly *"M5 — CONTRACT: the point of no return"*.
+
+The schema side was already sound: fresh databases auto-lift and the service refuses to boot unlifted. **The drift was entirely in code that still spoke the pre-lift vocabulary**, and narrowing the type is what made it visible — seven sites, of which two were real user-visible defects and five were dead branches.
+
+**#272 — the outline tree offered "Add beat" on every scene.** A reachable ＋ button that POSTs a kind the database refuses. Removed. A unit test was *asserting* this behaviour, which is how it survived; corrected with the constraint error as evidence.
+
+**#271 — the chapter browser's arc grouping has been empty since the migration.** It reads `outline_node` for `kind === 'arc'`. Its behaviour is **left exactly as it was** and marked: repairing it means reading `structure_node` and needs a test that would have caught it, which is #271's work, not this row's. It is not pinned in a test either — the three tests covering it still describe the intended grouping, not the broken result.
+
+Fourteen unit tests failed under the narrowing, every one built on the pre-lift model: arcs nested above chapters, beats below scenes. **That is why the drift survived the migration** — the suite kept proving the code correct against fixtures the database can no longer produce. Corrected to the real tree, chapter > scene, rooted.
+
+**Proof:**
+
+```
+LIVE SCHEMA
+  CHECK ((kind = ANY (ARRAY['chapter'::text, 'scene'::text])))
+
+#272 proven directly, not assumed:
+  INSERT ... kind='beat'
+  ERROR: violates check constraint "outline_node_kind_check"
+
+AFTER
+  composition-telemetry ..... 1 passed (5.4s)
+  tsc --noEmit .............. exit 0
+  vitest .................... 176 files, 1288 passed, 0 failed
+
+BITE — put the four-kind Literal back and the test's 'beat' node with it:
+  API .../outline/nodes -> 400 {"code":"CONSTRAINT","detail":"new row for relation
+  \"outline_node\" violates check constraint \"outline_node_kind_check\" ... beat ..."}
+  1 failed                                   <- the original failure, exactly
+
+RESTORED byte-exact (NodeKind = Literal["chapter", "scene"]):
+  1 passed (5.4s)
+```
+
+**AC impact:** AC-1 — F2 is green, 14 of 18. AC-2 — the product fix is bitten both ways. AC-6 — the PO's decision is applied as given, and the sweep they asked for produced #271 and #272.
 
 
 ```goal-prompt

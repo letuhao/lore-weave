@@ -10,11 +10,13 @@ function node(over: Partial<OutlineNode>): OutlineNode {
   };
 }
 
-// arc1 > { ch1 > [s1,s2], ch2 > [] }  (+ an archived scene that must be excluded)
+// { ch1 > [s1,s2], ch2 > [] }  (+ an archived scene that must be excluded)
+// Chapters sit at the ROOT. The fixture used to nest them under an `arc` node, a kind that left
+// outline_node in pkg_lift_v1 -- arcs live in structure_node and the CHECK is ('chapter','scene'),
+// so no such row can reach this component and a fixture with one tested an impossible tree.
 const nodes: OutlineNode[] = [
-  node({ id: 'arc1', kind: 'arc', parent_id: null, rank: 'a' }),
-  node({ id: 'ch1', kind: 'chapter', parent_id: 'arc1', chapter_id: 'C1', rank: 'a', title: 'Ch1' }),
-  node({ id: 'ch2', kind: 'chapter', parent_id: 'arc1', chapter_id: 'C2', rank: 'b', title: 'Ch2' }),
+  node({ id: 'ch1', kind: 'chapter', parent_id: null, chapter_id: 'C1', rank: 'a', title: 'Ch1' }),
+  node({ id: 'ch2', kind: 'chapter', parent_id: null, chapter_id: 'C2', rank: 'b', title: 'Ch2' }),
   node({ id: 's2', kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', story_order: 1, title: 'S2' }),
   node({ id: 's1', kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', story_order: 0, title: 'S1' }),
   node({ id: 'sx', kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', story_order: 5, is_archived: true }),
