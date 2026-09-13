@@ -166,6 +166,8 @@ real and only the PO can resolve it.
   One long-lived session currently carries earlier runs' unanswered Tier-A consent gates. Decide
   deliberately whether the test answers consent or avoids provoking it.
 
+- [x] **F9** — **DONE (Cycle 25).** The distiller never asked the model to stop thinking. *(1 test, D12)*
+
 - [x] **F8** — **DIAGNOSED, NOT FIXED (Cycle 23).** `plan-forge-pass-rail` proposes 0 arcs because the
   LLM job is `truncated`. Converges with `assistant-endofday` and K2 on one cause. *(1 test)*
 
@@ -1334,11 +1336,51 @@ cause: CompositionPanel.tsx:325 — "... > the sole-registered model auto-pick"
 **AC impact:** AC-3 — a correct test was NOT weakened; the earlier recommendation to re-aim it is withdrawn with the reason. AC-6 — D13 collapses into the single model decision rather than standing as its own.
 
 
+### Cycle 25 — it was never the model, it was the missing ask (F9, D12)
+
+**Investigated:** `worker-ai/app/distill_job.py:90-112` (the distill call); `sdks/python/loreweave_llm/models.py:120-153` (the reasoning contract); `provider-registry-service/internal/provider/adapters.go:676-685` (`forwardOptionalChatFields`); and LM Studio directly.
+
+**Issues:** none filed — the defect and its fix are one line, in this row.
+
+**Fix:** the PO said any model can turn reasoning off, and they were right. Three cycles of this plan recorded `assistant-endofday` as needing a **non-reasoning** distill model, a claim the code itself asserts — *"use a non-reasoning distill model; DBT-15/Q8"*. It was wrong.
+
+The SDK is explicit about which knob is which: `reasoning_effort="none"` is **the** cross-provider way to disable hidden thinking, and `chat_template_kwargs={"enable_thinking": False}` is its **companion** — *"a no-op for models that only honor reasoning_effort"*. The distiller sent only the companion. On a model that ignores the chat-template flag, thinking stayed on, reasoning tokens ate the whole budget, `content` came back empty — and the empty result was read as *"this model is unusable"* rather than *"we never asked it to stop"*.
+
+Measured against LM Studio, the model everyone had written off:
+
+That is the same model, the same prompt, the same budget. It always could.
+
+**A second thing this row caught.** The first run after the fix still failed, and I nearly recorded the fix as ineffective. The container serves a **baked** image and I had restarted it, not rebuilt it — Rule 4 applies to services, not just the frontend. `grep -c reasoning_effort /app/app/distill_job.py` answered `0`. The same trap produced a false green earlier in this plan; this time it nearly produced a false negative.
+
+**Proof:**
+
+```
+LM STUDIO, google/gemma-4-26b-a4b-qat, identical prompt and max_tokens:
+  (no reasoning_effort) content='OK'  reasoning_content=192 chars
+  reasoning_effort=low  content='OK'  reasoning_content=192 chars
+  reasoning_effort=none content='OK'  reasoning_content=0 chars     <- it honours it
+
+AFTER (rebuilt, not merely restarted)
+  1 passed (14.5s)
+  worker-ai: "distill msg (distill) status=written facts=4 reason=None advisory=None"
+
+BITE — delete the one line, REBUILD, run again:
+  Error: a distilled diary entry is produced from the day
+  worker-ai: "model returned a BLANK completion ... reason=model_no_output"
+  1 failed                                   <- identical red, identical cause
+
+RESTORED byte-exact + rebuilt:
+  1 passed (13.9s)
+```
+
+**AC impact:** AC-1 — F9 is green, 16 of 18. AC-2 — bitten both ways, through a real rebuild. AC-6 — the PO's correction overturned a claim this plan had recorded three times.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
 lanes: |
-  F fix      = F1, F3, F4, F5, F2, F6, F7, F8
+  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9
   G diagnose = G1, G2
   J fixture  = J1, J2, J3
   H decide   = H1, H2, H3, H4

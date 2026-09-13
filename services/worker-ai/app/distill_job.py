@@ -99,6 +99,15 @@ def make_distill_llm(
                 "temperature": 0.2,
                 "max_tokens": max_tokens or call_budget(
                     OutputKind.PROSE, ceiling=DISTILL_MAX_TOKENS).max_output_tokens,
+                # DBT-15/Q8 revisited: this used to send ONLY chat_template_kwargs, which the SDK
+                # documents as the COMPANION knob -- "a no-op for models that only honor
+                # reasoning_effort" (loreweave_llm/models.py:130). The primary, cross-provider
+                # lever is reasoning_effort="none", and the distiller never sent it. So on a model
+                # that ignores the chat-template flag, thinking stayed ON, reasoning_tokens ate the
+                # whole budget, `content` came back empty, and the day surfaced as
+                # `model_no_output` -- which was then read as "this model is unusable, get a
+                # non-reasoning one" rather than "we never asked it to stop".
+                "reasoning_effort": "none",
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
             trace_id=trace_id,
