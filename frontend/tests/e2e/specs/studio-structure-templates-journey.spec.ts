@@ -8,6 +8,24 @@ import { loginViaUI } from '../helpers/auth';
 import { getAccessToken, createBook, trashBook } from '../helpers/api';
 import { StudioPage } from '../pages/StudioPage';
 
+// The built-in rows were reached as `getByRole('button', { name: '<name> system' })` -- the
+// template name PLUS the tier badge's displayed word. That word is translated
+// (`t('structTpl.badge.builtin')`, StructureTemplatesPanel.tsx:431) and was changed from
+// "system" to "built-in", so every one of these locators stopped matching while the product
+// worked perfectly: the snapshot shows `button "Save the Cat built-in"`.
+//
+// A row is addressed by its testid and its NAME -- the identity the test actually means --
+// rather than by a word the UI is free to retranslate. E2E CONVENTIONS S1.
+// `hasText` alone is a SUBSTRING match, and cloning leaves rows called "Save the Cat (copy)",
+// "(copy 2)" ... in the same list -- so it can select a clone and then the built-in-only
+// read-only note never appears. The name span is matched EXACTLY instead.
+function builtinRow(page: import('@playwright/test').Page, name: string) {
+  return page
+    .getByTestId('structtpl-row')
+    .filter({ has: page.getByText(name, { exact: true }) })
+    .first();
+}
+
 test.describe('@s01 Studio · structure-templates (blackbox: clone from empty)', () => {
   let token: string;
   let bookId: string;
@@ -34,7 +52,7 @@ test.describe('@s01 Studio · structure-templates (blackbox: clone from empty)',
     // ── the built-ins are listed (the migration seeds 6) ──
     const rows = page.getByTestId('structtpl-row');
     await expect(rows.first()).toBeVisible({ timeout: 10_000 });
-    const builtin = page.getByRole('button', { name: 'Save the Cat system' });
+    const builtin = builtinRow(page, 'Save the Cat');
     await expect(builtin, 'a built-in structure is listed').toBeVisible();
 
     // ── select it → its beats render (not just a name list — a real read surface) ──
@@ -67,7 +85,7 @@ test.describe('@s01 Studio · structure-templates (blackbox: clone from empty)',
     await studio.openPanel('structure-templates', 'structure');
 
     // clone a built-in to get an own, editable copy (the entry point)
-    await page.getByRole('button', { name: 'Kishōtenketsu system' }).click();
+    await builtinRow(page, 'Kishōtenketsu').click();
     await page.getByTestId('structtpl-clone').click();
     await expect(page.getByTestId('structtpl-beat-editor'), 'an own copy shows the EDITOR, not a read-only list').toBeVisible({ timeout: 10_000 });
 
@@ -87,7 +105,7 @@ test.describe('@s01 Studio · structure-templates (blackbox: clone from empty)',
 
     // PERSISTENCE proof: navigate away to a built-in, then back to MY renamed template — the editor
     // REMOUNTS and loads from the server, so the marker being there proves the write landed.
-    await page.getByRole('button', { name: 'Save the Cat system' }).click();
+    await builtinRow(page, 'Save the Cat').click();
     await expect(page.getByTestId('structtpl-readonly-note')).toBeVisible();
     await page.getByTestId('structtpl-row').filter({ hasText: uniqueName }).click();
     await expect(
@@ -106,7 +124,7 @@ test.describe('@s01 Studio · structure-templates (blackbox: clone from empty)',
 
     // clone + rename to a unique name so we can track it unambiguously on the shared dev DB
     const uniqueName = `E2E Archive ${stamp}`;
-    await page.getByRole('button', { name: 'Story Circle system' }).click();
+    await builtinRow(page, 'Story Circle').click();
     await page.getByTestId('structtpl-clone').click();
     await expect(page.getByTestId('structtpl-beat-editor')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('structtpl-name').fill(uniqueName);
