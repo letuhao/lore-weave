@@ -215,6 +215,10 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
           </button>
           <button
             onClick={() => setEpubImportOpen(true)}
+            // Its sibling `chapter-add-button` carried one and this did not, so the only handle
+            // on it was the translated label `chapters.importEpub`. E2E CONVENTIONS S1: the
+            // testid is the language-agnostic contract.
+            data-testid="epub-import-open"
             className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             <FileText className="h-3.5 w-3.5" />
