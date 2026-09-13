@@ -153,7 +153,12 @@ test.describe('Agent context rack (story 04)', () => {
       const phase = page.getByTestId('agent-inspector-phase');
       await expect(phase).toHaveText('Idle', { timeout: 15_000 });
 
-      const textarea = page.getByRole('textbox').first();
+      // NOT getByRole('textbox').first(): the sidebar's "Search conversations..." box comes
+      // first in the DOM, so the text went there and the chat input stayed EMPTY -- which
+      // disables Send correctly (ChatInputBar.tsx:478 `!value.trim() || disabled`). The
+      // product was right and the locator was wrong. Address it by testid, per E2E
+      // CONVENTIONS S1 -- a placeholder is translatable, a testid is not.
+      const textarea = page.getByTestId('chat-input-textarea');
       await textarea.fill('ping');
       await page.getByTitle('Send').click();
 
@@ -180,7 +185,12 @@ test.describe('Agent context rack live [model-gated]', () => {
 
       await expect(page.getByTestId('agent-rack-chip-tool-find_tools')).toBeVisible({ timeout: 15_000 });
 
-      const textarea = page.getByRole('textbox').first();
+      // NOT getByRole('textbox').first(): the sidebar's "Search conversations..." box comes
+      // first in the DOM, so the text went there and the chat input stayed EMPTY -- which
+      // disables Send correctly (ChatInputBar.tsx:478 `!value.trim() || disabled`). The
+      // product was right and the locator was wrong. Address it by testid, per E2E
+      // CONVENTIONS S1 -- a placeholder is translatable, a testid is not.
+      const textarea = page.getByTestId('chat-input-textarea');
       await textarea.fill('Say hi in one word.');
       await page.getByTitle('Send').click();
 
