@@ -46,11 +46,22 @@ test.describe('Creation-unblock — book↔world↔project cross-links (G3)', ()
       // ── 4b — KNOWLEDGE PROJECT → BOOK + WORLD (Overview backlinks) ──
       const overview = new KnowledgeProjectOverviewPage(page);
       await overview.goto(proj.project_id);
+      // Both backlinks are <button onClick> now, not <a href> (OverviewSection.tsx:144,161) --
+      // the DOCK-7 change, so the studio navigates through a callback instead of leaving via a
+      // hard link. An href assertion therefore read "" and said the backlink was broken when it
+      // was not.
+      //
+      // They are asserted BY EFFECT instead, which is the stronger claim: an href can be
+      // present and the link still go nowhere, but a navigation either happens or it does not.
       await expect(overview.bookLink).toBeVisible({ timeout: 15_000 });
-      await expect(overview.bookLink).toHaveAttribute('href', `/books/${book}`);
+      await overview.bookLink.click();
+      await page.waitForURL(`**/books/${book}**`, { timeout: 15_000 });
+
       // the world link is present BECAUSE the book is now grouped into the world.
-      await expect(overview.worldLink).toBeVisible();
-      await expect(overview.worldLink).toHaveAttribute('href', `/worlds/${world.world_id}`);
+      await overview.goto(proj.project_id);
+      await expect(overview.worldLink).toBeVisible({ timeout: 15_000 });
+      await overview.worldLink.click();
+      await page.waitForURL(`**/worlds/${world.world_id}**`, { timeout: 15_000 });
     } finally {
       await deleteKnowledgeProject(request, token, proj.project_id).catch(() => {});
       await deleteWorld(request, token, world.world_id).catch(() => {});
