@@ -239,7 +239,21 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # `rust_crypto` over `aws_lc_rs`: pure Rust, no cmake/nasm on the build host, and
 # it covers HS256 (`hmac` + `sha2`) which is what `Validation::new(Algorithm::HS256)`
 # uses. Revisit only with a measurement — aws-lc-rs is faster and needs a toolchain.
-jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+# aws_lc_rs, NOT rust_crypto (2026-09-13, T7 / #250). `rust_crypto` is ONE bundled feature
+# that pulls `rsa` in with it -- there is no way to take the feature set without it -- and
+# `rsa` carries RUSTSEC-2023-0071 (Marvin Attack, a timing sidechannel) with NO fixed
+# version to move to. This workspace never performs an RSA operation: every key in it is
+# HMAC (`EncodingKey::from_secret` x3, `DecodingKey::from_secret` x1, `Algorithm::HS256`
+# only), so the vulnerable code was compiled into roleplay-service and world-service and
+# never executed. Switching the backend removes it from the graph outright rather than
+# carrying an advisory that cannot be closed.
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
+# aws-lc-sys is NOT used directly -- it is named here ONLY to turn on `prebuilt-nasm`,
+# because cargo unifies features across the whole graph. Without it `cargo check` on
+# WINDOWS dies in aws-lc-sys's build script with "NASM command not found! Build cannot
+# continue." Linux (CI, and every service image) needs no NASM, so this exists purely so a
+# Windows developer does not have to install an assembler to compile the workspace.
+aws-lc-sys = { version = "0.45", features = ["prebuilt-nasm"] }
 # Typed TIMESTAMPTZ <-> DateTime<Utc> in sqlx models (roleplay-service).
 chrono = { version = "0.4", features = ["serde"] }
 

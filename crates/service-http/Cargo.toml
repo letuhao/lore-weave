@@ -46,6 +46,9 @@ anyhow = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 jsonwebtoken = { workspace = true }
+# Present only to propagate aws-lc-sys's `prebuilt-nasm` feature -- see the note in the
+# workspace Cargo.toml. Nothing in this crate calls it.
+aws-lc-sys = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 prometheus = { workspace = true }
