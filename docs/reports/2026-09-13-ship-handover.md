@@ -12,12 +12,18 @@ recorded cycles later, every one of the 51 failures from the full-suite run has 
 repaired test was broken on purpose to prove it still bites, and the suite was re-run and diffed
 against a baseline written to disk **before** the run.
 
-| | before | after |
-|---|---|---|
-| passed | 145 | **180** |
-| failed | **51** | **16** |
-| skipped | 4 | 4 — *unanswered, never folded into a pass* |
-| newly red | — | **0** |
+| | before | after Z1 | now |
+|---|---|---|---|
+| passed | 145 | **180** | **180** |
+| failed | **51** | **16** | **18** |
+| skipped | 4 | 4 | **2** |
+| newly red | — | **0** | 0 |
+
+**The count went UP after Z1, on purpose.** Two tests had been skipping *permanently* because
+`findGemma()` asked `GET /v1/ai/models`, which answers **404** — so it returned `null` every time
+and both skipped with *"needs the local gemma model"* on a machine where gemma is the one active
+model. Repaired, they run for 2.4 minutes against a real model and **fail on real assertions**
+(#265, #266). A skip is unanswered; two silent unknowns are now answered.
 
 **Open the report:** `frontend/tests/e2e/allure-report/index.html` — 343 MB, 594 attachments,
 video and trace for every test. It is git-ignored; it does not enter history.
@@ -55,6 +61,11 @@ Four issues filed today, each with a reproduction someone else can run.
 | **#264** | The structure editor says *"unsaved changes"* after a successful save | A false warning offering only "Discard" and "Cancel" over work that is already stored. Verified the saves landed |
 | **#263** | The API offers node kinds `arc` and `beat` that the database forbids | A client written against the schema gets a 400 it cannot act on. The 400 also returns the raw Postgres error |
 | **#261** | The login throttle is keyed per IP at 60/min | Everyone behind one NAT shares the budget — an office, a school, a VPN. Not a defect so much as a design question I did not want to answer for you |
+| **#265** | Approving the cast checkpoint does not advance `pass_cursor` | The writer approves, nothing moves, and the later passes stay blocked behind a decision already made |
+| **#266** | The grounded-run affirmation never renders in the planner | A grounded run looks identical to a blind one at the surface built to tell them apart |
+| **#267** | The chat UI-tool executor does not navigate | `ui_open_book` / `ui_show_panel` resolve their round-trip and never move. **Undiagnosed** |
+| **#268** | Wiki articles never appear after Generate | On a book whose extraction just succeeded. **Undiagnosed** |
+| **#269** | `kg-overview-no-project` is rendered by nothing — and a unit test guards it anyway | A question for you, plus a check that cannot fail for the reason it was written |
 
 **#262 and #264 were invisible before today.** Both were hidden behind stale selectors — the tests
 could not reach the controls, so nobody could see the controls were broken.
