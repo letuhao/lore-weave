@@ -1,5 +1,7 @@
 # Implementation Plan: Writing Studio remediation — the human-sim findings
 
+Reconciles: Non-Vacuity · MCP Tool I/O Standard · Settings & Configuration Boundary · Dockable Panel Standard · User Data Scope & Protection — every row is an existing rule applied to a defect a human run found, not a new rule: OUT-5 for the steering cap, IN-4 for the write/read cap parity, SET-1..8 for refusing a silent default model, DOCK-7 for where a navigating entry point may live, and the scope-key rule for the steering-budget read. NV-6 is the evidence bar throughout.
+
 Branch: `feature/human-sim-remediation` (based on `release/v0.1.0`)
 Created: 2026-09-12
 

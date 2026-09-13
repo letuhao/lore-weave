@@ -1,6 +1,8 @@
 # Human-simulation authoring run — "Vạn Tượng Quy Nhất," 2026-09-07
 
-Reconciles: the `/human-sim` request to play a human author against Writing Studio + PlanForge,
+Reconciles: Non-Vacuity · MCP Tool I/O Standard · Settings & Configuration Boundary · Multilingual / Anti-Language-Bias — a findings report adds no rule. It measures the shipped build against rows that already exist: whether a claimed check can fail, whether a bounded return reports its cap, whether a default is a user setting rather than a silent fallback, and whether the product behaves for a non-English author. *(This line named the request rather than index rows until 2026-09-13; `phase0-reconcile-gate` reads it as a phantom registration, and it was right.)*
+
+**The request it answers:** the `/human-sim` ask to play a human author against Writing Studio + PlanForge,
 write a real 5-arc web novel through the app's OWN AI, review it via the Method's Workflow
 multi-lens pattern, and deliver a written feedback report + go/no-go for the pre-release →
 release decision. Full raw evidence (build logs, chapter-by-chapter review verdicts, exact
