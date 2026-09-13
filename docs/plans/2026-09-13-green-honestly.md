@@ -152,7 +152,10 @@ real and only the PO can resolve it.
   at once, so an intermediate phase can pass unpainted. The claim — phases reach the inspector —
   is worth keeping; the mock is what must change.
 
-- [ ] **J3** — **D12**: a per-run Assistant session on an active model. *(1 test)*
+- [~] **J3** — **PARTIAL (Cycle 10).** The stale session is FIXED and verified. The test stays red
+  for a cause the product itself names: the one active model is a REASONING model and returns a
+  blank completion to the distiller. **This is H2's constraint, not a defect.**
+  **D12**: a per-run Assistant session on an active model. *(1 test)*
   One long-lived session currently carries earlier runs' unanswered Tier-A consent gates. Decide
   deliberately whether the test answers consent or avoids provoking it.
 
@@ -684,6 +687,54 @@ RESTORED byte-exact, rebuilt:
 was shown to bite. AC-3 — the claim is unchanged and the assertion became deterministic where it
 had been a race.
 
+### Cycle 10 — the product diagnosed itself, and the answer is H2's (J3)
+
+**Investigated:** `specs/assistant-endofday.spec.ts:14-52`; `pages/AssistantPage.ts:54-62`;
+`src/features/chat/useAssistantAutoSession.ts`; `features/assistant/hooks/useEndOfDay.ts:48`;
+`chat_sessions` before and after; `POST /v1/assistant/end-day` by hand; and `worker-ai`'s log.
+
+**Issues:** none — nothing here is a defect.
+
+**Fix:** real, and partial. `/assistant` auto-creates a session ONLY when none exists, and
+`useEndOfDay` then finds it by kind — so the FIRST one ever made is reused forever. On this stack
+that was a session created before the one-model switch, still pinned to a now-INACTIVE model and
+carrying two unanswered Tier-A consent gates from earlier runs. `clearAssistantSessions` now runs
+per-test, so the product's own auto-create path executes on the CURRENT default — which is what
+the spec's first assertion actually claims.
+
+```
+BEFORE  assistant | model=01a09a1f-…(qwen, is_active=false) | 2026-09-13 10:04:44
+AFTER   assistant | model=01a09a53-…(gemma, is_active=true) | 2026-09-13 17:48:28
+```
+
+**Proof:** the two rows above are the fix, measured before and after. What follows is why the row
+is still red, and it is not flakiness. The distiller is asynchronous
+(`POST /assistant/end-day` → `201 {"enqueued": true}`), so I triggered it directly and polled the
+entries endpoint: **0 entries after 270s**, well past the test's 150s. Not slow — not happening.
+The worker says why, in its own words:
+
+```
+distiller map chunk: model returned a BLANK completion — the distill model produced no output
+  (a reasoning model? use a non-reasoning distill model; DBT-15/Q8)
+distill msg (distill) status=no_entry reason=model_no_output advisory=distill_model_no_output
+```
+
+**Gemma is a reasoning model**, and the distiller gets an empty completion from it. The product
+DETECTS this, names the cause, and reports `no_entry` with an advisory rather than failing
+silently. That is correct behaviour meeting an unsuitable model.
+
+**This is the third thing blocked by the one-model constraint** — after the `composition-generate`
+skip (needs a second ACTIVE model) and D13 (`compose-need-model` unreachable). It belongs to **H2**
+and is evidence for that decision, not a separate problem.
+
+**No bite, and the rule says why.** The session fix is proven by effect (the two rows above, before
+and after). The remaining failure cannot be bitten: a bite proves a REPAIRED test goes red and back
+to green, and this one does not pass, so it FAILS CLOSED and the row is not ticked.
+
+**AC impact:** AC-1 — J3's failure carries a recorded, measured reason rather than a guess. AC-2
+not applicable. AC-6 — this hands H2 a concrete cost: the one-model constraint is not only about
+two-model tests, it also means the diary distiller cannot produce an entry at all.
+
 ## What this plan will NOT do
 
 - **It will not edit the product until a test passes.** Every fix is proven by re-breaking it.
@@ -693,7 +744,7 @@ had been a race.
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-9 done. 12 of the 18 green. REAL defects fixed + re-broken: #262 (F1), #264 (F3), canApprove beside #265 (F4). NOT defects, closed: #266, #267, #268. J2 did NOT need a streaming mock -- the inspector already keeps a phase TRAIL, which records the claim deterministically instead of racing a paint. F2 awaits the PO; decisions BANKED for one hand-back. Head of the queue is J3 (a per-run Assistant session on an active model, plus a deliberate Tier-A consent decision).
+RESUME: Cycles 1-10 done. 12 of the 18 green. J3 fixed the stale inherited Assistant session (verified: was an inactive qwen, now the active gemma) but stays RED for a cause the product names itself -- gemma is a REASONING model and returns a blank completion to the distiller (advisory=distill_model_no_output, 0 entries after 270s). That is the THIRD thing blocked by the one-model constraint and is evidence for H2. Head of the queue is H1 -- a PO decision; reach it with options ready, then H2, then K1/K2 and Z.
 
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned

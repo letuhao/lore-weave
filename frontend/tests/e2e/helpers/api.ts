@@ -209,6 +209,28 @@ export async function createChatSession(
   }));
 }
 
+/** Delete every `session_kind='assistant'` session for the caller.
+ *
+ * 🔴 J3 — `/assistant` auto-creates a session ONLY when none exists
+ * (`useAssistantAutoSession.ts`), and `useEndOfDay` then finds it by kind. So the FIRST one ever
+ * made is reused forever: on this stack that meant a session created before the one-model switch,
+ * still pinned to a now-INACTIVE model, and carrying two unanswered Tier-A consent gates from
+ * earlier runs. The end-of-day review cannot produce an entry while the session is blocked on
+ * questions nobody answered.
+ *
+ * Clearing them lets the product's own auto-create path run on the CURRENT default model, which
+ * is what the spec's first assertion actually claims ("assistant auto-created a ready session").
+ * Per-run, deterministic, and it exercises the path rather than inheriting its output.
+ */
+export async function clearAssistantSessions(request: APIRequestContext, token: string): Promise<number> {
+  const r = await request.get('/v1/chat/sessions?limit=100', auth(token));
+  if (!r.ok()) throw new Error(`list chat sessions -> ${r.status()} ${await r.text()}`);
+  const body = (await r.json()) as { items?: Array<{ session_id: string; session_kind?: string }> };
+  const assistants = (body.items ?? []).filter((s) => s.session_kind === 'assistant');
+  for (const s of assistants) await deleteChatSession(request, token, s.session_id);
+  return assistants.length;
+}
+
 export async function deleteChatSession(
   request: APIRequestContext, token: string, sessionId: string,
 ): Promise<void> {
