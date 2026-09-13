@@ -43,9 +43,15 @@ export default defineConfig({
   reporter: [
     ['list'],
     ['html', { outputFolder: 'tests/e2e/playwright-report', open: 'never' }],
+    // ⚠️ `resultsDir`, NOT `outputFolder`. The html reporter above takes `outputFolder`, and
+    // allure-playwright silently IGNORES an unknown key and falls back to `./allure-results` at
+    // the package root. Measured 2026-09-13: a full run reported `PLAYWRIGHT_ALLURE=1`, wrote 676
+    // result files somewhere else, and `allure generate` against the CONFIGURED path then exited
+    // **0** having produced a 2 MB report from nothing. A report generated from an empty directory
+    // is worse than no report -- it looks like evidence.
     ...(process.env.PLAYWRIGHT_ALLURE === '1'
       ? [['allure-playwright', {
-          outputFolder: 'tests/e2e/allure-results',
+          resultsDir: 'tests/e2e/allure-results',
           detail: true,
           suiteTitle: true,
         }] as const]
