@@ -185,3 +185,51 @@ reasoning model. Loading a second model would have hidden a settings gap behind 
 
 Filed as **#270**. The product already knows: `evaluate.py:180` refuses to score and instructs the
 user to *"Set a critic model in Settings › Chat & AI › default models"* — a row that does not exist.
+
+---
+
+## Update — 2026-09-14, final run: 201 passed · 0 failed · 0 skipped
+
+Read by content from `allure-report/widgets/summary.json`:
+`{'failed': 0, 'broken': 0, 'skipped': 0, 'passed': 201, 'total': 201}`, 26.9 min. The evidence gate
+passed: every one of the 202 test directories left something watchable. The suite has 201 tests,
+not 200, because one was added (F15, below).
+
+**One green run is not a guarantee** for the model-dependent paths. Where a residual failure rate
+was measured, it is stated below rather than hidden by that green run.
+
+### What changed since the 192 / 7 / 1 run
+
+Every product fix below was proven the same way: the test that found it goes green, the defect is
+put back and that same test goes red for the same reason, then the fix is restored.
+
+| row | what it was | proof |
+|---|---|---|
+| F12 · #273 | **The co-writer produced no prose on any book without a knowledge graph.** The 14 most recent drafts on the test stack were all the model asking for context, accepted into the manuscript as prose. Tests passed because they only checked that the draft was more than 20 characters. | Prompt A/B on captured requests: 6/6 requests → 6/6 prose; no invented names or canon breaks on a grounded context. Re-broken. |
+| F13 | The same failure on "continue from cursor" for a scene with no prose yet. | 6/6 requests → 6/6 prose. Re-broken. |
+| F14 | Once suggestions were real prose, the inline suggestion card ran off the bottom of the screen, and **a full-length suggestion could not be accepted at all** (nothing accepts from the keyboard). | Re-broken. |
+| F15 | **Every page load hung behind Google Fonts when the font CDN stalled** — the recurring `page.goto` timeout. I had blamed host starvation; a CPU/memory sampler disproved that. | New spec makes the CDN hang on purpose; re-broken. |
+| F9 | The diary distiller never asked the model to stop thinking, so a reasoning model returned blanks. | Re-broken through a rebuilt worker. |
+| F10 | The cast-planning step was never shown the cast the author wrote. | Re-broken. |
+| F8 | Plan analysis ran away inside a JSON string until the token cap. | Real pipeline, same day: **54% → 6.5% truncated** (p < 0.001). Re-broken. |
+| D13 | The "pick a model" gate was masked by the account's default chat model, not by the model count. | Re-broken. |
+| F2 · #271 · #272 | The API offered node kinds the database refuses; the outline tree showed a dead "Add beat" button. | Re-broken. |
+| #270 | Critic and distill roles were resolvable by the backend and settable nowhere. | Re-broken. |
+| #274 | The inline critic call died at the browser's 20s ceiling. | **Not re-broken.** See below. |
+
+### Stated limits — not rounded up
+
+- **F8 is reduced, not eliminated.** The remaining 6.5% is a different mode: the model repeats a whole list item. String caps can't bound that. The likely fix is `maxItems`, which is exactly what `schemas.py` records as rejected once already on uncontrolled evidence. It needs roughly 50+ real runs per arm to measure.
+- **F11 ships as a guardrail, not a proven fix.** The same caps on the second plan step: 0/10 truncated vs 3/17 (p ≈ 0.27), with no cost observed.
+- **#274 is not re-broken.** The original failure needed a cold model load, and recreating one means unloading a model in LM Studio by hand, which is off limits. What's proven: the cause (a 20s browser limit, with nginx at 300s and the gateway unlimited) and the change itself (a unit test that fails without it).
+- The test account now has a **second, small active model** (`gemma-4-12b-qat`), added through the seeder's own opt-in `--allow-second-model`. Two tests need two active models, and memory stayed healthy (at least 15 GB free).
+
+### Decisions only you can make
+
+1. **AC-7 — GO or NO-GO on v0.1.0.**
+2. **H1 — creating a book should provision the Work and knowledge project together.** That reverses a decision the code marks as ratified: `OQ-1` says only the owner triggers creation of a knowledge project, and rules out minting a token on their behalf. Options are in Cycle 20. **A** (a new internal route trusting `owner_user_id`) is recommended, but only with your explicit yes, because it's a security decision. Today 298 books sit half-provisioned until someone opens them.
+3. **The same critic result shows twice on one screen**: inline in the compose view, and in the standing critic panel (the one pop-out reads). That's by design, but it's a product question.
+
+### Not done, on purpose
+
+Nothing is pushed. The commits sit on `fix/v0.1.0-release-gaps` locally. Nothing is tagged or published.

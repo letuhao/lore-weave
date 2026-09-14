@@ -931,7 +931,7 @@ OWNED by H2 with a named blocker. AC-1 — 13 of the 18 green. AC-2 not applicab
 - **It will not run against anything but loopback**, and never against the PO's own stack.
 - **It will not tag, build or publish anything.**
 
-RESUME: Cycles 1-29 done. Final full run 196 passed / 4 failed / 0 skipped of 200, read from allure by content. Of the 18: 17 green or answered. Open reds: F8 plan-forge propose truncation (diagnosed, not a missing lever); K2 now RUNS and fails (#273 draft asks for context, #274 critic timeout); two page.goto timeouts in one window after local inference, undiagnosed with trace. H1 stops on sealed OQ-1 with options. Head of the queue is Z2: hand over; only the PO closes AC-7.
+RESUME: Cycles 1-39 done. FINAL RUN 201 passed / 0 failed / 0 skipped (allure by content, 26.9 min). Recorded residuals, not hidden by the green: F8 6.5% truncation (array-repeat mode), F11 guardrail p~0.27, #274 not re-breakable without manual LM Studio control. Owed to the PO: AC-7 GO/NO-GO; H1 (OQ-1, option A recommended only with an explicit yes); the duplicated critic display. Nothing pushed.
 
 ### Cycle 14 — the whole suite, test by test (Z1)
 
@@ -1820,6 +1820,25 @@ fonts still load with the CDN reachable: {"link":true,"inter":true,"body":"Inter
 ```
 
 **AC impact:** AC-5 — the last unexplained red of the full run is explained and closed. AC-2 — bitten both ways through a rebuilt frontend. AC-1 — Cycle 29's recorded reason is corrected, not left standing.
+
+
+### Cycle 39 — the whole suite, after every fix (Z2)
+
+**Investigated:** the full 201-test suite on rebuilt images (frontend, composition-service, composition-worker, worker-ai), the Allure summary, the evidence gate, and a host sampler across the run.
+
+**Issues:** none new. The open questions for the PO are H1 (OQ-1), the duplicated critic display, and AC-7.
+
+**Fix:** none; this is the measurement row. 201 passed, 0 failed, 0 skipped. The residual rates that one green run hides are stated in the handover rather than implied away: F8 at 6.5%, F11 unproven at p ~ 0.27, #274 not re-broken.
+
+**Proof:**
+
+```
+201 passed (27.0m)
+allure-report/widgets/summary.json: {'failed': 0, 'broken': 0, 'skipped': 0, 'passed': 201, 'unknown': 0, 'total': 201}  26.9 min
+evidence-capture-gate: 202 test dir(s), 580 watchable artefact(s). Every one left something watchable.
+```
+
+**AC impact:** AC-1 — every one of the original 18 is green, or its residual is recorded with a measured rate. AC-4 — both skips answered, and both now pass. AC-5 — the whole suite re-run with nothing newly red. AC-7 stays open: it is the PO's word, and no row ticks it.
 
 
 ```goal-prompt
