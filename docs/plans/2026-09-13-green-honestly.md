@@ -176,6 +176,8 @@ real and only the PO can resolve it.
 
 - [x] **F14** — **FIXED and RE-BROKEN (Cycle 37).** The inline ghost's Accept left the screen on a full-length suggestion. Found closing F13.
 
+- [x] **F15** — **FIXED and RE-BROKEN (Cycle 38).** Every recurring `page.goto` timeout was a render-blocking Google Fonts stylesheet — not host starvation (corrects Cycle 29).
+
 - [x] **F9** — **DONE (Cycle 25).** The distiller never asked the model to stop thinking. *(1 test, D12)*
 
 - [~] **F8** — **REDUCED, NOT ELIMINATED (Cycles 30, 32): truncation 54% -> 6.5% on the real pipeline.** Re-broken in Cycle 30. Was: DIAGNOSED, NOT FIXED (Cycle 23). `plan-forge-pass-rail` proposes 0 arcs because the
@@ -1502,7 +1504,9 @@ What the evidence rules out and what it does not:
 - **Not the code.** Both specs pass re-run in isolation (4 passed), and the same bundle loads in ~190 other tests in the same run.
 - **The renderer stopped producing frames:** one screencast frame in 15 s, and none of the follow-on fetches a healthy boot makes within a second (`vitesse-*.js`, `/sw.js`, manifest).
 
-That pattern fits host starvation — headless Chromium sharing the machine with local inference — but I could not sample host load retroactively, so it stays a hypothesis. The next run should record CPU and GPU load alongside the suite, which would settle it.
+That pattern fits host starvation — headless Chromium sharing the machine with local inference — but I could not sample host load retroactively, so it stays a hypothesis.
+
+> **Refuted in Cycle 38.** A host sampler caught the next occurrence at 26–45% CPU with 17 GB free and no model running. The cause was a render-blocking Google Fonts stylesheet that never answered. The next run should record CPU and GPU load alongside the suite, which would settle it.
 
 **Proof:**
 
@@ -1783,11 +1787,46 @@ RESTORED + rebuilt:  studio-inline-correction + composition-generate  3 passed (
 **AC impact:** AC-2 — bitten both ways through a rebuilt frontend.
 
 
+### Cycle 38 — the recurring page-load timeout was a font stylesheet, and my own hypothesis was wrong (F15)
+
+**Investigated:** the full run after F12–F14 (199 passed · 1 failed · 0 skipped); a 5-second host CPU/memory sampler that ran alongside it; the failed test's trace network, read for requests that never received a response; `frontend/index.html`; `tailwind.config.cjs` font stacks.
+
+**Issues:** none filed — fixed in this row. Cycle 29's host-starvation hypothesis is refuted, and Cycle 29 now carries a pointer here.
+
+**Fix:** the only failure left in the full run was the same `page.goto: Timeout 15000ms exceeded` that had appeared in three runs, this time in `manuscript-navigator`, a test that uses no model. Cycle 29 had written it off as the renderer starving beside local inference. **The sampler refuted that**: across the failure window CPU was 26–45%, 17 GB free, nothing generating; across the whole run median CPU was 33% and 0.4% of samples were ≥90%.
+
+nginx logs only completed requests, so a request that never completes leaves no line. The trace network does keep it. Every same-origin resource finished in under 200ms, and one entry never completed:
+
+`https://fonts.googleapis.com/css2?family=Inter…Lora…JetBrains+Mono` — status **-1**.
+
+`index.html` loaded the web fonts as an ordinary `<link rel="stylesheet">`. A stylesheet blocks the `load` event, so a font CDN that stalls holds the page back as long as it stalls. This is a product defect, not a test hazard: LoreWeave is self-hostable and ships a zh-CN locale, and on a network that can't reach Google every page would hang behind a cosmetic font.
+
+The link is gone from `index.html`. `src/lib/loadWebFonts.ts` inserts the same stylesheet **after** `load`, so it can no longer hold it. The CSS already uses `display=swap` and every family already has a fallback stack, so text renders at once and swaps when the font arrives.
+
+A new spec, `offline-font-cdn.spec.ts`, makes the CDN never answer on purpose. That turns the intermittent timeout into a deterministic one, which is what makes the bite meaningful.
+
+**Proof:**
+
+```
+full run:  199 passed · 1 failed · 0 skipped      the 1: page.goto Timeout 15000ms (manuscript-navigator)
+host sampler, failure window 01:10:34-01:11:57Z:  cpu 11-63%, free 16.8-21.9 GB · whole run median cpu 33%, >=90% in 0.4%
+trace network: login 12ms · index-*.js 177ms · 5 vendor chunks <=36ms · fonts.googleapis.com/css2  -1 (never completed)
+
+offline-font-cdn, CURRENT build (CDN routed to never answer):  TimeoutError: page.goto: Timeout 15000ms exceeded  -> 1 failed
+AFTER (frontend rebuilt; index.html has 0 font links; bundle carries data-web-fonts):  1 passed (2.9s)
+BITE — HEAD index.html, rebuilt:  TimeoutError: page.goto: Timeout 15000ms exceeded  -> 1 failed
+RESTORED + rebuilt:  offline-font-cdn + smoke-login  2 passed (4.5s)
+fonts still load with the CDN reachable: {"link":true,"inter":true,"body":"Inter, system-ui, sans-serif"}
+```
+
+**AC impact:** AC-5 — the last unexplained red of the full run is explained and closed. AC-2 — bitten both ways through a rebuilt frontend. AC-1 — Cycle 29's recorded reason is corrected, not left standing.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
 lanes: |
-  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9, F10, F11, F12, F13, F14
+  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15
   G diagnose = G1, G2
   J fixture  = J1, J2, J3
   H decide   = H1, H2, H3, H4

@@ -7,9 +7,11 @@ import './index.css';
 import { installFetchTracker } from './lib/operationTracker';
 import { installGlobalErrorLogging } from './lib/clientErrorReporter';
 import { AppErrorBoundary } from './components/shared/AppErrorBoundary';
+import { loadWebFonts } from './lib/loadWebFonts';
 
 installFetchTracker();
 installGlobalErrorLogging();
+loadWebFonts();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
