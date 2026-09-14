@@ -300,3 +300,32 @@ def test_build_messages_has_pacing_craft_instruction():
 def test_char_estimate_over_estimates_and_clamps():
     assert cowrite.char_estimate("") == 0
     assert cowrite.char_estimate("abc") >= 1
+
+
+# ── F12 / #273 — a draft on a book with nothing in it must still be a draft ───────────────────────
+# Measured before these were written: every recent draft on the test stack was the model asking for
+# context, accepted into the manuscript as prose. Two causes, both pinned here.
+
+def test_a_scene_with_no_beat_is_not_told_to_use_every_beat_field():
+    """The packer emits no <beat> for a scene with nothing filled; pointing the model at seven
+    fields of a block that is absent is what made it ask for them."""
+    user = cowrite.build_messages("", NEUTRAL, "draft_scene", target_words=1000)[1]["content"]
+    assert cowrite._DRAFT_SCENE_WITHOUT_BRIEF in user
+    assert cowrite._OPERATION_INSTRUCTIONS["draft_scene"] not in user
+    assert "Do not ask for one" in user
+    assert "give nobody a name" in user   # 4/6 drafts named a protagonist without this
+
+
+def test_a_scene_with_a_beat_still_gets_the_field_by_field_brief():
+    user = cowrite.build_messages("<beat>\ngoal=escape\n</beat>", NEUTRAL, "draft_scene",
+                                  target_words=1000)[1]["content"]
+    assert cowrite._OPERATION_INSTRUCTIONS["draft_scene"] in user
+    assert cowrite._DRAFT_SCENE_WITHOUT_BRIEF not in user
+
+
+def test_the_system_prompt_forbids_asking_for_context():
+    system = cowrite.build_messages("", NEUTRAL, "draft_chapter")[0]["content"]
+    assert "NEVER ask for more context" in system
+    assert "never introduce facts beyond what is given" not in system  # the clause that read as "write nothing"
+    assert "never contradict the canon" in system
+    assert "Do NOT invent a new proper name" in system                  # the name rule is untouched

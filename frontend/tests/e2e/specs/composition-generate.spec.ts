@@ -51,6 +51,14 @@ test.describe('Composition co-write generate + critic (U3/U4) [model-gated]', ()
       await expect(panel.ghost).toBeVisible({ timeout: 120_000 });
       await expect.poll(async () => (await panel.ghost.innerText()).trim().length, { timeout: 120_000 })
         .toBeGreaterThan(20);
+      // STRICTER, and on purpose (#273 / plan F12). "More than 20 characters" passed for a whole
+      // day on drafts that were not prose at all: every recent draft on the test stack was the
+      // model asking for context — "Please provide the canon, present characters, threads, beat,
+      // recent prose, and lore". A request is not a scene. The claim this test makes is that the
+      // co-writer DRAFTS, so it now checks that what it drafted is not a request for input.
+      const draft = (await panel.ghost.innerText()).trim();
+      expect(draft, 'the co-writer returned a request for context instead of prose')
+        .not.toMatch(/please provide|provide the (context|canon)|once you provide|i need (the|more) (context|details)|ready to write the scene, but/i);
 
       // U4 — accept inserts the prose + runs the advisory critic (distinct model).
       await expect(panel.accept).toBeVisible({ timeout: 30_000 });

@@ -170,6 +170,10 @@ real and only the PO can resolve it.
 
 - [~] **F11** — **SHIPPED AS A GUARDRAIL, NOT PROVEN (Cycle 32).** `materialize` loops like `analyze`; bounded SPEC 0/10 vs unbounded 3/17 (p ~ 0.27). Found biting F10. *(the pass-rail journey)*
 
+- [x] **F12** — **FIXED and RE-BROKEN (Cycle 35).** The co-writer returned requests for context as prose on every ungrounded book (#273).
+
+- [ ] **F13** — `continue` on a scene with no prose yet still asks for "the recent prose". Found closing F12.
+
 - [x] **F9** — **DONE (Cycle 25).** The distiller never asked the model to stop thinking. *(1 test, D12)*
 
 - [~] **F8** — **REDUCED, NOT ELIMINATED (Cycles 30, 32): truncation 54% -> 6.5% on the real pipeline.** Re-broken in Cycle 30. Was: DIAGNOSED, NOT FIXED (Cycle 23). `plan-forge-pass-rail` proposes 0 arcs because the
@@ -1684,11 +1688,50 @@ frontend unit, model idle: 157 files, 1115 passed
 **AC impact:** AC-2 — explicitly NOT satisfied for #274; the reason and the forbidden reproduction step are recorded rather than papered over.
 
 
+### Cycle 35 — the co-writer asked for context instead of writing, and every test passed (F12, #273)
+
+**Investigated:** every `generation_job` result on this stack today; the `prose_draft` requests in `llm_jobs`; the streamed `draft_scene` request, captured through the logging proxy (throwaway stack, provider endpoint restored); `cowrite.build_messages` (system sentence and `draft_scene` instruction); `packer/assemble.py` (when `<beat>` is emitted); `composition-generate.spec.ts`.
+
+**Issues:** #273 — fixed here. The same failure on the `continue` operation is F13.
+
+**Fix:** #273 was filed as one odd draft. It was not odd. **Every one of the 14 most recent drafts** on this stack was the model asking for input ("Please provide the context, canon, present characters, threads, beat, recent prose, and lore"), accepted into the manuscript as prose. The co-writer produced no prose at all on any book without a knowledge graph, and E2E passed throughout because the only check was `length > 20`.
+
+Two prompt causes, each measured on its own captured request (gemma-4-26b, arms interleaved, cache evicted per call):
+
+1. **System prompt.** *"Use the provided canon … never introduce facts beyond what is given"*: with a beat-only context, a strict model reads that as having nothing it may write from. Reworded to use whatever the context provides, to expect sparse context on a new book, and never to ask for more. **Old 6/6 requests, 0 prose; new 0/6 requests, 6/6 prose (304–424 words).** Guarded against loosening where it matters: on a grounded context (named cast, two canon rules) neither wording invented a character name or broke canon, 6/6 each.
+2. **`draft_scene` instruction.** It names seven `<beat>` fields and says to use "every" one. A scene the author has just created has none, so the packer correctly emits no `<beat>`. The captured prompt contained no beat at all, and the model asked for it by name. A scene without a brief now gets its own instruction. **Field-by-field 6/6 requests; no-brief 0/6 requests, 6/6 prose (~640 words).** A first draft of that wording let 4 of 6 runs name a protagonist ("Elias") on a book whose author had named no one; one added sentence took it to **0/6**.
+
+The spec now also asserts the draft is not a request for input. That is a **stricter** claim than before, which Rule 2 allows: it says the co-writer *drafts*, and a request isn't a draft.
+
+**Proof:**
+
+```
+generation_job, 14 most recent before the fix: 14/14 "Please provide the ..."
+captured draft_scene request: user message had NO <beat> block, only the instruction naming seven beat fields
+
+A/B (system sentence, chapter-draft request):   old 6/6 requests · new 6/6 prose
+A/B (grounded context, drift check):             invented character names 0/6 both · canon breaks 0/6 both
+A/B (draft_scene, no beat):                      field-by-field 6/6 requests · no-brief 6/6 prose
+A/B (no-brief, name rule):                       without the sentence 4/6 named "Elias"/"Martha" · with it 0/6
+
+unit: tests/unit/test_cowrite.py  29 passed (3 new pins)
+E2E (composition images rebuilt, marker grep = 2):
+  composition-generate            1 passed (31.0s)   draft 3,504 chars: "The salt air did not merely blow; it clung..."
+BITE — HEAD cowrite.py, rebuilt:
+  Error: the co-writer returned a request for context instead of prose
+  Received string: "Please provide the context (the canon, characters, threads,"
+RESTORED + rebuilt, every co-write spec:  14 passed (3.6m)
+  generation_job after restore: draft_scene 6/6 prose · draft_chapter 3/3 prose · continue 2/2 requests (F13)
+```
+
+**AC impact:** AC-2 — bitten both ways through rebuilt images, and the bite's error is the defect by name. AC-3 — the one test edit makes the claim stricter; it is what made the defect visible at all.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
 lanes: |
-  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9, F10, F11
+  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9, F10, F11, F12, F13
   G diagnose = G1, G2
   J fixture  = J1, J2, J3
   H decide   = H1, H2, H3, H4
