@@ -56,7 +56,7 @@ jobs:
           # auto-commit-action needs the full ref so it can push back.
           fetch-depth: 0
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           toolchain: stable
           cache: true
