@@ -172,7 +172,9 @@ real and only the PO can resolve it.
 
 - [x] **F12** — **FIXED and RE-BROKEN (Cycle 35).** The co-writer returned requests for context as prose on every ungrounded book (#273).
 
-- [ ] **F13** — `continue` on a scene with no prose yet still asks for "the recent prose". Found closing F12.
+- [x] **F13** — **FIXED and RE-BROKEN (Cycle 36).** `continue` on a scene with no prose asked for "the recent prose". Found closing F12.
+
+- [x] **F14** — **FIXED and RE-BROKEN (Cycle 37).** The inline ghost's Accept left the screen on a full-length suggestion. Found closing F13.
 
 - [x] **F9** — **DONE (Cycle 25).** The distiller never asked the model to stop thinking. *(1 test, D12)*
 
@@ -1727,11 +1729,65 @@ RESTORED + rebuilt, every co-write spec:  14 passed (3.6m)
 **AC impact:** AC-2 — bitten both ways through rebuilt images, and the bite's error is the defect by name. AC-3 — the one test edit makes the claim stricter; it is what made the defect visible at all.
 
 
+### Cycle 36 — continue asked for the prose it was meant to continue (F13)
+
+**Investigated:** `generation_job` results by operation after F12; `cowrite.build_messages` for `continue` on an empty pack; `useInlineGhost.ts` (the inline "Continue from cursor" sends `operation: 'continue'`); `studio-inline-correction.spec.ts`.
+
+**Issues:** none filed — the same class as #273, on the other operation. The unreachable Accept it exposed is F14.
+
+**Fix:** after F12 every `draft_scene` and `draft_chapter` result was prose, but `continue` answered 2 of 2 times "Please provide the recent prose or the context of the scene". Its instruction is *"Continue the scene from where the recent prose ends"*, and an empty scene has no `<recent>` block to continue from. A scene with no prose now gets its own instruction, with the same no-name sentence F12 proved necessary.
+
+An existing unit test built `continue` with a canon-only pack and asserted "Continue the scene". Its claim is that language, voice and guidance get threaded through; it got a `<recent>` block in its fixture and kept every assertion. The no-prose case has its own test. The spec now also asserts the ghost is not a request for input, which makes its claim stricter.
+
+**Proof:**
+
+```
+generation_job after F12:  continue 2/2 "Please provide the recent prose ..."
+A/B on the request build_messages produces for an empty pack (gemma-4-26b, cache evicted):
+  "Continue the scene from where the recent prose ends"  6/6 requests · 0 prose
+  no-prose instruction                                    0/6 requests · 6/6 prose (240-316 words) · 0/6 invented names
+unit: tests/unit/test_cowrite.py  31 passed
+
+BITE — the continue branch disabled, composition rebuilt:
+  Error: the inline ghost returned a request for context instead of prose
+  Received string: "Please provide the recent prose or the context of the novel so that I may continue the story."
+  (one earlier bite attempt hit page.goto Timeout 15000ms instead — not the defect, re-run; CPU sampled 35%)
+RESTORED + rebuilt (marker grep 2, bite marker 0):
+  studio-inline-correction + composition-generate  3 passed (1.1m)
+```
+
+**AC impact:** AC-2 — bitten both ways through rebuilt images, and the bite's received string is the defect verbatim.
+
+### Cycle 37 — a full suggestion could not be accepted (F14)
+
+**Investigated:** the failure once `continue` returned real prose (`locator.click: Element is outside of the viewport`); the screenshot; `InlineGhost.tsx` (position, sizing, key handling).
+
+**Issues:** none filed. Fixed in this row.
+
+**Fix:** once the inline ghost carried ~300 words of prose instead of a 30-word request, the spec failed on Accept: the element was outside the viewport. The screenshot shows the drafting card running off the bottom of the screen. `InlineGhost` is `fixed` at the caret with only a width limit. Fixed content doesn't scroll with the page, and scroll events just re-anchor it to the caret. Esc discards, but no key accepts. **A user could not accept a full-length suggestion at all.** It went unnoticed only because F12 and F13 made every suggestion short enough to fit.
+
+The card is now bounded to the viewport (`maxHeight: calc(100vh - top - 8px)`). The prose scrolls inside it and the action row never shrinks off-screen. The width and position rules are unchanged.
+
+**Proof:**
+
+```
+BEFORE (after F13, real prose):  Error: locator.click: Element is outside of the viewport
+  screenshot: the "AI · DRAFTING" card runs past the bottom edge; no buttons visible
+tsc --noEmit exit 0 · InlineAiLayer unit 13 passed
+AFTER (frontend rebuilt, `inline-ghost-actions` in the bundle):  studio-inline-correction  2 passed (23.8s)
+BITE — HEAD InlineGhost.tsx, frontend rebuilt (marker count 0):
+  Error: locator.click: Element is outside of the viewport
+RESTORED + rebuilt:  studio-inline-correction + composition-generate  3 passed (1.1m)
+```
+
+**AC impact:** AC-2 — bitten both ways through a rebuilt frontend.
+
+
 ```goal-prompt
 goal: every one of the 18 remaining failures is green or carries a recorded reason it cannot be, every product fix is proven by RE-BREAKING it, and both skips are answered or owned
 po_decisions: [F2, H1, H2, AC-7]
 lanes: |
-  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9, F10, F11, F12, F13
+  F fix      = F1, F3, F4, F5, F2, F6, F7, F8, F9, F10, F11, F12, F13, F14
   G diagnose = G1, G2
   J fixture  = J1, J2, J3
   H decide   = H1, H2, H3, H4
