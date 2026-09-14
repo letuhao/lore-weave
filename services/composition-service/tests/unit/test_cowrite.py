@@ -183,7 +183,9 @@ async def test_llm_error_emits_error_event_and_still_meters():
 # ── prompt building (de-bias) ──
 
 def test_build_messages_threads_language_and_voice():
-    msgs = cowrite.build_messages("<canon>x</canon>", BookProfile(source_language="vi", voice="terse"), "continue", guide="be tense")
+    # The pack carries a <recent> block: `continue` on a scene WITH prose. Without one, F13 swaps in the
+    # no-prose instruction, which is its own test below; this one is about language/voice/guide threading.
+    msgs = cowrite.build_messages("<canon>x</canon>\n<recent>\nShe waited.\n</recent>", BookProfile(source_language="vi", voice="terse"), "continue", guide="be tense")
     sys = msgs[0]["content"]
     assert "'vi'" in sys and "terse" in sys
     assert "be tense" in msgs[1]["content"] and "Continue the scene" in msgs[1]["content"]
@@ -329,3 +331,16 @@ def test_the_system_prompt_forbids_asking_for_context():
     assert "never introduce facts beyond what is given" not in system  # the clause that read as "write nothing"
     assert "never contradict the canon" in system
     assert "Do NOT invent a new proper name" in system                  # the name rule is untouched
+
+
+def test_continue_on_a_scene_with_no_prose_is_not_told_to_continue_the_recent_prose():
+    """F13 — "continue from where the recent prose ends" with no <recent> made the model ask for it."""
+    user = cowrite.build_messages("", NEUTRAL, "continue")[1]["content"]
+    assert cowrite._CONTINUE_WITHOUT_PROSE in user
+    assert cowrite._OPERATION_INSTRUCTIONS["continue"] not in user
+
+
+def test_continue_with_prose_still_continues_it():
+    user = cowrite.build_messages("<recent>\nShe closed the door.\n</recent>", NEUTRAL, "continue")[1]["content"]
+    assert cowrite._OPERATION_INSTRUCTIONS["continue"] in user
+    assert cowrite._CONTINUE_WITHOUT_PROSE not in user

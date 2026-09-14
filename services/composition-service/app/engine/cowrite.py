@@ -42,6 +42,15 @@ _DRAFT_SCENE_WITHOUT_BRIEF = (
     "context: do NOT write them."
 )
 
+#: `continue` for a scene with NO prose yet (no <recent> block) — see the F13 note in `build_messages`.
+_CONTINUE_WITHOUT_PROSE = (
+    "There is no prose in this scene yet — nothing has been written, and that is expected. Do not "
+    "ask for any. Begin the scene from whatever the context above holds; where it holds nothing, "
+    "begin the story plainly: a place, a moment and a person, through action and sensory detail. "
+    "The author has named no one yet, so give nobody a name: refer to every person by role or "
+    "description (\"the woman\", \"the ferryman\")."
+)
+
 _OPERATION_INSTRUCTIONS = {
     "continue": "Continue the scene from where the recent prose ends, in the same voice.",
     # SCENE-BOUNDARY (2026-07-30, Mị Đế): the plan block shows the whole chapter, so
@@ -579,6 +588,13 @@ def build_messages(
     # on a book whose author had named no one, which the system prompt's name rule forbids.
     if operation == "draft_scene" and "<beat>" not in packed_prompt:
         instruction = _DRAFT_SCENE_WITHOUT_BRIEF
+    # F13 — the same failure on `continue` ("Continue the scene from where the recent prose ends").
+    # An empty scene has no <recent> block, so the model asked for it: "Please provide the recent
+    # prose or the context of the scene". A/B on the request `build_messages` itself produces for an
+    # empty pack: that instruction 6/6 requests for input; this one 0/6 requests, 6/6 prose, 0/6
+    # invented names.
+    if operation == "continue" and "<recent>" not in packed_prompt:
+        instruction = _CONTINUE_WITHOUT_PROSE
     # FD-1 S3 — only fires when open promises were re-injected (the <open_promises>
     # block is present ⇒ narrative_thread is enabled + has open threads). Without a
     # steer the block is inert context; with it, the model advances/pays promises.

@@ -43,6 +43,11 @@ test.describe('Studio editor inline-ghost correction capture (S1-B3) [model-gate
     await expect(s.inlineGhostText).toBeVisible({ timeout: 120_000 });
     await expect.poll(async () => (await s.inlineGhostText.innerText()).trim().length, { timeout: 120_000 })
       .toBeGreaterThan(20);
+    // STRICTER (plan F13). `continue` on this empty scene returned "Please provide the recent prose"
+    // — and 20 characters of a request passed this test. A continuation that asks for input is not a
+    // continuation, so the claim now checks that what streamed is not a request for context.
+    expect((await s.inlineGhostText.innerText()).trim(), 'the inline ghost returned a request for context instead of prose')
+      .not.toMatch(/please provide|provide the (recent prose|context)|once (you )?provide|i need (the|more)/i);
   }
 
   // ORDER MATTERS: the Accept path runs FIRST (a CLEAN full-stream generation, no mid-stream stop), then
