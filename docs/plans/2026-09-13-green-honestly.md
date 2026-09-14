@@ -186,7 +186,7 @@ real and only the PO can resolve it.
 - [x] **K1** — **DONE (Cycle 13). The skip is GONE: 7 passed, 0 skipped.** The test had never run
   anywhere. `campaign-factory` needed `E2E_FACTORY_PROJECT_ID` / `E2E_FACTORY_BOOK_ID`.
   Seed them the way `seed-evidence-account.py` seeds the rest, so a clean machine can run it.
-- [x] **K2** — **ANSWERED (Cycle 27). The skip is GONE — it RUNS, and it fails on its first-ever execution.**
+- [x] **K2** — **ANSWERED (Cycle 27); GREEN (Cycle 33).** The skip is GONE — it RUNS, and it fails on its first-ever execution.**
   *(was: OWNED, not answered, Cycle 13)* Its two findings are filed: #273 (draft asks for context instead of writing), #274 (critic call times out). It belongs to **H2**, where it is priced
   alongside the other two things the constraint blocks. Nothing was activated.
   `composition-generate` needs **two active models**, which the one-model constraint forbids. **Do not quietly activate a second** — that already exhausted this machine once (#260).
@@ -1636,6 +1636,52 @@ bounded analyze that still truncated:  {"id": 168, "title": 167, "theme": 167} k
 ```
 
 **AC impact:** AC-1 — F8 and F11 both carry measured rates and a named residual mode instead of a tick. AC-2 — F11 is NOT bitten, and the row says why rather than pasting a bite that could not fail reliably.
+
+
+### Cycle 33 — the critic arrived, and strict mode failed the test on the success it waited for (K2)
+
+**Investigated:** the `composition-generate` failure after the critique ceiling was raised; both matching elements; `ComposeView.tsx:256` and `CriticPanel.tsx:74` (the two `CriticFlags` mounts); `CompositionPanel.tsx:850` (the standing critic dock slot).
+
+**Issues:** none filed. The double display goes to the PO as a UX question, not a defect.
+
+**Fix:** with the critique call no longer cut at 20s, the critic rendered, and the test failed anyway: `strict mode violation: getByTestId('compose-critic') resolved to 2 elements`. The critic is drawn in two places by design, inline in `ComposeView` where the author accepted and in the standing `CriticPanel` dock slot that a pop-out reads. The locator was unscoped, so it could only pass while the critic *failed* to arrive.
+
+The locator is now scoped to `dock-slot-compose`. The claim is unchanged: the critic's result shows where the author accepted. Whether one screen should show the same critic twice is a product question and is recorded for the PO.
+
+**Proof:**
+
+```
+BEFORE:  Error: strict mode violation: getByTestId('compose-critic') resolved to 2 elements:
+           1) getByTestId('dock-slot-compose').getByTestId('compose-critic')
+           2) getByTestId('critic-panel').getByTestId('compose-critic')
+AFTER:   composition-generate  1 passed (40.3s)
+```
+
+**AC impact:** AC-4 — K2, which had never run anywhere, is now GREEN, reported with passed/failed/skipped separate. AC-3 — the claim is identical; only the surface it is read from is pinned.
+
+### Cycle 34 — the critic call died at the browser's 20s ceiling (#274)
+
+**Investigated:** `frontend/src/api.ts` (`API_REQUEST_TIMEOUT_MS`, `fetchWithTimeout`); `features/composition/api.ts` `critique`; `composition-service/app/routers/engine.py:1990` (the route runs the critic model inline); `frontend/nginx.conf` (`/v1/` read timeout 300s); the BFF composition proxy (no timeout set).
+
+**Issues:** #274.
+
+**Fix:** every `apiJson` call is bounded at 20s so an ordinary request can never hang the shell. `/jobs/{id}/critique` isn't ordinary: it runs a DISTINCT model inline, and on a local provider that model may have to load first. nginx allows 300s and the BFF sets no timeout, so the browser was the only layer cutting it off. The server kept working after the UI had already shown "Request timed out".
+
+`apiJson` now accepts a per-call `timeoutMs`, not forwarded to `fetch`; critique passes 240s, under nginx's 300s. Every other call keeps 20s.
+
+**Rule 1 is NOT met, and the row stays partial.** The E2E bite was run: drop the override, rebuild, run twice. It stayed **green both times**, because with the critic model warm the call now finishes under 20s. The original failure was a cold load, and recreating that means unloading a model in LM Studio by hand, which the standing instruction forbids. Proven: the layer (by reading every hop) and the mechanism (a unit test that is bitten). Not proven: the E2E symptom, which cannot be reproduced honestly.
+
+**Proof:**
+
+```
+unit: src/__tests__/api.test.ts  28 passed
+  bite (apiJson ignores timeoutMs): AssertionError: expected Error: Request timed out ... to be null  -> 1 failed
+E2E after fix (frontend rebuilt, 240000 in the bundle): composition-generate 1 passed (40.3s)
+E2E BITE (override removed, rebuilt):  1 passed (35.2s) · 1 passed (33.9s)   <- warm critic, cannot fail
+frontend unit, model idle: 157 files, 1115 passed
+```
+
+**AC impact:** AC-2 — explicitly NOT satisfied for #274; the reason and the forbidden reproduction step are recorded rather than papered over.
 
 
 ```goal-prompt

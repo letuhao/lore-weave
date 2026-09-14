@@ -92,6 +92,9 @@ async function _resolveJob<T extends { job_id: string; status: string }>(
   return resp;
 }
 
+/** Below nginx's 300s /v1/ read timeout, so the browser still gives up before the proxy does. */
+const CRITIQUE_TIMEOUT_MS = 240_000;
+
 export const compositionApi = {
   resolveWork(bookId: string, token: string): Promise<WorkResolution> {
     return apiJson<WorkResolution>(`${BASE}/books/${bookId}/work`, { token });
@@ -743,8 +746,13 @@ export const compositionApi = {
     }) as PromiseCoverageResponse);
   },
   critique(jobId: string, passage: string, token: string): Promise<{ critic: GenerationJob['critic']; warning?: string }> {
+    // #274 — critique runs the critic model INLINE (engine.py `/jobs/{id}/critique`), and the
+    // critic must be a DISTINCT model, so on a local provider the call pays a model swap before it
+    // can answer. Under the shared 20s ceiling that surfaced as "Request timed out" and the critic
+    // card never rendered, while the request kept running server-side. nginx allows /v1/ 300s and
+    // the BFF composition proxy sets no timeout, so the browser was the only layer cutting it.
     return apiJson(`${BASE}/jobs/${jobId}/critique`, {
-      method: 'POST', body: JSON.stringify({ passage }), token,
+      method: 'POST', body: JSON.stringify({ passage }), token, timeoutMs: CRITIQUE_TIMEOUT_MS,
     });
   },
   dismissViolation(jobId: string, ruleId: string, token: string): Promise<{ critic: GenerationJob['critic'] }> {
