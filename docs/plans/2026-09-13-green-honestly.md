@@ -68,7 +68,7 @@ real and only the PO can resolve it.
 
 ### Lane F — fix the product. Each ends in a RE-BREAK, or it is not done.
 
-- [~] **F1** — **#262 FIXED and RE-BROKEN (Cycle 1). 3 of its 4 green; the 4th moved to F6.**
+- [x] **F1** — **#262 FIXED and RE-BROKEN (Cycle 1). 3 of its 4 green; the 4th moved to F6, closed in Cycle 16. All 4 green in the final run (Cycle 39).**
   The reasoning menu cannot be clicked. *(4 tests)*
   **The row's original premise was wrong and Cycle 1 corrected it.** It said the promote bar "wins
   the hit test", which reads as a stacking problem. The probe found NO competing stacking context:
@@ -86,7 +86,7 @@ real and only the PO can resolve it.
   recommendation and STOP.** Widening a CHECK constraint to make an INSERT succeed is exactly the
   hollow fix this plan is guarding against.
 
-- [~] **F3** — **#264 FIXED and RE-BROKEN (Cycle 2). 1 of its 2 green; the other moved to F7.**
+- [x] **F3** — **#264 FIXED and RE-BROKEN (Cycle 2). 1 of its 2 green; the other moved to F7, closed in Cycle 17. Both green in the final run (Cycle 39).**
   The structure editor claims unsaved changes after a save. *(2 tests)*
   `initial` is a `useRef` captured at mount and never reassigned, so the draft is permanently
   "diverged" after the first edit. The baseline must move on save success — and the component's
@@ -159,9 +159,9 @@ real and only the PO can resolve it.
   at once, so an intermediate phase can pass unpainted. The claim — phases reach the inspector —
   is worth keeping; the mock is what must change.
 
-- [~] **J3** — **PARTIAL (Cycle 10).** The stale session is FIXED and verified. The test stays red
-  for a cause the product itself names: the one active model is a REASONING model and returns a
-  blank completion to the distiller. **This is H2's constraint, not a defect.**
+- [x] **J3** — **DONE.** The stale session was fixed in Cycle 10. The remaining red was NOT "H2's constraint, not a defect",
+  as this row said: it was a defect. The distiller never sent `reasoning_effort=none` (F9, Cycle 25, re-broken).
+  Green in the final run (Cycle 39).
   **D12**: a per-run Assistant session on an active model. *(1 test)*
   One long-lived session currently carries earlier runs' unanswered Tier-A consent gates. Decide
   deliberately whether the test answers consent or avoids provoking it.
