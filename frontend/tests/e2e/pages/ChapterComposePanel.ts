@@ -90,7 +90,12 @@ export class ChapterComposePanel {
     this.reasoningBadge = page.getByTestId('compose-reasoning-badge');
     this.ghost = page.getByTestId('compose-ghost');
     this.accept = page.getByTestId('compose-accept');
-    this.critic = page.getByTestId('compose-critic');
+    // Scoped to the COMPOSE slot. The critic renders in two places by design — inline in
+    // ComposeView, where the author accepted, and in the standing CriticPanel dock slot (the one a
+    // pop-out reads). Unscoped, the moment the critic actually arrived the locator hit both and
+    // strict mode failed the test on the SUCCESS it was waiting for. The claim is unchanged: the
+    // critic result shows where the author accepted.
+    this.critic = page.getByTestId('dock-slot-compose').getByTestId('compose-critic');
     this.subtabGrounding = page.getByTestId('composition-subtab-grounding');
     this.subtabCanon = page.getByTestId('composition-subtab-canon');
     this.groundingSignal = page.getByTestId('composition-grounding-signal');
