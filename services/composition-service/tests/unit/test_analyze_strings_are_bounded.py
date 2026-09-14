@@ -54,7 +54,21 @@ def test_enums_stay_enums():
     assert "maxLength" not in ANALYZE_SCHEMA["properties"]["arcs"]["items"]["properties"]["arc_kind"]
 
 
-def test_spec_schema_and_the_shared_string_are_untouched():
-    """SPEC shares _ARC/_EVENT/_VARIABLE with ANALYZE and its fields were never measured."""
-    assert "maxLength" not in json.dumps(SPEC_SCHEMA)
+def test_the_shared_string_is_untouched():
+    """Bounding works on copies; the module-level `_STR` every schema is built from stays bare."""
     assert _STR == {"type": "string"}
+
+
+def test_every_free_text_string_in_spec_is_bounded():
+    """F11 — materialize loops the same way (weaker evidence; see the note in schemas.py)."""
+    unbounded = [k for k, n in _strings(SPEC_SCHEMA) if "enum" not in n and "maxLength" not in n]
+    assert unbounded == [], f"an unbounded SPEC string is a runaway exit: {unbounded}"
+
+
+def test_spec_caps_where_the_loops_were_seen():
+    meta = SPEC_SCHEMA["properties"]["meta"]["properties"]
+    assert meta["version_label"]["maxLength"] == 80      # looped source_checksum in a finished run
+    assert meta["source_checksum"]["maxLength"] == 80    # a sha256 hex is 64
+    chars = SPEC_SCHEMA["properties"]["layers"]["properties"]["characters"]["items"]["properties"]
+    assert chars["baseline_notes"]["maxLength"] == 900
+    assert "maxLength" not in SPEC_SCHEMA["properties"]["links"]["items"]["properties"]["kind"]

@@ -143,10 +143,23 @@ _ANALYZE_CHAR = _obj({"name": _STR, "role": _STR, "notes": _STR}, ["name"])
 #: the bound removes runaways without cutting content. Caps are ~3x the longest legitimate value
 #: measured across successful runs: ids 80, the prose fields 900, everything else 300.
 #:
-#: Scoped to ANALYZE only, on a deep copy: SPEC_SCHEMA shares `_ARC`/`_EVENT`/`_VARIABLE`, and its
-#: fields were not measured. Bounding them would be the confident guess this file already warns off.
-_ID_KEYS = frozenset({"id", "arc_id", "code"})
-_PROSE_KEYS = frozenset({"role", "notes", "document_summary", "summary"})
+#: Applied to ANALYZE first, on a copy, because only ANALYZE had been measured. SPEC (materialize)
+#: followed in F11 under a WEAKER result, stated as such rather than rounded up:
+#:
+#:     The same runaway shape appears there — `theme` bleed carried in from analyze, and
+#:     `meta.version_label` looping `source_checksum` (3,603 chars in a run that still finished).
+#:     A fixed-input replay could not reproduce it (32/32 clean): the loop depends on which analyze
+#:     output feeds it, so it had to be measured on the real pipeline instead —
+#:
+#:         unbounded SPEC   3/17 materialize runs truncated  (10 fresh + the 7 since F8 shipped)
+#:         bounded SPEC     0/10 truncated, 3 arcs in every run
+#:
+#:     That is Fisher p ~ 0.27 — directional, NOT proven. It ships as a guardrail because the bound
+#:     showed no cost in 10 real runs and 16 replays, and the mechanism is the one F8 did prove.
+#:     If a future run shows SPEC content clipped at a cap, this paragraph is why the cap exists and
+#:     how little evidence it was set on.
+_ID_KEYS = frozenset({"id", "arc_id", "code", "version_label", "source_checksum", "from", "to"})
+_PROSE_KEYS = frozenset({"role", "notes", "document_summary", "summary", "baseline_notes"})
 
 
 def _bounded(schema: dict[str, Any]) -> dict[str, Any]:
@@ -191,7 +204,7 @@ ANALYZE_SCHEMA: dict[str, Any] = _bounded(_obj({
 #: declared arc has at least one event: an arc with none cannot be compiled. The grammar cannot
 #: express that relation, but it can guarantee both keys exist so the failure is a visible empty
 #: rather than a missing key nobody checked.
-SPEC_SCHEMA: dict[str, Any] = _obj({
+SPEC_SCHEMA: dict[str, Any] = _bounded(_obj({
     "version": {"type": "integer"},
     "meta": _obj({
         "title": _STR, "version_label": _STR, "source_checksum": _STR,
@@ -216,4 +229,4 @@ SPEC_SCHEMA: dict[str, Any] = _obj({
         "kind": {"type": "string", "enum": LINK_KINDS},
         "note": _STR,
     }, ["from", "to", "kind"])),
-}, ["meta", "charter", "layers", "arcs", "events"])
+}, ["meta", "charter", "layers", "arcs", "events"]))

@@ -168,11 +168,11 @@ real and only the PO can resolve it.
 
 - [x] **F10** — **FIXED and RE-BROKEN (Cycle 31).** `propose_cast` was never given the cast the spec already holds. Found closing F8. *(1 test, the pass-rail journey's approve step)*
 
-- [ ] **F11** — `materialize` loops to the token cap exactly like `analyze` did; `SPEC_SCHEMA` is still unbounded and unmeasured. Found biting F10. *(the pass-rail journey)*
+- [~] **F11** — **SHIPPED AS A GUARDRAIL, NOT PROVEN (Cycle 32).** `materialize` loops like `analyze`; bounded SPEC 0/10 vs unbounded 3/17 (p ~ 0.27). Found biting F10. *(the pass-rail journey)*
 
 - [x] **F9** — **DONE (Cycle 25).** The distiller never asked the model to stop thinking. *(1 test, D12)*
 
-- [x] **F8** — **FIXED and RE-BROKEN (Cycle 30).** Was: DIAGNOSED, NOT FIXED (Cycle 23). `plan-forge-pass-rail` proposes 0 arcs because the
+- [~] **F8** — **REDUCED, NOT ELIMINATED (Cycles 30, 32): truncation 54% -> 6.5% on the real pipeline.** Re-broken in Cycle 30. Was: DIAGNOSED, NOT FIXED (Cycle 23). `plan-forge-pass-rail` proposes 0 arcs because the
   LLM job is `truncated`. Converges with `assistant-endofday` and K2 on one cause. *(1 test)*
 
 - [x] **H4** — **DONE (Cycle 21).** #269's test destroyed the state it asserted, in its own first line.
@@ -1595,6 +1595,47 @@ RESTORED byte-exact + rebuilt:
 ```
 
 **AC impact:** AC-2 — bitten both ways through rebuilt images; the bite reproduced the refusal word for word. AC-1 — the journey's approve-step red is closed; its remaining red is F11.
+
+
+### Cycle 32 — materialize measured on the real pipeline, and F8 re-counted honestly (F11, F8)
+
+**Investigated:** a looped `materialize` result (`theme` bleed, and `meta.version_label` looping `source_checksum`); field lengths across 15 successful `materialize` outputs; three measurement protocols in turn; every `analyze` and `materialize` job on this stack today, split by whether its schema carried `maxLength`; the one bounded `analyze` that still truncated.
+
+**Issues:** none filed. A residual mode, repeated array items, is recorded here with its measured rate. It is not yet fixed.
+
+**Fix:** `SPEC_SCHEMA` now carries the same free-text string bounds as `ANALYZE_SCHEMA`: 80 for ids, labels and checksums, 900 for prose, 300 for the rest. That is ~3× the longest real value measured. It ships as a **guardrail** on weaker evidence than F8 had, and the schema comment says so in those words.
+
+The measurement took three protocols, because the first two could not see the failure:
+
+1. **Fixed input, cache evicted per call:** 16/16 clean in both arms. It cannot show a difference.
+2. **Fixed input, run analyze then materialize back to back, no evict:** 16/16 clean in both arms again. The loop depends on *which* analyze output feeds materialize, so a single frozen input never reproduces it.
+3. **The real pipeline**, 10 plan runs per deployed build: bounded 0/10 truncated, 3 arcs every run; unbounded 1/10 truncated, plus one degraded run with 1 arc. Adding the 7 real runs since F8 shipped gives **3/17 vs 0/10, Fisher p ~ 0.27. Directional, not proven.** Rule 1 cannot be met honestly at that base rate, so the row stays partial rather than ticked.
+
+**F8 re-counted.** Cycle 30 called F8 fixed, on 8/8 and 12/14 in a replay. The real pipeline says otherwise. A bounded `analyze` truncated twice more, and the output shows a mode the bound cannot reach: the model repeats the whole `arc_iii` **object** 168 times inside the `arcs` array. String caps don't bound arrays. `maxItems` would, and it is exactly the change `schemas.py` recorded as rejected on uncontrolled evidence. On today's real jobs:
+
+```
+analyze, unbounded schema:   14 truncated / 26   (54%)
+analyze, bounded schema:      2 truncated / 31   (6.5%)      Fisher p < 0.001
+```
+
+So F8 is a large, significant reduction and not an elimination. Measuring `maxItems` against a 6.5% base rate would need about 50+ real runs per arm. That work is recorded here, not guessed at.
+
+**Proof:**
+
+```
+materialize, looped output tail:  "version: 1.0.0-alpha; source_checksum: 7bd6...; version: 1.0.0-alpha; source_checksum: ..."
+successful materialize field max: meta.version_label 3603 (a real label is "1.0.0-alpha"), arcs[].theme 1902
+
+protocol 1 (fixed input, evict):        A 8/8 parsed   C 8/8 parsed
+protocol 2 (fixed input, chained):      A 8/8 parsed   C 8/8 parsed
+protocol 3 (real pipeline, 10 runs):    C 10/10 proposed, materialize stop 10/10 (bounded)
+                                        A  9/10 proposed, materialize length 1 (unbounded), one run arcs=1
+unit: tests/unit/test_analyze_strings_are_bounded.py + plan_forge + cast suites  75 passed
+
+bounded analyze that still truncated:  {"id": 168, "title": 167, "theme": 167} keys — one arc object, repeated
+```
+
+**AC impact:** AC-1 — F8 and F11 both carry measured rates and a named residual mode instead of a tick. AC-2 — F11 is NOT bitten, and the row says why rather than pasting a bite that could not fail reliably.
 
 
 ```goal-prompt
