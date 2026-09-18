@@ -72,9 +72,9 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 | **AC-5** | A book created through REST has its knowledge project within 5s without anyone opening it, and a provisioning failure never fails the create | Go handler tests with an `httptest` composition fake + live T9 query | T6, T7, T9 | ✅ met — Cycle 2: 4 bites; live project 0.7s after create, owner-matched |
 | **AC-6** | Creating a book and opening it at once yields exactly one Work and one knowledge project | live race run on `lw-iso` with row counts pasted | T8 | ✅ met — Cycle 2: 10/10 books, three racing callers each, exactly 1 Work + 1 project |
 | **AC-7** | After an owner signs in, every book they own has a knowledge project; no other user's book is touched; only the owner's bearer is used | Go endpoint tests + vitest trigger test + live T12 counts | T10, T11, T12 | ✅ met — Cycle 4: 105/105 of the owner's books after sign-in; another owner's 65/77 untouched |
-| **AC-8** | The critic result appears once on screen, and the override gate stays reachable | `ComposeView.test.tsx` layout cases + `composition-generate.spec.ts` | T13 | 🚧 partial — unit proof and 3 bites in Cycle 3; the E2E run is owed by T15 |
+| **AC-8** | The critic result appears once on screen, and the override gate stays reachable | `ComposeView.test.tsx` layout cases + `composition-generate.spec.ts` | T13 | ✅ met — Cycle 3 (unit, 3 bites) + Cycle 7 (`composition-generate` green in the full run, through the Studio) |
 | **AC-9** | Every item left open ships with a Known issues entry: what, who, workaround | `scripts/changelog-gate.py` + the `[0.1.0]` section text | T14 | ✅ met — Cycle 5: three Known issues entries (what, who, workaround); both gate modes green, release mode bitten |
-| **AC-10** | The whole suite is green on rebuilt images: 0 failed, 0 skipped | full Playwright + unit run pasted, image ids listed | T15 | ❌ not met |
+| **AC-10** | The whole suite is green on rebuilt images: 0 failed, 0 skipped | full Playwright + unit run pasted, image ids listed | T15 | 🚧 partial — Cycle 7: run 3 **201 passed, 0 failed, 0 skipped**, but runs 1–2 had 4 failures that pass alone and whose cause is not confirmed |
 | **AC-12** | No route or link reaches the retired chapter editor; an old URL lands on the same chapter in the Writing Studio | `RetiredChapterEditorRedirect.test.tsx` (redirect + a source scan) + the 5 re-pointed view tests | T16, T17 | ✅ met — Cycle 4 (app, bitten) + Cycle 6 (all 8 migrated specs green through the Studio) |
 | **AC-11** | The PO has decided GO or NO-GO for v0.1.0 | the PO's own words quoted in this plan | | ❓ unknown |
 
@@ -208,7 +208,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
     `scripts/changelog-gate.py` accepts that subsection.
   - Entries: MCP-created books provision on first open (Q2); the `materialize` string bounds are a
     guardrail not yet measured (L2); anything T4 or T5 leaves open. Each says what, who, workaround.
-- [ ] **T15** — **The whole suite, on rebuilt images**
+- [~] **T15** — **The whole suite, on rebuilt images** (Cycle 7 — run 3 green; 4 intermittent reds from runs 1–2 unexplained)
   - Rebuild every image touched (composition ×2, book-service, frontend). Run the full Playwright suite and
     the unit suites. 0 failed, 0 skipped; any skip is answered (Rule 6). Update the handover report.
 
@@ -561,3 +561,42 @@ creation-unblock-world BEFORE: page.waitForURL: Timeout 15000ms exceeded (the ca
 ```
 
 **AC impact:** AC-12 ✅.
+
+### Cycle 7 — T15: three full runs on rebuilt images
+
+**Investigated:** three full Playwright runs on `lw-iso` with the evidence account. Every image carries this branch, checked in the running containers:
+- composition-service and composition-worker: the seam-fix marker and `PlanForgeTruncated`;
+- book-service: `/v1/books/provision-missing` answers 401 unauthenticated;
+- frontend: the bundle has `provision-missing` and the critique call's `timeoutMs`.
+
+Every failure was re-run alone, and the full-run artifacts were kept for runs 2 and 3.
+
+**Issues:** none — the one real cause found is fixed in Cycle 6; the four unexplained failures are listed below with their evidence, and filing them publicly is the PO's call
+
+**Fix:** none in product code this cycle. `creation-unblock-world`'s premise fix is Cycle 6's.
+
+**Proof:**
+
+```
+images   composition-service 38feebb75728 · composition-worker 0dde64eb4014 · book-service eb4d2cff50a6 · frontend cac385fb3f31
+run 1    198 passed, 3 failed (24.7m)
+           creation-unblock-world G1   waitForURL timeout      -> REAL: T7 made both world books canon; picker opens (fixed, Cycle 6)
+           revision-compare-remainder B8.5  equal rows 0 (>=10) -> passes alone, 15/15 repeated, and in runs 2-3
+           studio-inline-correction Discard  inline-discard not found -> passes alone, and in runs 2-3
+run 2    199 passed, 2 failed (25.4m)
+           composition-flywheel U8     no drain job within 60s -> passes in run 3
+           studio-publish S1-B4        PATCH outline/nodes -> 401 {"detail":"invalid token"} in the test body,
+                                       with a token its own beforeAll had just used successfully -> 5/5 alone, and in run 3
+run 3    201 passed, 0 failed, 0 skipped (23.3m)
+unit     composition 4012 passed + the 2 pre-existing reds (Cycle 1) · book-service Go -p 1 all ok · frontend vitest 869 files / 6527 passed
+gates    gate-wiring-gate --run-all: all static gates green after the plan-format fix (85d9f84ab); 28 live gates skipped (no stack on :25556)
+```
+
+**What is known about the four unexplained failures, and what is not:**
+- None reproduces alone, and none failed twice across the three runs. So "flaky" is not the verdict here: the verdict is "cause not found".
+- **B8.5**: the server diff's perf guard is size-based (`maxCells`), not time-based, and cannot trip on 12 lines. Revision order is deterministic (`created_at DESC, id DESC`). So `equal = 0` means a different pair of revisions was compared, and nothing yet explains why. Run 1's artifacts were lost to a solo re-run.
+- **studio-publish 401**: token TTL is 7200s. `loreweave_authn` folds every verification failure, expiry included, into one "invalid token", so the log cannot say which check failed.
+- **flywheel**: worker-ai was busy with other tests' distill LLM jobs at the time. That is the likely reason no drain arrived within 60s, but it is not proven.
+- **New since the 2026-09-13 baseline**, and relevant to load: every UI sign-in now fires the T11 backfill, about 130 `GET /work` in 100ms for this 105-book account. It did not cause the failures observed here, and it is noted as a cost for review.
+
+**AC impact:** AC-8 ✅ (its E2E leg is green through the Studio); AC-10 🚧 — green once, not yet shown to be reliably green.
