@@ -66,15 +66,16 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 | AC | Must be true | Verified by | Rows | Status |
 |---|---|---|---|---|
 | **AC-1** | A plan-forge step whose output is truncated is regenerated through the ladder, and truncated text never reaches the repair path | `test_plan_forge_llm.py` truncation cases + Cycle bite (break: restore the raise-before-ladder; the cases go red) | T1, T2 | ✅ met — Cycle 1: 3 bites, each red for the right reason and green on restore |
-| **AC-2** | On 30 real plan runs, final failures are fewer than today's 2 of 31 | `llm_jobs` query pasted in the cycle (`job_meta.extractor`, `finish_reason`) on rebuilt images | T4 | ❌ not met |
-| **AC-3** | A long ladder never lets the sweeper start a second copy of the same plan job | unit test on the heartbeat + `generation_job` row history from T4 | T3, T4 | 🚧 partial — unit proof and bite in Cycle 1; live row history owed by T4 |
-| **AC-4** | The 240s critic ceiling is proven by re-breaking it on a real cold model load | `composition-generate.spec.ts` run pasted twice: 20s ceiling red, 240s green | T5 | ❌ not met |
+| **AC-2** | On 30 real plan runs, final failures are fewer than today's 2 of 31 | `llm_jobs` query pasted in the cycle (`job_meta.extractor`, `finish_reason`) on rebuilt images | T4 | ✅ met — Cycle 4: 30/30 proposed, 0 final failures; the one truncation regenerated live |
+| **AC-3** | A long ladder never lets the sweeper start a second copy of the same plan job | unit test on the heartbeat + `generation_job` row history from T4 | T3, T4 | ✅ met — Cycle 1 bite; Cycle 4: 30 runs, 30 `generation_job` rows, none started twice |
+| **AC-4** | The 240s critic ceiling is proven by re-breaking it on a real cold model load | `composition-generate.spec.ts` run pasted twice: 20s ceiling red, 240s green | T5 | ✅ met — Cycle 4, through the stand-in slow provider (the real cold load finished under 20s) |
 | **AC-5** | A book created through REST has its knowledge project within 5s without anyone opening it, and a provisioning failure never fails the create | Go handler tests with an `httptest` composition fake + live T9 query | T6, T7, T9 | ✅ met — Cycle 2: 4 bites; live project 0.7s after create, owner-matched |
 | **AC-6** | Creating a book and opening it at once yields exactly one Work and one knowledge project | live race run on `lw-iso` with row counts pasted | T8 | ✅ met — Cycle 2: 10/10 books, three racing callers each, exactly 1 Work + 1 project |
-| **AC-7** | After an owner signs in, every book they own has a knowledge project; no other user's book is touched; only the owner's bearer is used | Go endpoint tests + vitest trigger test + live T12 counts | T10, T11, T12 | 🚧 partial — T10 (Cycle 2) and T11 (Cycle 3) proven; the live T12 run is open |
+| **AC-7** | After an owner signs in, every book they own has a knowledge project; no other user's book is touched; only the owner's bearer is used | Go endpoint tests + vitest trigger test + live T12 counts | T10, T11, T12 | ✅ met — Cycle 4: 105/105 of the owner's books after sign-in; another owner's 65/77 untouched |
 | **AC-8** | The critic result appears once on screen, and the override gate stays reachable | `ComposeView.test.tsx` layout cases + `composition-generate.spec.ts` | T13 | 🚧 partial — unit proof and 3 bites in Cycle 3; the E2E run is owed by T15 |
 | **AC-9** | Every item left open ships with a Known issues entry: what, who, workaround | `scripts/changelog-gate.py` + the `[0.1.0]` section text | T14 | ❌ not met |
 | **AC-10** | The whole suite is green on rebuilt images: 0 failed, 0 skipped | full Playwright + unit run pasted, image ids listed | T15 | ❌ not met |
+| **AC-12** | No route or link reaches the retired chapter editor; an old URL lands on the same chapter in the Writing Studio | `RetiredChapterEditorRedirect.test.tsx` (redirect + a source scan) + the 5 re-pointed view tests | T16, T17 | 🚧 partial — app side bitten in Cycle 4; the E2E specs still drive the old path (T17) |
 | **AC-11** | The PO has decided GO or NO-GO for v0.1.0 | the PO's own words quoted in this plan | | ❓ unknown |
 
 ## Board
@@ -109,7 +110,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
   - Test: a fake ladder with 3 attempts updates the heartbeat 3 times; a job with a fresh heartbeat is
     not picked by `sweep_once`.
   - Log: DEBUG `plan_forge.heartbeat job_id=<id> attempt=<n>`.
-- [ ] **T4** — **Measure on real runs**
+- [x] **T4** — **Measure on real runs** (Cycle 4)
   - Rebuild **both** composition images (`composition-service` and `composition-worker`, Rule 4) on `lw-iso`.
   - 30 real plan runs through the API. Count final failures, regenerations and their `finish_reason`
     from `llm_jobs`, and check `generation_job` for any job that started twice.
@@ -118,7 +119,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 
 ### Lane B — prove the critic ceiling (L3)
 
-- [ ] **T5** — **Re-break the 240s critic ceiling on a real cold load**
+- [x] **T5** — **Re-break the 240s critic ceiling on a real cold load** (Cycle 4 — via the stand-in provider)
   - No product change. Register a second chat model that is **not loaded**, set it as the Work's critic
     (`setWorkCriticModel`, `helpers/api.ts:479`), run `composition-generate.spec.ts`.
   - Break: `CRITIQUE_TIMEOUT_MS` removed (20s default) → the critic card fails with `Request timed out`.
@@ -174,7 +175,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
     fire-and-forget, never blocking navigation or onboarding. Once per sign-in, latched.
   - Vitest: one call after sign-in; none on refresh; a failed call shows nothing to the user.
   - Log: `console.debug` only, behind the existing debug flag.
-- [ ] **T12** — **Live: a sign-in provisions the owner's books and nobody else's**
+- [x] **T12** — **Live: a sign-in provisions the owner's books and nobody else's** (Cycle 4)
   - On `lw-iso` after rebuilding `book-service` and `frontend`: an account with unprovisioned books signs
     in; afterwards all its books have projects; a second account's unprovisioned books are unchanged.
 
@@ -190,6 +191,15 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
   - E2E: `ChapterComposePanel.critic` (`pages/ChapterComposePanel.ts:93-98`) may need to follow the verdict to
     wherever it now renders. That is a PO-ordered behaviour change, recorded as such in the cycle — not a
     test edited to accommodate a fix (Rule 2).
+
+### Lane F — retire the legacy chapter editor (PO, 2026-09-18, mid-run)
+
+- [x] **T16** — **The retired chapter editor has no route and no links** (Cycle 4)
+  - PO: *"help me retire the routing, so no one can go to that page anymore … we only have writing studio now"*.
+  - `/books/:bookId/chapters/:chapterId/edit` now only redirects to `/books/:bookId/studio?chapter=:chapterId`.
+    Every in-app link goes to the Studio via `lib/studioRoutes.ts`. `ChapterEditorPage.tsx` and its own unit test are deleted.
+- [ ] **T17** — **The E2E specs that drove the retired page run in the Writing Studio**
+  - 8 specs reach the old page through `ChapterComposePanel.gotoEditor` or `ChaptersTab`. After T16 they land in the Studio, so each must drive the Studio's surfaces. The claim each one makes stays the same; only the page it drives changes.
 
 ### Lane Z — close
 
@@ -402,3 +412,72 @@ RESTORED byte-exact   composition suite 1093 passed · tsc --noEmit clean
 ```
 
 **AC impact.** AC-7 🚧: only the live T12 run remains. AC-8 🚧: unit-proven here; the E2E leg runs in T15.
+
+### Cycle 4 — T4, T5, T12, T16: measured live, a stuck-forever 409 found and fixed, the old editor retired
+
+**T4 — real runs.** Both composition images were rebuilt and marker-grepped in the running containers (`PlanForgeTruncated` 3, `touch_running` 1). 30 real plan runs went through the API on `lw-iso` (account `iso-evidence@loreweave.dev`, gemma-4-26b-a4b-qat, the pass-rail premise).
+
+```
+runs: 30   proposed 30 (29 × 3 arcs, 1 × 4 arcs)   final failures 0   mean 38 s
+llm_jobs (usage_purpose=plan_forge, since 15:36:56Z):
+  analyze        | length | completed |  1 | 109 s | 12941 tokens   <- a loop ran to the cap
+  analyze_retry1 | stop   | completed |  1 |   8 s |  1672 tokens   <- the ladder regenerated it
+  analyze        | stop   | completed | 29 |  13 s
+  materialize    | stop   | completed | 30 |  12 s
+generation_job (plan_forge*, same window): completed 30 — one row per run, none started twice
+```
+
+Before this plan, that one run would have died on `LLM job unusable: truncated`: the measured baseline was 2 truncated of 31. The drop condition (more than half the regenerations also truncating, or no improvement on 2/31) did not fire. For L2 the 30 bounded `materialize` calls add to the record: **0/40 truncated bounded vs 3/17 unbounded, Fisher p ≈ 0.023** (was 0.27 on 0/10). The two arms were run on different days and builds, so this is strong evidence, not a controlled A/B. No run came near 900s, so the heartbeat itself was not exercised live. Its proof is Cycle 1's bite; here the evidence is only that nothing ran twice.
+
+**T5 — the critic ceiling, re-broken.** The plain cold load could not bite. With the 20s ceiling, `composition-generate` passed: LM Studio evicted and reloaded the 26B critic on its own (nobody touched LM Studio), and the critic job took 18s, just under 20. Per the plan's own fallback, a deliberately slow stand-in replaced it: a pass-through proxy on the host (`:1299`) holding every chat POST 45s. The account's LM Studio provider was pointed at it for the two runs, then pointed back to `:1234`. Nothing about LM Studio was controlled.
+
+```
+BROKEN  frontend rebuilt with the critique call's timeoutMs removed (bundle: `token:n})` — no timeoutMs)
+  Error: expect(locator).toBeVisible() failed
+  Locator: getByTestId('dock-slot-compose').getByTestId('compose-critic')   element(s) not found
+  llm_jobs: prose_critic | completed | 61 s   <- the server finished; the browser had given up at 20 s
+RESTORED api.ts byte-identical to HEAD, frontend rebuilt (bundle: `token:n,timeoutMs:Daa`)
+  ok 1 composition-generate … runs the distinct-model critic on accept (2.2m)
+  llm_jobs: prose_critic | completed | 63 s
+```
+
+This E2E drove the chapter-editor page that the PO has now retired (T16). The critique call is `compositionApi.critique` in `ComposeView`, and the Writing Studio mounts the same `ComposeView` (`SceneComposePanel` → `CompositionPanel` in solo mode). So the proof covers the code the Studio runs. T17 moves the spec itself onto the Studio.
+
+**T12 — sign-in backfill, live, and the defect it found.** A real browser sign-in (Playwright, `:25174`) fired `POST /v1/books/provision-missing` once. A reload fired it 0 more times.
+
+```
+before     iso-evidence: 105 books, 51 ready, 54 missing      other owner: 77 books, 65 ready, 12 missing
+sign-in 1  200 {"checked":105,"ready":51,"provisioned":45,"failed":9}    (566 ms)
+after 1    iso-evidence: 105 / 96 / 9                          other owner: 77 / 65 / 12  (untouched)
+```
+
+All 9 failures were `409` from composition `POST /work`, and they were not caused by this plan. Each of those books had an **unmarked knowledge project** plus a **pending Work**. `create_work` ran the C16 backfill step only in its `none` branch. `unmarked_*` fell through to `works.create`, which hit a `UniqueViolation`; the re-get by project found nothing, and it returned `409 WORK_CREATE_CONFLICT` on every attempt. Opening the book in the Studio calls the same `POST /work`, so these books could never have been provisioned by any path.
+
+- **Fix** (`routers/works.py`): the pending-Work step now runs for every branch that reaches a project.
+- **Unit test** `test_post_work_backfills_a_PENDING_work_onto_an_existing_UNMARKED_project`. Bite, with the step moved back inside the `none` branch: `AssertionError: {'detail': {'code': 'WORK_CREATE_CONFLICT'}} / assert 409 == 201`, the live failure word for word. Restored: green. Composition unit suite: 4012 passed, 2 failed (the same two as Cycle 1).
+- **Live**, after rebuilding both composition images:
+
+```
+sign-in 2  200 {"checked":105,"ready":96,"provisioned":9,"failed":0}
+after 2    iso-evidence: 105 / 105 / 0                         other owner: 77 / 65 / 12  (untouched)
+stuck book 01a09bf9-2b4f-…: 1 work, project=01a09bf9-2b82-… (its existing knowledge project), pending=false
+```
+
+**T16 — the legacy chapter editor retired (PO instruction mid-run).**
+- `App.tsx`: the route renders `RetiredChapterEditorRedirect`, which sends the old path to `studioChapterPath(bookId, chapterId)` with `replace`.
+- Re-pointed to the Studio: 7 call sites (`RevisionCompareView`, `BeatSheetView`, `CastEntityRow`, `CharacterArcView`, `SceneGraphCanvas`, `TimelineView`, `ReaderPage`).
+- Deleted: `ChapterEditorPage.tsx` (1404 lines, imported only by `App.tsx`) and its own unit test.
+- Five view tests pinned the old destination. Their expectation now names the Studio deep link. That is a destination change the PO ordered, and each test still asserts that clicking opens that chapter.
+
+This also settles T13's scope. The duplicated critic existed on the retired page's dock. The Studio mounts `CompositionPanel` in solo mode, where `criticShownElsewhere` is false by construction, so T13's change is dormant in the Studio.
+
+```
+BROKEN (TimelineView links to the old path again)
+  × no source file builds a link to the retired editor path
+  × clicking an event opens its chapter
+BROKEN (the redirect drops the chapter)
+  AssertionError: expected '/books/b-1/studio' to be '/books/b-1/studio?chapter=c-9'
+RESTORED byte-exact · tsc --noEmit clean · vitest 869 files, 6527 passed
+```
+
+**AC impact.** AC-2 ✅, AC-3 ✅, AC-4 ✅ (stand-in, as the plan allowed), AC-7 ✅, AC-12 🚧 (T17 open). AC-8 stays 🚧 because its E2E leg runs in T15, after T17.

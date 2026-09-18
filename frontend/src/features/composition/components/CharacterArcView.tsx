@@ -14,6 +14,7 @@ import { arcBandSplit, useCharacterArc } from '../hooks/useCharacterArc';
 import { TimelineEventPoint } from './TimelineEventPoint';
 import { SpoilerCutMarker } from './SpoilerCutMarker';
 import { ArcRelationsStrip } from './ArcRelationsStrip';
+import { studioChapterPath } from '@/lib/studioRoutes';
 
 const PAD = 40;
 const MIN_SPACING = 110;
@@ -65,7 +66,7 @@ export function CharacterArcView({
   }, [arc.roster, arc.effectiveEntityId, arc.focusName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const gone = arc.state?.status === 'gone';
-  const openChapter = (cid: string) => navigate(`/books/${bookId}/chapters/${cid}/edit`);
+  const openChapter = (cid: string) => navigate(studioChapterPath(bookId, cid));
 
   return (
     <div className="flex h-full flex-col" data-testid="composition-arc">

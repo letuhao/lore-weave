@@ -15,7 +15,7 @@ import { ChatPage } from '@/pages/ChatPage';
 import { AssistantPage } from '@/features/assistant/components/AssistantPage';
 import { RoleplayPage } from '@/features/roleplay/pages/RoleplayPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
-import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
+import { RetiredChapterEditorRedirect } from '@/pages/RetiredChapterEditorRedirect';
 import { WritingStudioPage } from '@/pages/WritingStudioPage';
 import { PopoutHost } from '@/features/composition/components/workspace/PopoutHost';
 import { StudioPopoutHost } from '@/features/studio/popout/StudioPopoutHost';
@@ -134,7 +134,9 @@ export function App() {
 
           {/* Editor (collapsed sidebar) */}
           <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
-            <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
+            {/* RETIRED (2026-09-18): the legacy chapter editor. The Writing Studio is the only writing
+                surface; this path only redirects the same chapter into it. */}
+            <Route path="/books/:bookId/chapters/:chapterId/edit" element={<RetiredChapterEditorRedirect />} />
             <Route path="/books/:bookId/chapters/:chapterId/compare" element={<ChapterComparePage />} />
             <Route path="/books/:bookId/chapters/:chapterId/translations" element={<ChapterTranslationsPage />} />
             <Route path="/books/:bookId/wiki/:articleId/edit" element={<WikiEditorPage />} />

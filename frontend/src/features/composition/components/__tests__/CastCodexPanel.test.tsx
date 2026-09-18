@@ -95,7 +95,7 @@ describe('CastCodexPanel (T2.1)', () => {
     expect(screen.getByTestId('cast-fact').textContent).toContain('broke the oath');
     // clicking an event jumps to its chapter.
     fireEvent.click(screen.getByTestId('cast-event'));
-    expect(navigateFn).toHaveBeenCalledWith('/books/b/chapters/ch1/edit');
+    expect(navigateFn).toHaveBeenCalledWith('/books/b/studio?chapter=ch1');
   });
 
   it('shows the extract-first empty state when there is no knowledge project', () => {

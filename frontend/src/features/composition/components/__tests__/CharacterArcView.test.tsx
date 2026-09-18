@@ -114,7 +114,7 @@ describe('CharacterArcView (T2.4)', () => {
   it('clicking an event opens its chapter', () => {
     render0();
     fireEvent.click(eventEl('e2'));
-    expect(navigate).toHaveBeenCalledWith('/books/b/chapters/c-e2/edit');
+    expect(navigate).toHaveBeenCalledWith('/books/b/studio?chapter=c-e2');
   });
 
   it('shows an empty hint when the character has no events', () => {

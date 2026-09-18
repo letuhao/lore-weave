@@ -14,6 +14,7 @@ import { localizedBeat, localizedTemplateKind, localizedTemplateName } from '../
 import { useOutline, useOutlineMutations } from '../hooks/useOutline';
 import { BeatCard, NodeChip, type BeatFill } from './BeatCard';
 import type { OutlineNode, StructureTemplate } from '../types';
+import { studioChapterPath } from '@/lib/studioRoutes';
 
 export type BeatEntry = { beat: { key: string; purpose: string }; nodes: OutlineNode[]; state: BeatFill };
 
@@ -83,7 +84,7 @@ export function BeatSheetView({ bookId, projectId, token }: { bookId: string; pr
     if ((node.beat_role ?? null) === beatRole) return; // no-op
     m.setBeatRole.mutate({ nodeId: node.id, beatRole, version: node.version }, { onError });
   };
-  const navigateTo = (node: OutlineNode) => { if (node.chapter_id) navigate(`/books/${bookId}/chapters/${node.chapter_id}/edit`); };
+  const navigateTo = (node: OutlineNode) => { if (node.chapter_id) navigate(studioChapterPath(bookId, node.chapter_id)); };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),

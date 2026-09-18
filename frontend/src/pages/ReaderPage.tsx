@@ -17,6 +17,7 @@ import { extractSpeakableBlocks } from '@/lib/audio-utils';
 import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
 import { LoreSeekerPanel } from '@/features/books/components/LoreSeekerPanel';
 import { useBookReaderContent, computeReadingStats } from '@/features/books/hooks/useBookReaderContent';
+import { studioChapterPath } from '@/lib/studioRoutes';
 
 export function ReaderPage() {
   const { t } = useTranslation('reader');
@@ -230,7 +231,7 @@ export function ReaderPage() {
             <Sun className="h-4 w-4" />
           </button>
           {accessToken && user && book?.owner_user_id === user.user_id && (
-            <Link to={`/books/${bookId}/chapters/${chapterId}/edit`} className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title={t('edit_chapter')}>
+            <Link to={studioChapterPath(bookId!, chapterId)} className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title={t('edit_chapter')}>
               <Pencil className="h-4 w-4" />
             </Link>
           )}

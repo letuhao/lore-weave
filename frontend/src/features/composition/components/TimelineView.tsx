@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { TIMELINE_LIMIT, axisX, useTimeline, visibleOnPage } from '../hooks/useTimeline';
 import { SpoilerCutMarker } from './SpoilerCutMarker';
 import { TimelineEventPoint } from './TimelineEventPoint';
+import { studioChapterPath } from '@/lib/studioRoutes';
 
 const PAD = 40;
 const MIN_SPACING = 96;
@@ -40,7 +41,7 @@ export function TimelineView({ bookId, chapterId, token }: { bookId: string; cha
   // dimming (i >= vop) stays correct on every page regardless.
   const showCut = tl.visibleCount != null && tl.visibleCount >= tl.offset && tl.visibleCount <= tl.offset + count;
 
-  const openChapter = (cid: string) => navigate(`/books/${bookId}/chapters/${cid}/edit`);
+  const openChapter = (cid: string) => navigate(studioChapterPath(bookId, cid));
   const totalPages = Math.max(1, Math.ceil(tl.total / TIMELINE_LIMIT));
 
   return (

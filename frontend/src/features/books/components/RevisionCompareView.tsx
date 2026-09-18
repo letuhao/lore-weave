@@ -7,6 +7,7 @@ import { ArrowLeft, Columns2, AlignJustify } from 'lucide-react';
 import { useRevisionCompare } from '@/features/books/hooks/useRevisionCompare';
 import { RevisionDiff } from '@/features/books/components/RevisionDiff';
 import type { RevisionSummary } from '@/features/books/types';
+import { studioChapterPath } from '@/lib/studioRoutes';
 
 type Props = {
   token: string | null;
@@ -69,7 +70,7 @@ export function RevisionCompareView({
         {showBackLink && (
           <button
             data-testid="compare-back"
-            onClick={() => navigate(`/books/${bookId}/chapters/${chapterId}/edit`)}
+            onClick={() => navigate(studioChapterPath(bookId, chapterId))}
             className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:text-primary"
           >
             <ArrowLeft className="h-3 w-3" /> {t('compare.back', { defaultValue: 'Back to editor' })}

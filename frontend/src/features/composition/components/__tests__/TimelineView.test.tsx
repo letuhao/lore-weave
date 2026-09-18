@@ -94,7 +94,7 @@ describe('TimelineView (T2.3)', () => {
   it('clicking an event opens its chapter', () => {
     render(<TimelineView bookId="b" chapterId="ch" token="t" />);
     fireEvent.click(eventEl('e2'));
-    expect(navigate).toHaveBeenCalledWith('/books/b/chapters/c2/edit');
+    expect(navigate).toHaveBeenCalledWith('/books/b/studio?chapter=c2');
   });
 
   it('the entity picker narrows the axis (refetch by entity)', () => {
