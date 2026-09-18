@@ -74,7 +74,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 | **AC-7** | After an owner signs in, every book they own has a knowledge project; no other user's book is touched; only the owner's bearer is used | Go endpoint tests + vitest trigger test + live T12 counts | T10, T11, T12 | ✅ met — Cycle 4: 105/105 of the owner's books after sign-in; another owner's 65/77 untouched |
 | **AC-8** | The critic result appears once on screen, and the override gate stays reachable | `ComposeView.test.tsx` layout cases + `composition-generate.spec.ts` | T13 | ✅ met — Cycle 3 (unit, 3 bites) + Cycle 7 (`composition-generate` green in the full run, through the Studio) |
 | **AC-9** | Every item left open ships with a Known issues entry: what, who, workaround | `scripts/changelog-gate.py` + the `[0.1.0]` section text | T14 | ✅ met — Cycle 5: three Known issues entries (what, who, workaround); both gate modes green, release mode bitten |
-| **AC-10** | The whole suite is green on rebuilt images: 0 failed, 0 skipped | full Playwright + unit run pasted, image ids listed | T15 | 🚧 partial — Cycle 7: run 3 **201 passed, 0 failed, 0 skipped**, but runs 1–2 had 4 failures that pass alone and whose cause is not confirmed |
+| **AC-10** | The whole suite is green on rebuilt images: 0 failed, 0 skipped | full Playwright + unit run pasted, image ids listed | T15 | ✅ met — Cycle 10: run 6 on the final images, **201 passed, 0 failed, 0 skipped**; every red of runs 1–5 has a written cause except two single occurrences, tracked as `DEFERRED.md` #165 |
 | **AC-12** | No route or link reaches the retired chapter editor; an old URL lands on the same chapter in the Writing Studio | `RetiredChapterEditorRedirect.test.tsx` (redirect + a source scan) + the 5 re-pointed view tests | T16, T17 | ✅ met — Cycle 4 (app, bitten) + Cycle 6 (all 8 migrated specs green through the Studio) |
 | **AC-11** | The PO has decided GO or NO-GO for v0.1.0 | the PO's own words quoted in this plan | | ❓ unknown |
 
@@ -208,7 +208,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
     `scripts/changelog-gate.py` accepts that subsection.
   - Entries: MCP-created books provision on first open (Q2); the `materialize` string bounds are a
     guardrail not yet measured (L2); anything T4 or T5 leaves open. Each says what, who, workaround.
-- [~] **T15** — **The whole suite, on rebuilt images** (Cycle 7 — run 3 green; 4 intermittent reds from runs 1–2 unexplained)
+- [x] **T15** — **The whole suite, on rebuilt images** (Cycles 7–10; run 6 on the final images: 201 / 0 / 0)
   - Rebuild every image touched (composition ×2, book-service, frontend). Run the full Playwright suite and
     the unit suites. 0 failed, 0 skipped; any skip is answered (Rule 6). Update the handover report.
 
@@ -673,3 +673,35 @@ run 5    200 passed, 1 failed (the first-visit reload above)
 ```
 
 **AC impact:** AC-10 🚧. Every red in runs 1, 2, 4 and 5 now has a written cause except two: the flywheel and the run-1 inline-correction failure, which passed in runs 3, 4 and 5 and stay listed as unexplained. The next full run is recorded in Cycle 10.
+
+### Cycle 10 — T15: the final images, run 6 green, and the two reds still without a cause
+
+**Investigated:** run 6, on images that carry every fix in this plan:
+- Cycle 4: composition's pending-Work seam.
+- Cycle 8: the `iat` parity fix, in all 13 Python images.
+- Cycle 9: the first-visit reload fix, in the frontend.
+
+Nothing was restarted within the knowledge summary scheduler's 10-minute window before the run (Cycle 9). The check-in during the run showed it progressing, not hung: test 10 landed seconds after it was read.
+
+**Issues:** none — every red across the six runs is either fixed in this plan (Cycles 6, 8, 9), explained as an environment condition (Cycles 8, 9), or tracked as `DEFERRED.md` #165
+
+**Fix:** none in product code this cycle. `DEFERRED.md` #165 records the two single reds that no evidence yet explains, so they are neither lost nor called flaky. The handover report gains an update section.
+
+**Proof:**
+
+```
+run 6   201 passed (18.5m)   0 failed   0 skipped
+
+the six runs, and what each red turned out to be
+  run 1  198/3   creation-unblock-world  -> T7 made both world books canon (spec premise, Cycle 6)
+                 B8.5 revision compare   -> DB wall clock stepped back mid-seed (proven, Cycle 8; DEFERRED #164)
+                 inline-correction       -> no cause found (DEFERRED #165)
+  run 2  199/2   studio-publish 401      -> iat ahead of the verifier's clock (fixed, Cycle 8)
+                 composition-flywheel    -> no cause found (DEFERRED #165)
+  run 3  201/0
+  run 4  198/2+1 extraction x2           -> summary scheduler fired 10 min after a restart; two models (Cycle 9)
+  run 5  200/1   context-inspector login -> first-visit service-worker reload (fixed, Cycle 9)
+  run 6  201/0   final images
+```
+
+**AC impact:** AC-10 ✅ on the final images. The two unexplained single reds are carried forward, not waived.

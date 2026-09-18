@@ -233,3 +233,25 @@ put back and that same test goes red for the same reason, then the fix is restor
 ### Not done, on purpose
 
 Nothing is pushed. The commits sit on `fix/v0.1.0-release-gaps` locally. Nothing is tagged or published.
+
+## Update — 2026-09-19, after the v0.1.0 leftovers plan
+
+The leftovers plan ([`docs/plans/2026-09-18-close-v010-leftovers.md`](../plans/2026-09-18-close-v010-leftovers.md)) closed or bounded every open item, and the full suite is green on images that carry all of it: **201 passed · 0 failed · 0 skipped** (run 6).
+
+What changed for a user:
+- **Plan runs no longer die** when the model repeats itself to the token limit. Measured on 30 real runs: 0 failures, previously 2 of 31.
+- **A new book gets its knowledge project when it is created.** Signing in sets up any of your books that are still missing one.
+- **The critic waits 240 s**, not 20.
+- **The legacy chapter editor is retired.** Its address opens the same chapter in the Writing Studio.
+
+Found and fixed while getting there:
+- **Some books could never be provisioned.** Composition returned `409 WORK_CREATE_CONFLICT` for a book that had both an unmarked knowledge project and a pending Work.
+- **Python services rejected valid tokens** whenever their clock ran a moment behind auth-service's. Go services never did.
+- **A first-time visitor's page reloaded itself** about a second after loading, wiping whatever they had typed.
+
+Six full runs were needed to get there, and every red is accounted for in the plan's Cycles 7–10. Two single failures have no proven cause yet. They are tracked, not dismissed: `DEFERRED.md` #165.
+
+The dev Docker VM's clock steps back 1.4 s every 30 s. That is the host's time sync, and it is worth fixing on the machine: it makes time-ordered data and token checks misbehave in local runs (`DEFERRED.md` #164).
+
+**Still yours: the ship decision (AC-11).**
+
