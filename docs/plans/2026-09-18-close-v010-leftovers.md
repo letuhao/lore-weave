@@ -643,7 +643,7 @@ LIVE AFTER (13 Python images rebuilt; verify_iat present in each container's SDK
 
 ### Cycle 9 — T15 runs 4 and 5: a scheduler collision, and a first visit that reloads itself
 
-**Investigated:**
+**Investigated:** both runs' failures, from their kept traces, `llm_jobs` and the service code:
 - **Run 4: 198 passed, 2 failed, 1 did not run.** `demo-pipeline-3c` and `enrichment-profile` failed; the third test is serial after one of them. Both glossary-extraction jobs ended `completed_with_errors`: `llm_error` batches, `LLMTransientRetryNeededError`, then `LLM_CIRCUIT_OPEN`. In `llm_jobs`, LM Studio had answered `Failed to load model "google/gemma-4-26b-a4b-qat" … Engine protocol startup was aborted` and the same for gemma-4-12b. Two models were requested at once: the suite's 12B extraction, and a background `kg_summary` job on another account's 26B model.
   - `kg_summary` comes from knowledge-service's summary scheduler, which fires `DEFAULT_STARTUP_DELAY_S = 600` seconds after the service starts. Cycle 8's rebuild restarted knowledge-service at about 18:54; the summary job ran at 19:04, mid-suite.
   - That is the stack's "one strong model at a time" limit, triggered by restarting services before a run. It is not a code defect. Re-run with nothing restarted: `3 passed (3.6m)`.
