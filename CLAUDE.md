@@ -11,5 +11,6 @@ then actively misleads. **One home, one name.**
 | A new contributor (human) | [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, layout, how to open a PR |
 | An AI coding agent, any vendor | [`AGENTS.md`](AGENTS.md) — invariants, standards, workflow, bug lore |
 | Looking for what's in flight | [`docs/sessions/SESSION_HANDOFF.md`](docs/sessions/SESSION_HANDOFF.md) |
+| Starting new work — idea to ship | [`AGENTS.md` → Pipeline](AGENTS.md) — `/ideate` first, then one command per phase |
 | Looking for a cross-cutting rule | [`docs/standards/README.md`](docs/standards/README.md) |
 | Looking for your local test account | [`docs/dev/LOCAL_TEST_ENV.example.md`](docs/dev/LOCAL_TEST_ENV.example.md) — copy it, it is git-ignored |
