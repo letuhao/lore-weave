@@ -319,3 +319,34 @@ describe('ComposeView (C26 — derivative override gate surfacing)', () => {
     expect(screen.queryByTestId('compose-override-gate')).toBeNull();
   });
 });
+
+// L5 (plan 2026-09-18) — one screen shows the critic once. With the critic panel on screen the
+// inline verdict is a duplicate; the override gate stays, because its Regenerate lives only here.
+describe('ComposeView (L5 — the critic shown once)', () => {
+  const blockedCritic = { critic: {
+    coherence: 4, voice_match: 3, pacing: 3, canon_consistency: 5, violations: [],
+    needs_regeneration: true, regen_exhausted: false, regen_attempts: 1, regen_cap: 3,
+    derivative_findings: [{ kind: 'override_slip', name: 'n', field: 'f', expected: 'e', found: 'x' }],
+  } };
+
+  it('panel NOT on screen: the full inline verdict renders', () => {
+    mockCritique.critique.data = { critic: { coherence: 4, voice_match: 3, pacing: 3, canon_consistency: 5, violations: [] } };
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    expect(screen.getByTestId('compose-critic')).toBeTruthy();
+  });
+
+  it('panel ON screen: no inline verdict copy', () => {
+    mockCritique.critique.data = { critic: { coherence: 4, voice_match: 3, pacing: 3, canon_consistency: 5, violations: [] } };
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} criticShownElsewhere />);
+    expect(screen.queryByTestId('compose-critic')).toBeNull();
+    expect(screen.queryByTestId('compose-critic-gate-only')).toBeNull();
+  });
+
+  it('panel ON screen with the gate raised: the gate and its Regenerate stay reachable', () => {
+    mockCritique.critique.data = blockedCritic;
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} criticShownElsewhere />);
+    expect(screen.queryByTestId('compose-critic')).toBeNull();
+    expect(screen.getByTestId('compose-override-gate')).toBeTruthy();
+    expect(screen.getByTestId('compose-override-regenerate')).toBeTruthy();
+  });
+});

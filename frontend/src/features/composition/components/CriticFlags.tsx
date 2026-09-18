@@ -11,11 +11,16 @@ export function CriticFlags({
   critic,
   onRegenerate,
   onDismiss,
+  gateOnly = false,
 }: {
   critic: NonNullable<Critic>;
   jobId?: string | null;
   onRegenerate?: () => void;
   onDismiss?: (ruleId: string) => void;
+  /** L5 — the verdict is already on screen in the critic panel, so render ONLY the C26
+   *  override gate (it carries the Regenerate action the read-only panel does not), or
+   *  nothing when the gate is not raised. */
+  gateOnly?: boolean;
 }) {
   const { t } = useTranslation('composition');
   const dims: [string, number | null][] = [
@@ -27,9 +32,8 @@ export function CriticFlags({
   // fails OPEN (we surface the finding but no longer block). The findings explain WHY.
   const findings = critic.derivative_findings ?? [];
   const blocked = critic.needs_regeneration === true;
-  return (
-    <div data-testid="compose-critic" className="rounded border border-neutral-200 p-2 text-xs dark:border-neutral-700">
-      {(blocked || critic.regen_exhausted) && (
+  const gateRaised = blocked || critic.regen_exhausted === true;
+  const gate = gateRaised ? (
         <div
           data-testid="compose-override-gate"
           className={`mb-2 rounded p-2 ${blocked ? 'bg-red-50 dark:bg-red-950' : 'bg-amber-50 dark:bg-amber-950'}`}
@@ -64,7 +68,13 @@ export function CriticFlags({
             </button>
           )}
         </div>
-      )}
+  ) : null;
+  if (gateOnly) {
+    return gate ? <div data-testid="compose-critic-gate-only" className="text-xs">{gate}</div> : null;
+  }
+  return (
+    <div data-testid="compose-critic" className="rounded border border-neutral-200 p-2 text-xs dark:border-neutral-700">
+      {gate}
       <div className="mb-1 font-medium">{t('critic', { defaultValue: 'Critic (advisory)' })}</div>
       {critic.error ? (
         <div className="text-neutral-500">{t('criticUnavailable', { defaultValue: 'Critic unavailable.' })}</div>

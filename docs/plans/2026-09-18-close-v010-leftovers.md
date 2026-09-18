@@ -71,8 +71,8 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 | **AC-4** | The 240s critic ceiling is proven by re-breaking it on a real cold model load | `composition-generate.spec.ts` run pasted twice: 20s ceiling red, 240s green | T5 | ❌ not met |
 | **AC-5** | A book created through REST has its knowledge project within 5s without anyone opening it, and a provisioning failure never fails the create | Go handler tests with an `httptest` composition fake + live T9 query | T6, T7, T9 | ✅ met — Cycle 2: 4 bites; live project 0.7s after create, owner-matched |
 | **AC-6** | Creating a book and opening it at once yields exactly one Work and one knowledge project | live race run on `lw-iso` with row counts pasted | T8 | ✅ met — Cycle 2: 10/10 books, three racing callers each, exactly 1 Work + 1 project |
-| **AC-7** | After an owner signs in, every book they own has a knowledge project; no other user's book is touched; only the owner's bearer is used | Go endpoint tests + vitest trigger test + live T12 counts | T10, T11, T12 | 🚧 partial — T10 proven in Cycle 2 (3 bites); T11, T12 open |
-| **AC-8** | The critic result appears once on screen, and the override gate stays reachable | `ComposeView.test.tsx` layout cases + `composition-generate.spec.ts` | T13 | ❌ not met |
+| **AC-7** | After an owner signs in, every book they own has a knowledge project; no other user's book is touched; only the owner's bearer is used | Go endpoint tests + vitest trigger test + live T12 counts | T10, T11, T12 | 🚧 partial — T10 (Cycle 2) and T11 (Cycle 3) proven; the live T12 run is open |
+| **AC-8** | The critic result appears once on screen, and the override gate stays reachable | `ComposeView.test.tsx` layout cases + `composition-generate.spec.ts` | T13 | 🚧 partial — unit proof and 3 bites in Cycle 3; the E2E run is owed by T15 |
 | **AC-9** | Every item left open ships with a Known issues entry: what, who, workaround | `scripts/changelog-gate.py` + the `[0.1.0]` section text | T14 | ❌ not met |
 | **AC-10** | The whole suite is green on rebuilt images: 0 failed, 0 skipped | full Playwright + unit run pasted, image ids listed | T15 | ❌ not met |
 | **AC-11** | The PO has decided GO or NO-GO for v0.1.0 | the PO's own words quoted in this plan | | ❓ unknown |
@@ -169,7 +169,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
   - Tests: another user's books are never requested; the caller's bearer is the only one sent;
     counts are right with mixed 200/500 fakes; the deadline stops the loop.
   - Log: INFO `book.provision_missing user_id=<id> checked=<n> provisioned=<n> failed=<n> ms=<n>`.
-- [ ] **T11** — **The frontend fires it once per sign-in**
+- [x] **T11** — **The frontend fires it once per sign-in** (Cycle 3)
   - Files: `frontend/src/` — an app-level effect keyed on a **new sign-in** (not on every token refresh),
     fire-and-forget, never blocking navigation or onboarding. Once per sign-in, latched.
   - Vitest: one call after sign-in; none on refresh; a failed call shows nothing to the user.
@@ -180,7 +180,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 
 ### Lane E — show the critic once (L5, Q3)
 
-- [ ] **T13** — **Hide the inline critic while the critic panel is on screen**
+- [x] **T13** — **Hide the inline critic while the critic panel is on screen** (Cycle 3)
   - Files: `ComposeView.tsx`, possibly a small selector in `workspace/dock.ts`, `ComposeView.test.tsx`.
   - First verify which layouts actually show both at once (a tabbed dock shows one tab at a time; floated
     and popped-out panels can sit beside Compose). Hide the inline `CriticFlags` only in those layouts.
@@ -363,3 +363,42 @@ T8 LIVE — 10 books; each: REST create (its own POST /work) + two concurrent St
 T8 is a verification row. The guards it exercises are composition's, and they predate this plan. This cycle added nothing there that a bite could remove. T9's "before" is the measured state the plan starts from: 298 books with no project until someone opened them. The live check repeats the bitten T7 behaviour on the real stack.
 
 **AC impact.** AC-5 ✅, AC-6 ✅, AC-7 🚧 (T11, T12 open).
+
+### Cycle 3 — T11, T13: the backfill fires once per sign-in; one screen shows the critic once
+
+**Investigated.**
+- `AuthProvider.setTokens` is called only by `LoginPage` and `RegisterPage`. A silent refresh writes storage and fires `lw-auth-refreshed`, and a page reload reads storage. Neither goes through `setTokens`, so it is the exact "new sign-in" seam.
+- `apiJson` counts every request in the global operation tracker, which drives `GlobalOperationProgress`. A 90s background sweep would light the progress bar for work the author never asked for.
+- The dock shows one tab at a time. Compose and the critic panel are on screen together only when the critic is floated, popped out, or the active tab while Compose is floated.
+- `CriticPanel` renders the verdict **without** `onRegenerate`. So the C26 override gate's Regenerate action exists only in the inline copy, and removing the inline copy outright would have removed it.
+
+**Fix.**
+- `lib/provisionOnSignIn.ts`: a raw `fetch` with `keepalive`, marked `X-LW-Operation-Tracked: 1` so the tracker ignores it. Failures go to `console.debug` in dev only. `setTokens` calls it when it receives an access token.
+- `workspace/dock.ts` `criticPanelShowing(layout, activeTab)`: floated or popped out and not hidden, or docked as the active tab.
+- `CriticFlags` `gateOnly`: render only the override gate, or nothing when it is not raised.
+- `CompositionPanel` passes `criticShownElsewhere` to `ComposeView` on desktop dock layouts only. Mobile and the popout shell mount one panel at a time, and the flag-off strip shows one tab.
+
+The E2E locator (`ChapterComposePanel.critic`, scoped to `dock-slot-compose`) needed **no change**. In the default layout the critic panel is a background tab, so the full inline verdict still renders there.
+
+**Proof:**
+
+```
+T11 BROKEN (trigger removed)
+  × fires ONE provision-missing request with the new bearer on sign-in
+  AssertionError: expected [] to have a length of 1 but got +0
+T11 BROKEN (also fired on refresh)
+  × does NOT fire on a silent token refresh, a page reload, or a logout
+  AssertionError: expected [ [ …(2) ] ] to have a length of +0 but got 1
+RESTORED byte-exact   3 passed
+
+T13 BROKEN (gateOnly ignored — the duplicate returns)
+  × panel ON screen: no inline verdict copy
+  × panel ON screen with the gate raised: the gate and its Regenerate stay reachable
+T13 BROKEN (gate dropped along with the verdict)
+  × panel ON screen with the gate raised: the gate and its Regenerate stay reachable
+T13 BROKEN (a background dock tab counted as on screen)
+  × docked: showing only as the active tab
+RESTORED byte-exact   composition suite 1093 passed · tsc --noEmit clean
+```
+
+**AC impact.** AC-7 🚧: only the live T12 run remains. AC-8 🚧: unit-proven here; the E2E leg runs in T15.

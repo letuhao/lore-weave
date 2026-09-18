@@ -39,7 +39,7 @@ import { PopoutBridge } from './workspace/PopoutBridge';
 import { MobilePanelSwitcher } from './MobilePanelSwitcher';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useWorkspaceLayoutOptional } from '../context/WorkspaceLayoutContext';
-import { visibleDockIds, hiddenDockIds, floatingDockIds, popoutDockIds, nextActiveAfterHide, defaultFloatRect } from '../workspace/dock';
+import { visibleDockIds, hiddenDockIds, floatingDockIds, popoutDockIds, nextActiveAfterHide, defaultFloatRect, criticPanelShowing } from '../workspace/dock';
 import type { Rect, WorkspacePanelId } from '../workspace/types';
 import { DivergenceWizardButton } from './DivergenceWizardButton';
 import { PromoteWhatIfButton } from './PromoteWhatIfButton';
@@ -420,6 +420,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
   // OFF / there's no provider, `floated` is always false ⇒ DockSlot renders the M2
   // visible/hidden div, byte-identical to before. In SOLO mode (the popout shell) only
   // `soloPanel` is mounted, forced visible, never floated/popped (it IS the window).
+  // L5 — one screen shows the critic once. Mobile and the popout shell mount one panel at a
+  // time, and the flag-OFF strip shows one tab, so only a desktop dock layout can show both.
+  const criticElsewhere = !solo && !isMobile && dockOn && criticPanelShowing(ws!.layout, activeTab);
   const slot = (id: WorkspacePanelId) => ({
     id,
     active: solo ? id === soloPanel : activeTab === id,
@@ -721,6 +724,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept, onApplyPo
             onGuideChange={setComposeGuide}
             canAdapt={adaptability.canAdapt}
             adaptSourceEmpty={adaptability.sourceEmpty}
+            criticShownElsewhere={criticElsewhere}
           />
         </DockSlot>
         <DockSlot {...slot('cowriter')}>

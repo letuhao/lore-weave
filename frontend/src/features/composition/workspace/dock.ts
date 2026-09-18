@@ -76,3 +76,17 @@ export function defaultFloatRect(openCount: number): Rect {
   const offset = (openCount % 6) * step;   // cascade, wrapping after 6 so it stays on-screen
   return { x: 96 + offset, y: 96 + offset, w: 520, h: 420 };
 }
+
+// ── L5 (plan 2026-09-18): is the critic panel on screen? ──────────────────────
+
+/** True when the standing `critic` panel is SHOWING somewhere the author can see it at the
+ *  same time as Compose: floated in-app, popped out to its own window, or the active docked
+ *  tab (only possible alongside Compose when Compose itself is floated — the dock shows one
+ *  tab at a time). Compose then hides its inline copy of the verdict, so one screen shows the
+ *  critic once. A hidden or merely-mounted-but-inactive panel is not showing. */
+export function criticPanelShowing(layout: WorkspaceLayout, activeTab: string): boolean {
+  const st = layout.panels.critic;
+  if (!st || st.hidden) return false;
+  if (st.placement === 'float' || st.placement === 'popout') return true;
+  return st.placement === 'dock' && activeTab === 'critic';
+}
