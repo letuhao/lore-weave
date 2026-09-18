@@ -640,3 +640,36 @@ LIVE AFTER (13 Python images rebuilt; verify_iat present in each container's SDK
 ```
 
 **AC impact:** AC-10 🚧 — one of the four unexplained reds is now explained and fixed, and one is explained and deferred with evidence. The next full run is recorded in Cycle 9.
+
+### Cycle 9 — T15 runs 4 and 5: a scheduler collision, and a first visit that reloads itself
+
+**Investigated:**
+- **Run 4: 198 passed, 2 failed, 1 did not run.** `demo-pipeline-3c` and `enrichment-profile` failed; the third test is serial after one of them. Both glossary-extraction jobs ended `completed_with_errors`: `llm_error` batches, `LLMTransientRetryNeededError`, then `LLM_CIRCUIT_OPEN`. In `llm_jobs`, LM Studio had answered `Failed to load model "google/gemma-4-26b-a4b-qat" … Engine protocol startup was aborted` and the same for gemma-4-12b. Two models were requested at once: the suite's 12B extraction, and a background `kg_summary` job on another account's 26B model.
+  - `kg_summary` comes from knowledge-service's summary scheduler, which fires `DEFAULT_STARTUP_DELAY_S = 600` seconds after the service starts. Cycle 8's rebuild restarted knowledge-service at about 18:54; the summary job ran at 19:04, mid-suite.
+  - That is the stack's "one strong model at a time" limit, triggered by restarting services before a run. It is not a code defect. Re-run with nothing restarted: `3 passed (3.6m)`.
+- **Run 5: 200 passed, 1 failed.** `context-inspector`'s `loginViaUI` timed out waiting for `/books`. The screenshot shows the login form with **both fields empty** and "Email is required". The kept trace shows the fills landing, and its network log shows `GET /login`, then `sw.js`, then `GET /login` twice more within 70 ms: the page reloaded itself **after** the test had typed.
+  - The cause is a product defect. `sw.js`'s `activate` calls `clients.claim()`, so on a visitor's **first** install the worker takes control of an uncontrolled page. That fires `controllerchange`, and `registerSW.ts` answered **every** `controllerchange` with `window.location.reload()`, although its own comment says it reloads only "after the user accepts + SKIP_WAITING".
+  - So every first-time visitor's page reloaded itself about a second after loading, and lost whatever they had started typing. The suite rarely noticed because a fresh browser context usually finishes the reload before the test types.
+
+**Issues:** none — the first-visit reload is fixed in this cycle; the scheduler collision is an operating constraint of the local stack, recorded here
+
+**Fix:** `frontend/src/pwa/registerSW.ts` records whether the page had a controller when it loaded, and reloads on `controllerchange` only if it did (the accepted-update case). A first install already runs the new worker and has nothing new to load into. New `src/pwa/__tests__/registerSW.test.ts`.
+
+**Proof:**
+
+```
+unit     registerSW.test.ts + UpdatePrompt.test.tsx: 3 passed
+BROKEN   (reload on every controllerchange again)
+         × does NOT reload on a first install (no controller before) — the visitor keeps what they typed
+         AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+RESTORED byte-exact (cmp): 3 passed · tsc --noEmit clean
+LIVE     fresh browser profile, open /login, watch 6 s, 5 visits each
+         OLD image   main-frame navigations = 3, 3, 3, 3, 3   -> reloaded itself 5/5
+         FIXED image document loads         = 1, 1, 1, 1, 1   -> reloaded itself 0/5
+         (same probe with the old metric on the fixed image: navigations = 2 — the in-page route
+          change remains, the full reload is gone)
+run 4    198 passed, 2 failed (scheduler collision above), 1 did not run — re-run of those: 3 passed
+run 5    200 passed, 1 failed (the first-visit reload above)
+```
+
+**AC impact:** AC-10 🚧. Every red in runs 1, 2, 4 and 5 now has a written cause except two: the flywheel and the run-1 inline-correction failure, which passed in runs 3, 4 and 5 and stay listed as unexplained. The next full run is recorded in Cycle 10.
