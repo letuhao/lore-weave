@@ -25,26 +25,28 @@ test.describe('Composition happy-path journey (U1→U7) [model-gated]', () => {
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
 
-      // U1 — set up the co-writer (no Work yet)
+      // U1 — in the Writing Studio the co-writer is READY without a setup step: the book got its
+      // Work when it was created (book-service provisions it, plan 2026-09-18 T7) and the Studio
+      // ensures one on open (useEnsureWork). The legacy page's "Set up co-writer" click described
+      // a state the Studio never shows, so the Studio's form of the claim is: no setup button, and
+      // the scene controls are already there.
       await panel.openComposeTab();
-      await expect(panel.setupButton).toBeVisible();
-      await panel.setupButton.click();
+      await expect(panel.addScene).toBeVisible();
+      await expect(panel.setupButton).toHaveCount(0);
 
       // U2 — add a scene
       await expect(panel.addScene).toBeVisible();
       await panel.addScene.click();
-      // TWO scenes, not one: the GUIDED first run seeds an "Opening scene"
-      // (CompositionPanel.tsx:192, guarded against a second by useGuidedFirstRun)
-      // and addScene adds its own beside it. Asserting 1 used to PASS by racing the
-      // guided seed's arrival, then the run failed 40 lines later on a gate that was
-      // correct -- "1 of 2 scenes not yet done". composition-gate.spec.ts:35 already
-      // pins 2 for this same sequence.
-      await expect(panel.sceneSelect.locator('option')).toHaveCount(2);
+      // ONE scene: the guided "Opening scene" seed (useGuidedFirstRun.runGuided) fires only from
+      // the setup click, which the Studio no longer needs, so "+ Scene" is the only scene here.
+      await expect(panel.sceneSelect.locator('option')).toHaveCount(1);
 
-      // U7 (pre) — Work + a not-done scene → Publish is gated
+      // U7 (pre) — Work + a not-done scene → Publish (Editor panel) is gated
+      await panel.showEditor();
       await expect(panel.publishButton).toBeDisabled();
+      await panel.openComposeTab();
 
       // U3 — co-write: generate → ghost → accept (inserts into the editor)
       await panel.selectModel(drafter.user_model_id);
@@ -60,6 +62,7 @@ test.describe('Composition happy-path journey (U1→U7) [model-gated]', () => {
 
       // accept leaves the editor dirty → Publish stays disabled until we save the
       // prose (the accepted draft must persist before it can be canonized)
+      await panel.showEditor();
       await expect(panel.publishButton).toBeDisabled();
       await panel.saveButton.click();
 
@@ -67,6 +70,7 @@ test.describe('Composition happy-path journey (U1→U7) [model-gated]', () => {
       // A user with two scenes must finish both, and the button says so: it stayed
       // disabled with title="1 of 2 scenes not yet done" while one was outstanding.
       await expect(panel.publishButton).toBeDisabled();
+      await panel.openComposeTab();
       const sceneOptions = panel.sceneSelect.locator('option');
       const sceneCount = await sceneOptions.count();
       for (let i = 0; i < sceneCount; i++) {
@@ -75,6 +79,7 @@ test.describe('Composition happy-path journey (U1→U7) [model-gated]', () => {
         await panel.sceneSelect.selectOption(value);
         await panel.markDone.click();
       }
+      await panel.showEditor();
       await expect(panel.publishButton).toBeEnabled({ timeout: 10_000 });
       await panel.publishButton.click();
 

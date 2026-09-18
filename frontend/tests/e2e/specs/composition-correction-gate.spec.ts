@@ -28,7 +28,7 @@ test.describe('Composition controlled-auto correction gate (slice 3) [model-gate
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
       await panel.openComposeTab();
       await expect(panel.modelSelect).toBeVisible();
       await panel.selectModel(drafter.user_model_id);

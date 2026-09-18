@@ -57,12 +57,19 @@ test.describe('Creation-unblock — world workspace populate + rollups (G1/G4)',
       await expect(ws.graphHint.or(page.getByTestId('world-rollup-graph'))).toBeVisible();
       await expect(ws.timelineHint.or(page.getByTestId('world-timeline-list'))).toBeVisible();
 
-      // G1 — with a CANON Work in the world, "create a what-if" routes into that
-      // Work's studio (where the divergence wizard lives). Seed a work + reload.
-      await createCompositionWork(request, token, existingBook);
+      // G1 — with CANON Works in the world, "create a what-if" routes into the chosen Work's
+      // studio (where the divergence wizard lives). Every REST-created book now gets its Work at
+      // creation (book-service, plan 2026-09-18 T7), so BOTH books here are canon trunks, and by
+      // decision ⑦ more than one canon source opens the "Branch from…" picker first. The claim is
+      // unchanged — the what-if lands in the chosen canon Work — it now goes through the picker.
+      await createCompositionWork(request, token, existingBook); // idempotent: the book's Work
       await ws.goto(world.world_id);
       await expect(ws.createWhatIfButton).toBeEnabled({ timeout: 15_000 });
       await ws.createWhatIfButton.click();
+      const picker = page.getByTestId('world-whatif-picker');
+      await expect(picker).toBeVisible();
+      await expect(picker.getByRole('option')).toHaveCount(2);
+      await picker.getByRole('option').filter({ hasText: existingTitle }).getByRole('button').click();
       await page.waitForURL(`**/books/${existingBook}?work=*`, { timeout: 15_000 });
     } finally {
       await deleteWorld(request, token, world.world_id);

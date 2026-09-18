@@ -7,9 +7,9 @@ import {
 } from '../helpers/api';
 
 // S1-B1 — the scene draft loop in the STUDIO DOCK (scene-compose), end-to-end with a REAL local model.
-// MODEL-GATED: skipped (not failed) when LM Studio + a chat model aren't available. Mirrors
-// composition-generate.spec.ts (the legacy-page equivalent), but drives the dock panel + the
-// cross-panel accept→editor handoff that S1 built.
+// MODEL-GATED: skipped (not failed) when LM Studio + a chat model aren't available. Covers the
+// cross-panel accept→editor handoff and the Regenerate correction; composition-generate.spec.ts
+// drives this same panel for the reasoning-off draft + the distinct-model critic.
 test.describe('Studio scene-compose draft loop (S1-B1) [model-gated]', () => {
   let token: string;
   let bookId: string;

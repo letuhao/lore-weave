@@ -1,32 +1,45 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 import { ChapterComposePanel } from '../pages/ChapterComposePanel';
 import { loginViaUI } from '../helpers/auth';
 import {
   getAccessToken, createBook, createChapter, trashBook,
   seedChapterWithRevisions, getChapterEditorial, bumpServerDraft, createCompositionWork,
+  createCompositionScene, setSceneStatus,
 } from '../helpers/api';
 
 // V0 scenario tests B1.* (Canon Model publish lifecycle) + B7.2 (zero-scene gate).
 // All MODEL-FREE: data seeded via API, the publish affordance driven through the
-// real editor UI, and the canon-side outcome asserted via the server (editorial
-// fields) — not just the badge. These lock the canon=published + OI-2 invariants.
+// real Writing Studio Editor panel, and the canon-side outcome asserted via the server
+// (editorial fields) — not just the badge. These lock the canon=published + OI-2 invariants.
+//
+// Every REST-created book now has a composition Work (book-service provisions it at creation,
+// and the Studio ensures one on open), so the chapter-gate always applies. The B1.* tests are about
+// the publish lifecycle, not the gate, so they start from a chapter whose gate is SATISFIED: one
+// scene, marked done. B7.2 below covers the gate itself.
+async function satisfyChapterGate(
+  request: APIRequestContext, token: string, bookId: string, chapterId: string,
+): Promise<void> {
+  const projectId = await createCompositionWork(request, token, bookId); // idempotent: returns the book's Work
+  const sceneId = await createCompositionScene(request, token, projectId, chapterId, 'Done scene');
+  await setSceneStatus(request, token, sceneId, 'done');
+}
+
 test.describe('Composition publish lifecycle (B1.* / B7.2)', () => {
   test('B1.2: Publish is disabled while the editor is dirty, re-enabled after save', async ({ page, request }) => {
     const token = await getAccessToken(request);
     const { bookId, chapterId } = await seedChapterWithRevisions(request, token, ['hello world']);
+    await satisfyChapterGate(request, token, bookId, chapterId);
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
 
-      // loaded + draft, no composition Work → publish ungated + enabled
+      // loaded + draft, chapter-gate satisfied → publish enabled
       await expect(panel.editorialBadge).toHaveAttribute('data-status', 'draft');
       await expect(panel.publishButton).toBeEnabled();
 
-      // dirty the title (no save) → Publish disabled ("save before publishing")
-      await panel.titleInput.click();
-      await panel.titleInput.press('End');
-      await panel.titleInput.pressSequentially(' edited');
+      // dirty the manuscript (no save) → Publish disabled ("save before publishing")
+      await panel.dirtyBody(' edited');
       await expect(panel.publishButton).toBeDisabled();
 
       // save → not dirty → Publish enabled again
@@ -40,10 +53,11 @@ test.describe('Composition publish lifecycle (B1.* / B7.2)', () => {
   test('B1.3: Re-publish after an edit advances the pinned published_revision_id', async ({ page, request }) => {
     const token = await getAccessToken(request);
     const { bookId, chapterId } = await seedChapterWithRevisions(request, token, ['first body']);
+    await satisfyChapterGate(request, token, bookId, chapterId);
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
 
       // publish #1 → badge flips, a revision is pinned
       await expect(panel.publishButton).toBeEnabled();
@@ -53,7 +67,7 @@ test.describe('Composition publish lifecycle (B1.* / B7.2)', () => {
       expect(first.published_revision_id).toBeTruthy();
 
       // edit + save → new revision; re-publish → pin advances
-      await panel.editTitleAndSave(' v2');
+      await panel.editBodyAndSave(' v2');
       await expect(panel.publishButton).toBeEnabled({ timeout: 10_000 });
       await panel.publishButton.click();
       // badge stays published; assert the pin moved
@@ -69,10 +83,11 @@ test.describe('Composition publish lifecycle (B1.* / B7.2)', () => {
   test('B1.4: Stale publish (OI-2) → conflict toast, no silent clobber', async ({ page, request }) => {
     const token = await getAccessToken(request);
     const { bookId, chapterId } = await seedChapterWithRevisions(request, token, ['body one']);
+    await satisfyChapterGate(request, token, bookId, chapterId);
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
       await expect(panel.editorialBadge).toHaveAttribute('data-status', 'draft');
       await expect(panel.publishButton).toBeEnabled();
 
@@ -97,11 +112,11 @@ test.describe('Composition publish lifecycle (B1.* / B7.2)', () => {
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
       await expect(panel.editorialBadge).toHaveAttribute('data-status', 'draft');
 
       // edit + save (NOT publish) → still draft, nothing pinned (canon = published)
-      await panel.editTitleAndSave(' saved-not-published');
+      await panel.editBodyAndSave(' saved-not-published');
       await expect(panel.editorialBadge).toHaveAttribute('data-status', 'draft');
       const e = await getChapterEditorial(request, token, bookId, chapterId);
       expect(e.editorial_status).toBe('draft');
@@ -118,10 +133,11 @@ test.describe('Composition publish lifecycle (B1.* / B7.2)', () => {
     const token = await getAccessToken(request);
     const bookId = await createBook(request, token, `E2E empty publish ${Date.now()}`);
     const chapterId = await createChapter(request, token, bookId, 'Empty chapter');
+    await satisfyChapterGate(request, token, bookId, chapterId);
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
       await expect(panel.editorialBadge).toHaveAttribute('data-status', 'draft');
       await expect(panel.publishButton).toBeEnabled();
 
@@ -145,7 +161,7 @@ test.describe('Composition publish lifecycle (B1.* / B7.2)', () => {
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
 
       // the gate engages (Work found) → zero scenes → Publish blocked with the
       // PO-decided "create and complete at least one scene" reason.

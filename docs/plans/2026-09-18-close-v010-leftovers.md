@@ -75,7 +75,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 | **AC-8** | The critic result appears once on screen, and the override gate stays reachable | `ComposeView.test.tsx` layout cases + `composition-generate.spec.ts` | T13 | 🚧 partial — unit proof and 3 bites in Cycle 3; the E2E run is owed by T15 |
 | **AC-9** | Every item left open ships with a Known issues entry: what, who, workaround | `scripts/changelog-gate.py` + the `[0.1.0]` section text | T14 | ✅ met — Cycle 5: three Known issues entries (what, who, workaround); both gate modes green, release mode bitten |
 | **AC-10** | The whole suite is green on rebuilt images: 0 failed, 0 skipped | full Playwright + unit run pasted, image ids listed | T15 | ❌ not met |
-| **AC-12** | No route or link reaches the retired chapter editor; an old URL lands on the same chapter in the Writing Studio | `RetiredChapterEditorRedirect.test.tsx` (redirect + a source scan) + the 5 re-pointed view tests | T16, T17 | 🚧 partial — app side bitten in Cycle 4; the E2E specs still drive the old path (T17) |
+| **AC-12** | No route or link reaches the retired chapter editor; an old URL lands on the same chapter in the Writing Studio | `RetiredChapterEditorRedirect.test.tsx` (redirect + a source scan) + the 5 re-pointed view tests | T16, T17 | ✅ met — Cycle 4 (app, bitten) + Cycle 6 (all 8 migrated specs green through the Studio) |
 | **AC-11** | The PO has decided GO or NO-GO for v0.1.0 | the PO's own words quoted in this plan | | ❓ unknown |
 
 ## Board
@@ -198,7 +198,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
   - PO: *"help me retire the routing, so no one can go to that page anymore … we only have writing studio now"*.
   - `/books/:bookId/chapters/:chapterId/edit` now only redirects to `/books/:bookId/studio?chapter=:chapterId`.
     Every in-app link goes to the Studio via `lib/studioRoutes.ts`. `ChapterEditorPage.tsx` and its own unit test are deleted.
-- [ ] **T17** — **The E2E specs that drove the retired page run in the Writing Studio**
+- [x] **T17** — **The E2E specs that drove the retired page run in the Writing Studio** (Cycle 6)
   - 8 specs reach the old page through `ChapterComposePanel.gotoEditor` or `ChaptersTab`. After T16 they land in the Studio, so each must drive the Studio's surfaces. The claim each one makes stays the same; only the page it drives changes.
 
 ### Lane Z — close
@@ -527,3 +527,37 @@ RESTORED byte-exact (cmp) — structure + release 0.1.0 OK
 ```
 
 **AC impact:** AC-9 ✅.
+
+### Cycle 6 — T17: the specs that drove the retired page now drive the Writing Studio
+
+**Investigated:** the 8 specs (16 tests) that reached the retired page through `ChapterComposePanel`. The Studio's own page objects (`StudioPage`, `StudioComposePanels`) and panel catalog. Which legacy testids survive in the Studio: `compose-*`, `composition-*`, `publish-button` and `editorial-badge` do. `chapter-save-button` and `composition-subtab-*` existed only on the deleted page.
+
+**Issues:** none — test-only migration; the one product consequence it surfaced is recorded as a decision below
+
+**Fix:** `ChapterComposePanel` was rewritten to drive the Studio, with the same property names, so no `expect` needed renaming:
+- `gotoStudio` opens `?chapter=`. `openComposeTab` opens `scene-compose` from the command palette, and `showEditor` switches to the editor tab.
+- New helpers: grounding through the scene inspector, canon through `quality-canon-rules`, and body edits in place of the title field the Studio does not have.
+- `markStudioOnboarded` for B4.1's brand-new account, which otherwise meets the Studio's first-run role picker.
+- `creation-unblock-world` routes its what-if through the canon picker (see below).
+
+**Decisions this cycle.** These are written down because a claim had to change shape. None was loosened.
+- **U1 ("set up the co-writer")**: in the Studio the co-writer is ready with no setup step. `useEnsureWork` in `StudioFrame` creates the Work on open, and it predates this plan; T7 now also creates it at book creation. The Studio's form of the claim is therefore: no setup button, and the scene controls are present. That applies in `composition-gate` and `composition-journey`.
+- **U2**: the guided "Opening scene" seed fires only from the setup click (`useGuidedFirstRun.runGuided`), so "+ Scene" now yields exactly **1** scene, not 2. The count is deterministic: nothing else creates a scene.
+- **B7.3 ("no Work → Publish ungated")**: the Studio can no longer show a book without a Work, so the state is unreachable from the UI. The fail-open behaviour is still pinned where it can still be reached: `usePublishGate.test.tsx`, "no composition Work → ungated (blocked:false)". **This is the one E2E assertion removed, and it is flagged for the PO.**
+- **B1.\* setup** (`composition-publish-lifecycle`): these tests started from "no Work, so the gate is off". They now start from "gate satisfied" (one scene, done). The lifecycle claims are unchanged, and B7.2 still tests the gate itself.
+- **`creation-unblock-world`, G1**: every book created through REST now has a Work (T7), so the world held **two** canon trunks. By the component's own decision ⑦, that opens the "Branch from…" picker instead of routing straight away. The spec picks the seeded book and asserts the same route, `**/books/<id>?work=*`. The spec's premise changed, not the claim.
+
+**Proof:**
+
+```
+composition-correction-gate 1 passed · composition-engine 3 passed · composition-generate 1 passed
+composition-grounding-canon 2 passed · composition-publish-lifecycle 6 passed · creation-unblock-divergence 1 passed
+composition-gate      BEFORE the decision:  expect(panel.publishButton).toBeEnabled() — received disabled
+                      AFTER:                ok 1 … U1+U2+B7: co-writer ready, add a scene, Publish gated … (4.1s)
+composition-journey   BEFORE the decision:  expect(panel.setupButton).toBeVisible() — element not found
+                      AFTER:                ok 1 … set up → scene → co-write → accept → save → mark done → publish (15.0s)
+creation-unblock-world BEFORE: page.waitForURL: Timeout 15000ms exceeded (the canon picker was open)
+                       AFTER:  2 passed (8.7s)
+```
+
+**AC impact:** AC-12 ✅.

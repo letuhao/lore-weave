@@ -9,12 +9,11 @@ export function extractBookIdFromUrl(url: string): string {
 }
 
 export function extractChapterIdFromEditorUrl(url: string): string {
-  // There are TWO editor routes. #18 made chapter creation land in the Studio
-  // (/books/:id/studio?chapter=:chapterId); the classic /chapters/:id/edit route still
-  // exists and other flows still reach it. Both are "the editor", so both are read here —
-  // and an URL carrying NEITHER still throws, so this cannot quietly return a wrong id.
-  const match =
-    url.match(/[?&]chapter=([^&#]+)/) ?? url.match(/\/chapters\/([^/?#]+)\/edit/);
+  // The Writing Studio is the only chapter editor: /books/:id/studio?chapter=:chapterId.
+  // The retired /chapters/:id/edit route is only a redirect to that URL, so by the time a
+  // test reads page.url() it is the Studio's. An URL without `chapter=` throws, so this
+  // cannot quietly return a wrong id.
+  const match = url.match(/[?&]chapter=([^&#]+)/);
   if (!match) {
     throw new Error(`no chapterId found in editor URL: ${url}`);
   }

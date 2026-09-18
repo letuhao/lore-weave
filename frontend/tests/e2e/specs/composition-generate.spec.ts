@@ -36,7 +36,7 @@ test.describe('Composition co-write generate + critic (U3/U4) [model-gated]', ()
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
       await panel.openComposeTab();
 
       // pick the drafter model + disable hidden thinking (U3 setup)

@@ -1,19 +1,28 @@
-import type { Page, Locator } from '@playwright/test';
+import { expect, type Page, type Locator } from '@playwright/test';
+import { StudioPage } from './StudioPage';
 
-/** Page object for the chapter editor's Compose (Power) panel + the publish
- * affordance the chapter-gate controls. */
+/**
+ * Page object for co-writing ONE chapter in the Writing Studio: the `scene-compose` dock panel
+ * (scene picker, model/effort pickers, generate/diverge/accept loop, critic, divergence wizard), the
+ * `editor` dock panel (manuscript body, Save, the Publish gate + editorial badge), and the two panels
+ * that home what used to be the compose sub-tabs — Grounding (inside `scene-inspector`) and Canon
+ * rules (`quality-canon-rules`).
+ *
+ * The Studio is the only writing surface: `/books/:bookId/chapters/:chapterId/edit` is a redirect to
+ * `/books/:bookId/studio?chapter=:chapterId`. The Studio panels reuse CompositionPanel's testids, so
+ * every locator is SCOPED under its panel root to stay unambiguous with several panels docked. The
+ * panels share one dock group, so only the active tab is in the DOM's visible tree — `showEditor()` /
+ * `openComposeTab()` bring the panel forward the way a user does, through the Command Palette.
+ */
 export class ChapterComposePanel {
   readonly page: Page;
-  readonly workmodeSwitcher: Locator;
-  readonly workmodeCompose: Locator;
+  readonly studio: StudioPage;
+  // scene-compose panel
+  readonly sceneComposePanel: Locator;
   readonly setupButton: Locator;
   readonly sceneSelect: Locator;
   readonly addScene: Locator;
   readonly markDone: Locator;
-  readonly publishButton: Locator;
-  readonly editorialBadge: Locator;
-  readonly titleInput: Locator;
-  readonly saveButton: Locator;
   readonly modelSelect: Locator;
   readonly reasoningSelect: Locator;
   readonly generate: Locator;
@@ -37,14 +46,22 @@ export class ChapterComposePanel {
   readonly ghost: Locator;
   readonly accept: Locator;
   readonly critic: Locator;
-  // sub-tabs
-  readonly subtabGrounding: Locator;
-  readonly subtabCanon: Locator;
-  // grounding
+  readonly divergenceLaunch: Locator;
+  // editor panel
+  readonly editorPanel: Locator;
+  readonly editorContent: Locator;
+  readonly saveButton: Locator;
+  readonly dirtyIndicator: Locator;
+  readonly publishButton: Locator;
+  readonly editorialBadge: Locator;
+  // grounding (scene-inspector panel)
+  readonly sceneBrowserPanel: Locator;
+  readonly sceneInspectorPanel: Locator;
   readonly groundingSignal: Locator;
   readonly groundingWarning: Locator;
   readonly groundingEmptyHint: Locator;
-  // canon
+  // canon rules (quality-canon-rules panel)
+  readonly canonRulesPanel: Locator;
   readonly canonInput: Locator;
   readonly canonScope: Locator;
   readonly canonAdd: Locator;
@@ -53,85 +70,116 @@ export class ChapterComposePanel {
 
   constructor(page: Page) {
     this.page = page;
-    // Compose is now a Workmode (dropdown), not a right-panel tab.
-    this.workmodeSwitcher = page.getByTestId('workmode-switcher');
-    this.workmodeCompose = page.getByTestId('workmode-item-compose');
-    this.setupButton = page.getByTestId('composition-setup-button');
-    this.sceneSelect = page.getByTestId('composition-scene-select');
-    this.addScene = page.getByTestId('composition-add-scene');
-    this.markDone = page.getByTestId('composition-mark-done');
-    this.publishButton = page.getByTestId('publish-button');
-    this.editorialBadge = page.getByTestId('editorial-badge');
-    this.titleInput = page.getByTestId('chapter-title-input');
-    this.saveButton = page.getByTestId('chapter-save-button');
-    this.modelSelect = page.getByTestId('composition-model-select');
-    // The reasoning control was a raw <select data-testid="compose-reasoning">. It is now the
-    // shared AI-task EffortSelect -- a <button> that opens a role="menu" (ComposeView.tsx:159,
-    // EffortSelect.tsx:46). Same control, same 5-level vocabulary, so `selectOption` was
-    // replaced by setReasoning() rather than the claim being dropped.
-    this.reasoningSelect = page.getByTestId('effort-select');
-    this.generate = page.getByTestId('compose-generate');
-    this.stop = page.getByTestId('compose-stop');
-    this.regenerate = page.getByTestId('compose-regenerate');
-    this.discard = page.getByTestId('compose-discard');
-    // slice 3 — the diverge toggle is a <label>; the checkbox is its <input>.
-    this.divergeToggle = page.getByTestId('compose-diverge-toggle').locator('input');
-    this.candidatesView = page.getByTestId('candidates-view');
-    this.candidateCards = page.getByTestId('candidate-card');
-    this.candidateUse = page.getByTestId('candidate-use');
-    this.candidateEdit = page.getByTestId('candidate-edit');
-    this.candidateEditBox = page.getByTestId('candidate-edit-box');
-    this.candidateEditSave = page.getByTestId('candidate-edit-save');
-    this.candidateWinnerBadge = page.getByTestId('candidate-winner-badge');
-    this.candidatesRegenerate = page.getByTestId('candidates-regenerate');
-    this.candidatesReject = page.getByTestId('candidates-reject');
-    this.needScene = page.getByTestId('compose-need-scene');
-    this.needModel = page.getByTestId('compose-need-model');
-    this.reasoningBadge = page.getByTestId('compose-reasoning-badge');
-    this.ghost = page.getByTestId('compose-ghost');
-    this.accept = page.getByTestId('compose-accept');
-    // Scoped to the COMPOSE slot. The critic renders in two places by design — inline in
-    // ComposeView, where the author accepted, and in the standing CriticPanel dock slot (the one a
-    // pop-out reads). Unscoped, the moment the critic actually arrived the locator hit both and
-    // strict mode failed the test on the SUCCESS it was waiting for. The claim is unchanged: the
-    // critic result shows where the author accepted.
-    this.critic = page.getByTestId('dock-slot-compose').getByTestId('compose-critic');
-    this.subtabGrounding = page.getByTestId('composition-subtab-grounding');
-    this.subtabCanon = page.getByTestId('composition-subtab-canon');
-    this.groundingSignal = page.getByTestId('composition-grounding-signal');
-    this.groundingWarning = page.getByTestId('composition-grounding-warning');
-    this.groundingEmptyHint = page.getByTestId('composition-grounding-empty-hint');
-    this.canonInput = page.getByTestId('composition-canon-input');
-    this.canonScope = page.getByTestId('composition-canon-scope');
-    // The canon form's submit control is `composition-canon-submit` (CanonRuleForm.tsx:134);
-    // `composition-canon-add` exists nowhere in src/ -- the id was renamed and the POM was not.
-    this.canonAdd = page.getByTestId('composition-canon-submit');
-    this.canonRules = page.getByTestId('composition-canon-rule');
-    this.canonArchive = page.getByTestId('composition-canon-archive');
+    this.studio = new StudioPage(page);
+
+    const sc = page.getByTestId('studio-scene-compose-panel');
+    this.sceneComposePanel = sc;
+    this.setupButton = sc.getByTestId('composition-setup-button');
+    this.sceneSelect = sc.getByTestId('composition-scene-select');
+    this.addScene = sc.getByTestId('composition-add-scene');
+    this.markDone = sc.getByTestId('composition-mark-done');
+    this.modelSelect = sc.getByTestId('composition-model-select');
+    // The reasoning control is the shared AI-task EffortSelect -- a <button> that opens a
+    // role="menu" (ComposeView.tsx, EffortSelect.tsx); setReasoning() picks the level.
+    this.reasoningSelect = sc.getByTestId('effort-select');
+    this.generate = sc.getByTestId('compose-generate');
+    this.stop = sc.getByTestId('compose-stop');
+    this.regenerate = sc.getByTestId('compose-regenerate');
+    this.discard = sc.getByTestId('compose-discard');
+    // the diverge toggle is a <label>; the checkbox is its <input>.
+    this.divergeToggle = sc.getByTestId('compose-diverge-toggle').locator('input');
+    this.candidatesView = sc.getByTestId('candidates-view');
+    this.candidateCards = sc.getByTestId('candidate-card');
+    this.candidateUse = sc.getByTestId('candidate-use');
+    this.candidateEdit = sc.getByTestId('candidate-edit');
+    this.candidateEditBox = sc.getByTestId('candidate-edit-box');
+    this.candidateEditSave = sc.getByTestId('candidate-edit-save');
+    this.candidateWinnerBadge = sc.getByTestId('candidate-winner-badge');
+    this.candidatesRegenerate = sc.getByTestId('candidates-regenerate');
+    this.candidatesReject = sc.getByTestId('candidates-reject');
+    this.needScene = sc.getByTestId('compose-need-scene');
+    this.needModel = sc.getByTestId('compose-need-model');
+    this.reasoningBadge = sc.getByTestId('compose-reasoning-badge');
+    this.ghost = sc.getByTestId('compose-ghost');
+    this.accept = sc.getByTestId('compose-accept');
+    // The critic result shows inline in the scene-compose panel, where the author accepted
+    // (CompositionPanel in solo mode never defers it to a separate critic slot).
+    this.critic = sc.getByTestId('compose-critic');
+    this.divergenceLaunch = sc.getByTestId('divergence-launch');
+
+    const ed = page.getByTestId('studio-editor-panel');
+    this.editorPanel = ed;
+    this.editorContent = ed.locator('.tiptap-content');
+    this.saveButton = ed.getByTestId('studio-editor-save');
+    this.dirtyIndicator = ed.getByTestId('studio-editor-dirty');
+    this.publishButton = ed.getByTestId('publish-button');
+    this.editorialBadge = ed.getByTestId('editorial-badge');
+
+    this.sceneBrowserPanel = page.getByTestId('studio-scene-browser-panel');
+    const si = page.getByTestId('studio-scene-inspector-panel');
+    this.sceneInspectorPanel = si;
+    this.groundingSignal = si.getByTestId('composition-grounding-signal');
+    this.groundingWarning = si.getByTestId('composition-grounding-warning');
+    this.groundingEmptyHint = si.getByTestId('composition-grounding-empty-hint');
+
+    const cr = page.getByTestId('studio-quality-canon-rules-panel');
+    this.canonRulesPanel = cr;
+    this.canonInput = cr.getByTestId('composition-canon-input');
+    this.canonScope = cr.getByTestId('composition-canon-scope');
+    this.canonAdd = cr.getByTestId('composition-canon-submit');
+    this.canonRules = cr.getByTestId('composition-canon-rule');
+    this.canonArchive = cr.getByTestId('composition-canon-archive');
   }
 
-  async gotoEditor(bookId: string, chapterId: string): Promise<void> {
-    await this.page.goto(`/books/${bookId}/chapters/${chapterId}/edit`);
+  /** Open the chapter in the Writing Studio via its `?chapter=` deep link — this focuses the
+   *  manuscript unit (the Editor opens on the chapter, and scene-compose follows it) — and wait
+   *  until the Editor has LOADED the chapter (Save exists only past the loaded gate). */
+  async gotoStudio(bookId: string, chapterId: string): Promise<void> {
+    await this.page.goto(`/books/${bookId}/studio?chapter=${chapterId}`);
+    await this.studio.activity('manuscript').waitFor({ state: 'attached' });
+    await expect(this.saveButton).toBeVisible({ timeout: 20_000 });
   }
 
-  /** Pick a model in the shared ModelPicker (W5) — the old native `<select>`
-   * became a combobox trigger; options carry `data-model-id`. */
+  /** Pick a model in the shared ModelPicker (W5) — a combobox trigger; options carry
+   *  `data-model-id`. */
   async selectModel(userModelId: string): Promise<void> {
     await this.modelSelect.locator('[role="combobox"], button').first().click();
     await this.page.locator(`[role="option"][data-model-id="${userModelId}"]`).click();
   }
 
-  /** Set the reasoning/effort level. The control is a button + role="menu", not a <select>,
-   *  so this opens it and picks the option; the LEVEL VOCABULARY is unchanged
-   *  (off|low|medium|high|auto -- src/components/ai-task/effort.ts). */
+  /** Set the reasoning/effort level. The control is a button + role="menu", so this opens it and
+   *  picks the option; the level vocabulary is off|low|medium|high|auto
+   *  (src/components/ai-task/effort.ts). */
   async setReasoning(level: 'off' | 'low' | 'medium' | 'high' | 'auto'): Promise<void> {
     await this.reasoningSelect.click();
     await this.page.getByTestId(`effort-select-opt-${level}`).click();
   }
 
+  /** Open (or bring forward) the Scene Compose dock panel via the Command Palette. */
   async openComposeTab(): Promise<void> {
-    await this.workmodeSwitcher.click();
-    await this.workmodeCompose.click();
+    await this.studio.openPanel('scene-compose', 'Scene Compose');
+    await expect(this.sceneComposePanel).toBeVisible();
+  }
+
+  /** Bring the Editor dock panel (body, Save, Publish, editorial badge) forward via the palette. */
+  async showEditor(): Promise<void> {
+    await this.studio.openPanel('editor', 'Editor');
+    await expect(this.saveButton).toBeVisible();
+  }
+
+  /** Grounding for a scene: select the scene the real way (Scene Browser row → the bus opens the
+   *  Scene Inspector, whose Grounding section runs the packer for that scene). */
+  async openGroundingForScene(sceneTitle: string): Promise<void> {
+    await this.studio.openPanel('scene-browser', 'Scene Browser');
+    await expect(this.sceneBrowserPanel).toBeVisible();
+    await this.sceneBrowserPanel.getByTestId('scene-browser-row').filter({ hasText: sceneTitle }).first().click();
+    await expect(this.sceneInspectorPanel).toBeVisible({ timeout: 10_000 });
+  }
+
+  /** Open the Canon Rules panel (the write half of Quality → Canon). */
+  async openCanonRules(): Promise<void> {
+    await this.studio.openPanel('quality-canon-rules', 'Canon Rules');
+    await expect(this.canonRulesPanel).toBeVisible({ timeout: 10_000 });
   }
 
   /** The canon-side editorial status as the badge sees it ('draft' | 'published'),
@@ -140,12 +188,18 @@ export class ChapterComposePanel {
     return this.editorialBadge.getAttribute('data-status');
   }
 
-  /** Make the chapter dirty by appending to the title, then save and wait for the
-   * clean state (Publish re-enables once not dirty). */
-  async editTitleAndSave(suffix: string): Promise<void> {
-    await this.titleInput.click();
-    await this.titleInput.press('End');
-    await this.titleInput.pressSequentially(suffix);
+  /** Make the chapter dirty by typing at the end of the manuscript body (no save). The Studio
+   *  editor has no chapter-title field; the body is the chapter's editable draft. */
+  async dirtyBody(suffix: string): Promise<void> {
+    await this.editorContent.click();
+    await this.page.keyboard.press('ControlOrMeta+End');
+    await this.page.keyboard.type(suffix);
+    await expect(this.saveButton).toBeEnabled();
+  }
+
+  /** Edit the manuscript body, then Save (Publish re-enables once not dirty). */
+  async editBodyAndSave(suffix: string): Promise<void> {
+    await this.dirtyBody(suffix);
     await this.saveButton.click();
   }
 }

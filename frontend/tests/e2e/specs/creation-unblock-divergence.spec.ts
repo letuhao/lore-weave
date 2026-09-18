@@ -27,11 +27,12 @@ test.describe('Creation-unblock — divergence inline anchor & override (D-079)'
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(book, chapter);
+      await panel.gotoStudio(book, chapter);
       await panel.openComposeTab();
 
-      // launch the divergence wizard from the canon Work, advance to Step 3.
-      await page.getByTestId('divergence-launch').click();
+      // launch the divergence wizard from the canon Work (Scene Compose's "Spawn what-if"),
+      // advance to Step 3.
+      await panel.divergenceLaunch.click();
       await page.getByTestId('divergence-next').click(); // → 2
       await page.getByTestId('divergence-next').click(); // → 3
       await expect(page.getByTestId('divergence-step-3')).toBeVisible();

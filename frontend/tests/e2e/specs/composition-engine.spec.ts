@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { ChapterComposePanel } from '../pages/ChapterComposePanel';
 import { loginViaUI } from '../helpers/auth';
 import { LoginPage } from '../pages/LoginPage';
-import { freshAccount, markOnboarded } from '../personas/account';
+import { freshAccount, markOnboarded, markStudioOnboarded } from '../personas/account';
 import {
   getAccessToken, createBook, createChapter, trashBook,
   listChatModels, createCompositionWork, createCompositionScene,
@@ -28,6 +28,7 @@ test.describe('Composition co-write engine (B4.*)', () => {
   test('B4.1: Generate is gated until both a scene and a model are picked', async ({ page, request }) => {
     const acct = await freshAccount(request, 'gate-gen');
     await markOnboarded(request, acct.token);
+    await markStudioOnboarded(request, acct.token); // past the Studio's first-run role picker too
     const token = acct.token;
     const bookId = await createBook(request, token, `E2E gate-gen ${Date.now()}`);
     const chapterId = await createChapter(request, token, bookId, 'Gen gate chapter');
@@ -38,7 +39,7 @@ test.describe('Composition co-write engine (B4.*)', () => {
       await login.login(acct.email, acct.password);
       await page.waitForURL('**/books');
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
       await panel.openComposeTab();
 
       // no scene → "pick a scene" hint + Generate disabled
@@ -68,7 +69,7 @@ test.describe('Composition co-write engine (B4.*)', () => {
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
       await panel.openComposeTab();
       await expect(panel.modelSelect).toBeVisible();
       await panel.selectModel(drafter.user_model_id);
@@ -106,7 +107,7 @@ test.describe('Composition co-write engine (B4.*)', () => {
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
       await panel.openComposeTab();
       await panel.selectModel(drafter.user_model_id);
       await panel.setReasoning('off');
