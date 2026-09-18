@@ -52,6 +52,18 @@ class PlanForgeLLMError(RuntimeError):
     """Non-retryable PlanForge LLM failure (caller maps to job failed)."""
 
 
+class PlanForgeTruncated(PlanForgeLLMError):
+    """The provider stopped at the token cap (`finish_reason == "length"`).
+
+    Its own type so the regeneration ladder can tell it apart: on plan-forge steps a response that
+    runs to the 12,000-token cap is almost always a repetition loop, which is exactly what the ladder
+    exists to regenerate. It deliberately carries NO content. The truncated text must never reach
+    the repair path (see the raise in `chat`), and an exception with nothing in it cannot leak it.
+
+    A subclass, so every caller outside the ladder (the worker's business-error mapping, `interpret`)
+    behaves exactly as before."""
+
+
 class ProviderPlanForgeLLM:
     """Async chat client — explicit model_ref required (no planner default)."""
 
@@ -151,9 +163,12 @@ class ProviderPlanForgeLLM:
                 # which is cheaper than a message-shape heuristic that guesses which one it was.
                 logger.info("plan_forge step=%s: schema rejected or call failed (%s) — "
                             "retrying free-form", step, exc)
+                # `frequency_penalty` travels with the retry: dropping it silently reset an
+                # escalated regeneration back to the default 0.8 whenever the schema call failed.
                 return await self.chat(step=step, system=system, user=user,
                                        temperature=temperature, max_tokens=max_tokens,
-                                       cancel_check=cancel_check, schema=None)
+                                       cancel_check=cancel_check, schema=None,
+                                       frequency_penalty=frequency_penalty)
             logger.warning("plan_forge LLM error step=%s: %s", step, exc)
             raise PlanForgeLLMError(str(exc)) from exc
         # This raise is what keeps the repair layer honest. `_parse_with_repair` catches a
@@ -161,7 +176,14 @@ class ProviderPlanForgeLLM:
         # output — so a response clipped at 12,000 tokens would be handed to a repairer
         # that cheerfully returns a well-formed object with items missing. Parseable and
         # wrong is worse than unparseable. Truncation must not reach the salvage path.
+        #
+        # Truncation gets its own type so `_parse_with_repair` can REGENERATE it (never repair it);
+        # the exception carries no text, so the guard above holds by construction.
         if (why := unusable(job, "plan_forge_chat")):
+            if why == "truncated":
+                logger.warning("plan_forge.truncated step=%s tokens=%s", step,
+                               getattr(job, "tokens_used", None))
+                raise PlanForgeTruncated(f"LLM job unusable: {why}")
             raise PlanForgeLLMError(f"LLM job unusable: {why}")
         content = extract_judge_content(job.result)
         if not content.strip():

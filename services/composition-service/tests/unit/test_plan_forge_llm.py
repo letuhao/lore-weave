@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.engine.plan_forge.llm import PlanForgeLLMError, ProviderPlanForgeLLM
+from app.engine.plan_forge.llm import PlanForgeLLMError, PlanForgeTruncated, ProviderPlanForgeLLM
 from app.engine.plan_forge.propose_llm_async import propose_spec_llm_async, refine_spec_async
 from app.engine.plan_forge.refine import merge_refine_output
 from app.worker.constants import SUPPORTED_OPERATIONS
@@ -31,7 +31,13 @@ class _MockLLMClient:
         if not self._responses:
             raise PlanForgeLLMError("no mock response")
         content = self._responses.pop(0)
-        return SimpleNamespace(status="completed", result={"messages": [{"role": "assistant", "content": content}]})
+        # A (content, finish_reason) tuple scripts HOW the provider stopped. Without it the fake
+        # could not express truncation at all, which is how the ladder's blind spot went untested.
+        finish_reason = "stop"
+        if isinstance(content, tuple):
+            content, finish_reason = content
+        return SimpleNamespace(status="completed", finish_reason=finish_reason,
+                               result={"messages": [{"role": "assistant", "content": content}]})
 
 
 @pytest.mark.asyncio
@@ -221,3 +227,97 @@ async def test_a_SMALL_unparseable_response_still_goes_to_repair():
     out = await _parse_with_repair(client, "analyze", "sys", "usr", "analyze_repair")
     assert out["document_summary"] == "ok"
     assert [e["step"] for e in client.io_log] == ["analyze", "analyze_repair"]
+
+
+# ── truncation: a loop that runs to the token cap (L1, plan 2026-09-18 T1/T2) ──────────────────────
+
+_TRUNCATED = (_LOOP, "length")   # a real loop ends at the cap, not at a normal stop
+
+
+@pytest.mark.asyncio
+async def test_a_TRUNCATED_job_raises_its_own_type_carrying_no_text():
+    """`chat` must refuse a truncated STRUCTURED job, and say so with a type the ladder can catch.
+    It is still a PlanForgeLLMError, so the worker's business-error mapping is unchanged."""
+    llm = _MockLLMClient([_TRUNCATED])
+    client = ProviderPlanForgeLLM(
+        llm, user_id="u", model_source="user_model", model_ref="m",  # type: ignore[arg-type]
+    )
+    with pytest.raises(PlanForgeTruncated) as ei:
+        await client.chat(step="analyze", system="sys", user="usr")
+    assert isinstance(ei.value, PlanForgeLLMError)
+    assert "0_0_" not in str(ei.value), "the truncated text leaked into the exception"
+    assert client.io_log == [], "a truncated response was recorded as a usable one"
+
+
+@pytest.mark.asyncio
+async def test_a_NON_truncation_failure_is_not_mistaken_for_truncation():
+    llm = _MockLLMClient([])
+    llm.submit_and_wait = None  # replaced below
+    async def failed(**kwargs):
+        return SimpleNamespace(status="failed", finish_reason=None, result=None)
+    llm.submit_and_wait = failed  # type: ignore[assignment]
+    client = ProviderPlanForgeLLM(
+        llm, user_id="u", model_source="user_model", model_ref="m",  # type: ignore[arg-type]
+    )
+    with pytest.raises(PlanForgeLLMError) as ei:
+        await client.chat(step="analyze", system="sys", user="usr")
+    assert not isinstance(ei.value, PlanForgeTruncated)
+
+
+@pytest.mark.asyncio
+async def test_a_TRUNCATED_first_attempt_is_REGENERATED_through_the_ladder():
+    """The failure that remained after every other fix: a loop that runs to the token cap comes back
+    with `finish_reason == "length"`. The ladder must regenerate it, not let it kill the run."""
+    from app.engine.plan_forge.propose_llm_async import _ANTI_LOOP_BASE, _parse_with_repair
+
+    llm = _MockLLMClient([_TRUNCATED, json.dumps({"document_summary": "ok"})])
+    client = ProviderPlanForgeLLM(
+        llm, user_id="u", model_source="user_model", model_ref="m",  # type: ignore[arg-type]
+    )
+    out = await _parse_with_repair(client, "analyze", "sys", "usr", "analyze_repair")
+    assert out["document_summary"] == "ok"
+    assert [e["step"] for e in client.io_log] == ["analyze_retry1"]
+    assert [c["job_meta"]["extractor"] for c in llm.calls] == ["analyze", "analyze_retry1"]
+    assert llm.calls[1]["input"]["frequency_penalty"] > _ANTI_LOOP_BASE
+
+
+@pytest.mark.asyncio
+async def test_truncation_on_EVERY_attempt_fails_actionably_and_is_NEVER_repaired():
+    """Truncated output must never reach the repair prompt: a repair of a clipped loop succeeds
+    into a minimal valid object that looks like a real read of the author's document."""
+    from app.engine.plan_forge.propose_llm_async import _MAX_REGENERATIONS, _parse_with_repair
+
+    llm = _MockLLMClient([_TRUNCATED] * (_MAX_REGENERATIONS + 1) + [json.dumps({"x": 1})])
+    client = ProviderPlanForgeLLM(
+        llm, user_id="u", model_source="user_model", model_ref="m",  # type: ignore[arg-type]
+    )
+    with pytest.raises(PlanForgeLLMError) as ei:
+        await _parse_with_repair(client, "analyze", "sys", "usr", "analyze_repair")
+    assert "repetition loop" in str(ei.value) and "truncated" in str(ei.value)
+    extractors = [c["job_meta"]["extractor"] for c in llm.calls]
+    assert extractors == ["analyze", "analyze_retry1", "analyze_retry2"], extractors
+    assert not any("repair" in e for e in extractors), "a truncated response reached the repair path"
+
+
+@pytest.mark.asyncio
+async def test_a_schema_fallback_keeps_the_ESCALATED_penalty():
+    """When a provider rejects the schema, `chat` retries free-form. That retry used to drop the
+    caller's `frequency_penalty`, resetting an escalated regeneration to the default."""
+    from loreweave_llm.errors import LLMError
+
+    calls: list[dict] = []
+
+    async def submit(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise LLMError("schema rejected")
+        return SimpleNamespace(status="completed", finish_reason="stop",
+                               result={"messages": [{"role": "assistant", "content": "{}"}]})
+
+    llm = SimpleNamespace(submit_and_wait=submit)
+    client = ProviderPlanForgeLLM(
+        llm, user_id="u", model_source="user_model", model_ref="m",  # type: ignore[arg-type]
+    )
+    await client.chat(step="analyze_retry2", system="s", user="u", schema={"type": "object"},
+                      frequency_penalty=1.6)
+    assert [c["input"]["frequency_penalty"] for c in calls] == [1.6, 1.6]
