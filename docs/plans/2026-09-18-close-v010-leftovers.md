@@ -600,3 +600,43 @@ gates    gate-wiring-gate --run-all: all static gates green after the plan-forma
 - **New since the 2026-09-13 baseline**, and relevant to load: every UI sign-in now fires the T11 backfill, about 130 `GET /work` in 100ms for this 105-book account. It did not cause the failures observed here, and it is noted as a cost for review.
 
 **AC impact:** AC-8 ✅ (its E2E leg is green through the Studio); AC-10 🚧 — green once, not yet shown to be reliably green.
+
+### Cycle 8 — T15: the intermittent reds have a cause — the dev VM's clock steps back every 30 s
+
+**Investigated:** run 2's kept trace for `studio-publish`. Every API request is decoded from `*-trace.network`. The same token (`iat` 1789754823 = 18:07:03 UTC, `exp` +2h) was accepted by `POST /outline/nodes` and then rejected by `PATCH /outline/nodes/{id}` with `401 invalid token`. In composition's log, docker's own receive timestamps go **backwards** 16 times during run 2. One is exactly `18:07:03.106 -> 18:07:01.902`, the 401. Measured inside the container, wall clock against monotonic, three times over 65 s:
+
+```
++  0.5s  wall moved -1.393s while monotonic moved +0.020s
++  0.8s  wall moved +4.162s while monotonic moved +0.020s
++ 30.5s  wall moved -1.396s while monotonic moved +0.020s
++ 30.8s  wall moved +4.161s while monotonic moved +0.020s
++ 60.5s  wall moved -1.395s while monotonic moved +0.020s
++ 60.7s  wall moved +4.173s while monotonic moved +0.020s
+```
+
+The Docker VM's wall clock steps back 1.39 s, then forward 4.16 s about 0.25 s later, every 30 s. That is the host's time sync, and nothing in this repo causes it.
+
+- **A token issued in the 1.39 s before a step has an `iat` in the future inside the window.** PyJWT 2.13 rejects that with zero leeway (`ImmatureSignatureError: The token is not yet valid (iat)`), and `loreweave_authn` reports every failure as "invalid token".
+- **Go's `contracts/platformjwt.Verify` never checks `iat`**: golang-jwt v5 checks it only under `WithIssuedAt()`, which is not passed. So the Python services rejected tokens the Go services accepted. That is a real parity defect. The verifier's own comment says "keep the two verifiers identical", and ordinary skew between production hosts triggers it too.
+
+**Issues:** none — the parity defect is fixed in this cycle; the revision-ordering fragility is recorded as `DEFERRED.md` #164; the VM clock is the host's, outside this repo
+
+**Fix:** `sdks/python/loreweave_authn/_verify.py` passes `verify_iat: False`, matching Go. `exp` stays required and enforced, and the signature is checked as before. All 13 Python images that use the SDK were rebuilt. **No token was minted anywhere.** Every probe used real login tokens issued by auth-service.
+
+**The other three reds, against this cause:**
+- **B8.5 (revision compare), mechanism proven.** A probe saved 260 revisions over 70 s and listed them newest-first: `order inversions: 1 [(166, 171)]`. Saves 167–171 landed after a backward step, so they sort as older than save 166. B8.5's seed runs in about 100 ms. If a step falls inside it, "newest two" pairs the chapter's empty first revision with the last save, which gives `equal = 0`, the observed failure. Revision order depends on the database's wall clock (`now()`, `uuidv7()`). This is **not** changed here: a production database host with NTP slewing does not step back. It is recorded as `DEFERRED.md` #164 with the fix recipe (a per-chapter sequence).
+- **composition-flywheel and studio-inline-correction: cause not proven.** The flywheel's selection query compares no timestamps for its own project. The inline-correction trace was lost to a re-run. Both passed in runs 3 and 4, and they stay listed as unexplained rather than blamed on the clock.
+
+**Proof:**
+
+```
+unit    loreweave_authn: 28 passed (new: test_accepts_token_whose_iat_is_in_the_future_go_parity)
+BROKEN  verify_iat removed:  E  jwt.exceptions.ImmatureSignatureError: The token is not yet valid (iat)
+RESTORED byte-exact (cmp):   28 passed
+LIVE BEFORE (old images) — real login every 0.5 s, GET composition every 10 ms, 70 s:
+        requests: 3552  200: 3538  401: 14  other: 0      (all 14 inside one clock step, "invalid token")
+LIVE AFTER (13 Python images rebuilt; verify_iat present in each container's SDK):
+        requests: 3603  200: 3603  401: 0   other: 0
+```
+
+**AC impact:** AC-10 🚧 — one of the four unexplained reds is now explained and fixed, and one is explained and deferred with evidence. The next full run is recorded in Cycle 9.

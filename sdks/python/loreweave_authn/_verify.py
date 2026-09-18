@@ -69,7 +69,16 @@ def verify_access_token(token: str, secret: str) -> AccessClaims:
             # auth-service token with `aud` set would be accepted by Go but 401'd by
             # Python. Neither side pins `iss` (PyJWT only checks it when `issuer=` is
             # given), so `iss` is already parity. Keep the two verifiers identical.
-            options={"require": ["exp"], "verify_aud": False},
+            #
+            # `verify_iat=False` for the same reason. Go's golang-jwt v5 validates `iat` only
+            # under `WithIssuedAt()`, which platformjwt.Verify does not pass; PyJWT rejects an
+            # `iat` in the future by default, with zero leeway. So any clock difference between
+            # the issuer and this service — ordinary skew across hosts, or the dev VM's clock
+            # stepping back 1.4 s every ~30 s (measured 2026-09-18) — made Python services 401
+            # a token Go services accepted: `studio-publish` failed on exactly that, a token its
+            # own setup had just used. Expiry and the signature are what authenticate; `iat` is
+            # informational (see AccessClaims.raw).
+            options={"require": ["exp"], "verify_aud": False, "verify_iat": False},
         )
     except jwt.ExpiredSignatureError as exc:
         raise InvalidAccessToken("token expired") from exc
