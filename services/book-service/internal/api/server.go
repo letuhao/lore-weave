@@ -292,6 +292,9 @@ func (s *Server) Router() http.Handler {
 		// WS-1.4 — the diary provisioner (the only kind='diary' write path). Static segment,
 		// registered before the /{book_id} sub-route so it is not captured as a book id.
 		r.Post("/diary", s.provisionDiaryBook)
+		// Sign-in backfill (plan 2026-09-18, Q4): provisions the CALLER'S OWN books with their own
+		// bearer. Static segment, registered before /{book_id}.
+		r.Post("/provision-missing", s.provisionMissing)
 		r.Get("/trash", s.listTrashedBooks)
 
 		// Favorites
@@ -793,6 +796,12 @@ RETURNING id
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")
 		return
 	}
+	// L4 (plan 2026-09-18): ask composition for the book's Work NOW, with the author's own bearer,
+	// so the knowledge project exists without anyone opening the book. Off the request path and
+	// best-effort — a failure leaves the book exactly as before (the Studio still provisions on
+	// open). The MCP create path has no user bearer and deliberately does not do this (OQ-1).
+	slog.DebugContext(ctx, "book.create provision=attempted", "book_id", bookID)
+	s.provisionCompositionWorkAsync(ctx, bookID.String(), r.Header.Get("Authorization"))
 	s.getBookByID(w, ctx, bookID, ownerID, http.StatusCreated)
 }
 

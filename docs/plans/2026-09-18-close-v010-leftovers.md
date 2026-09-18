@@ -69,9 +69,9 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 | **AC-2** | On 30 real plan runs, final failures are fewer than today's 2 of 31 | `llm_jobs` query pasted in the cycle (`job_meta.extractor`, `finish_reason`) on rebuilt images | T4 | ❌ not met |
 | **AC-3** | A long ladder never lets the sweeper start a second copy of the same plan job | unit test on the heartbeat + `generation_job` row history from T4 | T3, T4 | 🚧 partial — unit proof and bite in Cycle 1; live row history owed by T4 |
 | **AC-4** | The 240s critic ceiling is proven by re-breaking it on a real cold model load | `composition-generate.spec.ts` run pasted twice: 20s ceiling red, 240s green | T5 | ❌ not met |
-| **AC-5** | A book created through REST has its knowledge project within 5s without anyone opening it, and a provisioning failure never fails the create | Go handler tests with an `httptest` composition fake + live T9 query | T6, T7, T9 | ❌ not met |
-| **AC-6** | Creating a book and opening it at once yields exactly one Work and one knowledge project | live race run on `lw-iso` with row counts pasted | T8 | ❌ not met |
-| **AC-7** | After an owner signs in, every book they own has a knowledge project; no other user's book is touched; only the owner's bearer is used | Go endpoint tests + vitest trigger test + live T12 counts | T10, T11, T12 | ❌ not met |
+| **AC-5** | A book created through REST has its knowledge project within 5s without anyone opening it, and a provisioning failure never fails the create | Go handler tests with an `httptest` composition fake + live T9 query | T6, T7, T9 | ✅ met — Cycle 2: 4 bites; live project 0.7s after create, owner-matched |
+| **AC-6** | Creating a book and opening it at once yields exactly one Work and one knowledge project | live race run on `lw-iso` with row counts pasted | T8 | ✅ met — Cycle 2: 10/10 books, three racing callers each, exactly 1 Work + 1 project |
+| **AC-7** | After an owner signs in, every book they own has a knowledge project; no other user's book is touched; only the owner's bearer is used | Go endpoint tests + vitest trigger test + live T12 counts | T10, T11, T12 | 🚧 partial — T10 proven in Cycle 2 (3 bites); T11, T12 open |
 | **AC-8** | The critic result appears once on screen, and the override gate stays reachable | `ComposeView.test.tsx` layout cases + `composition-generate.spec.ts` | T13 | ❌ not met |
 | **AC-9** | Every item left open ships with a Known issues entry: what, who, workaround | `scripts/changelog-gate.py` + the `[0.1.0]` section text | T14 | ❌ not met |
 | **AC-10** | The whole suite is green on rebuilt images: 0 failed, 0 skipped | full Playwright + unit run pasted, image ids listed | T15 | ❌ not met |
@@ -130,7 +130,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 
 ### Lane C — provision at creation (L4)
 
-- [ ] **T6** — **One best-effort helper that asks composition for the Work, with the caller's bearer**
+- [x] **T6** — **One best-effort helper that asks composition for the Work, with the caller's bearer** (Cycle 2)
   - Files: `services/book-service/internal/api/` (new `composition_provision.go` + `_test.go`).
   - `provisionCompositionWork(ctx, bookID, bearer)`: `POST {COMPOSITION_SERVICE_URL}/v1/composition/books/{id}/work`
     with the raw `Authorization` value. Its **own** `http.Client` with a short timeout (the value is a
@@ -139,7 +139,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
   - Tests (`httptest.NewServer`, as in `parts_import_test.go:26-34`): 200/201 ok; 500 logged, no error;
     timeout honoured; empty bearer makes no request; the bearer arrives unchanged.
   - Log: INFO `book.provision ok book_id=<id> status=<code> ms=<n>`; WARN on failure with status/error.
-- [ ] **T7** — **REST create calls the helper after commit**
+- [x] **T7** — **REST create calls the helper after commit** (Cycle 2)
   - File: `server.go` `createBook`, between `tx.Commit` (`:792`) and `getBookByID` (`:796`).
   - Pass `r.Header.Get("Authorization")`. The response stays 201 whatever the helper does.
     MCP `book_create` is **not** changed (Q2).
@@ -147,17 +147,17 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
     caller's bearer; with the fake returning 500 or hanging, the create still returns 201 within budget.
   - Bite: remove the call; the "receives one POST" case goes red.
   - Log: DEBUG `book.create provision=attempted book_id=<id>`.
-- [ ] **T8** — **The create/open race makes one Work and one project**
+- [x] **T8** — **The create/open race makes one Work and one project** (Cycle 2)
   - Live on `lw-iso` after rebuilding `book-service`: create via REST and open in Studio immediately,
     10 times. Count Work rows and knowledge projects per book; each must be exactly 1.
-- [ ] **T9** — **Live: a book nobody opened has its project**
+- [x] **T9** — **Live: a book nobody opened has its project** (Cycle 2)
   - Create one book via REST, never open it; its knowledge project exists within 5s. Paste the query.
   - Drop condition (from the spec): the handler does not have the caller's bearer → fall back to the UI
     calling `/work` after create.
 
 ### Lane D — backfill on sign-in (Q4)
 
-- [ ] **T10** — **An owner-only endpoint that provisions the caller's own books**
+- [x] **T10** — **An owner-only endpoint that provisions the caller's own books** (Cycle 2)
   - Files: `services/book-service/internal/api/` (route under `/v1/books`, which the BFF already proxies).
     Name proposed: `POST /v1/books/provision-missing` — final name in DESIGN.
   - Lists **only books where `owner_user_id` = caller**, active ones. For each, a cheap `GET /work`
@@ -303,3 +303,63 @@ stop: |
   a write would touch a non-throwaway database
   the ship decision
 ```
+
+### Cycle 2 — T6–T10: a new book is provisioned at creation, and the backfill is owner-only
+
+**Investigated.** Re-read before building:
+- `createBook` commits, then answers 201. It never read `Authorization`, although the header reaches it.
+- `fetchStructureWork` forwards the raw header, through `http.DefaultClient` (no timeout).
+- composition's `POST /work` dedupes the knowledge project under a per-(user, book) advisory lock. It catches the Work insert's unique violation, and it caps pending rows with a partial unique index.
+- `countActiveBooks` defines the library's scope: active, not the bible, never `kind='diary'`.
+
+**Decisions this cycle** (the plan left them to DESIGN):
+- **The create-time call is asynchronous**, not synchronous with a short timeout. It runs after commit on a context detached from cancellation. Creation gains no latency and cannot fail because of it, whatever composition does.
+- **Timeout 10s**, on its own `http.Client`. It bounds goroutines, not users.
+- **Backfill route `POST /v1/books/provision-missing`.** It uses the library's scope. For each book it sends one cheap `GET /work`, and a `POST` only when the Work is missing or pending. Concurrency 4, overall deadline 90s. It is also detached from the client, because the frontend fires it and does not wait.
+
+**Fix.**
+- `composition_provision.go`: `provisionCompositionWork` and its async wrapper.
+- `server.go`: `createBook` calls the wrapper after commit. The route is registered.
+- `provision_missing.go`: the backfill.
+
+MCP `book_create` is untouched (Q2). No token is minted anywhere, and the only identity sent is the caller's own bearer.
+
+**A test defect fixed on the way.** `internal/migrate` `TestBackfillScenesBookID_AcrossBatchBoundaries` counted **every scene in the database** whose book differed from its own seed. It went red whenever `internal/api` ran first on the shared test DB: `26 scenes got a book_id that is not their chapter's book`. That happened on a fresh DB **with or without any change from this plan**, and it went green when the test ran alone. The check now tests the claim it states, "each seeded scene got its chapter's book", with a join on `chapters`. Bitten: a backfill that writes another book's id turns it red (`1201 scenes got a book_id that is not their chapter's book`). This fixes a wrong test, not a change made so that a fix would pass.
+
+**Proof:**
+
+```
+T6 BROKEN (bearer not forwarded)
+    composition_provision_test.go:38: Authorization "" — the caller's own bearer must arrive unchanged
+T6 BROKEN (http.DefaultClient)
+    composition_provision_test.go:78: the provision client must carry its own timeout; http.DefaultClient has none
+T7 BROKEN (call removed)
+    create_book_provision_db_test.go:65: no POST /work within 5s of creating the book — its knowledge project waits for someone to open it
+T7 BROKEN (made synchronous)
+    create_book_provision_db_test.go:98: create took 10.0394677s while composition hung — provisioning must stay off the request path
+T10 BROKEN (owner filter dropped)
+    result {Checked:11 Ready:1 Provisioned:9 Failed:1}, want {Checked:4 Ready:1 Provisioned:2 Failed:1}
+T10 BROKEN (ready books re-provisioned)
+    result {Checked:4 Ready:0 Provisioned:3 Failed:1}, want {Checked:4 Ready:1 Provisioned:2 Failed:1}
+T10 BROKEN (sweep bound to the client)
+    provision_missing_db_test.go:158: posts [] — a fire-and-forget caller hanging up must not stop the sweep
+every bite RESTORED byte-exact (cmp) and green
+book-service Go suite, fresh throwaway DB (postgres:18), -p 1: api ok · config ok · migrate ok · testsafe ok · textdiff ok
+```
+
+`go test ./...` without `-p 1` deadlocks in `migrate.Up`, because several packages migrate one shared DB concurrently. That is how this suite has to be run, not a product defect: run it with `-p 1`.
+
+```
+T9 LIVE (lw-iso, book-service rebuilt 2026-09-18T15:34Z, account iso-evidence@loreweave.dev)
+  create 201 in 21 ms            book 01a0b52a-e7cd-7de2-93ee-0b2b51e50e27  (never opened)
+  after 0.7 s   composition_work project_id=01a0b52a-e7ec-77a1-b7bb-c3a126b471c2 pending=false
+  knowledge_projects: owner=01a09a04-... = books.owner_user_id
+  book-service log: "book.provision ok" status=201 ms=54   (the T4 runner's book, same path)
+
+T8 LIVE — 10 books; each: REST create (its own POST /work) + two concurrent Studio-style POST /work
+  10/10: "1 works, projects=1, pending=0 knowledge_projects=1"   ALL EXACTLY ONE: True
+```
+
+T8 is a verification row. The guards it exercises are composition's, and they predate this plan. This cycle added nothing there that a bite could remove. T9's "before" is the measured state the plan starts from: 298 books with no project until someone opened them. The live check repeats the bitten T7 behaviour on the real stack.
+
+**AC impact.** AC-5 ✅, AC-6 ✅, AC-7 🚧 (T11, T12 open).

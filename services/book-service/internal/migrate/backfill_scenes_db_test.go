@@ -128,9 +128,15 @@ func TestBackfillScenesBookID_AcrossBatchBoundaries(t *testing.T) {
 		t.Fatalf("backfill left %d rows with NULL book_id (keyset cursor skipped rows)", got)
 	}
 
+	// The claim is "every scene got ITS CHAPTER'S book", so check exactly that, for the rows this
+	// test seeded. The old form counted every scene in the database whose book was not this
+	// test's book — so it failed whenever an earlier package (internal/api) had left its own,
+	// correctly-backfilled scenes behind in the shared test DB. Measured 2026-09-18: 26 foreign
+	// scenes, red on a fresh DB with or without any product change, green when run alone.
 	var wrong int
-	if err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM scenes WHERE book_id IS DISTINCT FROM $1`, bookID,
+	if err := pool.QueryRow(ctx, `
+SELECT count(*) FROM scenes s JOIN chapters c ON c.id = s.chapter_id
+WHERE c.book_id = $1 AND s.book_id IS DISTINCT FROM c.book_id`, bookID,
 	).Scan(&wrong); err != nil {
 		t.Fatalf("verify: %v", err)
 	}
