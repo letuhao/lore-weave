@@ -246,7 +246,7 @@ Checkpoints sit at risk boundaries, not file counts. Run `scripts/doc-language-g
 
 ### Cycle 1 — T1, T2, T3: truncation reaches the ladder; a slow job is not started twice
 
-**Investigated.** Every premise in the reconnaissance table for L1 held on re-read:
+**Investigated:** every premise in the reconnaissance table for L1, re-read. All of them held:
 - `chat()` raised the base `PlanForgeLLMError` for `"truncated"`.
 - The first `client.chat()` sat above the ladder loop.
 - `_MockLLMClient` returned no `finish_reason`.
@@ -256,12 +256,14 @@ Checkpoints sit at risk boundaries, not file counts. Run `scripts/doc-language-g
 Found on the way: `chat()`'s schema-rejected fallback called itself **without** `frequency_penalty`.
 So an escalated regeneration (1.2, 1.6) silently dropped back to 0.8 whenever the provider refused the schema.
 
-**Fix.**
+**Issues:** none — every defect found here is fixed in this cycle and recorded in it and in `CHANGELOG.md`; opening a public tracker entry is the PO's call, not this run's
+
+**Fix:** in three places:
 - `llm.py`: new `PlanForgeTruncated(PlanForgeLLMError)`, raised only for `"truncated"`. It carries no response text. The schema fallback now forwards `frequency_penalty`.
 - `propose_llm_async.py`: the first call moved inside the ladder. `PlanForgeTruncated` takes the regenerate branch on every attempt. The final error names the last reason. The repair call is reachable only from a small, non-truncated parse failure.
 - `job_consumer.py` + `generation_jobs.py`: `run_job`'s `cancel_check` touches `updated_at` at most once per 60s through `touch_running`, which only touches a `running` row. The LLM SDK already polls `cancel_check` through every wait, so this covers every worker op and every long single generation, not only the ladder. The 900s sweep timeout is unchanged.
 
-**Proof** (unit suites run inside the composition image; the host's `mcp` 2.x cannot import the service):
+**Proof:** unit suites run inside the composition image; the host's `mcp` 2.x cannot import the service.
 
 ```
 T1 BROKEN  (chat raises the base type for truncation)
@@ -292,7 +294,7 @@ Full composition unit suite: 4011 passed, 2 failed
 - `test_scene_beats.py::test_nothing_in_the_engine_computes_from_the_undirected_yield` shells out to `git`, which the image does not have. It is an environment gap of this test-runner, not a product defect.
 - `test_outline_canon_routers.py::test_create_node_201_and_bad_reference_400` gets `422` where it expects `201`. That is a real red. It predates this plan, and it is recorded here so it cannot be forgotten. It is not in this plan's scope, and nothing here depends on it.
 
-**AC impact.** AC-1 ✅. AC-3 🚧: the unit proof is here, and the live `generation_job` history comes with T4.
+**AC impact:** AC-1 ✅. AC-3 🚧: the unit proof is here, and the live `generation_job` history comes with T4.
 
 ```goal-prompt
 goal: the v0.1.0 leftovers are closed or honestly bounded, each fix proven by re-breaking it, and the suite is green on rebuilt images
@@ -316,7 +318,7 @@ stop: |
 
 ### Cycle 2 — T6–T10: a new book is provisioned at creation, and the backfill is owner-only
 
-**Investigated.** Re-read before building:
+**Investigated:** re-read before building:
 - `createBook` commits, then answers 201. It never read `Authorization`, although the header reaches it.
 - `fetchStructureWork` forwards the raw header, through `http.DefaultClient` (no timeout).
 - composition's `POST /work` dedupes the knowledge project under a per-(user, book) advisory lock. It catches the Work insert's unique violation, and it caps pending rows with a partial unique index.
@@ -327,7 +329,9 @@ stop: |
 - **Timeout 10s**, on its own `http.Client`. It bounds goroutines, not users.
 - **Backfill route `POST /v1/books/provision-missing`.** It uses the library's scope. For each book it sends one cheap `GET /work`, and a `POST` only when the Work is missing or pending. Concurrency 4, overall deadline 90s. It is also detached from the client, because the frontend fires it and does not wait.
 
-**Fix.**
+**Issues:** none — every defect found here is fixed in this cycle and recorded in it and in `CHANGELOG.md`; opening a public tracker entry is the PO's call, not this run's
+
+**Fix:** in three files:
 - `composition_provision.go`: `provisionCompositionWork` and its async wrapper.
 - `server.go`: `createBook` calls the wrapper after commit. The route is registered.
 - `provision_missing.go`: the backfill.
@@ -372,17 +376,19 @@ T8 LIVE — 10 books; each: REST create (its own POST /work) + two concurrent St
 
 T8 is a verification row. The guards it exercises are composition's, and they predate this plan. This cycle added nothing there that a bite could remove. T9's "before" is the measured state the plan starts from: 298 books with no project until someone opened them. The live check repeats the bitten T7 behaviour on the real stack.
 
-**AC impact.** AC-5 ✅, AC-6 ✅, AC-7 🚧 (T11, T12 open).
+**AC impact:** AC-5 ✅, AC-6 ✅, AC-7 🚧 (T11, T12 open).
 
 ### Cycle 3 — T11, T13: the backfill fires once per sign-in; one screen shows the critic once
 
-**Investigated.**
+**Investigated:** the sign-in seam, and where the critic renders:
 - `AuthProvider.setTokens` is called only by `LoginPage` and `RegisterPage`. A silent refresh writes storage and fires `lw-auth-refreshed`, and a page reload reads storage. Neither goes through `setTokens`, so it is the exact "new sign-in" seam.
 - `apiJson` counts every request in the global operation tracker, which drives `GlobalOperationProgress`. A 90s background sweep would light the progress bar for work the author never asked for.
 - The dock shows one tab at a time. Compose and the critic panel are on screen together only when the critic is floated, popped out, or the active tab while Compose is floated.
 - `CriticPanel` renders the verdict **without** `onRegenerate`. So the C26 override gate's Regenerate action exists only in the inline copy, and removing the inline copy outright would have removed it.
 
-**Fix.**
+**Issues:** none — every defect found here is fixed in this cycle and recorded in it and in `CHANGELOG.md`; opening a public tracker entry is the PO's call, not this run's
+
+**Fix:** in four places:
 - `lib/provisionOnSignIn.ts`: a raw `fetch` with `keepalive`, marked `X-LW-Operation-Tracked: 1` so the tracker ignores it. Failures go to `console.debug` in dev only. `setTokens` calls it when it receives an access token.
 - `workspace/dock.ts` `criticPanelShowing(layout, activeTab)`: floated or popped out and not hidden, or docked as the active tab.
 - `CriticFlags` `gateOnly`: render only the override gate, or nothing when it is not raised.
@@ -411,9 +417,17 @@ T13 BROKEN (a background dock tab counted as on screen)
 RESTORED byte-exact   composition suite 1093 passed · tsc --noEmit clean
 ```
 
-**AC impact.** AC-7 🚧: only the live T12 run remains. AC-8 🚧: unit-proven here; the E2E leg runs in T15.
+**AC impact:** AC-7 🚧: only the live T12 run remains. AC-8 🚧: unit-proven here; the E2E leg runs in T15.
 
 ### Cycle 4 — T4, T5, T12, T16: measured live, a stuck-forever 409 found and fixed, the old editor retired
+
+**Investigated:** T4, T5 and T12 live on `lw-iso`; the root cause of the 9 stuck books in `routers/works.py`; every caller of the retired editor route.
+
+**Issues:** none — every defect found here is fixed in this cycle and recorded in it and in `CHANGELOG.md`; opening a public tracker entry is the PO's call, not this run's
+
+**Fix:** `routers/works.py` (the pending-Work step for every branch that reaches a project); T16's redirect, `lib/studioRoutes.ts` and 7 re-pointed callers. T4 and T5 changed no product code.
+
+**Proof:** the fenced blocks below, one per row.
 
 **T4 — real runs.** Both composition images were rebuilt and marker-grepped in the running containers (`PlanForgeTruncated` 3, `touch_running` 1). 30 real plan runs went through the API on `lw-iso` (account `iso-evidence@loreweave.dev`, gemma-4-26b-a4b-qat, the pass-rail premise).
 
@@ -480,16 +494,18 @@ BROKEN (the redirect drops the chapter)
 RESTORED byte-exact · tsc --noEmit clean · vitest 869 files, 6527 passed
 ```
 
-**AC impact.** AC-2 ✅, AC-3 ✅, AC-4 ✅ (stand-in, as the plan allowed), AC-7 ✅, AC-12 🚧 (T17 open). AC-8 stays 🚧 because its E2E leg runs in T15, after T17.
+**AC impact:** AC-2 ✅, AC-3 ✅, AC-4 ✅ (stand-in, as the plan allowed), AC-7 ✅, AC-12 🚧 (T17 open). AC-8 stays 🚧 because its E2E leg runs in T15, after T17.
 
 ### Cycle 5 — T14: the release notes say what changed and what is still open
 
-**Investigated.**
+**Investigated:** what the changelog gate checks, and what `[0.1.0]` says today:
 - `changelog-gate.py` checks structure, and in release mode that `[0.1.0]` has real entries. It does not restrict subsection names, so `### Known issues` is legal.
 - `[0.1.0]` is dated 2026-09-13 but is **untagged**: the tag is the PO's (AC-11). This branch is that release's gap-closure branch, so its user-facing changes are recorded in `[0.1.0]` itself. `/oss-publish` sets the final date at cut time.
 - `### Removed` said "Nothing", which T16 made false.
 
-**Fix.** `CHANGELOG.md` `[0.1.0]`:
+**Issues:** none — every defect found here is fixed in this cycle and recorded in it and in `CHANGELOG.md`; opening a public tracker entry is the PO's call, not this run's
+
+**Fix:** `CHANGELOG.md` `[0.1.0]`:
 - **Changed:** books are provisioned at creation; the sign-in backfill; the Studio is the only writing surface.
 - **Fixed:** truncation regenerates; the double-run sweeper; the stuck-409 books; the 240s critic ceiling; the critic shown once.
 - **Removed:** the legacy chapter editor, with its redirect.
@@ -510,4 +526,4 @@ BROKEN (every entry removed from [0.1.0])
 RESTORED byte-exact (cmp) — structure + release 0.1.0 OK
 ```
 
-**AC impact.** AC-9 ✅.
+**AC impact:** AC-9 ✅.
