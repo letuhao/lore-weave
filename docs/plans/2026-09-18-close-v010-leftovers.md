@@ -73,7 +73,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 | **AC-6** | Creating a book and opening it at once yields exactly one Work and one knowledge project | live race run on `lw-iso` with row counts pasted | T8 | ✅ met — Cycle 2: 10/10 books, three racing callers each, exactly 1 Work + 1 project |
 | **AC-7** | After an owner signs in, every book they own has a knowledge project; no other user's book is touched; only the owner's bearer is used | Go endpoint tests + vitest trigger test + live T12 counts | T10, T11, T12 | ✅ met — Cycle 4: 105/105 of the owner's books after sign-in; another owner's 65/77 untouched |
 | **AC-8** | The critic result appears once on screen, and the override gate stays reachable | `ComposeView.test.tsx` layout cases + `composition-generate.spec.ts` | T13 | 🚧 partial — unit proof and 3 bites in Cycle 3; the E2E run is owed by T15 |
-| **AC-9** | Every item left open ships with a Known issues entry: what, who, workaround | `scripts/changelog-gate.py` + the `[0.1.0]` section text | T14 | ❌ not met |
+| **AC-9** | Every item left open ships with a Known issues entry: what, who, workaround | `scripts/changelog-gate.py` + the `[0.1.0]` section text | T14 | ✅ met — Cycle 5: three Known issues entries (what, who, workaround); both gate modes green, release mode bitten |
 | **AC-10** | The whole suite is green on rebuilt images: 0 failed, 0 skipped | full Playwright + unit run pasted, image ids listed | T15 | ❌ not met |
 | **AC-12** | No route or link reaches the retired chapter editor; an old URL lands on the same chapter in the Writing Studio | `RetiredChapterEditorRedirect.test.tsx` (redirect + a source scan) + the 5 re-pointed view tests | T16, T17 | 🚧 partial — app side bitten in Cycle 4; the E2E specs still drive the old path (T17) |
 | **AC-11** | The PO has decided GO or NO-GO for v0.1.0 | the PO's own words quoted in this plan | | ❓ unknown |
@@ -203,7 +203,7 @@ These premises are re-verified before each lane starts (Rule 7), not trusted fro
 
 ### Lane Z — close
 
-- [ ] **T14** — **Known issues in the release notes**
+- [x] **T14** — **Known issues in the release notes** (Cycle 5)
   - File: `CHANGELOG.md`, the `[0.1.0]` section, a `### Known issues` subsection. First confirm
     `scripts/changelog-gate.py` accepts that subsection.
   - Entries: MCP-created books provision on first open (Q2); the `materialize` string bounds are a
@@ -481,3 +481,33 @@ RESTORED byte-exact · tsc --noEmit clean · vitest 869 files, 6527 passed
 ```
 
 **AC impact.** AC-2 ✅, AC-3 ✅, AC-4 ✅ (stand-in, as the plan allowed), AC-7 ✅, AC-12 🚧 (T17 open). AC-8 stays 🚧 because its E2E leg runs in T15, after T17.
+
+### Cycle 5 — T14: the release notes say what changed and what is still open
+
+**Investigated.**
+- `changelog-gate.py` checks structure, and in release mode that `[0.1.0]` has real entries. It does not restrict subsection names, so `### Known issues` is legal.
+- `[0.1.0]` is dated 2026-09-13 but is **untagged**: the tag is the PO's (AC-11). This branch is that release's gap-closure branch, so its user-facing changes are recorded in `[0.1.0]` itself. `/oss-publish` sets the final date at cut time.
+- `### Removed` said "Nothing", which T16 made false.
+
+**Fix.** `CHANGELOG.md` `[0.1.0]`:
+- **Changed:** books are provisioned at creation; the sign-in backfill; the Studio is the only writing surface.
+- **Fixed:** truncation regenerates; the double-run sweeper; the stuck-409 books; the 240s critic ceiling; the critic shown once.
+- **Removed:** the legacy chapter editor, with its redirect.
+- **Known issues** (what, who, workaround for each):
+  - MCP-created books are provisioned later, because OQ-1 forbids a minted identity.
+  - A plan run can still fail when the model loops on all three attempts.
+  - The critic waits at most 240s.
+
+L2, the `materialize` string bounds, is **not** listed as a known issue: Cycle 4 measured it at 0/40 bounded vs 3/17 unbounded (Fisher p ≈ 0.023), with that cycle's caveat about uncontrolled arms. The remaining open row, T17, is test-only and not user-facing.
+
+**Proof:**
+
+```
+changelog-gate: structure OK (3 section(s)).
+changelog-gate: structure + release 0.1.0 OK (3 section(s)).
+BROKEN (every entry removed from [0.1.0])
+  RELEASE MODE: `## [0.1.0] - 2026-09-13` exists but has no entries under it. ...
+RESTORED byte-exact (cmp) — structure + release 0.1.0 OK
+```
+
+**AC impact.** AC-9 ✅.

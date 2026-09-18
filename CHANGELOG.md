@@ -56,6 +56,14 @@ user-facing. The scope is unchanged: 33 versioned images derived from `infra/doc
 
 ### Changed
 
+- **A new book gets its knowledge project when it is created**, not the first time someone opens it.
+  Book creation does not wait for it: the request goes out after the book is saved, with the
+  author's own sign-in, and a failure leaves the book exactly as it was before this change.
+- **Signing in sets up any of your books that are still missing their knowledge project.** It runs
+  in the background, touches only your own books, and never shows a progress bar or an error.
+- **The Writing Studio is the only writing surface.** Links that used to open the old chapter editor
+  now open the same chapter in the Studio.
+
 - **"Auto-Draft Factory" is now "Campaigns"** — 36 strings across 18 locale files plus two component
   fallbacks. The old name described a mechanism nobody had asked for; the new one describes what the
   feature does.
@@ -66,6 +74,19 @@ user-facing. The scope is unchanged: 33 versioned images derived from `infra/doc
 - **The pgvector image derives its LLVM toolchain from `pg_config`** rather than hardcoding a major.
 
 ### Fixed
+
+- **A plan run no longer dies when the model repeats itself to the token limit.** Output that runs
+  out of room is now retried with a stronger anti-repetition setting — never "repaired" into a
+  plausible-looking plan with parts missing. Measured on 30 real runs: 0 failures (previously 2 of
+  31), including one run that hit the limit and recovered on its retry.
+- **A long plan run could be started a second time while the first was still going.** A running job
+  now reports that it is alive, so the stuck-job sweeper leaves it alone.
+- **Some books could never get their knowledge project** — a book with an unattached project and a
+  placeholder Work failed with `409 WORK_CREATE_CONFLICT` on every attempt, including opening it.
+- **The co-writer's critic no longer gives up after 20 seconds** when the critic model has to load
+  first; it now waits up to 240 seconds, which a real model swap needs.
+- **The critic's verdict was shown twice** when its panel was open beside Compose; it now shows once,
+  and the "Regenerate" action stays where it was.
 
 - **Arc and chapter Goal fields were written unbounded but read back capped at 2000 characters**,
   which corrupted the whole book's arc list. This is the most damaging bug fixed in this release.
@@ -87,7 +108,9 @@ user-facing. The scope is unchanged: 33 versioned images derived from `infra/doc
 
 ### Removed
 
-- Nothing. No feature, endpoint or image was withdrawn between `0.1.0-rc.1` and this release.
+- **The legacy chapter editor page** (`/books/:bookId/chapters/:chapterId/edit`). The Writing Studio
+  replaced it; the old address now redirects to the same chapter in the Studio, so bookmarks keep
+  working. No endpoint or image was withdrawn.
 
 ### Security
 
@@ -108,6 +131,20 @@ user-facing. The scope is unchanged: 33 versioned images derived from `infra/doc
 - **17 of the 18 locales are machine-translated and have not been read by a native speaker.** The
   strings are mechanically sound — placeholder parity is gated — but mechanical soundness is not
   meaning. Treat non-English UI text as provisional.
+
+### Known issues
+
+- **Books created by an AI agent (MCP `book_create`) get their knowledge project later, not at
+  creation.** That path has no sign-in of the author's to act with, and minting one is ruled out by
+  design. *Who:* anyone whose agent creates books. *Workaround:* none needed — the project is set up
+  the next time the owner signs in, or opens the book in the Studio.
+- **A plan run can still fail if the model repeats itself on all three attempts.** It is rare (none
+  in 30 measured runs) and the error says so plainly. *Who:* plan generation on local models.
+  *Workaround:* run it again, or choose a different planner model.
+- **The critic waits at most 240 seconds.** A model that takes longer than that to load and answer
+  still shows no verdict for that accept. *Who:* self-hosters with very large or very slow local
+  models. *Workaround:* use a smaller critic model, or keep the critic model loaded.
+
 
 ## [0.1.0-rc.1] - 2026-09-06
 
