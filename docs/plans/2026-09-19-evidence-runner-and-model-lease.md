@@ -570,3 +570,44 @@ lw-iso-frontend-1  labels git_sha=57e85e678 git_dirty_scope=frontend/src (the T1
 ```
 
 **AC impact:** AC-11 ✅.
+
+### Cycle 10 — T17/T8, run 1: seven reds, each given a cause
+
+**Investigated:** the first full runs through the runner, on provider-registry at 57e85e678 and the frontend at 331dfc955 (dirty scope `frontend/src`: 8 re-translated non-English locale files that are not this plan's, left uncommitted; the suite runs in English).
+- **Run `20260919T055653Z` is invalid.** It started without `PLAYWRIGHT_TEST_EMAIL`, fell back to the default account, which does not exist on `lw-iso`, and produced 108 identical `401 AUTH_INVALID_CREDENTIALS` failures and 88 tests that never ran. It stays in the ledger, since the ledger is append-only, but it tested nothing.
+- **Run `20260919T061324Z`:** 194 passed, 5 failed, 2 timed out, in 42.2 min (green runs took 23–25 min). Each red was traced with `why-red`, its trace, its page snapshot, and `llm_jobs`:
+
+| red | cause | verdict |
+|---|---|---|
+| `demo-pipeline-3c` | `createBook` lands in the Studio (88d3e972b). `openBook` then read the row from the list DOM React had not yet replaced: `waitForURL` resolves on the pushState, before the render. A passing trace reads the row 22 ms after the click; the failing one after the Studio rendered. `e86508e87` repaired 3a for exactly this and left 3b and 3c | test stale since 88d3e972b; fixed |
+| `studio-inline-correction` (Discard) | While the ghost streams, Discard is `inline-stop`; `inline-discard` exists only after the stream ends. Since afe24542e (F13) the continuation is real prose, so it is still streaming when the test looks for `inline-discard` | test stale since afe24542e; fixed. Its sibling, the Accept test, has the same defect (found while re-running) and is fixed with it |
+| `studio-quality-conformance` (never blank) | `conformance-empty` renders inside `conformance-trace-view`, and the wrapper is on screen while loading. `trace.or(empty)` either matched the loading skeleton, so a blank panel passed, or matched two elements (strict mode) | test defect since it was written (a69a3d767); fixed to assert a resolved state |
+| `composition-correction-gate`, `composition-generate` | Model-gated. All LLM jobs completed, but slowly: three parallel `prose_draft` at 06:18 took 77–90 s against about 23 s for the same work on 2026-09-18, and the 26B critic took 104.6 s against a 90 s wait | environment. The run started with gemma 26B resident, left by the T15 replay; the suite's first calls use 12B. LM Studio's own server log stops on 2026-09-08, so the model residency could not be read. Cause not proven; the next run starts, like the green runs, with only 12B loaded |
+| `studio-kg-authoring-journey`, `studio-motif-author-journey` | The test bodies finished in 9–13 s. Then Chromium's `Close context` hung for 30 s, twice in a row in the same worker (06:46:54–06:48:34), and the worker was replaced | environment: a browser hang with no product call in flight. Cause not found; watched in the next runs |
+
+**Issues:** #288
+
+**Fix:** four changes.
+- **Tests (three defects):**
+  - `demo-pipeline-3b/3c` go back to the library before `openBook`, the repair `e86508e87` made to 3a.
+  - `studio-inline-correction`: Discard clicks `inline-stop` or `inline-discard`, whichever is showing (both post the REJECT, `useInlineGhost.ts:97`), and Accept waits for the stream to finish. A new locator, `inlineStop`, in `StudioComposePanels`.
+  - `studio-quality-conformance` asserts a scene row or the empty state, never the wrapper (`anyRow()` in the page object).
+  - Each edit names the change that made the test wrong. No claim was weakened: each test still asserts what it asserted.
+- **Runner:** `run-evidence-suite.py` logs in once as the suite's account before a run. It refuses the run (exit 2) when the account cannot log in, like a non-loopback target. That is a wrong input, not a state of the stack, so Q3 (the preflight never refuses) still holds.
+
+**Proof:**
+
+```
+fixed specs, restored image:   quality-conformance + inline-correction 6 passed · demo-pipeline-3c 1 passed
+3c BITE (1 s wait after createBook, the old step)    TimeoutError: locator.getAttribute … waiting for getByTestId('book-row')…  1 failed
+   same wait, the fixed step                         1 passed (1.8m)
+product bites, one rebuild:
+   Discard captures nothing       TimeoutError: page.waitForResponse: Timeout 30000ms exceeded   (Discard test)
+   Accept captures a correction   expect(received).toBe(expected)  Expected: false  Received: true   (Accept test)
+   conformance never resolves     waiting for getByTestId('conformance-empty').or(locator('[data-testid^="conformance-row-"]')).first()
+   3 failed, 3 passed (the untouched conformance tests)
+restored (git diff empty), rebuilt, 6 passed
+runner: no account → exit 2 "refusing to run: … claude-test@loreweave.dev cannot log in … (401)" · iso-evidence → 200 · --self-test OK
+```
+
+**AC impact:** none ticked. AC-6 and AC-12 need clean runs; run 1 does not count toward the five.

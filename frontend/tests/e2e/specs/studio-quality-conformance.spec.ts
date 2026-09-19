@@ -54,7 +54,10 @@ test.describe('@s4 Studio · quality-conformance', () => {
     test.skip(options <= 1, 'no chapter to pick in this book');
     await conf.chapterPicker.selectOption({ index: 1 });
     // trace, or the empty state that deep-links to the scene surface (loop-connect) — both usable
-    await expect(conf.trace.or(conf.empty)).toBeVisible({ timeout: 15_000 });
+    // The empty state renders INSIDE conformance-trace-view, and the wrapper is on screen while the
+    // trace is still loading. So `trace.or(empty)` was satisfied by the loading skeleton (a blank
+    // panel passed) or matched two elements. Resolved = a scene row, or the empty state.
+    await expect(conf.empty.or(conf.anyRow()).first()).toBeVisible({ timeout: 15_000 });
     // §2#6 loop-connect — if empty, the CTA back to the scene surface must exist (no island)
     if (await conf.empty.isVisible()) {
       await expect(conf.emptyBindCta).toBeVisible();

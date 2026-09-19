@@ -47,6 +47,10 @@ test.describe('Demo pipeline 3c — wiki article auto-generation from glossary',
 
     const booksPage = new BooksPage(page);
     await booksPage.createBook({ title: bookTitle, language: 'en' });
+    // Create lands in the Studio (88d3e972b, D-BOOKS-CREATE-TO-STUDIO), so the journey goes back to
+    // the library first -- the repair e86508e87 made to 3a. Without it openBook read the row from
+    // the list DOM React had not yet replaced: it passed only when it beat the Studio's render.
+    await booksPage.goto();
     await booksPage.openBook(bookTitle);
     const bookId = extractBookIdFromUrl(page.url());
 
