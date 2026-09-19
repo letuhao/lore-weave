@@ -73,7 +73,7 @@ Premises are re-verified before each lane starts.
 | **AC-6** | #288 (DEFERRED #165) is closed only after 5 consecutive clean full runs in the ledger, or diagnosed from a captured trace | `LEDGER.jsonl` entries quoted in the cycle | T8 | ❌ not met |
 | **AC-7** | A provider credential can opt in to "serve one model at a time"; off by default; set through the API and the Settings UI | provider-registry handler tests + `ProvidersTab` vitest + live PATCH | T10, T14 | 🚧 partial — API side proven in Cycle 3 (2 bites); the UI is T14 |
 | **AC-8** | With the setting on, requests for different models on one endpoint wait for each other instead of colliding; same-model requests still run concurrently; with it off, behaviour is unchanged | lease unit tests (grant/wait/release/aging) + wiring tests on both the job and stream paths | T11, T12 | ✅ met — Cycle 4 (lease, 3 bites) + Cycle 5 (job and stream wiring, 2 bites) |
-| **AC-9** | An LM Studio model-load abort is retried as contention and never counts toward the breaker, whatever the setting | `Guard`/classification unit tests + a bite | T9, T13 | ❌ not met |
+| **AC-9** | An LM Studio model-load abort is retried as contention and never counts toward the breaker, whatever the setting | `Guard`/classification unit tests + a bite | T9, T13 | ✅ met — Cycle 6: classified on run 4's verbatim body, retried, never counted; 3 bites |
 | **AC-10** | Run 4's collision, replayed live with the setting on, ends with both jobs completed; with it off, it reproduces today's failure | live replay on `lw-iso`, `llm_jobs` + extraction status pasted | T15 | ❌ not met |
 | **AC-11** | The changelog and the user docs describe the setting, and every issue this plan resolves is closed with its evidence | `CHANGELOG.md`, `changelog-gate.py`, the GitHub issue states | T16 | ❌ not met |
 | **AC-12** | The full suite is green through the new runner on rebuilt images | the runner's ledger line for the final run | T17 | ❌ not met |
@@ -142,7 +142,7 @@ Premises are re-verified before each lane starts.
   - Other job kinds (audio/image/video/vision) only if they can target an LM Studio endpoint; record the decision.
   - Only when the credential's flag is on. With it off, the path is byte-for-byte today's.
   - Log: INFO on grant (endpoint, model, waited ms), DEBUG on queue position, WARN when the aging bound forces a switch.
-- [ ] **T13** — **A model-load abort is contention: retried, breaker-neutral**
+- [x] **T13** — **A model-load abort is contention: retried, breaker-neutral** (Cycle 6)
   - `provider/errors.go`: recognise LM Studio's `Failed to load model … Engine protocol startup was aborted` as a typed contention error.
   - `Guard`: split its single predicate into *retryable* and *counts-against-health*. Contention is retryable with backoff (under the lease when on) and never counts. Fix the stale comment at `guard.go:53` while there.
   - The retry applies **whatever the setting**. It is a classification, not an enforcement, so it stays within Q2.
@@ -457,3 +457,45 @@ restored byte-exact (cmp) · go test ./... (throwaway DB): api billing chunker j
 `Process`'s own lookup (DB-backed) is proven live in T15 rather than by a unit test, because it needs a job row and a credential. That is recorded, not skipped.
 
 **AC impact:** AC-8 ✅.
+
+### Cycle 6 — T13: a model-load abort is contention; and the log that was never written
+
+**Investigated:** why T9 found no trace of the failed attempts. `retryTransient` logs every retry at INFO, `JOB_MAX_RETRIES=3` and `REDIS_URL` are set on the running container, and `SetupLogging` writes JSON to stdout at INFO. Yet provider-registry's log ends at **2026-09-18 01:23**, although the container has run since 15:35 that day and has handled thousands of jobs.
+
+```
+docker inspect   restarts=0 started=2026-09-18T15:35:16Z logdriver=json-file ; /proc/1/fd/1 -> pipe
+docker exec … echo "LOGPROBE-2026-09-19 marker" > /proc/1/fd/1   →   docker logs --since 2m | grep -c LOGPROBE   =  0
+same probe window, composition-service                            →   158 lines
+```
+
+Docker was not capturing provider-registry's stdout at all. Every retry and error line of run 4 was lost, which is why T9 could only prove *that* transient attempts failed, not *which*. Postgres and rabbitmq, started in the same `up -d` at 15:35, show the same silence; the containers restarted since then log normally. This is an environment fault of the local Docker, not of any service. The runner now detects it before a run.
+
+**Issues:** #286
+
+**Fix:** four changes.
+- **`provider/errors.go`:**
+  - `ErrUpstreamModelContention`: a 4xx whose body contains **both** `Failed to load model` and `Engine protocol startup was aborted`, so a real bad model name stays permanent;
+  - `IsRetryableUpstreamError` = transient **or** contention;
+  - `ErrorClass` for logs.
+- **`jobs/retry.go`:** `retryTransient` retries on `IsRetryableUpstreamError`, and logs **every** failed attempt at WARN with its class and whether it is retryable. `Guard` still counts only `IsTransientUpstreamError`, so contention never reaches the breaker, whatever the credential's setting. It is a classification, not an enforcement (Q2).
+- **`ratelimit/guard.go`:** the stale comment that called a governor timeout "treated as transient" now says what happens.
+- **`scripts/e2e/run-evidence-suite.py`:** a new **log-liveness** preflight check. It flags a container up for more than 10 minutes with zero log lines since it started, and says to recreate it before a run you need to explain.
+- The stream path (`/v1/llm/stream`) does not retry; with the setting on, the lease keeps it from colliding at all.
+
+**Proof:**
+
+```
+TestLoadAbort_IsContention_RetryableButNotAHealthFailure   PASS  (run 4's body, verbatim)
+TestOtherModelLoadFailures_StayPermanent                   PASS
+TestContention_IsRetried_ThenSucceeds                      PASS  (3 attempts)
+TestContention_NeverCountsTowardTheBreaker                 PASS  (10 contentions, 0 breaker failures)
+BROKEN (not classified)    contention_test.go:19: the load-abort 400 must classify as contention, got permanent
+BROKEN (not retried)       contention_test.go:22: contention must be retried … · TestContention_IsRetried_ThenSucceeds FAIL
+BROKEN (counted as health) contention_test.go:25: contention must NOT be a health failure … · TestContention_NeverCountsTowardTheBreaker FAIL
+restored byte-exact (cmp) · go test ./… (throwaway DB): all 7 packages ok
+
+preflight, live:  WARN lw-iso-provider-registry-service-1: up 831 min and NOTHING in its log since it started …
+                  (also lw-iso-rabbitmq-1, lw-iso-postgres-1)
+```
+
+**AC impact:** AC-9 ✅. AC-4 is strengthened: the preflight now also reports lost logs.

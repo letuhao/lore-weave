@@ -45,6 +45,11 @@ func Guard(
 	} else {
 		permit, err = gov.Acquire(waitCtx, callCtx, concClass, limit)
 		if err != nil {
+<<<<<<< HEAD
+=======
+			// governor timeout / ctx cancel. NOT retried by retryTransient (neither is transient
+			// or contention) and not counted by the breaker: the job fails with this error.
+>>>>>>> 57e85e678 (fix(provider-registry): a model-load abort is contention - retried, never a breaker failure (#286, T13))
 			return err
 		}
 	}

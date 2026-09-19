@@ -59,17 +59,24 @@ func retryBackoff(attempt int, err error) time.Duration {
 	return time.Duration(waitS * float64(time.Second))
 }
 
-// retryTransient runs op, retrying up to maxRetries times on a transient
-// upstream error (provider.IsTransientUpstreamError) with exponential
-// backoff. A non-transient error returns immediately — no retry. The backoff
-// sleep is cancellable via ctx. Returns nil on success, or the last error.
+// retryTransient runs op, retrying up to maxRetries times on a retryable upstream error
+// (provider.IsRetryableUpstreamError: transient, or model-load contention) with exponential
+// backoff. A non-retryable error returns immediately — no retry. The backoff sleep is cancellable
+// via ctx. Returns nil on success, or the last error.
+//
+// Every failed attempt is logged at WARN with its error class (#286 / plan 2026-09-19 T9): a run
+// once had its circuit breaker opened by failed attempts that left no trace anywhere.
 func retryTransient(ctx context.Context, maxRetries int, logger *slog.Logger, op func() error) error {
 	for attempt := 0; ; attempt++ {
 		err := op()
 		if err == nil {
 			return nil
 		}
-		if !provider.IsTransientUpstreamError(err) {
+		if logger != nil {
+			logger.Warn("upstream attempt failed", "class", provider.ErrorClass(err),
+				"retryable", provider.IsRetryableUpstreamError(err), "attempt", attempt+1, "err", err)
+		}
+		if !provider.IsRetryableUpstreamError(err) {
 			return err
 		}
 		if attempt >= maxRetries {
