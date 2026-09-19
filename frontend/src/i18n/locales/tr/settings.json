@@ -230,7 +230,9 @@
       "api_key_ph": "sk-...",
       "cancel": "İptal",
       "adding": "Ekleniyor...",
-      "submit": "Sağlayıcı Ekle"
+      "submit": "Sağlayıcı Ekle",
+      "one_model": "Aynı anda yalnızca bir model sun",
+      "one_model_hint": "Tek bir GPU üzerinde LM Studio gibi yalnızca bir model barındırabilen yerel bir sunucu kullanıyorsanız bunu açın. Farklı modeller için yapılan istekler, her ikisinin de başarısız olması yerine sırayla işlenir. Varsayılan olarak kapalıdır: Donanımınızın ne kadar yük kaldırabileceğini yalnızca siz bilirsiniz."
     },
     "edit_dialog": {
       "aria": "Sağlayıcıyı düzenle",
@@ -248,7 +250,9 @@
       "max_concurrency_hint": "Bu sağlayıcının aynı anda çalıştıracağı istek sayısı. Sınırsız için boş bırakın (arka uç karar verir). Yalnızca arka ucunuzun bilinen bir sınırı varsa bir sayı girin (örn. yerel bir GPU).",
       "cancel": "İptal",
       "saving": "Kaydediliyor...",
-      "submit": "Değişiklikleri Kaydet"
+      "submit": "Değişiklikleri Kaydet",
+      "one_model": "Aynı anda yalnızca bir model sun",
+      "one_model_hint": "Tek bir GPU üzerinde LM Studio gibi yalnızca bir model barındırabilen yerel bir sunucu kullanıyorsanız bunu açın. Farklı modeller için yapılan istekler, her ikisinin de başarısız olması yerine sırayla işlenir. Varsayılan olarak kapalıdır: Donanımınızın ne kadar yük kaldırabileceğini yalnızca siz bilirsiniz."
     },
     "delete": {
       "title": "{{name}} kaldırılsın mı?",

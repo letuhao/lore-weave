@@ -230,7 +230,9 @@
       "api_key_ph": "sk-...",
       "cancel": "Batal",
       "adding": "Menambah...",
-      "submit": "Tambah Pembekal"
+      "submit": "Tambah Pembekal",
+      "one_model": "Layan satu model pada satu masa",
+      "one_model_hint": "Aktifkan ini untuk pelayan tempatan yang hanya boleh memuatkan satu model, seperti LM Studio pada satu GPU. Permintaan untuk model yang berbeza kemudian akan bergilir-gilir daripada kedua-duanya gagal. Secara lalai ia ditutup: hanya anda yang tahu had perkakasan anda."
     },
     "edit_dialog": {
       "aria": "Edit pembekal",
@@ -248,7 +250,9 @@
       "max_concurrency_hint": "Berapa banyak permintaan yang dijalankan pembekal ini pada satu masa. Biarkan kosong untuk tanpa had (backend akan menentukan). Tetapkan nombor hanya jika backend anda mempunyai had tertentu (cth. GPU tempatan).",
       "cancel": "Batal",
       "saving": "Menyimpan...",
-      "submit": "Simpan Perubahan"
+      "submit": "Simpan Perubahan",
+      "one_model": "Layan satu model pada satu masa",
+      "one_model_hint": "Aktifkan ini untuk pelayan tempatan yang hanya boleh memuatkan satu model, seperti LM Studio pada satu GPU. Permintaan untuk model yang berbeza kemudian akan bergilir-gilir daripada kedua-duanya gagal. Secara lalai ia ditutup: hanya anda yang tahu had perkakasan anda."
     },
     "delete": {
       "title": "Alih keluar {{name}}?",

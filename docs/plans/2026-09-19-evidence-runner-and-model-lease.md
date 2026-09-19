@@ -71,10 +71,10 @@ Premises are re-verified before each lane starts.
 | **AC-4** | Every full-suite run records a preflight (clock steps, schedulers due, models loaded, image provenance incl. dirty tree) and its results in one ledger, and a re-run cannot erase an earlier run's traces | `scripts/e2e/run-evidence-suite.py` output + `LEDGER.jsonl` + a deletion bite | T5, T6 | ✅ met — Cycle 2: preflight live (69 s), evidence survives a plain re-run, labels on a real image; 3 bites |
 | **AC-5** | For any failed test, one command returns its trace, its service-log window, its `llm_jobs` rows and any clock steps in that window | `scripts/e2e/why-red.py` run on a deliberately broken test | T7 | ✅ met — Cycle 2: all four parts produced for a deliberate red; `llm_jobs` checked on run 4's window |
 | **AC-6** | #288 (DEFERRED #165) is closed only after 5 consecutive clean full runs in the ledger, or diagnosed from a captured trace | `LEDGER.jsonl` entries quoted in the cycle | T8 | ❌ not met |
-| **AC-7** | A provider credential can opt in to "serve one model at a time"; off by default; set through the API and the Settings UI | provider-registry handler tests + `ProvidersTab` vitest + live PATCH | T10, T14 | 🚧 partial — API side proven in Cycle 3 (2 bites); the UI is T14 |
+| **AC-7** | A provider credential can opt in to "serve one model at a time"; off by default; set through the API and the Settings UI | provider-registry handler tests + `ProvidersTab` vitest + live PATCH | T10, T14 | ✅ met — Cycle 3 (API, 2 bites) + Cycle 7 (UI, 3 bites; live PATCH through the BFF in Cycle 8) |
 | **AC-8** | With the setting on, requests for different models on one endpoint wait for each other instead of colliding; same-model requests still run concurrently; with it off, behaviour is unchanged | lease unit tests (grant/wait/release/aging) + wiring tests on both the job and stream paths | T11, T12 | ✅ met — Cycle 4 (lease, 3 bites) + Cycle 5 (job and stream wiring, 2 bites) |
 | **AC-9** | An LM Studio model-load abort is retried as contention and never counts toward the breaker, whatever the setting | `Guard`/classification unit tests + a bite | T9, T13 | ✅ met — Cycle 6: classified on run 4's verbatim body, retried, never counted; 3 bites |
-| **AC-10** | Run 4's collision, replayed live with the setting on, ends with both jobs completed; with it off, it reproduces today's failure | live replay on `lw-iso`, `llm_jobs` + extraction status pasted | T15 | ❌ not met |
+| **AC-10** | Run 4's collision, replayed live with the setting on, ends with both jobs completed; with it off, it reproduces today's failure | live replay on `lw-iso`, `llm_jobs` + extraction status pasted | T15 | ✅ met — Cycle 8: off 1/6 completed (5 × `LLM_CIRCUIT_OPEN`), on 6/6 completed in 25.2 s; margin gap filed as #295 |
 | **AC-11** | The changelog and the user docs describe the setting, and every issue this plan resolves is closed with its evidence | `CHANGELOG.md`, `changelog-gate.py`, the GitHub issue states | T16 | ❌ not met |
 | **AC-12** | The full suite is green through the new runner on rebuilt images | the runner's ledger line for the final run | T17 | ❌ not met |
 
@@ -147,11 +147,11 @@ Premises are re-verified before each lane starts.
   - `Guard`: split its single predicate into *retryable* and *counts-against-health*. Contention is retryable with backoff (under the lease when on) and never counts. Fix the stale comment at `guard.go:53` while there.
   - The retry applies **whatever the setting**. It is a classification, not an enforcement, so it stays within Q2.
   - Bite: remove the classification → the abort fails permanently again.
-- [ ] **T14** — **The setting in the UI: Settings → Providers**
+- [x] **T14** — **The setting in the UI: Settings → Providers** (Cycle 7)
   - `features/settings/api.ts` gets the field. `ProvidersTab.tsx` gets a checkbox beside the concurrency field, "Serve one model at a time", with a one-line explanation (for a local server that can hold one model; turning it on makes requests for different models wait for each other). It appears in create and edit and is sent on patch only when changed.
   - i18n keys in all `settings.json` locales (English source; other locales get the English text marked for translation, following the repo's i18n parity gate).
   - Vitest: renders the current value, and a toggle sends `serve_one_model_at_a_time`.
-- [ ] **T15** — **Live: run 4's collision, replayed**
+- [x] **T15** — **Live: run 4's collision, replayed** (Cycle 8)
   - On `lw-iso`, rebuild provider-registry and the frontend, and confirm the markers in the running containers. Fire a 26B `kg_summary`-style call and a 12B glossary extraction at the same moment on one LM Studio.
   - Once with the setting off: expected today's failure, with the error codes pasted. Once with it on for the credentials involved: both complete.
   - Drop condition (from the spec): the "on" run still ends `completed_with_errors`, or its wall time is more than 2× the two jobs run alone.
@@ -499,3 +499,51 @@ preflight, live:  WARN lw-iso-provider-registry-service-1: up 831 min and NOTHIN
 ```
 
 **AC impact:** AC-9 ✅. AC-4 is strengthened: the preflight now also reports lost logs.
+
+### Cycle 7 — T14: the setting in Settings → Providers
+
+**Investigated:** how the Providers tab edits a credential. The edit dialog already sends only the fields that changed (the `max_concurrency` pattern), and a source-scan test requires `autoComplete` on every input in the settings forms.
+
+**Issues:** #286
+
+**Fix:** the UI side of the setting.
+- `features/settings/api.ts`: `serve_one_model_at_a_time` on the provider type and on the create and patch payloads.
+- `ProvidersTab.tsx`: a checkbox in the add dialog (`provider-add-one-model`) and in the edit dialog (`provider-edit-one-model`), with a one-line hint. The edit dialog shows the stored value and sends the field only when the user changed it. Create sends it only when ticked. The checkbox always starts unticked, so the UI can never turn the setting on by itself (Q2).
+- `en/settings.json`: `one_model` and `one_model_hint` in both dialogs. The other 17 locales were filled by `scripts/i18n_translate.py --ns settings` (4 keys each, 0 failed); both i18n gates pass.
+
+**Proof:**
+
+```
+ProvidersTab.oneModel.test.tsx   3 passed · src/features/settings: 11 files, 69 tests passed
+BROKEN (dialog ignores the stored value)  × an unrelated edit does not send the setting at all
+BROKEN (field always sent on patch)       × an unrelated edit does not send the setting at all
+BROKEN (add dialog defaults to on)        × a new provider is created with it OFF unless the user ticks it
+restored byte-exact (cmp)
+```
+
+**AC impact:** AC-7 ✅ with Cycle 8's live PATCH through the BFF.
+
+### Cycle 8 — T15: run 4's collision, replayed live
+
+**Investigated:** whether the replay can use plain chat jobs. Every background caller (glossary extraction, resummarize, distill, the composition FSM) submits `operation="chat"` to `/v1/llm/jobs` (`jobs/repo.go:528`), so a chat job takes the same worker, `Guard`, retry and lease path as run 4's two jobs. The replay (a scratch script) logs in through the BFF, sets the credential's setting with a PATCH through the BFF, submits 3 × gemma 12B and 3 × gemma 26B at the same instant to one LM Studio on provider-registry directly (the BFF does not route `/v1/llm/jobs`), and resets the setting to off at the end. It never loads or unloads a model; each load is caused by the product's own job. provider-registry was rebuilt at 57e85e678 and recreated first, so its log is captured again (Cycle 6).
+
+**Issues:** #286, #295 (new: found by this replay)
+
+**Fix:** none in code; this cycle is the live proof. It found one gap. LM Studio answers a model swap not only with the 400 that T13 classifies, but also with **HTTP 500 `Internal Server Error`** (an HTML body). That is classified `transient` and counts toward the breaker. With the setting off, this is what opened the breaker. With it on, the swap still produced four 500s, and the retry recovered them only because 4 < the breaker threshold of 5. Filed as #295 with three options. Classifying every 500 as contention would blind the breaker to a real server fault, so it is a decision, not a fix to make inside this row.
+
+**Proof:**
+
+```
+llm_jobs (usage_purpose=t15_replay), provider-registry DB on lw-iso:
+05:36:10 solo-12b  completed  16.1 s      05:36:26 solo-26b  completed  14.9 s
+--- setting OFF, 05:36:48 ---
+off-12b-0 completed 13.9 s · off-12b-1/2, off-26b-0/1/2  failed LLM_CIRCUIT_OPEN (1.0-5.8 s)
+log: 6 × "upstream attempt failed" class=transient HTTP 500, then "provider circuit open" × 5
+--- setting ON, 05:37:33 ---
+on-12b-0/1/2 completed 1.9 s · on-26b-0/1/2 completed 22.6-22.8 s   → 6/6, wall 25.2 s (drop bound: 2 × solo ≈ 64 s)
+log: "model lease: granted" 12b × 3 (waited 0-1 ms) · "waiting for another model to finish" 26b × 3
+     "model lease: granted" 26b × 3 waited_ms 1915-1917 · 4 × transient HTTP 500 during the swap, retried, circuit stayed closed
+PATCH through the BFF: serve_one_model_at_a_time = True … = False (reset)
+```
+
+**AC impact:** AC-10 ✅: off reproduces the failure, on completes every job well inside the drop bound. AC-7 ✅ (the live PATCH). The margin under the breaker threshold is recorded as #295, not hidden.

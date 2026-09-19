@@ -230,7 +230,9 @@
       "api_key_ph": "sk-...",
       "cancel": "Abbrechen",
       "adding": "Hinzufügen...",
-      "submit": "Anbieter hinzufügen"
+      "submit": "Anbieter hinzufügen",
+      "one_model": "Nur ein Modell gleichzeitig bereitstellen",
+      "one_model_hint": "Aktivieren Sie dies für einen lokalen Server, der nur ein Modell gleichzeitig laden kann, wie z. B. LM Studio auf einer GPU. Anfragen für verschiedene Modelle werden dann nacheinander bearbeitet, anstatt dass beide fehlschlagen. Standardmäßig deaktiviert: Nur Sie wissen, was Ihre Hardware leisten kann."
     },
     "edit_dialog": {
       "aria": "Anbieter bearbeiten",
@@ -248,7 +250,9 @@
       "max_concurrency_hint": "Wie viele Anfragen dieser Anbieter gleichzeitig ausführt. Leer lassen für unbegrenzt (das Backend entscheidet). Nur eine Zahl eingeben, wenn dein Backend ein bekanntes Limit hat (z. B. eine lokale GPU).",
       "cancel": "Abbrechen",
       "saving": "Speichern...",
-      "submit": "Änderungen speichern"
+      "submit": "Änderungen speichern",
+      "one_model": "Nur ein Modell gleichzeitig bereitstellen",
+      "one_model_hint": "Aktivieren Sie dies für einen lokalen Server, der nur ein Modell gleichzeitig laden kann, wie z. B. LM Studio auf einer GPU. Anfragen für verschiedene Modelle werden dann nacheinander bearbeitet, anstatt dass beide fehlschlagen. Standardmäßig deaktiviert: Nur Sie wissen, was Ihre Hardware leisten kann."
     },
     "delete": {
       "title": "{{name}} entfernen?",

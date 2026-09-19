@@ -230,7 +230,9 @@
       "api_key_ph": "sk-...",
       "cancel": "Batal",
       "adding": "Menambahkan...",
-      "submit": "Tambah Penyedia"
+      "submit": "Tambah Penyedia",
+      "one_model": "Jalankan satu model saja dalam satu waktu",
+      "one_model_hint": "Aktifkan ini untuk server lokal yang hanya dapat menampung satu model, seperti LM Studio pada satu GPU. Permintaan untuk model yang berbeda kemudian akan bergantian alih-alih keduanya gagal. Nonaktif secara default: hanya Anda yang tahu kapasitas perangkat keras Anda."
     },
     "edit_dialog": {
       "aria": "Edit penyedia",
@@ -248,7 +250,9 @@
       "max_concurrency_hint": "Berapa banyak permintaan yang dijalankan penyedia ini secara bersamaan. Kosongkan untuk tanpa batas (backend yang menentukan). Isi angka hanya jika backend Anda memiliki batas tertentu (misal: GPU lokal).",
       "cancel": "Batal",
       "saving": "Menyimpan...",
-      "submit": "Simpan Perubahan"
+      "submit": "Simpan Perubahan",
+      "one_model": "Jalankan satu model saja dalam satu waktu",
+      "one_model_hint": "Aktifkan ini untuk server lokal yang hanya dapat menampung satu model, seperti LM Studio pada satu GPU. Permintaan untuk model yang berbeda kemudian akan bergantian alih-alih keduanya gagal. Nonaktif secara default: hanya Anda yang tahu kapasitas perangkat keras Anda."
     },
     "delete": {
       "title": "Hapus {{name}}?",
