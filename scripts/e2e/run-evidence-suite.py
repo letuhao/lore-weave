@@ -218,6 +218,26 @@ def check_models(lmstudio: str) -> tuple[dict, list[str]]:
     return {"loaded": loaded}, []
 
 
+def check_logs(project: str, quiet_after_s: int = 600) -> tuple[dict, list[str]]:
+    """A container that has been up for a while and logged NOTHING since it started is a container
+    whose evidence is being lost. Found 2026-09-19: provider-registry's stdout had not been captured
+    since its restart the day before, so every retry and error line of a failing run was gone and a
+    red could not be explained (plan Cycle 6). A write to its stdout never reached `docker logs`."""
+    now = dt.datetime.now(dt.timezone.utc)
+    info: dict = {}
+    warns: list[str] = []
+    for c in containers(project):
+        started = parse_utc(sh(["docker", "inspect", "-f", "{{.State.StartedAt}}", c["Names"]]).stdout)
+        up = (now - started).total_seconds()
+        r = sh(["docker", "logs", "--since", started.isoformat(), c["Names"]])
+        lines = len([l for l in (r.stdout + r.stderr).splitlines() if l.strip()])
+        info[c["Names"]] = {"up_s": int(up), "lines_since_start": lines}
+        if up > quiet_after_s and lines == 0:
+            warns.append(f"{c['Names']}: up {up / 60:.0f} min and NOTHING in its log since it started — "
+                         "its log is not being captured; recreate it before a run you need to explain")
+    return info, warns
+
+
 def compose_contexts(project: str) -> dict[str, list[str]]:
     """Each first-party service's build scope, repo-relative.
 
@@ -303,6 +323,7 @@ def preflight(args) -> dict:
         ("schedulers", lambda: check_schedulers(args.project, args.expected_minutes * 60)),
         ("models", lambda: check_models(args.lmstudio)),
         ("images", lambda: check_images(args.project)),
+        ("logs", lambda: check_logs(args.project)),
         ("clock", lambda: check_clock(args.project, args.probe_seconds)),
     ):
         log(f"preflight: {key} …")

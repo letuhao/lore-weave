@@ -3,6 +3,7 @@ package provider
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Phase 4a-α Step 0b — typed upstream errors so the worker can decide
@@ -63,6 +64,66 @@ func (e *ErrUpstreamPermanent) Error() string {
 	return fmt.Sprintf("provider permanent error: HTTP %d: %s", e.StatusCode, e.Body)
 }
 
+// ErrUpstreamModelContention — a local server (LM Studio) refused to load the requested model
+// because another load was in progress: two callers asked one GPU for different models at the same
+// moment, and each load aborted the other ("Engine protocol startup was aborted"). It comes back as
+// a 400, but nothing about the request is wrong: the same call succeeds once the other model has
+// loaded. So it is RETRYABLE, and it is NOT a provider-health failure — it must never count toward
+// the circuit breaker (#286, plan 2026-09-19 T13).
+type ErrUpstreamModelContention struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *ErrUpstreamModelContention) Error() string {
+	return fmt.Sprintf("provider model-load contention: HTTP %d: %s", e.StatusCode, e.Body)
+}
+
+// isModelLoadContention matches LM Studio's load-abort answer. Both phrases are required, so an
+// ordinary "Failed to load model" (a wrong model name, a corrupt file) stays a permanent error.
+func isModelLoadContention(statusCode int, body string) bool {
+	return statusCode >= 400 && statusCode < 500 &&
+		strings.Contains(body, "Failed to load model") &&
+		strings.Contains(body, "Engine protocol startup was aborted")
+}
+
+// IsRetryableUpstreamError reports whether a failed call should be retried: a transient provider
+// failure OR model-load contention. The circuit breaker uses IsTransientUpstreamError instead, so
+// contention is retried without ever counting as the provider being unhealthy.
+func IsRetryableUpstreamError(err error) bool {
+	if IsTransientUpstreamError(err) {
+		return true
+	}
+	var mc *ErrUpstreamModelContention
+	return errors.As(err, &mc)
+}
+
+// ErrorClass names a provider error's class for logs ("transient", "contention", …), so a failed
+// attempt is diagnosable from its log line alone.
+func ErrorClass(err error) string {
+	var rl *ErrUpstreamRateLimited
+	var trans *ErrUpstreamTransient
+	var to *ErrUpstreamTimeout
+	var mc *ErrUpstreamModelContention
+	var perm *ErrUpstreamPermanent
+	switch {
+	case err == nil:
+		return "none"
+	case errors.As(err, &rl):
+		return "rate_limited"
+	case errors.As(err, &trans):
+		return "transient"
+	case errors.As(err, &to):
+		return "timeout"
+	case errors.As(err, &mc):
+		return "contention"
+	case errors.As(err, &perm):
+		return "permanent"
+	default:
+		return "other"
+	}
+}
+
 // IsTransientUpstreamError reports whether the worker should retry the
 // upstream call. True for rate-limit / 5xx / timeout; false for
 // permanent (4xx-except-429) and for any non-typed error (default-deny).
@@ -111,6 +172,9 @@ func ClassifyUpstreamHTTP(statusCode int, body string, retryAfterS *float64) err
 			StatusCode: statusCode,
 			Body:       body,
 		}
+	}
+	if isModelLoadContention(statusCode, body) {
+		return &ErrUpstreamModelContention{StatusCode: statusCode, Body: body}
 	}
 	return &ErrUpstreamPermanent{
 		StatusCode: statusCode,
