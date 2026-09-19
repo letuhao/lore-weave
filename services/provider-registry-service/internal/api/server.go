@@ -40,6 +40,9 @@ import (
 )
 
 type Server struct {
+	// #286 — per-endpoint model lease (nil when REDIS_URL is unset). Used on the stream path;
+	// the jobs worker holds its own reference via WithModelLease.
+	modelLease *ratelimit.ModelLease
 	pool      *pgxpool.Pool
 	cfg       *config.Config
 	secret    []byte
@@ -180,6 +183,15 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 				s.providerGovernor = ratelimit.NewCompositeGovernor(gov, localGov)
 				s.jobsWorker.WithGovernance(s.providerGovernor, brk).WithDefaultConcurrency(providerDefaultMax).WithConcurrencyAcquireTimeout(time.Duration(providerAcquireTimeout) * time.Millisecond)
 				slog.Info("provider governance enabled", "default_max_concurrency", providerDefaultMax, "breaker_threshold", cfg.BreakerThreshold)
+			// #286 — the model lease. Built whenever Redis is available; it only takes effect
+			// for credentials whose owner opted in to "serve one model at a time".
+			s.modelLease = ratelimit.NewModelLease(rdb, ratelimit.ModelLeaseConfig{
+				Lease:       time.Duration(cfg.ModelLeaseTTLS) * time.Second,
+				WaitTimeout: time.Duration(cfg.ModelLeaseWaitS) * time.Second,
+				AgingBound:  time.Duration(cfg.ModelLeaseAgingS) * time.Second,
+			})
+			s.jobsWorker.WithModelLease(s.modelLease)
+
 
 				// S4b (decision C) — start the usage outbox relay on the same
 				// Redis client. Drains usage_outbox → loreweave:events:usage (+

@@ -45,7 +45,7 @@ func TestStreamChatEmitsCanonicalRateLimitCode(t *testing.T) {
 
 	(&Server{}).streamChat(req, rr, rr, adapter, "", "", "model-ref", streamRequest{
 		Messages: []any{map[string]any{"role": "user", "content": "safe test"}},
-	}, guard)
+	}, guard, false)
 
 	body := rr.Body.String()
 	if !strings.Contains(body, `"code":"LLM_RATE_LIMITED"`) || !strings.Contains(body, `"retry_after_s":3.5`) {
