@@ -222,6 +222,28 @@ LoreWeave is model-agnostic. Connect any provider:
 | **Ollama** | Local URL | Local models auto-listed |
 | **Custom** | Any OpenAI-compatible endpoint | Dynamic fetch supported |
 
+### A local server that holds one model at a time
+
+A local server on one GPU, such as LM Studio, often has room for only one large model. If two
+background jobs ask it for two different models at the same moment, it has to swap models, and
+during the swap it rejects requests. Several such failures in a row open the provider's circuit
+breaker, and the jobs fail with `LLM_CIRCUIT_OPEN`.
+
+Turn on **Settings → Providers → Edit → Serve one model at a time** for that provider. Requests
+for different models on the same server then take turns. Requests for the same model still run
+together, and the first request for a waiting model goes next.
+
+- **Off by default.** Only you know what your hardware can hold, so LoreWeave never turns it on
+  by itself.
+- **LoreWeave never loads or unloads a model itself.** The setting only orders the requests; the
+  server swaps models as it normally does.
+- **Waiting has a limit.** A request that waits for more than 10 minutes fails with
+  `LLM_MODEL_BUSY` (`MODEL_LEASE_WAIT_S` on provider-registry changes the limit).
+- **It covers chat and every background job** (extraction, summaries, translation). Image
+  requests (vision) do not take turns yet.
+- Known gap: during the swap, LM Studio can still answer with a few `HTTP 500` errors. They are
+  retried, but they count toward the circuit breaker ([#295](https://github.com/letuhao/lore-weave/issues/295)).
+
 ### Recommended Models
 
 | Use Case | Cloud | Self-Hosted |

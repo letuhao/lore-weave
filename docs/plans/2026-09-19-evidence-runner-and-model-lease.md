@@ -75,7 +75,7 @@ Premises are re-verified before each lane starts.
 | **AC-8** | With the setting on, requests for different models on one endpoint wait for each other instead of colliding; same-model requests still run concurrently; with it off, behaviour is unchanged | lease unit tests (grant/wait/release/aging) + wiring tests on both the job and stream paths | T11, T12 | ✅ met — Cycle 4 (lease, 3 bites) + Cycle 5 (job and stream wiring, 2 bites) |
 | **AC-9** | An LM Studio model-load abort is retried as contention and never counts toward the breaker, whatever the setting | `Guard`/classification unit tests + a bite | T9, T13 | ✅ met — Cycle 6: classified on run 4's verbatim body, retried, never counted; 3 bites |
 | **AC-10** | Run 4's collision, replayed live with the setting on, ends with both jobs completed; with it off, it reproduces today's failure | live replay on `lw-iso`, `llm_jobs` + extraction status pasted | T15 | ✅ met — Cycle 8: off 1/6 completed (5 × `LLM_CIRCUIT_OPEN`), on 6/6 completed in 25.2 s; margin gap filed as #295 |
-| **AC-11** | The changelog and the user docs describe the setting, and every issue this plan resolves is closed with its evidence | `CHANGELOG.md`, `changelog-gate.py`, the GitHub issue states | T16 | ❌ not met |
+| **AC-11** | The changelog and the user docs describe the setting, and every issue this plan resolves is closed with its evidence | `CHANGELOG.md`, `changelog-gate.py`, the GitHub issue states | T16 | ✅ met — Cycle 9: changelog + README section; #286, #289–#292 closed with evidence; #288 stays open for T8 |
 | **AC-12** | The full suite is green through the new runner on rebuilt images | the runner's ledger line for the final run | T17 | ❌ not met |
 
 ## Board
@@ -158,7 +158,7 @@ Premises are re-verified before each lane starts.
 
 ### Lane Z — close
 
-- [ ] **T16** — **Docs, changelog, issues**
+- [x] **T16** — **Docs, changelog, issues** (Cycle 9)
   - `CHANGELOG.md` `[Unreleased]`:
     - Added: the setting, the evidence runner;
     - Fixed: the load-abort retry and #289–#292.
@@ -547,3 +547,26 @@ PATCH through the BFF: serve_one_model_at_a_time = True … = False (reset)
 ```
 
 **AC impact:** AC-10 ✅: off reproduces the failure, on completes every job well inside the drop bound. AC-7 ✅ (the live PATCH). The margin under the breaker threshold is recorded as #295, not hidden.
+
+### Cycle 9 — T16: docs, changelog, issues
+
+**Investigated:** where a self-hoster reads about providers. There is no user-docs site; the README's "AI Models (BYOK)" section is where LM Studio is introduced, so the setting is documented there (the path decision this row asked for). Re-checking the cited issues showed the evidence runner is #288's tool, not #287's (#287 is the revision-order clock issue), so the changelog cites #288.
+
+**Issues:** #286, #289, #290, #291, #292, #295
+
+**Fix:** docs only.
+- `CHANGELOG.md` `[Unreleased]`: Added (the setting, the evidence runner); Fixed (the load-abort retry, the per-attempt log, #289–#292).
+- `README.md`: "A local server that holds one model at a time": what the collision looks like, where the setting is, off by default, never loads or unloads a model, the 10-minute wait and `LLM_MODEL_BUSY`, vision not covered, and the #295 gap.
+- #286 and #289–#292 closed with evidence comments. Each comment names its local commit and says the branch is not pushed yet: pushing is not part of this plan. #288 stays open for T8.
+- The rebuilt frontend is deployed to `lw-iso` and carries the setting.
+
+**Proof:**
+
+```
+changelog-gate: structure OK (3 section(s))
+gh issue view: 286 CLOSED · 289 CLOSED · 290 CLOSED · 291 CLOSED · 292 CLOSED · 295 OPEN · 288 OPEN
+lw-iso-frontend-1  labels git_sha=57e85e678 git_dirty_scope=frontend/src (the T14 files, committed as 99e35da65)
+  /usr/share/nginx/html/assets/index-DKwv8QhS.js contains provider-edit-one-model and "Serve one model at a time"
+```
+
+**AC impact:** AC-11 ✅.

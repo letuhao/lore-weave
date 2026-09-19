@@ -20,9 +20,26 @@ pre-release identifiers, what "release" vs "pre-release" means for this repo, ar
 
 ### Added
 
+- **"Serve one model at a time"**: a per-provider setting for a local server that holds one model,
+  such as LM Studio on one GPU. When it is on, requests for different models on that server take
+  turns instead of colliding. It is off by default, and LoreWeave never loads or unloads a model
+  itself. Set it in Settings → Providers. (#286)
+- **Evidence runner for the E2E suite**: `scripts/e2e/run-evidence-suite.py` checks the stack before
+  a full run (clock steps, schedulers due, loaded models, image provenance, lost container logs),
+  keeps each run's traces in its own folder, and appends one line per run to
+  `frontend/tests/e2e/runs/LEDGER.jsonl`. `scripts/e2e/why-red.py` gathers a failed test's trace,
+  service logs, LLM jobs and clock steps with one command. (#288)
+
 ### Changed
 
 ### Fixed
+
+- An LM Studio model-load abort ("Engine protocol startup was aborted") is now retried as
+  contention and no longer counts toward the provider's circuit breaker. (#286)
+- Every failed upstream attempt is now logged with its error class, so a breaker that opens can be
+  explained afterwards. (#286)
+- Stale or broken test checks: the outline canon router test (#289), the scene-beats source scan
+  (#290), the book-service DB smoke workflow (#291), and type-checking for the E2E folder (#292).
 
 ### Removed
 
