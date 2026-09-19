@@ -5,7 +5,7 @@
 import { test, expect } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import { getAccessToken, createBook, createChapter, trashBook } from '../helpers/api';
-import { seedMotif, createWork, createSceneNode } from '../helpers/motif';
+import { seedMotif, archiveMotif, createWork, createSceneNode } from '../helpers/motif';
 import { StudioPage } from '../pages/StudioPage';
 
 test.describe('@s4 Studio · motif-graph canvas', () => {
@@ -31,6 +31,7 @@ test.describe('@s4 Studio · motif-graph canvas', () => {
   });
 
   test.afterAll(async ({ request }) => {
+    if (m1) await archiveMotif(request, token, m1);   // it leaked into the shared account before
     if (bookId) await trashBook(request, token, bookId).catch(() => { /* best effort */ });
   });
 

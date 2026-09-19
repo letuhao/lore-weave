@@ -2,9 +2,15 @@ import { test, expect } from '@playwright/test';
 import { LoginPage } from '../pages/LoginPage';
 import { EnrichmentTab } from '../pages/EnrichmentTab';
 import { TEST_USER } from '../helpers/auth';
+import { getAccessToken, createBook } from '../helpers/api';
 
-// The seeded demo Fengshen book (owned by the test user). Override via env.
-const BOOK = process.env.E2E_BOOK_ID ?? '019e7850-a8d9-78dd-8b2a-f33ccc2396ad';
+// This used to default to a hard-coded "seeded demo Fengshen book" id. That book exists on ONE
+// stack and one account, so everywhere else the page rendered `book not found` and every tab
+// assertion failed -- which reads as a missing Compose tab and is a missing BOOK.
+//
+// This sweep is render+wire only (see the note below), so a book created for the run is exactly
+// what it needs. E2E_BOOK_ID still wins for anyone pointing it at a particular book.
+let BOOK = process.env.E2E_BOOK_ID ?? '';
 
 // GUI gap-closure browser sweep — exercises the NEW author controls through the
 // REAL chain (login → gateway → FE → lore-enrichment) on the MERGED branch (main's
@@ -14,6 +20,12 @@ const BOOK = process.env.E2E_BOOK_ID ?? '019e7850-a8d9-78dd-8b2a-f33ccc2396ad';
 // (compose run → proposal → promote) are NOT re-run here — they're API-smoke-proven
 // (S1–S4 + the Step-2 live e2e); this sweep is render+wire only.
 test.describe('Enrichment GUI gap-closure — browser sweep (merged branch)', () => {
+  test.beforeAll(async ({ request }) => {
+    if (BOOK) return;
+    const token = await getAccessToken(request);
+    BOOK = await createBook(request, token, `E2E enrichment sweep ${Date.now()}`);
+  });
+
   test.beforeEach(async ({ page }) => {
     const login = new LoginPage(page);
     await login.goto();

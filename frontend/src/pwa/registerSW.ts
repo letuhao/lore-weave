@@ -62,9 +62,16 @@ export function registerServiceWorker(): void {
       });
 
     // Reload exactly once when the new SW takes control (after the user accepts + SKIP_WAITING).
+    //
+    // ONLY when the page was already controlled — that is the accepted-update case. On a visitor's
+    // FIRST install there is no controller yet, and sw.js's `activate` calls `clients.claim()`, which
+    // also fires `controllerchange`. Reloading on that wiped whatever the person was typing about a
+    // second after the page loaded — found 2026-09-18 when an E2E sign-in lost both fields to it (the
+    // plan's Cycle 9). A first install has nothing new to load into; the page already runs it.
+    const hadController = !!navigator.serviceWorker.controller;
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
+      if (!hadController || refreshing) return;
       refreshing = true;
       window.location.reload();
     });

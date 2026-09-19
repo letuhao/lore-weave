@@ -266,11 +266,15 @@ def test_get_outline_404_when_work_missing(ctx):
 
 
 def test_create_node_201_and_bad_reference_400(ctx):
+    # `chapter`, not `arc`: a996750d7 (F2) narrowed NodeKind to the two kinds outline_node
+    # accepts since pkg_lift_v1 ('chapter', 'scene'); arcs are structure nodes now. Posting
+    # `arc` here was answered 422 by validation before the handler ran, so neither claim below
+    # was being tested any more (#289).
     c, _, outline, _, _ = ctx
-    r = c.post(f"/v1/composition/works/{PROJECT}/outline/nodes", json={"kind": "arc", "title": "Act I"})
+    r = c.post(f"/v1/composition/works/{PROJECT}/outline/nodes", json={"kind": "chapter", "title": "Act I"})
     assert r.status_code == 201
     outline.create_raises = ReferenceViolationError("parent not owned")
-    r2 = c.post(f"/v1/composition/works/{PROJECT}/outline/nodes", json={"kind": "arc", "parent_id": str(uuid.uuid4())})
+    r2 = c.post(f"/v1/composition/works/{PROJECT}/outline/nodes", json={"kind": "chapter", "parent_id": str(uuid.uuid4())})
     assert r2.status_code == 400 and r2.json()["detail"]["code"] == "BAD_REFERENCE"
 
 

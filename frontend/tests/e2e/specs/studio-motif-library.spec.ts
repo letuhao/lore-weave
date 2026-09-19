@@ -4,7 +4,7 @@
 import { test, expect } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import { getAccessToken, createBook, createChapter, trashBook } from '../helpers/api';
-import { seedMotif, createMotifLink, archiveMotif } from '../helpers/motif';
+import { seedMotif, createMotifLink, archiveMotif, archiveMotifsByCode } from '../helpers/motif';
 import { MotifLibraryPage } from '../pages/MotifLibraryPage';
 
 test.describe('@s4 Studio · motif-library', () => {
@@ -15,6 +15,7 @@ test.describe('@s4 Studio · motif-library', () => {
   const motifB = { code: `e2e.reversal.${stamp}`, name: `E2E Reversal ${stamp}` };
   let idA = '';
   let idB = '';
+  const createdCodes: string[] = [];   // motifs created through the UI, archived by code afterwards
 
   test.beforeAll(async ({ request }) => {
     token = await getAccessToken(request);
@@ -27,6 +28,7 @@ test.describe('@s4 Studio · motif-library', () => {
   test.afterAll(async ({ request }) => {
     await archiveMotif(request, token, idA);
     await archiveMotif(request, token, idB);
+    await archiveMotifsByCode(request, token, createdCodes);
     if (bookId) await trashBook(request, token, bookId).catch(() => { /* best effort */ });
   });
 
@@ -48,6 +50,7 @@ test.describe('@s4 Studio · motif-library', () => {
     const lib = new MotifLibraryPage(page);
     await lib.open(bookId);
     const code = `e2e.created.${Date.now()}`;
+    createdCodes.push(code);
     await lib.createMotif(`E2E Created ${code}`, code);
     // the new motif surfaces (its detail opens, or its card appears) — no silent no-op
     await expect(page.getByText(`E2E Created ${code}`).first()).toBeVisible({ timeout: 10_000 });

@@ -119,3 +119,22 @@ export async function markOnboarded(
   });
   expect(res.ok(), `mark onboarded: ${res.status()}`).toBeTruthy();
 }
+
+/**
+ * Mark the account as having seen the Writing Studio's first-run overlay (the role picker,
+ * `useStudioOnboarding`, pref key `hasSeenStudioOnboarding`). A brand-new account meets that
+ * modal the first time it opens a book's Studio, and it intercepts every click behind it. A test
+ * whose subject is something else in the Studio passes it the way `markOnboarded` passes the app's
+ * own onboarding screen. Sets only the seen-flag; `studioRole` stays unset, exactly as the
+ * overlay's own Skip leaves it.
+ */
+export async function markStudioOnboarded(
+  request: APIRequestContext,
+  token: string,
+): Promise<void> {
+  const res = await request.patch('/v1/me/preferences', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { prefs: { hasSeenStudioOnboarding: true } },
+  });
+  expect(res.ok(), `mark studio onboarded: ${res.status()}`).toBeTruthy();
+}

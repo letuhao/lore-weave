@@ -568,6 +568,27 @@ def test_post_work_binds_existing_unmarked_book_project(ctx):
     assert r.status_code == 201 and works.created_with[0] == pid  # bound to the existing project, no create_project
 
 
+def test_post_work_backfills_a_PENDING_work_onto_an_existing_UNMARKED_project(ctx):
+    # Plan 2026-09-18 Cycle 4: a book with an unmarked knowledge project AND a lazy
+    # pending Work. The pending Work must take the project; creating a second Work hit
+    # the one-Work-per-book unique index, and the re-get BY PROJECT found nothing → 409
+    # WORK_CREATE_CONFLICT on every attempt, the Studio's open included.
+    c, works, knowledge, _, _ = ctx
+    works.marked = []
+    pid = uuid.uuid4()
+    knowledge.projects = [{"project_id": str(pid), "project_type": "book", "book_id": str(BOOK), "is_archived": False}]
+    pend = _pending_work()
+    works.pending = pend
+    works.backfill_result = _work(project_id=pid, id=pend.id)
+    works.get_results = [None, None]
+    works.create_raises = asyncpg.UniqueViolationError("one work per book")
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201, r.json()
+    assert works.backfilled_with == (pend.id, pid)
+    assert r.json()["project_id"] == str(pid)
+    assert r.json()["pending_project_backfill"] is False
+
+
 def test_resolve_unmarked_single_from_knowledge(ctx):
     c, works, knowledge, _, _ = ctx
     works.marked = []

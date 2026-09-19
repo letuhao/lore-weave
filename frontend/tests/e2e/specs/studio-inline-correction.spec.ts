@@ -43,6 +43,11 @@ test.describe('Studio editor inline-ghost correction capture (S1-B3) [model-gate
     await expect(s.inlineGhostText).toBeVisible({ timeout: 120_000 });
     await expect.poll(async () => (await s.inlineGhostText.innerText()).trim().length, { timeout: 120_000 })
       .toBeGreaterThan(20);
+    // STRICTER (plan F13). `continue` on this empty scene returned "Please provide the recent prose"
+    // — and 20 characters of a request passed this test. A continuation that asks for input is not a
+    // continuation, so the claim now checks that what streamed is not a request for context.
+    expect((await s.inlineGhostText.innerText()).trim(), 'the inline ghost returned a request for context instead of prose')
+      .not.toMatch(/please provide|provide the (recent prose|context)|once (you )?provide|i need (the|more)/i);
   }
 
   // ORDER MATTERS: the Accept path runs FIRST (a CLEAN full-stream generation, no mid-stream stop), then
@@ -60,6 +65,10 @@ test.describe('Studio editor inline-ghost correction capture (S1-B3) [model-gate
     page.on('response', (r) => {
       if (/\/jobs\/.+\/correction/.test(r.url()) && r.request().method() === 'POST') correctionFired = true;
     });
+    // Accept exists only once the stream has FINISHED (while streaming, the bar shows only Discard).
+    // Since afe24542e (F13) the continuation is real prose that outlives the 20-character check in
+    // streamInlineGhost, so wait for the full stream, as the ordering note above intends.
+    await expect(s.inlineAccept).toBeVisible({ timeout: 120_000 });
     await s.inlineAccept.click({ force: true });
     // Accept commits the ghost into the doc + closes the overlay (a real signal to wait on, not a sleep).
     await expect(s.inlineGhostText).toHaveCount(0);
@@ -78,7 +87,10 @@ test.describe('Studio editor inline-ghost correction capture (S1-B3) [model-gate
       (r) => /\/jobs\/.+\/correction/.test(r.url()) && r.request().method() === 'POST',
       { timeout: 30_000 },
     );
-    await s.inlineDiscard.click({ force: true }); // fixed-position caret overlay may sit outside the viewport
+    // Discard is `inline-stop` while the ghost streams and `inline-discard` after it finishes; both
+    // post the REJECT. Since afe24542e (F13) the continuation is real prose, not a 30-word request
+    // for context, so it is usually still streaming here and `inline-discard` did not exist yet.
+    await s.inlineStop.or(s.inlineDiscard).click({ force: true }); // fixed-position overlay may sit outside the viewport
     const resp = await correction;
     expect(resp.status()).toBeGreaterThanOrEqual(200);
     expect(resp.status()).toBeLessThan(300);

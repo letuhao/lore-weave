@@ -38,12 +38,19 @@ export class BooksPage {
   async createBook(input: BookCreateInput): Promise<void> {
     await this.openCreateDialog();
     await this.titleInput.fill(input.title);
-    await this.languageInput.fill(input.language);
+    // book-language-input is a LanguagePicker, i.e. a <select> of language CODES
+    // (src/components/shared/LanguagePicker.tsx:57). The chapter form's twin is a real
+    // <input>, which is why only this one moves off .fill().
+    await this.languageInput.selectOption(input.language);
     if (input.description) {
       await this.descriptionInput.fill(input.description);
     }
     await this.createSubmit.click();
-    await expect(this.titleInput).not.toBeVisible({ timeout: 5_000 });
+    // Creating a book NAVIGATES STRAIGHT INTO THE STUDIO for the new book -- it does not
+    // return to the list (src/pages/BooksPage.tsx, and the unit test
+    // BooksPage.createNavigate.test.tsx pins exactly that). A caller that wants the list
+    // afterwards has to go back to it, the same as a person would.
+    await this.page.waitForURL('**/books/*/studio', { timeout: 15_000 });
   }
 
   bookRow(title: string): Locator {

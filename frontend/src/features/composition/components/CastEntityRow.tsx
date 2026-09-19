@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Pencil, Archive } from 'lucide-react';
 import { useEntityDetail, useEntityEvents, useEntityFacts, type CastRow } from '../hooks/useCast';
+import { studioChapterPath } from '@/lib/studioRoutes';
 
 export function CastEntityRow({
   row, bookId, chapterId, token, onViewArc, onRename, onEdit, onArchive,
@@ -173,7 +174,7 @@ export function CastEntityRow({
                   <button
                     key={e.id} type="button" data-testid="cast-event"
                     className="block w-full truncate text-left hover:text-primary"
-                    onClick={() => e.chapter_id && navigate(`/books/${bookId}/chapters/${e.chapter_id}/edit`)}
+                    onClick={() => e.chapter_id && navigate(studioChapterPath(bookId, e.chapter_id))}
                   >
                     {e.title}
                   </button>

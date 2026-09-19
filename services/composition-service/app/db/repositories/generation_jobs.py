@@ -727,6 +727,17 @@ class GenerationJobsRepo:
                 )
                 return job, version
 
+    async def touch_running(self, job_id: UUID) -> None:
+        """Heartbeat: bump `updated_at` on a job that is still RUNNING, so the worker's
+        `updated_at`-based sweeper does not re-drive a job that is merely slow. Only a
+        `running` row is touched, so a beat can never revive a finished or cancelled job."""
+        async with self._pool.acquire() as c:
+            await c.execute(
+                "UPDATE generation_job SET updated_at = now() "
+                "WHERE id = $1 AND status = 'running'",
+                job_id,
+            )
+
     async def update_status(
         self,
         job_id: UUID,

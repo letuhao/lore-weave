@@ -19,6 +19,7 @@ interface UserModel {
   provider_kind: string;
   provider_model_name: string;
   alias: string | null;
+  is_active: boolean;
 }
 
 function authHeaders(token: string): { Authorization: string } {
@@ -72,8 +73,29 @@ export async function ensureLmStudioUserModel(
     throw new Error(`list user models failed: ${listResp.status()} ${await listResp.text()}`);
   }
   const { items: models } = (await listResp.json()) as { items: UserModel[] };
-  const existing = models.find((m) => m.provider_model_name === QWEN_MODEL_NAME);
-  if (existing) return existing.user_model_id;
+
+  // An INACTIVE model is a model ref that resolves to nothing: the job runs, every batch comes
+  // back LLM_MODEL_NOT_FOUND, and it finishes `completed_with_errors` having extracted zero
+  // entities. This used to return the named model whether or not it was active, because the
+  // listing deliberately asks for include_inactive=true.
+  //
+  // The machine can host ONE strong model at a time, so this must never activate a second one.
+  // It prefers the named model when that is the live one, otherwise uses whichever LM Studio
+  // model IS active, and says so plainly when there is none.
+  const active = (m: UserModel) => m.is_active !== false;
+  const named = models.find((m) => m.provider_model_name === QWEN_MODEL_NAME);
+  if (named && active(named)) return named.user_model_id;
+
+  const liveAlternative = models.find(active);
+  if (liveAlternative) return liveAlternative.user_model_id;
+
+  if (named) {
+    throw new Error(
+      `the only registered LM Studio model (${QWEN_MODEL_NAME}) is INACTIVE and no other is ` +
+        `active. Activate one -- do not register a second: a model ref that resolves to nothing ` +
+        `makes extraction finish 'completed_with_errors' with zero entities.`,
+    );
+  }
 
   const createResp = await request.post('/v1/model-registry/user-models', {
     headers: authHeaders(token),

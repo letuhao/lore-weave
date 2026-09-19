@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getAccessToken, ensureUserB, createBook, trashBook } from '../helpers/api';
+import { getAccessToken, ensureUserB, createBook, trashBook, seedFactoryFixture } from '../helpers/api';
 import {
   ABSENT_CAMPAIGN_ID, campaignServiceUp, errorCode,
   estimateCampaign, createCampaign, listCampaigns, getCampaign,
@@ -133,8 +133,19 @@ test.describe('Auto-Draft Factory — gateway contract & guards', () => {
 // knowledge project id and a book with published chapters in range, supplied via
 // env (so CI without seeded fixtures skips cleanly rather than failing).
 test.describe('Auto-Draft Factory — real create + report/activity/chapters [fixture-gated]', () => {
-  const PROJECT = process.env.E2E_FACTORY_PROJECT_ID;
-  const BOOK = process.env.E2E_FACTORY_BOOK_ID;
+  // These were read from env and nothing ever set them, so this block had NEVER run anywhere --
+  // a permanent skip, which is an unanswered question rather than a pass. The fixture is seeded
+  // instead (a book with a PUBLISHED chapter + a knowledge project); the env still wins.
+  let PROJECT = process.env.E2E_FACTORY_PROJECT_ID;
+  let BOOK = process.env.E2E_FACTORY_BOOK_ID;
+
+  test.beforeAll(async ({ request }) => {
+    if (PROJECT && BOOK) return;
+    const token = await getAccessToken(request);
+    const seeded = await seedFactoryFixture(request, token, 'E2E factory');
+    PROJECT = seeded.projectId;
+    BOOK = seeded.bookId;
+  });
 
   test('create → report/activity/chapters contracts + switch-model gate [A1/A3/C4/L6/L7]', async ({ request }) => {
     test.skip(!PROJECT || !BOOK, 'set E2E_FACTORY_PROJECT_ID + E2E_FACTORY_BOOK_ID (book w/ published chapters)');

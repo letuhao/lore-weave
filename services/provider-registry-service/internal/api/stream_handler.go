@@ -32,6 +32,7 @@ import (
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/ratelimit"
 )
 
 // base64StdEncode is a thin alias around base64.StdEncoding.EncodeToString,
@@ -194,15 +195,17 @@ func (s *Server) doLlmStream(w http.ResponseWriter, r *http.Request, userID uuid
 	// invokeModel, retired in Phase 4d.)
 	var providerKind, providerModelName, endpointBaseURL, secret string
 	var pricingRaw []byte // Phase 6a-δ — per-model pricing JSONB for the guardrail
+	var serveOneModel bool // #286 — the credential's owner opted in to one model at a time
 	if in.ModelSource == "user_model" {
 		var secretCipher string
 		err = s.pool.QueryRow(r.Context(), `
 SELECT um.provider_kind, um.provider_model_name,
-       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), um.pricing
+       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), um.pricing,
+       pc.serve_one_model_at_a_time
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &pricingRaw)
+`, modelRef, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &pricingRaw, &serveOneModel)
 		if err == pgx.ErrNoRows {
 			writeError(w, http.StatusNotFound, "LLM_MODEL_NOT_FOUND", "user model not found or inactive")
 			return
@@ -381,7 +384,7 @@ WHERE platform_model_id=$1 AND status='active'
 	case "tts":
 		s.streamTts(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in.Input)
 	default: // "chat"
-		streamErr := s.streamChat(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in, guard)
+		streamErr := s.streamChat(r, w, flusher, adapter, endpointBaseURL, secret, providerModelName, in, guard, serveOneModel)
 		if finalizeStream != nil {
 			finalizeStream(streamErr)
 		}
@@ -444,6 +447,7 @@ func (s *Server) streamChat(
 	endpointBaseURL, secret, providerModelName string,
 	in streamRequest,
 	guard *streamGuard,
+	serveOneModel bool,
 ) error {
 	input := buildChatStreamInput(in)
 	// P0-2 (B1) — capture the assembled provider request (post-injection: messages
@@ -481,6 +485,21 @@ func (s *Server) streamChat(
 		}
 		flusher.Flush()
 		return nil
+	}
+
+	// #286 — this path bypasses the jobs worker's Guard, so the model lease is taken here too:
+	// a streamed draft on one GPU collides with a job for another model exactly like two jobs do.
+	if serveOneModel && s.modelLease != nil {
+		release, lerr := s.modelLease.Acquire(r.Context(), endpointBaseURL, providerModelName)
+		if lerr != nil {
+			code := "LLM_UPSTREAM_ERROR"
+			if errors.Is(lerr, ratelimit.ErrModelLeaseTimeout) {
+				code = "LLM_MODEL_BUSY"
+			}
+			_ = emit(provider.StreamChunk{Kind: provider.StreamChunkError, Code: code, Message: lerr.Error()})
+			return lerr
+		}
+		defer release()
 	}
 
 	err := adapter.Stream(r.Context(), endpointBaseURL, secret, providerModelName, input, emit)

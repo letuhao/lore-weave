@@ -151,6 +151,15 @@ def test_accepts_token_carrying_aud_go_parity():
     assert str(verify_access_token(tok_list, SECRET).user_id) == SUBJECT
 
 
+def test_accepts_token_whose_iat_is_in_the_future_go_parity():
+    # Go's platformjwt.Verify never validates `iat` (golang-jwt v5 checks it only under
+    # WithIssuedAt). PyJWT's default rejects an `iat` ahead of this host's clock, so a few
+    # seconds of clock difference between issuer and verifier 401'd a live, unexpired token in
+    # Python services only. Measured on the dev VM: the wall clock steps back 1.4 s every ~30 s.
+    tok = _encode(_good_payload(iat=_now() + dt.timedelta(seconds=5)))
+    assert str(verify_access_token(tok, SECRET).user_id) == SUBJECT
+
+
 def test_accepts_token_carrying_iss_go_parity():
     # Go never pins `iss` either; PyJWT only checks it when `issuer=` is passed
     # (we never do), so an `iss`-bearing token is accepted by both.

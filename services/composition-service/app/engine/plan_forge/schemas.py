@@ -29,6 +29,7 @@ skeleton. `normalize_spec` still runs afterwards, so nothing downstream changes 
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 #: An arc's kind, as the prompt already declares it. A value outside this set is one the compiler's
@@ -120,7 +121,69 @@ _EVENT = _obj({
 #: absence. He had no anchor, so he had no way across.
 _ANALYZE_CHAR = _obj({"name": _STR, "role": _STR, "notes": _STR}, ["name"])
 
-ANALYZE_SCHEMA: dict[str, Any] = _obj({
+#: Every free-text string in the ANALYZE shape carries a `maxLength` — and unlike the `maxItems`
+#: episode above, this one was measured first, under control, before it went in.
+#:
+#: The failure it removes is specific. The model does not stop a string: it keeps reading the
+#: author's document INTO the field — an arc's `theme` continues with the next list items, then
+#: "## 3. Cast", then loops the arc list until `max_tokens`. The runaway sits inside a JSON string,
+#: so the grammar has no structural point at which to close, and `frequency_penalty` does not reach
+#: it: the repeated unit is ~60 tokens, wider than the sampler's default 64-token penalty window.
+#: Of 32 `theme` values in SUCCESSFUL runs, 21 were bleed or loop; a clean one is under 60 chars.
+#:
+#: Controlled A/B, the captured production request replayed against LM Studio, arms interleaved,
+#: prompt cache evicted before every call (a looped generation measurably raises the odds the next
+#: identical prompt loops):
+#:
+#:     current schema            2/14 parsed   (12 truncated at 12000 tokens)
+#:     theme maxLength only     12/14 parsed
+#:     all strings bounded       8/8  parsed   (covers the id-field loop seen once in the control)
+#:
+#: Extraction was identical in every parsed run of every arm — 3 arcs, 3 events, 3 characters — so
+#: the bound removes runaways without cutting content. Caps are ~3x the longest legitimate value
+#: measured across successful runs: ids 80, the prose fields 900, everything else 300.
+#:
+#: Applied to ANALYZE first, on a copy, because only ANALYZE had been measured. SPEC (materialize)
+#: followed in F11 under a WEAKER result, stated as such rather than rounded up:
+#:
+#:     The same runaway shape appears there — `theme` bleed carried in from analyze, and
+#:     `meta.version_label` looping `source_checksum` (3,603 chars in a run that still finished).
+#:     A fixed-input replay could not reproduce it (32/32 clean): the loop depends on which analyze
+#:     output feeds it, so it had to be measured on the real pipeline instead —
+#:
+#:         unbounded SPEC   3/17 materialize runs truncated  (10 fresh + the 7 since F8 shipped)
+#:         bounded SPEC     0/10 truncated, 3 arcs in every run
+#:
+#:     That is Fisher p ~ 0.27 — directional, NOT proven. It ships as a guardrail because the bound
+#:     showed no cost in 10 real runs and 16 replays, and the mechanism is the one F8 did prove.
+#:     If a future run shows SPEC content clipped at a cap, this paragraph is why the cap exists and
+#:     how little evidence it was set on.
+_ID_KEYS = frozenset({"id", "arc_id", "code", "version_label", "source_checksum", "from", "to"})
+_PROSE_KEYS = frozenset({"role", "notes", "document_summary", "summary", "baseline_notes"})
+
+
+def _bounded(schema: dict[str, Any]) -> dict[str, Any]:
+    # A JSON round-trip, NOT copy.deepcopy: `_STR` is ONE dict object referenced by every string
+    # field, and deepcopy preserves shared references — so all fields would become one object and
+    # the last cap written would win everywhere (measured: ids and summaries all came out 300).
+    # The measured request had no shared references because it was JSON; this reproduces that.
+    out = json.loads(json.dumps(schema))
+
+    def walk(node: Any, key: str | None) -> None:
+        if not isinstance(node, dict):
+            return
+        if node.get("type") == "string" and "enum" not in node:
+            node["maxLength"] = 80 if key in _ID_KEYS else (900 if key in _PROSE_KEYS else 300)
+        for k, v in (node.get("properties") or {}).items():
+            walk(v, k)
+        if isinstance(node.get("items"), dict):
+            walk(node["items"], key)
+
+    walk(out, None)
+    return out
+
+
+ANALYZE_SCHEMA: dict[str, Any] = _bounded(_obj({
     "version": {"type": "integer"},
     "document_summary": _STR,
     "characters": _arr(_ANALYZE_CHAR),
@@ -132,7 +195,7 @@ ANALYZE_SCHEMA: dict[str, Any] = _obj({
     "forbids": _STRS,
     "style_constraints": _STRS,
     "open_questions": _STRS,
-}, ["document_summary", "arcs", "events"])
+}, ["document_summary", "arcs", "events"]))
 
 
 #: NovelSystemSpec v1 — step 2, what `compile_artifacts` reads.
@@ -141,7 +204,7 @@ ANALYZE_SCHEMA: dict[str, Any] = _obj({
 #: declared arc has at least one event: an arc with none cannot be compiled. The grammar cannot
 #: express that relation, but it can guarantee both keys exist so the failure is a visible empty
 #: rather than a missing key nobody checked.
-SPEC_SCHEMA: dict[str, Any] = _obj({
+SPEC_SCHEMA: dict[str, Any] = _bounded(_obj({
     "version": {"type": "integer"},
     "meta": _obj({
         "title": _STR, "version_label": _STR, "source_checksum": _STR,
@@ -166,4 +229,4 @@ SPEC_SCHEMA: dict[str, Any] = _obj({
         "kind": {"type": "string", "enum": LINK_KINDS},
         "note": _STR,
     }, ["from", "to", "kind"])),
-}, ["meta", "charter", "layers", "arcs", "events"])
+}, ["meta", "charter", "layers", "arcs", "events"]))

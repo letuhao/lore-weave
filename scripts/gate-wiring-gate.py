@@ -520,7 +520,34 @@ NEEDS_ARGS: dict[str, tuple[list[str], str]] = {
 }
 
 
-def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float, str]:
+# 🔴 EXIT 3 MEANS "I COULD NOT LOOK" — the third answer a gate needs and did not have.
+#
+# The contract was binary: 0 is a pass, anything else is a failure. A gate whose subject is
+# absent has neither answer to give, and the only way to say so was to `return 0` and explain
+# in prose. `test_seed_assert_applies_the_lifecycle_predicate_gate.py` did exactly that — it
+# reads its table list from a live Postgres and prints "this is a skip, not a green" — and on
+# 2026-09-13 CI recorded it as `GREEN (0.2s)`, because exit 0 is the only thing this runner
+# could hear. The gate was honest and the tally was wrong, and a 150-row sweep is read by its
+# tally. On a box with the stack up that same gate is RED with two account-scoped findings, so
+# what the green tick hid was real. Issue #256.
+#
+# WHY NOT the registries. NEEDS_STACK decides membership STATICALLY, and this precondition is
+# dynamic — is `infra-postgres-1` up right now? Registering it would make `live_plan` skip it
+# even on a machine where it CAN run (every NEEDS_STACK row not in LIVE_BARE is skipped), which
+# trades a true red for a tidier tally. The gate knows whether it could look; nothing else does.
+#
+# WHY 3. 0 pass, 1 finding, 2 misuse/self-test failure are already spoken here. 3 is free, and a
+# gate that does not know the convention simply never returns it — old gates keep their old
+# meaning, so this is additive rather than a migration.
+GATE_SKIP_RC = 3
+
+# How many trailing output lines to quote for a gate that went RED. Enough for a
+# traceback's final frames or a multi-line verdict; not so many that one noisy
+# gate buries the rest of the report.
+TAIL_LINES = 6
+
+
+def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float, str, int]:
     # RELATIVE path + cwd=REPO, never an absolute one.
     #
     # The first draft passed `str(REPO / rel)`, which on Windows is
@@ -544,10 +571,12 @@ def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float,
         # whole timeout tells you nothing about which gate did it.
         r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True,
                            timeout=timeout, stdin=subprocess.DEVNULL)
-        ok, out = r.returncode == 0, (r.stdout or "") + (r.stderr or "")
+        ok, out, rc = r.returncode == 0, (r.stdout or "") + (r.stderr or ""), r.returncode
     except subprocess.TimeoutExpired:
-        ok, out = False, f"TIMEOUT after {timeout}s"
-    return ok, time.time() - t0, out
+        # NOT GATE_SKIP_RC. A gate killed at the deadline has not told us anything, least of all
+        # that its subject was absent -- that is a failure and stays one.
+        ok, out, rc = False, f"TIMEOUT after {timeout}s", 124
+    return ok, time.time() - t0, out, rc
 
 
 # ── A REACHABLE STACK, AND THE GATES THAT CAN USE ONE ────────────────────────
@@ -624,6 +653,24 @@ def live_plan(names: list[str], stack_up: bool) -> tuple[list[str], list[str]]:
         return [], rows
     return ([n for n in rows if n in LIVE_BARE],
             [n for n in rows if n not in LIVE_BARE])
+
+
+def classify(ok: bool, rc: int, expected_red: bool) -> str:
+    """One gate's verdict from its exit code. GREEN | SKIP | RED | tracked-red | stale-green.
+
+    Pure, and separated from the printing for the reason live_plan is: the interesting cases
+    are the ones a sweep produces rarely, and a branch that only runs during a 15-minute
+    --run-all is a branch nobody checks. SKIP is exactly such a case -- it appears only when a
+    gate cannot reach its subject, which on a developer box is almost never.
+    """
+    # SKIP is tested FIRST and ignores expected_red on purpose: a gate that could not look has
+    # not confirmed its KNOWN_RED row either, and calling that "tracked red" would let a
+    # deferral be renewed by a gate that never ran.
+    if rc == GATE_SKIP_RC:
+        return "SKIP"
+    if ok:
+        return "stale-green" if expected_red else "GREEN"
+    return "tracked-red" if expected_red else "RED"
 
 
 def run_all() -> int:
@@ -757,14 +804,22 @@ def run_all() -> int:
         results += [_run(n) for n in serial]
     runnable = concurrent + serial
 
-    for n, (ok, secs, out) in zip(runnable, results):
+    self_skipped: list[tuple[str, str]] = []
+    for n, (ok, secs, out, rc) in zip(runnable, results):
         expected_red = n in KNOWN_RED
-        if ok and expected_red:
+        verdict = classify(ok, rc, expected_red)
+        if verdict == "SKIP":
+            # The gate said it could not look. Its own first line is the reason -- printed, not
+            # swallowed, because a skip nobody can see the reason for is the thing this replaces.
+            why = next((l.strip() for l in out.splitlines() if l.strip()), "no reason given")
+            self_skipped.append((n, why))
+            print(f"  {n:<44} SKIP   ({secs:5.1f}s)  {why[:60]}")
+        elif verdict == "stale-green":
             unexpected_green.append(n)
             print(f"  {n:<44} GREEN  ({secs:5.1f}s)  <- KNOWN_RED row is now STALE")
-        elif ok:
+        elif verdict == "GREEN":
             print(f"  {n:<44} GREEN  ({secs:5.1f}s)")
-        elif expected_red:
+        elif verdict == "tracked-red":
             print(f"  {n:<44} red    ({secs:5.1f}s)  tracked {KNOWN_RED[n][0]}")
         else:
             failures.append((n, out))
@@ -778,7 +833,7 @@ def run_all() -> int:
     for n in sorted(NEEDS_ARGS):
         if n not in runnable:
             continue
-        bare_ok, _, _ = _run(n, timeout=120, bare=True)
+        bare_ok, _, _, _ = _run(n, timeout=120, bare=True)
         if bare_ok:
             stale_args.append(n)
 
@@ -794,8 +849,28 @@ def run_all() -> int:
     if failures:
         print(f"\ngate-wiring-gate: {len(failures)} gate(s) FAILED and are not tracked:\n")
         for n, out in failures:
-            head = next((l for l in out.splitlines() if l.strip()), "")
-            print(f"  {n}: {head[:110]}")
+            # 🔴 PRINT THE TAIL, NOT THE HEAD. This printed the FIRST non-empty line, and
+            # this repo's gates print a `SELFTEST PASS` banner BEFORE doing their real work
+            # -- so for every gate that follows the convention, the one line reported was
+            # guaranteed to be the line saying it was fine. On 2026-09-13
+            # `emit-migration-0013-lint.sh` went RED in CI and all-gates reported
+            # `[emit-0013] SELFTEST PASS ... (non-vacuous)`, which is not merely unhelpful:
+            # it reads as evidence the gate is healthy. A failure message that quotes a
+            # success line is worse than no message.
+            #
+            # The last lines are where a script that dies says why -- a traceback's final
+            # line, a `FAIL --` verdict, a shell error. Kept to a few lines so one broken
+            # gate cannot bury the other findings in this report.
+            lines = [l for l in out.splitlines() if l.strip()]
+            if not lines:
+                print(f"  {n}: (no output -- exited non-zero silently)")
+                continue
+            tail = lines[-TAIL_LINES:]
+            print(f"  {n}:")
+            if len(lines) > len(tail):
+                print(f"      ... {len(lines) - len(tail)} earlier line(s) omitted")
+            for l in tail:
+                print(f"      {l[:160]}")
         print("\nFix it, or add a KNOWN_RED row naming a tracked deferral. A gate that "
               "is red and unacknowledged is how a whole suite becomes background noise.")
         rc = 1
@@ -809,6 +884,19 @@ def run_all() -> int:
               "exemption — the same reason file-ceiling-gate reds when allowlisted "
               "debt GROWS.")
         rc = 1
+    # Gates that declared their own skip (exit 3). Printed as a block, not just inline, for the
+    # same reason the live-skip block below exists: a sweep whose summary omits what it did not
+    # check reads as a sweep that checked everything.
+    if self_skipped:
+        print(f"\ngate-wiring-gate: {len(self_skipped)} gate(s) SKIPPED THEMSELVES "
+              f"(exit {GATE_SKIP_RC}) -- each could not reach its subject:\n")
+        for n, why in self_skipped:
+            print(f"  {n}")
+            print(f"      {why[:150]}")
+        print("\nThese are NOT passes. A skip is a question nobody answered -- if one "
+              "of these should have run here, the fix is to give it its subject, not to "
+              "ignore the line.")
+
     # THE CLOSING LINE THAT WAS MISSING. Without it a clean sweep printed nothing at all
     # about the live surface, and "no failures" read as "nothing is wrong" -- which is the
     # sentence a 502 hid behind for as long as anyone was reading this output.
@@ -917,6 +1005,25 @@ def self_test() -> int:
     _rows = sorted(NEEDS_STACK)
     # NON-VACUITY, both ways. An empty LIVE_BARE makes every case below pass while the
     # sweep attempts nothing; a LIVE_BARE covering everything makes the SKIP arm dead.
+    # THE SKIP VERDICT, both directions. Without these, `classify` could return "GREEN" for
+    # exit 3 and nothing would notice until a gate skipped during a real sweep -- which is how
+    # the bug being fixed here survived: the prose said SKIP, the tally said GREEN, and no
+    # check compared them. Each assertion below is a way the fix could be silently undone.
+    if classify(ok=False, rc=GATE_SKIP_RC, expected_red=False) != "SKIP":
+        fails.append(f"exit {GATE_SKIP_RC} is not classified SKIP — a gate that could not "
+                     "look would be tallied as something it did not say")
+    if classify(ok=False, rc=GATE_SKIP_RC, expected_red=True) != "SKIP":
+        fails.append(f"exit {GATE_SKIP_RC} on a KNOWN_RED row is not SKIP — a deferral must "
+                     "not be renewed by a gate that never ran")
+    if classify(ok=True, rc=0, expected_red=False) != "GREEN":
+        fails.append("a clean exit 0 is no longer GREEN")
+    if classify(ok=False, rc=1, expected_red=False) != "RED":
+        fails.append("exit 1 is no longer RED — the SKIP arm has swallowed real failures")
+    if classify(ok=False, rc=124, expected_red=False) != "RED":
+        fails.append("a TIMEOUT is not RED — a killed gate must never read as skipped")
+    if GATE_SKIP_RC in (0, 1, 2):
+        fails.append(f"GATE_SKIP_RC={GATE_SKIP_RC} collides with pass/finding/misuse")
+
     if not LIVE_BARE:
         fails.append("LIVE_BARE is empty — the promote-on-a-live-stack arm cannot fire, "
                      "and every case below would pass by attempting nothing")

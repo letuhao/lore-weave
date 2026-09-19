@@ -12,6 +12,7 @@ consumer crash) — the runtime backstop since a Redis stream gives no post-ACK 
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -63,6 +64,17 @@ _BUSINESS_ERRORS = (
 )
 
 _ACTIVE = ("pending", "running")
+
+#: How often a RUNNING job proves it is alive by touching `updated_at`. `sweep_once` re-drives any
+#: active job whose `updated_at` is older than `composition_job_sweep_timeout_secs` (900s), and
+#: `run_job` does not skip a `running` row — so a job whose legitimate wall time passes 900s was
+#: started a SECOND time while the first was still going. Plan-forge makes that reachable: up to three
+#: 12k-token attempts on `analyze` and three more on `materialize`, on a local model. The beat rides
+#: `cancel_check`, which the LLM SDK already polls throughout every wait, so it covers every worker
+#: op and every long single generation — not only the ladder. Rate-limited so a poll loop does not
+#: become a write loop.
+_HEARTBEAT_SECS = 60.0
+_monotonic = time.monotonic
 
 
 async def _finalize_plan_forge_job(
@@ -246,7 +258,18 @@ async def run_job(
 
     await repo.update_status(UUID(job_id), "running")
 
+    last_beat = _monotonic()
+
     async def cancel_check() -> bool:
+        nonlocal last_beat
+        now = _monotonic()
+        if now - last_beat >= _HEARTBEAT_SECS:
+            last_beat = now
+            try:
+                await repo.touch_running(UUID(job_id))
+                logger.debug("composition job %s heartbeat", job_id)
+            except Exception:  # noqa: BLE001 — a missed beat must never fail a live job
+                logger.warning("composition job %s heartbeat failed", job_id, exc_info=True)
         # bug #34 — immediate-cancel: abort the in-flight LLM call the moment the
         # cancel endpoint CAS-sets generation_job.status='cancelled'. Fail-soft: any
         # DB/read error returns False so a transient blip never spuriously cancels a

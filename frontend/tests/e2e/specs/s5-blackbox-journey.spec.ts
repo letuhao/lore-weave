@@ -78,7 +78,9 @@ test.describe('S5 · blackbox author journey (plan → branch → live on it →
     await newRow.click();
     await expect(page.getByTestId('divergence-detail')).toBeVisible();
     await page.getByTestId('divergence-tab-spec').click();
-    await expect(page.getByTestId('divergence-spec-taxonomy')).toBeVisible({ timeout: 15_000 });
+    // S-04 made the spec EDITABLE; the read-only block is gone. The claim here is unchanged --
+    // the declared taxonomy is on screen and reachable from the row.
+    await expect(page.getByTestId('divergence-edit-taxonomy')).toBeVisible({ timeout: 15_000 });
 
     // 4 · Open a chapter in the editor — because the dị bản is active, the editor TELLS the author
     //     that edits save to canon, not the branch (the D-S5-DERIVATIVE-EDIT-GUARD honesty banner).

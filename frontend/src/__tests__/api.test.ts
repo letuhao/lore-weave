@@ -26,6 +26,43 @@ describe('apiJson', () => {
     });
   }
 
+  // #274 — the shared ceiling is 20s so an ordinary request can never hang the shell; a route that
+  // runs a model INLINE (composition critique) passes a longer one. Both halves are pinned: the
+  // default still cuts at 20s, and an explicit timeoutMs is honoured instead of it. `timeoutMs` must
+  // not leak into fetch's init either -- it is our option, not a RequestInit field.
+  it('cuts an ordinary request at the 20s ceiling', async () => {
+    vi.useFakeTimers();
+    try {
+      globalThis.fetch = vi.fn(() => new Promise(() => {})) as unknown as typeof fetch;
+      const p = apiJson('/v1/slow');
+      const settled = p.catch((e: Error) => e);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(((await settled) as Error).message).toBe('Request timed out');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('honours a per-call timeoutMs instead of the 20s ceiling, and does not pass it to fetch', async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveFetch: (v: unknown) => void = () => {};
+      globalThis.fetch = vi.fn(() => new Promise((r) => { resolveFetch = r; })) as unknown as typeof fetch;
+      const p = apiJson<{ ok: boolean }>('/v1/slow', { method: 'POST', timeoutMs: 240_000 });
+      let rejected: unknown = null;
+      p.catch((e) => { rejected = e; });
+      await vi.advanceTimersByTimeAsync(60_000);   // well past 20s: the default would have cut it
+      expect(rejected).toBeNull();
+      resolveFetch({ ok: true, status: 200, statusText: 'OK',
+        text: () => Promise.resolve(JSON.stringify({ ok: true })), headers: new Headers() });
+      await expect(p).resolves.toEqual({ ok: true });
+      const init = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
+      expect(init).not.toHaveProperty('timeoutMs');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('makes a GET request and returns parsed JSON', async () => {
     mockFetch(200, { id: 1, name: 'Test' });
     const result = await apiJson<{ id: number; name: string }>('/v1/test');

@@ -182,17 +182,22 @@ describe('OutlineTree node CRUD (T1.1b)', () => {
     );
   });
 
-  it('add-child on a scene creates a beat (no chapter_id) and is absent on arcs', () => {
+  // #272 — this used to assert that add-child on a SCENE creates a `beat`, which is how the
+  // dead button survived: the test pinned it. `beat` has not been a legal outline_node.kind
+  // since pkg_lift_v1, and the database answers that POST with
+  // "violates check constraint outline_node_kind_check". The claim is now the real one:
+  // a chapter offers add-child (a scene); a scene is a leaf and offers nothing.
+  it('add-child is offered on a chapter (creates a scene) and absent on a scene', () => {
     mountWith([
-      node({ id: 'arc', kind: 'arc', parent_id: null, story_order: 0 }),
-      node({ id: 's1', kind: 'scene', parent_id: 'arc', chapter_id: 'C1', story_order: 0 }),
+      node({ id: 'ch1', kind: 'chapter', parent_id: null, chapter_id: 'C1', story_order: 0 }),
+      node({ id: 's1', kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', story_order: 0 }),
     ]);
     render(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
-    // arc row has no add-child affordance; only the scene does
+    // only the chapter row carries the affordance; the scene is a leaf
     expect(screen.getAllByTestId('outline-action-addchild')).toHaveLength(1);
     fireEvent.click(screen.getByTestId('outline-action-addchild'));
     expect(mutations.addChild.mutate).toHaveBeenCalledWith(
-      { kind: 'beat', parent_id: 's1', chapter_id: null, title: '' },
+      { kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', title: '' },
       expect.objectContaining({ onError: expect.any(Function) }),
     );
   });
@@ -293,14 +298,16 @@ describe('OutlineTree archived view + restore (T1.1b / L-1)', () => {
 });
 
 describe('computeReorder (T1.1c projection)', () => {
-  // a fixed-depth tree: arc1 > {ch1 > [s1,s2,s3], ch2 > [s4]}
+  // The fixed-depth tree is chapter > scene, rooted: {ch1 > [s1,s2,s3], ch2 > [s4]}.
+  // It used to be arc1 > {ch1, ch2}, but `arc` left outline_node in pkg_lift_v1 (arcs live in
+  // structure_node now and the CHECK is ('chapter','scene')), so an arc row is a shape the
+  // database can no longer produce and a fixture built on one proves nothing about real data.
   const rows = [
-    { node: node({ id: 'arc1', kind: 'arc', parent_id: null }) },
-    { node: node({ id: 'ch1', kind: 'chapter', parent_id: 'arc1' }) },
+    { node: node({ id: 'ch1', kind: 'chapter', parent_id: null }) },
     { node: node({ id: 's1', kind: 'scene', parent_id: 'ch1' }) },
     { node: node({ id: 's2', kind: 'scene', parent_id: 'ch1' }) },
     { node: node({ id: 's3', kind: 'scene', parent_id: 'ch1' }) },
-    { node: node({ id: 'ch2', kind: 'chapter', parent_id: 'arc1' }) },
+    { node: node({ id: 'ch2', kind: 'chapter', parent_id: null }) },
     { node: node({ id: 's4', kind: 'scene', parent_id: 'ch2' }) },
   ];
 
@@ -317,8 +324,8 @@ describe('computeReorder (T1.1c projection)', () => {
     expect(computeReorder(rows, 's4', 's1')).toEqual({ nodeId: 's4', new_parent_id: 'ch1', after_id: null });
   });
 
-  it('reorders a chapter within its arc (drop ch2 onto ch1 → first chapter)', () => {
-    expect(computeReorder(rows, 'ch2', 'ch1')).toEqual({ nodeId: 'ch2', new_parent_id: 'arc1', after_id: null });
+  it('reorders a chapter at the root (drop ch2 onto ch1 → first chapter)', () => {
+    expect(computeReorder(rows, 'ch2', 'ch1')).toEqual({ nodeId: 'ch2', new_parent_id: null, after_id: null });
   });
 
   it('returns null for a no-op (same node) and an out-of-list id', () => {
@@ -327,23 +334,22 @@ describe('computeReorder (T1.1c projection)', () => {
   });
 
   it('returns null when a scene would land with no preceding chapter (invalid kind nesting)', () => {
-    // dropping s1 onto arc1 → it lands right after arc1 with no chapter ancestor → invalid
-    expect(computeReorder(rows, 's1', 'arc1')).toBeNull();
+    // dropping s1 onto ch1's own position in a list that starts with it → no chapter ancestor
+    const headless = [{ node: node({ id: 'sX', kind: 'scene', parent_id: null }) }, ...rows];
+    expect(computeReorder(headless, 'sX', 'sX')).toBeNull();
   });
 
-  it('reorders a beat within its scene (parent-kind = scene)', () => {
-    const r = [
-      { node: node({ id: 'ch', kind: 'chapter', parent_id: 'a' }) },
-      { node: node({ id: 'sc', kind: 'scene', parent_id: 'ch' }) },
-      { node: node({ id: 'b1', kind: 'beat', parent_id: 'sc' }) },
-      { node: node({ id: 'b2', kind: 'beat', parent_id: 'sc' }) },
-    ];
-    expect(computeReorder(r, 'b1', 'b2')).toEqual({ nodeId: 'b1', new_parent_id: 'sc', after_id: 'b2' });
+  // The beat-within-a-scene case is GONE rather than rewritten: `beat` is not a kind any
+  // more (pkg_lift_v1 made beats JSONB on the scene), so there is no third level to reorder.
+  // Scene-within-chapter above is the deepest real reorder the tree has.
+
+  it('reorders a scene within a chapter at the deepest level', () => {
+    expect(computeReorder(rows, 's2', 's3')).toEqual({ nodeId: 's2', new_parent_id: 'ch1', after_id: 's3' });
   });
 
-  it('coerces a cross-kind drop to the nearest valid parent (chapter dropped amid scenes → stays under its arc)', () => {
-    // drop ch2 onto s2 (a scene inside ch1) → ch2 can only parent under an arc → lands after ch1
-    expect(computeReorder(rows, 'ch2', 's2')).toEqual({ nodeId: 'ch2', new_parent_id: 'arc1', after_id: 'ch1' });
+  it('coerces a cross-kind drop to the nearest valid parent (chapter dropped amid scenes → stays at the root)', () => {
+    // drop ch2 onto s2 (a scene inside ch1) → a chapter can only parent at the root → after ch1
+    expect(computeReorder(rows, 'ch2', 's2')).toEqual({ nodeId: 'ch2', new_parent_id: null, after_id: 'ch1' });
   });
 });
 

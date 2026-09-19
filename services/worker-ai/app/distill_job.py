@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 # `resolve_distill_window` exists to prevent, on exactly the models it was written for.
 from app.distiller import OUTPUT_RESERVE_TOKENS as DISTILL_MAX_TOKENS  # noqa: F401,E402
 from loreweave_llm.budget import OutputKind, call_budget
+from loreweave_llm.structured import no_thinking_fields
 
 
 class _LLMSubmitter(Protocol):
@@ -99,7 +100,20 @@ def make_distill_llm(
                 "temperature": 0.2,
                 "max_tokens": max_tokens or call_budget(
                     OutputKind.PROSE, ceiling=DISTILL_MAX_TOKENS).max_output_tokens,
-                "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
+                # DBT-15/Q8 revisited: this used to hand-roll ONLY chat_template_kwargs, which
+                # the SDK documents as the COMPANION knob -- "a no-op for models that only honor
+                # reasoning_effort". The primary cross-provider lever is reasoning_effort="none",
+                # and the distiller never sent it, so on a model that ignores the chat-template
+                # flag thinking stayed ON, reasoning tokens ate the whole budget, `content` came
+                # back empty, and the day surfaced as `model_no_output` -- read ever since as
+                # "this model is unusable, get a non-reasoning one" rather than "we never asked
+                # it to stop". Measured: gemma-4-26b returns reasoning_content=0 and content='OK'
+                # the moment it IS asked.
+                #
+                # Spread the SDK helper rather than hand-rolling the pair again -- that is
+                # verbatim what its docstring prescribes for a call site building its own job
+                # input, and it is the same pair `call_json` already uses for structured jobs.
+                **no_thinking_fields(),
             },
             trace_id=trace_id,
         )

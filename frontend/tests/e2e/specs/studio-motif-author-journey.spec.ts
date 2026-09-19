@@ -10,7 +10,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import { getAccessToken, createBook, createChapter, trashBook } from '../helpers/api';
-import { seedMotif, archiveMotif, createWork } from '../helpers/motif';
+import { seedMotif, archiveMotif, archiveMotifsByCode, createWork } from '../helpers/motif';
 import { MotifLibraryPage } from '../pages/MotifLibraryPage';
 import { QualityConformancePage } from '../pages/QualityConformancePage';
 
@@ -20,6 +20,7 @@ test.describe('@s4 Studio · motif author journey (blackbox)', () => {
   const stamp = Date.now();
   let seededId = '';
   let neighbourId = '';
+  const createdCodes: string[] = [];   // the trope authored in STEP 3, archived by code afterwards
 
   test.beforeAll(async ({ request }) => {
     token = await getAccessToken(request);
@@ -34,6 +35,7 @@ test.describe('@s4 Studio · motif author journey (blackbox)', () => {
   test.afterAll(async ({ request }) => {
     await archiveMotif(request, token, seededId);
     await archiveMotif(request, token, neighbourId);
+    await archiveMotifsByCode(request, token, createdCodes);
     if (bookId) await trashBook(request, token, bookId).catch(() => {});
   });
 
@@ -62,6 +64,7 @@ test.describe('@s4 Studio · motif author journey (blackbox)', () => {
     // ── STEP 3 · "Author a new trope" — create it inline; it must actually LAND (no silent no-op) ─
     const newName = `打脸 escalation ${Date.now()}`;
     const newCode = `journey.created.${Date.now()}`;
+    createdCodes.push(newCode);
     await lib.createMotif(newName, newCode);
     await expect(page.getByText(newName).first(), 'STEP 3 — the authored trope must appear (write landed)').toBeVisible({ timeout: 10_000 });
     await shot(page, '3-created');

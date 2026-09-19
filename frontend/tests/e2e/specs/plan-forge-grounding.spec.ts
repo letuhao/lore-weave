@@ -109,7 +109,12 @@ test.describe('PlanForge grounding — affirmation copy [model-gated]', () => {
       await s.gotoStudio(bookId);
       await s.planner.open();
       await s.planner.runsTab().click();
-      await page.getByTestId(`plan-run-open-${grounded.slice(0, 8)}`).click().catch(() => {});
+      // `plan-run-open-<id8>` exists NOWHERE in src/ -- it never did -- and the `.catch(() => {})`
+      // swallowed the failure, so the planner silently stayed on whatever run was loaded and the
+      // grounded note was correctly absent. The rows are `plan-run-row` and each prints
+      // `id.slice(0, 8)` (PlanRunsListView.tsx:91), which is DATA, not copy, so it survives
+      // translation. The swallow is gone too: a click that cannot land must say so.
+      await page.getByTestId('plan-run-row').filter({ hasText: grounded.slice(0, 8) }).first().click();
       await expect(s.planner.groundedNote()).toBeVisible({ timeout: 10_000 });
       await expect(s.planner.proposeBlindNote()).toHaveCount(0);
     } finally {

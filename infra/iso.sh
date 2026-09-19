@@ -47,6 +47,31 @@ if ! python "${HERE}/gen-isolated-compose.py" --check >/dev/null 2>&1; then
     exit 1
 fi
 
+# The login throttle is keyed per CLIENT IP, and every Playwright worker shares one. A
+# 76-spec run therefore exceeds the production 60/minute and auth-service answers 429 —
+# which surfaces as `waitForURL('**/books') timeout`, a failure that reads as a broken
+# product and is a saturated throttle.
+#
+# This raises it FOR THE THROWAWAY STACK ONLY. docker-compose.yml keeps 60/60s as its
+# default, so the base stack and every deployment are untouched. Do not copy this line
+# anywhere that faces a real user: it is the credential-stuffing guard.
+#
+# An explicit value from the caller still wins, so a test that wants to exercise the
+# limiter can set RATE_LIMIT_MAX_REQUESTS itself.
+export RATE_LIMIT_MAX_REQUESTS="${RATE_LIMIT_MAX_REQUESTS:-2000}"
+
+# Image provenance (plan 2026-09-19 T6). Without these, every image built through this wrapper
+# was labelled 'unknown', so nothing could say which commit, or which uncommitted edits, a test
+# image carried. GIT_DIRTY_SCOPE lists the top-two-level paths with uncommitted TRACKED changes
+# (untracked files are not part of a build context by accident), or "clean".
+if REPO_ROOT="$(git -C "${HERE}" rev-parse --show-toplevel 2>/dev/null)"; then
+    export GIT_SHA="${GIT_SHA:-$(git -C "${REPO_ROOT}" rev-parse HEAD)}"
+    export BUILD_TIME="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+    _dirty="$(git -C "${REPO_ROOT}" status --porcelain --untracked-files=no \
+        | cut -c4- | awk -F/ '{ print ($2 == "" ? $1 : $1 "/" $2) }' | sort -u | paste -sd, -)"
+    export GIT_DIRTY_SCOPE="${GIT_DIRTY_SCOPE:-${_dirty:-clean}}"
+fi
+
 exec docker compose \
     -p "${PROJECT}" \
     -f "${HERE}/docker-compose.yml" \

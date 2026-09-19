@@ -110,6 +110,62 @@ export interface InjectionHandles {
  * Returns a promise for the captured /tool-results body — awaiting it proves the
  * FE actually executed the tool and closed the loop (a silent no-op never posts).
  */
+/** Inject a ui_* call that comes back as a DIRECTIVE RESULT, not a suspend.
+ *
+ * 🔴 #267 — the two nav tests used `installFrontendToolSuspend` for `ui_open_book` /
+ * `ui_show_panel`, and the executor never fired. That is not a product bug: the suspend path for
+ * ui_* was RETIRED, and `useUiToolExecutor` says so in its own header —
+ *
+ *   "The legacy pending-suspend path was retired in Phase 4 / D-P3-RETIRE-UI-SUSPEND once the
+ *    ui_* cutover was live-proven — no ui_* suspends any more."
+ *
+ * It now watches the message list for a TOOL_CALL_RESULT whose content carries an
+ * `io.loreweave/ui-directive` (uiNav.ts:31-41), and acts on it exactly once. So the tests were
+ * driving a mechanism the product had deliberately removed, and the sibling CARD tests kept
+ * passing because those are genuinely still suspend-based (a human gate).
+ *
+ * This emits the shape the executor actually listens for. The CLAIM is unchanged: a ui directive
+ * arrives and the executor performs the navigation.
+ */
+export async function installUiDirectiveResult(
+  page: Page,
+  inj: { tool: string; args: Record<string, unknown>; text?: string },
+): Promise<void> {
+  const runId = id('run');
+  const toolCallId = id('call');
+  const messageId = id('msg');
+  const directive = { type: 'io.loreweave/ui-directive', tool: inj.tool, args: inj.args };
+  const frames = [
+    sse({ type: 'RUN_STARTED', threadId: 'tle-thread', runId }),
+    sse({ type: 'TEXT_MESSAGE_START', messageId, role: 'assistant' }),
+    ...(inj.text ? [sse({ type: 'TEXT_MESSAGE_CONTENT', messageId, delta: inj.text })] : []),
+    sse({ type: 'TEXT_MESSAGE_END', messageId }),
+    sse({ type: 'TOOL_CALL_START', toolCallId, toolCallName: inj.tool, parentMessageId: messageId }),
+    sse({ type: 'TOOL_CALL_ARGS', toolCallId, delta: JSON.stringify(inj.args) }),
+    sse({ type: 'TOOL_CALL_END', toolCallId }),
+    // chat-service C3 encodes the authoritative outcome as {ok, result} inside `content`.
+    sse({ type: 'TOOL_CALL_RESULT', messageId, toolCallId, content: JSON.stringify({ ok: true, result: directive }) }),
+    sse({ type: 'RUN_FINISHED', result: { finishReason: 'stop' } }),
+  ];
+  // A one-shot FLAG rather than `page.unroute()` from inside the handler: unrouting while a
+  // route is in flight makes Playwright consider it already handled, and the fulfil then throws
+  // "Route is already handled!" -- which is what the first attempt at this did.
+  let fired = false;
+  await page.route('**/v1/chat/sessions/*/messages*', async (route: Route) => {
+    if (fired || route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    fired = true;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      headers: { 'x-loreweave-stream-format': 'agui', 'cache-control': 'no-cache' },
+      body: frames.join(''),
+    });
+  });
+}
+
 export async function installFrontendToolSuspend(page: Page, inj: SuspendedToolInjection): Promise<InjectionHandles> {
   const runId = inj.runId ?? id('run');
   const toolCallId = inj.toolCallId ?? id('call');

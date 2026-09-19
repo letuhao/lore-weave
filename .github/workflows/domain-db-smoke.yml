@@ -100,7 +100,11 @@ jobs:
       - name: book-service DB round-trips
         env:
           BOOK_TEST_DATABASE_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_book_test?sslmode=disable
-        run: go -C services/book-service test ./internal/api/... -count=1
+        # internal/migrate carries DB-gated tests too (the scenes book_id backfill, kg_indexed),
+        # and no workflow ran them (#291). `-p 1` is not optional: the packages share ONE test
+        # database and each runs migrate.Up, so running them in parallel deadlocks
+        # (`SQLSTATE 40P01`) — measured 2026-09-18, green with -p 1.
+        run: go -C services/book-service test -p 1 ./internal/api/... ./internal/migrate/... -count=1
       - name: glossary-service DB round-trips
         env:
           GLOSSARY_TEST_DB_URL: postgres://loreweave:loreweave_dev@localhost:5432/loreweave_glossary_test?sslmode=disable

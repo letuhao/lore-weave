@@ -36,7 +36,12 @@ _Short = Annotated[str, StringConstraints(max_length=2000)]
 _Long = Annotated[str, StringConstraints(max_length=20000)]
 
 WorkStatus = Literal["active", "archived"]
-NodeKind = Literal["arc", "chapter", "scene", "beat"]
+# The outline tree is fixed-depth chapter > scene. `arc` moved to `structure_node` and `beat`
+# became JSONB on the scene in the pkg_lift_v1 migration ("M5 -- CONTRACT: the point of no
+# return"), which swapped the outline_node CHECK to ('chapter','scene') and is asserted at boot
+# by _assert_lift_applied. This Literal kept offering all four, so the API accepted two kinds the
+# database refuses -- a request the schema can only answer with an integrity error.
+NodeKind = Literal["chapter", "scene"]
 NodeStatus = Literal["empty", "outline", "drafting", "done"]
 LinkKind = Literal["setup_payoff", "custom"]
 RuleScope = Literal["world", "entity", "reveal_gate"]

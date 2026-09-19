@@ -475,6 +475,32 @@ LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews
 **Default mode (v2.2):** human-in-loop with PO checkpoints at CLARIFY end + POST-REVIEW.
 **Retired 2026-08-03: AMAW mode.** Its cold-start sub-agent reviews are covered by AI Factory's read-only sidecars (`review-sidecar`, `security-sidecar`, `rules-sidecar`, `best-practices-sidecar`) and by `/review-impl +check`. **One behaviour did NOT survive the swap:** AMAW's Scope Guard was a *blocking* gate at POST-REVIEW; the sidecars are advisors. POST-REVIEW is still a human checkpoint and that is now the only thing that blocks there.
 
+### Pipeline — which command drives each phase
+
+Start with an idea, then move it forward one command at a time. The commands are the *runner*
+(AI Factory's `aif-*` pack plus a few project skills); the phases and gates below are the *rules*,
+and they win wherever the two disagree.
+
+| Phase | Command | Writes | Blocks on |
+|---|---|---|---|
+| **IDEATE** *(optional, before phase 0)* | `/ideate <topic>` · `capture` · `list` · `review` | `docs/ideas/YYYY-MM-DD-<slug>.md` + `docs/ideas/INDEX.md` | nothing — documents only; the PO picks what goes forward |
+| IDEATE → CLARIFY hand-off | `/ideate promote IDEA-NNN` | a draft `docs/specs/YYYY-MM-DD-<slug>.md` | PO chooses to promote |
+| 0 · AUDIT-EXISTING | `/aif-explore` (read-only); `/ideate`'s Frame step already greps the repo | the spec's `Reconciles:` line | `phase0-reconcile-gate.py` |
+| 1 · CLARIFY | edit the spec draft with the PO | `docs/specs/YYYY-MM-DD-<topic>.md` | **PO checkpoint** |
+| 2 · DESIGN · 3 · REVIEW | the spec's design section; `/aif-architecture` only for a new service or boundary | spec | PO + Lead review |
+| 4 · PLAN | `/aif-plan full`, then `/aif-improve`; `/goal-prompt --plan <path>` for a long autonomous run | `docs/plans/YYYY-MM-DD-<feature>.md` with `## Acceptance criteria` | `plan-acceptance-criteria-gate.py`, `workflow-gate.sh size` |
+| 5 · BUILD | `/aif-implement` (or `/goal` with the emitted prompt); `/aif-fix` for a bug | code + tests | pre-commit gates |
+| 6 · VERIFY | `/aif-verify` | evidence | `workflow-gate.sh` |
+| 7 · REVIEW | `/aif-review`; `/review-impl +check` when it needs an adversarial pass | findings | — |
+| 8 · QC | `/aif-qa`; `/human-sim` for user journeys | QA notes | — |
+| 9 · POST-REVIEW | none — present the result and **WAIT** | — | **PO checkpoint** |
+| 10 · SESSION | update `docs/sessions/SESSION_HANDOFF.md` | handoff | — |
+| 11 · COMMIT | `/aif-commit` | commit | hooks, `doc-language-gate.py` — never `--no-verify` |
+| 12 · RETRO | `/aif-evolve` (lessons become `.ai-factory/skill-context/` rules) | the rule the lesson amends | — |
+
+IDEATE is deliberately **outside** the 13 gated phases: it writes documents, never code, and an idea
+that is never promoted costs nothing. Everything from CLARIFY on is unchanged.
+
 ### 13 phases — and phase 0 is the one this project learned the hard way
 
 ```
@@ -541,6 +567,7 @@ opaque blob a second SSOT for an actor's numbers. Two months, and nobody asked.
 |---|---|
 | Main session notes | `docs/sessions/SESSION_HANDOFF.md` |
 | Design-track session notes | `docs/03_planning/<TRACK>/SESSION_HANDOFF.md` |
+| Ideas (IDEATE, before CLARIFY) | `docs/ideas/YYYY-MM-DD-<slug>.md` + registry `docs/ideas/INDEX.md` (`/ideate`) |
 | New specs (CLARIFY) | `docs/specs/YYYY-MM-DD-<topic>.md` (or `docs/03_planning/<TRACK>/` for legacy tracks) |
 | New plans (PLAN) | `docs/plans/YYYY-MM-DD-<feature>.md` (or `docs/03_planning/<TRACK>/`) |
 | Audit log (historical) | `docs/audit/AUDIT_LOG.jsonl` (append-only, committed) |
@@ -693,6 +720,7 @@ NO FIXES WITHOUT ROOT CAUSE.
 | `/goal-prompt` | Emit the /goal condition for the knowledge-architecture refactor, ready to paste. **Generated, not retyped:** the rules and the queue live in `scripts/goal-prompt.py`, while which rows are still open and what comes next are read off the plan's checkboxes and RESUME line — so a row that gets ticked leaves the queue by itself. /goal caps the condition at 4000 characters and the generator **refuses** to exceed it rather than truncating: the section that would be lost is STOP, which is the half that makes a long autonomous run safe. (/goal is written bare here on purpose — slash-command-doc-gate treats a back-ticked slash-word in this section as a repo runner, and /goal is a Claude Code built-in with no file in this repo.) |
 | `/goal-prompt-leftovers` | Same, for [`docs/plans/2026-08-30-runstate-leftovers.md`](docs/plans/2026-08-30-runstate-leftovers.md) — the seven things the archived refactor left behind. Sibling of the row above and derived the same way, with one deliberate difference: it **imports** `RULES` and `CYCLE` from `scripts/goal-prompt.py` (one home for thirteen rules that did not stop being true when their plan was archived) and does **not** import `DISCIPLINE`, whose last line says to keep the four plan gates green — those resolve through `scripts/plan_location.py`, which knows only the ARCHIVED plan, so they stay green whatever a session does here. Its local block says the opposite out loud: nothing audits that plan, the row's own bite is the whole verification. |
 | `/goal-prompt-testing` | Same generator, scoped to just the testing-technique phase of [`docs/plans/2026-09-06-v0.1.0-go-live.md`](docs/plans/2026-09-06-v0.1.0-go-live.md) (T3–T12: scratch-infra build, regression, human-sim blind-spot discovery, a live computer-vision GUI review, and the fix-and-reverify loop those two feed) rather than the plan's other phases (changelog draft, go-live checklist, merge, tag). No separate script — the plan's own `goal-prompt` fenced block declares `excluded:` for the non-testing rows plus testing-specific `rules`/`discipline`/`stop` (found is not done until fixed and re-verified; a screenshot claim needs a stated expected-vs-actual; visual review means the acting agent's own vision reading real screenshots, explicitly not a separate paid vision-API call — the `stop:` list treats that as a stop condition, not a default). (human-sim is written bare here on purpose, same reason as /goal above — it is a skill, not a file in `.claude/commands`.) |
+| `/ideate [topic \| capture <idea> \| list \| review \| promote <IDEA-id> \| park\|reject <IDEA-id> <reason>]` | The **IDEATE** phase, in front of CLARIFY — the workflow had no home for ideas, so they lived in chat and were lost or built without being compared. Brainstorms freely (15–30 unjudged ideas from at least four techniques), researches prior art on the web with cited sources, then scores and recommends, and records the result as `docs/ideas/YYYY-MM-DD-<slug>.md` (`IDEA-NNN`, status `seed → explored → shortlisted → promoted`, or `parked` / `rejected`) with a row in `docs/ideas/INDEX.md`. Writes documents only, never code. `promote` drafts a `docs/specs/` input for CLARIFY; promoting, parking and rejecting are the PO's calls. Registered in `.claude/commands/ideate.md`; the workflow lives in the `ideate` skill (`.claude/skills/ideate/`). |
 
 | `/goal-prompt [--plan <path>]` | Emit a paste-ready `/goal` condition for a plan or RUN-STATE. Reads the open rows off the board on every invocation, so a ticked row leaves the queue by itself — the alternative is retyping a 4000-character prompt each session and sending one at a task that shipped. `scripts/goal-prompt.py --selftest` proves it. |
 

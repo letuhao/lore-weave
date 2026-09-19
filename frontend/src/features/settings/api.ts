@@ -71,6 +71,9 @@ export type ProviderCredential = {
   // the backend infra is the limiter). Set only when the user knows their own
   // backend's limit (e.g. a local GPU that runs N calls at once).
   max_concurrency?: number | null;
+  // #286 — "serve one model at a time": the user's statement that this server (a local GPU)
+  // holds ONE model, so requests for different models must take turns. Opt-in, default false.
+  serve_one_model_at_a_time?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -111,6 +114,14 @@ export const CHAT_CAPABILITY = 'chat' as const;
 // the CHAT default was the cheap fix and was not taken: picking a model for conversation is not
 // consent to spend it on the most expensive call on the platform.
 export const COMPOSER_CAPABILITY = 'composer' as const;
+// #270 — `critic` and `distill` were resolvable by the backend and settable NOWHERE. The
+// provider-registry whitelist has carried both since WS-5.10 / WS-3.0, and validates them
+// against the 'chat' flag like planner and composer; only the settings card never rendered a
+// row, so `get_default_model` fell back to 'chat' and handed every role the same model.
+// evaluate.py:180 even tells the user to "Set a critic model in Settings > Chat & AI >
+// default models" -- an instruction that could not be followed.
+export const CRITIC_CAPABILITY = 'critic' as const;
+export const DISTILL_CAPABILITY = 'distill' as const;
 
 // Per-user DEFAULT model per capability (rerank/embedding). The default is the
 // user's own BYOK user_model, resolved server-side by provider-registry — it
@@ -150,13 +161,13 @@ export const providerApi = {
     return apiJson<{ items: ProviderCredential[] }>('/v1/model-registry/providers', { token });
   },
 
-  createProvider(token: string, payload: { provider_kind: string; display_name: string; secret?: string; endpoint_base_url?: string; api_standard?: APIStandard; max_concurrency?: number | null }) {
+  createProvider(token: string, payload: { provider_kind: string; display_name: string; secret?: string; endpoint_base_url?: string; api_standard?: APIStandard; max_concurrency?: number | null; serve_one_model_at_a_time?: boolean }) {
     return apiJson<ProviderCredential>('/v1/model-registry/providers', {
       method: 'POST', token, body: JSON.stringify(payload),
     });
   },
 
-  patchProvider(token: string, id: string, payload: { display_name?: string; secret?: string; endpoint_base_url?: string; active?: boolean; api_standard?: APIStandard; max_concurrency?: number | null }) {
+  patchProvider(token: string, id: string, payload: { display_name?: string; secret?: string; endpoint_base_url?: string; active?: boolean; api_standard?: APIStandard; max_concurrency?: number | null; serve_one_model_at_a_time?: boolean }) {
     return apiJson<ProviderCredential>(`/v1/model-registry/providers/${id}`, {
       method: 'PATCH', token, body: JSON.stringify(payload),
     });

@@ -1,0 +1,28 @@
+A1|9|environment: login throttle saturated by the suite (#261)|CLOSED
+A2|2|environment: fixture sent `language`, API takes `original_language`|CLOSED
+A3|4|environment stale selector, MASKING product defect #262|row P1
+A4|1|environment: .fill() on a <select> (3a)|CLOSED
+A6|1|environment: book not adopted before extraction (3b)|CLOSED
+A9|1|undiagnosed with trace: wiki articles never appear (3c)|row A9
+A5|2|environment: spec welded to the BASE stack|CLOSED
+A7|2|undiagnosed with trace: chat nav executor does not navigate|row A7
+B1|4|environment: hard-coded book id, book not found|CLOSED
+B3|2|environment: needs a seeded+extracted book|row B3
+B2|1|environment: typed into the sidebar search box|CLOSED
+B4|1|test design: intermediate phase from a one-shot stream|row B4
+C1|1|PRODUCT DEFECT: API offers node kinds the DB forbids (#263)|#263
+D1|1|environment: badge word renamed system -> built-in|CLOSED
+P2|2|PRODUCT DEFECT: false "unsaved changes" after save (#264)|#264
+D2|2|environment: read-only spec replaced by an editable one|CLOSED
+D3|2|environment: renamed testid; stale scene count|CLOSED
+D13|1|unreachable precondition on a one-model account|row D13
+D4|2|environment: A1's throttle; obsolete CTA remedy|CLOSED
+D5|1|environment: fixed fixture name accumulated 6 rows|CLOSED
+D14|1|product decision unrecorded: kg-overview-no-project has no caller|row D14
+D6|2|environment: href on a button; picker became multi|CLOSED
+D7|1|environment: searched for a renamed label|CLOSED
+D8|1|environment: waited on a removed dialog|CLOSED
+D9|1|environment: pinned a since-repaired placeholder|CLOSED
+D10|1|product gap: control had no testid (2 added)|CLOSED
+D11|1|environment: measured against the WRONG database|CLOSED
+D12|1|environment: accumulated session state on a deactivated model|row D12

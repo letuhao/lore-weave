@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultLayout, type WorkspaceLayout } from '../types';
-import { visibleDockIds, hiddenDockIds, computeReorder, nextActiveAfterHide, floatingDockIds, defaultFloatRect } from '../dock';
+import { visibleDockIds, hiddenDockIds, computeReorder, nextActiveAfterHide, floatingDockIds, defaultFloatRect, criticPanelShowing } from '../dock';
 
 function layoutWith(overrides: Partial<WorkspaceLayout['panels']>): WorkspaceLayout {
   const base = defaultLayout();
@@ -76,5 +76,21 @@ describe('dock helpers (T5.4 M2)', () => {
     expect(defaultFloatRect(6)).toEqual(r0);       // wraps after 6
     expect(r0.w).toBeGreaterThan(0);
     expect(r0.h).toBeGreaterThan(0);
+  });
+});
+
+// L5 (plan 2026-09-18) — the critic panel counts as ON SCREEN only where the author can see it.
+describe('criticPanelShowing', () => {
+  const order = defaultLayout().panels.critic?.order ?? 0;
+  it('floated or popped out: showing, whatever tab is active', () => {
+    expect(criticPanelShowing(layoutWith({ critic: { placement: 'float', order } }), 'compose')).toBe(true);
+    expect(criticPanelShowing(layoutWith({ critic: { placement: 'popout', order } }), 'compose')).toBe(true);
+  });
+  it('docked: showing only as the active tab', () => {
+    expect(criticPanelShowing(layoutWith({ critic: { placement: 'dock', order } }), 'critic')).toBe(true);
+    expect(criticPanelShowing(layoutWith({ critic: { placement: 'dock', order } }), 'compose')).toBe(false);
+  });
+  it('hidden: never showing', () => {
+    expect(criticPanelShowing(layoutWith({ critic: { placement: 'float', order, hidden: true } }), 'compose')).toBe(false);
   });
 });

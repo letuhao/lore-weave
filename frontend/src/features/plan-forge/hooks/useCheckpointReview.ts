@@ -57,7 +57,24 @@ export function useCheckpointReview(
   }, [bookId, runId, token, pass, proposalId]);
 
   // A non-cast (advisory) pass has no seed gate. Cast is gated until its proposal is `applied`.
-  const canApprove = !proposalId || proposal?.status === 'applied';
+  //
+  // 🔴 #265 — `!proposalId` was doing double duty. It is meant to say "advisory pass, no gate",
+  // but it is ALSO true for a BLOCKING pass whose proposal was never opened, and in that state the
+  // button was enabled while the server refused forever:
+  //
+  //   409 CHECKPOINT_REFUSED — "cast cannot be accepted before its glossary seed proposal exists"
+  //
+  // which is exactly what this file's own header warns about ("409s the approve forever"). That
+  // happens for real: a cast pass that produced nothing writes `{"cast": []}`, the job opens no
+  // proposal by design ("you cannot accept a cast that does not exist"), and the author is left
+  // with an enabled button that can never work and no reason given.
+  //
+  // Blocking passes are now gated on the proposal EXISTING as well as being applied. The refusal
+  // is the server's, and the UI should not offer an action it knows will be refused.
+  const blocking = pass?.checkpoint === 'blocking';
+  const canApprove = blocking
+    ? proposal?.status === 'applied'
+    : (!proposalId || proposal?.status === 'applied');
 
   const applySeed = useCallback(async () => {
     if (!token || !proposalId) return;

@@ -1,0 +1,36 @@
+# cargo-audit configuration.
+#
+# 🔴 AN IGNORE IS A CLAIM. This one is CHECKED, by `scripts/rsa-out-of-build-gate.py`, which runs
+# in `all-gates` and fails if the condition below stops being true. Do not add an entry here
+# without the equivalent — an ignore nobody re-verifies is how a real finding goes quiet.
+
+[advisories]
+ignore = [
+    # RUSTSEC-2023-0071 — `rsa`, Marvin Attack (key recovery through timing sidechannels).
+    # "No fixed upgrade is available!" — there is no version to move to.
+    #
+    # WHY THIS IS IGNORED RATHER THAN CARRIED: `rsa` is NOT IN THE BUILD. On 2026-09-13
+    # `jsonwebtoken` moved from the `rust_crypto` backend to `aws_lc_rs`, and
+    # `cargo tree -e normal -i rsa` now answers "nothing to print" — no shipped binary contains
+    # it. Before that it compiled into roleplay-service and world-service.
+    #
+    # WHY THE ADVISORY STILL FIRES: `cargo audit` scans Cargo.lock, not the build graph. `sqlx`'s
+    # lock entry unconditionally lists `sqlx-mysql`, which depends on `rsa` — and this workspace
+    # never enables it (sqlx is `default-features = false` with `postgres` only; no .rs file
+    # mentions mysql; `cargo tree -e normal -i sqlx-mysql` is also "nothing to print"). Cargo
+    # records optional dependencies in the lockfile regardless, so the residue cannot be removed
+    # without patching sqlx.
+    #
+    # So the choice is between a permanently red advisory scan that everyone learns to scroll
+    # past, and one silenced fact with a gate standing over it. The second is the one this repo
+    # already applies to KNOWN_RED rows and file-ceiling allowlists.
+    #
+    # WHAT WOULD MAKE THIS WRONG: restoring `features = ["rust_crypto"]` on jsonwebtoken, or any
+    # dependency that genuinely builds `rsa`. `rsa-out-of-build-gate.py` goes RED for exactly
+    # that, names the path, and tells you to either restore the backend or delete this entry.
+    # Also worth knowing: the workspace performs NO RSA operation at all — every key is HMAC
+    # (`EncodingKey::from_secret` x3, `DecodingKey::from_secret` x1, `Algorithm::HS256` only) —
+    # so even when it WAS compiled, the vulnerable path was never executed. That is the weaker
+    # argument, kept here because it remains true and is worth having if the stronger one lapses.
+    "RUSTSEC-2023-0071",
+]

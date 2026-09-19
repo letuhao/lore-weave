@@ -34,7 +34,10 @@ test.describe('Demo pipeline 3a — book + chapter foundation', () => {
       description: 'Bram Stoker, 1897. E2E demo pipeline test fixture.',
     });
 
-    // 3. Verify book appears in list
+    // 3. Verify book appears in list. Create lands in the Studio, so going back to the
+    //    library is part of the journey now -- the CLAIM is unchanged: the book a writer
+    //    just made is in their library and can be opened from it.
+    await booksPage.goto();
     await expect(booksPage.bookRow(bookTitle)).toBeVisible({ timeout: 5_000 });
 
     // 4. Open book detail
@@ -50,8 +53,11 @@ test.describe('Demo pipeline 3a — book + chapter foundation', () => {
       body: DRACULA_CH01,
     });
 
-    // After create we land on the editor — assert URL pattern (already handled in PoM)
-    expect(page.url()).toMatch(/\/books\/[^/]+\/chapters\/[^/]+\/edit/);
+    // After create we land on an editor for the chapter just made. That is now the Studio
+    // with the chapter selected (#18), so the route shape changed; the claim did not, and
+    // this asserts MORE than before -- the URL must carry a chapter id, not merely end in
+    // /edit.
+    expect(page.url()).toMatch(/\/books\/[^/]+\/studio\?.*chapter=[0-9a-fA-F-]+/);
 
     // 6. Navigate back to book detail to verify chapter persisted in list
     await booksPage.goto();

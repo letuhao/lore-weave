@@ -50,7 +50,9 @@ func Guard(
 	if gov != nil {
 		release, err := gov.Acquire(ctx, concClass, limit)
 		if err != nil {
-			return err // governor timeout / ctx cancel — treated as transient by caller
+			// governor timeout / ctx cancel. NOT retried by retryTransient (neither is transient
+			// or contention) and not counted by the breaker: the job fails with this error.
+			return err
 		}
 		defer release()
 	}

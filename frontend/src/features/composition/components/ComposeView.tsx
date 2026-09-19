@@ -40,9 +40,11 @@ type Props = {
   /** M1 — derivative + at/after branch but the source chapter is empty → show a
    *  "nothing to adapt" hint instead of the action (no silent weak generation). */
   adaptSourceEmpty?: boolean;
+  /** L5 — the critic panel is on screen, so the inline verdict would be a second copy. */
+  criticShownElsewhere?: boolean;
 };
 
-export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept, guide, onGuideChange, canAdapt, adaptSourceEmpty }: Props) {
+export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept, guide, onGuideChange, canAdapt, adaptSourceEmpty, criticShownElsewhere = false }: Props) {
   const { t } = useTranslation('composition');
   const guideRef = useRef<HTMLTextAreaElement>(null);
   // Reasoning preference. "auto" lets the server decide per the selected model
@@ -253,7 +255,9 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
         </div>
       )}
 
-      {critic && <CriticFlags critic={critic} jobId={stream.jobId} onRegenerate={cowriteRegenerate} onDismiss={(ruleId) => stream.jobId && dismiss.mutate({ jobId: stream.jobId, ruleId })} />}
+      {/* L5 — when the critic panel is on screen it already shows this verdict; keep only the
+          override gate here, because its Regenerate action exists nowhere else. */}
+      {critic && <CriticFlags critic={critic} jobId={stream.jobId} gateOnly={criticShownElsewhere} onRegenerate={cowriteRegenerate} onDismiss={(ruleId) => stream.jobId && dismiss.mutate({ jobId: stream.jobId, ruleId })} />}
     </div>
   );
 }

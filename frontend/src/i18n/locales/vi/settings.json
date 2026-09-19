@@ -230,7 +230,9 @@
       "api_key_ph": "sk-...",
       "cancel": "Hủy",
       "adding": "Đang thêm...",
-      "submit": "Thêm nhà cung cấp"
+      "submit": "Thêm nhà cung cấp",
+      "one_model": "Chỉ chạy một mô hình tại một thời điểm",
+      "one_model_hint": "Bật tùy chọn này nếu bạn dùng máy chủ cục bộ chỉ có thể chứa một mô hình, chẳng hạn như LM Studio trên một GPU. Khi đó, các yêu cầu cho các mô hình khác nhau sẽ được xử lý theo lượt thay vì cả hai đều thất bại. Mặc định là tắt: chỉ bạn mới biết phần cứng của mình có thể chịu tải được bao nhiêu."
     },
     "edit_dialog": {
       "aria": "Sửa nhà cung cấp",
@@ -248,7 +250,9 @@
       "max_concurrency_hint": "Số yêu cầu nhà cung cấp này chạy cùng lúc. Để trống nghĩa là không giới hạn (hạ tầng tự quyết). Chỉ đặt số khi backend của bạn có giới hạn đã biết (ví dụ GPU cục bộ).",
       "cancel": "Hủy",
       "saving": "Đang lưu...",
-      "submit": "Lưu thay đổi"
+      "submit": "Lưu thay đổi",
+      "one_model": "Chỉ chạy một mô hình tại một thời điểm",
+      "one_model_hint": "Bật tùy chọn này nếu bạn dùng máy chủ cục bộ chỉ có thể chứa một mô hình, chẳng hạn như LM Studio trên một GPU. Khi đó, các yêu cầu cho các mô hình khác nhau sẽ được xử lý theo lượt thay vì cả hai đều thất bại. Mặc định là tắt: chỉ bạn mới biết phần cứng của mình có thể chịu tải được bao nhiêu."
     },
     "delete": {
       "title": "Xóa {{name}}?",

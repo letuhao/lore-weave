@@ -11,6 +11,7 @@ import { getAccessToken } from '../helpers/api';
 import { ensureLmStudioProvider, ensureLmStudioUserModel } from '../helpers/provider';
 import {
   buildAutoExtractionProfile,
+  adoptBookOntology,
   createExtractionJob,
   pollUntilComplete,
 } from '../helpers/extraction';
@@ -46,6 +47,10 @@ test.describe('Demo pipeline 3b — LM Studio glossary extraction', () => {
 
     const booksPage = new BooksPage(page);
     await booksPage.createBook({ title: bookTitle, language: 'en' });
+    // Create lands in the Studio (88d3e972b, D-BOOKS-CREATE-TO-STUDIO), so the journey goes back to
+    // the library first -- the repair e86508e87 made to 3a. Without it openBook read the row from
+    // the list DOM React had not yet replaced: it passed only when it beat the Studio's render.
+    await booksPage.goto();
     await booksPage.openBook(bookTitle);
     const bookId = extractBookIdFromUrl(page.url());
 
@@ -54,6 +59,10 @@ test.describe('Demo pipeline 3b — LM Studio glossary extraction', () => {
     const chapterId = extractChapterIdFromEditorUrl(page.url());
 
     // ── API-driven extraction (skip wizard UI for determinism) ──────────
+    // The book must be ADOPTED before it can be extracted -- the wizard this spec skips
+    // is what normally does it. Without it the profile is empty and the job is refused
+    // 502 EXTRACT_PROFILE_UNAVAILABLE.
+    await adoptBookOntology(request, token, bookId);
     const profile = await buildAutoExtractionProfile(request, token, bookId);
     expect(Object.keys(profile).length, 'expected at least one auto-selected kind').toBeGreaterThan(0);
 
@@ -62,7 +71,7 @@ test.describe('Demo pipeline 3b — LM Studio glossary extraction', () => {
     // ── Wait for completion (Qwen3 35B on chapter ~30-90s typical) ──────
     const finalStatus = await pollUntilComplete(request, token, jobId, { timeoutMs: 300_000 });
     expect(finalStatus.status, `extraction did not complete cleanly (status=${finalStatus.status})`).toMatch(
-      /^completed/,
+      /^completed$/,
     );
 
     // ── Verify entities surfaced in glossary UI ─────────────────────────

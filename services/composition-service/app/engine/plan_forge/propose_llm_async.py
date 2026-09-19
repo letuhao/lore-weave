@@ -13,7 +13,12 @@ from app.engine.plan_forge.existing_state import (
     render_existing_state_prompt,
 )
 from app.engine.plan_forge.json_extract import extract_json_object
-from app.engine.plan_forge.llm import _ANTI_LOOP, PlanForgeLLMError, ProviderPlanForgeLLM
+from app.engine.plan_forge.llm import (
+    _ANTI_LOOP,
+    PlanForgeLLMError,
+    PlanForgeTruncated,
+    ProviderPlanForgeLLM,
+)
 from app.engine.plan_forge.propose_llm import normalize_spec
 from app.engine.plan_forge.prompts import (
     ANALYZE_SYSTEM,
@@ -83,53 +88,67 @@ async def _parse_with_repair(
     # budget seam exists to remove, and it survived because the helper is one hop from the
     # LLM call and the gate's payload scan does not reach it.
     max_tokens = max_tokens or max_tokens_for("plan_forge_chat")
-    content = await client.chat(
-        step=step, system=system, user=user, temperature=temperature, max_tokens=max_tokens,
-        schema=schema,
-    )
+    content = ""
     last_exc: Exception | None = None
     for attempt in range(_MAX_REGENERATIONS + 1):
+        # The FIRST call lives inside the ladder too. It used to sit above this loop, so a loop that
+        # ran to the token cap raised `PlanForgeTruncated` out of `chat` before the ladder existed
+        # for it — the retry was there, and unreachable for the failure that remained (measured
+        # 2026-09-13: 2 of 31 real runs died on `LLM job unusable: truncated`).
+        if attempt == 0:
+            call_step, temp, penalty = step, temperature, None
+        else:
+            call_step = f"{step}_retry{attempt}"
+            temp = min(temperature + 0.2 * attempt, 1.0)
+            penalty = min(_ANTI_LOOP_BASE + _ANTI_LOOP_STEP * attempt, _ANTI_LOOP_MAX)
         try:
-            return extract_json_object(content)
-        except (json.JSONDecodeError, ValueError) as exc:
-            last_exc = exc
-            if not _is_degenerate(content):
-                break  # small and unparseable: a formatting slip, which repair CAN fix
-            # A REPAIR CANNOT FIX A REPETITION LOOP, and pretending otherwise is worse than failing.
-            #
-            # Root-caused 2026-07-28: the failing responses were 33-43k characters ending in
-            # `0_0_0_0_0…` repeated to the token cap. Handing that to a repair prompt does not
-            # produce the author's plan — it produces a minimal valid object (1 arc, 0 events,
-            # 0 variables), which then flows downstream as if it were a real read of their
-            # document. That is a repair SUCCEEDING INTO GARBAGE, with nothing anywhere saying the
-            # content was lost. Regenerating is the move that works: the same call succeeds on most
-            # attempts, while repair-of-degenerate succeeded on none.
-            if attempt == _MAX_REGENERATIONS:
-                # Measured 2026-07-29 on the author's own 4,278-char document: a single regeneration
-                # is NOT always enough (31,401 → 26,420 chars, both loops), and the old code parsed
-                # the retry with nothing around it — so the whole propose died on a bare
-                # `ValueError: unbalanced JSON braces`, which says nothing anyone can act on.
-                raise PlanForgeLLMError(
-                    f"{step}: the model returned a repetition loop on {_MAX_REGENERATIONS + 1} "
-                    f"attempts (last {len(content)} chars, escalating anti-loop penalty each time). "
-                    f"This is a decoding failure, not a problem with the document — retry, or use a "
-                    f"different planner model."
-                ) from exc
-            # Escalate BOTH levers: temperature to leave the loop's basin, and the repetition penalty
-            # itself, which is the one thing that directly targets the failure (a grammar cannot
-            # forbid a loop inside a JSON string — enforcement guarantees shape, never termination).
-            penalty = min(_ANTI_LOOP_BASE + _ANTI_LOOP_STEP * (attempt + 1), _ANTI_LOOP_MAX)
-            logger.warning(
-                "plan_forge %s: degenerate response (%d chars), attempt %d/%d — regenerating at "
-                "frequency_penalty=%.1f rather than repairing; a repetition loop cannot be repaired "
-                "into content",
-                step, len(content), attempt + 1, _MAX_REGENERATIONS, penalty,
-            )
             content = await client.chat(
-                step=f"{step}_retry{attempt + 1}", system=system, user=user,
-                temperature=min(temperature + 0.2 * (attempt + 1), 1.0),
+                step=call_step, system=system, user=user, temperature=temp,
                 max_tokens=max_tokens, schema=schema, frequency_penalty=penalty,
             )
+        except PlanForgeTruncated as exc:
+            # A response cut off at the cap is a repetition loop in every case observed, so it takes
+            # the REGENERATE branch — never repair. `chat` gave us no text, so nothing truncated can
+            # reach the repair prompt below.
+            last_exc, reason = exc, "truncated"
+        else:
+            try:
+                return extract_json_object(content)
+            except (json.JSONDecodeError, ValueError) as exc:
+                last_exc = exc
+                if not _is_degenerate(content):
+                    break  # small and unparseable: a formatting slip, which repair CAN fix
+                reason = "degenerate"
+        # A REPAIR CANNOT FIX A REPETITION LOOP, and pretending otherwise is worse than failing.
+        #
+        # Root-caused 2026-07-28: the failing responses were 33-43k characters ending in
+        # `0_0_0_0_0…` repeated to the token cap. Handing that to a repair prompt does not
+        # produce the author's plan — it produces a minimal valid object (1 arc, 0 events,
+        # 0 variables), which then flows downstream as if it were a real read of their
+        # document. That is a repair SUCCEEDING INTO GARBAGE, with nothing anywhere saying the
+        # content was lost. Regenerating is the move that works: the same call succeeds on most
+        # attempts, while repair-of-degenerate succeeded on none.
+        if attempt == _MAX_REGENERATIONS:
+            # Measured 2026-07-29 on the author's own 4,278-char document: a single regeneration
+            # is NOT always enough (31,401 → 26,420 chars, both loops), and the old code parsed
+            # the retry with nothing around it — so the whole propose died on a bare
+            # `ValueError: unbalanced JSON braces`, which says nothing anyone can act on.
+            raise PlanForgeLLMError(
+                f"{step}: the model returned a repetition loop on {_MAX_REGENERATIONS + 1} "
+                f"attempts (last attempt {reason}, escalating anti-loop penalty each time). "
+                f"This is a decoding failure, not a problem with the document — retry, or use a "
+                f"different planner model."
+            ) from last_exc
+        # Escalate BOTH levers on the next attempt: temperature to leave the loop's basin, and the
+        # repetition penalty itself, which is the one thing that directly targets the failure (a
+        # grammar cannot forbid a loop inside a JSON string — enforcement guarantees shape, never
+        # termination).
+        logger.warning(
+            "plan_forge.regenerate step=%s attempt=%d/%d reason=%s chars=%d next_penalty=%.1f — "
+            "regenerating rather than repairing; a repetition loop cannot be repaired into content",
+            step, attempt + 1, _MAX_REGENERATIONS, reason, len(content) if reason == "degenerate" else 0,
+            min(_ANTI_LOOP_BASE + _ANTI_LOOP_STEP * (attempt + 1), _ANTI_LOOP_MAX),
+        )
 
     repair_content = await client.chat(
         step=repair_step,

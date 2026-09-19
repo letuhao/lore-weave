@@ -241,17 +241,24 @@ async def create_work_for_book(
             ).model_dump(mode="json")
         project_id = UUID(str(created["project_id"]))
 
-        # C16 backfill seam: if a prior outage left a lazy pending Work for this
-        # book (possibly created by a grantee — PM-9/F5), stamp the freshly-created
-        # project onto it (clear the marker) instead of spawning a second Work —
-        # knowledge has recovered.
-        pending = await works.get_pending_for_book(book_id)
-        if pending is not None and pending.id is not None:
-            backfilled = await works.backfill_project(
-                pending.id, project_id, created_by=user_id,
-            )
-            if backfilled is not None:
-                return backfilled.model_dump(mode="json")
+    # C16 backfill seam: if a prior outage left a lazy pending Work for this book
+    # (possibly created by a grantee — PM-9/F5), stamp the project onto it (clear the
+    # marker) instead of spawning a second Work.
+    #
+    # For EVERY branch that reached a project, not only the freshly-created one. It used
+    # to sit inside the `none` branch, so a book whose knowledge project already existed
+    # but was unmarked (`unmarked_*`) AND which carried a pending Work fell through to
+    # `works.create` → UniqueViolation → the re-get by project found nothing → 409
+    # WORK_CREATE_CONFLICT, on every attempt, forever — the Studio's own open included.
+    # Found 2026-09-18 by the sign-in backfill: 9 of one owner's 105 books stuck exactly
+    # this way (plan 2026-09-18 Cycle 4).
+    pending = await works.get_pending_for_book(book_id)
+    if pending is not None and pending.id is not None:
+        backfilled = await works.backfill_project(
+            pending.id, project_id, created_by=user_id,
+        )
+        if backfilled is not None:
+            return backfilled.model_dump(mode="json")
 
     # Get-or-create the composition_work row. The get-then-create is not atomic,
     # so a concurrent same-project POST can lose the PK race — catch the unique

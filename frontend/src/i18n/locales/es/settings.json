@@ -230,7 +230,9 @@
       "api_key_ph": "sk-...",
       "cancel": "Cancelar",
       "adding": "Añadiendo...",
-      "submit": "Añadir proveedor"
+      "submit": "Añadir proveedor",
+      "one_model": "Servir un modelo a la vez",
+      "one_model_hint": "Activa esta opción para un servidor local que solo pueda alojar un modelo, como LM Studio en una sola GPU. Las solicitudes para diferentes modelos se turnarán en lugar de que ambas fallen. Desactivado por defecto: solo tú sabes la capacidad de tu hardware."
     },
     "edit_dialog": {
       "aria": "Editar proveedor",
@@ -248,7 +250,9 @@
       "max_concurrency_hint": "Cuántas peticiones ejecuta este proveedor a la vez. Deja vacío para ilimitado (el backend decidirá). Establece un número solo si tu backend tiene un límite conocido (ej. una GPU local).",
       "cancel": "Cancelar",
       "saving": "Guardando...",
-      "submit": "Guardar cambios"
+      "submit": "Guardar cambios",
+      "one_model": "Servir un modelo a la vez",
+      "one_model_hint": "Activa esta opción para un servidor local que solo pueda alojar un modelo, como LM Studio en una sola GPU. Las solicitudes para diferentes modelos se turnarán en lugar de que ambas fallen. Desactivado por defecto: solo tú sabes la capacidad de tu hardware."
     },
     "delete": {
       "title": "¿Eliminar {{name}}?",

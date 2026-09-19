@@ -11,6 +11,11 @@
 x-build-labels: &build-labels
   org.loreweave.git_sha: "${GIT_SHA:-unknown}"
   org.loreweave.build_time: "${BUILD_TIME:-unknown}"
+  # Which top-level paths had UNCOMMITTED tracked changes when the image was built ("clean" when
+  # none). Uncommitted locale edits were baked into a test image once and nothing could tell
+  # (plan 2026-09-19 T6); scripts/e2e/run-evidence-suite.py compares this with each service's
+  # build context. Set by iso.sh; a plain build leaves it 'unknown'.
+  org.loreweave.git_dirty_scope: "${GIT_DIRTY_SCOPE:-unknown}"
 
 services:
   postgres:
@@ -88,10 +93,16 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
 
   minio:
     restart: unless-stopped
-    image: minio/minio:RELEASE.2024-08-03T04-33-23Z
+    image: quay.io/minio/minio:RELEASE.2024-08-03T04-33-23Z
     command: server /data --console-address ":9001"
     environment:
       # Same MINIO_ACCESS_KEY/MINIO_SECRET_KEY vars every client below reads --
@@ -122,6 +133,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
 
   mailhog:
     restart: unless-stopped
@@ -323,6 +340,17 @@ services:
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       ACCESS_TOKEN_TTL_SECONDS: "7200"
       REFRESH_TOKEN_TTL_SECONDS: "2592000"
+      # Login/register throttle, keyed `route:CLIENT_IP` (ratelimit/limiter.go:86). The
+      # DEFAULTS HERE ARE THE PRODUCTION ONES and must stay 60/60s — they are a
+      # credential-stuffing guard, not a tuning knob.
+      #
+      # They are passed through as variables ONLY so the isolated E2E stack can raise them
+      # (infra/iso.sh). Every Playwright worker shares ONE client IP, so a 76-spec run
+      # exceeds 60 logins/minute and the limiter starts answering 429 — which the suite
+      # reports as `waitForURL('**/books') timeout`, a failure that looks like a broken
+      # product and is a saturated throttle. Nine tests failed that way on 2026-09-13.
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-60}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
       DEV_LOG_EMAIL_TOKENS: "1"
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
@@ -375,6 +403,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8204:8081"
 
@@ -428,6 +462,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8205:8082"
 
@@ -584,6 +624,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8206:8083"
 
@@ -616,6 +662,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       # C7 — host 8213 collided with video-gen-service (which also mapped 8213); moved to a free port.
       - "8228:8095"
@@ -649,6 +701,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8207:8084"
 
@@ -687,6 +745,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8230:8099"
 
@@ -785,6 +849,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8208:8085"
 
@@ -842,6 +912,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8209:8086"
 
@@ -857,7 +933,16 @@ services:
     volumes:
       - loreweave_rabbitmq:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      # 🔴 `ping` IS NOT "A CLIENT CAN CONNECT". rabbitmq's own help: ping "Checks that the
+      # node OS process is up, registered with EPMD and CLI tools can authenticate with it"
+      # -- nothing about listeners. So `condition: service_healthy` went true while port 5672
+      # was still closed, and on 2026-09-13 provider-registry-service came up behind it and
+      # logged `amqp dial: dial tcp 172.20.0.5:5672: connect: connection refused` seven times
+      # before connecting 18s later -- by which point compose had given up on it and aborted
+      # the whole `up`, leaving the frontend and every downstream service unstarted.
+      # check_port_connectivity is "Basic TCP connectivity health check for each listener's
+      # port", which is the question depends_on is actually asking.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 5s
       timeout: 10s
       retries: 10
@@ -941,6 +1026,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8210:8087"
 
@@ -982,6 +1073,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8223:8095"
 
@@ -1017,6 +1114,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8224:8096"
 
@@ -1128,6 +1231,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8211:8088"
 
@@ -1958,6 +2067,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8214:8089"
 
@@ -1990,6 +2105,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "8215:8091"
 
@@ -2099,6 +2220,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
     ports:
       - "3123:3000"
 
@@ -2157,6 +2284,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      # start_period added 2026-09-13. Without it docker counts health failures from
+      # t=0, so a service that is merely STARTING is reported unhealthy -- and a
+      # depends_on: service_healthy turns that into an aborted `up` for everything
+      # downstream. 30s is above the ~18s provider-registry-service needed on a cold
+      # rabbitmq, which is the case that exposed this.
+      start_period: 30s
 
   frontend:
     restart: unless-stopped

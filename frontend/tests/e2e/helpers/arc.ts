@@ -35,7 +35,7 @@ export async function seedArcTemplate(
 ): Promise<string> {
   const t = await ok<{ id: string }>(
     request.post('/v1/composition/arc-templates', {
-      headers: authHeaders(token), data: { code, name, language: 'en' },
+      headers: authHeaders(token), data: { code, name, original_language: 'en' },
     }),
   );
   return t.id;
@@ -47,7 +47,7 @@ export async function seedBookSharedTemplate(
 ): Promise<{ id: string; book_shared: boolean }> {
   return ok<{ id: string; book_shared: boolean }>(
     request.post(`/v1/composition/arc-templates?target=book_shared&book_id=${bookId}`, {
-      headers: authHeaders(token), data: { code, name, language: 'en' },
+      headers: authHeaders(token), data: { code, name, original_language: 'en' },
     }),
   );
 }

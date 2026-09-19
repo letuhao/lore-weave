@@ -276,10 +276,42 @@ function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive
   const [name, setName] = useState(tpl.name);
   const [kind, setKind] = useState(tpl.kind ?? '');
   const [beats, setBeats] = useState<Beat[]>(() => sorted(tpl.beats));
-  // C1 — snapshot the mount state; `dirty` = the draft diverged. The panel reads this (via onDirty)
-  // to gate navigation with a discard-confirm. `discard` resets the draft back to the snapshot.
-  const initial = useRef(JSON.stringify({ name: tpl.name, kind: tpl.kind ?? 'generic', beats: sorted(tpl.beats) }));
-  const dirty = JSON.stringify({ name, kind, beats }) !== initial.current;
+  // C1 — `dirty` = the draft diverged from the SAVED row. The panel reads this (via onDirty) to
+  // gate navigation with a discard-confirm; `discard` resets the draft back to the row.
+  //
+  // 🔴 #264 — this used to snapshot into a `useRef` at MOUNT and never reassign it. The editor is
+  // keyed on `s.selected.id`, so it remounts when the SELECTION changes but not when the same
+  // template is SAVED: after one edit it stayed "diverged from mount" for the life of the
+  // component, and navigating away raised "Discard unsaved changes?" over work already stored.
+  //
+  // The baseline is DERIVED from `tpl` instead. `save` invalidates ['structure-templates'] and
+  // `selected` is re-read from that query, so on save success `tpl` carries the saved values, the
+  // draft already equals them, and dirty falls to false with no useEffect and no manual reset.
+  //
+  // Both sides now normalise `kind` the same way. They did not: the draft used `?? ''` while the
+  // baseline used `?? 'generic'`, so a template with a null kind would have been born dirty. No
+  // row has a null kind today, so that was latent rather than live -- but the two halves of one
+  // comparison should not disagree.
+  // Beats are reduced to positional TUPLES, not stringified as objects. `JSON.stringify` preserves
+  // key insertion order, and the two sides build their objects differently: the draft spreads
+  // `{...b, order}` (key,label,purpose,order) while the API returns (key,label,order,purpose).
+  // Identical data, different strings -- so the editor read as dirty forever no matter how
+  // correct the baseline was. This was the real cause of #264; the mount-snapshot was only the
+  // half that made it permanent.
+  const snapshot = (v: { name: string; kind?: string | null; beats: Beat[] }) =>
+    JSON.stringify({
+      name: v.name,
+      kind: v.kind ?? '',
+      beats: sorted(v.beats).map((b) => [b.key, b.label ?? '', b.purpose ?? '', b.order ?? 0]),
+    });
+  // A save that is in flight, or has landed, is not "unsaved". Between clicking Save and the
+  // refetched row arriving, `tpl` is still the OLD row -- so comparing against it alone warns the
+  // user about discarding work they just saved. That race is what kept #264 alive after the
+  // baseline was derived correctly. If the save ERRORS, saveError is set and the draft is dirty
+  // again, which is right: the work really is unsaved.
+  const submitted = useRef<string | null>(null);
+  const current = snapshot({ name, kind, beats });
+  const dirty = current !== snapshot(tpl) && !(submitted.current === current && !saveError);
   useEffect(() => { onDirty?.(dirty); return () => onDirty?.(false); }, [dirty, onDirty]);
   const discard = () => {
     setName(tpl.name); setKind(tpl.kind ?? ''); setBeats(sorted(tpl.beats));
@@ -304,8 +336,16 @@ function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive
       return [...bs, { key: `beat_${n}`, label: '', purpose: '' }];
     });
 
-  const save = () =>
-    onSave({ name, kind, beats: beats.map((b, i) => ({ ...b, order: i + 1 })) });
+  const save = () => {
+    // Send AND KEEP the ordered beats. `save` used to stamp `order` on the way out while the draft
+    // held the un-stamped ones, so a newly added beat (created without `order`) never matched the
+    // row that came back and the editor stayed dirty even once the baseline was derived correctly.
+    // The draft must be what was submitted.
+    const ordered = beats.map((b, i) => ({ ...b, order: i + 1 }));
+    setBeats(ordered);
+    submitted.current = snapshot({ name, kind, beats: ordered });
+    onSave({ name, kind, beats: ordered });
+  };
 
   return (
     <>

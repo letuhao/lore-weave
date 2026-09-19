@@ -48,7 +48,21 @@ ARG PGVECTOR_VERSION=v0.8.1
 
 FROM ${PG_IMAGE} AS build
 ARG PGVECTOR_VERSION
-RUN apk add --no-cache build-base clang19 llvm19-dev llvm19 git \
+# The LLVM major is DERIVED from the image, never hardcoded. `postgres:18-alpine` is a
+# floating tag: on 2026-09-13 it moved to Alpine 3.24, which ships no `clang19` and no
+# `llvm19` at all, and the build died at `apk add` with `no such package`. The pin had
+# also been silently WRONG before that -- this image's Postgres is configured with
+# `LLVM_CONFIG=/usr/lib/llvm21/bin/llvm-config`, so a clang19 bitcode build was a JIT
+# ABI mismatch that apk was happy to install. Asking `pg_config` removes both failures:
+# the version can no longer drift from the server it is compiled for, and the next base
+# bump fixes itself instead of breaking the release build.
+RUN set -eu \
+ && LLVM_MAJOR="$(pg_config --configure | tr ' ' '\n' | grep -oE 'llvm[0-9]+' | head -1 | sed 's/^llvm//')" \
+ # Fail loudly rather than quietly building a non-JIT extension: an empty value would
+ # make the apk line read `clang` + `llvm-dev`, which resolve to a DIFFERENT major.
+ && { [ -n "${LLVM_MAJOR}" ] || { echo "FATAL: no LLVM version in pg_config --configure" >&2; exit 1; }; } \
+ && echo "building pgvector against LLVM ${LLVM_MAJOR}" \
+ && apk add --no-cache build-base "clang${LLVM_MAJOR}" "llvm${LLVM_MAJOR}-dev" "llvm${LLVM_MAJOR}" git \
  && git clone --branch "${PGVECTOR_VERSION}" --depth 1 \
       https://github.com/pgvector/pgvector.git /tmp/pgvector \
  && cd /tmp/pgvector \

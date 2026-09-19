@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { Navigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { apiJson } from '@/api';
+import { provisionOnSignIn } from '@/lib/provisionOnSignIn';
 
 type UserProfile = {
   user_id: string;
@@ -84,6 +85,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setRefresh(r);
     if (a || r) {
       localStorage.setItem(AUTH_KEY, JSON.stringify({ accessToken: a, refreshToken: r }));
+      // setTokens runs on SIGN-IN only (login, register); a silent refresh writes storage and
+      // fires `lw-auth-refreshed` instead. So this is once per sign-in, never per refresh.
+      if (a) provisionOnSignIn(a);
     } else {
       localStorage.removeItem(AUTH_KEY);
       localStorage.removeItem(USER_KEY);

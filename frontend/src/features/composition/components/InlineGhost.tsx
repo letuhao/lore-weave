@@ -35,15 +35,27 @@ export function InlineGhost({
   }, [onReposition, onDiscard]);
 
   return (
-    <div data-testid="inline-ghost" className="fixed z-40 max-w-[34rem]" style={{ top: coords.top + 4, left: coords.left }}>
-      <div className="rounded-md border border-dashed border-indigo-300 bg-indigo-50/95 p-2 text-sm shadow-md dark:border-indigo-700 dark:bg-indigo-950/90">
+    // F14 — bounded to the viewport. The card is position-fixed at the caret and had no height
+    // limit, so a normal-length continuation (~300 words) pushed Accept / Edit / Regenerate /
+    // Discard below the bottom of the screen: fixed content does not scroll with the page, and
+    // scrolling only re-anchors the card to the caret. Esc discards, but nothing accepts from the
+    // keyboard, so a full suggestion could not be ACCEPTED at all. It stayed hidden only because the
+    // co-writer had been returning 30-word requests for context (F12/F13) that always fit.
+    // The card now stops 8px above the viewport edge; the prose scrolls inside it and the actions
+    // never leave the screen.
+    <div
+      data-testid="inline-ghost"
+      className="fixed z-40 flex max-w-[34rem] flex-col"
+      style={{ top: coords.top + 4, left: coords.left, maxHeight: `calc(100vh - ${coords.top + 4}px - 8px)` }}
+    >
+      <div className="flex min-h-0 flex-col rounded-md border border-dashed border-indigo-300 bg-indigo-50/95 p-2 text-sm shadow-md dark:border-indigo-700 dark:bg-indigo-950/90">
         <div className="mb-1 text-[10px] uppercase tracking-wide text-indigo-500">
           ✦ {t('inline.drafting', { defaultValue: 'AI · drafting' })}{streaming ? '…' : ''}
         </div>
-        <p data-testid="inline-ghost-text" className="whitespace-pre-wrap text-neutral-800 dark:text-neutral-200">
+        <p data-testid="inline-ghost-text" className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-neutral-800 dark:text-neutral-200">
           {ghost}{error && <span className="text-rose-600"> {error}</span>}
         </p>
-        <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+        <div data-testid="inline-ghost-actions" className="mt-2 flex shrink-0 flex-wrap gap-1.5 text-[11px]">
           {streaming ? (
             <button type="button" data-testid="inline-stop" className="rounded bg-rose-600 px-2 py-0.5 text-white" onClick={onDiscard}>
               {t('inline.discard', { defaultValue: 'Esc Discard' })}

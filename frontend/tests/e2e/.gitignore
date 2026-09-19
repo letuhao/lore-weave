@@ -1,3 +1,15 @@
 test-results/
 playwright-report/
 playwright/.cache/
+# Allure, added 2026-09-13. `test-results/` and `playwright-report/` were already here and
+# these two were not, so the first `PLAYWRIGHT_ALLURE=1` run would have committed thousands
+# of result files into history -- where they cannot be removed later without rewriting it.
+# One full run of 225 tests with video is hundreds of megabytes. Evidence is regenerated, not
+# archived in git; the report is the artefact a person opens, not a thing the repo carries.
+allure-results/
+allure-report/
+
+# Evidence runner output (scripts/e2e/run-evidence-suite.py). The per-run folders hold traces and
+# videos and stay local; the ledger is the record and IS committed.
+runs/*
+!runs/LEDGER.jsonl

@@ -54,6 +54,7 @@ export class StudioComposePanels {
   readonly inlineAccept: Locator;
   readonly inlineEdit: Locator;
   readonly inlineDiscard: Locator;
+  readonly inlineStop: Locator;
   readonly publishButton: Locator;
 
   constructor(page: Page) {
@@ -97,6 +98,7 @@ export class StudioComposePanels {
     this.inlineAccept = this.editorPanel.getByTestId('inline-accept');
     this.inlineEdit = this.editorPanel.getByTestId('inline-edit');
     this.inlineDiscard = this.editorPanel.getByTestId('inline-discard');
+    this.inlineStop = this.editorPanel.getByTestId('inline-stop'); // Discard while still streaming
     this.publishButton = this.editorPanel.getByTestId('publish-button');
   }
 

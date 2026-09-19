@@ -285,6 +285,25 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2`,
 	return credID.String(), limit, true, nil
 }
 
+// ResolveServeOneModel reports whether the credential behind this model has opted in to
+// "serve one model at a time" (#286). Platform models never have: they are shared/cloud, and the
+// setting is a statement about the user's own local hardware.
+func (r *Repo) ResolveServeOneModel(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (bool, error) {
+	if modelSource != "user_model" {
+		return false, nil
+	}
+	var on bool
+	err := r.pool.QueryRow(ctx, `
+SELECT pc.serve_one_model_at_a_time
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2`, modelRef, ownerUserID).Scan(&on)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return on, err
+}
+
 // MarkRunning transitions a pending job to running and stamps started_at.
 // Returns the rows-affected count so callers can detect concurrent
 // transitions (another worker beat us to the row).

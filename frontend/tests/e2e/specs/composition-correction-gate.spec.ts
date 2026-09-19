@@ -28,11 +28,11 @@ test.describe('Composition controlled-auto correction gate (slice 3) [model-gate
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
+      await panel.gotoStudio(bookId, chapterId);
       await panel.openComposeTab();
       await expect(panel.modelSelect).toBeVisible();
       await panel.selectModel(drafter.user_model_id);
-      await panel.reasoningSelect.selectOption('off');
+      await panel.setReasoning('off');
 
       // turn on Diverge (K options) → Generate runs the non-streaming auto path
       await panel.divergeToggle.check();

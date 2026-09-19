@@ -59,6 +59,7 @@ export function ProvidersTab() {
   const [addSecret, setAddSecret] = useState('');
   const [addEndpoint, setAddEndpoint] = useState('');
   const [addApiStandard, setAddApiStandard] = useState<APIStandard>('openai_compatible');
+  const [addOneModel, setAddOneModel] = useState(false); // #286: opt-in, default off
   const [addSaving, setAddSaving] = useState(false);
 
   const [editProvider, setEditProvider] = useState<ProviderCredential | null>(null);
@@ -67,6 +68,7 @@ export function ProvidersTab() {
   const [editEndpoint, setEditEndpoint] = useState('');
   const [editApiStandard, setEditApiStandard] = useState<APIStandard>('openai_compatible');
   const [editConcurrency, setEditConcurrency] = useState(''); // '' = unlimited
+  const [editOneModel, setEditOneModel] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<ProviderCredential | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -118,7 +120,7 @@ export function ProvidersTab() {
       setAddDisplayName('');
       setAddApiStandard('openai_compatible');
     }
-    setAddSecret(''); setAddEndpoint('');
+    setAddSecret(''); setAddEndpoint(''); setAddOneModel(false);
     setShowAddDialog(true);
   }
 
@@ -132,6 +134,7 @@ export function ProvidersTab() {
         secret: addSecret || undefined,
         endpoint_base_url: addEndpoint || undefined,
         api_standard: addApiStandard,
+        ...(addOneModel ? { serve_one_model_at_a_time: true } : {}),
       });
       toast.success(t('providers.toast.added', { name: addDisplayName.trim() }));
       setShowAddDialog(false);
@@ -156,6 +159,7 @@ export function ProvidersTab() {
       // is present-aware, so we send the key only when it actually changed.
       const nextConc = editConcurrency.trim() === '' ? null : Math.max(0, parseInt(editConcurrency, 10) || 0) || null;
       if (nextConc !== (editProvider.max_concurrency ?? null)) payload.max_concurrency = nextConc;
+      if (editOneModel !== (editProvider.serve_one_model_at_a_time ?? false)) payload.serve_one_model_at_a_time = editOneModel;
       await providerApi.patchProvider(accessToken, editProvider.provider_credential_id, payload as any);
       toast.success(t('providers.toast.updated'));
       setEditProvider(null);
@@ -330,7 +334,7 @@ export function ProvidersTab() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => { setEditProvider(prov); setEditSecret(''); setEditDisplayName(prov.display_name); setEditEndpoint(prov.endpoint_base_url ?? ''); setEditApiStandard((prov.api_standard as APIStandard) ?? 'openai_compatible'); setEditConcurrency(prov.max_concurrency != null ? String(prov.max_concurrency) : ''); }}
+                    onClick={() => { setEditProvider(prov); setEditSecret(''); setEditDisplayName(prov.display_name); setEditEndpoint(prov.endpoint_base_url ?? ''); setEditApiStandard((prov.api_standard as APIStandard) ?? 'openai_compatible'); setEditConcurrency(prov.max_concurrency != null ? String(prov.max_concurrency) : ''); setEditOneModel(prov.serve_one_model_at_a_time ?? false); }}
                     className="rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-secondary"
                   >
                     <Pencil className="mr-1 inline h-2.5 w-2.5" />
@@ -519,6 +523,21 @@ export function ProvidersTab() {
             </div>
 
             <div className="mb-4">
+              <label className="flex items-start gap-2 text-xs font-medium">
+                <input
+                  type="checkbox"
+                  autoComplete="off"
+                  data-testid="provider-add-one-model"
+                  checked={addOneModel}
+                  onChange={(e) => setAddOneModel(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>{t('providers.add_dialog.one_model')}</span>
+              </label>
+              <p className="mt-1 text-[10px] text-muted-foreground">{t('providers.add_dialog.one_model_hint')}</p>
+            </div>
+
+            <div className="mb-4">
               <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.api_key')}</label>
               <input
                 type="password"
@@ -616,6 +635,21 @@ export function ProvidersTab() {
                 className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
               <p className="mt-1 text-[10px] text-muted-foreground">{t('providers.edit_dialog.max_concurrency_hint')}</p>
+            </div>
+
+            <div className="mb-4">
+              <label className="flex items-start gap-2 text-xs font-medium">
+                <input
+                  type="checkbox"
+                  autoComplete="off"
+                  data-testid="provider-edit-one-model"
+                  checked={editOneModel}
+                  onChange={(e) => setEditOneModel(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>{t('providers.edit_dialog.one_model')}</span>
+              </label>
+              <p className="mt-1 text-[10px] text-muted-foreground">{t('providers.edit_dialog.one_model_hint')}</p>
             </div>
 
             <div className="flex justify-end gap-2">

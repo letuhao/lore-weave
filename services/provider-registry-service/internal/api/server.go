@@ -40,6 +40,9 @@ import (
 )
 
 type Server struct {
+	// #286 — per-endpoint model lease (nil when REDIS_URL is unset). Used on the stream path;
+	// the jobs worker holds its own reference via WithModelLease.
+	modelLease *ratelimit.ModelLease
 	pool      *pgxpool.Pool
 	cfg       *config.Config
 	secret    []byte
@@ -155,6 +158,14 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 					Cooldown:  time.Duration(cfg.BreakerCooldownS) * time.Second,
 				})
 				s.jobsWorker.WithGovernance(gov, brk)
+				// #286 — the model lease. Built whenever Redis is available; it only takes effect
+				// for credentials whose owner opted in to "serve one model at a time".
+				s.modelLease = ratelimit.NewModelLease(rdb, ratelimit.ModelLeaseConfig{
+					Lease:       time.Duration(cfg.ModelLeaseTTLS) * time.Second,
+					WaitTimeout: time.Duration(cfg.ModelLeaseWaitS) * time.Second,
+					AgingBound:  time.Duration(cfg.ModelLeaseAgingS) * time.Second,
+				})
+				s.jobsWorker.WithModelLease(s.modelLease)
 				slog.Info("S3a governance enabled", "cloud_max", cfg.GovernorCloudMax, "breaker_threshold", cfg.BreakerThreshold)
 
 				// S4b (decision C) — start the usage outbox relay on the same
@@ -1177,6 +1188,8 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		Active          *bool  `json:"active"`
 		APIStandard     string `json:"api_standard"`    // openai_compatible, anthropic, ollama, lm_studio
 		MaxConcurrency  *int   `json:"max_concurrency"` // nil/≤0 → unlimited (request-as-demand)
+		// #286: opt-in; absent → false. Only the user knows their server holds one model.
+		ServeOneModelAtATime *bool `json:"serve_one_model_at_a_time"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1222,13 +1235,15 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		CreatedAt            time.Time `json:"created_at"`
 		UpdatedAt            time.Time `json:"updated_at"`
 		MaxConcurrency       *int      `json:"max_concurrency"`
+		ServeOneModelAtATime bool      `json:"serve_one_model_at_a_time"`
 	}
+	oneModel := in.ServeOneModelAtATime != nil && *in.ServeOneModelAtATime
 	err = s.pool.QueryRow(r.Context(), `
-INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status, api_standard, max_concurrency)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-RETURNING provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at, max_concurrency
-`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status, apiStandard, nullableConcurrency(in.MaxConcurrency)).
-		Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.MaxConcurrency)
+INSERT INTO provider_credentials(owner_user_id, provider_kind, display_name, endpoint_base_url, secret_ciphertext, secret_key_ref, status, api_standard, max_concurrency, serve_one_model_at_a_time)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+RETURNING provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at, max_concurrency, serve_one_model_at_a_time
+`, userID, in.ProviderKind, in.DisplayName, nullableString(in.EndpointBaseURL), encryptedSecret, keyRef, status, apiStandard, nullableConcurrency(in.MaxConcurrency), oneModel).
+		Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.MaxConcurrency, &out.ServeOneModelAtATime)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_SAVE_FAILED", "failed to create provider credential")
 		return
@@ -1283,7 +1298,8 @@ func (s *Server) listProviderCredentials(w http.ResponseWriter, r *http.Request)
 	}
 	rows, err := s.pool.Query(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency,
+       serve_one_model_at_a_time
 FROM provider_credentials
 WHERE owner_user_id=$1 AND status <> 'archived'
 ORDER BY created_at DESC
@@ -1304,11 +1320,12 @@ ORDER BY created_at DESC
 		HasSecret            bool      `json:"has_secret"`
 		APIStandard          string    `json:"api_standard"`
 		MaxConcurrency       *int      `json:"max_concurrency"`
+		ServeOneModelAtATime bool      `json:"serve_one_model_at_a_time"`
 	}
 	items := make([]row, 0)
 	for rows.Next() {
 		var item row
-		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret, &item.APIStandard, &item.MaxConcurrency); err != nil {
+		if err := rows.Scan(&item.ProviderCredentialID, &item.ProviderKind, &item.DisplayName, &item.EndpointBaseURL, &item.Status, &item.CreatedAt, &item.UpdatedAt, &item.HasSecret, &item.APIStandard, &item.MaxConcurrency, &item.ServeOneModelAtATime); err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_PROVIDER_QUERY_FAILED", "failed to parse provider row")
 			return
 		}
@@ -1334,6 +1351,8 @@ func (s *Server) patchProviderCredential(w http.ResponseWriter, r *http.Request)
 		Active          *bool       `json:"active"`
 		APIStandard     *string     `json:"api_standard"`
 		MaxConcurrency  optionalInt `json:"max_concurrency"`
+		// #286: nil (absent) keeps the stored value; true/false sets it.
+		ServeOneModelAtATime *bool `json:"serve_one_model_at_a_time"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_VALIDATION_ERROR", "invalid payload")
@@ -1369,10 +1388,11 @@ SET
   api_standard = COALESCE($8, api_standard),
   -- present-aware: $9 true → set $10 (nil clears to unlimited); false → keep
   max_concurrency = CASE WHEN $9::bool THEN $10 ELSE max_concurrency END,
+  serve_one_model_at_a_time = COALESCE($11, serve_one_model_at_a_time),
   updated_at = now()
 WHERE provider_credential_id = $1 AND owner_user_id = $2 AND status <> 'archived'
 `, id, userID, in.DisplayName, in.EndpointBaseURL, encryptedSecret, keyRef, statusPatch, in.APIStandard,
-		in.MaxConcurrency.Present, nullableConcurrency(in.MaxConcurrency.Value))
+		in.MaxConcurrency.Present, nullableConcurrency(in.MaxConcurrency.Value), in.ServeOneModelAtATime)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_PROVIDER_UPDATE_FAILED", "failed to update provider credential")
 		return
@@ -1396,13 +1416,15 @@ func (s *Server) getProviderCredentialByID(w http.ResponseWriter, r *http.Reques
 		HasSecret            bool      `json:"has_secret"`
 		APIStandard          string    `json:"api_standard"`
 		MaxConcurrency       *int      `json:"max_concurrency"`
+		ServeOneModelAtATime bool      `json:"serve_one_model_at_a_time"`
 	}
 	err := s.pool.QueryRow(r.Context(), `
 SELECT provider_credential_id, provider_kind, display_name, endpoint_base_url, status, created_at, updated_at,
-       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency
+       (secret_ciphertext IS NOT NULL AND secret_ciphertext <> '') AS has_secret, api_standard, max_concurrency,
+       serve_one_model_at_a_time
 FROM provider_credentials
 WHERE provider_credential_id=$1 AND owner_user_id=$2
-`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret, &out.APIStandard, &out.MaxConcurrency)
+`, id, userID).Scan(&out.ProviderCredentialID, &out.ProviderKind, &out.DisplayName, &out.EndpointBaseURL, &out.Status, &out.CreatedAt, &out.UpdatedAt, &out.HasSecret, &out.APIStandard, &out.MaxConcurrency, &out.ServeOneModelAtATime)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "M03_PROVIDER_NOT_FOUND", "provider credential not found")
 		return

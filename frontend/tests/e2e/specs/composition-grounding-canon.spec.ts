@@ -19,12 +19,12 @@ test.describe('Composition grounding + canon UI (U5/U6/B6.1)', () => {
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
-      await panel.openComposeTab();
+      await panel.gotoStudio(bookId, chapterId);
 
-      // open Grounding → the packer runs for the selected scene; with no published
-      // chapters there is no KG, so the signal is honest (available=false) + a warning
-      await panel.subtabGrounding.click();
+      // open Grounding for the scene (Scene Browser row → Scene Inspector's Grounding section) →
+      // the packer runs for the selected scene; with no published chapters there is no KG, so the
+      // signal is honest (available=false) + a warning
+      await panel.openGroundingForScene('Opening');
       await expect(panel.groundingSignal).toBeVisible({ timeout: 15_000 });
       await expect(panel.groundingSignal).toHaveAttribute('data-available', 'false');
       // actionable hint (not raw C3a warning-ese) tells the author how to bootstrap
@@ -45,10 +45,10 @@ test.describe('Composition grounding + canon UI (U5/U6/B6.1)', () => {
     try {
       await loginViaUI(page);
       const panel = new ChapterComposePanel(page);
-      await panel.gotoEditor(bookId, chapterId);
-      await panel.openComposeTab();
+      await panel.gotoStudio(bookId, chapterId);
 
-      await panel.subtabCanon.click();
+      // canon rules are authored in the Studio's Canon Rules panel (Quality)
+      await panel.openCanonRules();
       await expect(panel.canonInput).toBeVisible();
       await expect(panel.canonRules).toHaveCount(0); // none yet
 

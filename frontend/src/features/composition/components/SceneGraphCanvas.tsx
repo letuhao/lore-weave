@@ -28,6 +28,7 @@ import { WhatIfJudgeBadge } from './WhatIfJudgeBadge';
 import { CanonAtChapterPanel } from './CanonAtChapterPanel';
 import { GraphCanvas } from './GraphCanvas';
 import { autoLayout, NODE_H, NODE_W, PAD, type Pos } from './sceneGraphLayout';
+import { studioChapterPath } from '@/lib/studioRoutes';
 
 type GraphEdge = SceneLink | WhatIfEdge;
 const isWhatIfEdge = (e: GraphEdge): e is WhatIfEdge => 'wi' in e;
@@ -207,7 +208,7 @@ export function SceneGraphCanvas({ work, bookId, token, onPromoted }: {
   };
   const deleteEdge = (linkId: string) =>
     m.deleteSceneLink.mutate(linkId, { onSuccess: () => setSelectedEdge(null) });
-  const openScene = (n: OutlineNode) => { if (n.chapter_id) navigate(`/books/${bookId}/chapters/${n.chapter_id}/edit`); };
+  const openScene = (n: OutlineNode) => { if (n.chapter_id) navigate(studioChapterPath(bookId, n.chapter_id)); };
 
   // Canvas extent from the laid-out nodes (so the scroll area fits everything).
   // Links are drawn only between two visible scenes (/review-impl LOW-2: this UI

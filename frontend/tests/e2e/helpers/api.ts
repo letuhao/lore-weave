@@ -172,6 +172,40 @@ export async function moveBookIntoWorld(
 
 /** Create a knowledge project bound to a book — drives the project→book+world
  *  Overview backlink (D-WORLD-PROJECT-BACKLINK). */
+/** Seed a book with a PUBLISHED chapter plus a knowledge project, and return both ids.
+ *
+ * 🔴 K1 — `campaign-factory`'s fixture-gated test skipped on
+ * `!E2E_FACTORY_PROJECT_ID || !E2E_FACTORY_BOOK_ID`, and nothing ever set them, so it had never
+ * run anywhere. A skip is UNANSWERED, not a pass: the create → report/activity/chapters contract
+ * it guards has simply never been exercised.
+ *
+ * `published` is the part that matters — the factory drafts against published chapters, so a book
+ * with a draft chapter would satisfy the env check and still prove nothing.
+ */
+export async function seedFactoryFixture(
+  request: APIRequestContext, token: string, label: string,
+): Promise<{ bookId: string; projectId: string }> {
+  const bookId = await createBook(request, token, `${label} ${Date.now()}`);
+  const chapter = await ok<{ chapter_id?: string; id?: string }>(
+    request.post(`/v1/books/${bookId}/chapters`, {
+      ...auth(token),
+      data: {
+        original_language: 'en',
+        title: 'Chapter I',
+        body: 'The lamp guttered as Harker set down his pen and listened to the wolves.',
+      },
+    }),
+  );
+  const chapterId = chapter.chapter_id ?? chapter.id ?? '';
+  if (!chapterId) throw new Error('seedFactoryFixture: the chapter did not come back');
+  const pub = await request.post(`/v1/books/${bookId}/chapters/${chapterId}/publish`, {
+    ...auth(token), data: {},
+  });
+  if (!pub.ok()) throw new Error(`seedFactoryFixture: publish -> ${pub.status()} ${await pub.text()}`);
+  const project = await createKnowledgeProject(request, token, `${label} project ${Date.now()}`, bookId);
+  return { bookId, projectId: project.project_id };
+}
+
 export async function createKnowledgeProject(
   request: APIRequestContext, token: string, name: string, bookId: string,
 ): Promise<{ project_id: string }> {
@@ -184,6 +218,28 @@ export async function deleteKnowledgeProject(
   request: APIRequestContext, token: string, projectId: string,
 ): Promise<void> {
   await request.delete(`/v1/knowledge/projects/${projectId}`, auth(token));
+}
+
+/** The knowledge projects linked to a book, newest first. Used to find a project the PRODUCT
+ *  provisioned (StudioFrame's useEnsureWork POSTs /work on mount, which creates one) rather
+ *  than one the test made. */
+export async function listKnowledgeProjectsForBook(
+  request: APIRequestContext, token: string, bookId: string,
+): Promise<Array<{ project_id: string }>> {
+  const res = await request.get(`/v1/knowledge/projects?book_id=${bookId}`, auth(token));
+  if (!res.ok()) throw new Error(`list knowledge projects: ${res.status()} ${await res.text()}`);
+  const body = await res.json();
+  return body.items ?? [];
+}
+
+/** Archive a knowledge project. The book keeps its Work; the project simply stops being
+ *  LINKED, which is the state `useBookKnowledgeProject` (includeArchived: false) reports as
+ *  "this book has no knowledge project". A normal, reversible user action -- not a delete. */
+export async function archiveKnowledgeProject(
+  request: APIRequestContext, token: string, projectId: string,
+): Promise<void> {
+  const res = await request.post(`/v1/knowledge/projects/${projectId}/archive`, auth(token));
+  if (!res.ok()) throw new Error(`archive knowledge project: ${res.status()} ${await res.text()}`);
 }
 
 /** Create a user-authored (DISCOVERED / unanchored) knowledge entity — the input
@@ -207,6 +263,28 @@ export async function createChatSession(
   return ok(request.post('/v1/chat/sessions', {
     ...auth(token), data: { model_source: 'user_model', model_ref: modelRef, title },
   }));
+}
+
+/** Delete every `session_kind='assistant'` session for the caller.
+ *
+ * 🔴 J3 — `/assistant` auto-creates a session ONLY when none exists
+ * (`useAssistantAutoSession.ts`), and `useEndOfDay` then finds it by kind. So the FIRST one ever
+ * made is reused forever: on this stack that meant a session created before the one-model switch,
+ * still pinned to a now-INACTIVE model, and carrying two unanswered Tier-A consent gates from
+ * earlier runs. The end-of-day review cannot produce an entry while the session is blocked on
+ * questions nobody answered.
+ *
+ * Clearing them lets the product's own auto-create path run on the CURRENT default model, which
+ * is what the spec's first assertion actually claims ("assistant auto-created a ready session").
+ * Per-run, deterministic, and it exercises the path rather than inheriting its output.
+ */
+export async function clearAssistantSessions(request: APIRequestContext, token: string): Promise<number> {
+  const r = await request.get('/v1/chat/sessions?limit=100', auth(token));
+  if (!r.ok()) throw new Error(`list chat sessions -> ${r.status()} ${await r.text()}`);
+  const body = (await r.json()) as { items?: Array<{ session_id: string; session_kind?: string }> };
+  const assistants = (body.items ?? []).filter((s) => s.session_kind === 'assistant');
+  for (const s of assistants) await deleteChatSession(request, token, s.session_id);
+  return assistants.length;
 }
 
 export async function deleteChatSession(
@@ -291,14 +369,38 @@ export async function publishChapterApi(
 
 // ── composition (co-write) seeding ──
 
-export type ChatModel = { user_model_id: string; provider_model_name: string; is_active: boolean };
+export type ChatModel = { user_model_id: string; provider_model_name: string; alias?: string | null; is_active: boolean };
 
 // Chat-tagged models — the set the UI model picker shows (drafter source).
 export async function listChatModels(request: APIRequestContext, token: string): Promise<ChatModel[]> {
   const d = await ok<{ items: ChatModel[] }>(
     request.get('/v1/model-registry/user-models?capability=chat', auth(token)),
   );
-  return (d.items ?? []).filter((m) => m.is_active);
+  const active = (d.items ?? []).filter((m) => m.is_active);
+  // The ACCOUNT'S OWN chat default sorts first, so `chatModels[0]` is a deliberate choice
+  // rather than whatever order the registry happened to return.
+  //
+  // Eleven call sites across eight specs do `.find(<a model this account may not have>) ??
+  // chatModels[0]`, and every one of them was silently depending on registry order. Adding a
+  // second model to the evidence account moved a SMALLER model into slot 0 and turned
+  // `composition-correction-gate` red -- it had been green the run before, and nothing about
+  // that spec or the product had changed. The seeder warns "a second active model is NOT
+  // additive"; this is the other half of why. Ordering by the account default makes it additive.
+  //
+  // A failed lookup is not fatal: fall back to registry order, which is exactly today's
+  // behaviour, so a stack without a default is no worse off than before.
+  try {
+    // The per-capability GET answers 405; the collection returns {defaults: {chat: <id>}}.
+    const dm = await request.get('/v1/model-registry/default-models', auth(token));
+    if (dm.ok()) {
+      const id = (await dm.json())?.defaults?.chat;
+      if (id) {
+        const i = active.findIndex((m) => m.user_model_id === id);
+        if (i > 0) active.unshift(...active.splice(i, 1));
+      }
+    }
+  } catch { /* registry order it is */ }
+  return active;
 }
 
 // All active models — the critic is set via API (not the UI picker), so it only

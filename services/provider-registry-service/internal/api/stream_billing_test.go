@@ -616,7 +616,7 @@ func TestStreamChat_HardAbort_EmitsErrorFrameAndStops(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/llm/stream", nil)
 
-	(&Server{}).streamChat(req, rr, rr, adapter, "", "", "model-x", streamRequest{}, guard)
+	(&Server{}).streamChat(req, rr, rr, adapter, "", "", "model-x", streamRequest{}, guard, false)
 
 	body := rr.Body.String()
 	if !strings.Contains(body, "LLM_QUOTA_EXCEEDED") {

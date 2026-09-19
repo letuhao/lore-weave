@@ -217,7 +217,7 @@ describe('SceneGraphCanvas (T1.3)', () => {
   it('the open (↗) button jumps to the scene’s chapter', () => {
     render(<Graph />);
     fireEvent.click(within(document.querySelector('[data-node="s2"]')!).getByTestId('scene-node-open'));
-    expect(navigateFn).toHaveBeenCalledWith('/books/b/chapters/C2/edit');
+    expect(navigateFn).toHaveBeenCalledWith('/books/b/studio?chapter=C2');
   });
 
   // ── WS-B3 M1 — on-canvas what-if (ephemeral, zero residue) ──

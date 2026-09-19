@@ -18,7 +18,11 @@ test.describe('Composition telemetry (B3.3) [db-assert]', () => {
     const chapterId = await createChapter(request, token, bookId, 'Telemetry chapter');
     const projectId = await createCompositionWork(request, token, bookId);
     const sceneId = await createCompositionScene(request, token, projectId, chapterId, 'Scene');
-    const beatId = await createOutlineNode(request, token, projectId, 'beat', 'Beat');
+    // A CHAPTER is the non-scene node here. It used to be a 'beat', a kind the database has
+    // refused since pkg_lift_v1 (outline_node_kind_check), so the node was never created and
+    // the gate below was asserted against nothing. The claim is unchanged: a node that is not
+    // a scene, marked done, emits no scene_committed.
+    const nonSceneId = await createOutlineNode(request, token, projectId, 'chapter', 'Chapter node');
     try {
       await loginViaUI(page);
       const sceneRows = () => Number(queryComposition(
@@ -38,11 +42,11 @@ test.describe('Composition telemetry (B3.3) [db-assert]', () => {
 
       // a non-scene node marked done → no scene_committed for it (kind gate).
       // The patch may be a no-op or rejected; either way it must emit nothing.
-      try { await setSceneStatus(request, token, beatId, 'done'); } catch { /* non-scene reject is fine */ }
-      const beatRows = Number(queryComposition(
-        `SELECT count(*) FROM outbox_events WHERE event_type='composition.scene_committed' AND payload->>'scene_id'='${beatId}'`,
+      try { await setSceneStatus(request, token, nonSceneId, 'done'); } catch { /* non-scene reject is fine */ }
+      const nonSceneRows = Number(queryComposition(
+        `SELECT count(*) FROM outbox_events WHERE event_type='composition.scene_committed' AND payload->>'scene_id'='${nonSceneId}'`,
       ));
-      expect(beatRows).toBe(0);
+      expect(nonSceneRows).toBe(0);
     } finally {
       await trashBook(request, token, bookId);
     }

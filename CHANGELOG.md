@@ -20,13 +20,148 @@ pre-release identifiers, what "release" vs "pre-release" means for this repo, ar
 
 ### Added
 
+- **"Serve one model at a time"**: a per-provider setting for a local server that holds one model,
+  such as LM Studio on one GPU. When it is on, requests for different models on that server take
+  turns instead of colliding. It is off by default, and LoreWeave never loads or unloads a model
+  itself. Set it in Settings → Providers. (#286)
+- **Evidence runner for the E2E suite**: `scripts/e2e/run-evidence-suite.py` checks the stack before
+  a full run (clock steps, schedulers due, loaded models, image provenance, lost container logs),
+  keeps each run's traces in its own folder, and appends one line per run to
+  `frontend/tests/e2e/runs/LEDGER.jsonl`. `scripts/e2e/why-red.py` gathers a failed test's trace,
+  service logs, LLM jobs and clock steps with one command. (#288)
+
 ### Changed
 
 ### Fixed
 
+- An LM Studio model-load abort ("Engine protocol startup was aborted") is now retried as
+  contention and no longer counts toward the provider's circuit breaker. (#286)
+- Every failed upstream attempt is now logged with its error class, so a breaker that opens can be
+  explained afterwards. (#286)
+- Stale or broken test checks: the outline canon router test (#289), the scene-beats source scan
+  (#290), the book-service DB smoke workflow (#291), and type-checking for the E2E folder (#292).
+
 ### Removed
 
 ### Security
+
+## [0.1.0] - 2026-09-13
+
+Everything in `0.1.0-rc.1`, plus a week of remediation driven by a simulated-user run against the
+live product and a first pass at the dependency backlog. 39 of the 89 commits since the rc are
+user-facing. The scope is unchanged: 33 versioned images derived from `infra/docker-compose.yml`.
+
+### Added
+
+- **Campaigns is reachable from the Studio**, and the wizard now says *why* it is blocked instead
+  of presenting a dead control.
+- **Suggest scenes runs**, and narration-attach reports what it did.
+- **A prose-tic detector in composition** — the repetition that prompting alone could not remove is
+  now found mechanically rather than left to the reader.
+- **Asked-vs-delivered length is reported.** A chapter that comes back short says so; previously the
+  gap was silent.
+- **The steering budget is visible before the cap bites**, so an author can see a story bible is
+  about to be truncated rather than discovering it in the output.
+- **The decompiler writes its back-links back**, and human-authored prose is recognised as realized
+  rather than treated as missing.
+- **A rollback runbook** (`docs/runbooks/rollback.md`), including the one command that decides
+  whether a given release is rollback-safe — the schema is the deciding factor, not the images.
+- **Two new cross-cutting standards, each with an enforcing gate**: plan acceptance criteria
+  (a plan states what DONE means before its board) and the remediation cycle (a criterion moves only
+  through investigate → issues → fix → proof → AC impact).
+- **A translation placeholder-parity gate**, which verified 150,365 translated strings.
+
+### Changed
+
+- **A new book gets its knowledge project when it is created**, not the first time someone opens it.
+  Book creation does not wait for it: the request goes out after the book is saved, with the
+  author's own sign-in, and a failure leaves the book exactly as it was before this change.
+- **Signing in sets up any of your books that are still missing their knowledge project.** It runs
+  in the background, touches only your own books, and never shows a progress bar or an error.
+- **The Writing Studio is the only writing surface.** Links that used to open the old chapter editor
+  now open the same chapter in the Studio.
+
+- **"Auto-Draft Factory" is now "Campaigns"** — 36 strings across 18 locale files plus two component
+  fallbacks. The old name described a mechanism nobody had asked for; the new one describes what the
+  feature does.
+- **The chat steering token cap is 8000, up from 2000.** At 2000 most of a real story bible was
+  being dropped silently.
+- **The frontend builds with `npm ci` against a committed lockfile** instead of `npm install` against
+  74 floating ranges, so two builds of one commit can no longer differ.
+- **The pgvector image derives its LLVM toolchain from `pg_config`** rather than hardcoding a major.
+
+### Fixed
+
+- **A plan run no longer dies when the model repeats itself to the token limit.** Output that runs
+  out of room is now retried with a stronger anti-repetition setting — never "repaired" into a
+  plausible-looking plan with parts missing. Measured on 30 real runs: 0 failures (previously 2 of
+  31), including one run that hit the limit and recovered on its retry.
+- **A long plan run could be started a second time while the first was still going.** A running job
+  now reports that it is alive, so the stuck-job sweeper leaves it alone.
+- **Some books could never get their knowledge project** — a book with an unattached project and a
+  placeholder Work failed with `409 WORK_CREATE_CONFLICT` on every attempt, including opening it.
+- **The co-writer's critic no longer gives up after 20 seconds** when the critic model has to load
+  first; it now waits up to 240 seconds, which a real model swap needs.
+- **The critic's verdict was shown twice** when its panel was open beside Compose; it now shows once,
+  and the "Regenerate" action stays where it was.
+
+- **Arc and chapter Goal fields were written unbounded but read back capped at 2000 characters**,
+  which corrupted the whole book's arc list. This is the most damaging bug fixed in this release.
+- **An empty search result was presented as an empty account** — a user with books was told they had
+  none.
+- **Chapter-title precedence** had five independent copies disagreeing with each other; now one.
+- **A re-render destroyed unsaved field text** in the plan hub.
+- **A dirty hoist blocked agent writes silently**; the user is now told.
+- **A refused chat turn kept asking for a retry** that could not succeed.
+- **`no_tracked_promises` was conflated with extraction failure**, so "nothing to track" and "the
+  extractor broke" were indistinguishable.
+- **MinIO moved off Docker Hub** — six call sites repointed to `quay.io`, which had been failing CI.
+- **`govulncheck` had silently stopped auditing** and had not run for months; it now scans 76
+  modules and fails closed if it ever scans zero.
+- **The stack could not be rebuilt from scratch** — the pgvector image's pinned toolchain no longer
+  exists in its own base image.
+- **`all-gates` could not report why a gate failed**: it quoted the first line of a failing gate's
+  output, which by repo convention is that gate's self-test success banner.
+
+### Removed
+
+- **The legacy chapter editor page** (`/books/:bookId/chapters/:chapterId/edit`). The Writing Studio
+  replaced it; the old address now redirects to the same chapter in the Studio, so bookmarks keep
+  working. No endpoint or image was withdrawn.
+
+### Security
+
+- **`react-router` 6 → 7.18.3** — an open redirect and constructor injection in SSR hydration. This
+  is the only advisory in this release that reaches an end user, and it is closed.
+- **`vite` 5 → 8 and `vitest` 2 → 4.1.11**, which takes the frontend to **zero vulnerabilities of
+  any severity** — critical, high, moderate and low all at zero.
+- **The frontend was never actually pinned.** `frontend/package-lock.json` was suppressed in three
+  separate ignore files, so no dependency fix had ever been pinned. It is now tracked and enforced.
+- **23 of 52 high-severity findings** across the repo were fixed without breaking changes.
+
+**Known, and deliberately not fixed in 0.1.0:**
+
+- `rsa` RUSTSEC-2023-0071 (Marvin Attack, 5.9 medium) has **no published fix**. It is recorded and
+  awaiting a written risk acceptance rather than quietly carried.
+- Four NestJS gateways remain on `@nestjs/*` 10. Moving to 12 requires a Jest/ESM migration, not a
+  version bump; a half-migrated gateway would be worse than the advisories it closes.
+- **17 of the 18 locales are machine-translated and have not been read by a native speaker.** The
+  strings are mechanically sound — placeholder parity is gated — but mechanical soundness is not
+  meaning. Treat non-English UI text as provisional.
+
+### Known issues
+
+- **Books created by an AI agent (MCP `book_create`) get their knowledge project later, not at
+  creation.** That path has no sign-in of the author's to act with, and minting one is ruled out by
+  design. *Who:* anyone whose agent creates books. *Workaround:* none needed — the project is set up
+  the next time the owner signs in, or opens the book in the Studio.
+- **A plan run can still fail if the model repeats itself on all three attempts.** It is rare (none
+  in 30 measured runs) and the error says so plainly. *Who:* plan generation on local models.
+  *Workaround:* run it again, or choose a different planner model.
+- **The critic waits at most 240 seconds.** A model that takes longer than that to load and answer
+  still shows no verdict for that accept. *Who:* self-hosters with very large or very slow local
+  models. *Workaround:* use a smaller critic model, or keep the critic model loaded.
+
 
 ## [0.1.0-rc.1] - 2026-09-06
 

@@ -28,9 +28,16 @@ test.describe('Studio Compose panel', () => {
 
     await page.keyboard.press('ControlOrMeta+Shift+P');
     await expect(studio.commandPaletteModal).toBeVisible();
-    await studio.paletteInput.fill('Compose');
-    await expect(page.getByTestId('palette-entry-studio.openPanel.compose')).toBeVisible();
-    await page.keyboard.press('Enter');
+    // The panel's title is "Co-writer Chat" (studio.json panels.compose.title), so typing
+    // "Compose" correctly matches nothing -- it was renamed. Rather than swap in the new
+    // English word and be broken again by the next rename or a translation, the entry is
+    // reached BY TESTID, which is the language-agnostic contract (E2E CONVENTIONS S1), and
+    // CLICKED rather than Enter-ed: Enter runs whatever is highlighted, which is an assumption
+    // about list order, not about this command.
+    const entry = page.getByTestId('palette-entry-studio.openPanel.compose');
+    await entry.scrollIntoViewIfNeeded();
+    await expect(entry).toBeVisible();
+    await entry.click();
 
     // The compose dock panel is now mounted (its embedded chat renders inside).
     await expect(page.getByTestId('studio-compose-panel')).toBeVisible();

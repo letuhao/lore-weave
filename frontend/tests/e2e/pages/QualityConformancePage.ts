@@ -34,5 +34,7 @@ export class QualityConformancePage {
   row(nodeId: string): Locator { return this.page.getByTestId(`conformance-row-${nodeId}`); }
   openScene(nodeId: string): Locator { return this.page.getByTestId(`conformance-open-scene-${nodeId}`); }
   regen(nodeId: string): Locator { return this.page.getByTestId(`conformance-regen-${nodeId}`); }
+  /** Any per-scene row: the trace has RESOLVED to content (the wrapper alone may still be loading). */
+  anyRow(): Locator { return this.page.locator('[data-testid^="conformance-row-"]'); }
   anyOpenScene(): Locator { return this.page.locator('[data-testid^="conformance-open-scene-"]'); }
 }

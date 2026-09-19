@@ -95,6 +95,6 @@ describe('BeatSheetView (T1.2)', () => {
     render(<BeatSheetView bookId="b" projectId="p" token="t" />);
     fireEvent.change(screen.getByTestId('beats-template-select'), { target: { value: 't1' } });
     fireEvent.click(screen.getAllByTestId('beat-node-open')[0]); // s1 → chapter C1
-    expect(navigateFn).toHaveBeenCalledWith('/books/b/chapters/C1/edit');
+    expect(navigateFn).toHaveBeenCalledWith('/books/b/studio?chapter=C1');
   });
 });

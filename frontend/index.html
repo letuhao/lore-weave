@@ -14,7 +14,8 @@
     <meta name="apple-mobile-web-app-title" content="LoreWeave" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- Web fonts are loaded by src/lib/loadWebFonts.ts AFTER the load event (F15): a <link rel="stylesheet">
+         here blocked `load`, so a font CDN that never answered hung every page. -->
     <title>LoreWeave</title>
   </head>
   <body>
