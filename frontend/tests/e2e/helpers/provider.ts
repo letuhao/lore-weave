@@ -19,6 +19,7 @@ interface UserModel {
   provider_kind: string;
   provider_model_name: string;
   alias: string | null;
+  is_active: boolean;
 }
 
 function authHeaders(token: string): { Authorization: string } {

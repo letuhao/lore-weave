@@ -64,7 +64,16 @@ async function poll<T>(fn: () => Promise<T>, done: (v: T) => boolean, tries = 45
   return v;
 }
 
-export async function getRun(request: APIRequestContext, token: string, bookId: string, runId: string) {
+/** The plan-run read model the specs assert on. Only the fields they read are named; the
+ *  server returns more. */
+export interface PlanRun {
+  status: string;
+  job_status: string | null;
+  arcs: Array<{ id: string }>;
+  grounded_on?: { fingerprint: string; arc_titles: string[] } | null;
+}
+
+export async function getRun(request: APIRequestContext, token: string, bookId: string, runId: string): Promise<PlanRun> {
   const r = await request.get(`${BASE}/books/${bookId}/plan/runs/${runId}`, auth(token));
   return r.json();
 }
@@ -72,7 +81,7 @@ export async function getRun(request: APIRequestContext, token: string, bookId: 
 export async function waitProposed(request: APIRequestContext, token: string, bookId: string, runId: string) {
   return poll(
     () => getRun(request, token, bookId, runId),
-    (d: { status: string; job_status: string | null }) =>
+    (d: PlanRun) =>
       // 'compiled' — a rules-mode propose with autocompile ON materialises the arcs inline and lands
       // here, not at 'proposed'; accept it as a terminal state so grounded rules runs don't hang.
       ['proposed', 'validated', 'checkpoint', 'compiled', 'failed'].includes(d.status) &&

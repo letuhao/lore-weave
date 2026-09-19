@@ -114,10 +114,23 @@ def test_nothing_in_the_engine_computes_from_the_undirected_yield():
     """It is a historical datum, not a design input. `beat_targets` divides the SCENE's
     target; if this number ever starts governing behaviour, a stale measurement is steering
     the engine again."""
-    import subprocess
-    hits = subprocess.run(
-        ["git", "grep", "-l", "MEASURED_UNDIRECTED_YIELD_WORDS", "--", "services/"],
-        capture_output=True, text=True, cwd=_repo_root()).stdout.split()
+    # A plain walk, not `git grep`: the suite also runs inside the service image, which has no
+    # git binary, and `git grep` then printed nothing and the test failed on an empty list (#290).
+    # Same file set as before — source files under services/, skipping build/cache/vendor dirs.
+    import os
+    skip = {".git", "node_modules", "__pycache__", ".pytest_cache", ".venv", "venv", "dist", "build", "target"}
+    exts = (".py", ".go", ".ts", ".tsx", ".js", ".mjs")
+    root = _repo_root()
+    hits = []
+    for dirpath, dirnames, filenames in os.walk(os.path.join(root, "services")):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        for name in filenames:
+            if not name.endswith(exts):
+                continue
+            path = os.path.join(dirpath, name)
+            with open(path, encoding="utf-8", errors="ignore") as fh:
+                if "MEASURED_UNDIRECTED_YIELD_WORDS" in fh.read():
+                    hits.append(os.path.relpath(path, root).replace(os.sep, "/"))
     assert sorted(hits) == sorted([
         "services/composition-service/app/engine/cowrite.py",
         "services/composition-service/tests/unit/test_scene_beats.py",

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIResponse } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import { getAccessToken, createBook, createChapter, trashBook } from '../helpers/api';
 import { StudioPage } from '../pages/StudioPage';
@@ -74,10 +74,10 @@ test.describe('Manuscript Navigator — chapters path (no Work)', () => {
     const seen: string[] = [];
     let cursor: string | null = null;
     for (let i = 0; i < 10; i++) { // safety bound (3 chapters @ limit 2 → 2 pages)
-      const url = `/v1/books/${bookId}/chapters/page?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const res = await request.get(url, auth);
+      const url: string = `/v1/books/${bookId}/chapters/page?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const res: APIResponse = await request.get(url, auth);
       expect(res.ok()).toBeTruthy();
-      const body = await res.json();
+      const body = (await res.json()) as { items: Array<{ chapter_id: string }>; next_cursor: string | null };
       for (const c of body.items as Array<{ chapter_id: string }>) seen.push(c.chapter_id);
       cursor = body.next_cursor;
       if (!cursor) break;

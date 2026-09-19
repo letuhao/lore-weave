@@ -369,7 +369,7 @@ export async function publishChapterApi(
 
 // ── composition (co-write) seeding ──
 
-export type ChatModel = { user_model_id: string; provider_model_name: string; is_active: boolean };
+export type ChatModel = { user_model_id: string; provider_model_name: string; alias?: string | null; is_active: boolean };
 
 // Chat-tagged models — the set the UI model picker shows (drafter source).
 export async function listChatModels(request: APIRequestContext, token: string): Promise<ChatModel[]> {

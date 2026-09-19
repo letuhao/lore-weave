@@ -716,6 +716,14 @@ if git diff --cached --name-only | grep -qE 'frontend/src/.*\.tsx?$'; then
   "$PY" "$ROOT/scripts/i18n-key-resolution-gate.py" --staged
 fi
 
+# #292 — the E2E suite is TypeScript that nothing type-checked: frontend/tsconfig.json includes
+# only src/, so ten type errors sat in helpers and specs (a registry row typed without the field a
+# spec read, an untyped poll result). When an E2E file is staged, check the whole E2E project.
+if git diff --cached --name-only | grep -qE '^frontend/(tests/e2e/.*\.ts|playwright\.config\.ts)$'; then
+  (cd "$ROOT/frontend" && npm run --silent typecheck:e2e) || {
+    echo "pre-commit: frontend/tests/e2e does not type-check (npm run typecheck:e2e)" >&2; exit 1; }
+fi
+
 # Track A / M9a — the central C-TOOL tier gate: a write-verb-named tool must NOT be Tier-R
 # (Tier-R auto-runs with no confirm/Undo — a mutation tagged R is a silent-write). Runs when a
 # tool-registration file (or the gate itself) is staged; it scans the whole tree, so this
