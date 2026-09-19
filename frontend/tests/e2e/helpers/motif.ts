@@ -72,6 +72,20 @@ export async function archiveMotif(request: APIRequestContext, token: string, mo
   await request.delete(`/v1/composition/motifs/${motifId}`, { headers: authHeaders(token) }).catch(() => { /* best effort */ });
 }
 
+/** Archive the caller's motifs with exactly these codes: for a motif a test created through the UI,
+ *  whose id it never saw. A spec that creates a motif and does not archive it leaks it into the
+ *  shared account for good; 47 had leaked by 2026-09-19, enough to push a freshly seeded motif off
+ *  the library's first page (84 system rows + user rows by name) and turn three tests red. */
+export async function archiveMotifsByCode(request: APIRequestContext, token: string, codes: string[]): Promise<void> {
+  for (const code of codes) {
+    const r = await request.get(`/v1/composition/motifs?scope=mine&q=${encodeURIComponent(code)}&limit=100`,
+      { headers: authHeaders(token) }).catch(() => null);
+    if (!r || !r.ok()) continue;
+    const body = await r.json() as { motifs?: Array<{ id: string; code: string }> };
+    for (const m of body.motifs ?? []) if (m.code === code) await archiveMotif(request, token, m.id);
+  }
+}
+
 /** Resolve a chat-capable BYOK model_ref for the LLM-spend steps (mine / re-run / regenerate).
  *  Prefers a LOCAL model ($0). Returns the user_model_id UUID, or null if none is registered. */
 export async function resolveChatModel(request: APIRequestContext, token: string): Promise<string | null> {

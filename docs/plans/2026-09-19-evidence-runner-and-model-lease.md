@@ -610,4 +610,35 @@ restored (git diff empty), rebuilt, 6 passed
 runner: no account → exit 2 "refusing to run: … claude-test@loreweave.dev cannot log in … (401)" · iso-evidence → 200 · --self-test OK
 ```
 
-**AC impact:** none ticked. AC-6 and AC-12 need clean runs; run 1 does not count toward the five.
+**AC impact:** aimed at AC-6 and AC-12; neither moved, because run 1 was red. It does not count toward the five clean runs.
+
+### Cycle 11 — T17/T8, run 2: three motif specs leaked into the shared account
+
+**Investigated:** run `20260919T072019Z`: 196 passed, 4 failed, 1 did not run, in 34.5 min. The preflight warned that two knowledge-service schedulers (quarantine cleanup, mirror drift) would fire inside the run; neither made an LLM call in the red windows. An earlier attempt at run 2 refused to start: the runner's new login check hit the frontend while it was still restarting after its rebuild, and reported the connection error as bad credentials.
+
+| red | cause | verdict |
+|---|---|---|
+| `studio-motif-author-journey` STEP 2, `studio-motif-library` (card opens), `studio-motif-library` (graph edge) | The library's "My" list is one page of 100: 84 system motifs first, then the user's motifs by name (`motif_repo.list_for_caller`: `ORDER BY owner_user_id NULLS FIRST, name`). The account held **49 active motifs**, 47 of them left behind by three specs that never archived what they created: `GraphA <stamp>` 16 (`studio-motif-graph`), `E2E Created e2e.created.<stamp>` 16 and `打脸 escalation <stamp>` 15 (created through the UI in `studio-motif-library` and the journey). 16 "E2E Created…" rows filled the last user slots of page 1, so this run's freshly seeded "Face-slap…" sat at row 101, behind "Load more". Run 1 passed because the leak had not crossed the page yet | test defect: a leak that grows every run; fixed. The product paginates correctly ("Load more"); this is not a product defect |
+| `enrichment-profile` (+1 dependent test did not run) | Its `beforeAll` extraction job was created at 07:33:16, waited 80 s behind the **previous test's** 52 `glossary_canonical_fold` jobs on the one local model, then ran 4 calls of up to 123 s each (8.2K in / 4.1K out); it completed at 07:38:55, 39 s after the 300 s bound. The same calls took ≤ 58 s on 2026-09-18 | environment: per-call throughput about half of yesterday's, plus cross-test backlog. The job succeeded, so there is no product defect. The bound is NOT raised: that would be accommodating the environment. Watched in the next runs |
+
+**Issues:** #288
+
+**Fix:** the leak and the login check.
+- **Leak:**
+  - `helpers/motif.ts` gains `archiveMotifsByCode`, which archives a motif a test created through the UI and whose id it never saw.
+  - `studio-motif-graph` archives its motif in `afterAll`.
+  - `studio-motif-library` and `studio-motif-author-journey` archive what they create inline.
+  - No assertion changed.
+  - The 47 leaked motifs were archived through the product API (`DELETE /v1/composition/motifs/{id}`, soft archive), on the throwaway `lw-iso` account only.
+- **Runner:** the login check waits up to 60 s for a stack that does not answer yet, and treats only an HTTP answer below 500 as a verdict on the credentials. A stack still down after that is reported as "stack not reachable", not as bad credentials.
+
+**Proof:**
+
+```
+active motifs before: 2 · the three motif specs: 7 passed · active after: 2
+BITE (archiveMotifsByCode removed from studio-motif-library): 5 passed · active after: 3   (the leak, back)
+restored (cmp) · the bitten leak archived
+runner login check: bad password → 401 · iso-evidence → 200 · port with no stack → "stack not reachable after 60 s: … actively refused it" · --self-test OK
+```
+
+**AC impact:** aimed at AC-6 and AC-12; neither moved, because run 2 was red. It does not count toward the five clean runs.
