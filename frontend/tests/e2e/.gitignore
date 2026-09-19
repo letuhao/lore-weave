@@ -8,3 +8,8 @@ playwright/.cache/
 # archived in git; the report is the artefact a person opens, not a thing the repo carries.
 allure-results/
 allure-report/
+
+# Evidence runner output (scripts/e2e/run-evidence-suite.py). The per-run folders hold traces and
+# videos and stay local; the ledger is the record and IS committed.
+runs/*
+!runs/LEDGER.jsonl

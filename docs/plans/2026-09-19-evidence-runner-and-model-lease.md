@@ -68,8 +68,8 @@ Premises are re-verified before each lane starts.
 | **AC-1** | The composition unit suite has no red that predates this plan | composition unit suite run in its image + bite of each fix | T1, T2 | ✅ met — Cycle 1: 4014 passed, 0 failed; both fixes bitten |
 | **AC-2** | book-service's DB-backed packages, `internal/migrate` included, run green in CI without a deadlock | `.github/workflows/domain-db-smoke.yml` step + local `go test -p 1 ./...` on a throwaway DB | T3 | ✅ met — Cycle 1: the CI command green locally; without `-p 1` it deadlocks |
 | **AC-3** | The E2E folder is type-checked, and a type error there fails a check | `tsc -p frontend/tests/e2e/tsconfig.json` in `package.json` + a bite | T4 | ✅ met — Cycle 1: 10 errors fixed, `typecheck:e2e` clean, pre-commit wired, bitten |
-| **AC-4** | Every full-suite run records a preflight (clock steps, schedulers due, models loaded, image provenance incl. dirty tree) and its results in one ledger, and a re-run cannot erase an earlier run's traces | `scripts/e2e/run-evidence-suite.py` output + `LEDGER.jsonl` + a deletion bite | T5, T6 | ❌ not met |
-| **AC-5** | For any failed test, one command returns its trace, its service-log window, its `llm_jobs` rows and any clock steps in that window | `scripts/e2e/why-red.py` run on a deliberately broken test | T7 | ❌ not met |
+| **AC-4** | Every full-suite run records a preflight (clock steps, schedulers due, models loaded, image provenance incl. dirty tree) and its results in one ledger, and a re-run cannot erase an earlier run's traces | `scripts/e2e/run-evidence-suite.py` output + `LEDGER.jsonl` + a deletion bite | T5, T6 | ✅ met — Cycle 2: preflight live (69 s), evidence survives a plain re-run, labels on a real image; 3 bites |
+| **AC-5** | For any failed test, one command returns its trace, its service-log window, its `llm_jobs` rows and any clock steps in that window | `scripts/e2e/why-red.py` run on a deliberately broken test | T7 | ✅ met — Cycle 2: all four parts produced for a deliberate red; `llm_jobs` checked on run 4's window |
 | **AC-6** | #288 (DEFERRED #165) is closed only after 5 consecutive clean full runs in the ledger, or diagnosed from a captured trace | `LEDGER.jsonl` entries quoted in the cycle | T8 | ❌ not met |
 | **AC-7** | A provider credential can opt in to "serve one model at a time"; off by default; set through the API and the Settings UI | provider-registry handler tests + `ProvidersTab` vitest + live PATCH | T10, T14 | ❌ not met |
 | **AC-8** | With the setting on, requests for different models on one endpoint wait for each other instead of colliding; same-model requests still run concurrently; with it off, behaviour is unchanged | lease unit tests (grant/wait/release/aging) + wiring tests on both the job and stream paths | T11, T12 | ❌ not met |
@@ -99,7 +99,7 @@ Premises are re-verified before each lane starts.
 
 ### Lane B — the evidence runner
 
-- [ ] **T5** — **`scripts/e2e/run-evidence-suite.py`: preflight, run, ledger**
+- [x] **T5** — **`scripts/e2e/run-evidence-suite.py`: preflight, run, ledger** (Cycle 2)
   - Named so it is **not** picked up as a gate. Loopback targets only, like `seed-evidence-account.py`.
   - **Preflight** (target ≤ 2 min; **warn and record**, never refuse — Q3):
     - a 60 s wall-vs-monotonic probe inside one `lw-iso` container;
@@ -109,10 +109,10 @@ Premises are re-verified before each lane starts.
   - **Run:** `npx playwright test --output frontend/tests/e2e/runs/<ts>/results --trace=retain-on-failure`, with the list reporter teed to `runs/<ts>/run.log`.
   - **Ledger:** append to `frontend/tests/e2e/runs/LEDGER.jsonl` one JSON line per test (run id, test id, status, duration), plus one line per run (preflight warnings, image ids, totals). Add `runs/` to `frontend/tests/e2e/.gitignore`, except `LEDGER.jsonl`, which is committed.
   - Log: INFO per preflight check with its measured number; WARN per trap.
-- [ ] **T6** — **Images built on this stack say where they came from**
+- [x] **T6** — **Images built on this stack say where they came from** (Cycle 2)
   - `infra/iso.sh build` (or a sibling wrapper) exports `GIT_SHA` / `BUILD_TIME` as `scripts/build-stack.sh` does, and adds a `org.loreweave.git_dirty` label (`true` when the service's build context has uncommitted changes). The preflight (T5) reads it.
   - This catches the locale edits that leaked into the frontend image last plan.
-- [ ] **T7** — **`scripts/e2e/why-red.py <run-id> <test-id>`**
+- [x] **T7** — **`scripts/e2e/why-red.py <run-id> <test-id>`** (Cycle 2)
   - Output folder: the test's trace path; `collect_run_evidence.py --since` over the test's time window; the `llm_jobs` rows in that window (usage purpose, model, status, error code); any clock steps the preflight recorded near it.
   - Bite: break one assertion on purpose and run it; `why-red` must produce all four parts, and restore.
 - [ ] **T8** — **#288 / DEFERRED #165 decided by the ledger**
@@ -263,3 +263,66 @@ stop: |
   a write would touch a non-throwaway database
   the ship decision
 ```
+
+### Cycle 2 — T5, T6, T7: every run leaves evidence, and one command assembles it
+
+**Investigated:**
+- **Playwright:** `outputDir` is `tests/e2e/test-results`, which each run clears; the JSON reporter carries each result's `startTime` and attachment paths.
+- **`iso.sh`** exported no `GIT_SHA`, so every image it built was labelled `unknown`, and nothing recorded a dirty tree.
+- **Build contexts:** many services build with the **repo root** as context, so the dirty check needs a narrower scope.
+- **Two things met on the way:**
+  - from Python on Windows, `bash` resolves to WSL's `bash.exe`, not Git Bash, so calling `iso.sh config` from the runner silently returned nothing;
+  - a rebuild can remove the old image from the store while its container keeps running it.
+
+**Issues:** none — tooling for #288 and the lane's own evidence; nothing product-facing
+
+**Fix:** three pieces.
+- **`scripts/e2e/run-evidence-suite.py`**
+  - **Preflight**, which warns and records, never refuses (Q3):
+    - a 60 s wall-vs-monotonic clock probe inside the composition container;
+    - the schedulers due in the run window, from each container's `StartedAt` and the knowledge-service delay table;
+    - the models LM Studio has loaded (a read);
+    - image provenance **for the image the container runs** (by id, not tag): git sha against HEAD, commits since that touch the build scope, the dirty scope overlapping it, and "replaced by a rebuild".
+  - **The run** uses `--output runs/<id>/results`, `--trace=retain-on-failure`, and list + JSON reporters.
+  - **`LEDGER.jsonl`** gets one row per test (status, duration, start, attachments) and one per run (totals, warnings, image shas, clock steps).
+  - It has a `--self-test` (13 checks). It is not named `*-gate`, is loopback-only, and writes to no database. `runs/*` is ignored, except `LEDGER.jsonl`, which is committed.
+- **`infra/iso.sh` + `docker-compose.yml`**
+  - They export `GIT_SHA`, `BUILD_TIME` and a new `GIT_DIRTY_SCOPE`: the top-two-level paths with uncommitted tracked changes, or `clean`.
+  - A new `org.loreweave.git_dirty_scope` label.
+  - For repo-root contexts, the runner scopes the dirty check to the Dockerfile's directory plus `sdks/`.
+- **`scripts/e2e/why-red.py <run|latest> "<title part>"`** writes the test's trace paths, every `lw-iso` container's log lines in the test's window (±15 s) with a merged timeline, the `llm_jobs` rows started in that window, and the preflight's clock steps. It has a `--self-test` (4 checks) and is read-only.
+
+**Proof:**
+
+```
+preflight (live, lw-iso)   69 s · WARN wall clock stepped BACK 2x in 60s (largest -1.867s)
+                            34 image warnings: every running image predates T6 ("no git sha label")
+dirty scope, live           'frontend/src,frontend/tests,infra/docker-compose.yml,infra/iso.sh'
+                            — frontend/src is the uncommitted locale edits that leaked into a test image last plan
+real image via iso.sh       lw-iso-auth-service: git_sha aeeb84a0f7…, build_time 2026-09-19T05:03:22Z, git_dirty_scope set
+T6 BROKEN (export removed)  {'build_time': 'unknown', 'git_dirty_scope': 'unknown', 'git_sha': 'unknown'}
+   restored byte-exact      labels populated again
+
+rebuilt image, old container still running
+   WARN auth-service: the container runs an image that was replaced by a rebuild — restart it
+   after `iso.sh up -d --no-deps auth-service`: no warning
+
+AC-4 BITE — a deliberately failing test through the runner, then a PLAIN Playwright re-run
+   runner   1 failed · evidence runs/20260919T050112Z/results/…/{trace.zip,test-failed-1.png,video.webm,error-context.md}
+   plain    1 passed · tests/e2e/test-results/ now EMPTY (cleared, as every plain run does)
+   runner's evidence after that: still trace.zip, test-failed-1.png, video.webm, error-context.md
+   ledger: {"kind": "test", … "status": "failed" …} + {"kind": "run", … "exit": 1, "totals": {"failed": 1} …}
+   spec restored byte-exact (cmp)
+
+T7 — why-red latest "bottom panel" on the deliberate red
+   trace   …/runs/20260919T050235Z/results/writing-studio-…-chromium/trace.zip
+   logs    594 line(s) from the stack in 05:02:32..05:03:09 UTC
+   llm     0 job(s)       (that test makes no LLM call; the query checked on run 4's window returns
+                           kg_summary / glossary_extraction … "Engine protocol startup was aborted")
+   clock   []
+self-tests   run-evidence-suite 13 ok · why-red 4 ok
+```
+
+The ledger keeps the two deliberate reds above as what they were: partial, spec-limited runs with a failure. T8 counts only full runs.
+
+**AC impact:** AC-4 ✅, AC-5 ✅.

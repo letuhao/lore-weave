@@ -11,6 +11,11 @@
 x-build-labels: &build-labels
   org.loreweave.git_sha: "${GIT_SHA:-unknown}"
   org.loreweave.build_time: "${BUILD_TIME:-unknown}"
+  # Which top-level paths had UNCOMMITTED tracked changes when the image was built ("clean" when
+  # none). Uncommitted locale edits were baked into a test image once and nothing could tell
+  # (plan 2026-09-19 T6); scripts/e2e/run-evidence-suite.py compares this with each service's
+  # build context. Set by iso.sh; a plain build leaves it 'unknown'.
+  org.loreweave.git_dirty_scope: "${GIT_DIRTY_SCOPE:-unknown}"
 
 services:
   postgres:

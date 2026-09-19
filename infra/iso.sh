@@ -60,6 +60,18 @@ fi
 # limiter can set RATE_LIMIT_MAX_REQUESTS itself.
 export RATE_LIMIT_MAX_REQUESTS="${RATE_LIMIT_MAX_REQUESTS:-2000}"
 
+# Image provenance (plan 2026-09-19 T6). Without these, every image built through this wrapper
+# was labelled 'unknown', so nothing could say which commit, or which uncommitted edits, a test
+# image carried. GIT_DIRTY_SCOPE lists the top-two-level paths with uncommitted TRACKED changes
+# (untracked files are not part of a build context by accident), or "clean".
+if REPO_ROOT="$(git -C "${HERE}" rev-parse --show-toplevel 2>/dev/null)"; then
+    export GIT_SHA="${GIT_SHA:-$(git -C "${REPO_ROOT}" rev-parse HEAD)}"
+    export BUILD_TIME="${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+    _dirty="$(git -C "${REPO_ROOT}" status --porcelain --untracked-files=no \
+        | cut -c4- | awk -F/ '{ print ($2 == "" ? $1 : $1 "/" $2) }' | sort -u | paste -sd, -)"
+    export GIT_DIRTY_SCOPE="${GIT_DIRTY_SCOPE:-${_dirty:-clean}}"
+fi
+
 exec docker compose \
     -p "${PROJECT}" \
     -f "${HERE}/docker-compose.yml" \
