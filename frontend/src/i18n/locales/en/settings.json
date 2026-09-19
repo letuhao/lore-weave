@@ -230,7 +230,9 @@
       "api_key_ph": "sk-...",
       "cancel": "Cancel",
       "adding": "Adding...",
-      "submit": "Add Provider"
+      "submit": "Add Provider",
+      "one_model": "Serve one model at a time",
+      "one_model_hint": "Turn this on for a local server that can hold only one model, such as LM Studio on one GPU. Requests for different models then take turns instead of both failing. Off by default: only you know what your hardware can hold."
     },
     "edit_dialog": {
       "aria": "Edit provider",
@@ -248,7 +250,9 @@
       "max_concurrency_hint": "How many requests this provider runs at once. Leave empty for unlimited (the backend decides). Set a number only if your backend has a known limit (e.g. a local GPU).",
       "cancel": "Cancel",
       "saving": "Saving...",
-      "submit": "Save Changes"
+      "submit": "Save Changes",
+      "one_model": "Serve one model at a time",
+      "one_model_hint": "Turn this on for a local server that can hold only one model, such as LM Studio on one GPU. Requests for different models then take turns instead of both failing. Off by default: only you know what your hardware can hold."
     },
     "delete": {
       "title": "Remove {{name}}?",
