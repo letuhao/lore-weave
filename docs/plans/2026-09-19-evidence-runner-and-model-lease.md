@@ -217,7 +217,7 @@ Once the e2e project was type-checked it showed **10** errors, not the 2 seen be
 
 **Issues:** #289, #290, #291, #292
 
-**Fix:**
+**Fix:** one change per row:
 - **T1:** the payload is `chapter`, with a comment naming `a996750d7`. Both claims (201; 400 `BAD_REFERENCE`) are tested again, where before validation answered 422 before the handler ran.
 - **T2:** a Python walk over `services/` (source extensions; skipping `.git`, `node_modules`, caches, virtualenvs, `dist`, `build`, `target`) makes the same assertion. It takes 12.6 s on the Windows bind mount, recorded.
 - **T3:** the CI step runs `internal/api` and `internal/migrate` with `-p 1`, and the reason is in the workflow comment. book-service has no README, so the workflow comment is the documentation (decision).
