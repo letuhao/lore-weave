@@ -72,7 +72,7 @@ Premises are re-verified before each lane starts.
 | **AC-5** | For any failed test, one command returns its trace, its service-log window, its `llm_jobs` rows and any clock steps in that window | `scripts/e2e/why-red.py` run on a deliberately broken test | T7 | ✅ met — Cycle 2: all four parts produced for a deliberate red; `llm_jobs` checked on run 4's window |
 | **AC-6** | #288 (DEFERRED #165) is closed only after 5 consecutive clean full runs in the ledger, or diagnosed from a captured trace | `LEDGER.jsonl` entries quoted in the cycle | T8 | ❌ not met |
 | **AC-7** | A provider credential can opt in to "serve one model at a time"; off by default; set through the API and the Settings UI | provider-registry handler tests + `ProvidersTab` vitest + live PATCH | T10, T14 | 🚧 partial — API side proven in Cycle 3 (2 bites); the UI is T14 |
-| **AC-8** | With the setting on, requests for different models on one endpoint wait for each other instead of colliding; same-model requests still run concurrently; with it off, behaviour is unchanged | lease unit tests (grant/wait/release/aging) + wiring tests on both the job and stream paths | T11, T12 | ❌ not met |
+| **AC-8** | With the setting on, requests for different models on one endpoint wait for each other instead of colliding; same-model requests still run concurrently; with it off, behaviour is unchanged | lease unit tests (grant/wait/release/aging) + wiring tests on both the job and stream paths | T11, T12 | 🚧 partial — lease rules proven in Cycle 4 (3 bites); wiring is T12 |
 | **AC-9** | An LM Studio model-load abort is retried as contention and never counts toward the breaker, whatever the setting | `Guard`/classification unit tests + a bite | T9, T13 | ❌ not met |
 | **AC-10** | Run 4's collision, replayed live with the setting on, ends with both jobs completed; with it off, it reproduces today's failure | live replay on `lw-iso`, `llm_jobs` + extraction status pasted | T15 | ❌ not met |
 | **AC-11** | The changelog and the user docs describe the setting, and every issue this plan resolves is closed with its evidence | `CHANGELOG.md`, `changelog-gate.py`, the GitHub issue states | T16 | ❌ not met |
@@ -129,7 +129,7 @@ Premises are re-verified before each lane starts.
   - Accept and return the field on create, list, get and patch (`server.go:1172-1405`), with `*bool` absent-versus-set handling on patch.
   - Extend `Repo.ResolveConcurrency` (or a sibling) to return the flag, the normalized endpoint and the model name.
   - Handler tests: default false; patch true; absent leaves it unchanged.
-- [ ] **T11** — **A lease: one model at a time per endpoint, when opted in**
+- [x] **T11** — **A lease: one model at a time per endpoint, when opted in** (Cycle 4)
   - `internal/ratelimit/modellease.go`, in the governor's style (a Redis Lua script).
   - Key: the **normalized endpoint URL**, conservative: scheme, lowercased host, port, trailing slash stripped.
   - Holder = the model name, with a refcount. Same-model acquires share it; a different model **waits**. It is a FIFO with an aging bound so neither side starves; the bound is sized here and recorded.
@@ -374,3 +374,44 @@ provider-registry go test ./...  api · billing · chunker · jobs · migrate ·
 ```
 
 **AC impact:** AC-7 🚧 (API side; the UI is T14). AC-9 re-scoped by T9 — its evidence comes from T13 + T15.
+
+### Cycle 4 — T11: the lease — different models on one endpoint take turns
+
+**Investigated:** the governor's shape (`governor.go`): a Redis Lua script with lease-scored tokens, fail-open on a Redis error, and a release func. No Redis test harness existed (the tests used fakes), and fakes would test a re-implementation, not the script. **Decision:** add `github.com/alicebob/miniredis/v2`, test-only in effect, which runs the real Lua script in-process.
+
+**Issues:** #286
+
+**Fix:** new `internal/ratelimit/modellease.go`.
+- **`NormalizeEndpoint`**: scheme, lowercased host, explicit port, no path. It is conservative: `host.docker.internal` and `127.0.0.1` stay distinct.
+- **The Redis state**, per endpoint: a holder model, lease-scored holder tokens, a FIFO wait queue with the model each waiter wants, and a waiter heartbeat.
+- **One atomic Lua decision:**
+  - expired holders are pruned, and so are waiters that stopped polling;
+  - when free, the oldest waiter's model goes next;
+  - the same model shares the lease, unless another model's oldest waiter has passed the **aging bound**;
+  - a different model waits.
+- **Defaults:** lease 15 min, wait 10 min (`ErrModelLeaseTimeout`, retryable), aging bound 2 min, poll 100 ms. It fails **open** on a Redis error.
+- **Logging:** INFO on grant (with waited ms) and on the first wait; WARN on fail-open; DEBUG on release.
+- It never loads or unloads a model; it only orders calls (Rule 9). Nothing uses it yet; T12 wires it behind the credential's opt-in.
+
+**Proof:**
+
+```
+TestModelLease_SameModelCallsShareTheEndpoint               PASS
+TestModelLease_ADifferentModelWaitsUntilTheHolderFinishes   PASS
+TestModelLease_OtherEndpointsDoNotWait                      PASS
+TestModelLease_AgingStopsTheHeldModelFromStarvingAWaiter    PASS
+TestModelLease_ACrashedHolderFreesItself                    PASS
+TestModelLease_TimesOutAsRetryable                          PASS
+TestModelLease_FailsOpenWhenRedisIsDown                     PASS
+TestNormalizeEndpoint                                       PASS
+
+BROKEN (a different model granted while one is held)
+  modellease_test.go:60: a call for a DIFFERENT model ran while another model held the endpoint — the collision #286 is about
+BROKEN (no aging bound)
+  modellease_test.go:103: a new call for the held model jumped a waiter that had passed the aging bound
+BROKEN (expired holders never pruned)
+  modellease_test.go:122: an expired holder must not wedge the endpoint: model lease: timed out waiting for another model to finish on this endpoint
+restored byte-exact (cmp) — internal/ratelimit ok
+```
+
+**AC impact:** AC-8 🚧 — the lease rules are proven; the wiring on the job and stream paths is T12.
