@@ -71,7 +71,7 @@ Premises are re-verified before each lane starts.
 | **AC-4** | Every full-suite run records a preflight (clock steps, schedulers due, models loaded, image provenance incl. dirty tree) and its results in one ledger, and a re-run cannot erase an earlier run's traces | `scripts/e2e/run-evidence-suite.py` output + `LEDGER.jsonl` + a deletion bite | T5, T6 | ✅ met — Cycle 2: preflight live (69 s), evidence survives a plain re-run, labels on a real image; 3 bites |
 | **AC-5** | For any failed test, one command returns its trace, its service-log window, its `llm_jobs` rows and any clock steps in that window | `scripts/e2e/why-red.py` run on a deliberately broken test | T7 | ✅ met — Cycle 2: all four parts produced for a deliberate red; `llm_jobs` checked on run 4's window |
 | **AC-6** | #288 (DEFERRED #165) is closed only after 5 consecutive clean full runs in the ledger, or diagnosed from a captured trace | `LEDGER.jsonl` entries quoted in the cycle | T8 | ❌ not met |
-| **AC-7** | A provider credential can opt in to "serve one model at a time"; off by default; set through the API and the Settings UI | provider-registry handler tests + `ProvidersTab` vitest + live PATCH | T10, T14 | ❌ not met |
+| **AC-7** | A provider credential can opt in to "serve one model at a time"; off by default; set through the API and the Settings UI | provider-registry handler tests + `ProvidersTab` vitest + live PATCH | T10, T14 | 🚧 partial — API side proven in Cycle 3 (2 bites); the UI is T14 |
 | **AC-8** | With the setting on, requests for different models on one endpoint wait for each other instead of colliding; same-model requests still run concurrently; with it off, behaviour is unchanged | lease unit tests (grant/wait/release/aging) + wiring tests on both the job and stream paths | T11, T12 | ❌ not met |
 | **AC-9** | An LM Studio model-load abort is retried as contention and never counts toward the breaker, whatever the setting | `Guard`/classification unit tests + a bite | T9, T13 | ❌ not met |
 | **AC-10** | Run 4's collision, replayed live with the setting on, ends with both jobs completed; with it off, it reproduces today's failure | live replay on `lw-iso`, `llm_jobs` + extraction status pasted | T15 | ❌ not met |
@@ -121,10 +121,10 @@ Premises are re-verified before each lane starts.
 
 ### Lane A — "serve one model at a time", a user setting (#286)
 
-- [ ] **T9** — **Re-verify what opened the breaker in run 4**
+- [x] **T9** — **Re-verify what opened the breaker in run 4** (Cycle 3 — answered as far as the evidence goes; the rest is instrumented in T13)
   - The breaker counts only transient errors, and the load abort is permanent (`ErrUpstreamPermanent`). Read run 4's `llm_jobs` and provider-registry logs for 19:03:30–19:05:10 UTC 2026-09-18, and name the transient errors that tripped it (timeouts during model thrash? 5xx?).
   - T13's classification is designed from that answer, not from the spec's assumption.
-- [ ] **T10** — **The setting exists: `provider_credentials.serve_one_model_at_a_time`**
+- [x] **T10** — **The setting exists: `provider_credentials.serve_one_model_at_a_time`** (Cycle 3; the `ResolveConcurrency` extension moves to T12, where it is used)
   - `internal/migrate/migrate.go`: `ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS serve_one_model_at_a_time BOOLEAN NOT NULL DEFAULT false`.
   - Accept and return the field on create, list, get and patch (`server.go:1172-1405`), with `*bool` absent-versus-set handling on patch.
   - Extend `Repo.ResolveConcurrency` (or a sibling) to return the flag, the normalized endpoint and the model name.
@@ -326,3 +326,51 @@ self-tests   run-evidence-suite 13 ok · why-red 4 ok
 The ledger keeps the two deliberate reds above as what they were: partial, spec-limited runs with a failure. T8 counts only full runs.
 
 **AC impact:** AC-4 ✅, AC-5 ✅.
+
+### Cycle 3 — T9, T10: what opened the breaker, and the setting exists
+
+**Investigated:** run 4's `llm_jobs` in 19:04:15–19:04:40 UTC 2026-09-18, the breaker configuration, and provider-registry's logs.
+
+```
+19:04:24  01a09c79… (iso-evidence 12B)  glossary_extraction  completed
+19:04:26  019ebb72… (other account 26B) kg_summary           failed  LLM_UPSTREAM_ERROR  HTTP 400 … "Failed to load model … gemma-4-26b … Engine protocol startup was aborted"
+19:04:26  01a09c79…                     glossary_extraction  failed  LLM_UPSTREAM_ERROR  HTTP 400 … "Failed to load model … gemma-4-12b …"
+19:04:30  019ebb72…                     kg_summary           failed  LLM_UPSTREAM_ERROR  (26B load abort)
+19:04:31  01a09c79…                     glossary_extraction  failed  LLM_UPSTREAM_ERROR  (12B load abort)
+19:04:32  019ebb72…                     kg_summary           completed
+19:04:36  01a09c79…                     glossary_extraction  failed  LLM_CIRCUIT_OPEN    provider circuit open
+breaker: BREAKER_THRESHOLD 5 in BREAKER_WINDOW_S 60, cooldown 30 s (config.go:214-222)
+provider-registry log: 604 lines in total since 2026-09-13 — it logs no per-call or per-attempt line
+```
+
+**What this proves, and what it does not:**
+- The 12B credential recorded only **two** failed jobs before its circuit opened, and both were the *permanent* 400. `Guard` does not count those. It counts only errors `IsTransientUpstreamError` accepts, and the breaker needs 5 within 60 s.
+- So at least five **transient attempt failures** happened *inside* jobs, retried by `retryTransient`. They never reach `llm_jobs` and are not logged anywhere. The spec's claim ("the load abort opens the breaker") is wrong; this run corrects it.
+- **Which** transient failure LM Studio returned during the swap cannot be recovered from what was kept. **Decision:** T13 adds a WARN line per failed attempt (status, error class, body excerpt) and designs its classification from the first live replay (T15), not from a guess.
+
+**Issues:** #286
+
+**Fix:** T10 only (T9 is the investigation above, and it changed T13's design).
+- `internal/migrate/migrate.go`: `ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS serve_one_model_at_a_time BOOLEAN NOT NULL DEFAULT false`, with the reason: a statement about the user's hardware, never assumed by the platform.
+- `internal/api/server.go`:
+  - create accepts `*bool` (absent → false);
+  - list and get return the field;
+  - patch uses `COALESCE($11, serve_one_model_at_a_time)`, so an absent field keeps the user's choice.
+- New `internal/api/one_model_setting_test.go`, DB-gated like the other integration tests:
+  1. default false;
+  2. patch true;
+  3. an unrelated patch keeps true;
+  4. the list shows it;
+  5. patch false.
+
+**Proof:**
+
+```
+TestServeOneModelAtATime_IsOptIn_AndPatchKeepsWhatTheUserChose   PASS (throwaway loreweave_provider_registry_test)
+BROKEN (default on)              one_model_setting_test.go:45: a new credential must default to false, got true
+BROKEN (unrelated patch resets)  one_model_setting_test.go:60: an unrelated patch reset the setting: … serve_one_model_at_a_time:false …
+restored byte-exact (cmp)        PASS
+provider-registry go test ./...  api · billing · chunker · jobs · migrate · provider · ratelimit — all ok
+```
+
+**AC impact:** AC-7 🚧 (API side; the UI is T14). AC-9 re-scoped by T9 — its evidence comes from T13 + T15.
