@@ -84,6 +84,12 @@ ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS api_standard TEXT NOT 
 -- provider's capacity is a property of THAT credential's backend, not its kind.
 ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS max_concurrency INT;
 
+-- #286 / plan 2026-09-19 T10: "serve one model at a time". A local server (LM Studio on one GPU)
+-- that can hold ONE model: two callers asking it for different models at once abort both loads.
+-- The user opts in per credential; the platform never assumes it (it is a property of the user's
+-- hardware, not of the provider kind), so the default is false and behaviour is unchanged.
+ALTER TABLE provider_credentials ADD COLUMN IF NOT EXISTS serve_one_model_at_a_time BOOLEAN NOT NULL DEFAULT false;
+
 CREATE TABLE IF NOT EXISTS user_model_tags (
   user_model_tag_id UUID PRIMARY KEY DEFAULT uuidv7(),
   user_model_id UUID NOT NULL REFERENCES user_models(user_model_id) ON DELETE CASCADE,
