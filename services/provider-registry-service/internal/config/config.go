@@ -86,6 +86,11 @@ type Config struct {
 	GovernorCloudMax         int // concurrency cap per cloud provider kind
 	GovernorLeaseMs          int // per-acquisition lease TTL (> max call duration)
 	GovernorAcquireTimeoutMs int // max wait for a slot before a transient error
+	// #286 — the per-endpoint model lease, used only for credentials that opted in to
+	// "serve one model at a time". Seconds.
+	ModelLeaseTTLS    int // holder lease (> the longest single call); a crashed holder frees itself
+	ModelLeaseWaitS   int // max wait for another model to finish before LLM_MODEL_BUSY
+	ModelLeaseAgingS  int // once another model has waited this long, new same-model calls queue too
 	BreakerThreshold         int // windowed failures that trip the breaker
 	BreakerWindowS           int // failure-count decay window
 	BreakerCooldownS         int // open → half-open wait
@@ -209,6 +214,15 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if c.GovernorAcquireTimeoutMs, err = getEnvInt("GOVERNOR_ACQUIRE_TIMEOUT_MS", 30000); err != nil {
+		return nil, err
+	}
+	if c.ModelLeaseTTLS, err = getEnvInt("MODEL_LEASE_TTL_S", 900); err != nil {
+		return nil, err
+	}
+	if c.ModelLeaseWaitS, err = getEnvInt("MODEL_LEASE_WAIT_S", 600); err != nil {
+		return nil, err
+	}
+	if c.ModelLeaseAgingS, err = getEnvInt("MODEL_LEASE_AGING_S", 120); err != nil {
 		return nil, err
 	}
 	if c.BreakerThreshold, err = getEnvInt("BREAKER_THRESHOLD", 5); err != nil {

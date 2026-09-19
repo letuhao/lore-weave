@@ -70,6 +70,46 @@ type Worker struct {
 	// unchanged (governance disabled; existing tests stay Redis-free).
 	gov ratelimit.ConcurrencyGovernor
 	brk ratelimit.CircuitBreaker
+	// #286 — the per-endpoint model lease, used only for a credential whose owner opted in to
+	// "serve one model at a time". nil (REDIS_URL unset) → never used.
+	lease ModelLeaser
+}
+
+// ModelLeaser is the surface the worker needs from ratelimit.ModelLease (tests supply fakes).
+type ModelLeaser interface {
+	Acquire(ctx context.Context, endpoint, model string) (func(), error)
+}
+
+// WithModelLease attaches the model lease (fluent, like WithGovernance). Pass an untyped nil to
+// disable it.
+func (w *Worker) WithModelLease(l ModelLeaser) *Worker {
+	w.lease = l
+	return w
+}
+
+type leaseReqKey struct{}
+
+type leaseReq struct{ endpoint, model string }
+
+// withModelLeaseReq marks this job's provider calls as needing the endpoint's model lease.
+func withModelLeaseReq(ctx context.Context, endpoint, model string) context.Context {
+	return context.WithValue(ctx, leaseReqKey{}, leaseReq{endpoint: endpoint, model: model})
+}
+
+// callProvider runs one provider call, holding the endpoint's model lease when the job asked for
+// it (the credential opted in). Called INSIDE Guard, per attempt, so a retry re-acquires it.
+// Without the opt-in this is exactly `fn()`: nothing about today's path changes.
+func (w *Worker) callProvider(ctx context.Context, fn func() error) error {
+	if w.lease != nil {
+		if r, ok := ctx.Value(leaseReqKey{}).(leaseReq); ok {
+			release, err := w.lease.Acquire(ctx, r.endpoint, r.model)
+			if err != nil {
+				return err
+			}
+			defer release()
+		}
+	}
+	return fn()
 }
 
 func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache, guardrail *billing.GuardrailClient, maxRetries int) *Worker {
@@ -442,6 +482,17 @@ func (w *Worker) Process(
 		concClass, concLimit = k, lim
 	}
 
+	// #286 — the owner said this server holds one model at a time: sequence this job's calls
+	// against other models on the same endpoint. Fail-open on a lookup error (today's behaviour).
+	if w.lease != nil {
+		if on, lerr := w.repo.ResolveServeOneModel(ctx, modelSource, ownerUserID, modelRef); lerr != nil {
+			logger.Warn("resolve serve_one_model_at_a_time failed — calling without the model lease", "err", lerr)
+		} else if on {
+			logger.Debug("model lease requested", "endpoint", endpointBaseURL, "model", providerModelName)
+			ctx = withModelLeaseReq(ctx, endpointBaseURL, providerModelName)
+		}
+	}
+
 	adapter, err := w.adapter(providerKind)
 	if err != nil {
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, "LLM_PROVIDER_ROUTE_VIOLATION", err.Error(), "")
@@ -628,7 +679,9 @@ func (w *Worker) processChunks(
 			// retryTransient so each retry re-checks the breaker + re-acquires
 			// a slot, and a transient failure counts toward opening.
 			return ratelimit.Guard(ctx, w.gov, w.brk, concClass, concLimit, provider.IsTransientUpstreamError, func() error {
-				return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+				return w.callProvider(ctx, func() error {
+					return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+				})
 			})
 		})
 		if streamErr != nil {
@@ -675,7 +728,9 @@ func (w *Worker) streamWithRetry(
 		agg.StartChunk(0)
 		// S3a: governor + circuit-breaker wrap the provider call (see processChunks).
 		return ratelimit.Guard(ctx, w.gov, w.brk, concClass, concLimit, provider.IsTransientUpstreamError, func() error {
-			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+			return w.callProvider(ctx, func() error {
+				return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+			})
 		})
 	})
 	if err != nil {
@@ -692,6 +747,9 @@ func (w *Worker) streamWithRetry(
 func classifyStreamErrorCode(err error) string {
 	if errors.Is(err, ratelimit.ErrCircuitOpen) {
 		return "LLM_CIRCUIT_OPEN" // S3a: provider circuit open — failed fast, provider untouched
+	}
+	if errors.Is(err, ratelimit.ErrModelLeaseTimeout) {
+		return "LLM_MODEL_BUSY" // #286: another model held this one-model endpoint for the whole wait
 	}
 	if err == provider.ErrStreamNotSupported {
 		return "LLM_STREAM_NOT_SUPPORTED"

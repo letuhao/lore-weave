@@ -72,7 +72,7 @@ Premises are re-verified before each lane starts.
 | **AC-5** | For any failed test, one command returns its trace, its service-log window, its `llm_jobs` rows and any clock steps in that window | `scripts/e2e/why-red.py` run on a deliberately broken test | T7 | ✅ met — Cycle 2: all four parts produced for a deliberate red; `llm_jobs` checked on run 4's window |
 | **AC-6** | #288 (DEFERRED #165) is closed only after 5 consecutive clean full runs in the ledger, or diagnosed from a captured trace | `LEDGER.jsonl` entries quoted in the cycle | T8 | ❌ not met |
 | **AC-7** | A provider credential can opt in to "serve one model at a time"; off by default; set through the API and the Settings UI | provider-registry handler tests + `ProvidersTab` vitest + live PATCH | T10, T14 | 🚧 partial — API side proven in Cycle 3 (2 bites); the UI is T14 |
-| **AC-8** | With the setting on, requests for different models on one endpoint wait for each other instead of colliding; same-model requests still run concurrently; with it off, behaviour is unchanged | lease unit tests (grant/wait/release/aging) + wiring tests on both the job and stream paths | T11, T12 | 🚧 partial — lease rules proven in Cycle 4 (3 bites); wiring is T12 |
+| **AC-8** | With the setting on, requests for different models on one endpoint wait for each other instead of colliding; same-model requests still run concurrently; with it off, behaviour is unchanged | lease unit tests (grant/wait/release/aging) + wiring tests on both the job and stream paths | T11, T12 | ✅ met — Cycle 4 (lease, 3 bites) + Cycle 5 (job and stream wiring, 2 bites) |
 | **AC-9** | An LM Studio model-load abort is retried as contention and never counts toward the breaker, whatever the setting | `Guard`/classification unit tests + a bite | T9, T13 | ❌ not met |
 | **AC-10** | Run 4's collision, replayed live with the setting on, ends with both jobs completed; with it off, it reproduces today's failure | live replay on `lw-iso`, `llm_jobs` + extraction status pasted | T15 | ❌ not met |
 | **AC-11** | The changelog and the user docs describe the setting, and every issue this plan resolves is closed with its evidence | `CHANGELOG.md`, `changelog-gate.py`, the GitHub issue states | T16 | ❌ not met |
@@ -136,7 +136,7 @@ Premises are re-verified before each lane starts.
   - Release on completion and on cancel; each holder has a TTL so a crashed caller cannot wedge the endpoint.
   - Fails **open** on a Redis error, like the governor.
   - Unit tests: behind a fake store interface, or add miniredis (decide and record).
-- [ ] **T12** — **The lease wraps every call path to an opted-in endpoint**
+- [x] **T12** — **The lease wraps every call path to an opted-in endpoint** (Cycle 5 — job + stream paths; vision recorded as not wired)
   - The job path: inside `Guard`'s closure, per attempt, so a retry re-acquires it.
   - The stream path: `stream_handler.go` around `:486`, which today bypasses `Guard`.
   - Other job kinds (audio/image/video/vision) only if they can target an LM Studio endpoint; record the decision.
@@ -415,3 +415,45 @@ restored byte-exact (cmp) — internal/ratelimit ok
 ```
 
 **AC impact:** AC-8 🚧 — the lease rules are proven; the wiring on the job and stream paths is T12.
+
+### Cycle 5 — T12: the lease on every chat call to an opted-in endpoint
+
+**Investigated:** every provider-call path, and how error codes are consumed downstream:
+- **The job path:** `Worker.Process` resolves the credentials, then `ResolveConcurrency`; `processChunks` and `streamWithRetry` wrap each attempt in `Guard` inside `retryTransient`.
+- **The stream path:** `/v1/llm/stream`'s `streamChat` calls `adapter.Stream` directly, and its credential query is separate.
+- **Existing error codes:** consumers special-case only `LLM_CIRCUIT_OPEN`, which auto-pauses campaigns. The Python SDK's `TRANSIENT_RETRY_CODES` is `{LLM_RATE_LIMITED, LLM_UPSTREAM_ERROR}`.
+- **Other job kinds:** audio, image and video have no LM Studio route. Vision could reach an LM Studio multimodal model, but runs through its own adapter outside `Guard`.
+
+**Issues:** #286
+
+**Fix:** the lease on both chat paths, behind the credential's opt-in:
+- **`jobs/repo.go`:** `ResolveServeOneModel` reads the credential's opt-in. It is false for platform models, because the setting describes the user's own hardware.
+- **`jobs/worker.go`:**
+  - a `ModelLeaser` interface and `WithModelLease`;
+  - `Process` marks the job's context only when the credential opted in, and a failed lookup falls back to today's behaviour;
+  - `callProvider` takes the lease **inside `Guard`, per attempt**, after the concurrency slot, so a retry re-acquires it. With no mark it is exactly `fn()`.
+- **Error code:** a lease timeout is its own code, `LLM_MODEL_BUSY`, deliberately **not** added to the SDK's retry list. It means another model held the endpoint for the whole wait; the aging bound makes that rare, and an automatic resubmit would queue behind the same model again.
+- **`api/server.go` + `config/config.go`:** the lease is built with the governor when `REDIS_URL` is set. Tunables: `MODEL_LEASE_TTL_S` 900, `MODEL_LEASE_WAIT_S` 600, `MODEL_LEASE_AGING_S` 120.
+- **`api/stream_handler.go`:** the stream path reads `serve_one_model_at_a_time` with its credential, and takes the lease around `adapter.Stream`. A timeout emits an `LLM_MODEL_BUSY` error frame without calling the provider.
+- **Vision, not wired (decision):** the gap is recorded for the user docs (T16).
+
+**Proof:**
+
+```
+jobs   TestModelLease_HeldAroundTheCall_WhenTheCredentialOptedIn   PASS  (the fake provider fails unless the lease is held at call time)
+       TestModelLease_NotTaken_WithoutTheOptIn                     PASS
+       TestModelLease_ChunkedJobsTakeItPerChunk                    PASS  (3 chunks, 3 acquires, 3 releases)
+       TestModelLease_TimeoutIsItsOwnErrorCode                     PASS  (LLM_MODEL_BUSY, provider never called)
+api    TestStreamChat_OptedIn_WaitsForAnotherModel_ThenReportsBusy PASS
+       TestStreamChat_OptedIn_SameModelRunsAlongside               PASS
+       TestStreamChat_NotOptedIn_IsUntouched                       PASS
+BROKEN (job path never takes the lease)
+       model_lease_wiring_test.go:56: unexpected err provider called without the model lease held
+BROKEN (stream path ignores the lease)
+       stream_model_lease_test.go:51: … must wait and then say the model is busy; body="event: token … PROSE …"
+restored byte-exact (cmp) · go test ./... (throwaway DB): api billing chunker jobs migrate provider ratelimit — all ok
+```
+
+`Process`'s own lookup (DB-backed) is proven live in T15 rather than by a unit test, because it needs a job row and a credential. That is recorded, not skipped.
+
+**AC impact:** AC-8 ✅.
