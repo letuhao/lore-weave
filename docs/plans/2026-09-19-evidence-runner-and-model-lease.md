@@ -266,7 +266,7 @@ stop: |
 
 ### Cycle 2 — T5, T6, T7: every run leaves evidence, and one command assembles it
 
-**Investigated:**
+**Investigated:** how Playwright, `iso.sh` and the build contexts behave today:
 - **Playwright:** `outputDir` is `tests/e2e/test-results`, which each run clears; the JSON reporter carries each result's `startTime` and attachment paths.
 - **`iso.sh`** exported no `GIT_SHA`, so every image it built was labelled `unknown`, and nothing recorded a dirty tree.
 - **Build contexts:** many services build with the **repo root** as context, so the dirty check needs a narrower scope.

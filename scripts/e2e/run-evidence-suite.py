@@ -342,7 +342,8 @@ def run_suite(args, run_id: str, run_dir: Path, pre: dict) -> int:
     for r in rows:
         totals[r["status"] or "unknown"] = totals.get(r["status"] or "unknown", 0) + 1
     RUNS.mkdir(parents=True, exist_ok=True)
-    with open(LEDGER, "a", encoding="utf-8") as led:
+    with open(LEDGER, "a", encoding="utf-8", newline="
+") as led:  # LF: the ledger is committed
         for r in rows:
             led.write(json.dumps(r) + "\n")
         led.write(json.dumps({
