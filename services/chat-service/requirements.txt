@@ -24,7 +24,7 @@ aiofiles>=25.1.0
 # Staying on stable 1.x (FastMCP intact) is deliberate: zero capability gain from v2 today,
 # and stable v2 lands 2026-07-28. A future v2 adoption goes through a FastMCP→MCPServer
 # ADAPTER in the loreweave_mcp kit (the single chokepoint), keeping the 6 services untouched.
-mcp==1.28.1
+mcp==2.0.0
 # K35 (2026-07-24) — app/services/frontend_tools.py does a DIRECT top-level
 # `from jsonschema import Draft202012Validator` (the frontend-tool contract validator,
 # added by the Phase-0 frontend-tools→MCP work eb86bb33e). It resolved only because
