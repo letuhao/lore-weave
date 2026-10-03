@@ -3,7 +3,7 @@ uvicorn[standard]>=0.29
 asyncpg>=0.31.0
 pydantic>=2.6
 pydantic-settings>=2.2
-python-json-logger>=2.0
+python-json-logger>=4.1.0
 httpx>=0.27
 PyJWT>=2.8
 # KM5 — RS256 admin-JWT verification (app/auth/admin_jwt.py) needs the
