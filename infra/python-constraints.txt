@@ -2,4 +2,4 @@
 #
 # FastMCP provider services import mcp.server.fastmcp. mcp 2.x removed that
 # module path, so images must not resolve a newer major during a clean rebuild.
-mcp==1.29.0
+mcp==2.0.0
