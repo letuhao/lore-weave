@@ -199,7 +199,7 @@ rand_chacha = "0.9"
 # the workspace two incompatible `prost::Message` traits.
 tonic = "0.12"
 prost = "0.13"
-tonic-build = "0.12"
+tonic-build = "0.14"
 # The `Stream` trait the two streaming RPCs' associated types name. Taken
 # directly rather than through tonic's re-exports so the bound is visible at the
 # signature instead of hidden behind a path that changes between tonic minors.
