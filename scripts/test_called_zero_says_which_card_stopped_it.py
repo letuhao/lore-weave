@@ -36,6 +36,19 @@ import sys
 from contextlib import redirect_stdout
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
@@ -138,6 +151,7 @@ def test_the_RECORDED_instance_renders_it():
     assert NEEDLE in out and "kg_project_create" in out
 
 
+@_SKIP_NO_CORPUS
 def test_the_population_is_worth_a_guard():
     """ANTI-VACUITY on the size, under the rule that shipped."""
     scen = {}
@@ -173,6 +187,7 @@ def test_the_population_is_worth_a_guard():
     assert hit >= 10, f"only {hit} batches on disk match the shipped rule — re-derive the row"
 
 
+@_SKIP_NO_CORPUS
 def test_the_owner_field_is_actually_recorded():
     """The whole fix rests on `pending_approval.tool`. If the harness stopped writing it, the
     annotation would silently never fire again."""

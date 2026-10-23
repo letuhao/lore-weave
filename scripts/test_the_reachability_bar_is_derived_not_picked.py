@@ -27,6 +27,19 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import selection_rate  # noqa: E402
@@ -66,6 +79,7 @@ class TestTheChoiceIsRobustToWhereInTheGapItSits:
     #: quietly re-baselined — see the re-anchoring note on the first test below.
     GAP_WHEN_DERIVED = (0.400, 0.500)
 
+    @_SKIP_NO_CORPUS
     def test_no_measured_tool_lies_in_the_band(self):
         """🔴 RE-ANCHORED 2026-08-30, AND THE RE-ANCHORING IS THE FINDING.
 
@@ -91,6 +105,7 @@ class TestTheChoiceIsRobustToWhereInTheGapItSits:
             "now nearly knife-edge, and DQ-T51's derivation should be re-stated to the owner "
             "rather than carried on unremarked")
 
+    @_SKIP_NO_CORPUS
     def test_every_bar_across_the_band_classifies_identically(self):
         """Sampled across the gap AS IT IS, not as it was. Any bar inside an empty gap must sort
         the same tools, or the gap was not empty."""
@@ -115,6 +130,7 @@ class TestTheChoiceIsRobustToWhereInTheGapItSits:
         lo, hi = selection_rate.empty_gap(selection_rate.derive()["rates"])
         assert lo <= selection_rate.LOTTERY_BELOW < hi
 
+    @_SKIP_NO_CORPUS
     def test_the_derivation_travels_WITH_the_contract(self):
         """The owner asked for the derivation to be written down beside the bar. A number in a
         JSON file with the reasoning only in a Python docstring is half of that."""
