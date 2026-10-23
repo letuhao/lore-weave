@@ -70,12 +70,17 @@ services:
       - foundation-redis-data:/data
 
   minio-foundation:
-    image: minio/minio:latest
+    # Bitnami legacy mirror — minio/minio left Docker Hub (see the main
+    # stack's minio service for the full story). Pinned to the same 2024.8.3
+    # build the main stack runs instead of the dead `:latest` tag; run as
+    # root, and the command names the binary.
+    image: bitnamilegacy/minio:2024.8.3-debian-12-r1
     container_name: foundation-dev-minio
+    user: root
     environment:
       MINIO_ROOT_USER: foundation
       MINIO_ROOT_PASSWORD: foundation-secret-dev-only
-    command: server /data --console-address ":9001"
+    command: minio server /data --console-address ":9001"
     ports:
       # Phase 0 (DEFERRED 041): env-overridable, non-conflicting defaults
       # (59000 / 59001). Host :9000-9001 may be held by another foundation-dev
