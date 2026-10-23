@@ -48,4 +48,11 @@ json-repair>=0.30
 # What it buys, in one line: `.defer_loading()` — a declaration hidden from the wire
 # but still discoverable and revealable, which is the difference between "withheld"
 # and "never existed" that CP-2.4 is scored on.
-pydantic-ai-slim>=2.26,<3
+# <2.57 (2026-10-23): pydantic-ai 2.57.0 broke `PreparedToolset.get_tools(None)` —
+# its `without_tool_name_path(ctx)` now dereferences `ctx._tool_name_path`
+# unguarded, and assembly.py lists tools with a None context. Measured by
+# bisect: 2.26/2.45/2.55/2.56 pass the cp2_assembly suite (188/188); 2.57,
+# 2.58, 2.59 and 2.60 each fail 15 of it the same way. Lift the ceiling only
+# together with an assembly.py change that stops passing None (or an upstream
+# fix restoring None-tolerance).
+pydantic-ai-slim>=2.26,<2.57
