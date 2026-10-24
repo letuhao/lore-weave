@@ -190,7 +190,10 @@ def iter_go_files() -> list[str]:
     beside an mcp registration) rather than by directory, because the Go services do not share
     the Python `/mcp/` convention — glossary keeps them in `internal/api/`."""
     found = []
-    for root, _dirs, names in os.walk(os.path.join(REPO_ROOT, "services")):
+    for root, dirs, names in os.walk(os.path.join(REPO_ROOT, "services")):
+        # Same dependency-tree prune as iter_files: a local venv/node_modules is
+        # not a first-party registration site.
+        dirs[:] = [d for d in dirs if d not in {".venv", "venv", "site-packages", "node_modules"}]
         for n in names:
             if not n.endswith(".go") or n.endswith("_test.go"):
                 continue
@@ -446,7 +449,14 @@ def iter_files(staged: bool, services_root: str | None = None) -> list[str]:
             raise SystemExit(2)
         return [os.path.join(REPO_ROOT, f) for f in out if "/mcp/" in f.replace("\\", "/") and f.endswith(".py")]
     files = []
-    for root, _dirs, names in os.walk(services_root):
+    for root, dirs, names in os.walk(services_root):
+        # Dependency trees are not our code, and the `mcp` SDK package itself
+        # lives at `.venv/**/site-packages/mcp/**` — every file of which the
+        # "/mcp" path match below would otherwise claim as a first-party tool
+        # module (measured: 458 phantom findings from ten local service venvs;
+        # a fresh CI checkout sees none, so the gate's verdict silently depended
+        # on who ran it). Prune the venv before the convention match, not after.
+        dirs[:] = [d for d in dirs if d not in {".venv", "venv", "site-packages", "node_modules"}]
         r = root.replace("\\", "/")
         if "/mcp" not in r or "__pycache__" in r:
             continue

@@ -142,7 +142,14 @@ count_ext() {
   local n=0 d
   for d in "$@"; do
     [[ -d "$d" ]] || continue
-    n=$(( n + $( { find "$d" -type f -name "*.${ext}" 2>/dev/null || true; } | wc -l ) ))
+    # Dependency trees are not our code. A local `make test-env-python` leaves
+    # services/*/.venv behind, and counting third-party site-packages inflated
+    # the py floor (and the PASS line's scanned count) by thousands — the same
+    # reason the TS leg skips node_modules.
+    n=$(( n + $( { find "$d" -type f -name "*.${ext}" \
+                   -not -path '*/.venv/*' -not -path '*/venv/*' \
+                   -not -path '*/site-packages/*' \
+                   2>/dev/null || true; } | wc -l ) ))
   done
   printf '%s' "$n"
 }
@@ -225,7 +232,7 @@ run_lint() {
   local py_candidates py_hits base_tmp py_new n_cand=0 n_hits=0 n_new=0
   py_candidates=$(grep -rlE '(httpx\.(AsyncClient|Client)|aiohttp\.ClientSession|asyncpg\.(create_pool|connect)|requests\.(get|post|put|patch|delete|head|request))[ \t]*\(' \
     --include='*.py' "$services" 2>/dev/null \
-    | grep -vE '(/tests?/|/scripts/|/eval/|/benchmark/|/__mocks__/|/fixtures/|/poc|/test_|/live_|/smoke_|/conftest\.py)' \
+    | grep -vE '(/tests?/|/scripts/|/eval/|/benchmark/|/__mocks__/|/fixtures/|/poc|/test_|/live_|/smoke_|/conftest\.py|/\.venv/|/venv/|/site-packages/)' \
     || true)
   [[ -n "$py_candidates" ]] && n_cand=$(printf '%s\n' "$py_candidates" | wc -l)
 
@@ -403,6 +410,9 @@ selftest() {
   s_py_multiline() { printf 'import httpx\n_c = httpx.AsyncClient(\n    base_url="http://x",\n    headers={},\n)\n' > "$1/services/svc/app/bad.py"; }
   s_py_multiline_t() { printf 'import httpx\n_c = httpx.AsyncClient(\n    base_url="http://x",\n    timeout=5,\n)\n' > "$1/services/svc/app/bad.py"; }
   s_py_in_tests()  { mkdir -p "$1/services/svc/tests"; printf 'import httpx\n_c = httpx.AsyncClient()\n' > "$1/services/svc/tests/bad.py"; }
+  # A local `make test-env-python` leaves services/*/.venv — its site-packages
+  # are third-party code the gate has no standing to police.
+  s_py_in_venv()   { mkdir -p "$1/services/svc/.venv/lib"; printf 'import httpx\n_c = httpx.AsyncClient()\n' > "$1/services/svc/.venv/lib/bad.py"; }
   # the file the baseline row names still EXISTS — the call in it got a timeout,
   # so the row's reason expired rather than its subject vanishing
   s_py_fixed()     { printf 'import httpx\n_c = httpx.AsyncClient(timeout=5)\n' > "$1/services/svc/app/bad.py"; }
@@ -440,6 +450,7 @@ selftest() {
   probe "a MULTILINE untimed constructor is caught" 1 s_py_multiline "$empty_base" 0
   probe "...but not when a later line sets timeout=" 0 s_py_multiline_t "$empty_base" 0
   probe "an untimed client under tests/ is excluded" 0 s_py_in_tests "$empty_base" 0
+  probe "an untimed client inside a local .venv is excluded" 0 s_py_in_venv "$empty_base" 0
   probe "the ratchet reds when the count FALLS below it" 1 s_none "$empty_base" 1
 
   # Shrink arm — a row dies two ways, and both must red.
