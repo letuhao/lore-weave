@@ -2,4 +2,6 @@
 #
 # FastMCP provider services import mcp.server.fastmcp. mcp 2.x removed that
 # module path, so images must not resolve a newer major during a clean rebuild.
-mcp==1.29.0
+# 1.29.0 -> 1.30.0 (2026-10-24): CVE-2026-59951 fixes land in 1.30.0; the
+# fastmcp module path is intact there (verified against the wheel).
+mcp==1.30.0

@@ -33,7 +33,14 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      # 🔴 @latest DOES NOT RUN ON THE PINNED TOOLCHAIN. govulncheck v1.8.0+
+      # declares `go 1.26` in its module, and this job runs Go 1.25 with
+      # GOTOOLCHAIN=local — so `go install ...@latest` died with "requires
+      # go >= 1.26.0" before scanning a single module, and the job reported
+      # a red X that was a tool-install failure, not a finding. v1.7.0 is the
+      # newest release whose module accepts go 1.25. Bump BOTH this pin and
+      # go-version together.
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
       - name: govulncheck every go.mod module
         shell: bash
         run: |
@@ -138,4 +145,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-audit --locked
       - name: cargo audit (root workspace Cargo.lock)
-        run: cargo audit
+        # Two --ignore entries are advisories with NO in-range fix today
+        # (2026-10-24), both reached only through jsonwebtoken v10.4.0:
+        #   RUSTSEC-2023-0071 — rsa "Marvin Attack". No fixed rsa release
+        #     exists at all; our use is JWT sign/verify, not the RSA
+        #     decryption the attack requires.
+        #   RUSTSEC-2026-0387 — crypto-bigint timing; the sole patched line
+        #     is >=0.7.6 while our copy is 0.5.5, pinned by
+        #     elliptic-curve 0.13 <- ecdsa/p256 <- jsonwebtoken.
+        # Lift BOTH when jsonwebtoken bumps its RustCrypto stack (Dependabot
+        # will open that PR); until then these two would keep this advisory
+        # leg permanently red over unfollowable findings.
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0387
