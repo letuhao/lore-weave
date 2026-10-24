@@ -36,6 +36,12 @@ jobs:
           # in 1.26.10 — a bare "1.26" resolved 1.26.9 on the runner and kept
           # flagging the stdlib. Bump this patch alongside the scanner pin.
           go-version: "1.26.10"
+          # 🔴 The repo ROOT has no go.mod, so setup-go's dependency cache
+          # cannot compute a key ("Primary key was not generated") and its
+          # POST step fails the job — even when every module scanned clean
+          # ("affected by 0 vulnerabilities" across the board, measured
+          # 2026-10-24 on e361fa784). No cache for this advisory job.
+          cache: false
       # 🔴 THE TOOLCHAIN AND THE SCANNER MUST MOVE TOGETHER. govulncheck
       # versions declare the Go line they require: v1.8.0+ needs go 1.26, and
       # v1.7.0 (the last accepting 1.25) runs but then flags every module with
