@@ -17,7 +17,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.7.0-pre.3
 	github.com/prometheus/client_golang v1.24.0
 	github.com/redis/go-redis/v9 v9.21.0
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.41.0
 )
 
 require (

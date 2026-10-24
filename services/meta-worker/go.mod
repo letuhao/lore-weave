@@ -41,7 +41,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kms v1.54.1 // indirect
 	github.com/aws/smithy-go v1.27.3 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/net v0.60.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
