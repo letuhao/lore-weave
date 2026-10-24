@@ -32,15 +32,16 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
-      # 🔴 @latest DOES NOT RUN ON THE PINNED TOOLCHAIN. govulncheck v1.8.0+
-      # declares `go 1.26` in its module, and this job runs Go 1.25 with
-      # GOTOOLCHAIN=local — so `go install ...@latest` died with "requires
-      # go >= 1.26.0" before scanning a single module, and the job reported
-      # a red X that was a tool-install failure, not a finding. v1.7.0 is the
-      # newest release whose module accepts go 1.25. Bump BOTH this pin and
-      # go-version together.
-      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          go-version: "1.26"
+      # 🔴 THE TOOLCHAIN AND THE SCANNER MUST MOVE TOGETHER. govulncheck
+      # versions declare the Go line they require: v1.8.0+ needs go 1.26, and
+      # v1.7.0 (the last accepting 1.25) runs but then flags every module with
+      # go1.25 STDLIB advisories (crypto/x509, net/http, crypto/tls — fixed
+      # only in 1.26.x patches) — a red X that says "your scanner's stdlib is
+      # old", not "your code is vulnerable". Pin the scanner (never @latest:
+      # v1.9.0 declares go 1.26 too, but the next bump will break this again)
+      # and bump BOTH this pin and go-version together.
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
       - name: govulncheck every go.mod module
         shell: bash
         run: |
