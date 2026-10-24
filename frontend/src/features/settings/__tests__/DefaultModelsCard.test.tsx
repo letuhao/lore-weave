@@ -29,6 +29,7 @@ vi.mock('../api', () => ({
   EMBEDDING_CAPABILITY: 'embedding',
   PLANNER_CAPABILITY: 'planner',
   CHAT_CAPABILITY: 'chat',
+  COMPOSER_CAPABILITY: 'composer',
   defaultModelsApi: {
     get: (...a: unknown[]) => getDefaults(...a),
     set: (...a: unknown[]) => setDefault(...a),
@@ -71,7 +72,8 @@ describe('DefaultModelsCard', () => {
     expect(listUserModels).not.toHaveBeenCalledWith('tok', { capability: 'embedding', include_inactive: false });
 
     const triggers = await screen.findAllByRole('combobox');
-    expect(triggers).toHaveLength(3);
+    // 4 rows: chat, rerank, planner, composer (composer appended after planner).
+    expect(triggers).toHaveLength(4);
     // Row [1] = rerank: open + pick the model.
     fireEvent.click(triggers[1]);
     fireEvent.click(await screen.findByText('bge-reranker'));
