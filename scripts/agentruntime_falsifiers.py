@@ -347,7 +347,9 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         # which still CONTAINS the string the guard looks for. It read GREEN and would have been
         # filed as "the guard requires nothing" - a reversion that does not restore the defect
         # proves nothing, and the runner caught it on the first pass.
-        (REQS, "pydantic-ai-slim>=2.26,<3", "# the pin was deleted"),
+        # Anchor string follows the requirements.txt pin (tightened to <2.57 on 2026-10-23 —
+        # pydantic-ai 2.57 broke PreparedToolset.get_tools(None)); keep the two in lockstep.
+        (REQS, "pydantic-ai-slim>=2.26,<2.57", "# the pin was deleted"),
     ],
     "test_THE_PACKAGE_STILL_IMPORTS_AT_THE_CONTAINERS_DEPTH": [
         (f"{PKG}/__init__.py", "from .assembly import (\n    TOOLSET_ID,\n",
