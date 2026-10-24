@@ -1,5 +1,7 @@
+import { jest } from '@jest/globals';
 import { computeCatalog, ProviderResult } from '../src/federation/catalog.js';
 import { EXTRA_PREFIX_MAP, ProviderConfig } from '../src/config/config.js';
+import { FederationService } from '../src/federation/federation.service.js';
 
 const knowledge: ProviderConfig = { name: 'knowledge', mcpUrl: 'http://k/mcp' };
 const glossary: ProviderConfig = { name: 'glossary', mcpUrl: 'http://g/mcp' };
@@ -170,7 +172,6 @@ describe('C-GW prefix gate — universal `web_search` on the settings provider',
 // date the outage. The glossary de-federation ran undetected until a live E2E tripped
 // over it. These pin the SUSTAINED-not-instant threshold and the transition semantics.
 describe('federationStatus — degradation is sustained, not instant', () => {
-  const { FederationService } = require('../src/federation/federation.service.js');
 
   function svcWithRefreshes(partialSequence: boolean[], threshold = 3) {
     const svc: any = Object.create(FederationService.prototype);

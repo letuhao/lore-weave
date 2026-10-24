@@ -12,6 +12,9 @@ import {
   handleGlossaryProposeEntityEdit,
 } from '../src/mcp/confirm-tools.js';
 import { PROPOSE_EDIT_DIRECTIVE_TYPE } from '../src/mcp/propose-edit-tool.js';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // V7 / DQ-V9 — the three KIND-C tools as ai-gateway DIRECTIVE tools.
 //

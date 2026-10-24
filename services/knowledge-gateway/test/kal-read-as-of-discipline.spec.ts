@@ -1,7 +1,11 @@
+import { jest } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resetConfigForTest } from '../src/config/config.js';
 import { KalReadController } from '../src/kal/kal-read.controller.js';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * T48h — the `as_of` forwarding discipline, pinned across every read that carries one.

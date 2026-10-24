@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { GroundingController } from '../src/grounding/grounding.controller.js';
 import { resetConfigForTest } from '../src/config/config.js';
 

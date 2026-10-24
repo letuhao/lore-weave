@@ -11,7 +11,7 @@
 
 import type { IncomingMessage } from 'node:http';
 
-import { hashOrigin, hashFingerprint } from './ticket-store';
+import { hashOrigin, hashFingerprint } from './ticket-store.js';
 
 /** Sub-protocol the client claims first. Versioning marker for V2 wire breaks. */
 export const PROTOCOL_VERSION = 'lw.v1';

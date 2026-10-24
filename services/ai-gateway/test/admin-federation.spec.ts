@@ -1,7 +1,7 @@
+import { jest } from '@jest/globals';
 import { Logger } from '@nestjs/common';
 import { AdminFederationService } from '../src/federation/admin-federation.service.js';
 import { FederationService } from '../src/federation/federation.service.js';
-import { AdminMcpController } from '../src/mcp/admin-mcp.controller.js';
 import {
   extractAdminEnvelope,
   handleAdminCallTool,
@@ -9,6 +9,18 @@ import {
 } from '../src/mcp/admin-handlers.js';
 import { loadConfig, resetConfigForTest } from '../src/config/config.js';
 import { computeCatalog } from '../src/federation/catalog.js';
+
+// ESM: module namespaces are immutable, so spying on the factory's export goes
+// through jest.unstable_mockModule + dynamic imports. The real factory is
+// imported BEFORE the mock registration so the mock can delegate to it; the
+// controller is imported AFTER, so its binding sees the delegating mock.
+const factoryReal = await import('../src/mcp/admin-proxy-server.factory.js');
+const factoryMock: { buildAdminProxyServer: (...a: unknown[]) => unknown } = {
+  buildAdminProxyServer: (...a: unknown[]) =>
+    factoryReal.buildAdminProxyServer(...(a as Parameters<typeof factoryReal.buildAdminProxyServer>)),
+};
+jest.unstable_mockModule('../src/mcp/admin-proxy-server.factory.js', () => factoryMock);
+const { AdminMcpController } = await import('../src/mcp/admin-mcp.controller.js');
 
 const ADMIN_TOKEN = 'rs256.admin.SECRET-DO-NOT-LOG';
 
@@ -311,12 +323,9 @@ describe('X-Admin-Token is never logged (§6.7, §11 #7)', () => {
       });
     // Force the proxy build to throw so we hit the controller's catch branch
     // synchronously (no real transport / socket needed — avoids SDK stderr noise).
-    const factory = require('../src/mcp/admin-proxy-server.factory.js');
-    const buildSpy = jest
-      .spyOn(factory, 'buildAdminProxyServer')
-      .mockImplementation(() => {
-        throw new Error('boom-no-token-here');
-      });
+    factoryMock.buildAdminProxyServer = () => {
+      throw new Error('boom-no-token-here');
+    };
     try {
       const admin = {} as AdminFederationService;
       const { req, res } = mockReqRes({
@@ -329,7 +338,8 @@ describe('X-Admin-Token is never logged (§6.7, §11 #7)', () => {
       expect(logged.some((l) => l.includes(ADMIN_TOKEN))).toBe(false);
       expect(res.statusCode).toBe(500);
     } finally {
-      buildSpy.mockRestore();
+      factoryMock.buildAdminProxyServer = (...a: unknown[]) =>
+        factoryReal.buildAdminProxyServer(...(a as Parameters<typeof factoryReal.buildAdminProxyServer>));
       warnSpy.mockRestore();
     }
   });

@@ -5,8 +5,8 @@ import './tracing';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { WsAdapter } from '@nestjs/platform-ws';
-import { AppModule } from './app.module';
-import { configureGatewayApp } from './gateway-setup';
+import { AppModule } from './app.module.js';
+import { configureGatewayApp } from './gateway-setup.js';
 
 function requireEnv(key: string): string {
   const v = process.env[key];

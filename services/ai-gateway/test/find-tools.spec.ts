@@ -1,4 +1,4 @@
-import {
+import { toolListResult, toolLoadResult,
   FIND_TOOLS_TOOL,
   FindToolsAttemptTracker,
   GROUP_DIRECTORY,
@@ -558,7 +558,6 @@ describe('W10 remediation — `world` category + the world_* federation namespac
 // USER for the failure. These pin the fix on the gateway side; tool_discovery.py carries
 // the twin (keep them in lockstep).
 describe('outage visibility — tool_list / tool_load', () => {
-  const { toolListResult, toolLoadResult } = require('../src/federation/find-tools.js');
 
   it('tool_list marks the listing INCOMPLETE and names the down provider', () => {
     const { payload } = toolListResult(CATALOG, 'book', false, new Set(), ['glossary']);

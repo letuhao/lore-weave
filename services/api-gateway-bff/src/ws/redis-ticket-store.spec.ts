@@ -4,8 +4,8 @@ import {
   ticketFromWire,
   TICKET_KEY_PREFIX,
   type RedisLike,
-} from './redis-ticket-store';
-import { TICKET_TTL_MS, TicketError, type Ticket } from './ticket-store';
+} from './redis-ticket-store.js';
+import { TICKET_TTL_MS, TicketError, type Ticket } from './ticket-store.js';
 
 /**
  * In-process fake of the minimal RedisLike surface: SET-NX + the Lua GET+DEL

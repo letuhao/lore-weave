@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 /**
  * L6.C — per-message authz tests (RAID cycle 29).
  *
@@ -12,8 +13,8 @@ import {
   PER_MESSAGE_AUTHZ_CACHE_TTL_MS,
   type AuthzRequest,
   type SessionAuthzContext,
-} from './per-message-authz';
-import { WsMetrics } from './metrics';
+} from './per-message-authz.js';
+import { WsMetrics } from './metrics.js';
 
 const USER = '00000000-0000-0000-0000-000000000abc';
 const SESSION = '11111111-1111-1111-1111-111111111111';
