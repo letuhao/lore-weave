@@ -790,6 +790,53 @@ async def test_sweep_leaves_inflight_job_alone(monkeypatch):
     assert n == 0 and calls == []
 
 
+async def test_sweep_stops_failed_provider_job_without_redrive(monkeypatch):
+    """A terminal provider failure must not be fed back into the same fan-in forever."""
+    conn = FakeConn([])
+    pool = FakePool(conn, fetch_rows=[_stranded_row(["j1"])])
+    llm = _fake_llm()
+    llm.get_job.return_value = _sdk_job(
+        "failed", result={"error": "unused"}
+    )
+    llm.get_job.return_value.error = SimpleNamespace(
+        code="LLM_UPSTREAM_ERROR", message="stream error"
+    )
+    calls = _spy_resume(monkeypatch)
+
+    n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
+
+    assert n == 0 and calls == []
+    assert any("status='failed'" in sql and "resume_state=NULL" in sql
+               for sql, _ in conn.executed)
+
+
+async def test_sweep_skips_folded_trio_job_and_reaches_failed_sibling(monkeypatch):
+    row = {
+        "job_id": EJ,
+        "provider_job_ids": ["fact", "event"],
+        "resume_state": {
+            "stage": dx.TRIO,
+            "user_id": USER,
+            "trio_jobs": {"fact": "fact", "event": "event"},
+            "trio_folded": ["fact"],
+        },
+    }
+    conn = FakeConn([])
+    pool = FakePool(conn, fetch_rows=[row])
+    llm = _fake_llm()
+
+    async def get_job(jid, user_id=None):
+        return _sdk_job("completed" if jid == "fact" else "failed")
+
+    llm.get_job.side_effect = get_job
+    calls = _spy_resume(monkeypatch)
+
+    n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
+
+    assert n == 0 and calls == []
+    assert any("status='failed'" in sql for sql, _ in conn.executed)
+
+
 async def test_sweep_tries_next_id_when_get_job_errors(monkeypatch):
     conn = FakeConn([])
     pool = FakePool(conn, fetch_rows=[_stranded_row(["bad", "good"])])
