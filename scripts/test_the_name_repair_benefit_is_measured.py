@@ -41,6 +41,18 @@ from math import comb
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 EVID = ROOT / "docs" / "eval" / "toolloop" / "2026-08-14"
 
@@ -127,6 +139,7 @@ def test_the_WEAKENING_control_is_still_true():
     )
 
 
+@_SKIP_NO_CORPUS
 def test_the_blank_search_population_is_absent_from_the_corpus():
     """Re-derived with arguments REASSEMBLED PER CALL ID, which is the row's own method_note.
 

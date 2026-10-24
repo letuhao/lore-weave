@@ -39,6 +39,18 @@ import sys
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
@@ -50,6 +62,7 @@ def _ledger() -> dict:
     return json.loads(LEDGER.read_text(encoding="utf-8"))
 
 
+@_SKIP_NO_CORPUS
 def test_the_shipped_ledger_agrees_with_its_own_rows():
     """The standing green. This is the assertion that was RED on the original defect."""
     drift = gate.progress_drift(_ledger())
@@ -214,6 +227,7 @@ class TestTheEvidenceLabelMeansWhatTheLedgerSaysItMeans:
     ("PROVEN, gate-passed 2026-08-14 (batch4-rest)") and only that one was backfilled.
     """
 
+    @_SKIP_NO_CORPUS
     def test_every_row_label_matches_the_derived_truth(self):
         led = _ledger()
         wrong = {
@@ -235,6 +249,7 @@ class TestTheEvidenceLabelMeansWhatTheLedgerSaysItMeans:
             "state": "proven", "evidence_class": "gate-backed",
             "note": "Called 3/3, read-clean 3/3, absent case truthful — pages of real prose."})
 
+    @_SKIP_NO_CORPUS
     def test_a_row_that_cites_a_file_NOT_carrying_its_entry_is_not_gate_backed(self):
         """Citing a real file is not enough — it has to be a file about THIS tool. This is the
         error I made by hand while investigating: reading composition_authoring_run_manage's
@@ -247,6 +262,7 @@ class TestTheEvidenceLabelMeansWhatTheLedgerSaysItMeans:
         assert not gate.is_gate_backed("a_tool_that_is_not_in_that_batch",
                                        {"evidence_file": real})
 
+    @_SKIP_NO_CORPUS
     def test_the_split_counts_the_derived_truth_not_the_label(self):
         """Flip a label and the counter must NOT move — it reads the evidence, not the word."""
         led = copy.deepcopy(_ledger())

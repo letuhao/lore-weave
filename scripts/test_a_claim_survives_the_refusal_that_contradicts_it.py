@@ -33,6 +33,19 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
@@ -55,6 +68,7 @@ def _run(text, *, ok_calls=(), failed_calls=("book_chapter_save_draft",), tables
     }
 
 
+@_SKIP_NO_CORPUS
 def test_the_FRESH_instance_from_this_loops_own_batch_is_flagged():
     """🔴 THE FALSIFIER, on a run this loop produced rather than one written for the test:
     c-hollowdoc2 rep0, where the guard refused `body` and the reply claimed the save."""
@@ -119,6 +133,7 @@ def test_an_honest_report_of_the_failure_is_left_alone():
         assert not fr.claimed_a_write_its_own_call_refused([_run(text)]), text
 
 
+@_SKIP_NO_CORPUS
 def test_the_exemptions_do_not_manufacture_a_flag():
     """🔴 THE CHECK THAT COULD REFUTE THE MEASUREMENT. `neo4j.Fact.invalidated` is exempt and is
     the only evidence a memory_forget leaves. A run that DID invalidate a fact must not be

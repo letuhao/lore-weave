@@ -30,6 +30,18 @@ import sys
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 sys.path.insert(0, str(ROOT / "services" / "chat-service"))
 
@@ -48,6 +60,7 @@ def derived():
 
 
 class TestTheDilutedRateIsGone:
+    @_SKIP_NO_CORPUS
     def test_arc_apply_is_measured_over_turns_that_asked_for_it(self, derived):
         r = derived["rates"].get("composition_arc_apply")
         assert r, "composition_arc_apply left the census entirely"
@@ -58,6 +71,7 @@ class TestTheDilutedRateIsGone:
             f"rate {r['rate']} is below the {sr.LOTTERY_BELOW:.4f} bar again — a tool with a "
             "20/20 arm is being classified by turns that offered no choice")
 
+    @_SKIP_NO_CORPUS
     def test_the_exclusion_actually_happened(self, derived):
         assert derived["choiceless_runs_excluded"] >= 100, (
             f"only {derived['choiceless_runs_excluded']} runs excluded — the rule is not firing")
@@ -155,6 +169,7 @@ class TestABatchThatNeverReachedTheToolMeasuredNothing:
         group = [self._run() for _ in range(5)]
         assert not sr._batch_never_reached_it(group, "kg_add_nodes", self._names)
 
+    @_SKIP_NO_CORPUS
     def test_the_exclusion_is_counted_and_reported(self, derived):
         """A silent exclusion is indistinguishable from a small corpus."""
         assert derived["never_reached_runs_excluded"] > 0

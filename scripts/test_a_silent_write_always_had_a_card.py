@@ -35,6 +35,19 @@ import json
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 LEDGER = json.loads((ROOT / "contracts" / "tool-deep-dive-ledger.json").read_text(
     encoding="utf-8"))
 #: Written for EVERY turn by chat.turn_completed, whatever tool ran — not evidence of a write.
@@ -62,6 +75,7 @@ def cells():
     return out, total
 
 
+@_SKIP_NO_CORPUS
 def test_the_corpus_is_big_enough():
     _, total = cells()
     assert total >= 1000, total
@@ -76,17 +90,20 @@ def test_the_claim_AS_WRITTEN_has_zero_instances():
     )
 
 
+@_SKIP_NO_CORPUS
 def test_the_REAL_population_is_large_and_always_carded():
     c, _ = cells()
     assert c[(True, True)] >= 50, dict(c)
 
 
+@_SKIP_NO_CORPUS
 def test_the_GENUINELY_silent_turn_is_a_different_and_smaller_cell():
     """It is D-SILENT-TURN-NO-CARD-NO-PROSE, and keeping the two apart is the point."""
     c, _ = cells()
     assert 0 < c[(False, False)] < c[(True, True)], dict(c)
 
 
+@_SKIP_NO_CORPUS
 def test_bookkeeping_alone_does_not_count_as_a_write():
     """`extraction_pending` is queued for every turn by chat.turn_completed whatever tool ran.
     Counting it would make almost every empty reply look like a silent write."""

@@ -95,6 +95,19 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
@@ -140,6 +153,7 @@ def buckets():
     return runs, errs
 
 
+@_SKIP_NO_CORPUS
 def test_the_corpus_is_big_enough_to_say_anything():
     runs, _ = buckets()
     assert sum(runs.values()) >= 1000, sum(runs.values())
@@ -159,6 +173,7 @@ def _two_proportion_p(k1, n1, k2, n2):
     return math.erfc(abs(z) / math.sqrt(2))
 
 
+@_SKIP_NO_CORPUS
 def test_the_buckets_still_SEPARATE():
     """The claim that survives — and it is now a WEAKER claim than it was, said out loud.
 
@@ -183,6 +198,7 @@ def test_the_buckets_still_SEPARATE():
         f"no longer separate: p={p:.3f}. The separation is gone.")
 
 
+@_SKIP_NO_CORPUS
 def test_the_concentration_is_SCENARIO_shaped_not_TOOL_shaped():
     """🔴 THE FINDING THAT COST THE RATIO ITS MEANING, pinned so it cannot be forgotten the next
     time someone reads "21% of search-calling runs error" as a property of the search.

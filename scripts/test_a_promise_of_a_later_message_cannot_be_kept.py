@@ -34,6 +34,19 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
@@ -59,6 +72,7 @@ def _corpus():
     return out
 
 
+@_SKIP_NO_CORPUS
 def test_the_MEASURED_instances_are_caught():
     """🔴 THE FALSIFIER, on the corpus itself rather than on invented strings."""
     flagged = fr.promised_work_that_cannot_continue(_corpus())

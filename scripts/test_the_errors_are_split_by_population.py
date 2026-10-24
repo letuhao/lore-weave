@@ -40,6 +40,19 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
@@ -139,6 +152,7 @@ def test_the_MIXED_batch_the_row_cites_really_is_mixed():
     assert pops["no_output_timeout"] and pops["upstream_silent_after_call"], pops
 
 
+@_SKIP_NO_CORPUS
 def test_the_corpus_split_still_has_every_population():
     """ANTI-VACUITY on the size. A classifier that puts everything in one bucket would pass every
     test above and say nothing."""
