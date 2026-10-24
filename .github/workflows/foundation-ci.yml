@@ -549,13 +549,25 @@ jobs:
       # DEFERRED 056+057 (archive-worker): Parquet+ZSTD → MinIO → DROP → restore.
       # MinIO runs as a docker-run step (a service container can't set the
       # `server /data` command); it's reachable on localhost:9000.
+      #
+      # 🔴 `minio/minio` IS GONE FROM DOCKER HUB (repos deleted ~2026-09; the
+      # pull fails with "pull access denied ... repository does not exist",
+      # which looks like auth and is not) and quay.io/minio/minio answers 401
+      # to anonymous manifest pulls, so a runner cannot fetch either. The
+      # Bitnami legacy mirror still serves the binary anonymously. Two
+      # invocation differences, both measured locally (2026-10-24): pass NO
+      # `server /data` args — the image's default cmd already serves from
+      # /bitnami/minio/data, and explicit args hit "file access denied"
+      # because it runs as uid 1001 — and MINIO_ROOT_USER/PASSWORD pass
+      # through unchanged. Verified: /minio/health/live green and a boto3
+      # create/put/get roundtrip against these exact credentials.
       - name: start MinIO + create archive_smoke DB
         shell: bash
         run: |
           set -euo pipefail
           docker run -d --name minio-ci -p 9000:9000 \
             -e MINIO_ROOT_USER=foundation -e MINIO_ROOT_PASSWORD=foundation-secret-dev-only \
-            minio/minio:latest server /data
+            bitnamilegacy/minio:latest
           # Wait for MinIO to accept connections.
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1; then break; fi

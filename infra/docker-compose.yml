@@ -91,8 +91,20 @@ services:
 
   minio:
     restart: unless-stopped
-    image: minio/minio:RELEASE.2024-08-03T04-33-23Z
-    command: server /data --console-address ":9001"
+    # `minio/minio` is GONE from Docker Hub (repositories deleted ~2026-09; the
+    # failure reads "pull access denied ... repository does not exist", which
+    # looks like auth and is not) and dl.min.io binaries answer 410 Gone, so
+    # the official image cannot be fetched anywhere. The Bitnami legacy mirror
+    # still serves it anonymously, and 2024.8.3 bundles the SAME commit
+    # (6efb5685) as the previous minio/minio:RELEASE.2024-08-03T04-33-23Z, so
+    # the loreweave_minio volume keeps its on-disk format byte-compatible.
+    # Two invocation differences, both verified locally: `user: root` (the
+    # bitnami image runs as uid 1001 and this volume is root-owned), and the
+    # command names the binary — bitnami's CMD includes `minio`, so args-only
+    # ("server /data …") dies at startup with "file access denied".
+    image: bitnamilegacy/minio:2024.8.3-debian-12-r1
+    user: root
+    command: minio server /data --console-address ":9001"
     environment:
       # Same MINIO_ACCESS_KEY/MINIO_SECRET_KEY vars every client below reads --
       # setting one pair of env vars rotates the server AND every consumer
