@@ -18,7 +18,7 @@ import {
   makeTicket,
   validateTicket,
   constantTimeBufferEquals,
-} from './ticket-store';
+} from './ticket-store.js';
 
 const SAMPLE_USER = '00000000-0000-0000-0000-000000000abc';
 const SAMPLE_REALITY = '00000000-0000-0000-0000-000000000def';

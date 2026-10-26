@@ -17,13 +17,13 @@ import {
   Disconnector,
   FORCE_DISCONNECT_CODES,
   type DisconnectorTarget,
-} from './disconnector';
+} from './disconnector.js';
 import {
   WsControlChannelConsumer,
   WS_CONTROL_REDIS_CHANNEL,
   SUPPORTED_VERSION,
-} from './control-channel-consumer';
-import { WsMetrics } from './metrics';
+} from './control-channel-consumer.js';
+import { WsMetrics } from './metrics.js';
 
 const USER = '00000000-0000-0000-0000-000000000abc';
 

@@ -21,7 +21,7 @@
  * data envelopes are checked. Cycle 28 router (`session-router.ts`) handles
  * the kind=control fast-path before reaching us.
  */
-import type { AuthzRejectionReason, WsMetrics } from './metrics';
+import type { AuthzRejectionReason, WsMetrics } from './metrics.js';
 
 /** Session-scoped authz inputs, materialized by upstream resolvers. */
 export interface SessionAuthzContext {

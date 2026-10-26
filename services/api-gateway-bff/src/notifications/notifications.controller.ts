@@ -11,17 +11,26 @@
 import {
   Controller,
   Get,
+  HttpException,
   Logger,
   Query,
   Req,
   Sse,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { finalize } from 'rxjs/operators';
-import * as jwt from 'jsonwebtoken';
+import * as jwtModule from 'jsonwebtoken';
+// CRITICAL interop fix (2026-10-24): under node's ESM the namespace import of
+// this CJS `export =` package has NO named members (the lexer cannot see
+// through `module.exports = { decode: require('./decode'), ... }`), so
+// `jwt.verify` would be undefined at runtime. The default binding IS
+// module.exports in both node and jest — resolve to it explicitly.
+const jwt = ((jwtModule as { default?: unknown }).default ?? jwtModule) as typeof import('jsonwebtoken');
+
 import type { Request } from 'express';
 
-import { AmqpService } from '../ws/amqp.service';
+import { AmqpService } from '../ws/amqp.service.js';
 
 interface NotificationMessageEvent {
   data: object;
@@ -49,12 +58,16 @@ export class NotificationsController {
   ): Observable<NotificationMessageEvent> {
     if (!token) {
       this.logger.warn('SSE rejected: missing_token');
-      throw new Error('missing_token');
+      // Auth failures MUST be HttpExceptions: a bare Error maps to a 500. The
+      // throws happen before the Observable is built, so no SSE headers have
+      // been sent and Nest answers with a clean JSON status (measured 500→401,
+      // 2026-10-25).
+      throw new UnauthorizedException('missing_token');
     }
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
       this.logger.error('SSE rejected: JWT_SECRET not configured');
-      throw new Error('server_error');
+      throw new HttpException('server_error', 500);
     }
 
     let userId: string;
@@ -68,7 +81,7 @@ export class NotificationsController {
       this.logger.warn(
         `SSE rejected: invalid_token — ${(err as Error).message}`,
       );
-      throw new Error('invalid_token');
+      throw new UnauthorizedException('invalid_token');
     }
 
     const subject = new Subject<NotificationMessageEvent>();

@@ -18,7 +18,7 @@
  * caught (Node `Buffer.from` is lenient and would otherwise mask it).
  */
 
-import { type Ticket, type TicketStore, TicketError, validateTicket } from './ticket-store';
+import { type Ticket, type TicketStore, TicketError, validateTicket } from './ticket-store.js';
 
 /**
  * Minimal Redis surface RedisTicketStore needs — structurally satisfied by an

@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { KalReadController } from '../src/kal/kal-read.controller.js';
 import { resetConfigForTest } from '../src/config/config.js';
 

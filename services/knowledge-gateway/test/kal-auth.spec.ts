@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { createHmac } from 'node:crypto';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { verifyHs256 } from '../src/auth/jwt.js';

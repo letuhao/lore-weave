@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { isBlockedIp, hostAllowed, makeEgressFetch, CircuitBreaker, chooseOutboundHeaders } from '../src/federation/egress.js';
 
 describe('REG-P3-04 egress SSRF IP block', () => {

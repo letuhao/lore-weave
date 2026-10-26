@@ -1,11 +1,16 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WsAdapter } from '@nestjs/platform-ws';
-import * as request from 'supertest';
+import * as requestModule from 'supertest';
+// jest-ESM interop: the namespace of a CJS `export =` package comes back
+// empty (see the jwtModule note in src) — fall back to the default binding.
+const request = ((requestModule as { default?: unknown }).default ?? requestModule) as
+  typeof import('supertest');
+
 import * as http from 'http';
 import { AddressInfo } from 'net';
-import { AppModule } from '../src/app.module';
-import { configureGatewayApp } from '../src/gateway-setup';
+import { AppModule } from '../src/app.module.js';
+import { configureGatewayApp } from '../src/gateway-setup.js';
 
 function startUpstream(marker: string) {
   const server = http.createServer((_req, res) => {

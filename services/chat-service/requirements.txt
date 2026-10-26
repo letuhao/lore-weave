@@ -5,7 +5,7 @@ asyncpg>=0.31.0
 pydantic>=2.13.5
 pydantic-settings>=2.15.0
 httpx>=0.27
-PyJWT>=2.13.0
+PyJWT>=2.15.0
 python-dotenv>=1.2.2
 # litellm dropped in Phase 1c-ii — chat-service now routes all LLM calls
 # through provider-registry's /internal/llm/stream via the local
@@ -24,7 +24,10 @@ aiofiles>=25.1.0
 # Staying on stable 1.x (FastMCP intact) is deliberate: zero capability gain from v2 today,
 # and stable v2 lands 2026-07-28. A future v2 adoption goes through a FastMCP→MCPServer
 # ADAPTER in the loreweave_mcp kit (the single chokepoint), keeping the 6 services untouched.
-mcp==1.28.1
+# 1.28.1 -> 1.30.0 (2026-10-24): CVE-2026-59951 is fixed only in 1.30.0/2.2.0; verified
+# both `mcp.server.fastmcp` and `mcp.client.streamable_http` are intact in the 1.30.0
+# wheel before taking the bump.
+mcp==1.30.0
 # K35 (2026-07-24) — app/services/frontend_tools.py does a DIRECT top-level
 # `from jsonschema import Draft202012Validator` (the frontend-tool contract validator,
 # added by the Phase-0 frontend-tools→MCP work eb86bb33e). It resolved only because

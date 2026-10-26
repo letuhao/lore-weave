@@ -6,6 +6,8 @@ type EventHandler = (event: object) => void;
 
 @Injectable()
 export class AmqpService implements OnModuleInit, OnModuleDestroy {
+  private shuttingDown = false;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
   private readonly logger = new Logger(AmqpService.name);
   private conn: amqp.ChannelModel | null = null;
   private channel: amqp.Channel | null = null;
@@ -13,6 +15,7 @@ export class AmqpService implements OnModuleInit, OnModuleDestroy {
   private readonly queueName = `gw.events.${uuidv4()}`;
 
   async onModuleInit(): Promise<void> {
+    if (this.shuttingDown) return;
     const url = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672/';
     await this._connect(url);
   }
@@ -50,12 +53,14 @@ export class AmqpService implements OnModuleInit, OnModuleDestroy {
 
       this.conn.on('error', (err) => this.logger.error('AMQP connection error', err));
       this.conn.on('close', () => {
+        if (this.shuttingDown) return;
         this.logger.warn('AMQP connection closed, reconnecting in 5s...');
-        setTimeout(() => this._connect(url), 5000);
+        this.reconnectTimer = setTimeout(() => this._connect(url), 5000);
       });
     } catch (err) {
+      if (this.shuttingDown) return;
       this.logger.error('AMQP connect failed, retrying in 5s...', err);
-      setTimeout(() => this._connect(url), 5000);
+      this.reconnectTimer = setTimeout(() => this._connect(url), 5000);
     }
   }
 
@@ -80,6 +85,8 @@ export class AmqpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.shuttingDown = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     try {
       await this.channel?.close();
       await this.conn?.close();

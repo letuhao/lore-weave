@@ -2,7 +2,7 @@
 // POST /v1/activity/mark-all-read). No providers: the controller validates the JWT and fans out
 // to the public service APIs over fetch (the AssistantController precedent).
 import { Module } from '@nestjs/common';
-import { HomeController } from './home.controller';
+import { HomeController } from './home.controller.js';
 
 @Module({
   controllers: [HomeController],

@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { PublicMcpController, parseBearer } from '../src/mcp/public-mcp.controller.js';

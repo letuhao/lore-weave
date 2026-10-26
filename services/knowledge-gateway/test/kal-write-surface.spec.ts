@@ -1,8 +1,12 @@
+import { jest } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HttpException } from '@nestjs/common';
 import { resetConfigForTest } from '../src/config/config.js';
 import { KalWriteController } from '../src/kal/kal-write.controller.js';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * T48f — the eight destructive routes, tested for BEHAVIOUR rather than for being guarded.

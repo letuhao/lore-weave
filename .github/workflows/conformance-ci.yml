@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: runner unit tests
         run: go test ./...
       - name: run conformance suite
@@ -104,7 +104,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       # The gate smoke discovers binaries at target/debug/{rebuilder,replay-aggregate}
       # and {tests/workload-gen/wg, services/integrity-checker/ic} (no .exe on Linux).
       # The S6 fault drills additionally need the publisher (services/publisher/pub).
@@ -152,7 +152,7 @@ jobs:
           fetch-depth: 0 # need the base ref for the same-runner A/B
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: install benchstat
         # 🔴 PINNED, because `@latest` broke this job the day upstream raised its floor:
         #
@@ -160,7 +160,7 @@ jobs:
         #   requires go >= 1.26.0 (running go 1.25.14; GOTOOLCHAIN=local)
         #
         # Nothing in this repo changed. `@latest` is a moving target and this job deliberately
-        # pins `go-version: "1.25"` with `GOTOOLCHAIN: local` for reproducible numbers — the
+        # pins `go-version: "1.26.10"` with `GOTOOLCHAIN: local` for reproducible numbers — the
         # two cannot both float. The tool is a statistics formatter for `go test -bench`
         # output; its CLI has been stable for years, and the gate's own `--bite` leg proves it
         # still discriminates.
@@ -250,7 +250,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
@@ -340,7 +340,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: build binaries (no .exe on Linux)
         run: |
           cargo build -p world-service --bin rebuilder --bin replay-aggregate
@@ -436,7 +436,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: build wg + publisher (no .exe on Linux)
         run: |
           go build -C tests/workload-gen -o wg ./cmd/workload-gen
@@ -465,7 +465,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: build + vet the antithesis driver
         working-directory: tests/antithesis/driver
         run: |
@@ -482,7 +482,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: build + vet the S12 scale tooling
         run: |
           go build -C services/meta-worker ./cmd/metaworker-bench
@@ -619,7 +619,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       # W1 drills self-build their Go + Rust bins; the Rust toolchain is needed
       # for capacity-place / freeze-drill / provision-drill.
       - uses: dtolnay/rust-toolchain@stable
