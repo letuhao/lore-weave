@@ -10,7 +10,7 @@
 
 module github.com/loreweave/foundation/services/meta-worker
 
-go 1.25.0
+go 1.26.0
 
 replace github.com/loreweave/foundation/contracts/events => ../../contracts/events
 
@@ -57,9 +57,9 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.0 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 

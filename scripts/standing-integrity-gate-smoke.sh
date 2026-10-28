@@ -46,25 +46,11 @@ BITE="${BITE:-0}"
 # embedded non-vacuity self-test without relying on inherited env.
 for a in "$@"; do case "$a" in --bite) BITE=1 ;; esac; done
 
-# The 6 projection tables the generator's multi-reality profile leaves with rows
-# (Battery-B coverage set) and the 4 L3.A tables it provably leaves EMPTY — a
-# DOCUMENTED, asserted exclusion, not silent under-coverage. canon_projection is
-# intentionally absent from both: it is not in the L3.A allowlist, so the
-# integrity-checker does not check it (outside B).
-#
-# world_kv_projection is EXCLUDED because the generator emits world.kv_set THEN
-# world.kv_unset (gen.go:154-157) — they net to an empty projection, so B has no
-# row to sample (the EVENT path is exercised; the projection-row oracle has
-# nothing). Tracked: D-S5-WORLDKV-NETS-EMPTY (a set-without-unset profile would
-# give B a world_kv row to verify). The other 3 are tables no event populates yet.
-POPULATED_TABLES="pc_projection pc_inventory_projection npc_projection npc_session_memory_projection region_projection session_participants"
-EXCLUDED_TABLES="pc_relationship_projection npc_pc_relationship_projection npc_session_memory_embedding world_kv_projection"
-
-# Tables to rebuild — the exact set + order workload-gen-pipeline-smoke.sh proved
-# clean (incl. the multi-aggregate npc_session_memory_projection via the
-# rebuilder's global path, D-REBUILDER-MULTI-AGG). canon_projection rebuilds too
-# (it has cascade rows) even though B does not check it.
-REBUILD_TABLES="region_projection npc_projection npc_session_memory_projection pc_projection pc_inventory_projection session_participants world_kv_projection canon_projection"
+# 0017/0018 retired every projection except canon_projection. The generator
+# populates canon and the current rebuilder + checker both allow ONLY canon;
+# there are no surviving empty tables to exclude from Battery-B coverage.
+POPULATED_TABLES="canon_projection"
+REBUILD_TABLES="$POPULATED_TABLES"
 
 log() { printf '[s5-gate] %s\n' "$*"; }
 psql_db() { docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$1" "${@:2}"; }
@@ -126,18 +112,23 @@ seed_shard() {
   db="$(shard_db "$i")"; dsn="$(shard_dsn "$i")"
   psql_db foundation -c "DROP DATABASE IF EXISTS ${db}" >/dev/null
   psql_db foundation -c "CREATE DATABASE ${db}" >/dev/null
-  # 0007_drift_metadata is REQUIRED here (the pipeline smoke omits it) — it
-  # creates + seeds projection_drift_state, the gate's signal table.
-  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256 0006_projections \
-           0007_drift_metadata 0008_pgvector_setup 0009_canon_projection; do
-    docker exec -i "$PG_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$db" < "contracts/migrations/per_reality/${m}.up.sql"
+  # Apply the CURRENT schema, including the 0017/0018 projection retirements
+  # and all event INSERT dependencies; a hand-picked fixture silently drifts.
+  for f in contracts/migrations/per_reality/*.up.sql; do
+    docker exec -i "$PG_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$db" < "$f"
+  done
+  # 0018 removes the retired summary rows and admits canon, but does not seed
+  # its row. The checker's Persister UPDATEs (never INSERTs) the summary, so
+  # initialise ONLY the current coverage set, unverified and with zero drift.
+  for t in $POPULATED_TABLES; do
+    psql_db "$db" -c "INSERT INTO projection_drift_state (table_name) VALUES ('${t}') ON CONFLICT (table_name) DO NOTHING" >/dev/null
   done
   psql_db "$db" -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT" >/dev/null
   "$WG" -seed "$i" -profile "$PROFILE" -emit -dsn "$dsn"
   rid="$(psql_db "$db" -tA -c "SELECT DISTINCT reality_id FROM events LIMIT 1")"
   [ -n "$rid" ] || { echo "shard $i: no reality_id after emit" >&2; return 1; }
-  # The rebuilder rebuilds ONE table per call (--reality-id --projection); it
-  # selects the global-order path internally for the multi-aggregate table.
+  # The rebuilder rebuilds ONE table per call (--reality-id --projection);
+  # canon uses its single-aggregate path.
   for t in $REBUILD_TABLES; do
     out="$(REALITY_DB_URL="$dsn" "$REBUILDER" --reality-id "$rid" --projection "$t" 2>&1)" || { echo "shard $i: rebuild $t failed: $out" >&2; return 1; }
     # Parse the JSON stats on stdout (`"aggregates_failed":N`) — present on BOTH
@@ -207,6 +198,9 @@ for i in $(seq 1 "$SHARDS"); do
   [ "$i" -eq 1 ] && sep="" || sep=","
   printf '%s    {"shard": %s, "reality_id": "%s", "db": "%s", "tables": [' "$sep" "$i" "$rid" "$db" >> "$RESULTS"
   tsep=""
+  # The migrated fixture must carry ONLY the current projection summaries.
+  actual_tables="$(psql_db "$db" -tA -c "SELECT string_agg(table_name, ' ' ORDER BY table_name) FROM projection_drift_state")"
+  [ "$actual_tables" = "$POPULATED_TABLES" ] || { log "FAIL(coverage): shard $i drift-state tables '$actual_tables' != '$POPULATED_TABLES'"; exit 1; }
   # populated set — assert COVERAGE (verified ∧ sampled) and accumulate drift
   for t in $POPULATED_TABLES; do
     row="$(psql_db "$db" -tA -F '|' -c \
@@ -215,9 +209,8 @@ for i in $(seq 1 "$SHARDS"); do
     if [ "$verified" != "t" ]; then
       log "FAIL(coverage): shard $i table $t was never verified (last_verified_at NULL) — gate would be vacuous"
       gate_fail=1
-    # ss is guaranteed numeric here: COALESCE(...,-1) + the row always exists
-    # (0007 seeds all 10), and a failed query would have left verified != 't'
-    # (caught above). So no error-masking redirect is needed (review-impl #3).
+    # ss is numeric: COALESCE(...,-1), the exact summary-set assertion above
+    # guarantees the row exists, and failed queries abort instead of going green.
     elif [ "$ss" -le 0 ]; then
       log "FAIL(coverage): shard $i table $t verified but sampled 0 rows (last_sample_size=$ss) — populated table checked nothing"
       gate_fail=1
@@ -225,11 +218,6 @@ for i in $(seq 1 "$SHARDS"); do
     total_drift=$((total_drift + dc))
     printf '%s{"table":"%s","sample_size":%s,"verified":%s,"drift_count":%s}' "$tsep" "$t" "$ss" "$([ "$verified" = t ] && echo true || echo false)" "$dc" >> "$RESULTS"
     tsep=","
-  done
-  # excluded set — assert the row EXISTS (in seed/allowlist); coverage NOT required
-  for t in $EXCLUDED_TABLES; do
-    cnt="$(psql_db "$db" -tA -c "SELECT count(*) FROM projection_drift_state WHERE table_name='${t}'")"
-    [ "$cnt" = "1" ] || { log "FAIL: shard $i excluded table $t missing from projection_drift_state seed"; gate_fail=1; }
   done
   printf ']}' >> "$RESULTS"
 done
@@ -244,7 +232,7 @@ if [ "$total_drift" -ne 0 ]; then
   log "  harness bug — triage which table drifts and which side (rebuilder vs replay) is truth."
   exit 1
 fi
-log "PASS(clean): $SHARDS shards · 6 populated tables each verified+sampled · total_drift=0"
+log "PASS(clean): $SHARDS shards · canon_projection each verified+sampled · total_drift=0"
 
 # ── BITE: non-vacuity self-test (review-impl #2) ─────────────────────────────
 # Prove the green gate CAN go red, with the BYTE-COMPARE (not a structural
@@ -253,18 +241,20 @@ log "PASS(clean): $SHARDS shards · 6 populated tables each verified+sampled · 
 # proof — the S4 `--self-test` pattern applied to a live differential.
 [ "$BITE" -eq 1 ] || exit 0
 
-BITE_DB="$(shard_db 1)"; BITE_TABLE="region_projection"; BITE_COL="display_name"
+BITE_DB="$(shard_db 1)"; BITE_TABLE="canon_projection"; BITE_COL="attribute_path"
 log "BITE: corrupting ALL rows of ${BITE_TABLE} on shard 1, then re-sweeping ..."
 n="$(psql_db "$BITE_DB" -tA -c "SELECT count(*) FROM ${BITE_TABLE}")"
 # Fail as a HARNESS error (not a vacuous bite "pass") if the table is empty — a
 # 0-row UPDATE would no-op and falsely read non-vacuous.
 [ "$n" -gt 0 ] 2>/dev/null || { log "FAIL(setup): bite table ${BITE_TABLE} empty (n=$n) — cannot prove non-vacuity"; exit 2; }
 # Corrupt the WHOLE table (not one row) so the daily sampler cannot miss it.
-# display_name is a COMPARED column (not one of the 5 stripped meta keys:
+# attribute_path is a COMPARED column (not one of the 5 stripped meta keys:
 # event_id, aggregate_version, applied_at, last_verified_event_version,
 # last_verified_at) — so `to_jsonb - meta` byte-compare sees the change.
 psql_db "$BITE_DB" -c "UPDATE ${BITE_TABLE} SET ${BITE_COL} = ${BITE_COL} || '__BITE__'" >/dev/null
-"$IC" >/dev/null 2>&1 || true   # re-sweep; drift never changes the checker's exit code
+ic_rc=0
+"$IC" || ic_rc=$?   # drift itself never changes the checker's exit code
+[ "$ic_rc" -eq 0 ] || { log "FAIL(harness): bite re-sweep exited $ic_rc (reality error, not drift)"; exit 2; }
 bite_drift="$(psql_db "$BITE_DB" -tA -c "SELECT COALESCE(drift_count,0) FROM projection_drift_state WHERE table_name='${BITE_TABLE}'")"
 if [ "$bite_drift" -gt 0 ] 2>/dev/null; then
   log "PASS(bite): corrupting ${BITE_TABLE} (${n} rows) → drift_count=${bite_drift} — the differential HAS teeth (clean 0 → corrupt >0)"

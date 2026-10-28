@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS build
+FROM golang:1.26.10-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git
 # scheduler-service has no local `replace` deps (pgx + uuid only), so a service-only context builds.

@@ -27,6 +27,19 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import pytest  # noqa: E402
@@ -163,6 +176,7 @@ def test_the_bar_itself_is_UNCHANGED():
         "a tool above the reachability bar is being excused as a SELECTION defect")
 
 
+@_SKIP_NO_CORPUS
 def test_the_census_is_derived_and_discriminates():
     d = sr.derive()
     assert d["measured"] >= 50, d["measured"]

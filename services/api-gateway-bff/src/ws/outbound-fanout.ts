@@ -18,7 +18,7 @@
  */
 
 import type { WebSocket } from 'ws';
-import type { WsMetrics } from './metrics';
+import type { WsMetrics } from './metrics.js';
 
 export interface FanoutDeps {
   readonly metrics: WsMetrics;

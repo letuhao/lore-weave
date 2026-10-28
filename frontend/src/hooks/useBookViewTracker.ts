@@ -47,8 +47,30 @@ function getSessionId(): string {
   const key = 'lw:session-id';
   let sid = sessionStorage.getItem(key);
   if (!sid) {
-    sid = crypto.randomUUID();
+    sid = createSessionId();
     sessionStorage.setItem(key, sid);
   }
   return sid;
+}
+
+/**
+ * `crypto.randomUUID()` is exposed only in secure contexts in some browsers.
+ * LoreWeave is also used over plain HTTP on a LAN address, so keep analytics
+ * best-effort instead of allowing the page tree to crash during mount.
+ */
+function createSessionId(): string {
+  const webCrypto = globalThis.crypto;
+  if (typeof webCrypto?.randomUUID === 'function') return webCrypto.randomUUID();
+
+  if (typeof webCrypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    webCrypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  // Last-resort non-secret identifier: analytics only, never an auth token.
+  return `lw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }

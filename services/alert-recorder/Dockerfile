@@ -19,7 +19,7 @@
 # the service directory so the `../..` in go.mod resolves.
 # Build with:  docker build -f services/alert-recorder/Dockerfile <repo-root>
 
-FROM golang:1.25-alpine AS build
+FROM golang:1.26.10-alpine AS build
 WORKDIR /src
 
 # The one `replace` target. It goes in before the service so a change to service code does

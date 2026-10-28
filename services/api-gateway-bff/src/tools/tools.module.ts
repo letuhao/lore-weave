@@ -3,7 +3,7 @@
 // forwards to ai-gateway over fetch (the grounding/notifications precedent).
 
 import { Module } from '@nestjs/common';
-import { ToolsController } from './tools.controller';
+import { ToolsController } from './tools.controller.js';
 
 @Module({
   controllers: [ToolsController],

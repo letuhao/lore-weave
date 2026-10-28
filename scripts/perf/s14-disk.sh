@@ -64,18 +64,20 @@ start_pg() {
     "$IMG" -c fsync=on -c synchronous_commit=on -c full_page_writes=on \
     -c max_connections=64 >/dev/null || notrun "docker run failed"
   local i
-  for i in $(seq 1 40); do
-    docker exec "$PG" pg_isready -U "$PGUSER" -d "$PGDB" >/dev/null 2>&1 && break
+  # The image's bootstrap server accepts socket connections then shuts down.
+  # Wait for the final TCP listener before applying migrations.
+  for i in $(seq 1 80); do
+    docker exec "$PG" pg_isready -h 127.0.0.1 -U "$PGUSER" -d "$PGDB" >/dev/null 2>&1 && return 0
     sleep 0.5
-    [ "$i" = 40 ] && notrun "$PG not ready"
   done
+  notrun "$PG not ready"
 }
 
 migrate() {
   local m
   for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do
     docker exec -i "$PG" psql -q -v ON_ERROR_STOP=1 -U "$PGUSER" -d "$PGDB" \
-      < "contracts/migrations/per_reality/${m}.up.sql" >/dev/null 2>&1 \
+      < "contracts/migrations/per_reality/${m}.up.sql" >/dev/null \
       || notrun "per_reality migration ${m} failed"
   done
   docker exec "$PG" psql -q -U "$PGUSER" -d "$PGDB" \

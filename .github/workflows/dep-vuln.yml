@@ -32,8 +32,25 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+          # Patch-exact: the 1.26 series' crypto/x509 fix (GO-2026-6809) lands
+          # in 1.26.10 — a bare "1.26" resolved 1.26.9 on the runner and kept
+          # flagging the stdlib. Bump this patch alongside the scanner pin.
+          go-version: "1.26.10"
+          # 🔴 The repo ROOT has no go.mod, so setup-go's dependency cache
+          # cannot compute a key ("Primary key was not generated") and its
+          # POST step fails the job — even when every module scanned clean
+          # ("affected by 0 vulnerabilities" across the board, measured
+          # 2026-10-24 on e361fa784). No cache for this advisory job.
+          cache: false
+      # 🔴 THE TOOLCHAIN AND THE SCANNER MUST MOVE TOGETHER. govulncheck
+      # versions declare the Go line they require: v1.8.0+ needs go 1.26, and
+      # v1.7.0 (the last accepting 1.25) runs but then flags every module with
+      # go1.25 STDLIB advisories (crypto/x509, net/http, crypto/tls — fixed
+      # only in 1.26.x patches) — a red X that says "your scanner's stdlib is
+      # old", not "your code is vulnerable". Pin the scanner (never @latest:
+      # v1.9.0 declares go 1.26 too, but the next bump will break this again)
+      # and bump BOTH this pin and go-version together.
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
       - name: govulncheck every go.mod module
         shell: bash
         run: |
@@ -138,4 +155,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-audit --locked
       - name: cargo audit (root workspace Cargo.lock)
-        run: cargo audit
+        # Two --ignore entries are advisories with NO in-range fix today
+        # (2026-10-24), both reached only through jsonwebtoken v10.4.0:
+        #   RUSTSEC-2023-0071 — rsa "Marvin Attack". No fixed rsa release
+        #     exists at all; our use is JWT sign/verify, not the RSA
+        #     decryption the attack requires.
+        #   RUSTSEC-2026-0387 — crypto-bigint timing; the sole patched line
+        #     is >=0.7.6 while our copy is 0.5.5, pinned by
+        #     elliptic-curve 0.13 <- ecdsa/p256 <- jsonwebtoken.
+        # Lift BOTH when jsonwebtoken bumps its RustCrypto stack (Dependabot
+        # will open that PR); until then these two would keep this advisory
+        # leg permanently red over unfollowable findings.
+        run: cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0387

@@ -84,15 +84,17 @@ else
   log "k6 absent — skipping HTTP open-loop generators (CI nightly installs k6)"
 fi
 
-# ── WS echo round-trip (colyseus.js driver) ──────────────────────────────────
+# ── WS echo round-trip (@colyseus/sdk driver) ─────────────────────────────────
 if [ "$HAVE_NODE" = 1 ]; then
-  log "installing ws driver deps (colyseus.js) ..."
-  if npm --prefix "$K6_DIR" install >/dev/null 2>&1; then
+  log "installing ws driver deps (@colyseus/sdk 0.17) ..."
+  if npm --prefix "$K6_DIR" ci >/dev/null 2>&1; then
+    log "WS SDK live regression (ephemeral server + invalid-auth control) ..."
+    npm --prefix "$K6_DIR" run test:live || { log "FAIL: WS SDK live regression failed"; exit 1; }
     SUMMARY_OUT="$ROOT/$RESULTS/k6-ws-echo-summary.json" TARGET_WS="$TARGET_WS" \
       LOREWEAVE_INTERNAL_TOKEN="$TOKEN" WS_ROUNDTRIPS="${WS_ROUNDTRIPS:-500}" \
       node "$K6_DIR/ws_echo.mjs" && { ran_any=1; log "wrote k6-ws-echo-summary.json"; } || log "ws round-trip driver failed (non-fatal)"
   else
-    log "could not install colyseus.js — skipping WS round-trip"
+    log "could not install locked @colyseus/sdk — skipping WS round-trip"
   fi
 fi
 

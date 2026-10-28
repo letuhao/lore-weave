@@ -51,8 +51,9 @@ start_pg() {
     -e POSTGRES_USER="$PGUSER" -e POSTGRES_PASSWORD="$PGPASS" -e POSTGRES_DB="$PGDB" \
     "$IMG" -c max_connections="$MAXCONN_SERVER" >/dev/null || notrun "docker run failed"
   local i
-  for i in $(seq 1 40); do
-    docker exec "$PG" pg_isready -U "$PGUSER" -d "$PGDB" >/dev/null 2>&1 && return 0
+  # Ignore the socket-only bootstrap server that exits after initialization.
+  for i in $(seq 1 80); do
+    docker exec "$PG" pg_isready -h 127.0.0.1 -U "$PGUSER" -d "$PGDB" >/dev/null 2>&1 && return 0
     sleep 0.5
   done
   notrun "$PG not ready"

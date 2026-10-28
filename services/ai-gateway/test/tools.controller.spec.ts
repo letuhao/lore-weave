@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { ToolsController } from '../src/tools/tools.controller.js';
 import { resetConfigForTest } from '../src/config/config.js';
 import type { FederationService } from '../src/federation/federation.service.js';

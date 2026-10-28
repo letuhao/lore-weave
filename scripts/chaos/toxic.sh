@@ -85,11 +85,11 @@ cmd_reset() { api POST /reset >/dev/null; log "reset: all toxics removed, all pr
 # (foundation-dev-toxiproxy:<listen>) → no host psql needed, container-to-container.
 rtt_pg_ms() { # listen_port
   local port="$1" start end
-  start="$(date +%s%3N)"
+  start="$(date +%s%N)"
   docker exec -e PGPASSWORD=foundation "$PG_CONTAINER" \
     psql -h "$TOXI_CONTAINER" -p "$port" -U "$PG_USER" -d foundation -tAc "SELECT 1" >/dev/null
-  end="$(date +%s%3N)"
-  echo $((end - start))
+  end="$(date +%s%N)"
+  echo $(( (end - start) / 1000000 ))
 }
 
 cmd_selftest() {

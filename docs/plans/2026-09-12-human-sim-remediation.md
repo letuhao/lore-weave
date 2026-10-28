@@ -3,6 +3,10 @@
 Branch: `feature/human-sim-remediation` (based on `release/v0.1.0`)
 Created: 2026-09-12
 
+Reconciles: Any task, start to finish — work items distilled from the
+2026-09-06 human-sim REPORT; each item names its own standards when
+implemented, and the plan document itself adds none.
+
 ## Original Request
 
 ok help me make new plan to improve them

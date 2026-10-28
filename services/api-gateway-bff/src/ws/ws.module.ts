@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
-import { AmqpService } from './amqp.service';
-import { EventsGateway } from './events.gateway';
-import { WsV1Gateway } from './ws-server';
-import { TicketController, TICKET_STORE_TOKEN } from './ticket-endpoint';
-import { InMemoryTicketStore, type TicketStore } from './ticket-store';
-import { RedisTicketStore } from './redis-ticket-store';
-import { makeWsRedisFromEnv } from './redis-client';
-import { InMemoryAuthzProvider, type SessionAuthzProvider } from './per-message-authz';
+import { AmqpService } from './amqp.service.js';
+import { EventsGateway } from './events.gateway.js';
+import { WsV1Gateway } from './ws-server.js';
+import { TicketController, TICKET_STORE_TOKEN } from './ticket-endpoint.js';
+import { InMemoryTicketStore, type TicketStore } from './ticket-store.js';
+import { RedisTicketStore } from './redis-ticket-store.js';
+import { makeWsRedisFromEnv } from './redis-client.js';
+import { InMemoryAuthzProvider, type SessionAuthzProvider } from './per-message-authz.js';
 
 /**
  * Foundation-grade WS server wiring.

@@ -1,6 +1,7 @@
 package usl
 
 import (
+	"encoding/json"
 	"math"
 	"math/rand"
 	"testing"
@@ -190,6 +191,96 @@ func TestFitSuperContentionDegenerate(t *testing.T) {
 	}
 	if math.IsNaN(fit.Nmax) || math.IsNaN(fit.Xmax) {
 		t.Errorf("NaN leaked: Nmax=%v Xmax=%v", fit.Nmax, fit.Xmax)
+	}
+}
+
+func TestFitMarshalJSON(t *testing.T) {
+	cases := []struct {
+		name       string
+		samples    []Sample
+		degenerate bool
+	}{
+		{
+			name: "F3 measured beta zero",
+			// Actual wg-emit throughput points from hyperfine-f3-fixed.log.
+			samples: []Sample{
+				{N: 1, Throughput: 40.68697403279112},
+				{N: 2, Throughput: 42.51461735288667},
+				{N: 4, Throughput: 72.52944003147842},
+				{N: 8, Throughput: 112.14357207522353},
+			},
+			degenerate: true,
+		},
+		{
+			name: "finite coherency knee",
+			samples: []Sample{
+				{N: 1, Throughput: trueUSL(1, 1000, 0.03, 1e-4)},
+				{N: 8, Throughput: trueUSL(8, 1000, 0.03, 1e-4)},
+				{N: 32, Throughput: trueUSL(32, 1000, 0.03, 1e-4)},
+				{N: 128, Throughput: trueUSL(128, 1000, 0.03, 1e-4)},
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fit, err := FitUSL(c.samples)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fit.Degenerate != c.degenerate {
+				t.Fatalf("degenerate=%v, want %v: %+v", fit.Degenerate, c.degenerate, fit)
+			}
+			if c.degenerate && (fit.Beta != 0 || !math.IsInf(fit.Nmax, 1) || !math.IsInf(fit.Xmax, 1)) {
+				t.Fatalf("measured fit must retain beta=0 and infinite peak sentinels: %+v", fit)
+			}
+			// Exercise the CLI's exact encoding path, not a sanitized test DTO.
+			out, err := json.MarshalIndent(fit, "", "  ")
+			if err != nil {
+				t.Fatalf("marshal fit: %v", err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(out, &fields); err != nil {
+				t.Fatalf("decode fit JSON: %v", err)
+			}
+			for key, want := range map[string]float64{
+				"gamma": fit.Gamma, "alpha": fit.Alpha, "beta": fit.Beta, "r2": fit.R2,
+				"nmax": fit.Nmax, "xmax": fit.Xmax,
+			} {
+				raw, ok := fields[key]
+				if !ok {
+					t.Fatalf("missing JSON field %q: %s", key, out)
+				}
+				if !isFinite(want) {
+					if string(raw) != "null" {
+						t.Errorf("%s=%s, want null", key, raw)
+					}
+					continue
+				}
+				var got *float64
+				if err := json.Unmarshal(raw, &got); err != nil || got == nil || *got != want {
+					t.Errorf("%s=%s, want numeric %g (decode error: %v)", key, raw, want, err)
+				}
+			}
+			var degenerate bool
+			if err := json.Unmarshal(fields["degenerate"], &degenerate); err != nil || degenerate != fit.Degenerate {
+				t.Errorf("degenerate flag not preserved: %s (decode error: %v)", out, err)
+			}
+		})
+	}
+}
+
+func TestFitMarshalJSONRejectsNonFiniteModel(t *testing.T) {
+	for name, fit := range map[string]Fit{
+		"gamma": {Gamma: math.Inf(1)},
+		"alpha": {Alpha: math.NaN()},
+		"beta":  {Beta: math.Inf(-1)},
+		"r2":    {R2: math.NaN()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := json.Marshal(fit); err == nil {
+				t.Fatal("non-finite model value must still fail JSON encoding")
+			}
+		})
 	}
 }
 

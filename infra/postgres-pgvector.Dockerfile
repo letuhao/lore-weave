@@ -48,15 +48,26 @@ ARG PGVECTOR_VERSION=v0.8.1
 
 FROM ${PG_IMAGE} AS build
 ARG PGVECTOR_VERSION
-RUN apk add --no-cache build-base clang19 llvm19-dev llvm19 git \
+# pgvector's C is built by the CC pg_config reports (gcc from build-base). The
+# server in the base image is configured --with-llvm, so PGXS would ALSO try to
+# compile LLVM bitcode with a version-pinned clang (clang19 when this was
+# written) — and that pin dies every time the `postgres:18-alpine` tag moves to
+# a newer Alpine/LLVM (observed: tag moved to Alpine 3.24/LLVM 21, `apk add
+# clang19` → "unable to select packages", and with no clang at all PGXS died at
+# `clang-21: No such file or directory`). The final stage below copies only
+# vector.so and the extension SQL — the bitcode was never shipped — so building
+# it was pure cost plus a time bomb. `with_llvm=no` (a documented PGXS
+# override) skips the bitcode legs entirely and leaves gcc as the only
+# toolchain this image needs.
+RUN apk add --no-cache build-base git \
  && git clone --branch "${PGVECTOR_VERSION}" --depth 1 \
       https://github.com/pgvector/pgvector.git /tmp/pgvector \
  && cd /tmp/pgvector \
  # OPTFLAGS="" per pgvector's own README: -march=native breaks portability of the
  # built object across CPUs, which matters the moment this image runs anywhere
  # other than the machine that built it.
- && make OPTFLAGS="" \
- && make install
+ && make OPTFLAGS="" with_llvm=no \
+ && make install with_llvm=no
 
 FROM ${PG_IMAGE}
 COPY --from=build /usr/local/lib/postgresql/vector.so /usr/local/lib/postgresql/

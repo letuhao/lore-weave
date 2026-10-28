@@ -115,9 +115,10 @@ pub struct ZoneTiles {
 /// Penrose tile assignment → §5 per-zone fractalize.
 ///
 /// Returns one [`ZoneTiles`] per template zone, fully placed: `assigned_tiles`,
-/// `center`, and `free_paths` all filled. Errors propagate from §4 (an empty
-/// zone or a degenerate tiling). Single-threaded — determinism before the
-/// parallelism optimisation (spec D6).
+/// `center`, and `free_paths` all filled. If the relaxed layout leaves a zone
+/// without tiles, retry the deterministic grid seed once; an empty zone there
+/// or a degenerate tiling remains an error. Single-threaded — determinism
+/// before the parallelism optimisation (spec D6).
 pub fn place_zones(
     template: &TilemapTemplate,
     grid: GridSize,
@@ -126,7 +127,23 @@ pub fn place_zones(
     let seed_layout = initial_grid_layout(template);
     let converged =
         force_directed_converge(seed_layout, template, seed, ConvergenceCaps::default());
-    let mut tiled = assign_zone_tiles(&converged.zones, grid, seed)?;
+    let mut tiled = match assign_zone_tiles(&converged.zones, grid, seed) {
+        Ok(tiled) => tiled,
+        Err(crate::Error::EmptyZone(zone)) => {
+            // FR can push a valid zone into a square corner outside the rotated
+            // Penrose wheel's vertex footprint (S10 nightly seed 100). Retry the
+            // deterministic grid layout, not a different seed or a partial map.
+            // Successful FR placements stay byte-identical; a grid too small
+            // for the template still returns EmptyZone from this one retry.
+            tracing::warn!(
+                zone,
+                seed = seed.0,
+                "force-directed layout left a zone without tiles — retrying the grid-seed layout"
+            );
+            assign_zone_tiles(&initial_grid_layout(template), grid, seed)?
+        }
+        Err(error) => return Err(error),
+    };
     for zone in &mut tiled {
         fractalize_zone(zone, seed);
     }
@@ -185,7 +202,10 @@ mod tests {
 
     #[test]
     fn place_zones_fills_every_zone() {
-        let grid = GridSize { width: 48, height: 48 };
+        let grid = GridSize {
+            width: 48,
+            height: 48,
+        };
         let out = place_zones(&fixture(), grid, TilemapSeed(0x101)).unwrap();
         assert_eq!(out.len(), 4);
         for z in &out {
@@ -204,7 +224,10 @@ mod tests {
     #[test]
     fn place_zones_partitions_the_grid() {
         // AC-2 — assigned_tiles form a disjoint partition of the whole grid.
-        let grid = GridSize { width: 48, height: 48 };
+        let grid = GridSize {
+            width: 48,
+            height: 48,
+        };
         let out = place_zones(&fixture(), grid, TilemapSeed(0x202)).unwrap();
         let mut union = TileMask::new(grid.width, grid.height);
         for z in &out {
@@ -219,8 +242,27 @@ mod tests {
     }
 
     #[test]
+    fn undersized_grid_still_returns_empty_zone() {
+        // The FR retry must not hide an impossible template/grid combination:
+        // a single tile cannot be a non-empty disjoint region for four zones.
+        let error = place_zones(
+            &fixture(),
+            GridSize {
+                width: 1,
+                height: 1,
+            },
+            TilemapSeed(100),
+        )
+        .unwrap_err();
+        assert!(matches!(error, crate::Error::EmptyZone(_)));
+    }
+
+    #[test]
     fn place_zones_is_deterministic() {
-        let grid = GridSize { width: 40, height: 40 };
+        let grid = GridSize {
+            width: 40,
+            height: 40,
+        };
         let r1 = place_zones(&fixture(), grid, TilemapSeed(0xABBA)).unwrap();
         let r2 = place_zones(&fixture(), grid, TilemapSeed(0xABBA)).unwrap();
         assert_eq!(r1.len(), r2.len());

@@ -1,5 +1,5 @@
 id: pgvector-schema-conformance
-description: "S4 (Q-L3I-1) — the `vector` extension is installed and npc_session_memory_embedding.embedding is VECTOR(1536) (or the documented BYTEA(6144) fallback when the ext is absent). Presence + dimension only — HNSW recall quality is S7 perf-cycle work (D-S4-PGVECTOR-RECALL). Bundles --self-test (a bogus dimension must be rejected)."
+description: "S4 (Q-L3I-1) — the vector extension remains installed after migration 0017 retires the producer-less npc_session_memory_embedding table. Assert that the retired table stays absent. Bundles --self-test with a real resurrection probe and a vector(3) dimension read. This does not claim coverage of a production embedding column; restoring that surface requires a new producer and migration."
 invariant: Q-L3I-1
 kind: live-probe
 command: ["bash", "scripts/conformance/schema-conformance-smoke.sh", "--check", "pgvector", "--self-test"]

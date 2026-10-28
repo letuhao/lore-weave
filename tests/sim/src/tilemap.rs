@@ -21,7 +21,7 @@ use tilemap_service::types::template::{
 };
 use tilemap_service::types::treasure::TreasureTierSpec;
 use tilemap_service::types::zone::{PassageKind, ZoneId, ZoneRole};
-use tilemap_service::types::{ChannelId, MapKind, GridSize, TerrainKind, TilemapView};
+use tilemap_service::types::{ChannelId, GridSize, MapKind, TerrainKind, TilemapView};
 
 const SEEDS: u64 = 16;
 
@@ -170,4 +170,76 @@ pub fn check_inprocess(bite: bool) -> Result<String, String> {
 }
 
 /// Seeds the cross-process leg checks (kept small — each spawns a child).
-pub const CROSS_PROCESS_SEEDS: [u64; 3] = [1, 7, 0xA11CE];
+pub const CROSS_PROCESS_SEEDS: [u64; 4] = [1, 7, 100, 0xA11CE];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tilemap_service::engine::placement::{
+        ConvergenceCaps, force_directed_converge, initial_grid_layout,
+    };
+    use tilemap_service::types::tile_mask::TileMask;
+
+    #[test]
+    fn nightly_seed_100_places_every_zone_deterministically() {
+        let template = fixture();
+        let converged = force_directed_converge(
+            initial_grid_layout(&template),
+            &template,
+            TilemapSeed(100),
+            ConvergenceCaps::default(),
+        );
+        // NV-6: before the placement retry, this test failed with
+        // EmptyZone("frontier") and cargo exit 101. The FR center lies in the
+        // square's corner, outside the rotated Penrose vertex footprint.
+        let grid = GridSize {
+            width: 48,
+            height: 48,
+        };
+        assert!(matches!(
+            tilemap_service::engine::placement::assign_zone_tiles(
+                &converged.zones, grid, TilemapSeed(100)
+            ),
+            Err(tilemap_service::Error::EmptyZone(zone)) if zone == "frontier"
+        ));
+        let a = run(&template, 100);
+        let b = run(&template, 100);
+        assert_eq!(
+            serde_json::to_vec(&a).unwrap(),
+            serde_json::to_vec(&b).unwrap()
+        );
+        assert_eq!(a.zones.len(), template.zones.len());
+        let mut union = TileMask::new(a.grid_size.width, a.grid_size.height);
+        for zone in &a.zones {
+            assert!(
+                !zone.assigned_tiles.is_empty(),
+                "{} has no tiles",
+                zone.zone_id.0
+            );
+            assert!(zone.assigned_tiles.get(zone.center_position));
+            assert!(
+                !union.intersects(&zone.assigned_tiles),
+                "zone tiles overlap"
+            );
+            union.union_with(&zone.assigned_tiles);
+        }
+        assert_eq!(union.count_ones(), a.grid_size.tile_count());
+        let expected = tilemap_service::engine::placement::assign_zone_tiles(
+            &initial_grid_layout(&template),
+            grid,
+            TilemapSeed(100),
+        )
+        .unwrap();
+        for zone in &a.zones {
+            let fallback = expected.iter().find(|z| z.id == zone.zone_id).unwrap();
+            assert_eq!(zone.assigned_tiles, fallback.assigned_tiles);
+            if zone.zone_role != ZoneRole::Forbidden {
+                assert!(
+                    !zone.free_paths.is_empty(),
+                    "{} has no free path",
+                    zone.zone_id.0
+                );
+            }
+        }
+    }
+}

@@ -60,10 +60,11 @@ psql_db "$DB" -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF event
 # ── bracket: down → emit MUST fail fast + clean ──────────────────────────────
 log "DOWN pg_proxy; attempting emit through the (dead) proxy ..."
 $TOXIC down pg_proxy
-start="$(date +%s%3N)"
+# Some date implementations ignore the %3N width; convert full nanoseconds.
+start="$(date +%s%N)"
 rc=0
 out="$("$WG" -seed "$SEED" -profile "$PROFILE" -emit -dsn "$PROXY_DSN" 2>&1)" || rc=$?
-elapsed=$(( $(date +%s%3N) - start ))
+elapsed=$(( ( $(date +%s%N) - start ) / 1000000 ))
 
 # fault-real: emit SUCCEEDING while down = the fault didn't inject (the down
 # mis-fired / DSN bypassed the proxy) → NOTRUN, not a system fail.

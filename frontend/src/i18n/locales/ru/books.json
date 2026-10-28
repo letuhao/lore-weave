@@ -155,7 +155,7 @@
       "description": "\"{{title}}\" будет перемещена в корзину.",
       "confirm": "В корзину"
     },
-    "importEpub": "Import EPUB"
+    "importEpub": "Импорт EPUB"
   },
   "glossary": {
     "header": "Глоссарий и Лор",

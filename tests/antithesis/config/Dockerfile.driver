@@ -2,7 +2,7 @@
 # Builds the singleton test driver + the wg workload binary it shells.
 # For a real Antithesis run, build this THROUGH Antithesis's instrumentation
 # (their build wrapper adds the coverage/feedback hooks) — see ../README.md.
-FROM golang:1.25 AS build
+FROM golang:1.26.10 AS build
 WORKDIR /src
 COPY . .
 # wg (the workload binary the driver shells for emit/verify).

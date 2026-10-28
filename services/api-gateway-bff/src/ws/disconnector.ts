@@ -13,7 +13,7 @@
  * `contracts/ws/envelope.go::CloseCode`). The TS gateway accepts the raw
  * u16 because cycle 28 ws-server.ts already speaks them.
  */
-import type { WsV1Gateway } from './ws-server';
+import type { WsV1Gateway } from './ws-server.js';
 
 /** Canonical close codes — mirrors the Rust + Go enums for type safety. */
 export const FORCE_DISCONNECT_CODES = {

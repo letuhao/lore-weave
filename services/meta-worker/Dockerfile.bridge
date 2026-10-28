@@ -20,7 +20,7 @@
 # `replace` directives point at ../../contracts/* and ../../sdks/go/metapg and
 # must resolve inside the container.
 
-FROM golang:1.25-alpine AS build
+FROM golang:1.26.10-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git
 

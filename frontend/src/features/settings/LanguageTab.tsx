@@ -3,13 +3,19 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { syncPrefsToServer } from '@/lib/syncPrefs';
+import { LANGUAGE_REGISTRY } from '@/lib/languages';
 
-const GUI_LANGUAGES = [
-  { code: 'en', label: 'English', native: 'English' },
-  { code: 'vi', label: 'Vietnamese', native: 'Tiếng Việt' },
-  { code: 'ja', label: 'Japanese', native: '日本語' },
-  { code: 'zh-TW', label: 'Traditional Chinese', native: '繁體中文' },
-];
+/**
+ * The GUI-language picker lists EVERY registry UI locale, driven by the single
+ * LANGUAGE_REGISTRY (same source as the i18n loader and LanguageSelector).
+ * Was a stale hardcoded 4-language list missing ru/es/fr/de/… — a user whose
+ * device lost its localStorage could not even re-select their language here
+ * ("полностью пропала русская локализация", 2026-10-25).
+ */
+const GUI_LANGUAGES = LANGUAGE_REGISTRY.filter((l) => l.uiLocale).map((l) => ({
+  code: l.code,
+  native: l.endonym,
+}));
 
 export function LanguageTab() {
   const { t, i18n } = useTranslation('settings');

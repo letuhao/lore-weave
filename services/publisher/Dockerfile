@@ -38,7 +38,7 @@
 # inside the container:
 #   docker build -f services/publisher/Dockerfile -t loreweave/publisher .
 
-FROM golang:1.25-alpine AS build
+FROM golang:1.26.10-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git
 

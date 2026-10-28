@@ -1,5 +1,5 @@
 id: verification-meta-conformance
-description: "S4 (Q-L3-4) — every projection table carries the 5-col VerificationMeta block (event_id, aggregate_version, applied_at, last_verified_event_version, last_verified_at). Discovers the ACTUAL set carrying all 5 and asserts it equals the authoritative 11-table list, so a new/removed table or a lost column fails loud. Bundles --self-test (the comparison must detect a dropped table + must not over-match)."
+description: "S4 (Q-L3-4) — the current projection set carries the 5-col VerificationMeta block (event_id, aggregate_version, applied_at, last_verified_event_version, last_verified_at). Migrations 0017/0018 retired the producer-less projections, leaving canon_projection. Discover the ACTUAL set and compare it with that authoritative survivor; added/removed tables and missing columns fail. Bundles --self-test (the comparison detects a removed table and does not over-match events)."
 invariant: Q-L3-4
 kind: live-probe
 command: ["bash", "scripts/conformance/schema-conformance-smoke.sh", "--check", "verification-meta", "--self-test"]

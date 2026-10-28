@@ -2,9 +2,10 @@
 //
 // Speaking Colyseus's msgpack room protocol by hand in k6 is brittle (the seat
 // reservation + JOIN_REQUEST handshake), so per the spec's documented choice
-// (D-S7-WS-K6-PROTOCOL) the WS round-trip uses the REAL colyseus.js client,
-// which speaks the protocol correctly. This is closed-loop (sequential
-// round-trips → per-message latency), the tradeoff vs k6's open-loop HTTP — the
+// (D-S7-WS-K6-PROTOCOL) the WS round-trip uses the REAL @colyseus/sdk client,
+// matching the 0.17 game-server protocol. The retired colyseus.js 0.16 client
+// failed live with an undefined matchmake response (exit 3). This is closed-loop
+// (sequential round-trips → per-message latency), the tradeoff vs k6's open-loop HTTP — the
 // HTTP generators (http_livez/http_matchmake.js) carry the coordinated-omission-
 // correct throughput story; this carries the WS round-trip latency story.
 //
@@ -12,7 +13,7 @@
 // the static-token path, so joinOrCreate('echo', { jwt: 'dev_token' }) succeeds.
 //
 // NO threshold asserted (S7 §0) — writes a percentile summary artifact.
-import { Client } from 'colyseus.js';
+import { Client } from '@colyseus/sdk';
 import { writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 
@@ -70,7 +71,7 @@ async function main() {
   times.sort((a, b) => a - b);
   const summary = {
     metric: 'ws_echo_roundtrip',
-    model: 'closed-loop (colyseus.js client)',
+    model: 'closed-loop (@colyseus/sdk client)',
     count: N,
     unit: 'ms',
     p50: pct(times, 50),

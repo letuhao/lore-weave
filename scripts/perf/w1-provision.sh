@@ -45,7 +45,8 @@ setup() {
     -c "CREATE DATABASE ${META_DB}" >/dev/null
   local m
   for m in 001_reality_registry 004_lifecycle_transition_audit 013_meta_write_audit \
-           016_service_to_service_audit 027_meta_write_audit_scrub_version; do
+           016_service_to_service_audit 027_meta_write_audit_scrub_version \
+           036_reality_ownership 037_reality_owner_not_nil; do
     docker exec -i "$META_C" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$META_DB" \
       < "migrations/meta/${m}.up.sql" || notrun "meta migration ${m} failed"
   done

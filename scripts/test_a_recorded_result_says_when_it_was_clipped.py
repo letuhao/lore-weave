@@ -37,6 +37,18 @@ import sys
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
@@ -88,6 +100,7 @@ def test_a_legacy_record_that_is_merely_SHORT_still_parses():
     assert fr.parsed_result({"content": '{"a": ' + '"' + "z" * 3000 + '"}'}) is not None
 
 
+@_SKIP_NO_CORPUS
 def test_the_landmines_are_still_on_disk_and_the_reader_names_them():
     """ANTI-VACUITY against the real corpus. If the recorded population had no clipped results
     this file would be guarding nothing — and the reader must refuse them, not parse them."""

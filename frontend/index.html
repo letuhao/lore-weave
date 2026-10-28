@@ -4,11 +4,14 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <!-- PWA (M4): installable shell. iOS home-screen install needs these apple-* metas; a PNG
-         apple-touch-icon is a tracked follow-on (needs a rasterized asset). -->
+    <!-- PWA (M4): installable shell. The standard `mobile-web-app-capable` meta
+         covers Android/desktop installs; the apple-* metas remain for the iOS
+         home-screen install. A PNG apple-touch-icon is a tracked follow-on
+         (needs a rasterized asset). -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#141210" />
     <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="LoreWeave" />

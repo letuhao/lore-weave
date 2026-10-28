@@ -32,21 +32,21 @@ import {
   TicketError,
   InMemoryTicketStore,
   constantTimeBufferEquals,
-} from './ticket-store';
+} from './ticket-store.js';
 import {
   parseUpgradeRequest,
   UpgradeError,
-} from './upgrade-handler';
-import { WsMetrics, type EvictionReason, type HandshakeFailureReason } from './metrics';
-import { loadWsServerConfig, type WsServerConfig } from './config';
-import { routeInbound, ENVELOPE_VERSION, type Envelope } from './session-router';
+} from './upgrade-handler.js';
+import { WsMetrics, type EvictionReason, type HandshakeFailureReason } from './metrics.js';
+import { loadWsServerConfig, type WsServerConfig } from './config.js';
+import { routeInbound, ENVELOPE_VERSION, type Envelope } from './session-router.js';
 import {
   InMemoryAuthzProvider,
   PerMessageAuthz,
   type AuthzRequest,
   type SessionAuthzContext,
   type SessionAuthzProvider,
-} from './per-message-authz';
+} from './per-message-authz.js';
 
 export interface ActiveConnection {
   readonly connectionId: string;

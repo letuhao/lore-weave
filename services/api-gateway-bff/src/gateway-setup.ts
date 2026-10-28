@@ -3,8 +3,8 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import { json } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import type { Socket } from 'net';
-import { loadRateLimitConfig, makeRateLimitMiddleware } from './rate-limit/rate-limit';
-import { makeRateLimitRedisFromEnv } from './rate-limit/redis-client';
+import { loadRateLimitConfig, makeRateLimitMiddleware } from './rate-limit/rate-limit.js';
+import { makeRateLimitRedisFromEnv } from './rate-limit/redis-client.js';
 
 /**
  * CORS, /v1 proxy by domain, and GET /health.

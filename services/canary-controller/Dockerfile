@@ -22,7 +22,7 @@
 # image-build CI that does not exist yet.
 # Build with:  docker build -f services/canary-controller/Dockerfile <repo-root>
 
-FROM golang:1.25-alpine AS build
+FROM golang:1.26.10-alpine AS build
 WORKDIR /src
 
 # Both `replace` targets, before the service so service edits do not bust this layer.

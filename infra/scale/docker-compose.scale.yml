@@ -29,10 +29,10 @@
 # (the scripts drive this with -p scale; container names are fixed below.)
 
 x-shard-pg: &shard-pg
-  # Plain postgres:16 — the shard DBs only need events + outbox (migrations
-  # 0001/0002/0005); no pgvector extension is required for the write/drain path
-  # the packing sweep exercises, so the lighter official image is used.
-  image: postgres:16
+  # Live provision applies the complete per-reality manifest, including vector.
+  # pgvector's pg16 image keeps the same PostgreSQL 16 data-directory layout.
+  # Match the Debian release of postgres:16 to preserve existing collation indexes.
+  image: pgvector/pgvector:pg16-trixie
   environment:
     POSTGRES_USER: foundation
     POSTGRES_PASSWORD: foundation

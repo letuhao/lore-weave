@@ -6,7 +6,7 @@
  * Config-gated: built only when REDIS_URL is set. Unset → null → the limiter
  * runs in DISABLED (fail-open) mode (dev / single-node convenience).
  */
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 import type { RateLimitStore } from './rate-limiter.js';
 

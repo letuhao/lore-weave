@@ -1,9 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { WsAdapter } from '@nestjs/platform-ws';
-import * as request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { configureGatewayApp } from '../src/gateway-setup';
+import * as requestModule from 'supertest';
+// jest-ESM interop: the namespace of a CJS `export =` package comes back
+// empty (see the jwtModule note in src) — fall back to the default binding.
+const request = ((requestModule as { default?: unknown }).default ?? requestModule) as
+  typeof import('supertest');
+
+import { AppModule } from '../src/app.module.js';
+import { configureGatewayApp } from '../src/gateway-setup.js';
 
 describe('Gateway (e2e)', () => {
   let app: INestApplication;

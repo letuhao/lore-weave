@@ -180,6 +180,8 @@ async fn reset(meta_pool: &PgPool, reality_pool: &PgPool) -> Result<Uuid, String
             event_version int NOT NULL,
             payload jsonb NOT NULL,
             metadata jsonb,
+            content_sha256 text,
+            ruleset_digest text,
             occurred_at timestamptz NOT NULL,
             recorded_at timestamptz NOT NULL,
             PRIMARY KEY (reality_id, aggregate_type, aggregate_id, aggregate_version)

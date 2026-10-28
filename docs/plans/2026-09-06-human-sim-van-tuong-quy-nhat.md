@@ -2,6 +2,10 @@
 
 Created: 2026-09-06
 
+Reconciles: Any task, start to finish — an operational human-simulation run
+through the existing Writing Studio and PlanForge; it evaluates the current
+flow as evidence for the go/no-go decision and introduces no new standard.
+
 ## Original Request
 Play the human role against the running Writing Studio (via `/human-sim`), using PlanForge and
 the app's own AI to write a real 5-arc web novel from `D:\Stories\story-plan-v1.md` (currently

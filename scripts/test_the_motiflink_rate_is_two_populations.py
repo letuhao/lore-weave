@@ -37,6 +37,19 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import fe_runner as fr  # noqa: E402
@@ -80,11 +93,13 @@ def populations():
         for r in runs() if r.get("error"))
 
 
+@_SKIP_NO_CORPUS
 def test_the_sample_is_bigger_than_the_row_measured():
     rs = runs()
     assert len(rs) >= 90, f"{len(rs)} runs — the row measured 35"
 
 
+@_SKIP_NO_CORPUS
 def test_the_ERROR_COUNT_holds_and_has_stopped_GROWING():
     """The row's ~49% is not what is wrong with it — but the RATE is the wrong quantity to pin.
 
@@ -113,6 +128,7 @@ def test_the_ERROR_COUNT_holds_and_has_stopped_GROWING():
     assert len(rs) >= 105, f"{len(rs)} runs — fewer than the row measured"
 
 
+@_SKIP_NO_CORPUS
 def test_no_NEW_error_has_appeared_since_the_row_was_written():
     """🔴 THE FACT THE RATE BAND WAS HIDING, and it matters to the two questions that block this
     row. The error count is 58 at 105 runs and 58 at 170 — SIXTY-FIVE consecutive runs of this
@@ -131,6 +147,7 @@ def test_no_NEW_error_has_appeared_since_the_row_was_written():
         "this is the assertion that should be re-derived first, not adjusted.")
 
 
+@_SKIP_NO_CORPUS
 def test_it_is_TWO_populations_of_similar_size():
     """🔴 THE CORRECTION. If one bucket dominated, the thirteen refutations would have been
     tested against approximately one thing and the framing would stand."""
@@ -140,6 +157,7 @@ def test_it_is_TWO_populations_of_similar_size():
     assert 0.5 < a / b < 2.0, f"no longer two comparable populations: {dict(p)}"
 
 
+@_SKIP_NO_CORPUS
 def test_the_two_halves_are_DIFFERENT_shapes():
     """They are not the same failure wearing two error strings: one has tool calls and one has
     none, by construction. That is why a cause can explain one and not the other."""

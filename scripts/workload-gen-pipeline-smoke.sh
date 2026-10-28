@@ -52,9 +52,13 @@ psql_db foundation -c "DROP DATABASE IF EXISTS ${SMOKE_DB}" >/dev/null
 psql_db foundation -c "CREATE DATABASE ${SMOKE_DB}" >/dev/null
 
 log "applying per-reality migrations ..."
-for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256 0006_projections 0008_pgvector_setup 0009_canon_projection; do
-  f="contracts/migrations/per_reality/${m}.up.sql"
-  log "  $m"
+# ALL per-reality migrations, not a hand-picked subset: the 0017/0018
+# retirements dropped the pc/npc/region/session/world_kv projections, so the
+# old 7-file list both missed 0016's ruleset_digest (the wg's INSERT
+# dependencies) and rebuilt into tables that no longer exist. Applying the
+# whole directory IS the real current schema — same pattern schema-conf uses.
+for f in contracts/migrations/per_reality/*.up.sql; do
+  log "  $(basename "$f")"
   docker exec -i "$PG_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$SMOKE_DB" < "$f"
 done
 
@@ -89,38 +93,28 @@ REBUILDER="target/debug/rebuilder.exe"
 [ -x "$REBUILDER" ] || REBUILDER="target/debug/rebuilder"
 [ -x "$REBUILDER" ] || { log "FAIL: rebuilder binary not found (cargo build -p world-service --bin rebuilder)"; exit 2; }
 
-# Tables the single-reality / multi-* profiles populate (skip embedding +
-# relationship tables — no events emitted for those yet).
-TABLES="region_projection npc_projection npc_session_memory_projection pc_projection pc_inventory_projection session_participants world_kv_projection canon_projection"
-# All tables now rebuild clean. npc_session_memory_projection was a MULTI-AGGREGATE
-# table that failed under the per-aggregate rebuilder (the npc.said increment
-# couldn't find the session-created row); D-REBUILDER-MULTI-AGG fixed it via the
-# global-order replay path (rebuild::global), so no table is soft-failed anymore.
-SOFT_FAIL_TABLES=""
+# Tables the current schema populates. 0017/0018 dropped every projection
+# except canon_projection ("canon is the only projection with a producer" —
+# world-service rebuild::all_projections, whose test pins len==1), so the old
+# 8-table list rebuilt into tables that no longer exist.
+TABLES="canon_projection"
 export REALITY_DB_URL="$REALITY_DSN" # export (Linux); on Windows Git Bash a .exe may not inherit — run on Linux CI
 TOTAL=0
 for t in $TABLES; do
   log "rebuilding $t ..."
   rc=0
   out=$("$REBUILDER" --reality-id "$REALITY_ID" --projection "$t") || rc=$?
-  is_soft=false
-  printf '%s' "$SOFT_FAIL_TABLES" | grep -qw "$t" && is_soft=true
   failed=$(printf '%s' "$out" | grep -o '"aggregates_failed":[0-9]*' | grep -o '[0-9]*' || true)
 
-  # No stats JSON = a crash / invocation error (NOT a clean rebuild). Don't let
-  # it pass silently just because other tables populate.
+  # No stats JSON = a crash / invocation error (NOT a clean rebuild).
   if [ -z "$failed" ]; then
-    if [ "$is_soft" = true ]; then
-      log "  $t: no stats (rc=$rc) — soft table, tolerated"
-      continue
-    fi
     log "FAIL: $t rebuild produced no stats (rc=$rc): ${out:-<no output>}"
     exit 1
   fi
 
   n=$(psql_db "$SMOKE_DB" -tA -c "SELECT count(*) FROM ${t}")
   log "  $t rows=$n failed=$failed"
-  if [ "$failed" -gt 0 ] && [ "$is_soft" != true ]; then
+  if [ "$failed" -gt 0 ]; then
     log "FAIL: $t had ${failed} failed aggregate(s) on rebuild"
     exit 1
   fi

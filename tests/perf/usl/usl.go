@@ -14,6 +14,7 @@
 package usl
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 
@@ -32,6 +33,8 @@ type Sample struct {
 }
 
 // Fit is the fitted USL model plus its derived saturation point.
+// JSON encodes non-finite Nmax/Xmax as null (no finite coherency knee), not as
+// a fabricated finite peak. The in-memory +Inf sentinels remain unchanged.
 type Fit struct {
 	Gamma float64 `json:"gamma"` // γ — ideal per-unit throughput (X at N=1)
 	Alpha float64 `json:"alpha"` // α — contention / serialization
@@ -43,6 +46,29 @@ type Fit struct {
 	// (linear or super-contention). Nmax is then +Inf rather than a silent NaN
 	// from √ of a negative (S7 review MED-4).
 	Degenerate bool `json:"degenerate"`
+}
+
+// MarshalJSON preserves finite model values while representing non-finite peak
+// fields as explicit nulls. Degenerate retains its existing no-coherency-knee
+// meaning; a null peak is not a claim that throughput grows without bound.
+// Non-finite coefficients or R2 still fail JSON encoding rather than being hidden.
+func (f Fit) MarshalJSON() ([]byte, error) {
+	type plainFit Fit // Avoid recursively invoking MarshalJSON.
+	finitePeak := func(x float64) *float64 {
+		if !isFinite(x) {
+			return nil
+		}
+		return &x
+	}
+	return json.Marshal(struct {
+		plainFit
+		Nmax *float64 `json:"nmax"`
+		Xmax *float64 `json:"xmax"`
+	}{
+		plainFit: plainFit(f),
+		Nmax:     finitePeak(f.Nmax),
+		Xmax:     finitePeak(f.Xmax),
+	})
 }
 
 // Predict returns the fitted throughput at concurrency n.

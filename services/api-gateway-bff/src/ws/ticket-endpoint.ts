@@ -36,7 +36,14 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import * as jwt from 'jsonwebtoken';
+import * as jwtModule from 'jsonwebtoken';
+// CRITICAL interop fix (2026-10-24): under node's ESM the namespace import of
+// this CJS `export =` package has NO named members (the lexer cannot see
+// through `module.exports = { decode: require('./decode'), ... }`), so
+// `jwt.verify` would be undefined at runtime. The default binding IS
+// module.exports in both node and jest — resolve to it explicitly.
+const jwt = ((jwtModule as { default?: unknown }).default ?? jwtModule) as typeof import('jsonwebtoken');
+
 
 import {
   hashOrigin,
@@ -44,8 +51,8 @@ import {
   makeTicket,
   type TicketStore,
   InMemoryTicketStore,
-} from './ticket-store';
-import { ipToPrivacyPrefix } from './upgrade-handler';
+} from './ticket-store.js';
+import { ipToPrivacyPrefix } from './upgrade-handler.js';
 
 export interface TicketIssueRequestBody {
   /**

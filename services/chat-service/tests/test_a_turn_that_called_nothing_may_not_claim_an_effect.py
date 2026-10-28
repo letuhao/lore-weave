@@ -170,7 +170,14 @@ class TestAcknowledgingIsNotActing:
             "I have updated the note you asked about.", attempted=set())
 
 
-@pytest.mark.skipif(not CORPUS.exists(), reason="recorded corpus not present")
+# The raw toolloop dumps were untracked (8e60cf9a4); the directory survives
+# with only curated .md files, so the guard checks the DATA — a directory
+# check passes while rglob finds nothing and the suite reports a "truncated"
+# corpus instead of the honest skip.
+_CORPUS_HAS_RUNS = any(CORPUS.rglob("*.json"))
+
+
+@pytest.mark.skipif(not _CORPUS_HAS_RUNS, reason="recorded corpus not present")
 class TestTheCalibrationStillHolds:
     """Re-score the SHIPPED detector against the real corpus, so the numbers written into the
     source comment cannot quietly stop being true."""

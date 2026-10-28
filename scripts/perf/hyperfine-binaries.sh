@@ -43,7 +43,7 @@ PG_PORT="${FOUNDATION_PG_PORT:-55432}"
 PROFILE="${PROFILE:-single-reality}"
 SEED_BASE="${SEED_BASE:-1000}"
 SWEEP="${CONCURRENCY_SWEEP:-1 2 4 8 16}"   # ≥4 distinct points for the fit
-REBUILD_PROJECTION="${REBUILD_PROJECTION:-pc_projection}"
+REBUILD_PROJECTION="${REBUILD_PROJECTION:-canon_projection}"
 REBUILD_SEED_VOL="${REBUILD_SEED_VOL:-200}" # seeds emitted to build rebuild volume
 RESULTS="tests/conformance/results"
 EMIT_DB="perf_emit_shard"; REBUILD_DB="perf_rebuild_shard"; META_DB="perf_meta"
@@ -72,8 +72,8 @@ HF_MEAN='import json,sys;print(json.load(open(sys.argv[1]))["results"][0]["mean"
 migrate_shard() { # $1=db
   psql_db foundation -c "DROP DATABASE IF EXISTS $1" >/dev/null
   psql_db foundation -c "CREATE DATABASE $1" >/dev/null
-  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do
-    docker exec -i "$PG_CONTAINER" psql -q -U "$PG_USER" -d "$1" < "contracts/migrations/per_reality/${m}.up.sql"
+  for m in 0001_initial 0002_events_table 0005_events_outbox_table 0009_canon_projection 0013_events_content_sha256 0014_channel_ordering 0016_events_ruleset_digest; do
+    docker exec -i "$PG_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$1" < "contracts/migrations/per_reality/${m}.up.sql"
   done
   psql_db "$1" -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT" >/dev/null
 }
@@ -111,9 +111,11 @@ migrate_shard "$REBUILD_DB"
 for s in $(seq 1 "$REBUILD_SEED_VOL"); do
   "$WG" -seed "$((SEED_BASE + 10000 + s))" -profile "$PROFILE" -emit -dsn "$REBUILD_DSN" >/dev/null 2>&1 || true
 done
-NEVENTS="$(psql_db "$REBUILD_DB" -tA -c 'SELECT count(*) FROM events')"
-RID="$(psql_db "$REBUILD_DB" -tA -c 'SELECT DISTINCT reality_id FROM events LIMIT 1')"
-[ "${NEVENTS:-0}" -gt 0 ] && [ -n "$RID" ] || notrun "rebuild shard empty — cannot measure"
+RID="$(psql_db "$REBUILD_DB" -tA -c 'SELECT DISTINCT reality_id FROM events ORDER BY reality_id LIMIT 1')"
+[ -n "$RID" ] || notrun "rebuild shard empty — cannot measure"
+# --reality-id selects one reality, not the whole multi-reality seed volume.
+NEVENTS="$(psql_db "$REBUILD_DB" -tA -c "SELECT count(*) FROM events WHERE reality_id='${RID}'::uuid")"
+[ "${NEVENTS:-0}" -gt 0 ] || notrun "selected rebuild reality has no events — cannot measure"
 log "rebuild volume = $NEVENTS events, reality=$RID, projection=$REBUILD_PROJECTION"
 
 REBUILD_CSV="$(mktemp)"; echo "n,throughput" >"$REBUILD_CSV"

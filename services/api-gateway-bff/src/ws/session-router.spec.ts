@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 /**
  * L6.A.3 — Session router tests (RAID cycle 28).
  *
@@ -6,8 +7,8 @@
  * L6.C re-auth applies to data only).
  */
 
-import { routeInbound, validateEnvelope, ENVELOPE_VERSION } from './session-router';
-import { WsMetrics } from './metrics';
+import { routeInbound, validateEnvelope, ENVELOPE_VERSION } from './session-router.js';
+import { WsMetrics } from './metrics.js';
 
 function dataEnv(extra: Record<string, unknown> = {}) {
   return {

@@ -59,9 +59,14 @@ services:
       - lw-meta
 
   minio:
-    image: minio/minio:RELEASE.2024-08-17T01-24-54Z
+    # Bitnami legacy mirror — minio/minio left Docker Hub (see the full story
+    # on the main stack's minio service). 2024.8.17 is the bitnami build of
+    # the same upstream release this file pinned. Same two invocation deltas:
+    # run as root, and the command names the binary.
+    image: bitnamilegacy/minio:2024.8.17-debian-12-r0
     container_name: lw-meta-minio
-    command: server /data --console-address ":9001"
+    user: root
+    command: minio server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
@@ -71,7 +76,10 @@ services:
     tmpfs:
       - /data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # The bitnami image ships no curl. bash's /dev/tcp is a TCP-connect
+      # probe rather than an HTTP one — weaker, but it still fires only once
+      # the server accepts connections on :9000.
+      test: ["CMD", "bash", "-c", "</dev/tcp/localhost/9000"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -79,7 +87,11 @@ services:
       - lw-meta
 
   minio-bootstrap:
-    image: minio/mc:RELEASE.2024-08-17T11-33-50Z
+    # Bitnami legacy mirror of mc (minio/mc is gone from Docker Hub with the
+    # rest of the minio org); 2024.8.17 bundles the same upstream client
+    # release (2024-08-17T11-33-50Z) this file pinned before. `mc` resolves
+    # on the image PATH, so the entrypoint below is unchanged.
+    image: bitnamilegacy/minio-client:2024.8.17-debian-12-r0
     container_name: lw-meta-minio-bootstrap
     depends_on:
       minio:

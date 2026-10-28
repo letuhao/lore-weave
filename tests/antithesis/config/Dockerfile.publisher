@@ -3,7 +3,7 @@
 # pattern as Dockerfile.driver/.init — keeps all build defs in config/ (no edit
 # to services/). For a real Antithesis run, build THROUGH their instrumentation
 # wrapper (adds coverage/feedback hooks) — see ../README.md.
-FROM golang:1.25 AS build
+FROM golang:1.26.10 AS build
 WORKDIR /src
 COPY . .
 RUN go build -C services/publisher -o /out/pub ./cmd/publisher

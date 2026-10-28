@@ -88,11 +88,11 @@ outbox_pending() { psql_db "$SHARD_DB" -tA -c "SELECT count(*) FROM events_outbo
 # publisher's shard-read path concurrently with the redis partition.
 rtt_pg_proxy_ms() {
   local start end
-  start="$(date +%s%3N)"
+  start="$(date +%s%N)"
   docker exec -e PGPASSWORD="$PG_PASS" "$PG_CONTAINER" \
     psql -h "$TOXI_CONTAINER" -p "$PG_PROXY_PORT" -U "$PG_USER" -d foundation -tAc "SELECT 1" >/dev/null 2>&1 || true
-  end="$(date +%s%3N)"
-  echo $((end - start))
+  end="$(date +%s%N)"
+  echo $(( (end - start) / 1000000 ))
 }
 
 # ── boot stack + proxies ─────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ log "(re)creating meta + shard DBs; seeding ${PROFILE} ..."
 psql_db foundation -c "DROP DATABASE IF EXISTS ${META_DB}" >/dev/null; psql_db foundation -c "CREATE DATABASE ${META_DB}" >/dev/null
 for m in 001_reality_registry 003_publisher_heartbeats; do docker exec -i "$PG_CONTAINER" psql -q -U "$PG_USER" -d "$META_DB" < "migrations/meta/${m}.up.sql"; done
 psql_db foundation -c "DROP DATABASE IF EXISTS ${SHARD_DB}" >/dev/null; psql_db foundation -c "CREATE DATABASE ${SHARD_DB}" >/dev/null
-for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256; do docker exec -i "$PG_CONTAINER" psql -q -U "$PG_USER" -d "$SHARD_DB" < "contracts/migrations/per_reality/${m}.up.sql"; done
+for m in 0001_initial 0002_events_table 0005_events_outbox_table 0013_events_content_sha256 0014_channel_ordering 0016_events_ruleset_digest; do docker exec -i "$PG_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$SHARD_DB" < "contracts/migrations/per_reality/${m}.up.sql"; done
 psql_db "$SHARD_DB" -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT" >/dev/null
 
 : >/tmp/wholestack_pub.log

@@ -8,9 +8,9 @@
  * Config-gated: the client is constructed only when LW_WS_REDIS_URL is set, so
  * dev/test runs (no URL) keep the in-memory store and never require Redis.
  */
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
-import type { RedisLike } from './redis-ticket-store';
+import type { RedisLike } from './redis-ticket-store.js';
 
 /**
  * Build a RedisLike from LW_WS_REDIS_URL, or null when unset (→ caller falls

@@ -35,6 +35,19 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+import pytest  # noqa: E402
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 import selection_rate as sr  # noqa: E402
@@ -83,6 +96,7 @@ class TestRunsDoNotFallOutOfEVERYDenominator:
             f"was fixed. A scenario id has been retired without its history being kept, and every "
             f"rate it fed is now measuring a different population: {orphans}")
 
+    @_SKIP_NO_CORPUS
     def test_the_orphan_report_actually_looks_at_the_corpus(self):
         """ANTI-VACUITY. `unmapped_runs` returning {} because it read nothing would pass the guard
         above forever, and this loop has drawn a conclusion from a silently-empty capture before."""
@@ -92,6 +106,7 @@ class TestRunsDoNotFallOutOfEVERYDenominator:
 
 
 class TestTheBarStillClassifiesTheSameTools:
+    @_SKIP_NO_CORPUS
     def test_restoring_the_history_did_not_move_a_tool_across_the_bar(self):
         """The fix RESTORES a population, so it changes rates. What must NOT change is which side
         of the verdict bar a tool lands on — that is what the rename defect did.

@@ -75,8 +75,8 @@
     },
     "scope": {
       "system": "системная",
-      "user": "User",
-      "project": "Project"
+      "user": "Пользователь",
+      "project": "Проект"
     },
     "nodeType": {
       "edge_type": "тип связи",

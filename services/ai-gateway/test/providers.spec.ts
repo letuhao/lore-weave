@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { parseProviders, DEFAULT_PREFIX_MAP } from '../src/config/config.js';
 
 describe('parseProviders (C-GW env-driven registry)', () => {

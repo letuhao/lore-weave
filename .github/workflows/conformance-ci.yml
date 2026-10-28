@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: runner unit tests
         run: go test ./...
       - name: run conformance suite
@@ -104,7 +104,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       # The gate smoke discovers binaries at target/debug/{rebuilder,replay-aggregate}
       # and {tests/workload-gen/wg, services/integrity-checker/ic} (no .exe on Linux).
       # The S6 fault drills additionally need the publisher (services/publisher/pub).
@@ -152,7 +152,7 @@ jobs:
           fetch-depth: 0 # need the base ref for the same-runner A/B
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: install benchstat
         # 🔴 PINNED, because `@latest` broke this job the day upstream raised its floor:
         #
@@ -160,7 +160,7 @@ jobs:
         #   requires go >= 1.26.0 (running go 1.25.14; GOTOOLCHAIN=local)
         #
         # Nothing in this repo changed. `@latest` is a moving target and this job deliberately
-        # pins `go-version: "1.25"` with `GOTOOLCHAIN: local` for reproducible numbers — the
+        # pins `go-version: "1.26.10"` with `GOTOOLCHAIN: local` for reproducible numbers — the
         # two cannot both float. The tool is a statistics formatter for `go test -bench`
         # output; its CLI has been stable for years, and the gate's own `--bite` leg proves it
         # still discriminates.
@@ -250,13 +250,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
       - uses: grafana/setup-k6-action@v1
       - name: install hyperfine
-        run: cargo install hyperfine --locked
+        # The repo toolchain is Rust 1.89; hyperfine 2.0 requires Rust 1.97.
+        run: cargo install hyperfine --version 1.20.0 --locked
       - name: build spine binaries (no .exe on Linux)
         run: |
           cargo build -p world-service --bin rebuilder --bin replay-aggregate
@@ -340,7 +341,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: build binaries (no .exe on Linux)
         run: |
           cargo build -p world-service --bin rebuilder --bin replay-aggregate
@@ -436,7 +437,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: build wg + publisher (no .exe on Linux)
         run: |
           go build -C tests/workload-gen -o wg ./cmd/workload-gen
@@ -465,7 +466,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: build + vet the antithesis driver
         working-directory: tests/antithesis/driver
         run: |
@@ -482,7 +483,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       - name: build + vet the S12 scale tooling
         run: |
           go build -C services/meta-worker ./cmd/metaworker-bench
@@ -619,7 +620,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.10"
       # W1 drills self-build their Go + Rust bins; the Rust toolchain is needed
       # for capacity-place / freeze-drill / provision-drill.
       - uses: dtolnay/rust-toolchain@stable
@@ -747,7 +748,7 @@ jobs:
       #    w3-checksum ride the booted scale rig shard-0 (no pgvector needed).
       #    w3-generator self-brings-up the foundation-dev PG (pgvector) + builds
       #    the Rust rebuilder. Each embeds its bite(s).
-      - name: W3.1 generator arms (npc rel/memory + persistent kv) + bite
+      - name: W3.1 current canon generator path + bite
         run: |
           set +e; bash scripts/perf/w3-generator.sh; rc=$?; set -e
           echo "w3-generator rc=$rc (0=pass,2=notrun)"; [ "$rc" = 1 ] && exit 1 || exit 0
@@ -769,7 +770,7 @@ jobs:
           PG=scale-pg-shard-0
           docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d foundation -c "DROP DATABASE IF EXISTS dp_kernel_test WITH (FORCE)"
           docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d foundation -c "CREATE DATABASE dp_kernel_test"
-          for m in 0001_initial 0002_events_table 0004_aggregate_snapshots_table 0013_events_content_sha256; do
+          for m in 0001_initial 0002_events_table 0004_aggregate_snapshots_table 0013_events_content_sha256 0014_channel_ordering 0016_events_ruleset_digest; do
             docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d dp_kernel_test < contracts/migrations/per_reality/${m}.up.sql
           done
           docker exec -i $PG psql -q -v ON_ERROR_STOP=1 -U foundation -d dp_kernel_test -c "CREATE TABLE IF NOT EXISTS events_p_default PARTITION OF events DEFAULT"

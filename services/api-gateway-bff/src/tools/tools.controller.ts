@@ -13,7 +13,14 @@
 
 import { Body, Controller, Headers, HttpException, Logger, Post } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import * as jwt from 'jsonwebtoken';
+import * as jwtModule from 'jsonwebtoken';
+// CRITICAL interop fix (2026-10-24): under node's ESM the namespace import of
+// this CJS `export =` package has NO named members (the lexer cannot see
+// through `module.exports = { decode: require('./decode'), ... }`), so
+// `jwt.verify` would be undefined at runtime. The default binding IS
+// module.exports in both node and jest — resolve to it explicitly.
+const jwt = ((jwtModule as { default?: unknown }).default ?? jwtModule) as typeof import('jsonwebtoken');
+
 
 /**
  * Tools the FE may invoke through the bridge. Propose tools MINT a confirm token

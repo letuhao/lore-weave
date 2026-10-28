@@ -52,7 +52,12 @@ CREATE TABLE events (
     metadata          jsonb,
     occurred_at       timestamptz NOT NULL,
     recorded_at       timestamptz NOT NULL,
-    content_sha256    text NOT NULL
+    content_sha256    text NOT NULL,
+    -- Migration 0016 (RLS-A13): the real append_events stamps this column, so
+    -- the minimal harness DDL must carry it or every INSERT fails with
+    -- 'column "ruleset_digest" does not exist'. Nullable: this harness writes
+    -- non-ruleset-pinned events (NULL = no pin, a true statement).
+    ruleset_digest    char(64)
 )
 "#;
 

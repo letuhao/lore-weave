@@ -3,8 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "S7 F4 — WS echo round-trip driver. Isolated from game-server so the perf colyseus.js client dep does not touch the service. Run via scripts/perf/k6-game-server.sh.",
+  "description": "S7 F4 — WS echo round-trip driver. Isolated from game-server; uses the matching Colyseus 0.17 SDK. Run via scripts/perf/k6-game-server.sh.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test:live": "node --test ws_echo.live.test.mjs"
+  },
   "dependencies": {
-    "colyseus.js": "^0.16.0"
+    "@colyseus/sdk": "^0.17.43"
   }
 }

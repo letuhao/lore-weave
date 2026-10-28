@@ -63,16 +63,35 @@ import { YouPage } from '@/features/home/components/YouPage';
 import { UpdatePrompt } from '@/pwa/UpdatePrompt';
 import { MobileNav } from '@/app/shell/MobileNav';
 import { GlobalOperationProgress } from '@/components/shared/GlobalOperationProgress';
+import { useEffect } from 'react';
+import { applyAccountLanguage } from '@/lib/uiLanguage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
   return <ThemeProvider accessToken={accessToken}>{children}</ThemeProvider>;
 }
 
+/**
+ * Restores the account's UI language at bootstrap (ui_language in
+ * /v1/me/preferences). The device copy — i18next's localStorage cache — dies
+ * with a cleared browser, a new device, or an app re-install; without this the
+ * whole localization silently fell back to English ("полностью пропала русская
+ * локализация", 2026-10-25). Written on every change by LanguageSelector and
+ * the settings LanguageTab.
+ */
+function UiLanguageSync() {
+  const { accessToken } = useAuth();
+  useEffect(() => {
+    void applyAccountLanguage(accessToken);
+  }, [accessToken]);
+  return null;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
     <AuthProvider>
+    <UiLanguageSync />
     <AuthenticatedThemeProvider>
     <SidebarProvider>
       <BrowserRouter>

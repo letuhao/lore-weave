@@ -42,6 +42,18 @@ import sys
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+# The raw toolloop dumps were untracked (8e60cf9a4, 223M -> 972K); the curated
+# .md files remain, so the DIRECTORY exists while the data does not. Guards on
+# corpus-derived measurements check the DATA, never the directory.
+
+_TOOLLOOP = ROOT / "docs" / "eval" / "toolloop"
+_CORPUS_ABSENT = not any(_TOOLLOOP.rglob("*.json"))
+_SKIP_NO_CORPUS = pytest.mark.skipif(
+    _CORPUS_ABSENT,
+    reason="raw toolloop corpus untracked (8e60cf9a4); this measurement has no subject without it",
+)
+
 sys.path.insert(0, str(ROOT / "services" / "chat-service"))
 
 BASELINE = ROOT / "contracts" / "unreachable-measured-turns-baseline.json"
@@ -204,6 +216,7 @@ def _baseline() -> dict:
     return json.loads(BASELINE.read_text(encoding="utf-8"))["unreachable"]
 
 
+@_SKIP_NO_CORPUS
 def test_no_new_measured_turn_fails_to_reach_its_own_tool():
     now = unreachable()
     new = {k: v for k, v in now.items() if k not in _baseline()}
@@ -216,6 +229,7 @@ def test_no_new_measured_turn_fails_to_reach_its_own_tool():
     )
 
 
+@_SKIP_NO_CORPUS
 def test_a_tool_that_became_reachable_leaves_the_baseline():
     """A baseline that only ever grows stops meaning anything."""
     now = unreachable()
@@ -376,6 +390,7 @@ def test_a_BY_DESIGN_turn_has_not_started_reaching_its_tool():
         "declared confirmation vocabulary: " + ", ".join(regressed))
 
 
+@_SKIP_NO_CORPUS
 def test_every_OVERRIDE_is_backed_by_a_run_that_called_the_tool():
     """🔴 THE ESCAPE HATCH, HELD SHUT. An override says "the gate is wrong here", which is exactly
     the sentence someone reaches for when the gate is right and inconvenient. So it is not taken on

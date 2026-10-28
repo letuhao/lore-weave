@@ -40,7 +40,12 @@ log()    { printf '[w4-recall] %s\n' "$*"; }
 notrun() { log "NOTRUN(setup): $*"; exit 2; }
 fail()   { log "FAIL: $*"; exit 1; }
 require() {
-  docker compose -f "$COMPOSE" up -d postgres-foundation >/dev/null 2>&1 || notrun "could not start foundation-dev postgres"
+  # Reuse the running test rig; compose may recreate it while sibling drills run.
+  if docker inspect -f '{{.State.Running}}' "$SHARD_C" 2>/dev/null | grep -q true; then
+    docker exec "$SHARD_C" pg_isready -U "$PG_USER" >/dev/null 2>&1 && return 0
+  else
+    docker compose -f "$COMPOSE" up -d postgres-foundation >/dev/null 2>&1 || notrun "could not start foundation-dev postgres"
+  fi
   local i
   for i in $(seq 1 30); do
     docker exec "$SHARD_C" pg_isready -U "$PG_USER" >/dev/null 2>&1 && return 0
