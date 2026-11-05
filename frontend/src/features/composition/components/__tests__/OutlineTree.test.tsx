@@ -60,16 +60,16 @@ beforeEach(() => {
 
 describe('flattenOutline (T1.1a)', () => {
   it('builds a depth-annotated pre-order tree ordered by story_order', () => {
+    // Chapters are root-level (#263 — outline nodes are chapter/scene only).
     const nodes = [
-      node({ id: 'arc', kind: 'arc', parent_id: null, story_order: 0 }),
-      node({ id: 'ch1', kind: 'chapter', parent_id: 'arc', story_order: 0 }),
+      node({ id: 'ch1', kind: 'chapter', parent_id: null, story_order: 0 }),
       node({ id: 's2', kind: 'scene', parent_id: 'ch1', story_order: 1, title: 'S2' }),
       node({ id: 's1', kind: 'scene', parent_id: 'ch1', story_order: 0, title: 'S1' }),
     ];
     const rows = flattenOutline(nodes, new Set());
-    expect(rows.map((r) => r.node.id)).toEqual(['arc', 'ch1', 's1', 's2']); // s1 before s2 by story_order
-    expect(rows.map((r) => r.depth)).toEqual([0, 1, 2, 2]);
-    expect(rows.find((r) => r.node.id === 'arc')!.hasChildren).toBe(true);
+    expect(rows.map((r) => r.node.id)).toEqual(['ch1', 's1', 's2']); // s1 before s2 by story_order
+    expect(rows.map((r) => r.depth)).toEqual([0, 1, 1]);
+    expect(rows.find((r) => r.node.id === 'ch1')!.hasChildren).toBe(true);
     expect(rows.find((r) => r.node.id === 's1')!.hasChildren).toBe(false);
   });
 
@@ -83,15 +83,14 @@ describe('flattenOutline (T1.1a)', () => {
 
   it('orders siblings without story_order by rank (chapters), nulls last (REVIEW-IMPL MED-3)', () => {
     const nodes = [
-      node({ id: 'arc', kind: 'arc', parent_id: null, story_order: null, rank: 'a' }),
-      node({ id: 'chB', kind: 'chapter', parent_id: 'arc', story_order: null, rank: 'b' }),
-      node({ id: 'chA', kind: 'chapter', parent_id: 'arc', story_order: null, rank: 'a' }),
+      node({ id: 'chB', kind: 'chapter', parent_id: null, story_order: null, rank: 'b' }),
+      node({ id: 'chA', kind: 'chapter', parent_id: null, story_order: null, rank: 'a' }),
       // a legacy scene with a story_order sorts before its null-story_order sibling
       node({ id: 'sNull', kind: 'scene', parent_id: 'chA', story_order: null, rank: 'a' }),
       node({ id: 'sOrd', kind: 'scene', parent_id: 'chA', story_order: 5, rank: 'z' }),
     ];
     const rows = flattenOutline(nodes, new Set());
-    expect(rows.map((r) => r.node.id)).toEqual(['arc', 'chA', 'sOrd', 'sNull', 'chB']);
+    expect(rows.map((r) => r.node.id)).toEqual(['chA', 'sOrd', 'sNull', 'chB']);
   });
 
   it('renders a duplicate id only once (defensive seen-guard)', () => {
@@ -182,17 +181,19 @@ describe('OutlineTree node CRUD (T1.1b)', () => {
     );
   });
 
-  it('add-child on a scene creates a beat (no chapter_id) and is absent on arcs', () => {
+  it('add-child on a chapter creates a scene; a scene has no add-child (#272)', () => {
     mountWith([
-      node({ id: 'arc', kind: 'arc', parent_id: null, story_order: 0 }),
-      node({ id: 's1', kind: 'scene', parent_id: 'arc', chapter_id: 'C1', story_order: 0 }),
+      node({ id: 'ch1', kind: 'chapter', parent_id: null, chapter_id: 'C1', story_order: 0 }),
+      node({ id: 's1', kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', story_order: 0 }),
     ]);
     render(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
-    // arc row has no add-child affordance; only the scene does
+    // Only the chapter row offers add-child. The old scene→beat affordance rendered a
+    // ＋ button whose POST always died on outline_node_kind_check — beats are not a
+    // storable kind (#272), so the scene row must not offer one.
     expect(screen.getAllByTestId('outline-action-addchild')).toHaveLength(1);
     fireEvent.click(screen.getByTestId('outline-action-addchild'));
     expect(mutations.addChild.mutate).toHaveBeenCalledWith(
-      { kind: 'beat', parent_id: 's1', chapter_id: null, title: '' },
+      { kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', title: '' },
       expect.objectContaining({ onError: expect.any(Function) }),
     );
   });
@@ -258,7 +259,7 @@ describe('OutlineTree node CRUD (T1.1b)', () => {
       node({ id: 's1', kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', story_order: 0 }),
     ]);
     render(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
-    fireEvent.click(screen.getAllByTestId('outline-action-addchild')[0]); // chapter → add scene (scene also has add-beat)
+    fireEvent.click(screen.getAllByTestId('outline-action-addchild')[0]); // chapter → add scene (a scene offers no add-child)
     const { onSuccess } = mutations.addChild.mutate.mock.calls[0][1];
     expect(screen.queryByTestId('outline-rename-input')).not.toBeInTheDocument();
     act(() => onSuccess(node({ id: 's1' }))); // BE returns the created node → opens it for rename
@@ -293,14 +294,14 @@ describe('OutlineTree archived view + restore (T1.1b / L-1)', () => {
 });
 
 describe('computeReorder (T1.1c projection)', () => {
-  // a fixed-depth tree: arc1 > {ch1 > [s1,s2,s3], ch2 > [s4]}
+  // a fixed-depth tree: {ch1 > [s1,s2,s3], ch2 > [s4]} — chapters are ROOT-level
+  // (#263: outline nodes are chapter/scene only; the lifted arcs are structure_nodes).
   const rows = [
-    { node: node({ id: 'arc1', kind: 'arc', parent_id: null }) },
-    { node: node({ id: 'ch1', kind: 'chapter', parent_id: 'arc1' }) },
+    { node: node({ id: 'ch1', kind: 'chapter', parent_id: null }) },
     { node: node({ id: 's1', kind: 'scene', parent_id: 'ch1' }) },
     { node: node({ id: 's2', kind: 'scene', parent_id: 'ch1' }) },
     { node: node({ id: 's3', kind: 'scene', parent_id: 'ch1' }) },
-    { node: node({ id: 'ch2', kind: 'chapter', parent_id: 'arc1' }) },
+    { node: node({ id: 'ch2', kind: 'chapter', parent_id: null }) },
     { node: node({ id: 's4', kind: 'scene', parent_id: 'ch2' }) },
   ];
 
@@ -317,8 +318,8 @@ describe('computeReorder (T1.1c projection)', () => {
     expect(computeReorder(rows, 's4', 's1')).toEqual({ nodeId: 's4', new_parent_id: 'ch1', after_id: null });
   });
 
-  it('reorders a chapter within its arc (drop ch2 onto ch1 → first chapter)', () => {
-    expect(computeReorder(rows, 'ch2', 'ch1')).toEqual({ nodeId: 'ch2', new_parent_id: 'arc1', after_id: null });
+  it('reorders a chapter at root level (drop ch2 onto ch1 → first chapter)', () => {
+    expect(computeReorder(rows, 'ch2', 'ch1')).toEqual({ nodeId: 'ch2', new_parent_id: null, after_id: null });
   });
 
   it('returns null for a no-op (same node) and an out-of-list id', () => {
@@ -327,23 +328,15 @@ describe('computeReorder (T1.1c projection)', () => {
   });
 
   it('returns null when a scene would land with no preceding chapter (invalid kind nesting)', () => {
-    // dropping s1 onto arc1 → it lands right after arc1 with no chapter ancestor → invalid
-    expect(computeReorder(rows, 's1', 'arc1')).toBeNull();
+    // dropping s2 onto ch1 lands it at the very top, above every chapter → invalid.
+    // (The old fixture manufactured this with an `arc` outline node — a kind no
+    // outline can hold since pkg_lift_v1 lifted arcs into structure_node.)
+    expect(computeReorder(rows, 's2', 'ch1')).toBeNull();
   });
 
-  it('reorders a beat within its scene (parent-kind = scene)', () => {
-    const r = [
-      { node: node({ id: 'ch', kind: 'chapter', parent_id: 'a' }) },
-      { node: node({ id: 'sc', kind: 'scene', parent_id: 'ch' }) },
-      { node: node({ id: 'b1', kind: 'beat', parent_id: 'sc' }) },
-      { node: node({ id: 'b2', kind: 'beat', parent_id: 'sc' }) },
-    ];
-    expect(computeReorder(r, 'b1', 'b2')).toEqual({ nodeId: 'b1', new_parent_id: 'sc', after_id: 'b2' });
-  });
-
-  it('coerces a cross-kind drop to the nearest valid parent (chapter dropped amid scenes → stays under its arc)', () => {
-    // drop ch2 onto s2 (a scene inside ch1) → ch2 can only parent under an arc → lands after ch1
-    expect(computeReorder(rows, 'ch2', 's2')).toEqual({ nodeId: 'ch2', new_parent_id: 'arc1', after_id: 'ch1' });
+  it('coerces a cross-kind drop to the nearest valid parent (chapter dropped amid scenes → root, after ch1)', () => {
+    // drop ch2 onto s2 (a scene inside ch1) → chapters are root-level → lands after ch1
+    expect(computeReorder(rows, 'ch2', 's2')).toEqual({ nodeId: 'ch2', new_parent_id: null, after_id: 'ch1' });
   });
 });
 

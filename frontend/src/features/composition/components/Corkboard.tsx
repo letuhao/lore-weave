@@ -43,7 +43,7 @@ export function groupScenesByChapter(nodes: OutlineNode[]): ChapterBand[] {
   const walk = (parent: string | null) => {
     for (const n of (byParent.get(parent) ?? []).slice().sort(rankCmp)) {
       if (n.kind === 'chapter') chapters.push(n);
-      if (n.kind === 'arc' || n.kind === 'chapter') walk(n.id);
+      if (n.kind === 'chapter') walk(n.id);
     }
   };
   walk(null);

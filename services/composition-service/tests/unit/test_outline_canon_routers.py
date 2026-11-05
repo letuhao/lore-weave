@@ -267,10 +267,13 @@ def test_get_outline_404_when_work_missing(ctx):
 
 def test_create_node_201_and_bad_reference_400(ctx):
     c, _, outline, _, _ = ctx
-    r = c.post(f"/v1/composition/works/{PROJECT}/outline/nodes", json={"kind": "arc", "title": "Act I"})
+    # kind="scene" — a LIVE kind. This probe used to send kind="arc", which the narrowed
+    # NodeKind (#263) rejects at the schema; the vocabulary itself is pinned by
+    # test_outline_rest_kind_contract.py, not here.
+    r = c.post(f"/v1/composition/works/{PROJECT}/outline/nodes", json={"kind": "scene", "title": "Act I"})
     assert r.status_code == 201
     outline.create_raises = ReferenceViolationError("parent not owned")
-    r2 = c.post(f"/v1/composition/works/{PROJECT}/outline/nodes", json={"kind": "arc", "parent_id": str(uuid.uuid4())})
+    r2 = c.post(f"/v1/composition/works/{PROJECT}/outline/nodes", json={"kind": "scene", "parent_id": str(uuid.uuid4())})
     assert r2.status_code == 400 and r2.json()["detail"]["code"] == "BAD_REFERENCE"
 
 

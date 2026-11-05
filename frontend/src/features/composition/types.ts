@@ -215,7 +215,10 @@ export type OutlineNode = {
   id: string;
   project_id: string;
   parent_id: string | null;
-  kind: 'arc' | 'chapter' | 'scene' | 'beat';
+  // BPS-4 / #263 — outline_node is CHAPTER/SCENE only (outline_node_kind_check after
+  // pkg_lift_v1 M5): arcs live in structure_node, beats are verified-dead. The BE
+  // Literal is narrowed to match; the retired kinds cannot be created or stored.
+  kind: 'chapter' | 'scene';
   rank: string; // lexorank — the BE's primary within-parent order (story_order NULLS LAST, then rank)
   title: string;
   chapter_id: string | null;

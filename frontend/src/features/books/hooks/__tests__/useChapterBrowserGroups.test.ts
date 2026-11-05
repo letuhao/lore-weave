@@ -13,12 +13,26 @@ vi.mock('@/features/composition/api', () => ({
   compositionApi: { listOutlineChildren: (...a: unknown[]) => listOutlineChildren(...a) },
 }));
 
+// #271 — the grouping binds chapters to arcs via outline_node.structure_node_id (23 BA2)
+// and reads the arc shells from the structure route the Plan Hub already uses
+// (GET /books/{id}/arcs), NOT from outline nodes: outline nodes are chapter/scene only
+// (#263), so the old `kind === 'arc'` outline filter matched nothing, ever.
+const getArcs = vi.fn();
+vi.mock('@/features/plan-hub/api', () => ({ getArcs: (...a: unknown[]) => getArcs(...a) }));
+
 import { useChapterBrowserGroups } from '../useChapterBrowserGroups';
 
 beforeEach(() => {
   listOutlineChildren.mockReset();
+  getArcs.mockReset();
   work.value = { data: { status: 'none' }, isLoading: false };
 });
+
+// Real-shaped root page: outline nodes are chapter/scene only; a chapter binds to its
+// arc through structure_node_id. No `kind: 'arc'` outline node can exist (#263).
+function chapter(id: string, chapterId: string, structureNodeId: string | null) {
+  return { id, kind: 'chapter', title: id, chapter_id: chapterId, structure_node_id: structureNodeId };
+}
 
 describe('useChapterBrowserGroups', () => {
   it('no Work → hasWork false, empty groups, arcIdForChapter always undefined', async () => {
@@ -28,34 +42,26 @@ describe('useChapterBrowserGroups', () => {
     expect(result.current.groups).toEqual([]);
     expect(result.current.arcIdForChapter('anything')).toBeUndefined();
     expect(listOutlineChildren).not.toHaveBeenCalled();
+    expect(getArcs).not.toHaveBeenCalled();
   });
 
-  it('has Work → builds groups + arcIdForChapter from arc-then-children fetch', async () => {
+  it('has Work → binds chapters to arcs via structure_node_id and orders groups by the arc shells', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
-    listOutlineChildren.mockImplementation((_projectId: string, _token: string, opts: { parentId: string | null }) => {
-      if (opts.parentId === null) {
-        return Promise.resolve({
-          items: [
-            { id: 'arc1', kind: 'arc', title: 'The Crimson Court', chapter_id: null },
-            { id: 'arc2', kind: 'arc', title: 'The Long Winter', chapter_id: null },
-          ],
-          next_cursor: null,
-        });
-      }
-      if (opts.parentId === 'arc1') {
-        return Promise.resolve({
-          items: [
-            { id: 'ch1', kind: 'chapter', title: 'Ch1', chapter_id: 'bc1' },
-            { id: 'ch2', kind: 'chapter', title: 'Ch2', chapter_id: 'bc2' },
-            { id: 'sc1', kind: 'scene', title: 'Scene', chapter_id: null }, // non-chapter kind, must be skipped
-          ],
-          next_cursor: null,
-        });
-      }
-      if (opts.parentId === 'arc2') {
-        return Promise.resolve({ items: [{ id: 'ch3', kind: 'chapter', title: 'Ch3', chapter_id: 'bc3' }], next_cursor: null });
-      }
-      return Promise.resolve({ items: [], next_cursor: null });
+    getArcs.mockResolvedValue({
+      arcs: [
+        { id: 'arc1', kind: 'arc', title: 'The Crimson Court' },
+        { id: 'arc2', kind: 'arc', title: 'The Long Winter' },
+      ],
+    });
+    listOutlineChildren.mockResolvedValue({
+      items: [
+        chapter('ch1', 'bc1', 'arc1'),
+        chapter('ch2', 'bc2', 'arc1'),
+        { id: 'sc1', kind: 'scene', title: 'Scene', chapter_id: null, structure_node_id: null }, // non-chapter kind, must be skipped
+        chapter('ch3', 'bc3', 'arc2'),
+        chapter('ch4', 'bc4', null), // bound to no arc (PH21 unassigned) → ungrouped
+      ],
+      next_cursor: null,
     });
 
     const { result } = renderHook(() => useChapterBrowserGroups('b1'));
@@ -73,42 +79,53 @@ describe('useChapterBrowserGroups', () => {
     expect(result.current.arcIdForChapter('bc1')).toBe('arc1');
     expect(result.current.arcIdForChapter('bc2')).toBe('arc1');
     expect(result.current.arcIdForChapter('bc3')).toBe('arc2');
+    expect(result.current.arcIdForChapter('bc4')).toBeUndefined(); // unassigned chapter
     expect(result.current.arcIdForChapter('unknown')).toBeUndefined();
   });
 
-  it('cursor-follows a multi-page arc list AND a multi-page chapter list within one arc', async () => {
+  it('an arc shell with no bound chapters still yields its (empty) group', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
-    listOutlineChildren.mockImplementation((_projectId: string, _token: string, opts: { parentId: string | null; cursor?: string | null }) => {
-      if (opts.parentId === null) {
-        if (!opts.cursor) {
-          return Promise.resolve({ items: [{ id: 'arc1', kind: 'arc', title: 'Arc One', chapter_id: null }], next_cursor: 'arcs-p2' });
-        }
-        return Promise.resolve({ items: [{ id: 'arc2', kind: 'arc', title: 'Arc Two', chapter_id: null }], next_cursor: null });
-      }
-      if (opts.parentId === 'arc1') {
-        if (!opts.cursor) {
-          return Promise.resolve({ items: [{ id: 'ch1', kind: 'chapter', title: 'Ch1', chapter_id: 'bc1' }], next_cursor: 'ch-p2' });
-        }
-        return Promise.resolve({ items: [{ id: 'ch2', kind: 'chapter', title: 'Ch2', chapter_id: 'bc2' }], next_cursor: null });
-      }
-      return Promise.resolve({ items: [], next_cursor: null }); // arc2 has 0 chapters
+    getArcs.mockResolvedValue({
+      arcs: [
+        { id: 'arc1', kind: 'arc', title: 'Arc One' },
+        { id: 'arc2', kind: 'arc', title: 'Arc Two' },
+      ],
+    });
+    listOutlineChildren.mockResolvedValue({
+      items: [chapter('ch1', 'bc1', 'arc1')],
+      next_cursor: null,
     });
 
     const { result } = renderHook(() => useChapterBrowserGroups('b1'));
     await waitFor(() => expect(result.current.loading).toBe(false));
-
-    // Both arc pages resolved (2 groups, not just the first page's 1).
     expect(result.current.groups.map((g) => g.arcId)).toEqual(['arc1', 'arc2']);
-    // Both chapter pages resolved for arc1 (2 chapters, not just the first page's 1).
+    expect(result.current.groups[0].chapterCount).toBe(1);
+    expect(result.current.groups[1].chapterCount).toBe(0);
+  });
+
+  it('cursor-follows a multi-page root chapter list', async () => {
+    work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
+    getArcs.mockResolvedValue({ arcs: [{ id: 'arc1', kind: 'arc', title: 'Arc One' }] });
+    listOutlineChildren.mockImplementation((_p: string, _t: string, opts: { parentId: string | null; cursor?: string | null }) => {
+      if (opts.parentId === null && !opts.cursor) {
+        return Promise.resolve({ items: [chapter('ch1', 'bc1', 'arc1')], next_cursor: 'ch-p2' });
+      }
+      if (opts.parentId === null) {
+        return Promise.resolve({ items: [chapter('ch2', 'bc2', 'arc1')], next_cursor: null });
+      }
+      return Promise.resolve({ items: [], next_cursor: null });
+    });
+
+    const { result } = renderHook(() => useChapterBrowserGroups('b1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.groups[0].chapterCount).toBe(2);
     expect(result.current.arcIdForChapter('bc1')).toBe('arc1');
     expect(result.current.arcIdForChapter('bc2')).toBe('arc1');
-    expect(result.current.groups[1].chapterCount).toBe(0);
   });
 
   it('a fetch failure degrades to empty groups rather than throwing', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
-    listOutlineChildren.mockRejectedValue(new Error('network down'));
+    getArcs.mockRejectedValue(new Error('network down'));
     const { result } = renderHook(() => useChapterBrowserGroups('b1'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.hasWork).toBe(true);
@@ -117,10 +134,11 @@ describe('useChapterBrowserGroups', () => {
 
   it('re-fetches when the resolved project changes (book switch)', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
-    listOutlineChildren.mockImplementation((projectId: string, _token: string, opts: { parentId: string | null }) => {
+    getArcs.mockImplementation((_bookId: string) => Promise.resolve({ arcs: [{ id: 'arc-shell', kind: 'arc', title: 'Shell' }] }));
+    listOutlineChildren.mockImplementation((projectId: string, _t: string, opts: { parentId: string | null }) => {
       if (opts.parentId === null) {
         return Promise.resolve({
-          items: [{ id: `arc-${projectId}`, kind: 'arc', title: `Arc of ${projectId}`, chapter_id: null }],
+          items: [{ id: `ch-${projectId}`, kind: 'chapter', title: 'Ch', chapter_id: `bc-${projectId}`, structure_node_id: 'arc-shell' }],
           next_cursor: null,
         });
       }
@@ -132,10 +150,11 @@ describe('useChapterBrowserGroups', () => {
       { initialProps: { bookId: 'b1' } },
     );
     await waitFor(() => expect(result.current.groups.length).toBe(1));
-    expect(result.current.groups[0].arcId).toBe('arc-p1');
+    expect(result.current.arcIdForChapter('bc-p1')).toBe('arc-shell');
 
     work.value = { data: { status: 'found', work: { project_id: 'p2' } }, isLoading: false };
     rerender({ bookId: 'b2' });
-    await waitFor(() => expect(result.current.groups[0]?.arcId).toBe('arc-p2'));
+    await waitFor(() => expect(result.current.arcIdForChapter('bc-p2')).toBe('arc-shell'));
+    expect(result.current.arcIdForChapter('bc-p1')).toBeUndefined(); // prior book's binding dropped
   });
 });

@@ -1,21 +1,29 @@
 // Chapter Browser (15_chapter_browser.md, task B3, decision CB8) — arc-grouping lookup for
 // the browser's table view: "which arc is chapter N in" + a roman-numeral/label per arc group.
 //
+// #271 — this hook used to group by `kind === 'arc'` OUTLINE nodes, a shape pkg_lift_v1
+// removed: arcs live in `structure_node`, outline nodes are chapter/scene only (#263), so
+// the filter matched nothing and every grouping came back silently empty. It now reads the
+// arc shells from the structure route the Plan Hub already uses (`GET /books/{id}/arcs`,
+// BA11 — that route's own docstring names this table's group headers as a consumer) and
+// binds chapters to arcs via `outline_node.structure_node_id` (23 BA2), which the
+// root-level chapter page already carries. One arcs call + one cursor-followed chapter
+// page replaces the old O(arcs) per-arc children fan-out.
+//
 // DOCK-2 (docs/standards/dockable-gui.md): reuses the SAME composition API calls
 // `useManuscriptTree`/`ManuscriptNavigator` already use (`useWorkResolution`, `compositionApi.
 // listOutlineChildren`) — it does NOT fork `useManuscriptTree`'s own lazy-expandable tree-
 // building logic, because the shape needed here is different: a flat, fully-resolved
 // chapter_id → arc_id map for table group-headers, not an incrementally-expanded tree.
 //
-// Fetch shape: arc counts per book are small (tens, rarely low hundreds) even for a
-// 10k-chapter book, so a full (cursor-following) fetch of just the arc-level nodes is cheap.
-// For EACH arc we then cursor-follow its direct chapter children to build that arc's
-// chapterIds set. This is O(arcs) requests, not O(chapters) — the per-arc page size is large
-// enough that a normal arc (tens to low hundreds of chapters) resolves in one request.
+// Fetch shape: the arcs call is one request (BA11); arc counts per book are small (tens,
+// rarely low hundreds). Chapters are ROOT-level outline nodes (#263), so one cursor-followed
+// root page covers the whole book regardless of arc count.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/auth';
 import { compositionApi } from '@/features/composition/api';
 import type { OutlineNode } from '@/features/composition/types';
+import { getArcs } from '@/features/plan-hub/api';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
 import { resolveActiveWork } from '@/features/composition/workSelect';
@@ -38,11 +46,26 @@ function toRoman(n: number): string {
   return out;
 }
 
-// Arc counts are small — one or a few pages covers virtually every book. Chapter-per-arc counts
-// can run larger (a single arc can hold hundreds of chapters), so its page size is generous too;
-// both loops still cursor-follow `next_cursor` rather than assuming a single page suffices.
-const ARC_PAGE = 200;
-const CHAPTERS_PER_ARC_PAGE = 200;
+// Chapter-per-book counts can run large (a single book can hold hundreds of chapters), so the
+// page size is generous; the loop still cursor-follows `next_cursor` rather than assuming a
+// single page suffices.
+const CHAPTERS_PAGE = 200;
+
+/** Cursor-follow ALL root-level pages (chapters — outline nodes are chapter/scene only). */
+async function fetchAllChapters(
+  projectId: string, token: string, limit: number,
+): Promise<OutlineNode[]> {
+  const all: OutlineNode[] = [];
+  let cursor: string | null = null;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const page = await compositionApi.listOutlineChildren(projectId, token, { parentId: null, cursor, limit });
+    all.push(...page.items);
+    if (!page.next_cursor) break;
+    cursor = page.next_cursor;
+  }
+  return all;
+}
 
 export interface ChapterArcGroup {
   arcId: string;
@@ -57,22 +80,6 @@ export interface UseChapterBrowserGroupsResult {
   loading: boolean;
   groups: ChapterArcGroup[];
   arcIdForChapter: (chapterId: string) => string | undefined;
-}
-
-/** Cursor-follow ALL pages of one parent's direct children (arc-level or one arc's chapters). */
-async function fetchAllChildren(
-  projectId: string, token: string, parentId: string | null, limit: number,
-): Promise<OutlineNode[]> {
-  const all: OutlineNode[] = [];
-  let cursor: string | null = null;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const page = await compositionApi.listOutlineChildren(projectId, token, { parentId, cursor, limit });
-    all.push(...page.items);
-    if (!page.next_cursor) break;
-    cursor = page.next_cursor;
-  }
-  return all;
 }
 
 /**
@@ -111,33 +118,39 @@ export function useChapterBrowserGroups(bookId: string): UseChapterBrowserGroups
     const gen = ++genRef.current;
     setFetching(true);
     (async () => {
-      const arcNodes = (await fetchAllChildren(projectId, accessToken, null, ARC_PAGE))
-        .filter((n) => n.kind === 'arc');
+      const [{ arcs }, chapters] = await Promise.all([
+        getArcs(bookId, accessToken),
+        fetchAllChapters(projectId, accessToken, CHAPTERS_PAGE),
+      ]);
 
-      const nextGroups: ChapterArcGroup[] = [];
+      // Arc shells in spec pre-order (BA11 list_tree); the browser groups at ARC level only.
+      const arcList = arcs.filter((a) => a.kind === 'arc');
+      const arcIds = new Set(arcList.map((a) => a.id));
+      const chapterIdsByArc = new Map<string, Set<string>>();
       const nextArcMap = new Map<string, string>();
-      let ordinal = 0;
-      for (const arc of arcNodes) {
-        if (genRef.current !== gen) return; // a newer fetch superseded this one — abandon
-        ordinal += 1;
-        const children = await fetchAllChildren(projectId, accessToken, arc.id, CHAPTERS_PER_ARC_PAGE);
-        const chapterIds = new Set<string>();
-        for (const child of children) {
-          // Only 'chapter' kind nodes matter for the browser's grouping; scenes/beats sit
-          // below chapter level and carry no meaning for a "which arc is this chapter in" map.
-          if (child.kind === 'chapter' && child.chapter_id) {
-            chapterIds.add(child.chapter_id);
-            nextArcMap.set(child.chapter_id, arc.id);
-          }
+      for (const n of chapters) {
+        // Root-level outline children are chapters (imported books can also carry stray
+        // root scenes — no grouping meaning). Bind via structure_node_id (23 BA2);
+        // unassigned chapters (PH21) and chapters bound to an unknown/archived arc
+        // shell stay ungrouped, same posture as the Navigator's fallback.
+        if (n.kind !== 'chapter' || !n.chapter_id) continue;
+        const arcId = n.structure_node_id ?? null;
+        if (!arcId || !arcIds.has(arcId)) continue;
+        let set = chapterIdsByArc.get(arcId);
+        if (!set) {
+          set = new Set<string>();
+          chapterIdsByArc.set(arcId, set);
         }
-        nextGroups.push({
-          arcId: arc.id,
-          label: arc.title || '(untitled)',
-          romanNumeral: toRoman(ordinal),
-          chapterIds,
-          chapterCount: chapterIds.size,
-        });
+        set.add(n.chapter_id);
+        nextArcMap.set(n.chapter_id, arcId);
       }
+      const nextGroups: ChapterArcGroup[] = arcList.map((arc, i) => ({
+        arcId: arc.id,
+        label: arc.title || '(untitled)',
+        romanNumeral: toRoman(i + 1),
+        chapterIds: chapterIdsByArc.get(arc.id) ?? new Set<string>(),
+        chapterCount: chapterIdsByArc.get(arc.id)?.size ?? 0,
+      }));
 
       if (genRef.current !== gen) return; // stale — a later run already replaced this state
       setGroups(nextGroups);
@@ -152,7 +165,7 @@ export function useChapterBrowserGroups(bookId: string): UseChapterBrowserGroups
         setFetching(false);
       }
     });
-  }, [projectId, accessToken, work.isLoading]);
+  }, [projectId, accessToken, bookId, work.isLoading]);
 
   // O(1) lookup: a plain Map built once per completed fetch, not a linear scan per call.
   const arcIdForChapter = useMemo(() => {
