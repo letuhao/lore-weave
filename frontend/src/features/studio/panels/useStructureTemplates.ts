@@ -42,7 +42,10 @@ export interface StructureTemplatesState {
   // slice C — save edits to an OWN template (name + kind + beats), OCC-guarded.
   saving: boolean;
   saveError: string | null;
-  save: (id: string, version: number, patch: { name?: string; kind?: string; beats?: Beat[] }) => void;
+  // Returns the mutation promise (#264) so the editor can re-baseline its dirty check when
+  // the save FULFILS. The editor owns the catch (a rejection must NOT re-baseline);
+  // saveError still lands in state via the mutation itself.
+  save: (id: string, version: number, patch: { name?: string; kind?: string; beats?: Beat[] }) => Promise<unknown>;
   // slice D — archive/restore an OWN template + show-archived toggle.
   showArchived: boolean;
   setShowArchived: (v: boolean) => void;
@@ -150,7 +153,7 @@ export function useStructureTemplates(): StructureTemplatesState {
     saveError: isCreating
       ? (createMut.error ? mapErr(createMut.error) : null)
       : (saveMut.error ? mapErr(saveMut.error) : null),
-    save: (id, version, patch) => saveMut.mutate({ id, version, patch }),
+    save: (id, version, patch) => saveMut.mutateAsync({ id, version, patch }),
     showArchived, setShowArchived,
     archive: (id) => archiveMut.mutate(id),
     restore: (id) => restoreMut.mutate(id),

@@ -2,7 +2,7 @@
 // mock the controller and assert the wiring (built-in vs own branching, the clone/save/archive
 // affordances, the blank-name Save guard). The end-to-end behaviour is covered by the live
 // browser journey; this locks the render logic without a real backend.
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('react-i18next', () => ({
@@ -165,6 +165,34 @@ describe('StructureTemplatesPanel', () => {
     fireEvent.change(screen.getByTestId('structtpl-name'), { target: { value: 'Edited' } });
     fireEvent.click(screen.getByTestId('structtpl-discard'));
     expect(screen.queryByTestId('structtpl-dirty')).toBeNull();
+  });
+
+  // ── #264 — a fulfilled save must re-baseline the dirty check ──
+  it('a FULFILLED save clears the Unsaved badge and unblocks row switching (#264)', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const select = vi.fn();
+    state.value = base({ selectedId: 'm1', selected: mine, save, select });
+    render(<StructureTemplatesPanel {...props} />);
+    fireEvent.change(screen.getByTestId('structtpl-name'), { target: { value: 'Renamed' } });
+    expect(screen.getByTestId('structtpl-dirty')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('structtpl-save'));
+    // The save landed (the hook invalidates + toasts) — the editor must stop reporting
+    // the just-saved draft as diverged. Before the fix the badge stayed up for the whole
+    // life of the component and every row switch raised a false discard-confirm.
+    await waitFor(() => expect(screen.queryByTestId('structtpl-dirty')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByText('Save the Cat'));   // switch rows — nothing unsaved
+    expect(select).toHaveBeenCalledWith('b1');
+  });
+
+  it('a REJECTED save keeps the draft dirty (re-baseline is success-only)', async () => {
+    const save = vi.fn().mockRejectedValue(new Error('changed elsewhere'));
+    state.value = base({ selectedId: 'm1', selected: mine, save, saveError: 'changed elsewhere' });
+    render(<StructureTemplatesPanel {...props} />);
+    fireEvent.change(screen.getByTestId('structtpl-name'), { target: { value: 'Renamed' } });
+    fireEvent.click(screen.getByTestId('structtpl-save'));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    // give any (wrong) re-baseline a microtask to run, then assert the badge is still up
+    await waitFor(() => expect(screen.getByTestId('structtpl-dirty')).toBeInTheDocument());
   });
 
   // ── S-13: the real "Use in decompose" EXIT (replaced S-01b's interim hint) ──
