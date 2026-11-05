@@ -134,7 +134,9 @@ SELECT COALESCE((
 	err = tx.QueryRow(ctx, `
 SELECT id FROM chapter_revisions
 WHERE chapter_id=$1 AND body = $2::jsonb
-ORDER BY created_at DESC, id DESC
+-- #287 — seq is the write order (clock-independent); the id tiebreak covers rows a
+-- pre-backfill writer could have left at 0.
+ORDER BY seq DESC, id DESC
 LIMIT 1`, chID, body).Scan(&revID)
 	switch {
 	case err == nil:

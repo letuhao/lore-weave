@@ -821,8 +821,10 @@ func (s *Server) toolChapterSaveDraft(ctx context.Context, _ *mcp.CallToolReques
 	// restore_revision → undo_hint below).
 	var snapshotID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-SELECT chapter_id, body, draft_format, 'before assistant save', $2 FROM chapter_drafts WHERE chapter_id=$1
+WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, d.body, d.draft_format, 'before assistant save', $2
+FROM chapter_drafts d, s WHERE d.chapter_id=$1
 RETURNING id`, chID, userID).Scan(&snapshotID); err != nil {
 		return nil, saveDraftOut{}, errors.New("failed to snapshot draft")
 	}
@@ -832,7 +834,13 @@ UPDATE chapter_drafts SET body=$2,draft_format='json',draft_updated_at=now(),dra
 WHERE chapter_id=$1 RETURNING draft_version`, chID, jsonBody).Scan(&newVer); err != nil {
 		return nil, saveDraftOut{}, errors.New("failed to save draft")
 	}
-	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,'json',$3,$4)`,
+	// #287 — second counter increment in the SAME transaction: the snapshot lands at
+	// n+1 and the new body at n+2, so "newest first" can never return the pre-save
+	// snapshot ahead of the body that replaced it (the wall clock cannot untie two
+	// rows sharing one transaction timestamp; the counter can).
+	_, _ = tx.Exec(ctx, `WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, 'json', $3, $4 FROM s`,
 		chID, jsonBody, nullIfEmpty(in.CommitMessage), userID)
 	// NOTE (review-impl, M0a): deliberately do NOT touch chapter_raw_objects here.
 	// That column is the ORIGINAL IMPORTED SOURCE text (per-chapter joined leaf_text), served by
