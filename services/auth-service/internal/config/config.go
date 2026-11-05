@@ -17,6 +17,11 @@ type Config struct {
 	PasswordMinLength int
 	RateLimitWindow   time.Duration
 	RateLimitMax      int
+	// RateLimitIPMax — the per-IP floor on the credentials routes (#261): the
+	// credential-stuffing guard under per-(route, IP, account) keying. Defaults to
+	// 3× RateLimitMax; it must stay ABOVE the per-account cap or the floor, not the
+	// account budget, becomes the binding limit for a NAT'd office.
+	RateLimitIPMax    int
 	DevLogEmailTokens bool
 	// Optional SMTP (e.g. Mailhog: host localhost, port 1025). If SMTPHost is empty, no email is sent.
 	SMTPHost     string
@@ -123,6 +128,10 @@ func Load() (*Config, error) {
 	c.RefreshTokenTTL = time.Duration(refSec) * time.Second
 	rlWin := getInt("RATE_LIMIT_WINDOW_SECONDS", 60)
 	c.RateLimitWindow = time.Duration(rlWin) * time.Second
+	c.RateLimitIPMax = getInt("RATE_LIMIT_IP_MAX_REQUESTS", c.RateLimitMax*3)
+	if c.RateLimitIPMax < c.RateLimitMax {
+		return nil, fmt.Errorf("RATE_LIMIT_IP_MAX_REQUESTS (%d) must be >= RATE_LIMIT_MAX_REQUESTS (%d): the per-IP floor sits above the per-account budget", c.RateLimitIPMax, c.RateLimitMax)
+	}
 	if c.SMTPHost != "" && strings.TrimSpace(c.SMTPFrom) == "" {
 		return nil, fmt.Errorf("SMTP_FROM is required when SMTP_HOST is set")
 	}
