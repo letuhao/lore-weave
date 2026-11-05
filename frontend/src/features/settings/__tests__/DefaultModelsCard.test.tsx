@@ -29,6 +29,11 @@ vi.mock('../api', () => ({
   EMBEDDING_CAPABILITY: 'embedding',
   PLANNER_CAPABILITY: 'planner',
   CHAT_CAPABILITY: 'chat',
+  COMPOSER_CAPABILITY: 'composer',
+  // #270 — the backend resolves and VALIDATES these roles (provider-registry
+  // default_models_handler: chat-flag family); the settings surface must offer them.
+  CRITIC_ROLE: 'critic',
+  DISTILL_ROLE: 'distill',
   defaultModelsApi: {
     get: (...a: unknown[]) => getDefaults(...a),
     set: (...a: unknown[]) => setDefault(...a),
@@ -53,7 +58,8 @@ beforeEach(() => {
   setDefault.mockResolvedValue({});
 });
 
-// Rows render the shared ModelPicker (W5): [0] chat, [1] rerank, [2] planner.
+// Rows render the shared ModelPicker (W5): [0] chat, [1] rerank, [2] planner,
+// [3] composer, [4] critic (#270), [5] distill (#270).
 async function openRow(index: number) {
   const triggers = await screen.findAllByRole('combobox');
   fireEvent.click(triggers[index]);
@@ -64,14 +70,15 @@ describe('DefaultModelsCard', () => {
   it('lists chat + rerank + planner models and persists a selected default', async () => {
     render(<DefaultModelsCard />);
     await waitFor(() => expect(listUserModels).toHaveBeenCalledWith('tok', { capability: 'rerank', include_inactive: false }));
-    // Chat row (W5) + planner (a role with no model flag → lists CHAT models);
-    // the shared fetch cache dedupes the two identical chat queries.
+    // Chat row (W5) + planner/critic/distill (roles with no model flag → list CHAT
+    // models); the shared fetch cache dedupes the identical chat queries.
     await waitFor(() => expect(listUserModels).toHaveBeenCalledWith('tok', { capability: 'chat', include_inactive: false }));
-    // Embedding is intentionally not exposed yet (no consumer) → never queried.
+    // Embedding is intentionally not exposed yet (query-time must match the
+    // indexing model) → never queried.
     expect(listUserModels).not.toHaveBeenCalledWith('tok', { capability: 'embedding', include_inactive: false });
 
     const triggers = await screen.findAllByRole('combobox');
-    expect(triggers).toHaveLength(3);
+    expect(triggers).toHaveLength(6);
     // Row [1] = rerank: open + pick the model.
     fireEvent.click(triggers[1]);
     fireEvent.click(await screen.findByText('bge-reranker'));
@@ -90,6 +97,25 @@ describe('DefaultModelsCard', () => {
     await openRow(0);
     fireEvent.click(await screen.findByText('bge-reranker'));
     await waitFor(() => expect(setDefault).toHaveBeenCalledWith('tok', 'chat', 'm1'));
+  });
+
+  // #270 — evaluate.py refuses to score and tells the user, verbatim: "Set a critic
+  // model in Settings › Chat & AI › default models." That row did not exist. The
+  // backend resolves AND validates the role; the surface must offer it.
+  it('persists a critic default under the critic role (#270)', async () => {
+    render(<DefaultModelsCard />);
+    await openRow(4);
+    fireEvent.click(await screen.findByText('bge-reranker'));
+    await waitFor(() => expect(setDefault).toHaveBeenCalledWith('tok', 'critic', 'm1'));
+  });
+
+  // #270 — internal.py falls distill back to chat silently, handing a reasoning
+  // model a distill job (blank diary). The row makes the role settable.
+  it('persists a distill default under the distill role (#270)', async () => {
+    render(<DefaultModelsCard />);
+    await openRow(5);
+    fireEvent.click(await screen.findByText('bge-reranker'));
+    await waitFor(() => expect(setDefault).toHaveBeenCalledWith('tok', 'distill', 'm1'));
   });
 
   it('preloads the existing defaults from the server (trigger shows the model)', async () => {
