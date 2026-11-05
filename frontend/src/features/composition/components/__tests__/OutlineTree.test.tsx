@@ -182,17 +182,20 @@ describe('OutlineTree node CRUD (T1.1b)', () => {
     );
   });
 
-  it('add-child on a scene creates a beat (no chapter_id) and is absent on arcs', () => {
+  it('add-child is offered only on a chapter (creates a scene); scenes and arcs have none (#272)', () => {
     mountWith([
       node({ id: 'arc', kind: 'arc', parent_id: null, story_order: 0 }),
-      node({ id: 's1', kind: 'scene', parent_id: 'arc', chapter_id: 'C1', story_order: 0 }),
+      node({ id: 'ch1', kind: 'chapter', parent_id: 'arc', chapter_id: 'C1', story_order: 0 }),
+      node({ id: 's1', kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', story_order: 0 }),
     ]);
     render(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
-    // arc row has no add-child affordance; only the scene does
+    // Only the chapter row offers add-child. The old scene→beat affordance rendered a
+    // ＋ button whose POST always died on outline_node_kind_check — beat is no longer a
+    // CREATABLE kind (#272/#263), so neither a scene nor an arc may offer one.
     expect(screen.getAllByTestId('outline-action-addchild')).toHaveLength(1);
     fireEvent.click(screen.getByTestId('outline-action-addchild'));
     expect(mutations.addChild.mutate).toHaveBeenCalledWith(
-      { kind: 'beat', parent_id: 's1', chapter_id: null, title: '' },
+      { kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', title: '' },
       expect.objectContaining({ onError: expect.any(Function) }),
     );
   });
@@ -258,7 +261,7 @@ describe('OutlineTree node CRUD (T1.1b)', () => {
       node({ id: 's1', kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', story_order: 0 }),
     ]);
     render(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
-    fireEvent.click(screen.getAllByTestId('outline-action-addchild')[0]); // chapter → add scene (scene also has add-beat)
+    fireEvent.click(screen.getAllByTestId('outline-action-addchild')[0]); // chapter → add scene (a scene offers no add-child)
     const { onSuccess } = mutations.addChild.mutate.mock.calls[0][1];
     expect(screen.queryByTestId('outline-rename-input')).not.toBeInTheDocument();
     act(() => onSuccess(node({ id: 's1' }))); // BE returns the created node → opens it for rename

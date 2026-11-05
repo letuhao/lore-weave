@@ -158,9 +158,11 @@ export function OutlineTree(
   const cycleStatus = (node: OutlineNode, status: OutlineNode['status']) =>
     m.setStatus.mutate({ nodeId: node.id, status, version: node.version }, { onError });
   // Add a child + immediately open it for rename (new nodes are created with an
-  // empty title, so without this they'd all read "scene"/"beat" until edited).
+  // empty title, so without this they'd all read "scene" until edited).
   // Also expand the parent so the new child is visible.
-  const addChild = (node: OutlineNode, kind: 'scene' | 'beat') =>
+  // #272 — 'beat' is no longer a creatable outline kind, so chapter→scene is the only
+  // add-child this tree offers.
+  const addChild = (node: OutlineNode, kind: 'scene') =>
     m.addChild.mutate(
       { kind, parent_id: node.id, chapter_id: kind === 'scene' ? node.chapter_id : null, title: '' },
       {
