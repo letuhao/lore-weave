@@ -34,6 +34,11 @@ type amqpPublisher interface {
 	Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
 }
 
+// osExit is swapped in tests; production exits so the container supervisor
+// (restart: unless-stopped) restarts the process with a fresh dial — the #297
+// fail-fast for the WS-push connection.
+var osExit = os.Exit
+
 type ImportProcessor struct {
 	Cfg    *config.Config
 	Redis  *redis.Client
@@ -46,6 +51,23 @@ type ImportProcessor struct {
 }
 
 func (t *ImportProcessor) Name() string { return "import-processor" }
+
+// watchAMQP fail-fasts when the WS-push connection or channel drops after a
+// successful connect (#297): the push feed would silently die while the worker
+// reports healthy. The ctx is Run's — cancelled on SIGTERM before Run returns, so
+// a graceful shutdown never reads as a broker drop.
+func (t *ImportProcessor) watchAMQP(ctx context.Context, what string, closeCh <-chan *amqp.Error) {
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case reason := <-closeCh:
+			slog.Error("amqp closed — exiting so the supervisor restarts us (WS push would otherwise silently stop)",
+				"what", what, "reason", reason)
+			osExit(1)
+		}
+	}()
+}
 
 const (
 	importStream   = "loreweave:events:chapter" // outbox-relay publishes here with event_type=import.requested
@@ -72,7 +94,10 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 		t.materializeClient = NewMaterializeClient(t.Cfg.CompositionServiceURL, t.Cfg.InternalToken)
 	}
 
-	// Connect to RabbitMQ for WebSocket push events
+	// Connect to RabbitMQ for WebSocket push events. Startup stays best-effort (a
+	// stack without a broker runs with push disabled) — but once CONNECTED, a later
+	// broker restart must not silently kill the push feed: watch NotifyClose and
+	// fail fast so the supervisor restarts us into a live connection (#297).
 	if t.Cfg.RabbitMQURL != "" {
 		conn, err := amqp.Dial(t.Cfg.RabbitMQURL)
 		if err != nil {
@@ -85,6 +110,8 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 				_ = ch.ExchangeDeclare("loreweave.events", "topic", true, false, false, false, nil)
 				t.amqpCh = ch
 				slog.Info("import-processor: AMQP connected for WS push")
+				t.watchAMQP(ctx, "connection", conn.NotifyClose(make(chan *amqp.Error, 1)))
+				t.watchAMQP(ctx, "channel", ch.NotifyClose(make(chan *amqp.Error, 1)))
 			}
 		}
 	}
@@ -98,6 +125,8 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 	consumer := importConsumerID()
 	pendingClaimStart := "0-0"
 
+	// Run holds ctx (cancelled on SIGTERM before Run returns), so the watchers
+	// stand down on graceful shutdown before anything closes the connection.
 	for {
 		select {
 		case <-ctx.Done():

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	rabbitmq "github.com/rabbitmq/amqp091-go"
 	"go.opentelemetry.io/otel/attribute"
@@ -64,6 +65,25 @@ type rabbitMQNotifier struct {
 	ch     *rabbitmq.Channel
 	logger *slog.Logger
 	mu     sync.Mutex // serialize publishes; amqp091 channels are NOT goroutine-safe
+	// closed marks the GRACEFUL path (#297) — set first thing in Close, before any
+	// local Close fires NotifyClose, so the watcher never reads it as a broker drop.
+	closed atomic.Bool
+}
+
+// watchClose fail-fasts on a broker drop of this notifier's connection or channel
+// (#297) — same rationale as JobQueue.failFastOnClose: after a broker restart the
+// terminal-event notifications would silently stop while the container reports
+// healthy. osExit (swappable in tests) is the shared package var with queue.go.
+func (n *rabbitMQNotifier) watchClose(what string, closeCh <-chan *rabbitmq.Error) {
+	go func() {
+		reason := <-closeCh
+		if n.closed.Load() {
+			return
+		}
+		n.logger.Error("rabbitmq closed — exiting so the supervisor restarts us (terminal notifications would otherwise silently stop)",
+			"what", what, "reason", reason)
+		osExit(1)
+	}()
 }
 
 // NewRabbitMQNotifier opens a connection + channel, declares the topic
@@ -95,7 +115,11 @@ func NewRabbitMQNotifier(amqpURL string, logger *slog.Logger) (Notifier, error) 
 		_ = conn.Close()
 		return nil, fmt.Errorf("amqp declare exchange: %w", err)
 	}
-	return &rabbitMQNotifier{conn: conn, ch: ch, logger: logger}, nil
+	n := &rabbitMQNotifier{conn: conn, ch: ch, logger: logger}
+	// #297 — fail fast on a broker drop instead of silently stopping notifications.
+	n.watchClose("notifier connection", conn.NotifyClose(make(chan *rabbitmq.Error, 1)))
+	n.watchClose("notifier channel", ch.NotifyClose(make(chan *rabbitmq.Error, 1)))
+	return n, nil
 }
 
 func (n *rabbitMQNotifier) PublishTerminal(ctx context.Context, ev TerminalEvent) error {
@@ -144,6 +168,8 @@ func (n *rabbitMQNotifier) PublishTerminal(ctx context.Context, ev TerminalEvent
 }
 
 func (n *rabbitMQNotifier) Close() error {
+	// #297 — mark graceful BEFORE the local Closes fire NotifyClose.
+	n.closed.Store(true)
 	if n.ch != nil {
 		_ = n.ch.Close()
 	}
