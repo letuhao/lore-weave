@@ -278,19 +278,19 @@ describe('useManuscriptTree', () => {
     expect(restorePart).toHaveBeenCalledWith('t', 'b1', 'gone');
   });
 
-  it('maps outline chapters/scenes into the rail (retired kinds cannot arrive — #263)', async () => {
+  it('filters structural `beat` nodes out of the outline', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
     listOutlineChildren.mockResolvedValue({
       items: [
-        { id: 'ch1', kind: 'chapter', title: 'Chapter', chapter_id: null, status: null },
-        { id: 's1', kind: 'scene', title: 'Scene', chapter_id: null, status: null },
+        { id: 'arc1', kind: 'arc', title: 'Arc', chapter_id: null, status: null },
+        { id: 'b1', kind: 'beat', title: 'Beat', chapter_id: null, status: null },
       ],
       next_cursor: null,
     });
     const { result } = renderHook(() => useManuscriptTree('b1', 't'));
     await waitFor(() => expect(result.current.rows.length).toBeGreaterThan(0));
-    expect(result.current.rows.some((r) => isNode(r, 'ch1'))).toBe(true);
-    expect(result.current.rows.some((r) => isNode(r, 's1'))).toBe(true);
+    expect(result.current.rows.some((r) => isNode(r, 'arc1'))).toBe(true);
+    expect(result.current.rows.some((r) => isNode(r, 'b1'))).toBe(false); // beat dropped
   });
 
   // P1.2 review-impl HIGH — a /structure OUTAGE (loaded, no data) must NOT brick the rail with a

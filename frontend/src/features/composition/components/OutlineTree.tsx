@@ -3,7 +3,7 @@
 // A persistent Act→Chapter→Scene browser of the committed outline (GET /outline),
 // hosted as a left-panel tab in ChapterEditorPage. T1.1a: status dots,
 // collapse/expand, chapter-level navigation. T1.1b: node CRUD — inline rename,
-// add-child (chapter→scene; #272 — `beat` is not a storable outline kind), soft-archive, scene status-cycle, with
+// add-child (chapter→scene, scene→beat), soft-archive, scene status-cycle, with
 // If-Match optimistic concurrency (a 412 NODE_VERSION_CONFLICT refetches the
 // server's current row, never silently losing a concurrent edit). dnd-kit reorder
 // (T1.1c) and the cards⇄tree toggle / Corkboard (T1.1d) are follow-up slices.
@@ -26,13 +26,8 @@ import { Corkboard, type CardMove } from './Corkboard';
 import type { OutlineNode } from '../types';
 
 // kind → the kind a node of this kind must be parented under (fixed-depth tree).
-// BPS-4/#263 — outline nodes are chapter/scene only: chapters are ROOT-level (the
-// lifted arcs are structure_nodes linked via structure_node_id, never outline
-// parents), and a scene must sit under a chapter. The old `chapter: 'arc'` entry
-// made every chapter drag no-op against real data, because no arc outline node
-// can exist to parent it.
 const PARENT_KIND: Record<OutlineNode['kind'], OutlineNode['kind'] | null> = {
-  chapter: null, scene: 'chapter',
+  arc: null, chapter: 'arc', scene: 'chapter', beat: 'scene',
 };
 
 // Pure (exported for tests): given the flat display rows + a drag (active dropped
@@ -165,9 +160,11 @@ export function OutlineTree(
   // Add a child + immediately open it for rename (new nodes are created with an
   // empty title, so without this they'd all read "scene" until edited).
   // Also expand the parent so the new child is visible.
+  // #272 — 'beat' is no longer a creatable outline kind, so chapter→scene is the only
+  // add-child this tree offers.
   const addChild = (node: OutlineNode, kind: 'scene') =>
     m.addChild.mutate(
-      { kind, parent_id: node.id, chapter_id: node.chapter_id, title: '' },
+      { kind, parent_id: node.id, chapter_id: kind === 'scene' ? node.chapter_id : null, title: '' },
       {
         onError,
         onSuccess: (created: OutlineNode) => {

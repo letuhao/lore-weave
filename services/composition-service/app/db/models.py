@@ -36,12 +36,14 @@ _Short = Annotated[str, StringConstraints(max_length=2000)]
 _Long = Annotated[str, StringConstraints(max_length=20000)]
 
 WorkStatus = Literal["active", "archived"]
-# BPS-4 / #263 — outline_node is CHAPTER/SCENE only: the pkg_lift_v1 M5 "point of no
-# return" migration lifted arcs into `structure_node` and verified `beat` dead, swapping
-# outline_node_kind_check to ('chapter','scene'). The MCP door already carries the narrowed
-# Literal (_NodeCreateArgs); keeping arc/beat here advertised two kinds that could only die
-# on the CHECK as a 400 leaking the raw constraint text + the caller's row.
-NodeKind = Literal["chapter", "scene"]
+# #263 — the READ model spans everything `outline_node` can STORE: the base schema's
+# outline_node_kind_check admits all four kinds, and a DB that still holds legacy
+# pre-lift arc/beat rows is a supported boot state (arc_lift's data lift stays
+# operator-invoked for a non-clean DB; migrate.py's auto-lift covers only a clean one).
+# The WRITE doors are what the lift retired: REST NodeCreate.kind and the MCP
+# _NodeCreateArgs are narrowed to chapter/scene, so a retired kind can no longer be
+# CREATED — it can only be read back from a not-yet-lifted DB.
+NodeKind = Literal["arc", "chapter", "scene", "beat"]
 NodeStatus = Literal["empty", "outline", "drafting", "done"]
 LinkKind = Literal["setup_payoff", "custom"]
 RuleScope = Literal["world", "entity", "reveal_gate"]

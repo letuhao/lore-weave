@@ -68,7 +68,14 @@ internal_router = APIRouter(
 
 
 class NodeCreate(BaseModel):
-    kind: NodeKind
+    # #263 — the WRITE door is narrowed, not the read model: outline_node_kind_check's
+    # base schema still admits arc/beat (a pre-lift DB is a supported boot state), but
+    # this is the door that let a documented kind pass validation and die as a 400
+    # leaking the raw check text + the caller's row. A retired kind is now a schema 422
+    # naming the accepted values, same closed Literal the MCP _NodeCreateArgs carries
+    # (BPS-4). A retired kind may still be READ back from a not-yet-lifted DB
+    # (OutlineNode.kind stays the stored vocabulary).
+    kind: Literal["chapter", "scene"]
     parent_id: UUID | None = None
     rank: str | None = None
     title: _NodeTitle = ""

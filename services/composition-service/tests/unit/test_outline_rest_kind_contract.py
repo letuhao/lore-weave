@@ -1,17 +1,19 @@
-"""#263 — the REST outline-node door must not advertise retired node kinds.
+"""#263 — the REST outline-node CREATE door must not accept retired node kinds.
 
-`outline_node.kind` is CHAPTER/SCENE only: the pkg_lift_v1 M5 "point of no return"
-migration lifted arcs into `structure_node` and verified `beat` dead, swapping the
-CHECK to `('chapter','scene')`. The MCP door was already narrowed
-(`_NodeCreateArgs.kind: Literal["chapter","scene"]`, BPS-4) — but the REST door kept
-`NodeKind = Literal["arc","chapter","scene","beat"]`, so a documented kind passed
-request validation, reached the INSERT, and died as a 400 carrying the raw Postgres
-check message INCLUDING the entire failing row.
+`outline_node`'s base schema (`outline_node_kind_check`) admits arc/beat, but the
+pkg_lift_v1 lift retired them as CREATABLE kinds: arcs live in `structure_node`
+(composition_arc_create) and beat is verified-dead. The MCP door already narrows its
+create Literal (`_NodeCreateArgs.kind: Literal["chapter","scene"]`, BPS-4) — the REST
+door kept the stored four-kind vocabulary on `NodeCreate.kind`, so a documented kind
+passed request validation, reached the INSERT, and died as a 400 carrying the raw
+Postgres check message INCLUDING the entire failing row.
 
-This pins the contract the MCP surface already has:
-  • the retired kinds are rejected at the SCHEMA (422 naming the allowed values),
-    never reaching the repo, so the constraint text + row dump cannot leak;
-  • the live kinds still create.
+The split this pins:
+  • NodeCreate.kind (the WRITE door) is chapter/scene only — a retired kind is a
+    schema 422 naming the accepted values and never reaches the repo, so the
+    constraint text + row dump cannot leak through this route;
+  • OutlineNode.kind (the READ model) stays the STORED vocabulary — a not-yet-lifted
+    DB is a supported boot state and its legacy rows must still validate.
 The repo stub raises the exact CheckViolationError the live CHECK produces, so the
 unfixed router is exercised against the real failure shape.
 """
@@ -24,14 +26,15 @@ import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.models import NodeKind, OutlineNode
+from app.db.models import OutlineNode
+from app.routers.outline import NodeCreate
 
 _USER = UUID("00000000-0000-0000-0000-0000000000aa")
 _PROJECT = UUID("00000000-0000-0000-0000-0000000000bb")
 _BOOK = UUID("00000000-0000-0000-0000-0000000000cc")
 _NODE = UUID("00000000-0000-0000-0000-0000000000dd")
 
-# The live CHECK (pkg_lift_v1 M5). A retired kind that reaches the INSERT dies here.
+# The live CHECK (base schema). A retired kind that reaches the INSERT dies here.
 _KIND_CHECK_VIOLATION = asyncpg.CheckViolationError(
     'new row for relation "outline_node" violates check constraint '
     '"outline_node_kind_check"\nDETAIL: Failing row contains '
@@ -39,14 +42,14 @@ _KIND_CHECK_VIOLATION = asyncpg.CheckViolationError(
 )
 
 
-def test_nodekind_vocabulary_is_the_lifted_chapter_scene_set():
-    # BPS-4: outline_node is CHAPTER/SCENE only — arcs live on structure_node, beats
-    # are verified-dead. A Literal cannot be derived, so the vocabulary itself is the
-    # guarded thing; widening it back reopens the 400-constraint-leak door.
-    assert get_args(NodeKind) == ("chapter", "scene"), (
-        "NodeKind advertises kinds the outline_node_kind_check forbids — a client "
-        "generated from the schema will build a request the database always rejects "
-        "(#263). Arcs belong to structure_node (composition_arc_create); beat is gone."
+def test_nodecreate_kind_is_the_lifted_chapter_scene_set():
+    # BPS-4 / #263 — the WRITE door's closed set. Guarded on the annotation because a
+    # Literal cannot be derived: widening it back reopens the 400-constraint-leak door.
+    assert get_args(NodeCreate.model_fields["kind"].annotation) == ("chapter", "scene"), (
+        "NodeCreate.kind advertises kinds the lift retired as creatable — a client built "
+        "from this door will send a request the database always rejects (#263). Arcs "
+        "belong to structure_node (composition_arc_create); beat is gone. The READ model "
+        "(OutlineNode.kind) intentionally keeps the stored vocabulary."
     )
 
 
@@ -56,6 +59,14 @@ def _node(kind: str) -> OutlineNode:
         kind=kind, rank="a0", title="A node", goal="", status="outline", synopsis="",
         version=1, story_order=1,
     ))
+
+
+def test_outline_read_model_still_validates_legacy_kinds():
+    # The counterpart guarantee: narrowing the write door must NOT narrow the read
+    # model — a not-yet-lifted DB's arc/beat rows have to keep validating (the
+    # integration fixtures boot exactly that world).
+    for legacy in ("arc", "beat"):
+        assert _node(legacy).kind == legacy
 
 
 class _StubOutline:

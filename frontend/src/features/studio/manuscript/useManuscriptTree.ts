@@ -55,10 +55,9 @@ function chapterToNode(c: Chapter): ManuscriptNode {
   };
 }
 
-/** composition outline node → a tree node. Chapters can expand; scenes are leaves.
- *  (#263 — outline nodes are chapter/scene only; the lifted arcs are structure_nodes.) */
+/** composition outline node → a tree node. Arcs + chapters can expand; scenes are leaves. */
 function outlineToNode(n: OutlineNode): ManuscriptNode {
-  const kind = n.kind === 'scene' ? 'scene' : 'chapter';
+  const kind = n.kind === 'arc' ? 'arc' : n.kind === 'scene' ? 'scene' : 'chapter';
   const childCount = n.child_count ?? 0;
   return {
     id: n.id,
@@ -166,8 +165,8 @@ export function useManuscriptTree(bookId: string, token: string | null) {
       } else if (source === 'outline' && projectId) {
         const page = await compositionApi.listOutlineChildren(projectId, token, { parentId: parentNodeId, cursor, limit: PAGE });
         if (genRef.current !== gen) return;
-        // No beat filter: `beat` is not a storable outline kind (#263), nothing to strip.
-        const nodes = page.items.map(outlineToNode);
+        // Keep only navigable kinds (arc/chapter/scene); structural 'beat' nodes are not shown.
+        const nodes = page.items.filter((n) => n.kind !== 'beat').map(outlineToNode);
         setTree((t) => appendChildren(t, parentKey, nodes, page.next_cursor));
       }
     } catch (e) {
@@ -247,13 +246,12 @@ export function useManuscriptTree(bookId: string, token: string | null) {
           }),
         ]);
         if (genRef.current !== gen) return;
-        // No beat filter: `beat` is not a storable outline kind (#263), so nothing to strip.
-        const nodes = page.items.map(outlineToNode);
+        const nodes = page.items.filter((n) => n.kind !== 'beat').map(outlineToNode);
         // Imported books can have a Work populated only with root-level scene nodes. That is
         // not a manuscript outline: the chapter rows still live in book-service, and choosing
         // the outline lens in this shape makes the editor appear to have no chapters. Fall back
-        // to the authoritative chapter list whenever the outline has no chapter structure.
-        const hasChapterStructure = nodes.some((n) => n.kind === 'chapter');
+        // to the authoritative chapter list whenever the outline has no chapter/arc structure.
+        const hasChapterStructure = nodes.some((n) => n.kind === 'chapter' || n.kind === 'arc');
         if (nodes.length === 0 || (!hasChapterStructure && chapters?.items?.length)) {
           setOutlineEmptyFallback(true); // re-runs resetAndLoad as 'chapters' (source flips)
           return;
