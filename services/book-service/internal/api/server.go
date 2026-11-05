@@ -1970,7 +1970,11 @@ RETURNING id
 		_, _ = tx.Exec(ctx, `INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chapterID, body)
 	}
 	_, _ = tx.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`, chapterID, jsonBody)
-	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chapterID, jsonBody, "json", revisionMessage, caller)
+	// #287 — seq from the per-chapter counter (row-locked UPDATE): the revision order
+	// must not depend on the wall clock (created_at AND the uuidv7 id both step back with it).
+	_, _ = tx.Exec(ctx, `WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, $3, $4, $5 FROM s`, chapterID, jsonBody, "json", revisionMessage, caller)
 	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
 	if err := insertOutboxEvent(ctx, tx, "chapter.created", chapterID, map[string]any{"book_id": bookID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to commit chapter")
@@ -2804,7 +2808,11 @@ WHERE d.chapter_id=$1 AND c.book_id=$2
 		return
 	}
 	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_format=$3,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, in.Body, in.BodyFormat)
-	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chID, in.Body, in.BodyFormat, nullIfEmpty(in.CommitMessage), caller)
+	// #287 — counter-assigned seq (see the import site); row-locked UPDATE serializes
+	// concurrent savers on one chapter.
+	_, _ = tx.Exec(r.Context(), `WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, $3, $4, $5 FROM s`, chID, in.Body, in.BodyFormat, nullIfEmpty(in.CommitMessage), caller)
 	_, _ = tx.Exec(r.Context(), `UPDATE chapters SET draft_updated_at=now(), draft_revision_count=draft_revision_count+1, updated_at=now() WHERE id=$1`, chID)
 	if err := insertOutboxEvent(r.Context(), tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to patch draft")
@@ -2907,8 +2915,9 @@ SELECT COALESCE((
 	// id — the canon spine depends on a REAL revision_id (no fire-and-forget).
 	var revID uuid.UUID
 	err = tx.QueryRow(r.Context(), `
-INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-VALUES($1,$2,$3,'publish',$4) RETURNING id
+WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, $3, 'publish', $4 FROM s RETURNING id
 `, chID, body, format, caller).Scan(&revID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to snapshot revision")
@@ -3053,12 +3062,10 @@ SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,octet_leng
 FROM chapter_revisions rv
 JOIN chapters c ON c.id=rv.chapter_id
 WHERE rv.chapter_id=$1 AND c.book_id=$2
--- , rv.id DESC because book_chapter_save_draft writes TWO revisions in ONE transaction
--- (the 'before assistant save' snapshot and the new body), and now() is the TRANSACTION
--- timestamp, so both rows carry the SAME created_at. Untied, 'newest first' returned the
--- PRE-SAVE snapshot ahead of the body that replaced it. uuidv7 ids are insert-ordered, so
--- id DESC is the true write order. kg_index.go already ordered this way.
-ORDER BY rv.created_at DESC, rv.id DESC
+-- #287 — seq (per-chapter counter, assigned in the inserting transaction) is the
+-- write order: clock-independent. created_at AND the uuidv7 id both step back with
+-- the wall clock (NTP slew), which mis-ordered a later save as older.
+ORDER BY rv.seq DESC, rv.id DESC
 LIMIT $3 OFFSET $4
 `, chID, bookID, limit, offset)
 	if err != nil {
@@ -3320,7 +3327,10 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to restore revision")
 		return
 	}
-	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chID, currentBody, currentFormat, "before restore", caller)
+	// #287 — counter-assigned seq (see the import site).
+	_, _ = tx.Exec(r.Context(), `WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, $3, 'before restore', $4 FROM s`, chID, currentBody, currentFormat, caller)
 	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_format=$3,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, body, bodyFormat)
 	_, _ = tx.Exec(r.Context(), `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+1,updated_at=now() WHERE id=$1`, chID)
 	if err := insertOutboxEvent(r.Context(), tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
