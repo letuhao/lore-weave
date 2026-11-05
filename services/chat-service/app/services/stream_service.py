@@ -208,10 +208,12 @@ class _Usage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     # Prompt-cache split (Provider Context Strategy §7). Summed across a turn's
-    # tool-loop iterations, same as prompt_tokens. 0 when the provider reported no
-    # cache activity. Feeds the contextBudget `caching` monitoring section.
-    cache_creation_tok: int = 0
-    cache_read_tok: int = 0
+    # tool-loop iterations, same as prompt_tokens. None when the provider reported
+    # NO cache split at all (#301) — coerced to 0, silence read as a 0.0 hit rate
+    # on automatic-prefix providers whether the cache worked or not. Feeds the
+    # contextBudget `caching` monitoring section.
+    cache_creation_tok: int | None = None
+    cache_read_tok: int | None = None
 
 
 _INLINE_EFFORT_RE = re.compile(
@@ -414,8 +416,10 @@ async def _stream_via_gateway(
                 last_usage = _Usage(
                     prompt_tokens=ev.input_tokens,
                     completion_tokens=ev.output_tokens,
-                    cache_creation_tok=ev.cache_creation_tok or 0,
-                    cache_read_tok=ev.cache_read_tok or 0,
+                    # #301 — None means the provider reported no split; keep the
+                    # silence instead of coercing it to a fabricated 0.0 hit rate.
+                    cache_creation_tok=ev.cache_creation_tok,
+                    cache_read_tok=ev.cache_read_tok,
                 )
             elif isinstance(ev, DoneEvent):
                 finish_reason = ev.finish_reason
@@ -4944,8 +4948,12 @@ async def _stream_with_tools(
         # Prompt-cache split (§7) summed across this turn's tool-loop iterations, the
         # same way total_input sums the re-sent prompts. Not seeded from a resume — a
         # suspended run's cache split is transport-ephemeral, not billed state.
+        # `cache_reported` (#301) separates provider silence from a reported zero: if
+        # no iteration carried a split, the turn feeds None downstream (unavailable)
+        # instead of a fabricated 0.0 hit rate.
         total_cache_creation = 0
         total_cache_read = 0
+        cache_reported = False
         # Stateful /v1/responses chain (P2 §5/E2). `_chain_id` starts at the head to
         # continue from (None = establish) and advances to each iteration's returned
         # response_id; the FINAL value is the turn's chain head to persist.
@@ -5851,6 +5859,10 @@ async def _stream_with_tools(
                     elif isinstance(ev, UsageEvent):
                         total_input += ev.input_tokens
                         total_output += ev.output_tokens
+                        # #301 — a split reported by ANY iteration makes the turn
+                        # "reported"; only all-None iterations stay unavailable.
+                        if ev.cache_creation_tok is not None or ev.cache_read_tok is not None:
+                            cache_reported = True
                         total_cache_creation += ev.cache_creation_tok or 0
                         total_cache_read += ev.cache_read_tok or 0
                         _last_call_input = ev.input_tokens
@@ -6642,8 +6654,9 @@ async def _stream_with_tools(
                        "context_size": _last_call_input,
                        "usage": _Usage(prompt_tokens=total_input,
                                        completion_tokens=total_output,
-                                       cache_creation_tok=total_cache_creation,
-                                       cache_read_tok=total_cache_read)}
+                                       # #301 — all-None iterations stay "unavailable".
+                                       cache_creation_tok=total_cache_creation if cache_reported else None,
+                                       cache_read_tok=total_cache_read if cache_reported else None)}
                 return
 
             # The model called tools (structured, or salvaged from leaked
@@ -9668,8 +9681,9 @@ async def _stream_with_tools(
                "context_size": _last_call_input,
                "usage": _Usage(prompt_tokens=total_input,
                                completion_tokens=total_output,
-                               cache_creation_tok=total_cache_creation,
-                               cache_read_tok=total_cache_read)}
+                               # #301 — all-None iterations stay "unavailable".
+                               cache_creation_tok=total_cache_creation if cache_reported else None,
+                               cache_read_tok=total_cache_read if cache_reported else None)}
     finally:
         await client.aclose()
 
@@ -13285,8 +13299,10 @@ async def _emit_chat_turn(
                 # capabilities, then fold in the rolling thrashing verdict. Surfaced
                 # on the frame + persisted so caching is PROVEN-BY-EFFECT, not silent.
                 _caps = getattr(creds, "capabilities", None) or {}
-                _cache_create = getattr(last_usage, "cache_creation_tok", 0) if last_usage else 0
-                _cache_read = getattr(last_usage, "cache_read_tok", 0) if last_usage else 0
+                # #301 — None (provider reported no split) must reach the monitor:
+                # the "unavailable" state is decided HERE, not fabricated into a 0.0.
+                _cache_create = getattr(last_usage, "cache_creation_tok", None) if last_usage else None
+                _cache_read = getattr(last_usage, "cache_read_tok", None) if last_usage else None
                 _caching = build_caching_metrics(
                     cache_creation_tok=_cache_create,
                     cache_read_tok=_cache_read,
