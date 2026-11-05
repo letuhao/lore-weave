@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Brain, ChevronDown, Sparkles, Zap } from 'lucide-react';
 import { EFFORT_LEVELS, type EffortLevel } from './effort';
@@ -28,14 +29,58 @@ export function EffortSelect({ value, onChange, disabled, compact }: Props) {
   const { t } = useTranslation('chat');
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  // #262 — the open menu is a PORTAL at body level with fixed positioning. The old
+  // inline `absolute bottom-full z-20` menu stayed inside the control row's stacking
+  // context, and in the compose view the what-if promote bar's subtree won the
+  // browser's hit test: the menu rendered, but every option click landed on the bar
+  // behind it. A body-level portal escapes every ancestor stacking context; the fixed
+  // anchor follows the trigger on scroll/resize and flips BELOW the trigger only when
+  // there is no viewport room above it (the established upward opening stays the
+  // default). z-[60]: above the workspace floats (base 40, capped 49) and the power
+  // view (z-50) — a transient menu, not a competing surface.
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      // The portal menu is OUTSIDE the trigger's subtree — count it as "inside".
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const anchor = () => {
+      const trigger = ref.current?.getBoundingClientRect();
+      const menu = menuRef.current?.getBoundingClientRect();
+      if (!trigger || !menu) return;
+      const gap = 4;
+      // Prefer the established upward opening; flip below only when the menu does not
+      // fit above the trigger.
+      const fitsAbove = trigger.top - gap - menu.height >= 0;
+      const top = fitsAbove ? trigger.top - gap - menu.height : trigger.bottom + gap;
+      setPos({
+        left: Math.max(8, Math.min(trigger.left, window.innerWidth - menu.width - 8)),
+        top: Math.max(8, top),
+      });
+    };
+    anchor();
+    // Reposition (never close) when anything scrolls or the viewport resizes.
+    const onMove = () => anchor();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    return () => {
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+    };
   }, [open]);
 
   const Active = META[value].Icon;
@@ -63,35 +108,48 @@ export function EffortSelect({ value, onChange, disabled, compact }: Props) {
         {t(`input.effort_${value}`)}
         <ChevronDown className="h-2.5 w-2.5 opacity-60" />
       </button>
-      {open && (
-        <div role="menu" data-testid="effort-select-menu"
-          className="absolute bottom-full left-0 z-20 mb-1 w-64 rounded-md border border-border bg-card py-1 shadow-lg">
-          {EFFORT_LEVELS.map((level) => {
-            const { Icon, color } = META[level];
-            return (
-              <button
-                key={level}
-                type="button"
-                role="menuitemradio"
-                aria-checked={value === level}
-                data-testid={`effort-select-opt-${level}`}
-                onClick={() => { onChange(level); setOpen(false); }}
-                className={`flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-secondary ${
-                  value === level ? 'bg-secondary/60' : ''
-                }`}
-              >
-                <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${color}`} />
-                <span className="min-w-0">
-                  <span className={`block text-[11px] font-medium ${color}`}>{t(`input.effort_${level}`)}</span>
-                  <span className="block text-[10px] leading-snug text-muted-foreground">
-                    {t(`input.effort_${level}_hint`)}
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            data-testid="effort-select-menu"
+            style={{
+              position: 'fixed',
+              left: pos?.left ?? 0,
+              top: pos?.top ?? 0,
+              // Hidden until the first measurement lands (layout effect → pre-paint).
+              visibility: pos ? 'visible' : 'hidden',
+            }}
+            className="z-[60] w-64 rounded-md border border-border bg-card py-1 shadow-lg"
+          >
+            {EFFORT_LEVELS.map((level) => {
+              const { Icon, color } = META[level];
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={value === level}
+                  data-testid={`effort-select-opt-${level}`}
+                  onClick={() => { onChange(level); setOpen(false); }}
+                  className={`flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-secondary ${
+                    value === level ? 'bg-secondary/60' : ''
+                  }`}
+                >
+                  <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${color}`} />
+                  <span className="min-w-0">
+                    <span className={`block text-[11px] font-medium ${color}`}>{t(`input.effort_${level}`)}</span>
+                    <span className="block text-[10px] leading-snug text-muted-foreground">
+                      {t(`input.effort_${level}_hint`)}
+                    </span>
                   </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+                </button>
+              );
+            })}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
