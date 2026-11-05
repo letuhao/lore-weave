@@ -1593,6 +1593,7 @@ class PlanForgeService:
         # your plan" answered "what does your plan not have that the POC's novel does" — a fixture
         # constant with extra steps (DA-14), delivered to the user as advice.
         doc_md = await self._document_markdown(book_id, run_id)
+        coverage_gaps: list[dict[str, Any]] = []
         if doc_md:
             try:
                 report = run_self_check_on_document(
@@ -1600,20 +1601,35 @@ class PlanForgeService:
                 )
                 fidelity_score = (report.get("fidelity") or {}).get("score")
                 for g in report.get("ranked_gaps") or []:
-                    gaps.append({
+                    coverage_gaps.append({
                         "path": g.get("id", ""),
                         "severity": g.get("severity", "warn"),
                         "message": g.get("detail", ""),
                     })
             except Exception:
                 logger.warning("self_check: own-document coverage failed", exc_info=True)
-        if not gaps:
-            audit = consistency_audit(spec)
-            for c in audit.get("critical") or []:
-                gaps.append({"path": c.get("field", ""), "severity": "error", "message": c.get("issue", "")})
-            for r in run_rules(spec):
-                if not r["pass"]:
-                    gaps.append({"path": r["rule"], "severity": "warn", "message": r.get("detail", "")})
+
+        # #302 — the HARD COMPILE GATES are computed UNCONDITIONALLY and rank FIRST.
+        # The old `if not gaps:` gating meant a run whose own-document coverage produced
+        # ANY gap — which is every real braindump — never learned about the rule that
+        # blocks its compile: `handoff_autofix` then "fixed everything except the thing
+        # blocking the compile". The gap `path` is a REAL spec path refine can target
+        # (`arcs` / `events`), not the rule id the refine prompt cannot resolve; the
+        # severity is `error` because these are exactly the rules compile refuses on.
+        # The consistency audit's criticals are unconditional for the same reason.
+        blocking = [
+            r for r in run_rules(spec)
+            if not r["pass"] and r.get("tier", "hard") == "hard" and r.get("applicable", True)
+        ]
+        rule_paths = {"spec_has_arc": "arcs", "spec_has_events": "events"}
+        gaps: list[dict[str, Any]] = [
+            {"path": rule_paths.get(r["rule"], ""), "severity": "error", "message": r.get("detail", "")}
+            for r in blocking
+        ]
+        audit = consistency_audit(spec)
+        for c in audit.get("critical") or []:
+            gaps.append({"path": c.get("field", ""), "severity": "error", "message": c.get("issue", "")})
+        gaps.extend(coverage_gaps)
         return {"gaps": gaps, "fidelity_score": fidelity_score, "coverage_board": board}
 
     # ── 27 PF-19 — fixture severing ─────────────────────────────────────────────────────────
