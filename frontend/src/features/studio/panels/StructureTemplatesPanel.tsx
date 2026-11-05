@@ -269,7 +269,7 @@ function ArchivedDetail({ tpl, t, onRestore }: { tpl: StructureTemplate; t: TFn;
 // createTemplate in create-mode (S-01b — the blank draft on-ramp). `mode` picks which Save the panel wires.
 function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive, onCancel, onUseInDecompose, onDirty }: {
   tpl: StructureTemplate; t: TFn; mode?: 'edit' | 'create'; saving: boolean; saveError: string | null;
-  onSave: (patch: { name?: string; kind?: string; beats?: Beat[] }) => void;
+  onSave: (patch: { name?: string; kind?: string; beats?: Beat[] }) => void | Promise<unknown>;
   onArchive?: () => void; onCancel?: () => void; onUseInDecompose?: () => void; onDirty?: (dirty: boolean) => void;
 }) {
   const sorted = (bs: Beat[]) => [...bs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -278,8 +278,10 @@ function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive
   const [beats, setBeats] = useState<Beat[]>(() => sorted(tpl.beats));
   // C1 — snapshot the mount state; `dirty` = the draft diverged. The panel reads this (via onDirty)
   // to gate navigation with a discard-confirm. `discard` resets the draft back to the snapshot.
-  const initial = useRef(JSON.stringify({ name: tpl.name, kind: tpl.kind ?? 'generic', beats: sorted(tpl.beats) }));
-  const dirty = JSON.stringify({ name, kind, beats }) !== initial.current;
+  // STATE, not a ref (#264): a fulfilled save must re-baseline it, and that only counts if the
+  // recompute actually renders — a ref mutation would silently leave the stale badge up.
+  const [initial, setInitial] = useState(() => JSON.stringify({ name: tpl.name, kind: tpl.kind ?? 'generic', beats: sorted(tpl.beats) }));
+  const dirty = JSON.stringify({ name, kind, beats }) !== initial;
   useEffect(() => { onDirty?.(dirty); return () => onDirty?.(false); }, [dirty, onDirty]);
   const discard = () => {
     setName(tpl.name); setKind(tpl.kind ?? ''); setBeats(sorted(tpl.beats));
@@ -304,8 +306,19 @@ function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive
       return [...bs, { key: `beat_${n}`, label: '', purpose: '' }];
     });
 
-  const save = () =>
-    onSave({ name, kind, beats: beats.map((b, i) => ({ ...b, order: i + 1 })) });
+  const save = () => {
+    // #264 — the mount-time snapshot made the editor PERMANENTLY dirty: a successful save
+    // never moved the baseline, so the badge stayed up and every row switch raised a false
+    // discard-confirm over already-stored work. Snapshot what is being sent; if the save
+    // FULFILS, that snapshot IS the new clean state (setState → the dirty recompute renders).
+    // A rejected save keeps the old baseline (the draft still diverges), and the swallow only
+    // covers the promise bookkeeping — the error itself surfaces through saveError state.
+    const snapshot = JSON.stringify({ name, kind, beats });
+    const result = onSave({ name, kind, beats: beats.map((b, i) => ({ ...b, order: i + 1 })) });
+    if (result && typeof result.then === 'function') {
+      result.then(() => { setInitial(snapshot); }, () => {});
+    }
+  };
 
   return (
     <>
