@@ -22,6 +22,25 @@ From `frontend/`:
 | `npm run e2e:headed` | Headed (browser visible) — useful for demo recording |
 | `npm run e2e:report` | Open last HTML report |
 
+## Model-gated tests (two-model specs are a resource commitment)
+
+Some specs guard on the test account's model count and SKIP when it is too low — for example
+`composition-generate.spec.ts` needs a chat-tagged drafter **plus a distinct active critic**
+(`allModels.length < 2` → skip). Read the guard as what it really is before raising the count:
+
+- **A second ACTIVE model is not additive — it arms a different code path.** These tests ask the
+  backend for two models AT ONCE, which on a local BYOK backend means two model loads
+  concurrently (the pair that motivated this note was a 35B beside a 27B — it exhausted the
+  machine, and every later request failed with `Engine protocol startup was aborted`, an error
+  that looks like a broken model but is a resource cap).
+- **Both directions are silent.** 2 → 1 and a batch of tests quietly start SKIPPING (a skip reads
+  as success in a summary line — coverage drops with no red anywhere). 1 → 2 and they start
+  running, which is correct, but the resource cost is a step change nothing declares at the
+  account screen.
+- Treat the test account's active-model count as a **safety setting**: keep it at 1 unless you
+  specifically want the two-model specs, and expect the concurrent-load requirement stated above
+  when you do.
+
 ## Configuration
 
 | Env var | Default | Use |

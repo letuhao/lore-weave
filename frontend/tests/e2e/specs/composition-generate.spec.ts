@@ -11,6 +11,14 @@ import {
 // a DISTINCT critic). The drafter runs with reasoning_effort="none" so a thinking
 // model (qwen3.6-35b-a3b) streams prose instead of burning the budget on hidden
 // reasoning. Skipped (not failed) when the models aren't available.
+//
+// #260 — RESOURCE COST, stated where the count is chosen. The drafter and the critic
+// load CONCURRENTLY on the backend: two model loads at once on a local BYOK server
+// (a 35B beside a 27B exhausted a developer machine, and LM Studio then answered
+// `Engine protocol startup was aborted` to everything — a resource cap that looks
+// like a broken model). Raising the test account to 2 active models is what arms
+// this spec; lowering to 1 silently re-SKIPs it. See tests/e2e/README.md
+// "Model-gated tests".
 test.describe('Composition co-write generate + critic (U3/U4) [model-gated]', () => {
   test('drafts a scene (thinking off) and runs the distinct-model critic on accept', async ({ page, request }) => {
     test.setTimeout(180_000); // real LLM streaming + a second critic call
