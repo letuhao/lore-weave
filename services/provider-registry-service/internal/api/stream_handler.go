@@ -56,14 +56,14 @@ func hasToolDefinitions(tools any) bool {
 // uses Input. Existing callers don't include `operation` — gateway
 // treats absent and "chat" identically.
 type streamRequest struct {
-	Operation    string         `json:"operation,omitempty"` // Phase 5a; defaults to "chat" when empty
-	ModelSource  string         `json:"model_source"`
-	ModelRef     string         `json:"model_ref"`
-	Messages     any            `json:"messages,omitempty"` // chat only
-	Tools        any            `json:"tools,omitempty"`
-	ToolChoice   any            `json:"tool_choice,omitempty"` // OpenAI-shaped; chat only
-	Temperature  *float64       `json:"temperature,omitempty"`
-	MaxTokens    *int           `json:"max_tokens,omitempty"`
+	Operation   string   `json:"operation,omitempty"` // Phase 5a; defaults to "chat" when empty
+	ModelSource string   `json:"model_source"`
+	ModelRef    string   `json:"model_ref"`
+	Messages    any      `json:"messages,omitempty"` // chat only
+	Tools       any      `json:"tools,omitempty"`
+	ToolChoice  any      `json:"tool_choice,omitempty"` // OpenAI-shaped; chat only
+	Temperature *float64 `json:"temperature,omitempty"`
+	MaxTokens   *int     `json:"max_tokens,omitempty"`
 	// Reasoning controls — forwarded to the provider unchanged (the adapter's
 	// forwardOptionalChatFields allowlist). `reasoning_effort:"none"` turns OFF
 	// hidden thinking so reasoning_tokens don't burn the output budget.
@@ -72,8 +72,8 @@ type streamRequest struct {
 	// Provider Context Strategy §5 — stateful /v1/responses routing. Honored only
 	// when the resolved provider declares responses_api AND LLM_STATEFUL_CACHE is on
 	// (gated in doLlmStream); otherwise stripped so the turn degrades to chat/completions.
-	Stateful           bool           `json:"stateful,omitempty"`
-	PreviousResponseID string         `json:"previous_response_id,omitempty"`
+	Stateful           bool   `json:"stateful,omitempty"`
+	PreviousResponseID string `json:"previous_response_id,omitempty"`
 	// Structured-output enforcement — forwarded to the provider unchanged via the
 	// adapter's forwardOptionalChatFields allowlist. OpenAI/LM Studio/vLLM shape:
 	// {"type":"json_object"} or {"type":"json_schema","json_schema":{…}}. Lets the
@@ -81,10 +81,10 @@ type streamRequest struct {
 	// a clean-finish-but-malformed array (the residual completed_with_errors cause)
 	// can't happen. `any` (not a typed struct) keeps the gateway shape-agnostic —
 	// the provider validates the concrete shape.
-	ResponseFormat any `json:"response_format,omitempty"`
-	StreamFormat string         `json:"stream_format,omitempty"`
-	Input        map[string]any `json:"input,omitempty"` // Phase 5a; tts only
-	TraceID      string         `json:"trace_id,omitempty"`
+	ResponseFormat any            `json:"response_format,omitempty"`
+	StreamFormat   string         `json:"stream_format,omitempty"`
+	Input          map[string]any `json:"input,omitempty"` // Phase 5a; tts only
+	TraceID        string         `json:"trace_id,omitempty"`
 	// M3 (chat disconnect-cancel) — OPTIONAL caller-minted job id. When set on a
 	// chat stream, doLlmStream persists a BILLING-NEUTRAL observability llm_jobs
 	// row + registers a cancellable context under this id, so a caller (chat-
@@ -193,16 +193,20 @@ func (s *Server) doLlmStream(w http.ResponseWriter, r *http.Request, userID uuid
 	// later cleanup cycle if it bothers us. (Originally referenced
 	// invokeModel, retired in Phase 4d.)
 	var providerKind, providerModelName, endpointBaseURL, secret string
+	var credentialClass string
+	var maxConcurrency *int
+	var concurrencyLimit int
 	var pricingRaw []byte // Phase 6a-δ — per-model pricing JSONB for the guardrail
 	if in.ModelSource == "user_model" {
 		var secretCipher string
 		err = s.pool.QueryRow(r.Context(), `
 SELECT um.provider_kind, um.provider_model_name,
-       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), um.pricing
+       COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,''), um.pricing,
+       pc.provider_credential_id, pc.max_concurrency
 FROM user_models um
 JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
 WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
-`, modelRef, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &pricingRaw)
+`, modelRef, userID).Scan(&providerKind, &providerModelName, &endpointBaseURL, &secretCipher, &pricingRaw, &credentialClass, &maxConcurrency)
 		if err == pgx.ErrNoRows {
 			writeError(w, http.StatusNotFound, "LLM_MODEL_NOT_FOUND", "user model not found or inactive")
 			return
@@ -210,6 +214,15 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "failed to resolve model")
 			return
+		}
+		if maxConcurrency != nil {
+			concurrencyLimit = *maxConcurrency
+		}
+		if concurrencyLimit <= 0 {
+			concurrencyLimit = s.providerDefaultMax
+		}
+		if concurrencyLimit <= 0 {
+			concurrencyLimit = 8
 		}
 		if secretCipher != "" {
 			secret, err = s.decryptSecret(secretCipher)
@@ -219,6 +232,11 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 			}
 		}
 	} else if in.ModelSource == "platform_model" {
+		credentialClass = "platform:" + modelRef.String()
+		concurrencyLimit = s.providerDefaultMax
+		if concurrencyLimit <= 0 {
+			concurrencyLimit = 8
+		}
 		err = s.pool.QueryRow(r.Context(), `
 SELECT provider_kind, provider_model_name, pricing
 FROM platform_models
@@ -294,6 +312,17 @@ WHERE platform_model_id=$1 AND status='active'
 		writeError(w, http.StatusInternalServerError, "LLM_INTERNAL_ERROR", "invalid model pricing")
 		return
 	}
+	callCtx, cancelCall := context.WithCancel(r.Context())
+	defer cancelCall()
+	permit, permitErr := s.acquireProviderSlot(r.Context(), callCtx, credentialClass, concurrencyLimit)
+	if permitErr != nil {
+		w.Header().Set("Retry-After", "1")
+		writeError(w, http.StatusServiceUnavailable, "LLM_PROVIDER_BUSY", "provider is at its concurrency limit; retry later")
+		return
+	}
+	defer permit.Release()
+	r = r.WithContext(permit.Context())
+
 	guard, ok := s.preflightStream(w, r, userID, op, in.ModelSource, modelRef, pricing, estimateInput, providerKind)
 	if !ok {
 		return // preflightStream wrote the rejection
@@ -494,13 +523,21 @@ func (s *Server) streamChat(
 		}
 		code := "LLM_UPSTREAM_ERROR"
 		message := err.Error()
+		var retryAfterS *float64
 		if errors.Is(err, provider.ErrStreamNotSupported) {
 			code = "LLM_STREAM_NOT_SUPPORTED"
+		} else {
+			var rateLimited *provider.ErrUpstreamRateLimited
+			if errors.As(err, &rateLimited) {
+				code = "LLM_RATE_LIMITED"
+				retryAfterS = rateLimited.RetryAfterS
+			}
 		}
 		_ = emit(provider.StreamChunk{
-			Kind:    provider.StreamChunkError,
-			Code:    code,
-			Message: message,
+			Kind:        provider.StreamChunkError,
+			Code:        code,
+			Message:     message,
+			RetryAfterS: retryAfterS,
 		})
 	}
 	// P0-2 (B2) — classify the terminal outcome so the deferred guard.settle records

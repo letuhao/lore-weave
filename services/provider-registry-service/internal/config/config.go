@@ -6,6 +6,8 @@ import (
 	"strconv"
 )
 
+const DefaultProviderMaxConcurrency = 8
+
 type Config struct {
 	HTTPAddr               string
 	DatabaseURL            string
@@ -78,17 +80,19 @@ type Config struct {
 	// multi-chunk job can run for many minutes). Env LLM_JOB_WALLCLOCK_TIMEOUT_S.
 	LLMJobWallclockTimeoutS int
 
-	// S3a (G5) — per-provider concurrency governor + circuit-breaker on the
-	// jobs-worker path. RedisURL empty → governance disabled (Guard passes
-	// calls through). Sized for the autonomous batch: bound cloud concurrency,
-	// serialize local GPU (=1), and auto-pause a flapping provider.
-	RedisURL                 string
-	GovernorCloudMax         int // concurrency cap per cloud provider kind
-	GovernorLeaseMs          int // per-acquisition lease TTL (> max call duration)
-	GovernorAcquireTimeoutMs int // max wait for a slot before a transient error
-	BreakerThreshold         int // windowed failures that trip the breaker
-	BreakerWindowS           int // failure-count decay window
-	BreakerCooldownS         int // open → half-open wait
+	// Provider-call governor defaults cap direct and queued traffic by credential.
+	// An explicit credential max_concurrency overrides the fallback. Without
+	// REDIS_URL the process-local governor enforces the cap for single-process
+	// deployments; with REDIS_URL a Redis outage fails capped calls closed.
+	RedisURL                      string
+	GovernorCloudMax              int // consumer-pool sizing for the queued LLM jobs path
+	ProviderDefaultMaxConcurrency int // fallback cap when a credential has no explicit max_concurrency
+	ProviderAcquireTimeoutMs      int // max wait for a direct provider-call slot
+	GovernorLeaseMs               int // per-acquisition lease TTL (> max call duration)
+	GovernorAcquireTimeoutMs      int // max wait for a slot before a transient error
+	BreakerThreshold              int // windowed failures that trip the breaker
+	BreakerWindowS                int // failure-count decay window
+	BreakerCooldownS              int // open → half-open wait
 
 	// E5B rerank is BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
 	// user's rerank model from provider-registry like /internal/embed — there is
@@ -199,6 +203,12 @@ func Load() (*Config, error) {
 	// S3a governor + breaker (all optional; RedisURL empty disables governance).
 	c.RedisURL = os.Getenv("REDIS_URL")
 	if c.GovernorCloudMax, err = getEnvInt("GOVERNOR_CLOUD_MAX", 8); err != nil {
+		return nil, err
+	}
+	if c.ProviderDefaultMaxConcurrency, err = getEnvInt("PROVIDER_DEFAULT_MAX_CONCURRENCY", DefaultProviderMaxConcurrency); err != nil {
+		return nil, err
+	}
+	if c.ProviderAcquireTimeoutMs, err = getEnvInt("PROVIDER_ACQUIRE_TIMEOUT_MS", 30000); err != nil {
 		return nil, err
 	}
 	// Lease TTL ≥ the max provider-call duration (invoke_timeout_secs≈300s) so a

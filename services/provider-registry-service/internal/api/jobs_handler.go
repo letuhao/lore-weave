@@ -54,9 +54,9 @@ var validJobOperations = map[string]struct{}{
 	"audio_gen":         {}, // Phase 5e-β.2 — batch TTS
 	"entity_extraction": {}, "relation_extraction": {},
 	"event_extraction": {}, "fact_extraction": {}, // Phase 4a-β
-	"summarize_level":   {}, // P3 hierarchical reduce — chapter/part/book summaries
-	"translation":       {},
-	"vision":            {}, // PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5)
+	"summarize_level": {}, // P3 hierarchical reduce — chapter/part/book summaries
+	"translation":     {},
+	"vision":          {}, // PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5)
 }
 
 // jobSubmitRequest mirrors openapi SubmitJobRequest.

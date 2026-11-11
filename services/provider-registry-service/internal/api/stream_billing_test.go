@@ -299,7 +299,7 @@ func TestStreamGuard_Settle_RecordUsage_HappyPath(t *testing.T) {
 		op:      "chat",
 		pricing: billing.Pricing{InputPerMTok: ptr(2), OutputPerMTok: ptr(10)},
 		finalUsage: &provider.StreamChunk{
-			Kind: provider.StreamChunkUsage,
+			Kind:        provider.StreamChunkUsage,
 			InputTokens: 1000, OutputTokens: 500,
 			ReasoningTokens: &reasoning,
 		},
