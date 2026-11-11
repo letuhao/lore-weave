@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -132,6 +133,25 @@ func TestParseOpenAIFallbackModel(t *testing.T) {
 // "/v1" does NOT produce a doubled "/v1/v1/embeddings" path.  LM Studio and
 // other local providers store their base URL as "http://host:port/v1", so
 // embedOpenAI must strip the trailing /v1 before appending /v1/embeddings.
+func TestEmbedOpenAIRateLimitIsTypedAndKeepsRetryAfter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Retry-After", "3")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"message":"provider concurrency limit"}}`))
+	}))
+	defer srv.Close()
+
+	_, err := embedOpenAI(t.Context(), srv.Client(), srv.URL, "", "embed-model", []string{"text"})
+	var rateLimited *ErrUpstreamRateLimited
+	if !errors.As(err, &rateLimited) {
+		t.Fatalf("error = %T %v, want ErrUpstreamRateLimited", err, err)
+	}
+	if rateLimited.RetryAfterS == nil || *rateLimited.RetryAfterS != 3 {
+		t.Fatalf("RetryAfterS = %v, want 3", rateLimited.RetryAfterS)
+	}
+}
+
 func TestEmbedOpenAI_V1SuffixStripped(t *testing.T) {
 	var capturedPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
