@@ -16,28 +16,38 @@ import (
 )
 
 func TestSemFor_PerCredentialSizing(t *testing.T) {
-	q := &JobQueue{sems: map[string]chan struct{}{}, logger: slog.Default()}
+	q := &JobQueue{sems: map[string]*queueSlot{}, logger: slog.Default()}
 
-	// A credential with a cap → a semaphore of exactly that cap.
-	if got := cap(q.semFor("cred-A", 4)); got != 4 {
-		t.Fatalf("cred-A sem cap=%d want 4", got)
-	}
-	// Unlimited (≤0) → nil semaphore (no gate; the caller runs straight through).
+	// Effective limits are positive; a non-positive cap does not create a slot.
 	if s := q.semFor("cred-B", 0); s != nil {
-		t.Fatalf("limit 0 must yield a nil (unlimited) semaphore; got cap=%d", cap(s))
+		t.Fatalf("limit 0 must yield a nil slot; got cap=%d", s.limit)
 	}
 	if s := q.semFor("cred-B", -1); s != nil {
-		t.Fatalf("negative limit must yield a nil semaphore; got cap=%d", cap(s))
+		t.Fatalf("negative limit must yield a nil slot; got cap=%d", s.limit)
 	}
-	// Same credential → same semaphore instance (stable bound, cached on the cap
-	// seen first — a later cap change is ignored until process restart).
+	if len(q.sems) != 0 {
+		t.Fatalf("non-positive caps must not retain slots: %d", len(q.sems))
+	}
+	// Same credential → same slot; the effective limit is fixed while the slot
+	// has active references, and idle slots are reclaimed after release.
 	a := q.semFor("cred-A", 4)
 	b := q.semFor("cred-A", 9)
 	if a != b {
-		t.Fatalf("semFor returned a different semaphore for the same credential")
+		t.Fatalf("semFor returned a different slot for the same credential")
 	}
-	if cap(b) != 4 {
-		t.Fatalf("cached sem cap must stay 4 (first-seen wins); got %d", cap(b))
+	if b.limit != 4 {
+		t.Fatalf("active slot cap must stay 4; got %d", b.limit)
+	}
+	q.semMu.Lock()
+	a.waiters -= 2
+	q.deleteSlotIfIdleLocked("cred-A", a)
+	q.semMu.Unlock()
+	if len(q.sems) != 0 {
+		t.Fatalf("idle slots should be reclaimed after their waiters leave: %d", len(q.sems))
+	}
+
+	if len(q.sems) != 0 {
+		t.Fatalf("idle slot retained: %d", len(q.sems))
 	}
 }
 
@@ -45,38 +55,39 @@ func TestResolveConcurrency_UserModelCapAndUnlimited(t *testing.T) {
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 	repo := &Repo{pool: mock}
+	owner, modelRef := uuid.New(), uuid.New()
 
 	cred := uuid.New()
 	cap4 := 4
-	// A credential with max_concurrency=4 → key=credential id, limit=4.
-	mock.ExpectQuery("FROM user_models").WithArgs(anyArgs(2)...).
+	mock.ExpectQuery("FROM user_models").WithArgs(modelRef, owner).
 		WillReturnRows(pgxmock.NewRows([]string{"provider_credential_id", "max_concurrency"}).AddRow(cred, &cap4))
-	key, limit, ok, err := repo.ResolveConcurrency(context.Background(), "user_model", uuid.New(), uuid.New())
+	key, limit, ok, err := repo.EffectiveConcurrency(context.Background(), "user_model", owner, modelRef, 8)
 	if err != nil || !ok || key != cred.String() || limit != 4 {
-		t.Fatalf("got key=%q limit=%d ok=%v err=%v want %s,4,true,nil", key, limit, ok, err, cred)
+		t.Fatalf("explicit cap: key=%q limit=%d ok=%v err=%v want %s,4,true,nil", key, limit, ok, err, cred)
 	}
 
-	// NULL max_concurrency → limit 0 (unlimited).
-	mock.ExpectQuery("FROM user_models").WithArgs(anyArgs(2)...).
+	// NULL max_concurrency → the shared positive default, not unlimited.
+	modelRef = uuid.New()
+	mock.ExpectQuery("FROM user_models").WithArgs(modelRef, owner).
 		WillReturnRows(pgxmock.NewRows([]string{"provider_credential_id", "max_concurrency"}).AddRow(cred, (*int)(nil)))
-	_, limit2, ok2, err2 := repo.ResolveConcurrency(context.Background(), "user_model", uuid.New(), uuid.New())
-	if err2 != nil || !ok2 || limit2 != 0 {
-		t.Fatalf("null cap: limit=%d ok=%v err=%v want 0,true,nil", limit2, ok2, err2)
+	key2, limit2, ok2, err2 := repo.EffectiveConcurrency(context.Background(), "user_model", owner, modelRef, 8)
+	if err2 != nil || !ok2 || key2 != cred.String() || limit2 != 8 {
+		t.Fatalf("null cap: key=%q limit=%d ok=%v err=%v want %s,8,true,nil", key2, limit2, ok2, err2, cred)
 	}
 
 	// Gone model → ok=false, no error (consumer acks+drops).
-	mock.ExpectQuery("FROM user_models").WithArgs(anyArgs(2)...).
-		WillReturnRows(pgxmock.NewRows([]string{"provider_credential_id", "max_concurrency"})) // ErrNoRows
-	_, _, ok3, err3 := repo.ResolveConcurrency(context.Background(), "user_model", uuid.New(), uuid.New())
+	modelRef = uuid.New()
+	mock.ExpectQuery("FROM user_models").WithArgs(modelRef, owner).
+		WillReturnRows(pgxmock.NewRows([]string{"provider_credential_id", "max_concurrency"}))
+	_, _, ok3, err3 := repo.EffectiveConcurrency(context.Background(), "user_model", owner, modelRef, 8)
 	if ok3 || err3 != nil {
 		t.Fatalf("not-found: ok=%v err=%v want false,nil", ok3, err3)
 	}
 
-	// Platform models are unlimited without a DB hit.
 	pmRef := uuid.New()
-	pKey, pLimit, pOK, pErr := repo.ResolveConcurrency(context.Background(), "platform_model", uuid.New(), pmRef)
-	if pErr != nil || !pOK || pLimit != 0 || pKey != "platform:"+pmRef.String() {
-		t.Fatalf("platform: key=%q limit=%d ok=%v err=%v", pKey, pLimit, pOK, pErr)
+	pKey, pLimit, pOK, pErr := repo.EffectiveConcurrency(context.Background(), "platform_model", owner, pmRef, 8)
+	if pErr != nil || !pOK || pLimit != 8 || pKey != "platform:"+pmRef.String() {
+		t.Fatalf("platform: key=%q limit=%d ok=%v err=%v want default cap 8", pKey, pLimit, pOK, pErr)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {

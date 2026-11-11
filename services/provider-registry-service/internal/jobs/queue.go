@@ -1,32 +1,5 @@
 package jobs
 
-// queue.go — LLM re-arch Phase 1 Commit 3. A durable work queue over RabbitMQ
-// that REPLACES the direct `go Process(...)` dispatch + the governor's
-// block-acquire-then-FAIL gate. Jobs wait IN the queue / on a per-credential
-// semaphore (sized = the credential's max_concurrency; unlimited → no gate); a
-// slow job DELAYS the queue, it never cascades `ErrGovernorTimeout` to everyone
-// behind it (the incident).
-//
-//   submit → Publish(job_id) → llm.jobs (durable, persistent)
-//   one consumer, prefetch = P worker goroutines:
-//     load job → resolve credential class + cap → acquire its semaphore (skipped
-//     when unlimited) → Process (Phase-0 cancellable ctx) → ack
-//   consumer crash → un-acked message redelivered. Redelivery RE-RUNS a job
-//   that crashed BEFORE MarkRunning (still `pending`); a job that crashed AFTER
-//   MarkRunning is `running`, and Process's `WHERE status='pending'` gate blocks
-//   re-running it — that rare stuck-`running` row is recovered by the truth
-//   sweeper (spec §5.6), not by redelivery.
-//
-// Design note (deviation from spec D1's per-kind queues): a SINGLE queue + a
-// per-kind in-process semaphore handles ANY provider kind without enumerating
-// kinds up front (a per-kind queue with no running consumer would strand its
-// jobs). Concurrency bound + wait-not-fail are identical; durability +
-// redelivery are preserved.
-//
-// Behind LLM_JOB_QUEUE_ENABLED (default off): when off, submit keeps today's
-// direct goroutine path — zero-risk additive until enabled. The governor's
-// atomic-Lua slot logic is retained as a SAFETY BELT inside Process (Guard).
-
 import (
 	"context"
 	"encoding/json"
@@ -41,44 +14,32 @@ import (
 
 const llmJobsQueue = "llm.jobs"
 
-// queueMessage is the wire body. Minimal — the llm_jobs row is the source of
-// truth; the consumer loads everything else by id (cheap redelivery, no large
-// payload on the bus).
 type queueMessage struct {
 	JobID string `json:"job_id"`
 }
 
-// ConcurrencyResolver returns a job's concurrency CLASS (the credential id the
-// queue serializes on) and that class's cap. limit ≤ 0 means UNLIMITED — the
-// consumer runs the job without any semaphore gate (request-as-demand; the
-// backend is the only limiter). ok=false when the job/model is gone (consumer
-// acks + drops). D-PROVIDER-CONCURRENCY-CONFIG replaced the old per-KIND
-// resolver (local→1 / cloud→cloudMax) with this per-credential one.
-type ConcurrencyResolver func(ctx context.Context, jobID uuid.UUID) (concClass string, limit int, ok bool)
+// ConcurrencyResolver returns an effective, positive credential cap. ok=false is
+// reserved for a genuinely deleted model; lookup errors trigger a requeue.
+type ConcurrencyResolver func(context.Context, uuid.UUID) (string, int, bool, error)
+type JobRunner func(context.Context, uuid.UUID, string, int) error
 
-// JobRunner runs a job to terminal SYNCHRONOUSLY (so the ack happens only after
-// the job is terminal). The caller layers the Phase-0 cancellable ctx + the
-// jobID→cancel registration so DELETE still aborts an in-flight queued job.
-type JobRunner func(ctx context.Context, jobID uuid.UUID)
+type queueSlot struct {
+	limit   int
+	inUse   int
+	waiters int
+	changed chan struct{}
+}
 
-// JobQueue publishes jobs to the durable work queue and runs the consumer pool
-// with a per-kind concurrency semaphore. amqp091 channels are NOT goroutine-safe
-// (the publish channel is mutex-guarded; the consumer owns its own channel).
 type JobQueue struct {
-	conn   *rabbitmq.Connection
-	pubCh  *rabbitmq.Channel
-	pubMu  sync.Mutex
-	logger *slog.Logger
-
-	semMu sync.Mutex
-	sems  map[string]chan struct{} // per-credential concurrency semaphore (lazy)
-
+	conn       *rabbitmq.Connection
+	pubCh      *rabbitmq.Channel
+	pubMu      sync.Mutex
+	logger     *slog.Logger
+	semMu      sync.Mutex
+	sems       map[string]*queueSlot
 	consumerCh *rabbitmq.Channel
 }
 
-// NewJobQueue dials RabbitMQ, opens the publish channel, and declares the
-// durable work queue. Per-credential caps travel with each job (resolved by the
-// ConcurrencyResolver), so the queue no longer carries a global cloudMax.
 func NewJobQueue(amqpURL string, logger *slog.Logger) (*JobQueue, error) {
 	if logger == nil {
 		logger = slog.Default()
@@ -97,10 +58,9 @@ func NewJobQueue(amqpURL string, logger *slog.Logger) (*JobQueue, error) {
 		_ = conn.Close()
 		return nil, fmt.Errorf("job-queue declare: %w", err)
 	}
-	return &JobQueue{conn: conn, pubCh: ch, logger: logger, sems: map[string]chan struct{}{}}, nil
+	return &JobQueue{conn: conn, pubCh: ch, logger: logger, sems: map[string]*queueSlot{}}, nil
 }
 
-// Publish enqueues a job as a persistent message on the durable work queue.
 func (q *JobQueue) Publish(ctx context.Context, jobID uuid.UUID) error {
 	body, err := json.Marshal(queueMessage{JobID: jobID.String()})
 	if err != nil {
@@ -108,43 +68,32 @@ func (q *JobQueue) Publish(ctx context.Context, jobID uuid.UUID) error {
 	}
 	q.pubMu.Lock()
 	defer q.pubMu.Unlock()
-	return q.pubCh.PublishWithContext(ctx,
-		"",           // default exchange → route by queue name
-		llmJobsQueue, // routing key = queue name
-		false,        // mandatory
-		false,        // immediate
-		rabbitmq.Publishing{
-			ContentType:  "application/json",
-			DeliveryMode: rabbitmq.Persistent, // survive broker restart
-			Body:         body,
-		},
-	)
+	return q.pubCh.PublishWithContext(ctx, "", llmJobsQueue, false, false, rabbitmq.Publishing{ContentType: "application/json", DeliveryMode: rabbitmq.Persistent, Body: body})
 }
 
-// semFor lazily builds the per-credential concurrency semaphore (a buffered
-// channel of `limit` tokens). limit ≤ 0 → UNLIMITED → returns nil (the caller
-// skips the gate entirely; request-as-demand). The cap is cached on first sight
-// of a class, so a later max_concurrency change takes effect on process restart.
-func (q *JobQueue) semFor(concClass string, limit int) chan struct{} {
+// semFor reserves a waiter reference atomically with finding/creating the slot,
+// preventing an idle slot from being evicted between lookup and waiter count.
+func (q *JobQueue) semFor(class string, limit int) *queueSlot {
 	if limit <= 0 {
-		return nil // unlimited — no gate
+		return nil
 	}
 	q.semMu.Lock()
 	defer q.semMu.Unlock()
-	s, ok := q.sems[concClass]
-	if !ok {
-		s = make(chan struct{}, limit)
-		q.sems[concClass] = s
+	slot := q.sems[class]
+	if slot == nil {
+		slot = &queueSlot{limit: limit, changed: make(chan struct{})}
+		q.sems[class] = slot
 	}
-	return s
+	slot.waiters++
+	return slot
 }
 
-// StartConsumer opens the consumer channel, sets prefetch = workers, and runs
-// `workers` goroutines. Each: load+resolve the credential class → acquire its
-// semaphore (BLOCKS, queue-not-fail; skipped when unlimited) → run the job →
-// ack. prefetch = workers bounds the in-flight (unacked) set; jobs beyond that
-// stay in the durable queue. A process crash leaves messages un-acked →
-// redelivered (the reaper).
+func (q *JobQueue) deleteSlotIfIdleLocked(class string, slot *queueSlot) {
+	if slot.inUse == 0 && slot.waiters == 0 && q.sems[class] == slot {
+		delete(q.sems, class)
+	}
+}
+
 func (q *JobQueue) StartConsumer(ctx context.Context, workers int, resolve ConcurrencyResolver, run JobRunner) error {
 	if workers < 1 {
 		workers = 1
@@ -178,6 +127,7 @@ func (q *JobQueue) StartConsumer(ctx context.Context, workers int, resolve Concu
 						return
 					}
 					q.handleDelivery(ctx, d, resolve, run)
+
 				}
 			}
 		}()
@@ -186,10 +136,11 @@ func (q *JobQueue) StartConsumer(ctx context.Context, workers int, resolve Concu
 	return nil
 }
 
-// handleDelivery decodes one message, gates on the per-credential semaphore
-// (skipped when the class is unlimited), runs the job synchronously, and acks. A
-// malformed/gone job is acked + dropped (a redelivery would never resolve).
 func (q *JobQueue) handleDelivery(ctx context.Context, d rabbitmq.Delivery, resolve ConcurrencyResolver, run JobRunner) {
+	if ctx.Err() != nil {
+		_ = d.Nack(false, true)
+		return
+	}
 	var msg queueMessage
 	if err := json.Unmarshal(d.Body, &msg); err != nil {
 		q.logger.Warn("job-queue: undecodable message dropped", "err", err)
@@ -202,28 +153,60 @@ func (q *JobQueue) handleDelivery(ctx context.Context, d rabbitmq.Delivery, reso
 		_ = d.Ack(false)
 		return
 	}
-	concClass, limit, ok := resolve(ctx, jobID)
+	class, limit, ok, err := resolve(ctx, jobID)
+	if err != nil {
+		q.logger.Warn("job-queue: concurrency lookup failed — requeue", "job_id", jobID.String(), "err", err)
+		_ = d.Nack(false, true)
+		return
+	}
 	if !ok {
-		q.logger.Warn("job-queue: concurrency class unresolved — dropping", "job_id", jobID.String())
+		q.logger.Warn("job-queue: model missing — dropping", "job_id", jobID.String())
 		_ = d.Ack(false)
 		return
 	}
-	// nil sem = unlimited class → run straight through (request-as-demand).
-	if sem := q.semFor(concClass, limit); sem != nil {
-		select {
-		case sem <- struct{}{}: // acquire (BLOCKS at capacity → wait, not fail)
-		case <-ctx.Done():
-			// Shutting down — leave un-acked for redelivery.
-			_ = d.Nack(false, true)
-			return
+
+	slot := q.semFor(class, limit)
+	if slot != nil {
+		for {
+			q.semMu.Lock()
+			if slot.inUse < slot.limit {
+				slot.waiters--
+				slot.inUse++
+				q.semMu.Unlock()
+				defer func() {
+					q.semMu.Lock()
+					slot.inUse--
+					close(slot.changed)
+					slot.changed = make(chan struct{})
+					q.deleteSlotIfIdleLocked(class, slot)
+					q.semMu.Unlock()
+				}()
+
+				break
+			}
+			changed := slot.changed
+			q.semMu.Unlock()
+			select {
+			case <-ctx.Done():
+				q.semMu.Lock()
+				slot.waiters--
+				q.deleteSlotIfIdleLocked(class, slot)
+				q.semMu.Unlock()
+				_ = d.Nack(false, true)
+				return
+
+			case <-changed:
+			}
 		}
-		defer func() { <-sem }() // release
 	}
-	run(ctx, jobID) // synchronous → ack only after the job is terminal
+	if err := run(ctx, jobID, class, limit); err != nil {
+		q.logger.Warn("job-queue: runner failed — requeue", "job_id", jobID.String(), "err", err)
+		_ = d.Nack(false, true)
+		return
+	}
 	_ = d.Ack(false)
 }
 
-// Close stops the consumer + publish channel + connection.
 func (q *JobQueue) Close() error {
 	if q.consumerCh != nil {
 		_ = q.consumerCh.Close()

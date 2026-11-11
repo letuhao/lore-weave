@@ -197,8 +197,8 @@ FOR UPDATE SKIP LOCKED
 	for rows.Next() {
 		var id int64
 		var requestID, ownerID, modelSource, modelRef, operation string
-		var campaignID, mcpKeyID, costUSD *string       // nullable
-		var reqStatus, reqPayload, respPayload *string  // nullable (#32)
+		var campaignID, mcpKeyID, costUSD *string      // nullable
+		var reqStatus, reqPayload, respPayload *string // nullable (#32)
 		var providerKind string                        // NOT NULL DEFAULT ''
 		var inTok, outTok int
 		if err := rows.Scan(&id, &requestID, &ownerID, &campaignID, &mcpKeyID, &modelSource,

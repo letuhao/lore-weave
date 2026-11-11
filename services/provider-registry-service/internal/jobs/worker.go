@@ -12,8 +12,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -65,11 +67,11 @@ type Worker struct {
 	// Phase 6b — transient-retry budget (config JOB_MAX_RETRIES). 0 → a
 	// failed upstream call is not retried.
 	maxRetries int
-	// S3a (G5) — per-provider concurrency governor + circuit-breaker. Both
-	// nil when REDIS_URL is unset → ratelimit.Guard passes calls through
-	// unchanged (governance disabled; existing tests stay Redis-free).
-	gov ratelimit.ConcurrencyGovernor
-	brk ratelimit.CircuitBreaker
+	// Shared per-credential provider admission and circuit-breaker.
+	gov                           ratelimit.ConcurrencyGovernor
+	brk                           ratelimit.CircuitBreaker
+	providerDefaultMaxConcurrency int
+	concurrencyAcquireTimeout     time.Duration
 }
 
 func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache, guardrail *billing.GuardrailClient, maxRetries int) *Worker {
@@ -89,6 +91,27 @@ func (w *Worker) WithGovernance(gov ratelimit.ConcurrencyGovernor, brk ratelimit
 	w.gov = gov
 	w.brk = brk
 	return w
+}
+
+func (w *Worker) WithDefaultConcurrency(limit int) *Worker {
+	w.providerDefaultMaxConcurrency = limit
+	return w
+}
+
+func (w *Worker) WithConcurrencyAcquireTimeout(timeout time.Duration) *Worker {
+	w.concurrencyAcquireTimeout = timeout
+	return w
+}
+
+func (w *Worker) resolveEffectiveConcurrency(ctx context.Context, owner uuid.UUID, model uuid.UUID, source string) (string, int, bool, error) {
+	if scope, ok := providerCallScopeFrom(ctx); ok && scope.class != "" && scope.limit > 0 {
+		return scope.class, scope.limit, true, nil
+	}
+	class, limit, ok, err := w.repo.EffectiveConcurrency(ctx, source, owner, model, w.providerDefaultMaxConcurrency)
+	if err != nil {
+		return "", 0, ok, err
+	}
+	return class, limit, ok, nil
 }
 
 // finalizeAndNotify is the only path through which the worker ends a
@@ -294,27 +317,44 @@ func numField(m map[string]any, key string) (int, bool) {
 // row (ErrNoRows) is logged + dropped (the caller acks). NOTE: a job that
 // crashed mid-Process is left `running` and is SKIPPED here (not re-run) — that
 // stuck-`running` case is the truth-sweeper's job (spec §5.6), not redelivery's.
-func (w *Worker) ProcessJob(ctx context.Context, jobID uuid.UUID) {
+func (w *Worker) ProcessJob(ctx context.Context, jobID uuid.UUID) error {
+	return w.ProcessJobWithConcurrency(ctx, jobID, "", 0)
+}
+
+func (w *Worker) ProcessJobWithConcurrency(ctx context.Context, jobID uuid.UUID, class string, limit int) error {
 	d, err := w.repo.LoadForProcess(ctx, jobID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		w.logger.Warn("queue: job row gone — dropping", "job_id", jobID.String())
+		return nil
+	}
 	if err != nil {
-		// Gone or unreadable — nothing to run. Don't finalize (we have no
-		// owner/operation to attribute); the consumer acks + drops.
-		w.logger.Warn("queue: load job failed — dropping", "job_id", jobID.String(), "err", err)
-		return
+		return fmt.Errorf("load job for process: %w", err)
 	}
 	if d.Status != "pending" {
-		// Redelivery of an already-claimed/terminal job — no-op (Process's
-		// MarkRunning would also catch this, but skip the work up front).
 		w.logger.Info("queue: job not pending — skipping", "job_id", jobID.String(), "status", d.Status)
-		return
+		return nil
+	}
+	if class != "" && limit > 0 {
+		ctx = withProviderCallScope(ctx, class, limit)
 	}
 	chunkCfg, decErr := DecodeChunkConfig(d.Chunking)
 	if decErr != nil {
 		w.finalizeAndNotify(ctx, jobID, d.OwnerUserID, d.Operation, "failed", nil,
 			"LLM_INVALID_REQUEST", "invalid chunking config: "+decErr.Error(), "")
-		return
+		return nil
 	}
 	w.Process(ctx, jobID, d.OwnerUserID, d.Operation, d.ModelSource, d.ModelRef, d.Input, chunkCfg)
+	current, err := w.repo.LoadForProcess(ctx, jobID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check job after process: %w", err)
+	}
+	if current.Status == "pending" || current.Status == "running" {
+		return fmt.Errorf("job processing did not reach a terminal state (status %s)", current.Status)
+	}
+	return nil
 }
 
 // Process runs a single job to completion. Caller passes in the inserted
@@ -339,6 +379,18 @@ func (w *Worker) Process(
 	input json.RawMessage,
 	chunking *ChunkConfig,
 ) {
+	w.process(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, chunking)
+}
+
+func (w *Worker) process(
+	ctx context.Context,
+	jobID uuid.UUID,
+	ownerUserID uuid.UUID,
+	operation, modelSource string,
+	modelRef uuid.UUID,
+	input json.RawMessage,
+	chunking *ChunkConfig,
+) error {
 	// Phase 6c — the job span. ctx arrived via observability.DetachedContext
 	// (jobs_handler), carrying the submit request's trace_id but not its
 	// cancellation; this span re-roots the detached worker under that trace.
@@ -354,14 +406,35 @@ func (w *Worker) Process(
 	rowsRunning, err := w.repo.MarkRunning(ctx, jobID)
 	if err != nil {
 		logger.Error("mark running failed", "err", err)
+		if _, queued := providerCallScopeFrom(ctx); queued {
+			return fmt.Errorf("mark job running: %w", err)
+		}
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, "LLM_INTERNAL_ERROR", err.Error(), "")
-		return
+		return nil
 	}
 	if rowsRunning == 0 {
 		// Already cancelled OR another worker beat us. Nothing to do.
 		logger.Info("job not pending; skipping process")
-		return
+		return nil
 	}
+
+	concClass, concLimit, concOK, concErr := w.resolveEffectiveConcurrency(ctx, ownerUserID, modelRef, modelSource)
+	if concErr != nil {
+		if _, queued := providerCallScopeFrom(ctx); queued {
+			// Queue dispatch carries its scope already; a lookup failure here must
+			// not terminal-fail a redeliverable job — surface it so the delivery requeues.
+			return fmt.Errorf("resolve provider concurrency: %w", concErr)
+		}
+		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
+			"LLM_PROVIDER_CONCURRENCY_UNAVAILABLE", concErr.Error(), "")
+		return nil
+	}
+	if !concOK {
+		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
+			"LLM_MODEL_NOT_FOUND", "provider model disappeared before dispatch", "")
+		return nil
+	}
+	ctx = withProviderCallScope(ctx, concClass, concLimit)
 
 	// Phase 5a — audio job dispatch (stt). Routes BEFORE the chat-streaming
 	// whitelist because audio ops use adapter.Transcribe (not Stream),
@@ -374,11 +447,11 @@ func (w *Worker) Process(
 			"LLM_OPERATION_NOT_SUPPORTED_VIA_JOBS",
 			"tts is supported only via /v1/llm/stream",
 			"")
-		return
+		return nil
 	}
 	if isAudioJobOperation(operation) {
 		w.processAudioJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
-		return
+		return nil
 	}
 
 	// Phase 5c-α — image-gen dispatch. Routes BEFORE chat-streaming
@@ -386,7 +459,7 @@ func (w *Worker) Process(
 	// has no chunker, and no aggregator. Mirrors audio dispatch above.
 	if isImageJobOperation(operation) {
 		w.processImageGenJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
-		return
+		return nil
 	}
 
 	// Phase 5d — video-gen dispatch. Routes BEFORE chat-streaming
@@ -395,7 +468,7 @@ func (w *Worker) Process(
 	// with VideoGenJobTimeout=30min ctx (3× longer than image).
 	if isVideoJobOperation(operation) {
 		w.processVideoGenJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
-		return
+		return nil
 	}
 
 	// PDF-import vision op (docs/specs/2026-07-06-pdf-book-import.md L5) —
@@ -404,7 +477,7 @@ func (w *Worker) Process(
 	// chunker, and no aggregator. Mirrors image/video dispatch above.
 	if isVisionJobOperation(operation) {
 		w.processVisionJob(ctx, jobID, ownerUserID, operation, modelSource, modelRef, input, logger)
-		return
+		return nil
 	}
 
 	// Phase 4a-α Step 0 — op-whitelist. The chat-streaming machinery +
@@ -421,38 +494,27 @@ func (w *Worker) Process(
 			"LLM_OPERATION_NOT_SUPPORTED",
 			fmt.Sprintf("operation %q not yet implemented in async-job mode", operation),
 			"")
-		return
+		return nil
 	}
 
 	providerKind, providerModelName, endpointBaseURL, secret, err := w.resolve(ctx, ownerUserID, modelRef, modelSource)
 	if err != nil {
 		logger.Error("resolve creds failed", "err", err)
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, "LLM_MODEL_NOT_FOUND", err.Error(), "")
-		return
-	}
-
-	// D-PROVIDER-CONCURRENCY-CONFIG — the concurrency class (credential id) +
-	// its cap (NULL → 0 = unlimited). Fail-open: if the lookup errors, fall back
-	// to the provider kind as the class + unlimited, so a transient DB hiccup
-	// never wedges a job. (repo is non-nil here — MarkRunning ran above.)
-	concClass, concLimit := providerKind, 0
-	if k, lim, ok, cerr := w.repo.ResolveConcurrency(ctx, modelSource, ownerUserID, modelRef); cerr != nil {
-		logger.Warn("resolve concurrency failed — defaulting to unlimited", "err", cerr)
-	} else if ok {
-		concClass, concLimit = k, lim
+		return nil
 	}
 
 	adapter, err := w.adapter(providerKind)
 	if err != nil {
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, "LLM_PROVIDER_ROUTE_VIOLATION", err.Error(), "")
-		return
+		return nil
 	}
 
 	// Decode input to the map form Adapter.Stream expects.
 	var inputMap map[string]any
 	if err := json.Unmarshal(input, &inputMap); err != nil {
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, "LLM_INVALID_REQUEST", err.Error(), "")
-		return
+		return nil
 	}
 
 	agg := NewAggregator(operation)
@@ -470,7 +532,7 @@ func (w *Worker) Process(
 		if err := w.processChunks(ctx, jobID, agg, adapter, concClass, concLimit, endpointBaseURL, secret, providerModelName, inputMap, chunkPieces, emit, logger); err != nil {
 			errCode := classifyStreamErrorCode(err)
 			w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, errCode, err.Error(), "")
-			return
+			return nil
 		}
 	} else {
 		// Single-call Phase 2b path with Phase 4a-α Step 0b transient retry.
@@ -479,7 +541,7 @@ func (w *Worker) Process(
 			logger.Error("stream failed", "err", streamErr)
 			errCode := classifyStreamErrorCode(streamErr)
 			w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, errCode, streamErr.Error(), "")
-			return
+			return nil
 		}
 		// Single chunk → progress 1/1 for caller polling.
 		_ = w.repo.UpdateProgress(ctx, jobID, intPtr(1), 1, 0)
@@ -516,10 +578,11 @@ func (w *Worker) Process(
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", result,
 			"LLM_UPSTREAM_ERROR",
 			"the provider returned an empty completion — no content and no tokens", finishReason)
-		return
+		return nil
 	}
 
 	w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "completed", result, "", "", finishReason)
+	return nil
 }
 
 // emptyCompletion reports whether a terminal CHAT result carries nothing at all.
@@ -624,11 +687,8 @@ func (w *Worker) processChunks(
 			// StartChunk resets the per-chunk buffer — so a retry after a
 			// partial stream discards that attempt's partial (Phase 6b).
 			agg.StartChunk(i)
-			// S3a: governor + circuit-breaker wrap the provider call. Inside
-			// retryTransient so each retry re-checks the breaker + re-acquires
-			// a slot, and a transient failure counts toward opening.
-			return ratelimit.Guard(ctx, w.gov, w.brk, concClass, concLimit, provider.IsTransientUpstreamError, func() error {
-				return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+			return w.withProviderCall(ctx, concClass, concLimit, func(callCtx context.Context) error {
+				return adapter.Stream(callCtx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
 			})
 		})
 		if streamErr != nil {
@@ -673,9 +733,8 @@ func (w *Worker) streamWithRetry(
 ) error {
 	err := retryTransient(ctx, w.maxRetries, logger, func() error {
 		agg.StartChunk(0)
-		// S3a: governor + circuit-breaker wrap the provider call (see processChunks).
-		return ratelimit.Guard(ctx, w.gov, w.brk, concClass, concLimit, provider.IsTransientUpstreamError, func() error {
-			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+		return w.withProviderCall(ctx, concClass, concLimit, func(callCtx context.Context) error {
+			return adapter.Stream(callCtx, endpointBaseURL, secret, providerModelName, input, emit)
 		})
 	})
 	if err != nil {

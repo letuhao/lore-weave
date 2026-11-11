@@ -114,9 +114,11 @@ func (w *Worker) runVisionJob(
 	// image_gen/video_gen.
 	var out provider.CaptionImageOutput
 	err := retryTransient(visCtx, w.maxRetries, logger, func() error {
-		o, _, e := adapter.CaptionImage(visCtx, endpointBaseURL, secret, providerModelName, in)
-		out = o
-		return e
+		return w.withScopedProviderCall(visCtx, func(callCtx context.Context) error {
+			o, _, e := adapter.CaptionImage(callCtx, endpointBaseURL, secret, providerModelName, in)
+			out = o
+			return e
+		})
 	})
 	if err != nil {
 		errCode, status := classifyVisionError(visCtx, err)

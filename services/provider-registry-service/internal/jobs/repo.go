@@ -248,13 +248,10 @@ FROM llm_jobs WHERE job_id = $1
 	return d, nil
 }
 
-// ResolveConcurrency resolves a job's concurrency CLASS — the key the governor +
-// queue serialize on — and that class's per-credential cap. The key is the
-// provider_credential_id (so all jobs sharing one BYOK credential share its
-// limit, regardless of provider kind). limit ≤ 0 means UNLIMITED (NULL
-// max_concurrency → request-as-demand; the backend infra is the only limiter).
-// found=false → model gone (caller acks+drops). Platform models have no
-// per-user credential → keyed by platform_model_id, always unlimited.
+// ResolveConcurrency returns the provider credential class and its explicit cap.
+// EffectiveConcurrency applies the configured fallback when this cap is NULL or
+// non-positive. Missing models return ok=false; database errors are returned so
+// callers can requeue without treating a transient read failure as unlimited.
 func (r *Repo) ResolveConcurrency(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (key string, limit int, ok bool, err error) {
 	var credID uuid.UUID
 	var maxConc *int

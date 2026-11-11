@@ -115,9 +115,11 @@ func (w *Worker) runVideoGenJob(
 	// Phase 6b — retry the generation on a transient upstream error.
 	var out provider.GenerateVideoOutput
 	err := retryTransient(vidCtx, w.maxRetries, logger, func() error {
-		o, _, e := adapter.GenerateVideo(vidCtx, endpointBaseURL, secret, providerModelName, in)
-		out = o
-		return e
+		return w.withScopedProviderCall(vidCtx, func(callCtx context.Context) error {
+			o, _, e := adapter.GenerateVideo(callCtx, endpointBaseURL, secret, providerModelName, in)
+			out = o
+			return e
+		})
 	})
 	if err != nil {
 		errCode, status := classifyVideoError(vidCtx, err)

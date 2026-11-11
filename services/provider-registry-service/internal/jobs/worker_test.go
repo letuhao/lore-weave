@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/ratelimit"
 )
 
 // Phase 4a-α Step 0a — operation whitelist regression locks. The worker
@@ -207,9 +208,23 @@ func (f *fakeAdapter) Stream(_ context.Context, _, _, _ string, _ map[string]any
 	return nil
 }
 
+type workerTestPermit struct{ ctx context.Context }
+
+func (p *workerTestPermit) Context() context.Context { return p.ctx }
+func (p *workerTestPermit) Release()                 {}
+
+type workerTestGovernor struct{}
+
+func (workerTestGovernor) Acquire(_ context.Context, callCtx context.Context, _ string, _ int) (ratelimit.ProviderPermit, error) {
+	return &workerTestPermit{ctx: callCtx}, nil
+}
+
 func newWorkerForRetryTest() *Worker {
 	// Discard logger to keep test output clean.
-	return &Worker{logger: slog.New(slog.NewTextHandler(discardWriter{}, nil))}
+	return &Worker{
+		logger: slog.New(slog.NewTextHandler(discardWriter{}, nil)),
+		gov:    workerTestGovernor{},
+	}
 }
 
 type discardWriter struct{}

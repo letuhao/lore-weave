@@ -123,9 +123,11 @@ func (w *Worker) runImageGenJob(
 	// Phase 6b — retry the generation on a transient upstream error.
 	var out provider.GenerateImageOutput
 	err := retryTransient(imgCtx, w.maxRetries, logger, func() error {
-		o, _, e := adapter.GenerateImage(imgCtx, endpointBaseURL, secret, providerModelName, in)
-		out = o
-		return e
+		return w.withScopedProviderCall(imgCtx, func(callCtx context.Context) error {
+			o, _, e := adapter.GenerateImage(callCtx, endpointBaseURL, secret, providerModelName, in)
+			out = o
+			return e
+		})
 	})
 	if err != nil {
 		errCode, status := classifyImageError(imgCtx, err)

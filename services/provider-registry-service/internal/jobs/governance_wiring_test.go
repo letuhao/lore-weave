@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/ratelimit"
 )
 
 // S3a /review-impl #1: lock the WIRING — every other jobs test runs with nil
@@ -16,9 +17,17 @@ import (
 
 type spyGov struct{ acquired, released int }
 
-func (g *spyGov) Acquire(ctx context.Context, concClass string, limit int) (func(), error) {
+type spyPermit struct {
+	ctx     context.Context
+	release func()
+}
+
+func (p *spyPermit) Context() context.Context { return p.ctx }
+func (p *spyPermit) Release()                 { p.release() }
+
+func (g *spyGov) Acquire(_ context.Context, callCtx context.Context, _ string, _ int) (ratelimit.ProviderPermit, error) {
 	g.acquired++
-	return func() { g.released++ }, nil
+	return &spyPermit{ctx: callCtx, release: func() { g.released++ }}, nil
 }
 
 type spyBrk struct {
