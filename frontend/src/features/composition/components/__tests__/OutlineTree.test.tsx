@@ -94,6 +94,14 @@ describe('flattenOutline (T1.1a)', () => {
     expect(rows.map((r) => r.node.id)).toEqual(['arc', 'chA', 'sOrd', 'sNull', 'chB']);
   });
 
+  it('orders positioned chapters by story_order, not rank (a rank-only chapter move is display-inert, #318 P1)', () => {
+    const nodes = [
+      node({ id: 'chB', kind: 'chapter', parent_id: null, story_order: 2000, rank: 'a' }),
+      node({ id: 'chA', kind: 'chapter', parent_id: null, story_order: 1000, rank: 'b' }),
+    ];
+    expect(flattenOutline(nodes, new Set()).map((r) => r.node.id)).toEqual(['chA', 'chB']);
+  });
+
   it('renders a duplicate id only once (defensive seen-guard)', () => {
     const dup = node({ id: 'x', parent_id: null });
     expect(flattenOutline([dup, dup], new Set()).filter((r) => r.node.id === 'x')).toHaveLength(1);
@@ -320,8 +328,12 @@ describe('computeReorder (T1.1c projection)', () => {
     expect(computeReorder(rows, 's4', 's1')).toEqual({ nodeId: 's4', new_parent_id: 'ch1', after_id: null });
   });
 
-  it('reorders a chapter within its arc (drop ch2 onto ch1 → first chapter)', () => {
-    expect(computeReorder(rows, 'ch2', 'ch1')).toEqual({ nodeId: 'ch2', new_parent_id: 'arc1', after_id: null });
+  it('chapter drops are not offered (chapter order lives in the manuscript, #318 P1)', () => {
+    // #263 made chapters root-level and resync_reading_order the ONLY writer of a
+    // chapter's slot outside the initial commit; the outline reorder endpoint rejects
+    // chapter moves, so the tree must not project one (the old arc-parented
+    // expectation below encoded the retired model).
+    expect(computeReorder(rows, 'ch2', 'ch1')).toBeNull();
   });
 
   it('returns null for a no-op (same node) and an out-of-list id', () => {
@@ -344,9 +356,10 @@ describe('computeReorder (T1.1c projection)', () => {
     expect(computeReorder(r, 'b1', 'b2')).toEqual({ nodeId: 'b1', new_parent_id: 'sc', after_id: 'b2' });
   });
 
-  it('coerces a cross-kind drop to the nearest valid parent (chapter dropped amid scenes → stays under its arc)', () => {
-    // drop ch2 onto s2 (a scene inside ch1) → ch2 can only parent under an arc → lands after ch1
-    expect(computeReorder(rows, 'ch2', 's2')).toEqual({ nodeId: 'ch2', new_parent_id: 'arc1', after_id: 'ch1' });
+  it('a chapter dropped amid scenes stays put (no arc parent exists to land under, #318 P1)', () => {
+    // drop ch2 onto s2 (a scene inside ch1) → chapters have no outline parent;
+    // the old expectation (new_parent_id 'arc1') encoded the retired arc model.
+    expect(computeReorder(rows, 'ch2', 's2')).toBeNull();
   });
 });
 
@@ -358,6 +371,12 @@ describe('OutlineTree drag wiring (T1.1c)', () => {
     // archived view → reorder disabled → no drag handle
     fireEvent.click(screen.getByTestId('outline-toggle-archived'));
     rerender(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
+    expect(screen.queryByTestId('outline-drag-handle')).not.toBeInTheDocument();
+  });
+
+  it('shows no drag handle on a chapter row (chapter drops are not offered, #318 P1)', () => {
+    mountWith([node({ id: 'ch1', kind: 'chapter', parent_id: null, chapter_id: 'C1', story_order: 0 })]);
+    render(<OutlineTree bookId="b" token="<redacted>" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
     expect(screen.queryByTestId('outline-drag-handle')).not.toBeInTheDocument();
   });
 });

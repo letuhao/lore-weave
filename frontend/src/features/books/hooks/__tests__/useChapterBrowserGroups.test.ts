@@ -83,6 +83,45 @@ describe('useChapterBrowserGroups', () => {
     expect(result.current.arcIdForChapter('unknown')).toBeUndefined();
   });
 
+  it('numbers arc groups in spec pre-order, not the flat depth/rank list order (#318 P2)', async () => {
+    work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
+    // BA11 returns list_tree order (depth, rank, id) — NOT pre-order: the second saga's
+    // arc (rank 'a') sorts before the first saga's second arc (rank 'b'), and the
+    // sub-arc (depth 2) sorts after every depth-1 arc. Numbering the filtered list by
+    // index would label arcB1 'II' and the sub-arc 'IV'.
+    getArcs.mockResolvedValue({
+      arcs: [
+        { id: 'saga1', kind: 'saga', parent_id: null, depth: 0, rank: 'a', title: 'Saga One' },
+        { id: 'saga2', kind: 'saga', parent_id: null, depth: 0, rank: 'b', title: 'Saga Two' },
+        { id: 'arcA2', kind: 'arc', parent_id: 'saga1', depth: 1, rank: 'a', title: 'A2' },
+        { id: 'arcB1', kind: 'arc', parent_id: 'saga2', depth: 1, rank: 'a', title: 'B1' },
+        { id: 'arcA1', kind: 'arc', parent_id: 'saga1', depth: 1, rank: 'b', title: 'A1' },
+        { id: 'arcSub', kind: 'arc', parent_id: 'arcA2', depth: 2, rank: 'a', title: 'A2 sub' },
+      ],
+    });
+    listOutlineChildren.mockResolvedValue({
+      items: [
+        chapter('ch1', 'bc1', 'arcA2'),
+        chapter('ch2', 'bc2', 'arcSub'),
+        chapter('ch3', 'bc3', 'arcA1'),
+        chapter('ch4', 'bc4', 'arcB1'),
+      ],
+      next_cursor: null,
+    });
+
+    const { result } = renderHook(() => useChapterBrowserGroups('b1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Pre-order (saga1 → arcA2 → arcSub → arcA1, then saga2 → arcB1), not flat order.
+    expect(result.current.groups.map((g) => [g.arcId, g.romanNumeral])).toEqual([
+      ['arcA2', 'I'],
+      ['arcSub', 'II'],
+      ['arcA1', 'III'],
+      ['arcB1', 'IV'],
+    ]);
+    expect(result.current.arcIdForChapter('bc2')).toBe('arcSub');
+  });
+
   it('an arc shell with no bound chapters still yields its (empty) group', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
     getArcs.mockResolvedValue({

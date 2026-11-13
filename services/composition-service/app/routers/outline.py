@@ -149,7 +149,7 @@ class NodePatch(BaseModel):
 
 
 class NodeReorder(BaseModel):
-    new_parent_id: UUID | None = None  # None = move to top level (arcs)
+    new_parent_id: UUID | None = None  # None = top level (scenes only — chapter moves 400, #318)
     after_id: UUID | None = None       # the sibling to place AFTER; None = first child
 
 
@@ -777,7 +777,8 @@ async def reorder_node(
     after `after_id` (None = first child). Computes the fractional rank +
     renumbers scene story_order server-side (atomic). 412 NODE_VERSION_CONFLICT on
     a stale If-Match; 400 BAD_REFERENCE on a reparent cycle / cross-scope parent /
-    bad after_id."""
+    bad after_id — and on a CHAPTER move (chapter order lives in the manuscript;
+    reorder chapters via POST /books/{book_id}/chapters/reorder, #318)."""
     await _gate_node(outline, works, grant, user_id, node_id, GrantLevel.EDIT)
     expected_version = _parse_if_match(if_match)
     try:

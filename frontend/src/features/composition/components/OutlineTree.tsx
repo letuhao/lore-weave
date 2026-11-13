@@ -26,6 +26,9 @@ import { Corkboard, type CardMove } from './Corkboard';
 import type { OutlineNode } from '../types';
 
 // kind → the kind a node of this kind must be parented under (fixed-depth tree).
+// NOTE (#318 P1): 'chapter' maps to 'arc' only historically — #263 removed arcs from
+// the outline, so chapters are root-level and computeReorder returns null for them
+// (see below); the mapping survives for the scene/beat rows that still use it.
 const PARENT_KIND: Record<OutlineNode['kind'], OutlineNode['kind'] | null> = {
   arc: null, chapter: 'arc', scene: 'chapter', beat: 'scene',
 };
@@ -48,6 +51,13 @@ export function computeReorder(
   const to = nodes.findIndex((n) => n.id === overId);
   if (from < 0 || to < 0) return null;
   const active = nodes[from];
+  // #318 P1 — chapters are NOT draggable here. Chapter order is owned by the
+  // manuscript (book-service); the outline reorder endpoint rejects chapter moves,
+  // and resync_reading_order is the ONLY writer of a chapter's slot outside the
+  // initial commit — a rank-only chapter move would report success while
+  // flattenOutline (story_order-first) never changes. Reorder chapters via
+  // POST /books/{id}/chapters/reorder, never via this tree.
+  if (active.kind === 'chapter') return null;
   const parentKind = PARENT_KIND[active.kind];
 
   const ordered = nodes.slice();
@@ -296,7 +306,10 @@ export function OutlineTree(
                 expanded={!collapsed.has(node.id)}
                 isCurrent={node.kind === 'chapter' && node.chapter_id === currentChapterId}
                 editing={editingId === node.id}
-                draggable={draggable && !node.is_archived}
+                // #318 P1 — chapters carry no drag handle: their drops are not offered
+                // (chapter order lives in the manuscript), so the tree must not promise
+                // a drag it cannot perform.
+                draggable={draggable && !node.is_archived && node.kind !== 'chapter'}
                 onToggle={() => toggle(node.id)}
                 onSelect={() => select(node)}
                 onRenameStart={() => setEditingId(node.id)}

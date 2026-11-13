@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/auth';
 import { compositionApi } from '@/features/composition/api';
 import type { OutlineNode } from '@/features/composition/types';
+import type { ArcListNode } from '@/features/plan-hub/types';
 import { getArcs } from '@/features/plan-hub/api';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
@@ -43,6 +44,49 @@ function toRoman(n: number): string {
   ];
   let out = '';
   for (const [v, sym] of table) while (n >= v) { out += sym; n -= v; }
+  return out;
+}
+
+// #318 P2 — BA11 returns list_tree order (depth, rank, id), NOT pre-order: ranks are
+// allocated independently within each parent, so a second saga's arc (rank 'a') sorts
+// before the first saga's second arc (rank 'b'), and every sub-arc sorts after every
+// shallower arc. Numbering that flat list by index mislabels the groups
+// (ChapterBrowserTitleView shows the numerals in its group headers). Walk the tree
+// instead: children sorted by (rank, id), roots first, arcs collected in visit order.
+// Sagas are interior nodes of the walk, never groups. Exported for unit tests.
+export function arcsInSpecOrder(nodes: ArcListNode[]): ArcListNode[] {
+  const byParent = new Map<string | null, ArcListNode[]>();
+  for (const n of nodes) {
+    const key = n.parent_id ?? null;
+    const arr = byParent.get(key) ?? [];
+    arr.push(n);
+    byParent.set(key, arr);
+  }
+  // Rank is a fractional string; byte order matches the BE's COLLATE "C" sort.
+  // Missing fields (older mocks / partial shells) sort as empty rank + root.
+  const cmp = (a: ArcListNode, b: ArcListNode) => {
+    const ra = a.rank ?? '';
+    const rb = b.rank ?? '';
+    if (ra !== rb) return ra < rb ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  };
+  for (const arr of byParent.values()) arr.sort(cmp);
+  const out: ArcListNode[] = [];
+  const seen = new Set<string>(); // defensive: a duplicate/cyclic id never visits twice
+  const walk = (parent: string | null) => {
+    for (const n of byParent.get(parent) ?? []) {
+      if (seen.has(n.id)) continue;
+      seen.add(n.id);
+      if (n.kind === 'arc') out.push(n);
+      walk(n.id);
+    }
+  };
+  walk(null);
+  // Orphans (parent id absent from the list) would otherwise vanish — visit them as
+  // roots, in rank order, after the connected tree.
+  for (const n of nodes) {
+    if (!seen.has(n.id)) walk(n.parent_id ?? null);
+  }
   return out;
 }
 
@@ -123,8 +167,10 @@ export function useChapterBrowserGroups(bookId: string): UseChapterBrowserGroups
         fetchAllChapters(projectId, accessToken, CHAPTERS_PAGE),
       ]);
 
-      // Arc shells in spec pre-order (BA11 list_tree); the browser groups at ARC level only.
-      const arcList = arcs.filter((a) => a.kind === 'arc');
+      // Arc shells in spec PRE-ORDER (parent/rank DFS over the BA11 shells — the flat
+      // list_tree order is depth/rank/id, not pre-order; #318 P2). The browser groups
+      // at ARC level only; sagas are interior nodes of the walk, not groups.
+      const arcList = arcsInSpecOrder(arcs);
       const arcIds = new Set(arcList.map((a) => a.id));
       const chapterIdsByArc = new Map<string, Set<string>>();
       const nextArcMap = new Map<string, string>();
