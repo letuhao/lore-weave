@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,5 +92,32 @@ func TestLoginThrottleIPFloorStillCapsSpray(t *testing.T) {
 	}
 	if rec := postLogin(t, h, "spray11@example.com"); rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("11th distinct account past the IP floor: expected 429, got %d", rec.Code)
+	}
+}
+
+// A trailing JSON value must not move the request onto the empty-account
+// bucket: login/register decode a single value and act on the FIRST object,
+// so the limiter must key on that same account. Against the old Unmarshal
+// probe, `{"email":"victim@…"} {}` keyed on "" — the victim's 3 attempts
+// below consumed the empty-account budget, and the 4th request (a different
+// account) came back 429 from that same bucket.
+func TestLoginThrottleTrailingValueKeysOnDecodedAccount(t *testing.T) {
+	h := newLoginThrottle(3, 100)
+	trailing := func(email string) *httptest.ResponseRecorder {
+		t.Helper()
+		body := fmt.Sprintf(`{"email":%q,"password":"bad"} {}`, email)
+		r := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec
+	}
+	for i := 1; i <= 3; i++ {
+		if rec := trailing("victim@example.com"); rec.Code != http.StatusOK {
+			t.Fatalf("victim attempt %d: expected 200, got %d", i, rec.Code)
+		}
+	}
+	if rec := trailing("other@example.com"); rec.Code != http.StatusOK {
+		t.Fatalf("other account after victim exhausted its budget: expected 200, got %d", rec.Code)
 	}
 }

@@ -125,22 +125,42 @@ func AuthRateLimitMiddleware(accountL, ipL *Limiter, routeKey string, next http.
 	})
 }
 
+// maxProbeBytes bounds how much of the body the account probe buffers. The
+// probe only needs the (early) email field; the handler must still see the
+// complete body, so anything past the window stays on the original stream and
+// is replayed after the buffered prefix (see accountFromLoginBody).
+const maxProbeBytes = 8192
+
 // accountFromLoginBody extracts a stable account identifier from a credentials-route
 // JSON body, consuming and restoring the body so the handler reads it unchanged.
 func accountFromLoginBody(r *http.Request) string {
 	var account string
 	if r.Body != nil {
-		raw, err := io.ReadAll(io.LimitReader(r.Body, 8192))
-		_ = r.Body.Close()
+		// Read at most maxProbeBytes+1: the extra byte tells the probe the
+		// body continues, while the unread tail stays on r.Body and is
+		// replayed verbatim through the MultiReader below — a credentials
+		// object longer than the probe window still reaches the handler
+		// intact instead of failing with unexpected EOF.
+		raw, err := io.ReadAll(io.LimitReader(r.Body, maxProbeBytes+1))
 		if err == nil {
 			var probe struct {
 				Email string `json:"email"`
 			}
-			if json.Unmarshal(raw, &probe) == nil {
+			// Decode exactly like the handlers: login/register read a single
+			// value with json.Decoder, which accepts the first JSON object
+			// and ignores trailing data. Probing with Unmarshal instead
+			// rejected trailing data, so `{"email":"victim@…"} {}` keyed on
+			// the empty-account bucket while the handler acted on the
+			// victim's account — a second full budget per target. Decoding
+			// the same way keeps the limiter bucket and the handler's
+			// account identical.
+			if json.NewDecoder(bytes.NewReader(raw)).Decode(&probe) == nil {
 				account = strings.ToLower(strings.TrimSpace(probe.Email))
 			}
-			r.Body = io.NopCloser(bytes.NewReader(raw))
 		}
+		// Do NOT close the original body: its unread tail is still needed
+		// below. The server closes it after the handler returns.
+		r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(raw), r.Body))
 	}
 	return account
 }
