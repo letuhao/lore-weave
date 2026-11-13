@@ -18,6 +18,7 @@ type Server struct {
 	cfg          *config.Config
 	secret       []byte
 	rl           *ratelimit.Limiter
+	rlIP         *ratelimit.Limiter // #261 — the per-IP stuffing floor on the credentials routes
 	mcpResolveRL *ratelimit.Limiter // per-prefix Argon2-DoS guard for /internal/mcp-keys/resolve (H-H)
 	admin        *adminDeps         // nil => admin-JWT issuance (074/075) disabled
 	oauth        *oauthDeps         // nil => P5 public-MCP OAuth endpoints disabled
@@ -36,6 +37,7 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		secret:       []byte(cfg.JWTSecret),
 		dekKEK:       deriveKEK(cfg.DiaryEncryptionKey),
 		rl:           ratelimit.New(cfg.RateLimitWindow, cfg.RateLimitMax),
+		rlIP:         ratelimit.New(cfg.RateLimitWindow, cfg.RateLimitIPMax),
 		mcpResolveRL: newMcpResolveLimiter(),
 	}
 }
@@ -146,11 +148,15 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/v1", func(r chi.Router) {
+		// #261 — the credentials routes key in TWO tiers: per (route, IP, account) at
+		// RATE_LIMIT_MAX_REQUESTS (the budget a human consumes — a NAT'd office must
+		// not share one budget) plus a per-IP floor at RATE_LIMIT_IP_MAX_REQUESTS
+		// (the credential-stuffing guard stays).
 		r.Post("/auth/register", func(w http.ResponseWriter, r *http.Request) {
-			ratelimit.Middleware(s.rl, "register", http.HandlerFunc(s.register)).ServeHTTP(w, r)
+			ratelimit.AuthRateLimitMiddleware(s.rl, s.rlIP, "register", http.HandlerFunc(s.register)).ServeHTTP(w, r)
 		})
 		r.Post("/auth/login", func(w http.ResponseWriter, r *http.Request) {
-			ratelimit.Middleware(s.rl, "login", http.HandlerFunc(s.login)).ServeHTTP(w, r)
+			ratelimit.AuthRateLimitMiddleware(s.rl, s.rlIP, "login", http.HandlerFunc(s.login)).ServeHTTP(w, r)
 		})
 		// Browser-facing admin-session exchange (admin CMS): a logged-in admin
 		// principal self-mints an RS256 admin JWT. Handler 404s when admin issuance
