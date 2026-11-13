@@ -350,7 +350,11 @@ VALUES($1,$2,$3,$4,'text/plain',$5,$6,$7,'active',now(),now()) RETURNING id`,
 	}
 	_, _ = tx.Exec(ctx, `INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chapterID, body)
 	_, _ = tx.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`, chapterID, jsonBody)
-	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,'json','seed from assistant',$3)`, chapterID, jsonBody, caller)
+	// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+	// left at the DEFAULT 0 sorts behind every real revision.
+	_, _ = tx.Exec(ctx, `WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, 'json', 'seed from assistant', $3 FROM s`, chapterID, jsonBody, caller)
 	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
 	if err := insertOutboxEvent(ctx, tx, "chapter.created", chapterID, map[string]any{"book_id": bookID}); err != nil {
 		return uuid.Nil, errors.New("failed to commit chapter")
@@ -499,7 +503,11 @@ VALUES($1,$2,$3,$4,'text/plain',$5,$6,$7,'active',now(),now()) RETURNING id`,
 		}
 		_, _ = tx.Exec(ctx, `INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chID, it.Content)
 		_, _ = tx.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`, chID, jsonBody)
-		_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,'json','bulk seed from assistant',$3)`, chID, jsonBody, userID)
+		// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+		// left at the DEFAULT 0 sorts behind every real revision.
+		_, _ = tx.Exec(ctx, `WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, 'json', 'bulk seed from assistant', $3 FROM s`, chID, jsonBody, userID)
 		_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chID)
 		if err := insertOutboxEvent(ctx, tx, "chapter.created", chID, map[string]any{"book_id": bookID}); err != nil {
 			return nil, chapterBulkCreateOut{}, errors.New("failed to commit chapters")
@@ -686,15 +694,24 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3`, revID, chID, bookID).Scan
 		}
 		return uuid.Nil, 0, errors.New("failed to restore revision")
 	}
-	if err := tx.QueryRow(ctx, `
-INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-VALUES($1,$2,$3,'before restore',$4) RETURNING id`, chID, currentBody, currentFormat, caller).Scan(&snapshotID); err != nil {
-		return uuid.Nil, 0, errors.New("failed to snapshot draft")
-	}
+	// Lock order (PR #325 review): the draft row FIRST, the chapters row
+	// second — the same order REST patchDraft/publish take. The snapshot
+	// insert below is the CTE that UPDATEs chapters, so it comes AFTER the
+	// draft UPDATE (the snapshot body is already in variables, so the move
+	// is a pure reorder). A chapters-first snapshot here deadlocked (40P01)
+	// against a concurrent REST save.
 	if err := tx.QueryRow(ctx, `
 UPDATE chapter_drafts SET body=$2,draft_format=$3,draft_updated_at=now(),draft_version=draft_version+1
 WHERE chapter_id=$1 RETURNING draft_version`, chID, body, bodyFormat).Scan(&newVersion); err != nil {
 		return uuid.Nil, 0, errors.New("failed to restore revision")
+	}
+	// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+	// left at the DEFAULT 0 sorts behind every real revision.
+	if err := tx.QueryRow(ctx, `
+WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, $3, 'before restore', $4 FROM s RETURNING id`, chID, currentBody, currentFormat, caller).Scan(&snapshotID); err != nil {
+		return uuid.Nil, 0, errors.New("failed to snapshot draft")
 	}
 	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+1,updated_at=now() WHERE id=$1`, chID)
 	if err := insertOutboxEvent(ctx, tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
@@ -819,13 +836,18 @@ func (s *Server) toolChapterSaveDraft(ctx context.Context, _ *mcp.CallToolReques
 	}
 	// Snapshot the prior draft as a revision (so save_draft is reversible via
 	// restore_revision → undo_hint below).
-	var snapshotID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
-INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
-SELECT $1, s.revision_seq, d.body, d.draft_format, 'before assistant save', $2
-FROM chapter_drafts d, s WHERE d.chapter_id=$1
-RETURNING id`, chID, userID).Scan(&snapshotID); err != nil {
+	//
+	// Lock order (PR #325 review): the draft row FIRST, the chapters row
+	// second — the same order REST patchDraft/publish take. The draft UPDATE
+	// below also takes the chapters row via the chapter_blocks → word-count
+	// trigger, so the snapshot CTE (which UPDATEs chapters) must come AFTER
+	// it — before this fix it came first and deadlocked (40P01) against a
+	// concurrent REST save. The prior body is therefore read into variables
+	// first: the snapshot must capture the pre-save body, and it can no
+	// longer read it from the draft row inside the CTE.
+	var priorBody json.RawMessage
+	var priorFormat string
+	if err := tx.QueryRow(ctx, `SELECT body, draft_format FROM chapter_drafts WHERE chapter_id=$1`, chID).Scan(&priorBody, &priorFormat); err != nil {
 		return nil, saveDraftOut{}, errors.New("failed to snapshot draft")
 	}
 	var newVer int64
@@ -833,6 +855,14 @@ RETURNING id`, chID, userID).Scan(&snapshotID); err != nil {
 UPDATE chapter_drafts SET body=$2,draft_format='json',draft_updated_at=now(),draft_version=draft_version+1
 WHERE chapter_id=$1 RETURNING draft_version`, chID, jsonBody).Scan(&newVer); err != nil {
 		return nil, saveDraftOut{}, errors.New("failed to save draft")
+	}
+	var snapshotID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, $3, 'before assistant save', $4 FROM s
+RETURNING id`, chID, priorBody, priorFormat, userID).Scan(&snapshotID); err != nil {
+		return nil, saveDraftOut{}, errors.New("failed to snapshot draft")
 	}
 	// #287 — second counter increment in the SAME transaction: the snapshot lands at
 	// n+1 and the new body at n+2, so "newest first" can never return the pre-save

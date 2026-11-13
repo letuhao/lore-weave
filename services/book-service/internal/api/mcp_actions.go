@@ -984,10 +984,13 @@ SELECT COALESCE((
 	if strings.TrimSpace(prose) == "" {
 		return uuid.Nil, reparseCounts{}, errActionBadState
 	}
+	// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+	// left at the DEFAULT 0 sorts behind every real revision.
 	var revID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-VALUES($1,$2,$3,'publish',$4) RETURNING id`, chID, body, format, caller).Scan(&revID); err != nil {
+WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, $3, 'publish', $4 FROM s RETURNING id`, chID, body, format, caller).Scan(&revID); err != nil {
 		return uuid.Nil, reparseCounts{}, err
 	}
 	// WS-0.3: publish also advances the KG pointer, so today's behavior (publish ⇒

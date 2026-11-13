@@ -3327,11 +3327,16 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to restore revision")
 		return
 	}
+	// Lock order (PR #325 review): the draft row FIRST, the chapters row
+	// second — the same order patchDraft/publish take. The snapshot CTE below
+	// UPDATEs chapters, so it comes AFTER the draft UPDATE (the snapshot body
+	// is already in variables, so the move is a pure reorder). A
+	// chapters-first snapshot here deadlocked (40P01) against a concurrent save.
+	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_format=$3,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, body, bodyFormat)
 	// #287 — counter-assigned seq (see the import site).
 	_, _ = tx.Exec(r.Context(), `WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
 INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
 SELECT $1, s.revision_seq, $2, $3, 'before restore', $4 FROM s`, chID, currentBody, currentFormat, caller)
-	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_format=$3,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, body, bodyFormat)
 	_, _ = tx.Exec(r.Context(), `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+1,updated_at=now() WHERE id=$1`, chID)
 	if err := insertOutboxEvent(r.Context(), tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to restore revision")

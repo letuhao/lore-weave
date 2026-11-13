@@ -186,15 +186,11 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, "DIARY_ENCRYPT_UNAVAILABLE", "diary encryption unavailable; entry not written")
 				return
 			}
-			if _, err := tx.Exec(ctx,
-				`UPDATE chapters SET title=$2, original_language=$3, byte_size=$4, entry_zone=$5,
-				        body_encrypted=$6, word_count=CASE WHEN $7 >= 0 THEN $7 ELSE word_count END,
-				        draft_revision_count=draft_revision_count+1, draft_updated_at=now(), updated_at=now()
-				   WHERE id=$1`,
-				chID, nullIfEmpty(title), lang, byteSize, zone, encrypted, wc); err != nil {
-				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
-				return
-			}
+			// Lock order (PR #325 review): the draft row FIRST, the chapters row
+			// second — the same order REST patchDraft/publish take. The draft
+			// UPDATE also takes the chapters row via the chapter_blocks →
+			// word-count trigger, so an explicit chapters UPDATE before it
+			// inverts the order and deadlocks (40P01) against a concurrent save.
 			if _, err := tx.Exec(ctx,
 				`UPDATE chapter_drafts SET body=$2, draft_updated_at=now(), draft_version=draft_version+1
 				   WHERE chapter_id=$1`, chID, draftBody); err != nil {
@@ -209,11 +205,23 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update raw body")
 				return
 			}
+			// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+			// left at the DEFAULT 0 sorts behind every real revision.
 			if _, err := tx.Exec(ctx,
-				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-				   VALUES($1,$2,'json',$3,$4)`,
+				`WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+				   INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+				   SELECT $1, s.revision_seq, $2, 'json', $3, $4 FROM s`,
 				chID, draftBody, "distiller re-run", owner); err != nil {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
+				return
+			}
+			if _, err := tx.Exec(ctx,
+				`UPDATE chapters SET title=$2, original_language=$3, byte_size=$4, entry_zone=$5,
+				        body_encrypted=$6, word_count=CASE WHEN $7 >= 0 THEN $7 ELSE word_count END,
+				        draft_revision_count=draft_revision_count+1, draft_updated_at=now(), updated_at=now()
+				   WHERE id=$1`,
+				chID, nullIfEmpty(title), lang, byteSize, zone, encrypted, wc); err != nil {
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
 				return
 			}
 			if err := tx.Commit(ctx); err != nil {
@@ -272,8 +280,12 @@ RETURNING id`,
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write draft")
 		return
 	}
+	// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+	// left at the DEFAULT 0 sorts behind every real revision.
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,'json',$3,$4)`,
+		`WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+		   INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+		   SELECT $1, s.revision_seq, $2, 'json', $3, $4 FROM s`,
 		chID, draftBody, "distilled entry", owner); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
 		return
@@ -517,14 +529,10 @@ WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='act
 	// Write the corrected body as a NEW revision. `diary_kept_at` is DELIBERATELY untouched — a
 	// correction to a kept entry keeps it kept (the write-seam refuses a kept entry; amend is the
 	// sanctioned edit path). draft_revision_count/version bump so the audit trail shows the correction.
-	if _, err := tx.Exec(ctx,
-		`UPDATE chapters SET title=COALESCE(NULLIF($2,''), title), byte_size=$3,
-		        body_encrypted=$4, word_count=CASE WHEN $5 >= 0 THEN $5 ELSE word_count END,
-		        draft_revision_count=draft_revision_count+1, draft_updated_at=now(), updated_at=now()
-		   WHERE id=$1`, chID, title, byteSize, encrypted, wc); err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
-		return
-	}
+	// Lock order (PR #325 review): the draft row FIRST, the chapters row second — the same
+	// order REST patchDraft/publish take. The draft UPDATE also takes the chapters row via
+	// the chapter_blocks → word-count trigger, so an explicit chapters UPDATE before it
+	// inverts the order and deadlocks (40P01) against a concurrent save.
 	if _, err := tx.Exec(ctx,
 		`UPDATE chapter_drafts SET body=$2, draft_updated_at=now(), draft_version=draft_version+1
 		   WHERE chapter_id=$1`, chID, draftBody); err != nil {
@@ -538,10 +546,22 @@ WHERE id=$1 AND book_id=$2 AND journal_kind IS NOT NULL AND lifecycle_state='act
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update raw body")
 		return
 	}
+	// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+	// left at the DEFAULT 0 sorts behind every real revision.
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-		   VALUES($1,$2,'json',$3,$4)`, chID, draftBody, "user amendment (D17)", owner); err != nil {
+		`WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+		   INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+		   SELECT $1, s.revision_seq, $2, 'json', $3, $4 FROM s`,
+		chID, draftBody, "user amendment (D17)", owner); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
+		return
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE chapters SET title=COALESCE(NULLIF($2,''), title), byte_size=$3,
+		        body_encrypted=$4, word_count=CASE WHEN $5 >= 0 THEN $5 ELSE word_count END,
+		        draft_revision_count=draft_revision_count+1, draft_updated_at=now(), updated_at=now()
+		   WHERE id=$1`, chID, title, byteSize, encrypted, wc); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
 		return
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -666,14 +686,10 @@ WHERE c.book_id=$1 AND c.journal_kind IS NOT NULL AND c.lifecycle_state='active'
 			return
 		}
 		// Redaction only SHRINKS or rewrites — never a growth path, so no quota check is needed.
-		if _, err := tx.Exec(ctx,
-			`UPDATE chapters SET byte_size=$2, body_encrypted=$3,
-			        word_count=CASE WHEN $4 >= 0 THEN $4 ELSE word_count END,
-			        draft_revision_count=draft_revision_count+1,
-			        draft_updated_at=now(), updated_at=now() WHERE id=$1`, t.id, byteSize, encrypted, wc); err != nil {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
-			return
-		}
+		// Lock order (PR #325 review): the draft row FIRST, the chapters row second — the same
+		// order REST patchDraft/publish take. The draft UPDATE also takes the chapters row via
+		// the chapter_blocks → word-count trigger, so an explicit chapters UPDATE before it
+		// inverts the order and deadlocks (40P01) against a concurrent save.
 		if _, err := tx.Exec(ctx,
 			`UPDATE chapter_drafts SET body=$2, draft_updated_at=now(), draft_version=draft_version+1
 			   WHERE chapter_id=$1`, t.id, draftBody); err != nil {
@@ -687,10 +703,21 @@ WHERE c.book_id=$1 AND c.journal_kind IS NOT NULL AND c.lifecycle_state='active'
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update raw body")
 			return
 		}
+		// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+		// left at the DEFAULT 0 sorts behind every real revision.
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-			   VALUES($1,$2,'json',$3,$4)`, t.id, draftBody, "forget-person redaction (D17)", owner); err != nil {
+			`WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+			   INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+			   SELECT $1, s.revision_seq, $2, 'json', $3, $4 FROM s`, t.id, draftBody, "forget-person redaction (D17)", owner); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
+			return
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE chapters SET byte_size=$2, body_encrypted=$3,
+			        word_count=CASE WHEN $4 >= 0 THEN $4 ELSE word_count END,
+			        draft_revision_count=draft_revision_count+1,
+			        draft_updated_at=now(), updated_at=now() WHERE id=$1`, t.id, byteSize, encrypted, wc); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to update entry")
 			return
 		}
 	}
