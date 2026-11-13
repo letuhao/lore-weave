@@ -47,10 +47,19 @@ func TestWatchAMQP_ContextCancelStandsDown(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // SIGTERM ordering: Run's ctx cancels before anything closes
-	tk.watchAMQP(ctx, "channel", make(chan *amqp.Error, 1)) // stays open
+	closed := make(chan *amqp.Error, 1)
+	tk.watchAMQP(ctx, "channel", closed)
+	// Non-vacuity: the close notification must actually be delivered AFTER
+	// the watcher had a chance to stand down on the cancellation. With the
+	// channel left open (as before), the watcher can never reach osExit
+	// either way, so deleting the whole `case <-ctx.Done()` branch still
+	// passed. Here the close reaches a watcher that kept listening, so the
+	// missing branch makes this test fail with an unexpected exit(1).
+	time.Sleep(200 * time.Millisecond)
+	close(closed)
 	select {
 	case code := <-exited:
-		t.Fatalf("unexpected exit(%d) after ctx cancellation", code)
-	case <-time.After(150 * time.Millisecond):
+		t.Fatalf("unexpected exit(%d) after ctx cancellation + close notification", code)
+	case <-time.After(300 * time.Millisecond):
 	}
 }

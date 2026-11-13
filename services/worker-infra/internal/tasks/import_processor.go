@@ -372,6 +372,19 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload importReque
 	count := 0
 	for partIdx, part := range tree.Parts {
 		for chIdxInPart, ch := range part.Chapters {
+			// L9 replay guard (pre-check): a redelivered job re-parses the
+			// same document, so a chapter this job already committed must
+			// be skipped BEFORE its images are re-uploaded to MinIO — the
+			// image keys derive from the current chapterGlobalSort, which
+			// has moved since the first attempt, so re-uploading would
+			// orphan the new copies. The ON CONFLICT on the INSERT below
+			// is the atomic backstop for anything this check cannot see.
+			if strings.TrimSpace(ch.Path) != "" && t.importChapterExists(ctx, payload.BookID, payload.JobID, ch.Path) {
+				slog.Info("import-processor: chapter already imported, skipping",
+					"job_id", payload.JobID, "book_id", payload.BookID, "structural_path", ch.Path)
+				continue
+			}
+
 			tiptapJSON := htmlToTiptapJSON(ch.HTML)
 
 			// Extract embedded images (data: URIs) → upload to MinIO → replace src.
@@ -420,16 +433,47 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload importReque
 			if ch.Title != nil {
 				chapterTitle = *ch.Title
 			}
+			// L9 idempotency (mirrors the PDF path): tag the chapter with
+			// this job and let (book_id, import_job_id, structural_path)
+			// deduplicate a redelivery. Before this, a worker killed
+			// mid-import — e.g. the fail-fast AMQP watcher exiting on a
+			// broker drop — left committed chapters behind, and Run's
+			// XAUTOCLAIM reclaim re-inserted every one of them (the
+			// per-chapter Tx commits, importJobCompleted only skips
+			// finished jobs). An empty structural path carries no
+			// identity, so such chapters keep import_job_id NULL — the
+			// partial index ignores NULL rows and they insert exactly as
+			// before instead of colliding with each other.
+			importJobID := any(payload.JobID)
+			if strings.TrimSpace(ch.Path) == "" {
+				importJobID = nil
+			}
 			err = tx.QueryRow(ctx, `
-INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, structural_path)
-VALUES($1, $2, $3, $4, 'application/json', $5, $6, $7, 'active', now(), now(), $8)
+INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, structural_path, import_job_id)
+VALUES($1, $2, $3, $4, 'application/json', $5, $6, $7, 'active', now(), now(), $8, $9)
+ON CONFLICT (book_id, import_job_id, structural_path) WHERE import_job_id IS NOT NULL DO NOTHING
 RETURNING id
 `, payload.BookID, nullIfEmpty(chapterTitle), origFilename, lang,
 				len(tiptapJSON), chapterGlobalSort, storageKey,
-				ch.Path,
+				ch.Path, importJobID,
 			).Scan(&chapterID)
 			if err != nil {
 				tx.Rollback(ctx)
+				if err == pgx.ErrNoRows {
+					// This chapter was already committed by an earlier
+					// (crashed/redelivered) attempt at this same job.
+					// Skip its draft, revision and scenes too:
+					// re-inserting them for an already-existing chapter
+					// would duplicate user content. chapterGlobalSort
+					// is NOT advanced — the skipped chapter already
+					// occupies its global sort slot, and advancing
+					// would leave gaps (the PDF path's skip advances
+					// it; here the counter is the next free global
+					// slot, not a per-job position).
+					slog.Info("import-processor: chapter already imported, skipping",
+						"job_id", payload.JobID, "book_id", payload.BookID, "structural_path", ch.Path)
+					continue
+				}
 				return count, fmt.Errorf("insert chapter: %w", err)
 			}
 
@@ -511,7 +555,10 @@ RETURNING id
 	// 6. Clean up import file from MinIO.
 	_ = t.Minio.RemoveObject(ctx, t.Cfg.MinioBucket, payload.FileStorageKey, minio.RemoveObjectOptions{})
 
-	return count, nil
+	// The accumulated counter is wrong once the L9 skip exists: a
+	// redelivered run omits already-written chapters, so report the
+	// re-queried job total instead (mirrors countPdfChapters).
+	return t.countImportChapters(ctx, payload.JobID), nil
 }
 
 func importSourceExtension(format string) string {
@@ -898,6 +945,34 @@ func (t *ImportProcessor) importJobCompleted(ctx context.Context, jobID string) 
 		return false
 	}
 	return status == "completed" || status == "completed_with_warnings"
+}
+
+// importChapterExists reports whether this job already committed a chapter
+// at this structural path — the replay pre-check for processImport (see the
+// L9 ON CONFLICT guard on the chapter INSERT). A missing pool or a query
+// error answers false: the INSERT's ON CONFLICT is the authority, and a
+// failed pre-check must never block a first-time import.
+func (t *ImportProcessor) importChapterExists(ctx context.Context, bookID, jobID, structuralPath string) bool {
+	if t.BookDB == nil {
+		return false
+	}
+	var exists bool
+	if err := t.BookDB.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM chapters WHERE book_id=$1 AND import_job_id=$2 AND structural_path=$3)`,
+		bookID, jobID, structuralPath).Scan(&exists); err != nil {
+		return false
+	}
+	return exists
+}
+
+// countImportChapters re-queries the real chapter count for this import job —
+// used instead of the accumulated counter because the L9 ON CONFLICT skip can
+// omit already-written chapters on a redelivered run, which would make an
+// accumulated count wrong (mirrors countPdfChapters for the PDF path).
+func (t *ImportProcessor) countImportChapters(ctx context.Context, jobID string) int {
+	var count int
+	_ = t.BookDB.QueryRow(ctx, `SELECT COUNT(*) FROM chapters WHERE import_job_id=$1`, jobID).Scan(&count)
+	return count
 }
 
 // updateJobStatus calls book-service internal API to update import job status.
