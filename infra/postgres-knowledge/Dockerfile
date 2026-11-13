@@ -90,7 +90,10 @@ ARG PG_MAJOR=18
 # smoke below), never a silent `latest`.
 # ⚠️ `pgdg13` — Debian 13 (trixie). It was `pgdg12` while this image was bookworm-based; the
 # suffix tracks the base's Debian release and is the pin most likely to be missed on a bump.
-ARG PGVECTOR_VERSION=0.8.6-1.pgdg13+1
+# 2026-11-13: 0.8.6-1.pgdg13+1 left PGDG (superseded by 0.8.7) and CI failed the build with
+# "Version '0.8.6-1.pgdg13+1' for 'postgresql-18-pgvector' was not found" — bumped to the
+# version PGDG ships for trixie/PG18 (amd64 + arm64 both carry 0.8.7-1.pgdg13+2).
+ARG PGVECTOR_VERSION=0.8.7-1.pgdg13+2
 ARG PGVECTORSCALE_VERSION=0.9.0
 ARG AGE_VERSION=1.7.0
 
