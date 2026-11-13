@@ -1593,6 +1593,7 @@ class PlanForgeService:
         # your plan" answered "what does your plan not have that the POC's novel does" — a fixture
         # constant with extra steps (DA-14), delivered to the user as advice.
         doc_md = await self._document_markdown(book_id, run_id)
+        coverage_gaps: list[dict[str, Any]] = []
         if doc_md:
             try:
                 report = run_self_check_on_document(
@@ -1600,20 +1601,58 @@ class PlanForgeService:
                 )
                 fidelity_score = (report.get("fidelity") or {}).get("score")
                 for g in report.get("ranked_gaps") or []:
-                    gaps.append({
+                    coverage_gaps.append({
                         "path": g.get("id", ""),
                         "severity": g.get("severity", "warn"),
                         "message": g.get("detail", ""),
                     })
             except Exception:
                 logger.warning("self_check: own-document coverage failed", exc_info=True)
-        if not gaps:
-            audit = consistency_audit(spec)
-            for c in audit.get("critical") or []:
-                gaps.append({"path": c.get("field", ""), "severity": "error", "message": c.get("issue", "")})
-            for r in run_rules(spec):
-                if not r["pass"]:
-                    gaps.append({"path": r["rule"], "severity": "warn", "message": r.get("detail", "")})
+
+        # #302 — the HARD COMPILE GATES are computed UNCONDITIONALLY and rank FIRST.
+        # The old `if not gaps:` gating meant a run whose own-document coverage produced
+        # ANY gap — which is every real braindump — never learned about the rule that
+        # blocks its compile: `handoff_autofix` then "fixed everything except the thing
+        # blocking the compile". The gap `path` is a REAL spec path refine can target
+        # (`arcs` / `events`), not the rule id the refine prompt cannot resolve; the
+        # severity is `error` because these are exactly the rules compile refuses on.
+        # The consistency audit's criticals are unconditional for the same reason.
+        rules = run_rules(spec)
+        blocking = [
+            r for r in rules
+            if not r["pass"] and r.get("tier", "hard") == "hard" and r.get("applicable", True)
+        ]
+        rule_paths = {"spec_has_arc": "arcs", "spec_has_events": "events"}
+        gaps: list[dict[str, Any]] = [
+            {"path": rule_paths.get(r["rule"], ""), "severity": "error", "message": r.get("detail", "")}
+            for r in blocking
+        ]
+        audit = consistency_audit(spec)
+        for c in audit.get("critical") or []:
+            # consistency_audit appends plain strings ("Title: diagnostic"), not
+            # structured entries — consume the string as the message. Both
+            # critical sites in elaborate.py concern arc_2 event synopses, so the
+            # repair target is the events section.
+            message = c if isinstance(c, str) else c.get("issue", "")
+            gaps.append({"path": "events", "severity": "error", "message": message})
+        # #323 review — the GENERAL advisory failures with a real spec target are
+        # preserved behind the blockers. The hard-only filter dropped them
+        # alongside the fixture-specific advice, so a spec with all events in
+        # arc_2 (hard gates pass, no rubric -> no coverage gaps) answered
+        # `gaps: []` for a plan whose empty arc cannot compile (E4
+        # zero-nodes-linked). Only advisories with a mapped repair target
+        # surface: the POC-threshold advisories (anchors_min,
+        # open_questions_preserved) and the intentionally noisy per-event audit
+        # (sg_value_shift_per_scene) stay dropped — their thresholds are the
+        # fixture's, not a standard.
+        advisory_paths = {"every_arc_has_events": "events", "thr_no_early_explain": "events"}
+        gaps.extend(
+            {"path": advisory_paths[r["rule"]], "severity": "warn", "message": r.get("detail", "")}
+            for r in rules
+            if not r["pass"] and r.get("tier") == "advisory" and r.get("applicable", True)
+            and r["rule"] in advisory_paths
+        )
+        gaps.extend(coverage_gaps)
         return {"gaps": gaps, "fidelity_score": fidelity_score, "coverage_board": board}
 
     # ── 27 PF-19 — fixture severing ─────────────────────────────────────────────────────────
