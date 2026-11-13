@@ -557,7 +557,11 @@
     "empty": "No capable models configured.",
     "saved": "Default updated",
     "composer": "Default composer",
-    "composerHint": "The model that writes your prose when a book has no model of its own. Set deliberately — generation is the most expensive thing here, and nothing will spend through your chat model on your behalf."
+    "composerHint": "The model that writes your prose when a book has no model of its own. Set deliberately — generation is the most expensive thing here, and nothing will spend through your chat model on your behalf.",
+    "critic": "Default critic model",
+    "criticHint": "Scores practice sessions and audits generated scenes. Optional — unset, scoring falls back to your chat default as judge. Scoring is refused when that model is the session's own model, or when no default is set — pick a critic that differs from your usual chat model.",
+    "distill": "Default distiller model",
+    "distillHint": "Turns \"end my day\" chats into the daily diary. Optional — unset, it uses your chat default. Pick a NON-reasoning model: a reasoning model emits only reasoning and distills to an empty diary."
   },
   "external_services": {
     "delete_blocked": "This service cannot be removed: its model is in use by {{count}} active job(s). Stop them first.",

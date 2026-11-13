@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { AddModelCta } from '@/components/shared/AddModelCta';
 import { ModelPicker } from '@/components/model-picker';
-import { defaultModelsApi, RERANK_CAPABILITY, PLANNER_CAPABILITY, CHAT_CAPABILITY, COMPOSER_CAPABILITY } from './api';
+import { defaultModelsApi, RERANK_CAPABILITY, PLANNER_CAPABILITY, CHAT_CAPABILITY, COMPOSER_CAPABILITY, CRITIC_ROLE, DISTILL_ROLE } from './api';
 
 /**
  * Per-user DEFAULT model per capability (rerank/embedding). Restores the
@@ -171,6 +171,42 @@ export function DefaultModelsCard() {
             })}
             value={defaults[COMPOSER_CAPABILITY] ?? null}
             onChange={(id) => void save(COMPOSER_CAPABILITY, id)}
+            disabled={saving}
+          />
+        </div>
+        {/* Critic default (#270): the model that SCORES coaching/interview sessions.
+            Same chat-flag role family as planner/composer. evaluate.py falls back to
+            the chat default when unset and refuses only when no model distinct from
+            the session actor resolves — the row the instruction names must exist.
+            Pick a model that differs from the session actor (a roleplay partner
+            grading its own performance is not a verdict). */}
+        <div className="mt-4">
+          <DefaultModelRow
+            capability={CRITIC_ROLE}
+            listCapability={CHAT_CAPABILITY}
+            label={t('defaultModels.critic', { defaultValue: 'Default critic model' })}
+            hint={t('defaultModels.criticHint', {
+              defaultValue: 'Scores practice sessions and audits generated scenes. Optional — unset, scoring falls back to your chat default as judge. Scoring is refused when that model is the session\'s own model, or when no default is set — pick a critic that differs from your usual chat model.',
+            })}
+            value={defaults[CRITIC_ROLE] ?? null}
+            onChange={(id) => void save(CRITIC_ROLE, id)}
+            disabled={saving}
+          />
+        </div>
+        {/* Distill default (#270): the headless "end my day" journal DISTILLER. Same
+            chat-flag role family. Without a row this silently fell back to the chat
+            default — a reasoning model emits only reasoning_content, which distills
+            to an empty diary. */}
+        <div className="mt-4">
+          <DefaultModelRow
+            capability={DISTILL_ROLE}
+            listCapability={CHAT_CAPABILITY}
+            label={t('defaultModels.distill', { defaultValue: 'Default distiller model' })}
+            hint={t('defaultModels.distillHint', {
+              defaultValue: 'Turns "end my day" chats into the daily diary. Optional — unset, it uses your chat default. Pick a NON-reasoning model: a reasoning model emits only reasoning and distills to an empty diary.',
+            })}
+            value={defaults[DISTILL_ROLE] ?? null}
+            onChange={(id) => void save(DISTILL_ROLE, id)}
             disabled={saving}
           />
         </div>
