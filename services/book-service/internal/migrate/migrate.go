@@ -103,6 +103,19 @@ CREATE INDEX IF NOT EXISTS idx_chapter_revisions_chapter
   ON chapter_revisions(chapter_id, created_at DESC);
 ALTER TABLE chapter_revisions ADD COLUMN IF NOT EXISTS body_format TEXT NOT NULL DEFAULT 'json';
 
+-- #287 / DEFERRED-164 — per-chapter MONOTONIC revision sequence. created_at and the
+-- uuidv7 id are BOTH wall-clock derived (uuidv7 embeds unix_ms), so on a host whose
+-- clock steps back (NTP slew; the dev VM steps 1.39s every ~30s) a LATER save sorts as
+-- OLDER and Revision Compare diffs the wrong pair. seq is assigned from the
+-- chapters.revision_seq counter inside the inserting transaction (row-locked UPDATE →
+-- strictly increasing per chapter, clock-independent). The backfill below numbers the
+-- existing rows by the OLD (created_at, id) order — the pre-#287 semantics — once,
+-- marker-gated.
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS revision_seq BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE chapter_revisions ADD COLUMN IF NOT EXISTS seq BIGINT NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_chapter_revisions_chapter_seq
+  ON chapter_revisions(chapter_id, seq DESC);
+
 CREATE TABLE IF NOT EXISTS user_storage_quota (
   owner_user_id UUID PRIMARY KEY,
   used_bytes BIGINT NOT NULL DEFAULT 0,
@@ -830,6 +843,15 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		return err
 	}
 
+	// #287 / DEFERRED-164: number EXISTING revisions per chapter by the OLD
+	// (created_at, id) order and seed the per-chapter counter from it — marker-gated
+	// so it runs EXACTLY ONCE. After this, inserts assign seq via the counter
+	// (clock-independent), and the ordering never depends on the wall clock again.
+	// Runs AFTER schema (the columns exist) and BEFORE the server accepts writes.
+	if err := execGuarded(ctx, pool, "revision-seq backfill", revisionSeqBackfillSQL); err != nil {
+		return err
+	}
+
 	// WS-0.2: seed kg_indexed_revision_id from published_revision_id (marker-gated).
 	// ORDER IS LOAD-BEARING — this MUST run AFTER the CM1 canon backfill above, which
 	// is what pins published_revision_id on pre-CM1 legacy chapters. Run it first and
@@ -1224,6 +1246,34 @@ DO $cm1$ BEGIN
     INSERT INTO canon_model_migration (id) VALUES ('cm1_editorial_backfill');
   END IF;
 END $cm1$;
+`
+
+// revisionSeqBackfillSQL — #287 / DEFERRED-164 one-time data backfill. Numbers every
+// EXISTING revision per chapter by the OLD (created_at, id) order — the pre-#287
+// semantics, preserved verbatim so no history is rewritten — and seeds
+// chapters.revision_seq from the per-chapter MAX, so the next insert continues AFTER
+// the backfilled tail. Marker-gated via its own table (the per-backfill pattern this
+// file already uses): re-running would renumber rows whose seq the counter had since
+// advanced past, colliding with newer revisions.
+//
+// Runs at boot, BEFORE the HTTP server accepts writes — so no insert can race the
+// backfill (a concurrent counter insert would get seq=1 while the backfill assigned
+// 1..N to the same chapter's legacy rows).
+const revisionSeqBackfillSQL = `
+DO $revseq$ BEGIN
+  CREATE TABLE IF NOT EXISTS revision_seq_backfill_migration (id TEXT PRIMARY KEY);
+  IF NOT EXISTS (SELECT 1 FROM revision_seq_backfill_migration WHERE id = 'rev_seq_backfill_v1') THEN
+    WITH numbered AS (
+      SELECT id, ROW_NUMBER() OVER (PARTITION BY chapter_id
+                                    ORDER BY created_at ASC, id ASC) AS n
+      FROM chapter_revisions
+    )
+    UPDATE chapter_revisions r SET seq = numbered.n FROM numbered WHERE r.id = numbered.id;
+    UPDATE chapters c
+       SET revision_seq = COALESCE((SELECT MAX(seq) FROM chapter_revisions r WHERE r.chapter_id = c.id), 0);
+    INSERT INTO revision_seq_backfill_migration (id) VALUES ('rev_seq_backfill_v1');
+  END IF;
+END $revseq$;
 `
 
 // kgIndexedBackfillSQL — WS-0.2 one-time data backfill for publish-independent KG

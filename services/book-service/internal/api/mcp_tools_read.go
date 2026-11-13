@@ -413,7 +413,9 @@ func (s *Server) toolBookListRevisions(ctx context.Context, _ *mcp.CallToolReque
 SELECT rv.id,rv.created_at,rv.author_user_id,rv.message,octet_length(rv.body::text)
 FROM chapter_revisions rv JOIN chapters c ON c.id=rv.chapter_id
 WHERE rv.chapter_id=$1 AND c.book_id=$2
-ORDER BY rv.created_at DESC, rv.id DESC LIMIT $3 OFFSET $4`, chID, bookID, limit, offset)
+-- #287 — seq is the clock-independent write order (created_at AND the uuidv7 id
+-- step back with the wall clock; the counter-assigned seq does not).
+ORDER BY rv.seq DESC, rv.id DESC LIMIT $3 OFFSET $4`, chID, bookID, limit, offset)
 	if err != nil {
 		return nil, listRevisionsOut{}, errors.New("failed to list revisions")
 	}

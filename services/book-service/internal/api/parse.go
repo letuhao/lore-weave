@@ -259,9 +259,13 @@ RETURNING id
 				chapterID, jsonBody)
 			// Canon Model CM1: capture the import revision id (error-checked,
 			// NOT fire-and-forget) so the chapter can be pinned as published.
+			// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+			// left at the DEFAULT 0 sorts behind every real revision.
 			var importRevID uuid.UUID
-			if err := tx.QueryRow(r.Context(),
-				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5) RETURNING id`,
+			if err := tx.QueryRow(r.Context(), `
+WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, $3, $4, $5 FROM s RETURNING id`,
 				chapterID, jsonBody, "json", "imported from "+originalFilename, caller).Scan(&importRevID); err != nil {
 				tx.Rollback(r.Context())
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
