@@ -39,7 +39,18 @@ def merge_refine_output(before: dict[str, Any], patch: dict[str, Any], revision:
         return patch
     out = copy.deepcopy(before)
     for p in paths:
-        if p.startswith("events["):
+        if p == "events":
+            # Whole-section target: the patch carries the repaired section, so
+            # it replaces the section (the per-item branches below replace one
+            # item the same way). Anything else in the patch is out of focus.
+            new_events = patch.get("events")
+            if isinstance(new_events, list):
+                out["events"] = new_events
+        elif p == "arcs":
+            new_arcs = patch.get("arcs")
+            if isinstance(new_arcs, list):
+                out["arcs"] = new_arcs
+        elif p.startswith("events["):
             eid = p.split("[", 1)[1].rstrip("]")
             new_ev = patch.get(p)
             if new_ev is None and isinstance(patch.get("events"), list):

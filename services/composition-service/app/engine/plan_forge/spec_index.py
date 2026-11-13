@@ -104,7 +104,13 @@ def spec_slice_for_paths(spec: dict[str, Any], paths: list[str], max_chars: int 
 
     out: dict[str, Any] = {}
     for p in paths:
-        if p.startswith("events["):
+        if p == "events":
+            # Whole-section target (the hard compile gates name the section, not
+            # one event): the model gets the full section to repair, not {}.
+            out[p] = spec.get("events", [])
+        elif p == "arcs":
+            out[p] = spec.get("arcs", [])
+        elif p.startswith("events["):
             eid = p.split("[", 1)[1].rstrip("]")
             for e in spec.get("events", []):
                 if e.get("id") == eid:

@@ -36,6 +36,9 @@ _EMPTY_SPEC = {"arcs": [], "events": [], "layers": {}}
 
 
 class _StubRuns:
+    def __init__(self, spec=None):
+        self._spec = spec if spec is not None else _EMPTY_SPEC
+
     async def get_for_book(self, book_id, run_id):
         return SimpleNamespace(
             id=run_id, book_id=book_id, status="ready", mode="llm", model_ref=None,
@@ -48,23 +51,24 @@ class _StubRuns:
     async def latest_artifact(self, book_id, run_id, kind):
         if kind == "preflight":
             return None
-        return SimpleNamespace(content=_EMPTY_SPEC)
+        return SimpleNamespace(content=self._spec)
 
     async def list_artifact_refs(self, book_id, run_id):
         return []
 
 
-def _service(monkeypatch) -> PlanForgeService:
-    svc = PlanForgeService(_StubRuns(), jobs=AsyncMock(), works=AsyncMock())
+def _service(monkeypatch, spec=None, coverage_gaps=None) -> PlanForgeService:
+    svc = PlanForgeService(_StubRuns(spec), jobs=AsyncMock(), works=AsyncMock())
     svc._resolve_model_ref = AsyncMock(return_value=uuid4())
     svc.refine = AsyncMock(return_value=("sync", {"status": "applied"}))
     # The coverage engine is stubbed at the boundary: it reports ONE warn gap, which
     # is exactly the condition under which the old code discarded the hard rules.
+    if coverage_gaps is None:
+        coverage_gaps = [{"id": "chars_missing", "severity": "warn", "detail": "add the cast"}]
     monkeypatch.setattr(
         "app.services.plan_forge_service.run_self_check_on_document",
         lambda spec, doc, cfg: {"fidelity": {"score": 0.5},
-                                 "ranked_gaps": [{"id": "chars_missing", "severity": "warn",
-                                                  "detail": "add the cast"}]},
+                                 "ranked_gaps": coverage_gaps},
     )
     return svc
 
@@ -100,4 +104,66 @@ async def test_autofix_focus_paths_are_real_spec_sections(monkeypatch):
     assert revision["focus_paths"][:2] == ["arcs", "events"], (
         "autofix must aim refine at the real spec sections the blocking rules name — "
         "not at a rule id like spec_has_events (#302)"
+    )
+
+
+# ── #323 Codex review ─────────────────────────────────────────────────────────
+# P2 — consistency-audit criticals are STRINGS (elaborate.consistency_audit
+# appends "Title: <diagnostic>"), but self_check consumed them as dicts
+# (`c.get("field")` / `c.get("issue")`). The parent only reached that loop
+# when coverage produced nothing, so the crash was rare; #323 made the loop
+# unconditional, so a run WITH ranked gaps AND an audit critical now aborts
+# self_check (and handoff_autofix with it) instead of returning the coverage
+# gaps. The string diagnostic must surface as the gap message.
+_AUDIT_SPEC = {
+    "arcs": [{"id": "arc_1", "title": "Arc One"}, {"id": "arc_2", "title": "Arc Two"}],
+    "events": [
+        {"id": "ev_1", "arc_id": "arc_2", "title": "Arc Two Event",
+         "synopsis": "The THR is giải thích here, far too early"},
+    ],
+    "layers": {},
+    "charter": {"forbids": ["explain"]},
+}
+
+
+@pytest.mark.asyncio
+async def test_audit_critical_string_does_not_crash_self_check(monkeypatch):
+    svc = _service(monkeypatch, spec=_AUDIT_SPEC)
+    out = await svc.self_check(_USER, _BOOK, _RUN)
+    critical = [g for g in out["gaps"] if g["severity"] == "error"]
+    assert any("THR explained too early" in g["message"] for g in critical), (
+        "consistency_audit returns strings; self_check must surface the string "
+        "diagnostic as the gap message instead of crashing on c.get() (#323)"
+    )
+    # The coverage advice is still there — the audit critical must not displace it.
+    assert any(g["path"] == "chars_missing" for g in out["gaps"])
+
+
+# P2 — `every_arc_has_events` is advisory, so #323's hard-only filter dropped
+# it. With no per-run fidelity rubric the coverage engine reports no ranked
+# gaps, the hard gates pass (arcs and events exist — just all in arc_2), and
+# self_check answered `gaps: []` ("No gaps") for a plan whose arc_1 cannot
+# compile (E4 zero-nodes-linked). The parent's `if not gaps:` fallback DID
+# surface the empty arc. The general advisory failures with a real spec target
+# must be preserved behind the blockers.
+_EMPTY_ARC_SPEC = {
+    "arcs": [{"id": "arc_1", "title": "Arc One"}, {"id": "arc_2", "title": "Arc Two"}],
+    "events": [
+        {"id": "ev_1", "arc_id": "arc_2", "title": "Arc Two Event", "synopsis": "s1"},
+    ],
+    "layers": {},
+}
+
+
+@pytest.mark.asyncio
+async def test_advisory_empty_arc_gap_preserved_without_rubric(monkeypatch):
+    # No rubric -> the stubbed coverage engine reports no ranked gaps at all.
+    svc = _service(monkeypatch, spec=_EMPTY_ARC_SPEC, coverage_gaps=[])
+    out = await svc.self_check(_USER, _BOOK, _RUN)
+    advisory = [g for g in out["gaps"] if g["severity"] == "warn"]
+    assert any(
+        g["path"] == "events" and "arc_1" in g["message"] for g in advisory
+    ), (
+        "a spec with all events in arc_2 must still report the empty arc_1 as a "
+        "warn gap on the real 'events' section — not gaps: [] (#323)"
     )
