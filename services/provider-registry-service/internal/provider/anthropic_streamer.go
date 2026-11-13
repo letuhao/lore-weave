@@ -56,8 +56,9 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 	finishReason := ""
 	inputTokens := 0
 	outputTokens := 0
-	cacheCreation := 0
-	cacheRead := 0
+	// *int: nil ⇔ the provider reported no cache split (silence); a pointer
+	// to 0 is an explicitly measured 0% turn (#324).
+	var cacheCreation, cacheRead *int
 	usageEmitted := false
 
 	err := readSSELines(ctx, body, func(eventName, data string) error {
@@ -91,15 +92,17 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 					// these two fields. Fold them into the total so enabling caching
 					// never silently under-counts input (OpenAI, by contrast, keeps
 					// cached tokens INSIDE prompt_tokens, so its path needs no fold).
-					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-					CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+					// *int: field presence matters — an explicit 0 is a measured
+					// turn, while an absent field is provider silence (#324).
+					CacheCreationInputTokens *int `json:"cache_creation_input_tokens"`
+					CacheReadInputTokens     *int `json:"cache_read_input_tokens"`
 				} `json:"usage"`
 			} `json:"message"`
 			Usage struct {
-				InputTokens              int `json:"input_tokens"`
-				OutputTokens             int `json:"output_tokens"`
-				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+				InputTokens              int  `json:"input_tokens"`
+				OutputTokens             int  `json:"output_tokens"`
+				CacheCreationInputTokens *int `json:"cache_creation_input_tokens"`
+				CacheReadInputTokens     *int `json:"cache_read_input_tokens"`
 			} `json:"usage"`
 			Error struct {
 				Type    string `json:"type"`
@@ -139,9 +142,13 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 			// cache_creation/cache_read; fold both in so the total input volume is
 			// counted (bills at standard input rate as if uncached — the platform
 			// keeps the Anthropic-side cache savings, and no spend/cap under-counts).
-			inputTokens = parsed.Message.Usage.InputTokens +
-				parsed.Message.Usage.CacheCreationInputTokens +
-				parsed.Message.Usage.CacheReadInputTokens
+			inputTokens = parsed.Message.Usage.InputTokens
+			if v := parsed.Message.Usage.CacheCreationInputTokens; v != nil {
+				inputTokens += *v
+			}
+			if v := parsed.Message.Usage.CacheReadInputTokens; v != nil {
+				inputTokens += *v
+			}
 			// Keep the split for the caching monitor (§7) even though it's folded
 			// into inputTokens above for billing volume.
 			cacheCreation = parsed.Message.Usage.CacheCreationInputTokens
@@ -212,26 +219,28 @@ func streamAnthropicSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 				outputTokens = parsed.Usage.OutputTokens
 				// message_delta may also carry cache fields (some Anthropic
 				// versions report them terminally rather than on message_start);
-				// prefer a non-zero terminal value, else keep the message_start one.
-				if parsed.Usage.CacheCreationInputTokens > 0 {
-					cacheCreation = parsed.Usage.CacheCreationInputTokens
+				// prefer a terminal value when the field is present, else keep
+				// the message_start one (#324: presence, not positivity).
+				if v := parsed.Usage.CacheCreationInputTokens; v != nil {
+					cacheCreation = v
 				}
-				if parsed.Usage.CacheReadInputTokens > 0 {
-					cacheRead = parsed.Usage.CacheReadInputTokens
+				if v := parsed.Usage.CacheReadInputTokens; v != nil {
+					cacheRead = v
 				}
 				chunk := StreamChunk{
 					Kind:         StreamChunkUsage,
 					InputTokens:  inputTokens,
 					OutputTokens: outputTokens,
 				}
-				// Only attach the split when the turn actually cached something,
-				// so a non-cached turn emits no misleading cache fields.
-				if cacheCreation > 0 {
-					cc := cacheCreation
+				// Attach the split when the provider reported it (nil ⇔ silence,
+				// so a non-cached turn emits no misleading cache fields); an
+				// explicit 0 is a measured 0% turn and must survive (#324).
+				if cacheCreation != nil {
+					cc := *cacheCreation
 					chunk.CacheCreationTokens = &cc
 				}
-				if cacheRead > 0 {
-					cr := cacheRead
+				if cacheRead != nil {
+					cr := *cacheRead
 					chunk.CacheReadTokens = &cr
 				}
 				if err := emit(chunk); err != nil {

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -57,6 +58,71 @@ data: {"type":"response.completed","response":{"id":"resp_abc","usage":{"input_t
 	}
 	if done == nil || done.ResponseID != "resp_abc" {
 		t.Fatalf("Done must carry the chain head resp_abc, got %+v", done)
+	}
+}
+
+func TestStreamResponsesSSE_ExplicitZeroCachedTokensIsReported(t *testing.T) {
+	// #324 — a provider that explicitly reports cached_tokens: 0 measured a
+	// 0% turn; the split must survive as a pointer to 0, not collapse to
+	// silence (nil), or the monitor reads a real measurement as "unavailable".
+	body := `data: {"type":"response.completed","response":{"id":"resp_x","usage":{"input_tokens":10,"output_tokens":4,"input_tokens_details":{"cached_tokens":0}}}}
+
+`
+	chunks := collectResponsesChunks(t, body)
+	var usage *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkUsage {
+			usage = &chunks[i]
+		}
+	}
+	if usage == nil {
+		t.Fatal("no usage chunk emitted")
+	}
+	if usage.CacheReadTokens == nil || *usage.CacheReadTokens != 0 {
+		t.Fatalf("explicit cached_tokens: 0 must be reported: got %v, want pointer to 0", usage.CacheReadTokens)
+	}
+	if usage.CacheCreationTokens != nil {
+		t.Fatalf("responses API has no write charge: creation must be nil, got %v", usage.CacheCreationTokens)
+	}
+	// Wire seam: the chunk must SERIALIZE the explicit zero (omitempty on
+	// *int emits a present 0), so the Python UsageEvent parses 0, not None.
+	raw, err := json.Marshal(usage)
+	if err != nil {
+		t.Fatalf("marshal usage chunk: %v", err)
+	}
+	if !strings.Contains(string(raw), `"cache_read_tok":0`) {
+		t.Fatalf("wire must carry explicit zero: %s", raw)
+	}
+}
+
+func TestStreamResponsesSSE_CachedTokensFieldAbsentStaysSilent(t *testing.T) {
+	// Field presence, not object presence: an input_tokens_details object
+	// WITHOUT cached_tokens carries no measurement — the split stays nil.
+	body := `data: {"type":"response.completed","response":{"id":"resp_x","usage":{"input_tokens":10,"output_tokens":4,"input_tokens_details":{}}}}
+
+`
+	chunks := collectResponsesChunks(t, body)
+	var usage *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkUsage {
+			usage = &chunks[i]
+		}
+	}
+	if usage == nil {
+		t.Fatal("no usage chunk emitted")
+	}
+	if usage.CacheReadTokens != nil || usage.CacheCreationTokens != nil {
+		t.Fatalf("cached_tokens absent → no split: read=%v creation=%v",
+			usage.CacheReadTokens, usage.CacheCreationTokens)
+	}
+	// Wire seam: a silent turn must omit the cache fields entirely, so the
+	// Python UsageEvent parses None (not a fabricated 0).
+	raw, err := json.Marshal(usage)
+	if err != nil {
+		t.Fatalf("marshal usage chunk: %v", err)
+	}
+	if strings.Contains(string(raw), "cache_read_tok") || strings.Contains(string(raw), "cache_creation_tok") {
+		t.Fatalf("silent turn must omit cache fields on the wire: %s", raw)
 	}
 }
 
