@@ -115,9 +115,11 @@ export const COMPOSER_CAPABILITY = 'composer' as const;
 // #270 — `critic` and `distill` are backend-resolvable ROLES in the same chat-flag
 // family as planner/composer: provider-registry's default_models_handler validates
 // them against the 'chat' capability, and chat-service resolves them — evaluate.py
-// refuses to score without a critic (and TELLS the user to set one here), while the
-// end-of-day distiller falls back to `chat` silently, handing a reasoning model a
-// distill job. One home for the names so a rename cannot drift the card's save keys.
+// falls back to the chat default when no critic is set and refuses only when no
+// model distinct from the session actor resolves (and TELLS the user to set one
+// here), while the end-of-day distiller falls back to `chat` silently, handing a
+// reasoning model a distill job. One home for the names so a rename cannot drift
+// the card's save keys.
 export const CRITIC_ROLE = 'critic' as const;
 export const DISTILL_ROLE = 'distill' as const;
 

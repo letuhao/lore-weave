@@ -41,6 +41,7 @@ vi.mock('../api', () => ({
 }));
 
 import { DefaultModelsCard } from '../DefaultModelsCard';
+import settingsEn from '../../../i18n/locales/en/settings.json';
 import { invalidateUserModelsCache } from '@/components/model-picker';
 
 beforeEach(() => {
@@ -137,5 +138,26 @@ describe('DefaultModelsCard', () => {
     // — target the listbox OPTION specifically.
     fireEvent.click(await screen.findByRole('option', { name: 'defaultModels.none' }));
     await waitFor(() => expect(setDefault).toHaveBeenCalledWith('tok', 'rerank', null));
+  });
+});
+
+// #326 (Codex P1) — the critic hint must describe the real fallback: evaluate.py
+// resolves the critic default, falls back to the chat default as judge, and
+// refuses only when no model distinct from the session actor resolves. It must
+// never present "None" as a scoring opt-out ("falls back to nothing").
+// The vitest i18n mock ignores defaultValue, so this asserts on the en bundle —
+// the string the app actually renders. The component defaultValue is kept
+// byte-identical to it by hand.
+describe('critic hint wording (#326)', () => {
+  const hint = (settingsEn as { defaultModels: { criticHint: string } }).defaultModels.criticHint;
+
+  it('describes the chat-default fallback and the distinct-actor refusal', () => {
+    expect(hint).toContain('chat default');
+    expect(hint).toMatch(/refused/);
+  });
+
+  it('never promises that unset means no scoring', () => {
+    expect(hint).not.toContain('falls back to nothing');
+    expect(hint).not.toContain('sessions are not scored');
   });
 });
