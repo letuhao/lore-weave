@@ -77,6 +77,13 @@ def build_caching_metrics(
     explicit = bool(caps.get("prompt_cache_control"))
     write_mult, read_mult = _mults(caps)
 
+    # #301 — three-state observability. The SDK's UsageEvent carries None when the
+    # provider reported NO cache split; coercing that to 0 manufactured a 0.0 hit
+    # rate on automatic-prefix providers whether the cache worked or not — provider
+    # silence presented as a measurement. A reported split (either field non-None,
+    # including an explicit 0) keeps today's math; silence says so instead.
+    reported = cache_creation_tok is not None or cache_read_tok is not None
+
     create = max(0, int(cache_creation_tok or 0))
     read = max(0, int(cache_read_tok or 0))
     uncached = max(0, int(input_tok or 0) - create - read)
@@ -97,12 +104,18 @@ def build_caching_metrics(
         "create_tok": create,
         "read_tok": read,
         "uncached_tok": uncached,
-        "hit_rate": round(hit_rate, 4),
-        "cost_delta_ratio": round(cost_delta_ratio, 4),
+        # None ⇔ cache_state "unavailable": the provider reported no split, so any
+        # number here — including 0.0 — would be fabricated. An explicit reported
+        # zero stays a zero ("reported", 0.0). hit_rate / cost_delta_ratio /
+        # net_negative are ALL cache-cost claims: on silence none of them is
+        # knowable (the provider may have served any fraction from cache).
+        "hit_rate": round(hit_rate, 4) if reported else None,
+        "cache_state": "reported" if reported else "unavailable",
+        "cost_delta_ratio": round(cost_delta_ratio, 4) if reported else None,
         "write_premium_tok": round(write_premium_tok, 1),
         # this-turn honesty signal: did the turn cost MORE than billing it uncached?
         # (Turn-1 cache priming is net_negative but NOT thrashing — see detect_thrashing.)
-        "net_negative": (naive - actual) < 0,
+        "net_negative": (naive - actual) < 0 if reported else None,
     }
 
 

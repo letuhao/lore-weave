@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -321,5 +322,81 @@ data: {"type":"message_stop"}
 	if usage.CacheCreationTokens != nil || usage.CacheReadTokens != nil {
 		t.Fatalf("uncached turn must emit no split: creation=%v read=%v",
 			usage.CacheCreationTokens, usage.CacheReadTokens)
+	}
+}
+
+func TestStreamAnthropicSSE_ExplicitZeroCacheSplitIsReported(t *testing.T) {
+	// #324 — Anthropic explicitly reporting cache_creation/read of 0 measured
+	// a 0% turn; the split must survive as pointers to 0, not collapse to
+	// silence (nil), or the monitor reads a real measurement as "unavailable".
+	body := `event: message_start
+data: {"type":"message_start","message":{"id":"m1","model":"claude","usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`
+	chunks := collectAnthropicChunks(t, body)
+	var usage *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkUsage {
+			usage = &chunks[i]
+		}
+	}
+	if usage == nil {
+		t.Fatal("no usage chunk emitted")
+	}
+	if usage.InputTokens != 12 {
+		t.Fatalf("InputTokens: got %d, want 12", usage.InputTokens)
+	}
+	if usage.CacheCreationTokens == nil || *usage.CacheCreationTokens != 0 {
+		t.Fatalf("explicit cache_creation 0 must be reported: got %v, want pointer to 0", usage.CacheCreationTokens)
+	}
+	if usage.CacheReadTokens == nil || *usage.CacheReadTokens != 0 {
+		t.Fatalf("explicit cache_read 0 must be reported: got %v, want pointer to 0", usage.CacheReadTokens)
+	}
+	// Wire seam: the chunk must SERIALIZE both explicit zeros (omitempty on
+	// *int emits present 0s), so the Python UsageEvent parses 0, not None.
+	raw, err := json.Marshal(usage)
+	if err != nil {
+		t.Fatalf("marshal usage chunk: %v", err)
+	}
+	if !strings.Contains(string(raw), `"cache_creation_tok":0`) || !strings.Contains(string(raw), `"cache_read_tok":0`) {
+		t.Fatalf("wire must carry explicit zeros: %s", raw)
+	}
+}
+
+func TestStreamAnthropicSSE_TerminalZeroCacheSplitOverridesStart(t *testing.T) {
+	// #324 — presence, not positivity: a terminal message_delta that explicitly
+	// reports 0 overrides the message_start split, even though the start
+	// values were positive. The terminal usage is authoritative.
+	body := `event: message_start
+data: {"type":"message_start","message":{"id":"m1","model":"claude","usage":{"input_tokens":12,"cache_creation_input_tokens":100,"cache_read_input_tokens":4000}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`
+	chunks := collectAnthropicChunks(t, body)
+	var usage *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkUsage {
+			usage = &chunks[i]
+		}
+	}
+	if usage == nil {
+		t.Fatal("no usage chunk emitted")
+	}
+	if usage.CacheCreationTokens == nil || *usage.CacheCreationTokens != 0 {
+		t.Fatalf("terminal explicit 0 must override start 100: got %v", usage.CacheCreationTokens)
+	}
+	if usage.CacheReadTokens == nil || *usage.CacheReadTokens != 0 {
+		t.Fatalf("terminal explicit 0 must override start 4000: got %v", usage.CacheReadTokens)
 	}
 }

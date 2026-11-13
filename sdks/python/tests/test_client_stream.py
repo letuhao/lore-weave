@@ -125,6 +125,29 @@ async def test_stream_usage_carries_cache_split():
     assert usage.cache_read_tok == 4000
 
 
+def test_usage_event_explicit_zero_cache_split_is_reported():
+    # #324 — the wire seam: Go emits "cache_creation_tok":0 / "cache_read_tok":0
+    # for an explicitly measured 0% turn (StreamChunk omitempty on *int), and
+    # the stream client parses usage events with UsageEvent.model_validate
+    # (client.py). An explicit zero must survive as 0, not become None.
+    ev = UsageEvent.model_validate(
+        {"event": "usage", "input_tokens": 1000, "output_tokens": 2,
+         "cache_creation_tok": 0, "cache_read_tok": 0}
+    )
+    assert ev.cache_creation_tok == 0
+    assert ev.cache_read_tok == 0
+
+
+def test_usage_event_silent_cache_split_stays_none():
+    # #324 — the other half of the three-state: a usage event with NO cache
+    # fields at all stays silent (None), it must not become a fabricated 0.
+    ev = UsageEvent.model_validate(
+        {"event": "usage", "input_tokens": 1000, "output_tokens": 2}
+    )
+    assert ev.cache_creation_tok is None
+    assert ev.cache_read_tok is None
+
+
 def test_stream_request_stateful_wire_is_additive():
     # Provider Context Strategy §5 — the stateful markers are additive: the stateless
     # wire stays byte-identical (no `stateful`/`previous_response_id` keys), and a
