@@ -8696,16 +8696,17 @@ class _OutlineNodeMoveArgs(ForbidExtra):
 @mcp_server.tool(
     name="composition_outline_node_move",
     description=(
-        "Drag-reorder + reparent an outline node (chapter/scene) — place `node_id` "
-        "under `new_parent_id` (None = top level) directly after `after_id` (None = "
+        "Drag-reorder + reparent a SCENE outline node — place `node_id` "
+        "under `new_parent_id` directly after `after_id` (None = "
         "first child). Computes the fractional rank + renumbers scene story_order "
         "server-side, atomically. Pass `expected_version` for optimistic concurrency "
-        "(a stale version is rejected). EDIT required."
+        "(a stale version is rejected). Chapters are NOT movable here — chapter order "
+        "is owned by the manuscript (POST /books/{book_id}/chapters/reorder). "
+        "EDIT required."
     ),
     meta=require_meta(
         "A", "book",
-        synonyms=["move node", "reorder scene", "reparent chapter", "drag reorder",
-                  "reorder outline node"],
+        synonyms=["move node", "reorder scene", "drag reorder", "reorder outline node"],
         visibility="legacy", superseded_by="composition_outline_node_edit",  # S3
         tool_name="composition_outline_node_move",
     ),

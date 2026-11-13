@@ -629,6 +629,89 @@ async def test_outline_reorder_reparents_scene_across_chapters(pool):
     assert [s.title for s in src] == ["a2"] and [s.story_order for s in src] == [1 * S]  # re-densified
 
 
+async def test_outline_reorder_chapter_is_rejected(pool):
+    """#318 P1 — a chapter drag through reorder_node must fail LOUDLY, not silently
+    write a rank the tree never displays. Chapter order is owned by book-service
+    (POST /books/{id}/chapters/reorder + resync_reading_order is the ONLY writer of
+    a chapter's slot outside the initial commit); flattenOutline sorts chapters by
+    story_order first, so a rank-only chapter move would report success while the
+    display never changes. The rejection also keeps the move from ever reaching the
+    NULL-parent renumber below."""
+    from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE as S
+
+    repo = OutlineRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    ch1, ch2 = uuid.uuid4(), uuid.uuid4()
+    c1 = await repo.create_node(project, created_by=user, kind="chapter", parent_id=None,
+                                chapter_id=ch1, story_order=1 * S)
+    await repo.create_node(project, created_by=user, kind="chapter", parent_id=None,
+                           chapter_id=ch2, story_order=2 * S)
+    with pytest.raises(ReferenceViolationError):
+        await repo.reorder_node(c1.id, new_parent_id=None, after_id=None)
+    # Nothing moved: both chapters keep their slots.
+    async with pool.acquire() as c:
+        got = await c.fetchval("SELECT story_order FROM outline_node WHERE id=$1", c1.id)
+    assert got == 1 * S
+
+
+async def test_outline_reorder_scene_to_root_keeps_root_scenes_on_the_axis(pool):
+    """#318 P1 — moving a scene to the root must NOT null out the root scenes'
+    story_order. _renumber_scene_story_order's base query (the parent's own
+    story_order) matches no row for a NULL parent, so the old UPDATE wrote NULL
+    into every root scene — dropping them from every story_order-keyed draft /
+    context query. A NULL parent has no chapter base, so the renumber is a no-op
+    there: the moved scene keeps its last-known order and the other root scenes
+    are untouched."""
+    from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE as S
+
+    repo = OutlineRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    ch1 = uuid.uuid4()
+    c1 = await repo.create_node(project, created_by=user, kind="chapter", parent_id=None,
+                                chapter_id=ch1, story_order=1 * S)
+    s1 = await repo.create_node(project, created_by=user, kind="scene", parent_id=c1.id,
+                                chapter_id=ch1, title="s1")
+    await repo.create_node(project, created_by=user, kind="scene", parent_id=c1.id,
+                           chapter_id=ch1, title="s2")
+    # Stray root scene (import artifact): explicit order, no chapter parent.
+    r1 = await repo.create_node(project, created_by=user, kind="scene", parent_id=None,
+                                chapter_id=ch1, title="root1", story_order=5 * S)
+    moved = await repo.reorder_node(s1.id, new_parent_id=None, after_id=None)
+    assert moved is not None and moved.parent_id is None
+    async with pool.acquire() as c:
+        got = {r["title"]: r["story_order"] for r in await c.fetch(
+            "SELECT title, story_order FROM outline_node WHERE kind='scene' AND project_id=$1",
+            project)}
+    assert got == {"s1": 1 * S, "s2": 1 * S, "root1": 5 * S}, (
+        f"root scenes fell off the axis: {got}")
+
+
+async def test_outline_create_root_scene_without_order_leaves_root_scenes_alone(pool):
+    """#318 P1 — the create path calls the same renumber: a root scene created
+    without a story_order must not null out the root scenes that already have
+    one. The new scene keeps the unknown slot (NULL — never a fabricated 0)."""
+    from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE as S
+
+    repo = OutlineRepo(pool)
+    user, project, book = _ids()
+    await _seed_work(pool, user, project, book)
+    ch1 = uuid.uuid4()
+    await repo.create_node(project, created_by=user, kind="chapter", parent_id=None,
+                           chapter_id=ch1, story_order=1 * S)
+    r1 = await repo.create_node(project, created_by=user, kind="scene", parent_id=None,
+                                chapter_id=ch1, title="root1", story_order=5 * S)
+    r2 = await repo.create_node(project, created_by=user, kind="scene", parent_id=None,
+                                chapter_id=ch1, title="root2")
+    async with pool.acquire() as c:
+        got = {r["title"]: r["story_order"] for r in await c.fetch(
+            "SELECT title, story_order FROM outline_node WHERE kind='scene' AND project_id=$1",
+            project)}
+    assert got == {"root1": 5 * S, "root2": None}, f"root scenes fell off the axis: {got}"
+    assert r1.story_order == 5 * S and r2.story_order is None
+
+
 async def test_outline_beat_role_allowed_on_scene_and_chapter_not_arc(pool):
     """T1.2 Beat Sheet migration: beat_role may live on a scene OR a chapter, but
     an arc (or beat) still violates outline_beatrole_kind."""
