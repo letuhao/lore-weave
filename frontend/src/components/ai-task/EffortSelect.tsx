@@ -34,7 +34,7 @@ export function EffortSelect({ value, onChange, disabled, compact }: Props) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // #320 — set only by the close paths that must return focus to the trigger
-  // (Escape, picking an option). An outside-click close leaves focus where the
+  // (Escape, Tab, picking an option). An outside-click close leaves focus where the
   // user put it; the FocusScope unmount handler reads this flag.
   const restoreFocusRef = useRef(false);
   // #262 — the open menu is a PORTAL at body level with fixed positioning. The old
@@ -96,18 +96,34 @@ export function EffortSelect({ value, onChange, disabled, compact }: Props) {
   // The focus move lives in the FocusScope mount handler below, not in a separate
   // effect: the scope pauses an enclosing dialog's trap in its own mount effect,
   // and focusing before that pause lets the trap yank focus back to the trigger.
-  // Menu keyboard handling. Capture-phase on the menu element: an
-  // enclosing Radix dialog also listens for Escape on document, and the menu
-  // must close without dismissing the dialog, so Escape is stopped here before
-  // it can bubble to document. Arrows/Home/End move focus between options.
+  // Menu keyboard handling. Capture-phase on WINDOW, not on the menu element:
+  // an enclosing Radix dialog's DismissableLayer listens for Escape on
+  // ownerDocument with capture:true, and document is outermost in the capture
+  // path — a menu-element capture listener fires only after the dialog has
+  // already dismissed itself, so the menu's stopPropagation() was too late.
+  // window capture runs first, so stopping the event here reaches the dialog's
+  // handler before it runs. Only keys originating inside the menu are handled.
+  // Arrows/Home/End move focus between options.
   useEffect(() => {
     if (!open) return;
-    const menu = menuRef.current;
-    if (!menu) return;
     const onKey = (e: KeyboardEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) return;
       const options = optionRefs.current.filter((el): el is HTMLButtonElement => el !== null);
       if (e.key === 'Escape') {
         e.stopPropagation();
+        setOpen(false);
+        restoreFocusRef.current = true;
+        buttonRef.current?.focus();
+        return;
+      }
+      if (e.key === 'Tab') {
+        // #320 — Tab must close the menu: the untrapped FocusScope pauses an
+        // enclosing dialog's trap while mounted, so leaving the scope open
+        // after focus departs lets keyboard navigation reach controls behind
+        // the still-open modal. Prevent the default move (the focused option
+        // is unmounting) and return focus to the trigger; the next Tab then
+        // runs inside the resumed dialog trap. Covers Shift+Tab the same way.
+        e.preventDefault();
         setOpen(false);
         restoreFocusRef.current = true;
         buttonRef.current?.focus();
@@ -124,8 +140,8 @@ export function EffortSelect({ value, onChange, disabled, compact }: Props) {
       e.preventDefault();
       options[next]?.focus();
     };
-    menu.addEventListener('keydown', onKey, true);
-    return () => menu.removeEventListener('keydown', onKey, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [open]);
 
   const Active = META[value].Icon;
@@ -162,12 +178,14 @@ export function EffortSelect({ value, onChange, disabled, compact }: Props) {
             // body-level menu is not yanked back into the dialog — without the
             // wrapper, opening the menu inside the extraction/glossary wizards
             // leaves focus on the trigger and the options are keyboard-dead.
-            // No `trapped`: Tab must stay native (a trapped scope swallows Tab
-            // at the edges). Mount autofocus focuses the selected option (first
-            // option when nothing matches) — it runs after the scope pauses an
-            // enclosing dialog's trap, so focus is not yanked back to the
-            // trigger. Unmount autofocus restores focus to the trigger only
-            // for Escape/pick closes (see restoreFocusRef).
+            // No `trapped`: a trapped scope swallows Tab at the edges. Tab
+            // instead closes the menu in the keydown handler below, which
+            // unmounts this scope and resumes an enclosing dialog's trap.
+            // Mount autofocus focuses the selected option (first option when
+            // nothing matches) — it runs after the scope pauses an enclosing
+            // dialog's trap, so focus is not yanked back to the trigger.
+            // Unmount autofocus restores focus to the trigger only for
+            // Escape/pick/Tab closes (see restoreFocusRef).
             onMountAutoFocus={(e) => {
               e.preventDefault();
               restoreFocusRef.current = false;

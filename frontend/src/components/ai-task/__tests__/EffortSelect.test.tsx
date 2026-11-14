@@ -1,8 +1,27 @@
 import { describe, it, expect, vi } from 'vitest';
+import { useState, type ReactNode } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as Dialog from '@radix-ui/react-dialog';
 import { EffortSelect } from '../EffortSelect';
+
+// A dialog that can actually close: the real wizards wire onOpenChange to a
+// close handler (ExtractionWizard.tsx:186, GlossaryTranslateWizard.tsx:155),
+// so a fixture with a permanently-open Root cannot observe a dismissal.
+function StatefulDialog({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Portal>
+        <Dialog.Overlay />
+        <Dialog.Content>
+          <Dialog.Title>Pick effort</Dialog.Title>
+          {children}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
 
 describe('EffortSelect (unified 5-level)', () => {
   it('opens the menu, lists all 5 levels, emits the picked level', () => {
@@ -125,19 +144,41 @@ describe('EffortSelect (unified 5-level)', () => {
   it('Escape closes the menu but not the enclosing dialog (P2 #320)', async () => {
     const user = userEvent.setup();
     render(
-      <Dialog.Root open>
-        <Dialog.Portal>
-          <Dialog.Overlay />
-          <Dialog.Content>
-            <Dialog.Title>Pick effort</Dialog.Title>
-            <EffortSelect value="off" onChange={vi.fn()} />
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>,
+      <StatefulDialog>
+        <EffortSelect value="off" onChange={vi.fn()} />
+      </StatefulDialog>,
     );
     await user.click(screen.getByTestId('effort-select'));
     expect(screen.getByTestId('effort-select-menu')).toBeInTheDocument();
     await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('effort-select-menu')).toBeNull();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByTestId('effort-select'));
+  });
+
+  // P2 (#320) — Tab out of the menu must close it: the untrapped FocusScope
+  // pauses an enclosing dialog's trap while mounted, so a menu left open after
+  // focus leaves lets later keyboard navigation reach controls behind the modal.
+  it('Tab closes the menu and returns focus to the trigger (P2 #320)', async () => {
+    const user = userEvent.setup();
+    render(<EffortSelect value="medium" onChange={vi.fn()} />);
+    await user.click(screen.getByTestId('effort-select'));
+    expect(document.activeElement).toBe(screen.getByTestId('effort-select-opt-medium'));
+    await user.keyboard('{Tab}');
+    expect(screen.queryByTestId('effort-select-menu')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId('effort-select'));
+  });
+
+  it('Tab closes the menu inside a modal dialog without dismissing it (P2 #320)', async () => {
+    const user = userEvent.setup();
+    render(
+      <StatefulDialog>
+        <EffortSelect value="off" onChange={vi.fn()} />
+      </StatefulDialog>,
+    );
+    await user.click(screen.getByTestId('effort-select'));
+    expect(screen.getByTestId('effort-select-menu')).toBeInTheDocument();
+    await user.keyboard('{Tab}');
     expect(screen.queryByTestId('effort-select-menu')).toBeNull();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(document.activeElement).toBe(screen.getByTestId('effort-select'));
