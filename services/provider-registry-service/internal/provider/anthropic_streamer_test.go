@@ -399,4 +399,44 @@ data: {"type":"message_stop"}
 	if usage.CacheReadTokens == nil || *usage.CacheReadTokens != 0 {
 		t.Fatalf("terminal explicit 0 must override start 4000: got %v", usage.CacheReadTokens)
 	}
+	// F2 (Codex P2 on #324): the terminal split replaces the start split, so
+	// the folded total must be rebuilt from the raw uncached input (12) plus
+	// the FINAL split (0/0) — not keep the stale start volume (4112).
+	if usage.InputTokens != 12 {
+		t.Fatalf("terminal 0 split must refold input to raw 12: got %d", usage.InputTokens)
+	}
+}
+
+func TestStreamAnthropicSSE_TerminalNonzeroCacheSplitRecomputesInput(t *testing.T) {
+	// F2 (Codex P2 on #324): same refold with a nonzero terminal split — the
+	// folded total is raw (12) + terminal creation (50) + terminal read (2000).
+	body := `event: message_start
+data: {"type":"message_start","message":{"id":"m1","model":"claude","usage":{"input_tokens":12,"cache_creation_input_tokens":100,"cache_read_input_tokens":4000}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2,"cache_creation_input_tokens":50,"cache_read_input_tokens":2000}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`
+	chunks := collectAnthropicChunks(t, body)
+	var usage *StreamChunk
+	for i := range chunks {
+		if chunks[i].Kind == StreamChunkUsage {
+			usage = &chunks[i]
+		}
+	}
+	if usage == nil {
+		t.Fatal("no usage chunk emitted")
+	}
+	if usage.CacheCreationTokens == nil || *usage.CacheCreationTokens != 50 {
+		t.Fatalf("terminal creation must override start 100: got %v", usage.CacheCreationTokens)
+	}
+	if usage.CacheReadTokens == nil || *usage.CacheReadTokens != 2000 {
+		t.Fatalf("terminal read must override start 4000: got %v", usage.CacheReadTokens)
+	}
+	if usage.InputTokens != 2062 {
+		t.Fatalf("terminal split must refold input to 12+50+2000: got %d", usage.InputTokens)
+	}
 }
