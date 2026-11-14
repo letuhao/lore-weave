@@ -186,7 +186,7 @@ export function DefaultModelsCard() {
             listCapability={CHAT_CAPABILITY}
             label={t('defaultModels.critic', { defaultValue: 'Default critic model' })}
             hint={t('defaultModels.criticHint', {
-              defaultValue: 'Scores practice sessions and audits generated scenes. Optional — unset, scoring falls back to your chat default as judge. Scoring is refused when that model is the session\'s own model, or when no default is set — pick a critic that differs from your usual chat model.',
+              defaultValue: 'Scores practice sessions. Optional — unset, scoring falls back to your chat default as judge. Scoring is refused when that model is the session\'s own model, or when no default is set — pick a critic that differs from your usual chat model. Generated-scene audits use the critic set per book in Composition → Settings.',
             })}
             value={defaults[CRITIC_ROLE] ?? null}
             onChange={(id) => void save(CRITIC_ROLE, id)}

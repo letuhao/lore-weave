@@ -160,4 +160,15 @@ describe('critic hint wording (#326)', () => {
     expect(hint).not.toContain('falls back to nothing');
     expect(hint).not.toContain('sessions are not scored');
   });
+
+  // #326 (Codex P1, F2) — the account critic default does NOT enable
+  // generated-scene audits: composition-service's `critic_policy.resolve_critic`
+  // reads only the book's role map/scalars (`work.settings`), so a book without
+  // a book-level critic reports NOT_CONFIGURED and skips the LLM critique.
+  // The hint must stay scoped to practice-session scoring and point at the
+  // per-book setting (Composition → Settings → Critic model) for scene audits.
+  it('never promises generated-scene audits from the account default', () => {
+    expect(hint).not.toContain('audits generated scenes');
+    expect(hint).toContain('Composition');
+  });
 });
