@@ -40,9 +40,14 @@ export type AiPrefsPatch = Partial<Pick<AiPrefs, 'behavior' | 'grounding' | 'voi
 
 export type ModelRole =
   | 'chat' | 'composer' | 'planner' | 'embedding' | 'rerank' | 'critic'
+  // #270 — the end-of-day journal DISTILLER resolves this role (falling back to
+  // `chat` when unset, which handed a reasoning model a distill job). The account
+  // panel's Default models card now offers it for explicit setup.
+  | 'distill'
   // QC-5 C33 — the model that audits a critic verdict. Book-tier only (the account
-  // panel lists neither this nor `critic`), and NOT called `verifier`: campaigns owns
-  // a different role by that name.
+  // panel lists it neither — this row stays book-scoped; `critic` IS listed there
+  // since #270), and NOT called `verifier`: campaigns owns a different role by that
+  // name.
   | 'critic_verifier';
 
 /** A deploy-tier capability ceiling (D-WS4C-EFFECTIVE-VALUE). `deploy_allows` is the
