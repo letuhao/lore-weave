@@ -15,7 +15,7 @@ export class ChapterComposePanel {
   readonly titleInput: Locator;
   readonly saveButton: Locator;
   readonly modelSelect: Locator;
-  readonly reasoningSelect: Locator;
+  readonly reasoningTrigger: Locator;
   readonly generate: Locator;
   readonly stop: Locator;
   readonly regenerate: Locator;
@@ -65,7 +65,7 @@ export class ChapterComposePanel {
     this.titleInput = page.getByTestId('chapter-title-input');
     this.saveButton = page.getByTestId('chapter-save-button');
     this.modelSelect = page.getByTestId('composition-model-select');
-    this.reasoningSelect = page.getByTestId('compose-reasoning');
+    this.reasoningTrigger = page.getByTestId('effort-select');
     this.generate = page.getByTestId('compose-generate');
     this.stop = page.getByTestId('compose-stop');
     this.regenerate = page.getByTestId('compose-regenerate');
@@ -108,6 +108,16 @@ export class ChapterComposePanel {
   async selectModel(userModelId: string): Promise<void> {
     await this.modelSelect.locator('[role="combobox"], button').first().click();
     await this.page.locator(`[role="option"][data-model-id="${userModelId}"]`).click();
+  }
+
+  /** #262 — the effort control is the shared EffortSelect menu (a body-level portal),
+   * NOT the `<select data-testid="compose-reasoning">` it used to be: that testid no
+   * longer exists, so the old `selectOption` calls died on a stale selector before ever
+   * reaching the menu (which is how the unclickable-menu bug stayed masked). Drive the
+   * control as it exists: open the trigger, click the option row. */
+  async selectReasoning(level: 'off' | 'low' | 'medium' | 'high' | 'auto'): Promise<void> {
+    await this.reasoningTrigger.click();
+    await this.page.getByTestId(`effort-select-opt-${level}`).click();
   }
 
   async openComposeTab(): Promise<void> {
