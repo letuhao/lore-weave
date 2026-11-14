@@ -32,7 +32,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
+	"sync/atomic"
 
 	rabbitmq "github.com/rabbitmq/amqp091-go"
 
@@ -40,6 +42,11 @@ import (
 )
 
 const llmJobsQueue = "llm.jobs"
+
+// osExit is swapped in tests; production exits so the container supervisor
+// (restart: unless-stopped) restarts the process and a fresh dial redeclares and
+// re-consumes — the #297 fail-fast.
+var osExit = os.Exit
 
 // queueMessage is the wire body. Minimal — the llm_jobs row is the source of
 // truth; the consumer loads everything else by id (cheap redelivery, no large
@@ -69,11 +76,34 @@ type JobQueue struct {
 	pubCh  *rabbitmq.Channel
 	pubMu  sync.Mutex
 	logger *slog.Logger
+	// closed marks the GRACEFUL path (#297): Close() stores it BEFORE closing any
+	// channel, so a NotifyClose that fired because of Close() never reads as a
+	// broker drop. amqp091 delivers NotifyClose for both.
+	closed atomic.Bool
 
 	semMu sync.Mutex
 	sems  map[string]chan struct{} // per-credential concurrency semaphore (lazy)
 
 	consumerCh *rabbitmq.Channel
+}
+
+// failFastOnClose exits the process when the broker drops a connection or channel
+// (#297): amqp091 delivers on NotifyClose for a broker restart AND for a local
+// Close(); `closed` (set first thing in Close) separates the graceful path. Without
+// this the process stays "Up" and healthy while every delivery goroutine has
+// silently returned — after a broker restart, no LLM job runs until a manual
+// restart. Exiting is the honest state: the supervisor redials, redeclares, and
+// re-consumes, and un-acked messages redeliver.
+func (q *JobQueue) failFastOnClose(what string, closeCh <-chan *rabbitmq.Error) {
+	go func() {
+		reason := <-closeCh
+		if q.closed.Load() {
+			return
+		}
+		q.logger.Error("rabbitmq closed — exiting so the supervisor restarts us (the consumer would otherwise silently stop)",
+			"what", what, "reason", reason)
+		osExit(1)
+	}()
 }
 
 // NewJobQueue dials RabbitMQ, opens the publish channel, and declares the
@@ -97,7 +127,12 @@ func NewJobQueue(amqpURL string, logger *slog.Logger) (*JobQueue, error) {
 		_ = conn.Close()
 		return nil, fmt.Errorf("job-queue declare: %w", err)
 	}
-	return &JobQueue{conn: conn, pubCh: ch, logger: logger, sems: map[string]chan struct{}{}}, nil
+	q := &JobQueue{conn: conn, pubCh: ch, logger: logger, sems: map[string]chan struct{}{}}
+	// #297 — a broker restart must not leave the publisher (or its exchange state)
+	// silently dead. The watcher exits; the supervisor's restart re-dials.
+	q.failFastOnClose("job-queue connection", conn.NotifyClose(make(chan *rabbitmq.Error, 1)))
+	q.failFastOnClose("job-queue publish channel", ch.NotifyClose(make(chan *rabbitmq.Error, 1)))
+	return q, nil
 }
 
 // Publish enqueues a job as a persistent message on the durable work queue.
@@ -167,6 +202,10 @@ func (q *JobQueue) StartConsumer(ctx context.Context, workers int, resolve Concu
 		return fmt.Errorf("job-queue consume: %w", err)
 	}
 	q.consumerCh = ch
+	// #297 — the consumer channel dying is the reported silent-death: the worker
+	// goroutines below just return on a closed delivery channel. The watcher exits
+	// the process instead, so the supervisor restarts it into a live consumer.
+	q.failFastOnClose("job-queue consumer channel", ch.NotifyClose(make(chan *rabbitmq.Error, 1)))
 	for i := 0; i < workers; i++ {
 		go func() {
 			for {
@@ -223,8 +262,11 @@ func (q *JobQueue) handleDelivery(ctx context.Context, d rabbitmq.Delivery, reso
 	_ = d.Ack(false)
 }
 
-// Close stops the consumer + publish channel + connection.
+// Close stops the consumer + publish channel + connection. Marks `closed` FIRST:
+// every local Close fires NotifyClose, and the #297 watcher must read that as the
+// graceful path, never as a broker drop.
 func (q *JobQueue) Close() error {
+	q.closed.Store(true)
 	if q.consumerCh != nil {
 		_ = q.consumerCh.Close()
 	}

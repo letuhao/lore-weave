@@ -16,6 +16,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/worker-infra/internal/testsafe"
 )
 
 func bookTestPool(t *testing.T) *pgxpool.Pool {
@@ -27,6 +29,20 @@ func bookTestPool(t *testing.T) *pgxpool.Pool {
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("connect book DB: %v", err)
+	}
+	// SAFETY GUARD — the callers run INSERTs and UUID-scoped DELETEs against
+	// this pool. Refuse a non-throwaway target BEFORE any statement runs, so
+	// a BOOK_TEST_DATABASE_URL pointed at the real loreweave_book can never
+	// wipe user data. Lives here, in the shared helper — never at the call
+	// sites — so every DB-gated test in this package is covered.
+	var dbName string
+	if err := pool.QueryRow(context.Background(), `SELECT current_database()`).Scan(&dbName); err != nil {
+		pool.Close()
+		t.Fatalf("current_database: %v", err)
+	}
+	if err := testsafe.EnsureThrowawayDB(dbName); err != nil {
+		pool.Close()
+		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
 	return pool

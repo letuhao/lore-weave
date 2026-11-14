@@ -17,7 +17,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -191,6 +193,12 @@ type Consumer struct {
 	pool   *pgxpool.Pool
 	logger *slog.Logger
 	sender *push.Sender // M5 — fires a content-free push on a fresh insert (may be a no-op)
+	// closed marks the GRACEFUL path (#297): Close stores it BEFORE any local Close,
+	// so a NotifyClose fired by Close never reads as a broker drop.
+	closed atomic.Bool
+	// exit is swapped in tests (#297); production exits so the container supervisor
+	// restarts the process and a fresh dial redeclares + re-consumes.
+	exit func(int)
 }
 
 // Start dials the broker, declares the topic exchange + queue + binding,
@@ -232,7 +240,11 @@ func Start(ctx context.Context, amqpURL string, pool *pgxpool.Pool, logger *slog
 		return nil, fmt.Errorf("consume: %w", err)
 	}
 
-	c := &Consumer{conn: conn, ch: ch, pool: pool, logger: logger, sender: sender}
+	c := &Consumer{conn: conn, ch: ch, pool: pool, logger: logger, sender: sender, exit: os.Exit}
+	// #297 — the broker dropping us must not leave the process "Up" and healthy with
+	// a dead consumer: exit so the supervisor restarts us into a live consumer.
+	c.watchClose("connection", conn.NotifyClose(make(chan *rabbitmq.Error, 1)))
+	c.watchClose("channel", ch.NotifyClose(make(chan *rabbitmq.Error, 1)))
 	go c.run(ctx, deliveries)
 	logger.Info("llm-jobs consumer started",
 		"exchange", exchangeName, "queue", queueName, "binding", bindingKey)
@@ -246,12 +258,33 @@ func (c *Consumer) run(ctx context.Context, deliveries <-chan rabbitmq.Delivery)
 			return
 		case d, ok := <-deliveries:
 			if !ok {
-				c.logger.Warn("llm-jobs consumer delivery channel closed")
+				// #297 — this used to be a silent WARN + return: the process stayed
+				// "Up" while notifications quietly stopped. Escalate to the same
+				// fail-fast as the NotifyClose watchers.
+				if !c.closed.Load() {
+					c.logger.Error("llm-jobs consumer delivery channel closed — exiting so the supervisor restarts us")
+					c.exit(1)
+				}
 				return
 			}
 			c.handle(ctx, d)
 		}
 	}
+}
+
+// watchClose fail-fasts when the broker drops this consumer's connection or channel
+// (#297). amqp091 delivers on NotifyClose for a broker restart AND for a local
+// Close(); `closed` (set first thing in Close) separates the graceful path.
+func (c *Consumer) watchClose(what string, closeCh <-chan *rabbitmq.Error) {
+	go func() {
+		reason := <-closeCh
+		if c.closed.Load() {
+			return
+		}
+		c.logger.Error("rabbitmq closed — exiting so the supervisor restarts us (notifications would otherwise silently stop)",
+			"what", what, "reason", reason)
+		c.exit(1)
+	}()
 }
 
 func (c *Consumer) handle(ctx context.Context, d rabbitmq.Delivery) {
@@ -336,6 +369,8 @@ ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
 }
 
 func (c *Consumer) Close() error {
+	// #297 — mark graceful BEFORE the local Closes fire NotifyClose.
+	c.closed.Store(true)
 	if c.ch != nil {
 		_ = c.ch.Close()
 	}
