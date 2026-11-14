@@ -33,8 +33,13 @@ import (
 )
 
 // replayTree is the fixed two-chapter document the parse fake returns.
+// Chapter 1 carries a data-URI image so the MinIO assertion is non-vacuous:
+// with a text-only fixture extractAndUploadImages can never PUT, and the
+// redelivery assertion would pass even with the importChapterExists
+// pre-check removed. The image must upload exactly once (first run) and
+// never again on redelivery.
 const replayTree = `{"source_format":"html","parts":[{"sort_order":1,"path":"book/part-1","chapters":[
-{"sort_order":1,"title":"One","path":"book/chapter-1","html":"<p>Body one.</p>","scenes":[{"sort_order":1,"path":"book/chapter-1/scene-1","leaf_text":"Body one.","content_hash":"h1"}]},
+{"sort_order":1,"title":"One","path":"book/chapter-1","html":"<p>Body one.</p><p><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAwMCAO+ip1sAAAAASUVORK5CYII=\" alt=\"\"></p>","scenes":[{"sort_order":1,"path":"book/chapter-1/scene-1","leaf_text":"Body one.","content_hash":"h1"}]},
 {"sort_order":2,"title":"Two","path":"book/chapter-2","html":"<p>Body two.</p>","scenes":[{"sort_order":1,"path":"book/chapter-2/scene-1","leaf_text":"Body two.","content_hash":"h2"}]}
 ]}]}`
 
@@ -56,8 +61,22 @@ func (f *fakeMinio) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	switch r.Method {
 	case http.MethodGet:
+		// minio-go looks up the bucket location (GET ?location=) before its
+		// first PUT. It parses the body as S3 LocationConstraint XML, so
+		// answering with the file bytes makes PutObject fail with EOF and
+		// no PUT is ever recorded — the image-upload assertion would then
+		// be untestable. An empty constraint is us-east-1, the client's
+		// default region.
+		if _, ok := r.URL.Query()["location"]; ok {
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/"></LocationConstraint>`))
+			return
+		}
 		f.gets = append(f.gets, key)
 		w.Header().Set("Content-Type", "application/octet-stream")
+		// minio-go parses Last-Modified on every GetObject response
+		// (ToObjectInfo); without it the read fails before the body.
+		w.Header().Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
 		_, _ = w.Write([]byte("fake docx bytes"))
 	case http.MethodPut:
 		f.puts = append(f.puts, key)
@@ -168,6 +187,14 @@ func TestProcessImport_RedeliverySkipsAlreadyWrittenChapters(t *testing.T) {
 	if ch1 != 2 || dr1 != 2 || rev1 != 2 || sc1 != 2 {
 		t.Fatalf("first run: chapters=%d drafts=%d revisions=%d scenes=%d, want 2/2/2/2", ch1, dr1, rev1, sc1)
 	}
+	// The chapter-1 data-URI image must upload exactly once on the first run.
+	// If this is 0 the fixture exercises nothing: htmlToTiptapJSON dropped the
+	// image or extractAndUploadImages never ran, and the replay comparison
+	// below would be vacuous.
+	_, puts1, _ := mini.counts()
+	if puts1 != 1 {
+		t.Fatalf("first run: MinIO PUTs=%d, want 1 (the chapter-1 image)", puts1)
+	}
 
 	// Second run: the same job redelivered (the crash scenario). Nothing
 	// new may appear, and the reported count is the job total, not the
@@ -210,7 +237,133 @@ func TestProcessImport_RedeliverySkipsAlreadyWrittenChapters(t *testing.T) {
 	}
 	// No MinIO writes on the redelivery: the pre-check skips already-written
 	// chapters before their images could be re-uploaded under fresh keys.
-	if _, puts, _ := mini.counts(); puts != 0 {
-		t.Fatalf("redelivery uploaded %d objects to MinIO, want 0", puts)
+	// Compared against the first run's PUT count, not against zero: the
+	// chapter-1 image DID upload once, so asserting a cumulative zero would
+	// fail a correct run — and with a text-only fixture this assertion passed
+	// even with the pre-check deleted.
+	_, puts2, _ := mini.counts()
+	if puts2 != puts1 {
+		t.Fatalf("redelivery uploaded %d more objects to MinIO (total %d, first run %d) — "+
+			"the pre-check must skip already-written chapters before their images re-upload",
+			puts2-puts1, puts2, puts1)
+	}
+}
+
+// failureTreeFirst is the one-chapter document of the first attempt; the
+// retry grows it to failureTreeSecond, whose third chapter carries two scenes
+// at the same sort_order — the second scene INSERT violates
+// UNIQUE(chapter_id, sort_order) and fails the run after chapter 2 committed.
+const failureTreeFirst = `{"source_format":"html","parts":[{"sort_order":1,"path":"book/part-1","chapters":[
+{"sort_order":1,"title":"One","path":"book/chapter-1","html":"<p>Body one.</p>","scenes":[{"sort_order":1,"path":"book/chapter-1/scene-1","leaf_text":"Body one.","content_hash":"h1"}]}
+]}]}`
+
+const failureTreeSecond = `{"source_format":"html","parts":[{"sort_order":1,"path":"book/part-1","chapters":[
+{"sort_order":1,"title":"One","path":"book/chapter-1","html":"<p>Body one.</p>","scenes":[{"sort_order":1,"path":"book/chapter-1/scene-1","leaf_text":"Body one.","content_hash":"h1"}]},
+{"sort_order":2,"title":"Two","path":"book/chapter-2","html":"<p>Body two.</p>","scenes":[{"sort_order":1,"path":"book/chapter-2/scene-1","leaf_text":"Body two.","content_hash":"h2"}]},
+{"sort_order":3,"title":"Three","path":"book/chapter-3","html":"<p>Body three.</p>","scenes":[{"sort_order":1,"path":"book/chapter-3/scene-1","leaf_text":"Body three.","content_hash":"h3a"},{"sort_order":1,"path":"book/chapter-3/scene-2","leaf_text":"Body three again.","content_hash":"h3b"}]}
+]}]}`
+
+// replayProcessor builds an ImportProcessor wired to the local fakes for a
+// processImport run: MinIO serves the import file and records writes, pandoc
+// returns fixed HTML, and parse answers with parseHandler (which may vary its
+// tree per call, e.g. to grow the document between attempts).
+func replayProcessor(t *testing.T, pool *pgxpool.Pool, bookID, jobID, owner uuid.UUID, parseHandler http.HandlerFunc) (*ImportProcessor, importRequestedPayload, *fakeMinio) {
+	t.Helper()
+	mini := &fakeMinio{}
+	minioSrv := httptest.NewServer(mini)
+	t.Cleanup(minioSrv.Close)
+	mc, err := minio.New(minioSrv.Listener.Addr().String(), &minio.Options{
+		Creds:  credentials.NewStaticV4("testkey", "testsecret", ""),
+		Secure: false,
+	})
+	if err != nil {
+		t.Fatalf("minio client: %v", err)
+	}
+	pandocSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"output":"<h1>One</h1><p>Body one.</p>"}`))
+	}))
+	t.Cleanup(pandocSrv.Close)
+	parseSrv := httptest.NewServer(parseHandler)
+	t.Cleanup(parseSrv.Close)
+	proc := &ImportProcessor{
+		BookDB: pool,
+		Cfg: &config.Config{
+			MinioBucket:           "test-bucket",
+			PandocURL:             pandocSrv.URL,
+			CompositionServiceURL: "", // writeBackSceneLinks is a no-op without it
+		},
+		Minio:       mc,
+		parseClient: NewParseClient(parseSrv.URL, "tok"),
+	}
+	payload := importRequestedPayload{
+		JobID: jobID.String(), BookID: bookID.String(), UserID: owner.String(),
+		FileFormat: "docx", FileStorageKey: "fixture.docx", OriginalLanguage: "en",
+	}
+	return proc, payload, mini
+}
+
+func TestProcessImport_FailureCountIncludesSkippedChapters(t *testing.T) {
+	pool := bookTestPool(t)
+	ctx := context.Background()
+
+	owner, bookID, jobID := uuid.New(), uuid.New(), uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO books(id,owner_user_id,title) VALUES($1,$2,'replay-fail')`, bookID, owner); err != nil {
+		t.Fatalf("seed book: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO import_jobs(id,book_id,user_id,status,filename,file_format,file_size,file_storage_key,create_book_from_metadata) VALUES($1,$2,$3,'pending','fixture.docx','docx',1,'fixture.docx',false)`, jobID, bookID, owner); err != nil {
+		t.Fatalf("seed import job: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM books WHERE id=$1`, bookID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM import_jobs WHERE id=$1`, jobID)
+	})
+
+	// The parse fake grows the document on the second call: chapter 1
+	// (already committed), chapter 2 (new), chapter 3 (fails: two scenes
+	// share sort_order 1, violating UNIQUE(chapter_id, sort_order)).
+	var mu sync.Mutex
+	calls := 0
+	proc, payload, _ := replayProcessor(t, pool, bookID, jobID, owner, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/parse" {
+			t.Errorf("unexpected parse path %s", r.URL.Path)
+		}
+		mu.Lock()
+		calls++
+		tree := failureTreeFirst
+		if calls > 1 {
+			tree = failureTreeSecond
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(tree))
+	}))
+
+	// First attempt: chapter 1 commits.
+	n1, err := proc.processImport(ctx, payload)
+	if err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	if n1 != 1 {
+		t.Fatalf("first run: chapters=%d, want 1", n1)
+	}
+
+	// Second attempt: chapter 1 is skipped (already written), chapter 2 is
+	// created, chapter 3 fails on its duplicate scene sort_order. The error
+	// return must count BOTH committed chapters, not just the one this run
+	// created — Run persists it as chapters_created and emits it as progress.
+	n2, err := proc.processImport(ctx, payload)
+	if err == nil {
+		t.Fatalf("second run: want an insert-scene error, got nil (chapters=%d)", n2)
+	}
+	if !strings.Contains(err.Error(), "insert scene") {
+		t.Fatalf("second run: error=%v, want an insert-scene failure", err)
+	}
+	if n2 != 2 {
+		t.Fatalf("second run: chapters=%d, want 2 (skipped chapter 1 + created chapter 2)", n2)
+	}
+	ch, _, _, _ := bookRowCounts(t, ctx, pool, bookID)
+	if ch != 2 {
+		t.Fatalf("second run: %d chapters in DB, want 2 (failed chapter 3 rolled back)", ch)
 	}
 }
