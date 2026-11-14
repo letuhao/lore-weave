@@ -416,7 +416,13 @@ RETURNING id
 			// published+fresh ⇒ never needlessly re-swept.
 			var importRevID string
 			if err := tx.QueryRow(ctx,
-				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1, $2, 'json', $3, $4) RETURNING id`,
+				// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+				// left at the DEFAULT 0 sorts behind every real revision. The
+				// chapters row was inserted earlier in this tx, so the UPDATE
+				// locks a row no other tx can see.
+				`WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+				INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+				SELECT $1, s.revision_seq, $2, 'json', $3, $4 FROM s RETURNING id`,
 				chapterID, tiptapJSON, "imported from "+origFilename, payload.UserID).Scan(&importRevID); err != nil {
 				tx.Rollback(ctx)
 				return count, fmt.Errorf("insert revision: %w", err)

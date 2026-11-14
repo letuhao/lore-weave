@@ -215,9 +215,18 @@ func (s *Server) upsertDiaryEntry(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to write revision")
 				return
 			}
+			// PR #325 review (P2): with encryption disabled prepDiaryBody returns
+			// wc=-1 ("let the DB trigger compute it") — but the draft UPDATE above
+			// already fired fn_recompute_chapter_word_count while chapters still
+			// carried the OLD original_language, so the trigger counted the new
+			// body under the stale language (ja/zh/ko alone forces the CJK
+			// char-count branch). Preserving word_count here would keep that
+			// wrong value. Recompute with the NEW language ($3) over the
+			// already-rewritten chapter_blocks instead. Draft-first lock order
+			// is unchanged: this is the same chapters UPDATE, not a reorder.
 			if _, err := tx.Exec(ctx,
 				`UPDATE chapters SET title=$2, original_language=$3, byte_size=$4, entry_zone=$5,
-				        body_encrypted=$6, word_count=CASE WHEN $7 >= 0 THEN $7 ELSE word_count END,
+				        body_encrypted=$6, word_count=CASE WHEN $7 >= 0 THEN $7 ELSE fn_word_count_for_text((SELECT COALESCE(string_agg(text_content, ' ' ORDER BY block_index), '') FROM chapter_blocks WHERE chapter_id=$1), $3) END,
 				        draft_revision_count=draft_revision_count+1, draft_updated_at=now(), updated_at=now()
 				   WHERE id=$1`,
 				chID, nullIfEmpty(title), lang, byteSize, zone, encrypted, wc); err != nil {
