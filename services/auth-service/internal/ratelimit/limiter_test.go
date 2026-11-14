@@ -3,6 +3,7 @@ package ratelimit
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -122,12 +123,12 @@ func TestAccountFromLoginBodyOversizedBody(t *testing.T) {
 		t.Fatalf("fixture too small: %d bytes", len(raw))
 	}
 	r := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(raw))
-	// The object does not close inside the probe window, so the probe cannot
-	// extract the email and the request falls back to the IP tier (account
-	// ""). That is the documented graceful fallback — the defect was never
-	// the bucket, it was the truncated body the handler received.
-	if got := accountFromLoginBody(r); got != "" {
-		t.Fatalf("oversized body: account %q, want empty (IP-tier fallback)", got)
+	// The object does not close inside the old 8192-byte probe window, but
+	// the probe now decodes the whole first JSON value, so the email must
+	// still be extracted — falling back to the empty-account bucket would
+	// hand the attacker a second full budget for this account.
+	if got := accountFromLoginBody(r); got != "big@example.com" {
+		t.Fatalf("oversized body: account %q, want big@example.com", got)
 	}
 	var body struct {
 		Email    string `json:"email"`
@@ -142,18 +143,17 @@ func TestAccountFromLoginBodyOversizedBody(t *testing.T) {
 }
 
 func TestAccountFromLoginBodyEmailPastProbeWindow(t *testing.T) {
-	// The email sits past the probe window, so the probe cannot see it and
-	// the request falls back to the IP tier (account ""). The handler must
-	// still receive the complete body — the probe window must never truncate
-	// what the handler reads.
+	// The email sits past the old 8192-byte probe window, but the probe now
+	// decodes the whole first JSON value, so it must still be extracted.
+	// The handler must still receive the complete body either way.
 	pw := strings.Repeat("a1", 4500) // 9 000 chars
 	raw := `{"password":"` + pw + `","email":"late@example.com"}`
 	if len(raw) <= 8192 {
 		t.Fatalf("fixture too small: %d bytes", len(raw))
 	}
 	r := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(raw))
-	if got := accountFromLoginBody(r); got != "" {
-		t.Fatalf("email past probe window: account %q, want empty (IP-tier fallback)", got)
+	if got := accountFromLoginBody(r); got != "late@example.com" {
+		t.Fatalf("email past probe window: account %q, want late@example.com", got)
 	}
 	var body struct {
 		Email    string `json:"email"`
@@ -164,5 +164,90 @@ func TestAccountFromLoginBodyEmailPastProbeWindow(t *testing.T) {
 	}
 	if body.Email != "late@example.com" || len(body.Password) != len(pw) {
 		t.Fatalf("restored body: email=%q password=%d chars", body.Email, len(body.Password))
+	}
+}
+
+func TestAccountFromLoginBodyOversizedPaddingKeepsAccount(t *testing.T) {
+	// F3: the email appears FIRST but an ignored padding field extends the
+	// credentials object past the old 8193-byte probe window. The probe used
+	// to fail decoding the truncated prefix and fall back to the
+	// empty-account bucket, while the handler decoded the same object fine
+	// and acted on the named account — a second full budget per target.
+	pad := strings.Repeat("x", 9000)
+	raw := `{"email":"victim@example.com","password":"bad","padding":"` + pad + `"}`
+	if len(raw) <= 8193 {
+		t.Fatalf("fixture too small: %d bytes", len(raw))
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(raw))
+	if got := accountFromLoginBody(r); got != "victim@example.com" {
+		t.Fatalf("oversized padded body: account %q, want victim@example.com", got)
+	}
+	var body struct {
+		Email   string `json:"email"`
+		Padding string `json:"padding"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatalf("restored body decode: %v", err)
+	}
+	if body.Email != "victim@example.com" || len(body.Padding) != len(pad) {
+		t.Fatalf("restored body: email=%q padding=%d chars", body.Email, len(body.Padding))
+	}
+}
+
+func TestAuthRateLimitCappedIPRejectedWithoutReadingBody(t *testing.T) {
+	// F4: an IP that already exhausted its budget must get its 429 without
+	// the middleware touching the request body. Before the fix the account
+	// probe ran first, so a POST with Expect: 100-continue that withholds
+	// its body received 100 Continue and blocked in the probe instead of
+	// the immediate 429 — against a real Go HTTP server.
+	accountL := New(time.Minute, 100)
+	ipL := New(time.Minute, 1)
+	h := AuthRateLimitMiddleware(accountL, ipL, "login", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	// Generous client timeout: the test's own verdict comes from the
+	// elapsed-time assertion below, not from this timeout.
+	client := &http.Client{Timeout: 10 * time.Second}
+	// Exhaust the single IP allowance with a normal request.
+	resp, err := client.Post(srv.URL, "application/json", strings.NewReader(`{"email":"a@example.com","password":"pw"}`))
+	if err != nil {
+		t.Fatalf("exhausting request: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("exhausting request: status %d, want 200", resp.StatusCode)
+	}
+	// Now the IP is capped. Send a POST with Expect: 100-continue whose
+	// body never yields a byte: the middleware must answer 429 at once,
+	// without touching the body. The pipe's safety valve closes it after
+	// 3s so a body-blocking middleware cannot hang the test — the
+	// elapsed-time assertion below is the verdict: a prompt 429 arrives in
+	// milliseconds, while a body-blocked 429 only arrives once the valve
+	// fires (a bare client timeout cannot unblock it: the transport's body
+	// writer stays stuck on the unread pipe).
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	time.AfterFunc(3*time.Second, func() { _ = pw.Close() })
+	req, err := http.NewRequest(http.MethodPost, srv.URL, pr)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Expect", "100-continue")
+	req.ContentLength = -1
+	start := time.Now()
+	resp, err = client.Do(req)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("capped-IP request with withheld body: %v (no prompt 429 — the middleware blocked reading the body)", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("capped-IP request: status %d, want 429", resp.StatusCode)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("capped-IP 429 took %v, want a prompt rejection without waiting on the body", elapsed)
 	}
 }

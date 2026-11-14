@@ -121,3 +121,37 @@ func TestLoginThrottleTrailingValueKeysOnDecodedAccount(t *testing.T) {
 		t.Fatalf("other account after victim exhausted its budget: expected 200, got %d", rec.Code)
 	}
 }
+
+// An oversized credentials object must key on the SAME account the handler
+// acts on, even when the object closes past the old 8192-byte probe window:
+// with the email first and a padding field pushing the object past the
+// window, the probe used to fail to decode and fall back to the
+// empty-account bucket, so the victim's 3 attempts below consumed the empty
+// budget and a different account then came back 429 from that same bucket.
+func TestLoginThrottleOversizedBodyKeysOnAccount(t *testing.T) {
+	h := newLoginThrottle(3, 100)
+	oversized := func(email string) *httptest.ResponseRecorder {
+		t.Helper()
+		pad := strings.Repeat("x", 9000)
+		body := fmt.Sprintf(`{"email":%q,"password":"bad","padding":%q}`, email, pad)
+		if len(body) <= 8192 {
+			t.Fatalf("fixture too small: %d bytes", len(body))
+		}
+		r := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec
+	}
+	for i := 1; i <= 3; i++ {
+		if rec := oversized("victim@example.com"); rec.Code != http.StatusOK {
+			t.Fatalf("victim attempt %d: expected 200, got %d", i, rec.Code)
+		}
+	}
+	if rec := oversized("victim@example.com"); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("4th oversized victim attempt: expected 429, got %d", rec.Code)
+	}
+	if rec := oversized("other@example.com"); rec.Code != http.StatusOK {
+		t.Fatalf("other account after victim exhausted its budget: expected 200, got %d", rec.Code)
+	}
+}
