@@ -93,6 +93,31 @@ async def test_outline_move_routes():
     assert passed.after_id == TID and passed.node_id == NODE
 
 
+async def test_live_outline_edit_tool_advertises_scene_only_move():
+    """#318 P1 — the LIVE successor is the only move contract a model can see: the
+    legacy composition_outline_node_move is dropped from the wire by
+    drop_superseded_tools (AGENTS.md), so the chapter prohibition HEAD put on the
+    legacy description is invisible — while THIS tool still advertises moving an
+    outline node "(chapter/scene)" and delegates op=move to a handler whose repo
+    guard rejects every chapter move. The restriction belongs here, in the
+    discoverable tool's description, with the manuscript reorder as the remedy."""
+    tools = {t.name: t for t in await srv.mcp_server.list_tools()}
+    desc = tools["composition_outline_node_edit"].description
+    assert "move an outline node (chapter/scene)" not in desc, (
+        "the live tool still advertises chapter moves — op=move on a chapter is "
+        "rejected by OutlineRepo.reorder_node, so this promise can never succeed"
+    )
+    assert "op=move reparents+reorders a SCENE" in desc, (
+        "the live tool's op=move clause must scope the move to scenes"
+    )
+    assert "Chapters are NOT movable here" in desc, (
+        "the live tool must state the chapter prohibition where a model can see it"
+    )
+    assert "POST /books/{book_id}/chapters/reorder" in desc, (
+        "the live tool must name the manuscript reorder as the chapter-move remedy"
+    )
+
+
 async def test_outline_update_requires_version():
     with pytest.raises(ValueError, match="expected_version"):
         await srv.composition_outline_node_edit(

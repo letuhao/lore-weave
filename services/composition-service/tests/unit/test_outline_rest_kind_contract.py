@@ -18,12 +18,14 @@ The repo stub raises the exact CheckViolationError the live CHECK produces, so t
 unfixed router is exercised against the real failure shape.
 """
 
+from pathlib import Path
 from typing import get_args
 from unittest.mock import AsyncMock
 from uuid import UUID
 
 import asyncpg
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 from app.db.models import OutlineNode
@@ -147,3 +149,31 @@ def test_live_scene_kind_still_creates(client):
     assert r.json()["kind"] == "scene"
     assert holder["repo"].create_seen is not None
     assert holder["repo"].create_seen["kind"] == "scene"
+
+
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "contracts" / "api" / "composition" / "v1" / "openapi.yaml"
+)
+
+
+def test_published_create_kind_matches_the_runtime_validator():
+    """#318 P1 — the checked-in contract is what codegen clients build from: it
+    advertised NodeCreate.kind [arc, chapter, scene, beat] while the runtime
+    NodeCreate rejects arc/beat with 422, so two advertised values could never
+    succeed. The contract's write schema must carry the narrowed set, while the
+    read schema (OutlineNode.kind) keeps the stored vocabulary — a not-yet-lifted
+    DB's legacy rows still validate (test_outline_read_model_still_validates_legacy_kinds)."""
+    spec = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    schemas = spec["components"]["schemas"]
+    assert schemas["NodeCreate"]["properties"]["kind"]["enum"] == ["chapter", "scene"], (
+        "contracts/api/composition/v1/openapi.yaml NodeCreate.kind still advertises "
+        "retired kinds the runtime rejects with 422 — a client built from this "
+        "contract will send a request that can never succeed (#318)."
+    )
+    assert schemas["OutlineNode"]["properties"]["kind"]["enum"] == [
+        "arc", "chapter", "scene", "beat",
+    ], (
+        "OutlineNode.kind is the READ schema and must keep the stored vocabulary — "
+        "narrowing it here would break validation of legacy rows on a not-yet-lifted DB."
+    )
