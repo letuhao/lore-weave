@@ -87,17 +87,31 @@ func (s *Server) indexChapter(ctx context.Context, caller, bookID, chID uuid.UUI
 	// priorKG is the pointer BEFORE this action. It is what tells us whether this index
 	// actually moves anything — see the `moved` computation below (review-impl P1).
 	var priorKG *uuid.UUID
-	// FOR UPDATE OF d, c — review-impl: locking only `d` (chapter_drafts) left
-	// published_revision_id and kg_exclude read OUTSIDE any lock on `chapters`, so a
-	// concurrent publish/unpublish/exclude between this SELECT and the UPDATE ~100 lines
-	// below could make the emitted event carry a stale published_revision_id (⇒ a wrong
-	// canon flag) or slip past the exclusion check. Lock both rows.
+	// Two ordered SELECTs, NOT one `FOR UPDATE OF d, c` — review-impl: locking
+	// only `d` (chapter_drafts) left published_revision_id and kg_exclude read
+	// OUTSIDE any lock on `chapters`, so a concurrent publish/unpublish/exclude
+	// between this SELECT and the UPDATE ~100 lines below could make the emitted
+	// event carry a stale published_revision_id (⇒ a wrong canon flag) or slip
+	// past the exclusion check. Lock both rows — but in the canonical order
+	// (PR #325 review): the draft row FIRST, the chapters row second, the same
+	// order REST patchDraft/publish take. A combined FOR UPDATE leaves the
+	// order to the query plan, which can deadlock (40P01) against a save that
+	// takes them in the opposite order.
 	err = tx.QueryRow(ctx, `
-SELECT d.draft_version, d.body, d.draft_format, c.kg_exclude, c.published_revision_id,
-       c.kg_indexed_revision_id
+SELECT d.draft_version, d.body, d.draft_format
 FROM chapter_drafts d JOIN chapters c ON c.id = d.chapter_id
 WHERE d.chapter_id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
-FOR UPDATE OF d, c`, chID, bookID).Scan(&curr, &body, &format, &kgExclude, &publishedRev, &priorKG)
+FOR UPDATE OF d`, chID, bookID).Scan(&curr, &body, &format)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return indexResult{}, errActionTargetGone
+	}
+	if err != nil {
+		return indexResult{}, err
+	}
+	err = tx.QueryRow(ctx, `
+SELECT kg_exclude, published_revision_id, kg_indexed_revision_id
+FROM chapters WHERE id=$1 AND lifecycle_state='active' FOR UPDATE`,
+		chID).Scan(&kgExclude, &publishedRev, &priorKG)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return indexResult{}, errActionTargetGone
 	}
@@ -134,7 +148,9 @@ SELECT COALESCE((
 	err = tx.QueryRow(ctx, `
 SELECT id FROM chapter_revisions
 WHERE chapter_id=$1 AND body = $2::jsonb
-ORDER BY created_at DESC, id DESC
+-- #287 — seq is the write order (clock-independent); the id tiebreak covers rows a
+-- pre-backfill writer could have left at 0.
+ORDER BY seq DESC, id DESC
 LIMIT 1`, chID, body).Scan(&revID)
 	switch {
 	case err == nil:
@@ -142,9 +158,14 @@ LIMIT 1`, chID, body).Scan(&revID)
 		// a duplicate. NOTE this does NOT mean "nothing changed": every save plants a
 		// revision row next to the draft, so this branch is hit on a FIRST index too.
 	case errors.Is(err, pgx.ErrNoRows):
+		// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+		// left at the DEFAULT 0 sorts behind every real revision. The chapters
+		// row is already locked by the FOR UPDATE above, so this re-UPDATE is
+		// a no-op lock-wise.
 		if ierr := tx.QueryRow(ctx, `
-INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
-VALUES($1,$2,$3,'index',$4) RETURNING id`, chID, body, format, caller).Scan(&revID); ierr != nil {
+WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, $3, 'index', $4 FROM s RETURNING id`, chID, body, format, caller).Scan(&revID); ierr != nil {
 			return indexResult{}, ierr
 		}
 	default:

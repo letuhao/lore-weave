@@ -156,8 +156,12 @@ ORDER BY ordinal
 		if _, err := tx.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id,body,draft_format,draft_updated_at,draft_version) VALUES($1,$2,'json',now(),1)`, chapterID, staging.TiptapJSON); err != nil {
 			return 0, err
 		}
+		// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+		// left at the DEFAULT 0 sorts behind every real revision.
 		var revisionID uuid.UUID
-		if err := tx.QueryRow(ctx, `INSERT INTO chapter_revisions(chapter_id,body,body_format,message,author_user_id) VALUES($1,$2,'json','imported from EPUB',$3) RETURNING id`, chapterID, staging.TiptapJSON, userID).Scan(&revisionID); err != nil {
+		if err := tx.QueryRow(ctx, `WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, 'json', 'imported from EPUB', $3 FROM s RETURNING id`, chapterID, staging.TiptapJSON, userID).Scan(&revisionID); err != nil {
 			return 0, err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1,editorial_status='published',published_revision_id=$2,kg_indexed_revision_id=$2,last_parsed_revision_id=$2 WHERE id=$1`, chapterID, revisionID); err != nil {

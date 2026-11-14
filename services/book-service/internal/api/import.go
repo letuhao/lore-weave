@@ -479,9 +479,13 @@ RETURNING id
 		_, _ = tx.Exec(r.Context(),
 			`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`,
 			chapterID, jsonBody)
+		// #287 — seq from the per-chapter counter (row-locked UPDATE): a row
+		// left at the DEFAULT 0 sorts behind every real revision.
 		var importRevID uuid.UUID
-		if err := tx.QueryRow(r.Context(),
-			`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,'json',$3,$4) RETURNING id`,
+		if err := tx.QueryRow(r.Context(), `
+WITH s AS (UPDATE chapters SET revision_seq=revision_seq+1 WHERE id=$1 RETURNING revision_seq)
+INSERT INTO chapter_revisions(chapter_id, seq, body, body_format, message, author_user_id)
+SELECT $1, s.revision_seq, $2, 'json', $3, $4 FROM s RETURNING id`,
 			chapterID, jsonBody, "bulk import from "+filename, caller).Scan(&importRevID); err != nil {
 			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", fmt.Sprintf("insert revision: %v", err))
 			return
