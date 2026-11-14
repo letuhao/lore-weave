@@ -24,6 +24,15 @@ from app.llm_budget import max_tokens_for
 def artifact_json_for_refine(spec: dict[str, Any], revision: dict[str, Any]) -> str:
     paths = revision.get("focus_paths") or []
     if paths:
+        if any(p in ("events", "arcs") for p in paths):
+            # Whole-section targets are replaced WHOLESALE by merge_refine_output,
+            # so the model must see the ENTIRE section: the 12,000-char cap would
+            # hand it truncated (unparseable) JSON, and every event past the cut
+            # would then be silently dropped by the merge while accept_refine —
+            # which only guards arc_2 titles/counts — waves the loss through.
+            # Per-item targets keep the cap: the merge only replaces the named
+            # item, so events the model never saw are untouched.
+            return spec_slice_for_paths(spec, paths, max_chars=None)
         return spec_slice_for_paths(spec, paths, max_chars=12000)
     return json.dumps(spec, ensure_ascii=False, indent=2)
 
@@ -39,7 +48,18 @@ def merge_refine_output(before: dict[str, Any], patch: dict[str, Any], revision:
         return patch
     out = copy.deepcopy(before)
     for p in paths:
-        if p.startswith("events["):
+        if p == "events":
+            # Whole-section target: the patch carries the repaired section, so
+            # it replaces the section (the per-item branches below replace one
+            # item the same way). Anything else in the patch is out of focus.
+            new_events = patch.get("events")
+            if isinstance(new_events, list):
+                out["events"] = new_events
+        elif p == "arcs":
+            new_arcs = patch.get("arcs")
+            if isinstance(new_arcs, list):
+                out["arcs"] = new_arcs
+        elif p.startswith("events["):
             eid = p.split("[", 1)[1].rstrip("]")
             new_ev = patch.get(p)
             if new_ev is None and isinstance(patch.get("events"), list):
