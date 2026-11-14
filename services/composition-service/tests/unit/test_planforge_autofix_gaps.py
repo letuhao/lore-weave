@@ -167,3 +167,23 @@ async def test_advisory_empty_arc_gap_preserved_without_rubric(monkeypatch):
         "a spec with all events in arc_2 must still report the empty arc_1 as a "
         "warn gap on the real 'events' section — not gaps: [] (#323)"
     )
+
+
+# ── #323 Codex review, round 2 ───────────────────────────────────────────────
+# F5 — the empty-arc repair above is a MOVE (one event arc_2 -> arc_1, both IDs
+# retained), but handoff_autofix built {"focus_paths": ["events"]} with no
+# scope, so accept_refine rejected the correct patch as "events removed outside
+# scope" + "arc_2 events shrank" and the loop stopped at rejected. A
+# whole-section events target is a revision SCOPED to events.
+@pytest.mark.asyncio
+async def test_autofix_scopes_whole_events_target(monkeypatch):
+    svc = _service(monkeypatch, spec=_EMPTY_ARC_SPEC, coverage_gaps=[])
+    await svc.handoff_autofix(_USER, _BOOK, _RUN, model_ref=None, max_rounds=1)
+
+    svc.refine.assert_awaited_once()
+    revision = svc.refine.await_args.kwargs["revision"]
+    assert "events" in revision["focus_paths"]
+    assert revision.get("scope") == ["events"], (
+        "handoff_autofix must scope a whole-events revision to events — without "
+        "it accept_refine rejects the empty-arc move as a removal (#323 F5)"
+    )

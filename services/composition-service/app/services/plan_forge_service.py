@@ -1373,6 +1373,15 @@ class PlanForgeService:
             if not top:
                 break
             revision = {"focus_paths": [g["path"] for g in top if g.get("path")]}
+            if "events" in revision["focus_paths"]:
+                # The whole-section events target is a revision SCOPED to events:
+                # the repair may MOVE events between arcs (the empty-arc fix), and
+                # accept_refine's removal guards are scope-gated — without
+                # "events" in scope the correct move is rejected as "events
+                # removed outside scope" + "arc_2 events shrank" and the loop
+                # stops at rejected. This is the same scope human event-changing
+                # refines already carry (test_plan_forge.py).
+                revision["scope"] = ["events"]
             mode, payload = await self.refine(
                 created_by, book_id, run_id,
                 model_ref=model_ref, revision=revision, focus_paths=None,

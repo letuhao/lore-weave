@@ -98,8 +98,14 @@ def search_index(query: str, index: list[dict[str, Any]], top_k: int = 5) -> lis
     return [{**e, "score": s} for e, s in scored[:top_k]]
 
 
-def spec_slice_for_paths(spec: dict[str, Any], paths: list[str], max_chars: int = 4000) -> str:
-    """Extract a small JSON slice for interpret/refine prompts."""
+def spec_slice_for_paths(spec: dict[str, Any], paths: list[str], max_chars: int | None = 4000) -> str:
+    """Extract a small JSON slice for interpret/refine prompts.
+
+    `max_chars=None` disables the cap — the caller takes responsibility for the
+    size. Refine needs it for whole-section targets (see artifact_json_for_refine):
+    a truncated section is handed to the model as broken JSON and then replaced
+    wholesale by the merge, silently dropping every event past the cut.
+    """
     import json
 
     out: dict[str, Any] = {}
@@ -125,4 +131,4 @@ def spec_slice_for_paths(spec: dict[str, Any], paths: list[str], max_chars: int 
                 if m.get("id") == mid:
                     out[p] = m
     blob = json.dumps(out, ensure_ascii=False, indent=2)
-    return blob[:max_chars]
+    return blob if max_chars is None else blob[:max_chars]
