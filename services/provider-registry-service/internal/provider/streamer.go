@@ -312,8 +312,10 @@ func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error 
 				} `json:"completion_tokens_details"`
 				// OpenAI + LM-Studio + vLLM report automatic prefix-cache hits here
 				// (prompt_tokens already INCLUDES these). §7 caching monitor reads it.
+				// *int: field presence matters — an explicit cached_tokens: 0 is a
+				// measured 0% turn, while an absent field is provider silence (#324).
 				PromptTokensDetails *struct {
-					CachedTokens int `json:"cached_tokens"`
+					CachedTokens *int `json:"cached_tokens"`
 				} `json:"prompt_tokens_details"`
 			} `json:"usage"`
 		}
@@ -387,8 +389,11 @@ func streamOpenAICompat(ctx context.Context, body io.Reader, emit EmitFn) error 
 			// Automatic prefix-cache hits (server-side). These are READ hits (no
 			// separate write charge on OpenAI-compat), so map to CacheReadTokens —
 			// the same normalized concept as Anthropic's cache_read_input_tokens.
-			if d := parsed.Usage.PromptTokensDetails; d != nil && d.CachedTokens > 0 {
-				ct := d.CachedTokens
+			// #324 — field presence, not positivity: an explicit cached_tokens: 0
+			// is a measured 0% turn; dropping it would make the monitor read
+			// silence ("unavailable") and hide real hit-rate/cost metrics.
+			if d := parsed.Usage.PromptTokensDetails; d != nil && d.CachedTokens != nil {
+				ct := *d.CachedTokens
 				chunk.CacheReadTokens = &ct
 			}
 			if err := emit(chunk); err != nil {

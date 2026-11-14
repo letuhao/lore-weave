@@ -116,6 +116,28 @@ export function PressureGauge({ frame }: { frame: ContextTraceFrame }) {
 }
 
 function CachingRow({ caching }: { caching: NonNullable<ContextTraceFrame['caching']> }) {
+  // #301 — `unavailable` means the provider reported NO cache split this turn: the
+  // hit-rate/saving numbers would be fabricated, so the chip says so instead.
+  if (caching.cache_state === 'unavailable' || caching.hit_rate == null || caching.cost_delta_ratio == null) {
+    return (
+      <div
+        className="col-span-3 flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground"
+        data-testid="inspector-caching-row"
+      >
+        <span className="inline-flex items-center rounded-full border border-border bg-secondary px-2 py-0.5 font-semibold">
+          cache: n/a — provider reports no split
+        </span>
+        {caching.thrashing && (
+          <span
+            className="inline-flex items-center rounded-full border border-border bg-secondary px-2 py-0.5 font-semibold text-red-400"
+            data-status-chip="cache-thrashing"
+          >
+            thrashing
+          </span>
+        )}
+      </div>
+    );
+  }
   const hitPct = Math.round(caching.hit_rate * 100);
   const savingPct = Math.round(caching.cost_delta_ratio * 100);
   const savingLabel = savingPct >= 0 ? `saving ${savingPct}%` : `costing ${Math.abs(savingPct)}% more`;

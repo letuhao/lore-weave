@@ -78,6 +78,50 @@ def test_no_cache_turn_is_all_uncached_stable_zeros():
     assert m["net_negative"] is False
 
 
+# ── #301 — provider silence is NOT a measurement ──────────────────────────────
+
+def test_provider_silence_is_unavailable_not_a_zero_hit_rate():
+    # The SDK's UsageEvent carries None when the provider reported NO cache split.
+    # Coercing that to 0 manufactured a 0.0 hit rate on automatic-prefix providers
+    # whether the cache worked or not. The monitor must say "unavailable" instead.
+    m = build_caching_metrics(
+        cache_creation_tok=None, cache_read_tok=None, input_tok=1000, capabilities=_AUTO,
+    )
+    assert m["cache_state"] == "unavailable"
+    assert m["hit_rate"] is None
+    assert m["cost_delta_ratio"] is None and m["net_negative"] is None
+    # The numeric row set stays stable (the Inspector renders every turn).
+    assert m["create_tok"] == 0 and m["read_tok"] == 0 and m["uncached_tok"] == 1000
+
+
+def test_explicit_reported_zero_stays_a_zero():
+    # The distinction the issue demands: a provider that REPORTS zero cache activity
+    # is a measurement (0.0), never confused with silence (unavailable).
+    m = build_caching_metrics(
+        cache_creation_tok=0, cache_read_tok=0, input_tok=1000, capabilities=_AUTO,
+    )
+    assert m["cache_state"] == "reported"
+    assert m["hit_rate"] == 0.0
+
+
+def test_reported_split_keeps_today_math():
+    m = build_caching_metrics(
+        cache_creation_tok=0, cache_read_tok=500, input_tok=1000, capabilities=_AUTO,
+    )
+    assert m["cache_state"] == "reported"
+    assert m["hit_rate"] == 0.5
+    assert m["cost_delta_ratio"] == 0.25
+
+
+def test_one_reported_field_is_enough_to_be_reported():
+    # A provider that reports reads but not creations is still a measurement.
+    m = build_caching_metrics(
+        cache_creation_tok=None, cache_read_tok=750, input_tok=1000, capabilities=None,
+    )
+    assert m["cache_state"] == "reported"
+    assert m["hit_rate"] == 0.75
+
+
 def test_uncached_floored_when_split_exceeds_input():
     # defensive: a provider mis-report where read+create > input must not go negative
     m = build_caching_metrics(

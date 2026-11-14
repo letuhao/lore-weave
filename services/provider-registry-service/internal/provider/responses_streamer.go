@@ -91,7 +91,10 @@ func streamResponsesSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 					InputTokens        int `json:"input_tokens"`
 					OutputTokens       int `json:"output_tokens"`
 					InputTokensDetails struct {
-						CachedTokens int `json:"cached_tokens"`
+						// *int: field presence matters — an explicit cached_tokens: 0
+						// is a measured 0% turn, while an absent field is provider
+						// silence (#324).
+						CachedTokens *int `json:"cached_tokens"`
 					} `json:"input_tokens_details"`
 					OutputTokensDetails struct {
 						ReasoningTokens int `json:"reasoning_tokens"`
@@ -209,8 +212,10 @@ func streamResponsesSSE(ctx context.Context, body io.Reader, emit EmitFn) error 
 				}
 				// Responses input_tokens INCLUDES cached (like OpenAI chat) → the
 				// cached slice is a READ hit; no write charge on this API.
-				if c := ev.Response.Usage.InputTokensDetails.CachedTokens; c > 0 {
-					chunk.CacheReadTokens = &c
+				// #324 — field presence, not positivity (see streamer.go).
+				if c := ev.Response.Usage.InputTokensDetails.CachedTokens; c != nil {
+					ct := *c
+					chunk.CacheReadTokens = &ct
 				}
 				if rt := ev.Response.Usage.OutputTokensDetails.ReasoningTokens; rt > 0 {
 					chunk.ReasoningTokens = &rt

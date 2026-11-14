@@ -272,17 +272,21 @@ export interface EntityPresenceFrame {
 /** Prompt-caching metrics for this turn (chat-service `caching_monitor.build_caching_metrics`
  *  + the rolling `detect_thrashing` verdict). All numeric fields are always present (0 /
  *  "stateless" when nothing cached); `thrashing` is `null` when a verdict isn't meaningful yet
- *  (auto-cache provider, or fewer than 3 turns of history). */
+ *  (auto-cache provider, or fewer than 3 turns of history).
+ *  #301 — `cache_state: 'unavailable'` means the PROVIDER REPORTED NO SPLIT this turn:
+ *  `hit_rate`/`cost_delta_ratio`/`net_negative` are then `null` — provider silence is not a
+ *  0% measurement. A reported zero keeps them numeric ("reported", 0.0). */
 export interface CachingFrame {
   strategy: string;
   auto_prefix: boolean;
   create_tok: number;
   read_tok: number;
   uncached_tok: number;
-  hit_rate: number;
-  cost_delta_ratio: number;
+  cache_state: 'reported' | 'unavailable';
+  hit_rate: number | null;
+  cost_delta_ratio: number | null;
   write_premium_tok: number;
-  net_negative: boolean;
+  net_negative: boolean | null;
   thrashing: boolean | null;
 }
 
