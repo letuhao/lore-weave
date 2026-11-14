@@ -1871,7 +1871,15 @@ class OutlineRepo:
         A chapter with no position of its own yields NULL (propagated) rather than a
         fabricated 0 — an unknown slot must not claim to be the book's first.
         NOT version-bumped — story_order is a system-maintained ordinal, not a user field.
-        project_id-scoped, so the renumber can never leave this Work."""
+        project_id-scoped, so the renumber can never leave this Work.
+
+        #318 P1 — a NULL parent has NO chapter base at all: the `base` CTE matches no
+        row, so `(SELECT b FROM base)` is NULL and the UPDATE below would write NULL
+        into EVERY root scene's story_order — dropping them from every story_order-keyed
+        draft/context query. Root scenes (stray imports) keep their last-known order;
+        the renumber is a no-op up here."""
+        if parent_id is None:
+            return
         await c.execute(
             """
             WITH base AS (
@@ -1917,6 +1925,17 @@ class OutlineRepo:
                 node = await self.get_node(node_id, conn=c)
                 if node is None:
                     return None
+                # #318 P1 — chapters are NOT reorderable here. Chapter order is owned by
+                # book-service (POST /books/{id}/chapters/reorder + resync_reading_order
+                # is the ONLY writer of a chapter's slot outside the initial commit);
+                # flattenOutline sorts chapters by story_order first, so a rank-only
+                # chapter move would report success while the display never changes —
+                # a silent no-op that also reaches the NULL-parent renumber. Fail loud.
+                if node.kind == "chapter":
+                    raise ReferenceViolationError(
+                        "chapter order is owned by the manuscript; reorder chapters via "
+                        "POST /books/{book_id}/chapters/reorder, not the outline move"
+                    )
                 if new_parent_id is not None:
                     # cycle / cross-scope guard (reused from update_node's reparent)
                     await self._validate_reparent(c, node_id, new_parent_id)

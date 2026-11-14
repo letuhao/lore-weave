@@ -576,7 +576,7 @@ components:
       type: object
       required: [kind]
       properties:
-        kind: { type: string, enum: [arc, chapter, scene, beat] }
+        kind: { type: string, enum: [chapter, scene] }
         parent_id: { type: string, format: uuid, nullable: true }
         rank: { type: string, nullable: true }
         title: { type: string }

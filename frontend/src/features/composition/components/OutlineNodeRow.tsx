@@ -37,7 +37,7 @@ export function OutlineNodeRow({
   onRenameStart: () => void;
   onRenameCommit: (title: string) => void;
   onRenameCancel: () => void;
-  onAddChild: (kind: 'scene' | 'beat') => void;
+  onAddChild: (kind: 'scene') => void;
   onArchive: () => void;
   onCycleStatus: (status: OutlineNode['status']) => void;
   onRestore: () => void;
@@ -58,9 +58,10 @@ export function OutlineNodeRow({
     done.current = true;
     fn();
   };
-  // chapter → add a scene; scene → add a beat; arc/beat have no add-child.
-  const childKind: 'scene' | 'beat' | null =
-    node.kind === 'chapter' ? 'scene' : node.kind === 'scene' ? 'beat' : null;
+  // #272 — chapter → add a scene; that is the only add-child the fixed-depth tree
+  // has (`beat` is not a storable outline kind, so the old scene→beat affordance
+  // rendered a ＋ button whose POST always failed).
+  const childKind: 'scene' | null = node.kind === 'chapter' ? 'scene' : null;
 
   const commit = () => finish(() => {
     const v = inputRef.current?.value.trim() ?? '';
@@ -175,8 +176,8 @@ export function OutlineNodeRow({
             <button
               type="button"
               data-testid="outline-action-addchild"
-              title={t(childKind === 'scene' ? 'outline.addScene' : 'outline.addBeat', { defaultValue: 'Add' })}
-              aria-label={t(childKind === 'scene' ? 'outline.addScene' : 'outline.addBeat', { defaultValue: 'Add' })}
+              title={t('outline.addScene', { defaultValue: 'Add scene' })}
+              aria-label={t('outline.addScene', { defaultValue: 'Add scene' })}
               className="px-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => onAddChild(childKind)}
             >

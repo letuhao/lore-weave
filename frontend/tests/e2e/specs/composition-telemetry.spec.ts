@@ -18,7 +18,10 @@ test.describe('Composition telemetry (B3.3) [db-assert]', () => {
     const chapterId = await createChapter(request, token, bookId, 'Telemetry chapter');
     const projectId = await createCompositionWork(request, token, bookId);
     const sceneId = await createCompositionScene(request, token, projectId, chapterId, 'Scene');
-    const beatId = await createOutlineNode(request, token, projectId, 'beat', 'Beat');
+    // #263 — the non-scene probe uses `chapter`, a kind the narrowed NodeKind actually
+    // stores. The old `beat` fixture can no longer be created at all (schema 422), so
+    // it stopped exercising the kind gate it was written for.
+    const nonSceneId = await createOutlineNode(request, token, projectId, 'chapter', 'Chapter');
     try {
       await loginViaUI(page);
       const sceneRows = () => Number(queryComposition(
@@ -38,11 +41,11 @@ test.describe('Composition telemetry (B3.3) [db-assert]', () => {
 
       // a non-scene node marked done → no scene_committed for it (kind gate).
       // The patch may be a no-op or rejected; either way it must emit nothing.
-      try { await setSceneStatus(request, token, beatId, 'done'); } catch { /* non-scene reject is fine */ }
-      const beatRows = Number(queryComposition(
-        `SELECT count(*) FROM outbox_events WHERE event_type='composition.scene_committed' AND payload->>'scene_id'='${beatId}'`,
+      try { await setSceneStatus(request, token, nonSceneId, 'done'); } catch { /* non-scene reject is fine */ }
+      const nonSceneRows = Number(queryComposition(
+        `SELECT count(*) FROM outbox_events WHERE event_type='composition.scene_committed' AND payload->>'scene_id'='${nonSceneId}'`,
       ));
-      expect(beatRows).toBe(0);
+      expect(nonSceneRows).toBe(0);
     } finally {
       await trashBook(request, token, bookId);
     }

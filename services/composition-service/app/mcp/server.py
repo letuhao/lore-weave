@@ -8910,12 +8910,14 @@ class _OutlineNodeEditArgs(ForbidExtra):
 @mcp_server.tool(
     name="composition_outline_node_edit",
     description=(
-        "Create, edit, delete, restore, or move an outline node (chapter/scene) — the unified "
+        "Create, edit, delete, restore, or move outline nodes — the unified "
         "outline-CRUD entry point. op=create (needs kind ∈ chapter|scene; optional parent_id/title/"
         "goal/synopsis/status/chapter_id/scene fields). op=update (needs project_id + node_id + "
         "expected_version; only passed fields change). op=delete soft-archives (needs project_id + "
         "node_id; reversible via op=restore). op=restore un-archives. op=move reparents+reorders "
-        "(needs project_id + node_id; new_parent_id/after_id, optional expected_version). EDIT required."
+        "a SCENE (needs project_id + node_id; new_parent_id/after_id, optional expected_version). "
+        "Chapters are NOT movable here — chapter order is owned by the manuscript "
+        "(POST /books/{book_id}/chapters/reorder). EDIT required."
     ),
     meta=require_meta("A", "book",
                       synonyms=["edit outline node", "create chapter", "create scene", "delete scene",

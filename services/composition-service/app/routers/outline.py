@@ -68,7 +68,14 @@ internal_router = APIRouter(
 
 
 class NodeCreate(BaseModel):
-    kind: NodeKind
+    # #263 — the WRITE door is narrowed, not the read model: outline_node_kind_check's
+    # base schema still admits arc/beat (a pre-lift DB is a supported boot state), but
+    # this is the door that let a documented kind pass validation and die as a 400
+    # leaking the raw check text + the caller's row. A retired kind is now a schema 422
+    # naming the accepted values, same closed Literal the MCP _NodeCreateArgs carries
+    # (BPS-4). A retired kind may still be READ back from a not-yet-lifted DB
+    # (OutlineNode.kind stays the stored vocabulary).
+    kind: Literal["chapter", "scene"]
     parent_id: UUID | None = None
     rank: str | None = None
     title: _NodeTitle = ""
@@ -142,7 +149,7 @@ class NodePatch(BaseModel):
 
 
 class NodeReorder(BaseModel):
-    new_parent_id: UUID | None = None  # None = move to top level (arcs)
+    new_parent_id: UUID | None = None  # None = top level (scenes only — chapter moves 400, #318)
     after_id: UUID | None = None       # the sibling to place AFTER; None = first child
 
 
@@ -770,7 +777,8 @@ async def reorder_node(
     after `after_id` (None = first child). Computes the fractional rank +
     renumbers scene story_order server-side (atomic). 412 NODE_VERSION_CONFLICT on
     a stale If-Match; 400 BAD_REFERENCE on a reparent cycle / cross-scope parent /
-    bad after_id."""
+    bad after_id — and on a CHAPTER move (chapter order lives in the manuscript;
+    reorder chapters via POST /books/{book_id}/chapters/reorder, #318)."""
     await _gate_node(outline, works, grant, user_id, node_id, GrantLevel.EDIT)
     expected_version = _parse_if_match(if_match)
     try:
