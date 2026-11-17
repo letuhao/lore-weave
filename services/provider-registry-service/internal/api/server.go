@@ -1215,7 +1215,6 @@ func (s *Server) createProviderCredential(w http.ResponseWriter, r *http.Request
 		Active          *bool  `json:"active"`
 		APIStandard     string `json:"api_standard"`    // openai_compatible, anthropic, ollama, lm_studio
 		MaxConcurrency  *int   `json:"max_concurrency"` // nil/≤0 → system default
-		MaxConcurrency  *int   `json:"max_concurrency"` // nil/≤0 → unlimited (request-as-demand)
 		// #286: opt-in; absent → false. Only the user knows their server holds one model.
 		ServeOneModelAtATime *bool `json:"serve_one_model_at_a_time"`
 	}
